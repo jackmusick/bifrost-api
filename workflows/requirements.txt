@@ -1,0 +1,10 @@
+azure-functions
+azure-data-tables
+azure-identity
+azure-keyvault-secrets
+msgraph-sdk
+aiohttp
+pydantic
+pytest
+pytest-asyncio
+python-dotenv

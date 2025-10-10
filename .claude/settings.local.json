@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(func --version)",
+      "Bash(azurite:*)",
+      "Bash(node:*)",
+      "Bash(func init:*)",
+      "Bash(python3:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(npm install:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

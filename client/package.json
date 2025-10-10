@@ -1,0 +1,38 @@
+{
+    "name": "client",
+    "version": "0.0.1",
+    "type": "module",
+    "description": "Open-source automation engine for MSPs.",
+    "author": "Jack Musick <jack@gocovi.com>",
+    "private": true,
+    "scripts": {
+        "dev": "swa start http://localhost:5173 --run \"vite\"",
+        "dev:vite": "vite",
+        "build": "tsc -b && vite build",
+        "preview": "swa start dist",
+        "lint": "eslint .",
+        "deploy": "swa deploy"
+    },
+    "dependencies": {
+        "@azure/msal-browser": "^4.24.1",
+        "@azure/msal-react": "^3.0.20",
+        "@types/react-router-dom": "^5.3.3",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^7.9.3"
+    },
+    "devDependencies": {
+        "@azure/static-web-apps-cli": "^2.0.1",
+        "@eslint/js": "^9.13.0",
+        "@types/react": "^18.3.12",
+        "@types/react-dom": "^18.3.1",
+        "@vitejs/plugin-react": "^4.3.3",
+        "eslint": "^9.13.0",
+        "eslint-plugin-react-hooks": "^5.0.0",
+        "eslint-plugin-react-refresh": "^0.4.14",
+        "globals": "^15.11.0",
+        "typescript": "~5.6.2",
+        "typescript-eslint": "^8.11.0",
+        "vite": "^5.4.10"
+    }
+}
