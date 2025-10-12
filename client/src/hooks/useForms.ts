@@ -126,10 +126,8 @@ export function useDeactivateForm() {
 }
 
 export function useSubmitForm() {
-  const { orgId } = useUser()
-
   return useMutation({
-    mutationFn: (submission: FormSubmission) => formsService.submitForm(submission, orgId!),
+    mutationFn: (submission: FormSubmission & { orgId?: string }) => formsService.submitForm(submission),
     onSuccess: (data) => {
       toast.success('Workflow execution started', {
         description: `Execution ID: ${data.executionId}`,

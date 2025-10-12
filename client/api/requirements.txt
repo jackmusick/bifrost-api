@@ -1,0 +1,9 @@
+azure-functions
+azure-data-tables
+azure-identity
+azure-keyvault-secrets
+pyjwt[crypto]
+pydantic
+python-dotenv
+aiohttp
+requests

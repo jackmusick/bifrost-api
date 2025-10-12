@@ -74,7 +74,7 @@ export function OrgScopeSwitcher({
           </span>
           {isGlobalScope && (
             <Badge variant="secondary" className="ml-1 hidden lg:inline-flex">
-              All Orgs
+              All Organizations
             </Badge>
           )}
           <ChevronDown className="h-4 w-4" />

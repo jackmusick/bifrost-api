@@ -3,10 +3,8 @@
     "configurations": {
         "client": {
             "appLocation": ".",
-            "outputLocation": "dist",
-            "appBuildCommand": "npm run build",
-            "appDevserverCommand": "npm run dev",
-            "appDevserverUrl": "http://localhost:5173"
+            "outputLocation": "build",
+            "apiLocation": "./api"
         }
     }
 }

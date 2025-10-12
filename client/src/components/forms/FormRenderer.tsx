@@ -132,9 +132,10 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
   })
 
   const onSubmit = async (data: Record<string, unknown>) => {
-    const submission: FormSubmission = {
+    const submission = {
       formId: form.id,
       formData: data,
+      orgId: form.orgId, // Use the form's orgId to query correct partition
     }
 
     const result = await submitForm.mutateAsync(submission)

@@ -110,7 +110,7 @@ export function WebhookInfoDialog({
             <Webhook className="h-5 w-5" />
             HTTP Trigger Configuration
             <Badge variant="secondary" className="ml-auto font-normal">
-              {scope === 'global' ? 'Global' : 'Org-specific'}
+              {scope === 'global' ? 'Global' : 'Organization-specific'}
             </Badge>
           </DialogTitle>
           <DialogDescription>
