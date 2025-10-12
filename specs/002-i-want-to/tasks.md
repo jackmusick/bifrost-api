@@ -34,18 +34,18 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Move existing `/workflows/shared/` to `/workflows/engine/shared/` (preserve all imports)
-- [ ] T005 Move existing `/workflows/execute.py` to `/workflows/engine/execute.py`
-- [ ] T006 Move existing `/workflows/function_app.py` to `/workflows/engine/function_app.py`
-- [ ] T007 Move existing `/workflows/admin/` to `/workflows/engine/admin/`
-- [ ] T008 Move existing `/workflows/data_providers/` (built-in) to `/workflows/engine/data_providers/`
-- [ ] T009 Move existing `/workflows/workflows/` (current custom workflows) to `/workflows/workspace/workflows/`
-- [ ] T010 [P] Update all import statements in `/workflows/engine/` to reflect new `engine.` prefix
-- [ ] T011 [P] Update `function_app.py` to import from `engine.` namespace
-- [ ] T012 Create AuditLog table schema in `/workflows/engine/shared/init_tables.py`
-- [ ] T013 Verify existing workflows still function after restructure (smoke test)
+- [X] T004 Move existing `/workflows/shared/` to `/workflows/engine/shared/` (preserve all imports)
+- [X] T005 Move existing `/workflows/execute.py` to `/workflows/engine/execute.py`
+- [X] T006 Move existing `/workflows/functions/` to `/workflows/engine/functions/` (function_app.py stays at root)
+- [X] T007 Move existing `/workflows/admin/` to `/workflows/engine/admin/`
+- [X] T008 Move existing `/workflows/data_providers/` (built-in) to `/workflows/engine/data_providers/`
+- [X] T009 Move existing `/workflows/workflows/` (current custom workflows) to `/workflows/workspace/workflows/`
+- [X] T010 [P] Update all import statements in `/workflows/engine/` to reflect new `engine.` prefix
+- [X] T011 [P] Update `function_app.py` to import from `engine.` namespace
+- [X] T012 Create AuditLog table schema in `/workflows/engine/shared/init_tables.py`
+- [X] T013 Verify existing workflows still function after restructure (smoke test)
 
-**Checkpoint**: Foundation ready - repository restructured, all existing code migrated
+**Checkpoint**: Foundation ready - repository restructured, all existing code migrated ✓
 
 ---
 
@@ -59,21 +59,21 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T014 [P] [US1] Contract test for GitHub Action in `/workflows/tests/contract/test_github_action_protection.py` - test that action detects `/engine` modifications
-- [ ] T015 [P] [US1] Integration test for fork workflow in `/workflows/tests/integration/test_developer_workflow.py` - test full developer commit flow
+- [X] T014 [P] [US1] Contract test for GitHub Action in `/workflows/tests/contract/test_github_action_protection.py` - test that action detects `/engine` modifications
+- [X] T015 [P] [US1] Integration test for fork workflow in `/workflows/tests/integration/test_developer_workflow.py` - test full developer commit flow
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Create GitHub Action workflow file `.github/workflows/protect-engine.yml` with tj-actions/changed-files integration
-- [ ] T017 [US1] Configure action to detect changes in `/engine/**` path with `fetch-depth: 0`
-- [ ] T018 [US1] Add bot detection logic (allow `upstream-sync[bot]`, `github-actions[bot]`)
-- [ ] T019 [US1] Add error message formatting with `::error` workflow command syntax
-- [ ] T020 [US1] Set timeout to 2 minutes for fast failure
-- [ ] T021 [US1] Test GitHub Action locally using `act` or by creating test PR
+- [X] T016 [US1] Create GitHub Action workflow file `.github/workflows/protect-engine.yml` with tj-actions/changed-files integration
+- [X] T017 [US1] Configure action to detect changes in `/engine/**` path with `fetch-depth: 0`
+- [X] T018 [US1] Add bot detection logic (allow `upstream-sync[bot]`, `github-actions[bot]`)
+- [X] T019 [US1] Add error message formatting with `::error` workflow command syntax
+- [X] T020 [US1] Set timeout to 2 minutes for fast failure
+- [X] T021 [US1] Test GitHub Action locally using `act` or by creating test PR
 - [ ] T022 [US1] Create CODEOWNERS file `.github/CODEOWNERS` with `/engine/** @security-team` (optional enhancement)
 - [ ] T023 [US1] Update repository README with developer guidelines pointing to `/workspace` folder
 
-**Checkpoint**: At this point, GitHub Actions block all unauthorized `/engine` modifications
+**Checkpoint**: At this point, GitHub Actions block all unauthorized `/engine` modifications ✓
 
 ---
 
@@ -85,26 +85,26 @@
 
 ### Tests for User Story 2
 
-- [ ] T024 [P] [US2] Contract test for import restrictions in `/workflows/tests/contract/test_import_restriction.py` - verify blocked imports raise ImportError
-- [ ] T025 [P] [US2] Integration test for workspace isolation in `/workflows/tests/integration/test_workspace_execution.py` - test org context enforcement
-- [ ] T026 [P] [US2] Integration test for cross-org access denial in `/workflows/tests/integration/test_cross_org_isolation.py`
+- [X] T024 [P] [US2] Contract test for import restrictions in `/workflows/tests/contract/test_import_restriction.py` - verify blocked imports raise ImportError
+- [X] T025 [P] [US2] Integration test for workspace isolation in `/workflows/tests/integration/test_workspace_execution.py` - test org context enforcement
+- [X] T026 [P] [US2] Integration test for cross-org access denial in `/workflows/tests/integration/test_cross_org_isolation.py`
 
 ### Implementation for User Story 2
 
-- [ ] T027 [P] [US2] Create import restrictor module `/workflows/engine/shared/import_restrictor.py` implementing `MetaPathFinder`
-- [ ] T028 [US2] Define `BLOCKED_PREFIXES` tuple: `('engine.', 'shared.')` in import restrictor
-- [ ] T029 [US2] Define `ALLOWED_SHARED_EXPORTS` set: `{'shared.decorators', 'shared.context', 'shared.error_handling', 'shared.models'}`
-- [ ] T030 [US2] Implement `find_spec()` method with stack inspection to detect workspace imports
-- [ ] T031 [US2] Add clear error messages directing developers to public API
-- [ ] T032 [US2] Create `install_import_restrictions()` function with workspace path parameter
-- [ ] T033 [US2] Update `/workflows/engine/function_app.py` to install import restrictions at startup (before workspace discovery)
-- [ ] T034 [US2] Pass `WORKSPACE_PATH` to install function: `os.path.join(os.path.dirname(__file__), 'workspace')`
-- [ ] T035 [P] [US2] Create AuditLogger class in `/workflows/engine/shared/audit.py` with `log_function_key_access()`, `log_cross_org_access()`, `log_import_violation_attempt()`
-- [ ] T036 [US2] Integrate audit logger with import restrictor to log violation attempts
-- [ ] T037 [US2] Update organization context loading in `/workflows/engine/shared/middleware.py` to enforce org validation even with function key auth
-- [ ] T038 [US2] Test import restrictions with sample workspace code attempting blocked imports
+- [X] T027 [P] [US2] Create import restrictor module `/workflows/engine/shared/import_restrictor.py` implementing `MetaPathFinder`
+- [X] T028 [US2] Define `BLOCKED_PREFIXES` tuple: `('engine.', 'shared.')` in import restrictor
+- [X] T029 [US2] Define `ALLOWED_SHARED_EXPORTS` set: `{'engine.shared.decorators', 'engine.shared.context', 'engine.shared.error_handling', 'engine.shared.models', 'engine.shared.registry'}`
+- [X] T030 [US2] Implement `find_spec()` method with stack inspection to detect workspace imports
+- [X] T031 [US2] Add clear error messages directing developers to public API
+- [X] T032 [US2] Create `install_import_restrictions()` function with workspace path parameter
+- [X] T033 [US2] Update `/workflows/function_app.py` to install import restrictions at startup (before workspace discovery)
+- [X] T034 [US2] Pass `WORKSPACE_PATH` to install function: `os.path.join(os.path.dirname(__file__), 'workspace')`
+- [X] T035 [P] [US2] Create AuditLogger class in `/workflows/engine/shared/audit.py` with `log_function_key_access()`, `log_cross_org_access()`, `log_import_violation_attempt()`
+- [X] T036 [US2] Integrate audit logger with import restrictor to log violation attempts
+- [X] T037 [US2] Update organization context loading in `/workflows/engine/shared/middleware.py` to enforce org validation even with function key auth
+- [X] T038 [US2] Test import restrictions with sample workspace code attempting blocked imports
 
-**Checkpoint**: At this point, workspace code cannot import engine modules, org isolation enforced
+**Checkpoint**: At this point, workspace code cannot import engine modules, org isolation enforced ✓✓
 
 ---
 
@@ -116,30 +116,30 @@
 
 ### Tests for User Story 3
 
-- [ ] T039 [P] [US3] Integration test for authentication flow in `/workflows/tests/integration/test_auth_flow.py` - test function key and Easy Auth priorities
-- [ ] T040 [P] [US3] Integration test for Azurite seed data in `/workflows/tests/integration/test_seed_data.py` - verify test orgs/users created
-- [ ] T041 [P] [US3] Contract test for tiered auth in `/workflows/tests/contract/test_tiered_authentication.py` - verify auth priority order
+- [X] T039 [P] [US3] Integration test for authentication flow in `/workflows/tests/integration/test_auth_flow.py` - test function key and Easy Auth priorities
+- [X] T040 [P] [US3] Integration test for Azurite seed data in `/workflows/tests/integration/test_seed_data.py` - verify test orgs/users created
+- [X] T041 [P] [US3] Contract test for tiered auth in `/workflows/tests/contract/test_tiered_authentication.py` - verify auth priority order
 
 ### Implementation for User Story 3
 
-- [ ] T042 [P] [US3] Create Azurite seed script `/workflows/scripts/seed_azurite.py` using `azure-data-tables`
-- [ ] T043 [US3] Implement organization seeding (2-3 test orgs: active/inactive)
-- [ ] T044 [US3] Implement user seeding (3-5 users: PlatformAdmin, OrgUser roles)
-- [ ] T045 [US3] Implement configuration seeding (5-10 entries: global + org-specific)
-- [ ] T046 [US3] Add idempotent upsert pattern (check before inserting)
-- [ ] T047 [US3] Add execution time reporting (<5s target)
-- [ ] T048 [P] [US3] Create authentication service in `/workflows/engine/shared/auth.py` with `AuthenticationService` class
-- [ ] T049 [US3] Implement `_authenticate_function_key()` method (check `x-functions-key` header or `code` query param)
-- [ ] T050 [US3] Implement `_authenticate_user()` method (decode `X-MS-CLIENT-PRINCIPAL` Base64 JSON)
-- [ ] T051 [US3] Implement `authenticate()` method with tiered priority (function key → user auth → 403)
-- [ ] T052 [US3] Create `FunctionKeyPrincipal` and `UserPrincipal` dataclasses
-- [ ] T053 [US3] Implement `_audit_function_key_usage()` method to log privileged access
-- [ ] T054 [US3] Create `@require_auth` decorator for Azure Function endpoints
-- [ ] T055 [US3] Update `/workflows/engine/shared/middleware.py` to use new authentication service
-- [ ] T056 [US3] Replace existing `load_organization_context()` caller extraction logic with principal-based auth
-- [ ] T057 [US3] Update execute_workflow endpoint to use `@require_auth` decorator
-- [ ] T058 [US3] Test local development flow: `python scripts/seed_azurite.py` → `func start` → curl with function key
-- [ ] T059 [US3] Document local development setup in repository README (link to quickstart.md)
+- [X] T042 [P] [US3] Create Azurite seed script `/workflows/scripts/seed_azurite.py` using `azure-data-tables`
+- [X] T043 [US3] Implement organization seeding (2-3 test orgs: active/inactive)
+- [X] T044 [US3] Implement user seeding (3-5 users: PlatformAdmin, OrgUser roles)
+- [X] T045 [US3] Implement configuration seeding (5-10 entries: global + org-specific)
+- [X] T046 [US3] Add idempotent upsert pattern (check before inserting)
+- [X] T047 [US3] Add execution time reporting (<5s target)
+- [X] T048 [P] [US3] Create authentication service in `/workflows/engine/shared/auth.py` with `AuthenticationService` class
+- [X] T049 [US3] Implement `_authenticate_function_key()` method (check `x-functions-key` header or `code` query param)
+- [X] T050 [US3] Implement `_authenticate_user()` method (decode `X-MS-CLIENT-PRINCIPAL` Base64 JSON)
+- [X] T051 [US3] Implement `authenticate()` method with tiered priority (function key → user auth → 403)
+- [X] T052 [US3] Create `FunctionKeyPrincipal` and `UserPrincipal` dataclasses
+- [X] T053 [US3] Implement `_audit_function_key_usage()` method to log privileged access
+- [X] T054 [US3] Create `@require_auth` decorator for Azure Function endpoints
+- [X] T055 [US3] Update `/workflows/engine/shared/middleware.py` to use new authentication service
+- [X] T056 [US3] Replace existing `load_organization_context()` caller extraction logic with principal-based auth
+- [X] T057 [US3] Update execute_workflow endpoint to use `@require_auth` decorator
+- [X] T058 [US3] Test local development flow: `python scripts/seed_azurite.py` → `func start` → curl with function key
+- [X] T059 [US3] Document local development setup in repository README (link to quickstart.md)
 
 **Checkpoint**: All user stories complete - developers can commit safely, workspace code isolated, local development enabled
 
@@ -149,17 +149,17 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T060 [P] Add unit tests for import restrictor in `/workflows/tests/unit/test_import_restrictor.py`
-- [ ] T061 [P] Add unit tests for authentication service in `/workflows/tests/unit/test_auth_service.py`
-- [ ] T062 [P] Add unit tests for audit logger in `/workflows/tests/unit/test_audit_logger.py`
-- [ ] T063 Create documentation in `/workflows/docs/workspace-api.md` describing public API
-- [ ] T064 Create migration guide in `/workflows/docs/migration-guide.md` for existing workflows
-- [ ] T065 [P] Update quickstart.md validation with real paths and commands
-- [ ] T066 Add performance benchmarks (import restriction <50ms, GitHub Action <10s, seed script <5s)
-- [ ] T067 [P] Create example workspace workflows in `/workflows/workspace/examples/`
-- [ ] T068 Security review: Audit log retention policy, function key rotation procedure
-- [ ] T069 Create troubleshooting guide in `/workflows/docs/troubleshooting.md`
-- [ ] T070 Final smoke test: Deploy to staging, verify all protections active, test end-to-end flows
+- [X] T060 [P] Add unit tests for import restrictor in `/workflows/tests/unit/test_import_restrictor.py`
+- [X] T061 [P] Add unit tests for authentication service in `/workflows/tests/unit/test_auth_service.py`
+- [X] T062 [P] Add unit tests for audit logger in `/workflows/tests/unit/test_audit_logger.py`
+- [X] T063 Create documentation in `/workflows/docs/workspace-api.md` describing public API
+- [X] T064 Create migration guide in `/workflows/docs/migration-guide.md` for existing workflows
+- [X] T065 [P] Update quickstart.md validation with real paths and commands
+- [X] T066 Add performance benchmarks (import restriction <50ms, GitHub Action <10s, seed script <5s)
+- [X] T067 [P] Create example workspace workflows in `/workflows/workspace/examples/`
+- [X] T068 Security review: Audit log retention policy, function key rotation procedure
+- [X] T069 Create troubleshooting guide in `/workflows/docs/troubleshooting.md`
+- [X] T070 Final smoke test: Deploy to staging, verify all protections active, test end-to-end flows
 
 ---
 

@@ -61,7 +61,9 @@ export function Organizations() {
     tenantId: '',
   })
 
-  const { data: organizations, isLoading, refetch } = useOrganizations()
+  const { data: organizations, isLoading, error, refetch } = useOrganizations()
+
+  console.log('Organizations component rendered:', { organizations, isLoading, error })
   const createMutation = useCreateOrganization()
   const updateMutation = useUpdateOrganization()
   const deleteMutation = useDeleteOrganization()

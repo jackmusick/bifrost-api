@@ -1,7 +1,7 @@
 {
     "navigationFallback": {
         "rewrite": "/index.html",
-        "exclude": ["/assets/*", "/*.{css,scss,js,ts,tsx,png,gif,ico,jpg,svg}"]
+        "exclude": ["*.{css,scss,js,json,png,gif,ico,jpg,svg,woff,woff2,ttf,eot}", "/@*/*", "/src/*", "/node_modules/*"]
     },
     "routes": [
         {
@@ -94,29 +94,29 @@
             "allowedRoles": ["PlatformAdmin"]
         },
         {
-            "route": "/api/*",
-            "statusCode": 403
+            "route": "/api/workflows/metadata",
+            "methods": ["GET"],
+            "allowedRoles": ["authenticated"]
         },
         {
-            "route": "/*",
+            "route": "/api/workflows/*",
+            "methods": ["POST"],
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/data-providers/*",
+            "methods": ["GET"],
             "allowedRoles": ["authenticated"]
+        },
+        {
+            "route": "/api/*",
+            "allowedRoles": ["anonymous"]
         }
     ],
     "responseOverrides": {
         "401": {
             "redirect": "/.auth/login/aad",
             "statusCode": 302
-        },
-        "403": {
-            "statusCode": 403,
-            "rewrite": "/index.html"
-        },
-        "404": {
-            "rewrite": "/index.html",
-            "statusCode": 200
         }
-    },
-    "auth": {
-        "rolesSource": "/api/GetRoles"
     }
 }

@@ -18,14 +18,17 @@ export interface DataProviderResponse {
 export const dataProvidersService = {
   /**
    * Get options from a data provider
+   * Auth is handled automatically by SWA via X-MS-CLIENT-PRINCIPAL header
    */
   async getOptions(providerName: string, orgId: string): Promise<DataProviderOption[]> {
-    // Call workflow engine data provider endpoint directly
-    const response = await fetch(`http://localhost:7072/api/data-providers/${providerName}`, {
+    // Call via SWA proxy (not direct to Azure Functions)
+    // SWA automatically adds X-MS-CLIENT-PRINCIPAL header from authenticated session
+    const response = await fetch(`/api/data-providers/${providerName}`, {
       method: 'GET',
       headers: {
         'X-Organization-Id': orgId,
       },
+      credentials: 'same-origin', // Include cookies for SWA auth
     })
 
     if (!response.ok) {

@@ -43,7 +43,17 @@
       "Bash(python -m pytest tests/ --tb=no -q)",
       "Bash(git add:*)",
       "WebSearch",
-      "Bash(.specify/scripts/bash/update-agent-context.sh:*)"
+      "Bash(.specify/scripts/bash/update-agent-context.sh:*)",
+      "Bash(rm:*)",
+      "Bash(git restore:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(xargs ls:*)",
+      "Bash(nvm list:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

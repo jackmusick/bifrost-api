@@ -1,19 +1,29 @@
 import azure.functions as func
 import json
 import logging
+import os
 
-# Import workflows module to trigger auto-discovery
-import workflows
+# T033-T034: Install import restrictions BEFORE importing workspace code
+from engine.shared.import_restrictor import install_import_restrictions
 
-# Import data providers to trigger auto-discovery
-import data_providers
+# Calculate workspace path
+WORKSPACE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'workspace')
 
-from admin.metadata import bp as metadata_bp
-from execute import bp as execute_bp
-from data_provider_api import bp as data_provider_bp
-from functions.openapi import bp as openapi_bp
+# Install import restrictions to prevent workspace code from importing engine internals
+install_import_restrictions([WORKSPACE_PATH])
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+# Now safe to import workspace code - restrictions are active
+import workspace.workflows
+
+# Import engine data providers to trigger auto-discovery
+import engine.data_providers
+
+from engine.admin.metadata import bp as metadata_bp
+from engine.execute import bp as execute_bp
+from engine.functions.data_provider_api import bp as data_provider_bp
+from engine.functions.openapi import bp as openapi_bp
+
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ADMIN)
 
 # Register blueprints
 app.register_functions(metadata_bp)
@@ -21,7 +31,7 @@ app.register_functions(execute_bp)
 app.register_functions(data_provider_bp)
 app.register_functions(openapi_bp)  # OpenAPI/Swagger endpoints
 
-@app.route(route="health", methods=["GET"])
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def health(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Health check endpoint called")
     return func.HttpResponse(

@@ -9,36 +9,47 @@ export const formsService = {
   /**
    * Get all forms
    */
-  async getForms(params?: { orgId?: string }): Promise<Form[]> {
-    return api.get<Form[]>('/forms', params as Record<string, string>)
+  async getForms(): Promise<Form[]> {
+    return api.get<Form[]>('/forms')
   },
 
   /**
    * Get a specific form by ID
+   * @param formId - Form ID
+   * @param orgId - Organization ID (uses form's orgId to query correct partition)
    */
-  async getForm(formId: string, orgId: string): Promise<Form> {
-    return api.get<Form>(`/forms/${formId}`, { orgId })
+  async getForm(formId: string, orgId?: string): Promise<Form> {
+    return api.request<Form>(`/forms/${formId}`, { method: 'GET', orgId })
   },
 
   /**
    * Create a new form
    */
-  async createForm(request: CreateFormRequest, orgId: string): Promise<Form> {
-    return api.post<Form>('/forms', request, { orgId })
+  async createForm(request: CreateFormRequest): Promise<Form> {
+    return api.post<Form>('/forms', request)
   },
 
   /**
    * Update a form
+   * @param formId - Form ID
+   * @param request - Update request
+   * @param orgId - Organization ID (uses form's orgId to query correct partition)
    */
-  async updateForm(formId: string, request: UpdateFormRequest, orgId: string): Promise<Form> {
-    return api.put<Form>(`/forms/${formId}`, request, { orgId })
+  async updateForm(formId: string, request: UpdateFormRequest, orgId?: string): Promise<Form> {
+    return api.request<Form>(`/forms/${formId}`, {
+      method: 'PUT',
+      body: JSON.stringify(request),
+      orgId
+    })
   },
 
   /**
    * Delete a form
+   * @param formId - Form ID
+   * @param orgId - Organization ID (uses form's orgId to query correct partition)
    */
-  async deleteForm(formId: string, orgId: string): Promise<void> {
-    return api.delete<void>(`/forms/${formId}`, { orgId })
+  async deleteForm(formId: string, orgId?: string): Promise<void> {
+    return api.request<void>(`/forms/${formId}`, { method: 'DELETE', orgId })
   },
 
   /**
@@ -57,10 +68,13 @@ export const formsService = {
 
   /**
    * Submit a form to execute a workflow
+   * @param submission - Form submission with formId, formData, and optional orgId
    */
-  async submitForm(submission: FormSubmission, orgId: string): Promise<FormExecutionResponse> {
-    return api.post<FormExecutionResponse>(`/forms/${submission.formId}/submit`, {
-      form_data: submission.formData,
-    }, { orgId })
+  async submitForm(submission: FormSubmission & { orgId?: string }): Promise<FormExecutionResponse> {
+    return api.request<FormExecutionResponse>(`/forms/${submission.formId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ form_data: submission.formData }),
+      orgId: submission.orgId
+    })
   },
 }

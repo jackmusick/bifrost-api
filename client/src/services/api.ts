@@ -30,59 +30,65 @@ class ApiClient {
   }
 
   /**
-   * Set organization context for requests
-   * Can be called from Zustand store or component
+   * DEPRECATED: Organization context is now derived from auth by Management API
+   * This method is kept for backward compatibility but does nothing
    */
   setOrgContext(orgId: string | undefined): void {
-    if (orgId) {
-      sessionStorage.setItem('current_org_id', orgId)
-    } else {
-      sessionStorage.removeItem('current_org_id')
-    }
+    // No-op - context is now derived server-side
   }
 
   /**
-   * Set user context for requests
-   * Can be called from auth store
+   * DEPRECATED: User context is now derived from auth by Management API
+   * This method is kept for backward compatibility but does nothing
    */
   setUserContext(userId: string | undefined): void {
-    if (userId) {
-      sessionStorage.setItem('current_user_id', userId)
-    } else {
-      sessionStorage.removeItem('current_user_id')
-    }
+    // No-op - context is now derived server-side
   }
 
-  private async request<T>(
+  async request<T>(
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<T> {
     const { params, orgId, userId, ...fetchOptions } = options
 
     // Build URL with query params
-    const url = new URL(`${this.baseURL}${endpoint}`)
+    let url = `${this.baseURL}${endpoint}`
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value)
-      })
+      const searchParams = new URLSearchParams(params)
+      url += `?${searchParams.toString()}`
     }
 
     // Get auth token from localStorage (MSAL stores it)
     const token = localStorage.getItem('msal_token')
 
-    // Get organization and user context
-    const contextOrgId = orgId || sessionStorage.getItem('current_org_id')
-    const contextUserId = userId || sessionStorage.getItem('current_user_id')
+    // Get org and user context from sessionStorage
+    const sessionOrgId = sessionStorage.getItem('current_org_id')
+    const sessionUserId = sessionStorage.getItem('current_user_id')
 
-    const response = await fetch(url.toString(), {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...fetchOptions.headers,
+    }
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    // Always add context headers from session (or allow explicit override)
+    const contextOrgId = orgId || sessionOrgId
+    const contextUserId = userId || sessionUserId
+
+    if (contextOrgId) {
+      headers['X-Organization-Id'] = contextOrgId
+    }
+    if (contextUserId) {
+      headers['X-User-Id'] = contextUserId
+    }
+
+    const response = await fetch(url, {
       ...fetchOptions,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...(contextOrgId && { 'X-Organization-Id': contextOrgId }),
-        ...(contextUserId && { 'X-User-Id': contextUserId }),
-        ...fetchOptions.headers,
-      },
+      credentials: 'same-origin', // Include cookies for SWA auth (X-MS-CLIENT-PRINCIPAL)
+      headers,
     })
 
     if (!response.ok) {
@@ -100,28 +106,28 @@ class ApiClient {
     return response.json()
   }
 
-  async get<T>(endpoint: string, params?: Record<string, string> | undefined): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET', params: params || undefined })
+  async get<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET', params })
   }
 
-  async post<T>(endpoint: string, data?: unknown, params?: Record<string, string> | undefined): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown, params?: Record<string, string>): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: JSON.stringify(data),
-      params: params || undefined,
+      params,
     })
   }
 
-  async put<T>(endpoint: string, data?: unknown, params?: Record<string, string> | undefined): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown, params?: Record<string, string>): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: JSON.stringify(data),
-      params: params || undefined,
+      params,
     })
   }
 
-  async delete<T>(endpoint: string, params?: Record<string, string> | undefined): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE', params: params || undefined })
+  async delete<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE', params })
   }
 }
 

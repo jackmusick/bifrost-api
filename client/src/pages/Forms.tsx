@@ -13,17 +13,26 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useForms, useDeleteForm } from '@/hooks/useForms'
 import { useOrgScope } from '@/contexts/OrgScopeContext'
 import { useAuth } from '@/hooks/useAuth'
+import { useOrganizations } from '@/hooks/useOrganizations'
 
 export function Forms() {
   const navigate = useNavigate()
   const { scope, isGlobalScope } = useOrgScope()
   const { data: forms, isLoading, refetch } = useForms(scope.orgId ?? undefined)
+  const { data: organizations } = useOrganizations()
   const deleteForm = useDeleteForm()
   const { isPlatformAdmin } = useAuth()
 
   // For now, only platform admins can manage forms
-  // TODO: Add org-specific permission check via API
+  // TODO: Add organization-specific permission check via API
   const canManageForms = isPlatformAdmin
+
+  // Helper to get organization name from orgId
+  const getOrgName = (orgId: string) => {
+    if (orgId === 'GLOBAL') return 'Global'
+    const org = organizations?.find(o => o.id === orgId)
+    return org?.name || orgId
+  }
 
   const handleCreate = () => {
     navigate('/forms/new')
@@ -45,11 +54,16 @@ export function Forms() {
 
   // Filter forms based on scope
   const filteredForms = forms?.filter(form => {
+    // Platform admins without org: show all forms
+    if (isPlatformAdmin && !scope.orgId) {
+      return true
+    }
+    // Global scope: show only global forms
     if (isGlobalScope) {
       return form.isGlobal === true
-    } else {
-      return form.orgId === scope.orgId
     }
+    // Org scope: show org-specific forms
+    return form.orgId === scope.orgId
   }) || []
 
   return (
@@ -127,11 +141,17 @@ export function Forms() {
                     {form.formSchema.fields.length} field{form.formSchema.fields.length !== 1 ? 's' : ''}
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Scope:</span>{' '}
+                    <span className="text-muted-foreground">Organization:</span>{' '}
                     {form.isGlobal ? (
-                      <Badge variant="secondary" className="text-xs">Global</Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        <Globe className="mr-1 h-3 w-3" />
+                        Global
+                      </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-xs">Org-Specific</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        <Building2 className="mr-1 h-3 w-3" />
+                        {getOrgName(form.orgId)}
+                      </Badge>
                     )}
                   </div>
                 </div>

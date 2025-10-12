@@ -9,8 +9,11 @@ export const workflowsService = {
    * Get all workflows and data providers metadata
    */
   async getMetadata(): Promise<MetadataResponse> {
-    // Call the workflow engine metadata endpoint directly
-    const response = await fetch('http://localhost:7072/api/registry/metadata')
+    // Call Management API which proxies to workflows engine
+    // Management API handles authentication and workflows engine configuration
+    const response = await fetch('/api/workflows/metadata', {
+      credentials: 'same-origin', // Include cookies for SWA auth
+    })
     if (!response.ok) {
       throw new Error('Failed to fetch workflows metadata')
     }
@@ -18,18 +21,34 @@ export const workflowsService = {
   },
 
   /**
-   * Execute a workflow directly with parameters
+   * Execute a workflow with parameters
+   * Auth is handled automatically by SWA via X-MS-CLIENT-PRINCIPAL header
+   * Organization and user context are derived from auth by Management API
+   *
+   * @param request - Workflow execution request
+   * @param request.orgId - Optional: only provide if admin overriding context
+   * @param request.userId - Optional: only provide if admin overriding context
    */
   async executeWorkflow(request: WorkflowExecutionRequest): Promise<WorkflowExecutionResponse> {
-    // Call workflow engine directly with required headers
-    // Body uses flat JSON format (parameters at root level)
-    const response = await fetch(`http://localhost:7072/api/workflows/${request.workflowName}`, {
+    // Call via SWA proxy (not direct to Azure Functions)
+    // Management API derives X-Organization-Id and X-User-Id from auth by default
+    // Only PlatformAdmins can override these headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+
+    // Only add override headers if explicitly provided (admin use case)
+    if (request.orgId) {
+      headers['X-Organization-Id'] = request.orgId
+    }
+    if (request.userId) {
+      headers['X-User-Id'] = request.userId
+    }
+
+    const response = await fetch(`/api/workflows/${request.workflowName}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Organization-Id': request.orgId || 'org-acme-123',
-        'X-User-Id': 'test-user-123', // TODO: Get from auth context
-      },
+      headers,
+      credentials: 'same-origin', // Include cookies for SWA auth
       body: JSON.stringify(request.parameters),
     })
 

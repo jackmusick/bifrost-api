@@ -11,6 +11,13 @@ export function useOrganizations() {
   return useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizationsService.getOrganizations(),
+    meta: {
+      onError: (error: Error) => {
+        toast.error('Failed to load organizations', {
+          description: error.message,
+        })
+      },
+    },
   })
 }
 
