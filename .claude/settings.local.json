@@ -41,7 +41,9 @@
       "Bash(python -m pytest tests/contract/test_org_config_contract.py::TestConfigResponse::test_valid_config_response -v --tb=short)",
       "Bash(python -m pytest tests/contract/test_org_config_contract.py -v)",
       "Bash(python -m pytest tests/ --tb=no -q)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebSearch",
+      "Bash(.specify/scripts/bash/update-agent-context.sh:*)"
     ],
     "deny": [],
     "ask": []
