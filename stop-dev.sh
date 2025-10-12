@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MSP Automation Platform - Stop Development Services
+# Bifrost Integrations - Stop Development Services
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT"

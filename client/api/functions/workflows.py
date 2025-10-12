@@ -240,6 +240,72 @@ def validate_workflows_engine(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+@bp.function_name("workflows_health")
+@bp.route(route="workflows/health", methods=["GET"])
+def workflows_health(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/workflows/health
+    Check workflow engine health status
+
+    This endpoint does NOT require authentication to allow health checks
+    even when auth is broken.
+
+    Returns:
+    {
+        "status": "healthy" | "unhealthy",
+        "service": "Workflow Engine"
+    }
+    """
+    try:
+        # Get workflows engine config
+        url, function_key = get_workflows_engine_config()
+
+        # Call workflows engine health endpoint (no auth required)
+        try:
+            response = requests.get(
+                f"{url}/api/health",
+                timeout=5
+            )
+
+            if response.status_code != 200:
+                return func.HttpResponse(
+                    json.dumps({
+                        "status": "unhealthy",
+                        "service": "Workflow Engine"
+                    }),
+                    status_code=200,
+                    mimetype="application/json"
+                )
+
+            health_data = response.json()
+            return func.HttpResponse(
+                json.dumps(health_data),
+                status_code=200,
+                mimetype="application/json"
+            )
+
+        except (requests.exceptions.Timeout, requests.exceptions.RequestException):
+            return func.HttpResponse(
+                json.dumps({
+                    "status": "unhealthy",
+                    "service": "Workflow Engine"
+                }),
+                status_code=200,
+                mimetype="application/json"
+            )
+
+    except Exception as e:
+        logger.error(f"Error checking workflows health: {str(e)}", exc_info=True)
+        return func.HttpResponse(
+            json.dumps({
+                "status": "unhealthy",
+                "service": "Workflow Engine"
+            }),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+
 @bp.function_name("workflows_get_metadata")
 @bp.route(route="workflows/metadata", methods=["GET"])
 @require_auth
@@ -259,22 +325,15 @@ def get_metadata(req: func.HttpRequest) -> func.HttpResponse:
         # Get workflows engine config
         url, function_key = get_workflows_engine_config()
 
-        if not function_key:
-            logger.warning("Workflows engine function key not configured")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Workflows engine function key is not configured. Please contact your administrator."
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
-
         # Call workflows engine
         try:
-            headers = {"x-functions-key": function_key}
-            logger.info(f"Calling workflows engine: GET {url}/api/registry/metadata")
+            # Build headers - only include function key if configured (not needed locally)
+            headers = {}
+            if function_key:
+                headers["x-functions-key"] = function_key
+                logger.info(f"Calling workflows engine: GET {url}/api/registry/metadata (with function key)")
+            else:
+                logger.info(f"Calling workflows engine: GET {url}/api/registry/metadata (no function key - local mode)")
 
             response = requests.get(
                 f"{url}/api/registry/metadata",
@@ -365,25 +424,21 @@ def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
         # Get workflows engine config
         url, function_key = get_workflows_engine_config()
 
-        if not function_key:
-            logger.warning("Workflows engine function key not configured")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Workflows engine function key is not configured. Please contact your administrator."
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
-
         # Parse request body (workflow parameters)
         request_body = req.get_json()
 
         # Call workflows engine
         try:
+            # Build URL - only add code parameter if function key is configured (not needed locally)
+            workflow_url = f"{url}/api/workflows/{workflow_name}"
+            if function_key:
+                workflow_url += f"?code={function_key}"
+                logger.info(f"Executing workflow with function key")
+            else:
+                logger.info(f"Executing workflow without function key (local mode)")
+
             response = requests.post(
-                f"{url}/api/workflows/{workflow_name}?code={function_key}",
+                workflow_url,
                 json=request_body,
                 headers={
                     "Content-Type": "application/json",
@@ -497,22 +552,18 @@ def get_data_provider(req: func.HttpRequest) -> func.HttpResponse:
         # Get workflows engine config
         url, function_key = get_workflows_engine_config()
 
-        if not function_key:
-            logger.warning("Workflows engine function key not configured")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Workflows engine function key is not configured. Please contact your administrator."
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
-
         # Call workflows engine
         try:
+            # Build URL - only add code parameter if function key is configured (not needed locally)
+            provider_url = f"{url}/api/data-providers/{provider_name}"
+            if function_key:
+                provider_url += f"?code={function_key}"
+                logger.info(f"Fetching data provider with function key")
+            else:
+                logger.info(f"Fetching data provider without function key (local mode)")
+
             response = requests.get(
-                f"{url}/api/data-providers/{provider_name}?code={function_key}",
+                provider_url,
                 headers={
                     "X-Organization-Id": org_id,
                     "X-User-Id": user_id

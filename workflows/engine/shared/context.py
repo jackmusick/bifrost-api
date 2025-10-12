@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
+from .config_resolver import ConfigResolver
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,9 @@ class OrganizationContext:
         self._config = config
         self.caller = caller
         self.execution_id = execution_id
+
+        # Configuration resolver for transparent secret resolution
+        self._config_resolver = ConfigResolver()
 
         # Integration cache
         self._integration_cache = {}
@@ -100,16 +104,41 @@ class OrganizationContext:
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """
-        Get organization-specific configuration value.
+        Get organization-specific configuration value with transparent secret resolution.
+
+        This method automatically resolves secret references from Azure Key Vault
+        based on the configuration type. If the config type is 'secret_ref', it
+        retrieves the actual secret value from Key Vault using org-scoped → global fallback.
 
         Args:
             key: Configuration key
             default: Default value if key not found
 
         Returns:
-            Configuration value or default
+            Configuration value (with secret resolved if secret_ref type)
+
+        Raises:
+            KeyError: If secret reference cannot be resolved from Key Vault
         """
-        return self._config.get(key, default)
+        # Use resolver for transparent secret handling
+        if not self.org_id:
+            # Platform admin context - no org-scoped resolution
+            return self._config.get(key, default)
+
+        try:
+            return self._config_resolver.get_config(
+                org_id=self.org_id,
+                key=key,
+                config_data=self._config,
+                default=default
+            )
+        except KeyError as e:
+            # Secret resolution failed - log and re-raise with context
+            logger.error(
+                f"Failed to get config '{key}' for org '{self.org_id}': {e}",
+                extra={"execution_id": self.execution_id, "org_id": self.org_id}
+            )
+            raise
 
     def has_config(self, key: str) -> bool:
         """Check if configuration key exists."""

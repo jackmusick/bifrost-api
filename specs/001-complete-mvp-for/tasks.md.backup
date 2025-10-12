@@ -1,6 +1,6 @@
-# Implementation Tasks: MSP Automation Platform MVP
+# Implementation Tasks: Bifrost Integrations MVP
 
-**Feature**: MSP Automation Platform MVP
+**Feature**: Bifrost Integrations MVP
 **Branch**: `001-complete-mvp-for`
 **Generated**: 2025-10-10
 **Status**: Ready for implementation
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This document provides a dependency-ordered task list for implementing the MSP Automation Platform MVP. Tasks are organized by user story to enable independent implementation and testing of each feature increment.
+This document provides a dependency-ordered task list for implementing the Bifrost Integrations MVP. Tasks are organized by user story to enable independent implementation and testing of each feature increment.
 
 **Total Tasks**: 74
 **Estimated Complexity**: ~3-4 weeks for full-stack developer

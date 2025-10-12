@@ -65,8 +65,18 @@ def get_config_value(key: str, org_id: Optional[str] = None) -> Optional[dict]:
     return None
 
 
-def mask_sensitive_value(key: str, value: str) -> str:
-    """Mask sensitive config values for API responses"""
+def mask_sensitive_value(key: str, value: str, value_type: str) -> str:
+    """
+    Mask sensitive config values for API responses.
+
+    Note: secret_ref types are NOT masked since they just reference a secret name,
+    not the actual secret value.
+    """
+    # Don't mask secret_ref types - they're just references to Key Vault secret names
+    if value_type == "secret_ref":
+        return value
+
+    # Mask other sensitive values based on key name
     sensitive_keywords = ['secret', 'password', 'token', 'key', 'credential']
     if any(keyword in key.lower() for keyword in sensitive_keywords):
         if len(value) > 8:
@@ -132,14 +142,17 @@ def get_config(req: func.HttpRequest) -> func.HttpResponse:
             # Extract key from RowKey (remove "config:" prefix)
             key = entity["RowKey"].replace("config:", "", 1)
 
-            # Mask sensitive values
-            value = mask_sensitive_value(key, entity["Value"])
+            # Mask sensitive values (but not secret_ref types)
+            value = mask_sensitive_value(key, entity["Value"], entity["Type"])
+
+            # Convert scope to uppercase for Pydantic model validation
+            pydantic_scope = "GLOBAL" if scope == "global" else "org"
 
             config = Config(
                 key=key,
                 value=value,
                 type=entity["Type"],
-                scope=scope,
+                scope=pydantic_scope,
                 orgId=org_id if scope == "org" else None,
                 description=entity.get("Description"),
                 updatedAt=entity["UpdatedAt"],

@@ -134,7 +134,7 @@ SEED_CONFIGURATION = [
     {
         'PartitionKey': 'global',
         'RowKey': 'config:platform_name',
-        'Value': 'MSP Automation Platform',
+        'Value': 'Bifrost Integrations',
         'Type': 'string'
     },
     {
@@ -239,7 +239,8 @@ async def seed_organizations(service_client: TableServiceClient) -> int:
         table_client.upsert_entity(org_data)
 
         status = "active" if org_data['IsActive'] else "inactive"
-        print_success(f"  {org_data['Name']} ({org_data['RowKey']}) - {status}")
+        print_success(
+            f"  {org_data['Name']} ({org_data['RowKey']}) - {status}")
         count += 1
 
     return count
@@ -271,7 +272,8 @@ async def seed_users(service_client: TableServiceClient) -> int:
         table_client.upsert_entity(entity)
 
         roles_str = ", ".join(user_data['Roles'])
-        print_success(f"  {user_data['Name']} ({user_data['Email']}) - {roles_str}")
+        print_success(
+            f"  {user_data['Name']} ({user_data['Email']}) - {roles_str}")
         count += 1
 
     return count
@@ -363,7 +365,8 @@ async def main() -> int:
         print_info(f"Connecting to Azurite...")
 
         # Create service client
-        service_client = TableServiceClient.from_connection_string(connection_string)
+        service_client = TableServiceClient.from_connection_string(
+            connection_string)
 
         # Seed all data
         counts = await seed_all(service_client)

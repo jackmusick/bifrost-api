@@ -3,7 +3,7 @@
  */
 
 import { api } from './api'
-import type { WorkflowExecution, ExecutionFilters } from '@/types/execution'
+import type { WorkflowExecution, ExecutionFilters, ExecutionListResponse } from '@/types/execution'
 
 export const executionsService = {
   /**
@@ -16,9 +16,12 @@ export const executionsService = {
     if (filters?.workflowName) params['workflowName'] = filters.workflowName
     if (filters?.status) params['status'] = filters.status
     if (filters?.limit) params['limit'] = filters.limit.toString()
-    if (filters?.offset) params['offset'] = filters.offset.toString()
+    if (filters?.continuationToken) params['continuationToken'] = filters.continuationToken
 
-    return api.get<WorkflowExecution[]>('/executions', params)
+    const response = await api.get<ExecutionListResponse>('/executions', params)
+
+    // Return just the executions array for backwards compatibility
+    return response.executions
   },
 
   /**

@@ -23,5 +23,10 @@ export interface ExecutionFilters {
   workflowName?: string
   status?: ExecutionStatus
   limit?: number
-  offset?: number
+  continuationToken?: string
+}
+
+export interface ExecutionListResponse {
+  executions: WorkflowExecution[]
+  continuationToken?: string
 }

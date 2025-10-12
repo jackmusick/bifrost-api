@@ -53,7 +53,10 @@
       "Bash(nvm list:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(if [ -d \"/Users/jack/GitHub/bifrost-integrations/specs/003-use-azure-key/checklists\" ])",
+      "Bash(then find \"/Users/jack/GitHub/bifrost-integrations/specs/003-use-azure-key/checklists\" -name \"*.md\" -type f)",
+      "Bash(npx shadcn@latest add:*)"
     ],
     "deny": [],
     "ask": []

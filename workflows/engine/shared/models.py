@@ -1,5 +1,5 @@
 """
-Pydantic models for MSP Automation Platform
+Pydantic models for Bifrost Integrations
 Request/response validation and serialization
 """
 
@@ -50,7 +50,8 @@ class Organization(BaseModel):
     """Organization entity (response model)"""
     id: str = Field(..., description="Organization ID (GUID)")
     name: str = Field(..., min_length=1, max_length=200)
-    tenantId: Optional[str] = Field(None, description="Microsoft 365 GDAP tenant ID")
+    tenantId: Optional[str] = Field(
+        None, description="Microsoft 365 GDAP tenant ID")
     isActive: bool = Field(default=True)
     createdAt: datetime
     createdBy: str
@@ -99,7 +100,8 @@ class IntegrationConfig(BaseModel):
     """Integration configuration entity"""
     type: IntegrationType
     enabled: bool = Field(default=True)
-    settings: Dict[str, Any] = Field(..., description="Integration-specific settings")
+    settings: Dict[str, Any] = Field(...,
+                                     description="Integration-specific settings")
     updatedAt: datetime
     updatedBy: str
 
@@ -119,12 +121,14 @@ class SetIntegrationConfigRequest(BaseModel):
         if integration_type == IntegrationType.MSGRAPH:
             required_keys = {'tenant_id', 'client_id', 'client_secret_ref'}
             if not required_keys.issubset(v.keys()):
-                raise ValueError(f"Microsoft Graph integration requires: {required_keys}")
+                raise ValueError(
+                    f"Microsoft Graph integration requires: {required_keys}")
 
         elif integration_type == IntegrationType.HALOPSA:
             required_keys = {'api_url', 'client_id', 'api_key_ref'}
             if not required_keys.issubset(v.keys()):
-                raise ValueError(f"HaloPSA integration requires: {required_keys}")
+                raise ValueError(
+                    f"HaloPSA integration requires: {required_keys}")
 
         return v
 
@@ -187,7 +191,8 @@ class FormField(BaseModel):
     type: FormFieldType
     required: bool = Field(default=False)
     validation: Optional[FormFieldValidation] = None
-    dataProvider: Optional[str] = Field(None, description="Data provider name for select fields")
+    dataProvider: Optional[str] = Field(
+        None, description="Data provider name for select fields")
     defaultValue: Optional[Any] = None
     placeholder: Optional[str] = None
     helpText: Optional[str] = None
@@ -195,7 +200,8 @@ class FormField(BaseModel):
 
 class FormSchema(BaseModel):
     """Form schema with field definitions"""
-    fields: List[FormField] = Field(..., max_length=50, description="Max 50 fields per form")
+    fields: List[FormField] = Field(..., max_length=50,
+                                    description="Max 50 fields per form")
 
     @field_validator('fields')
     @classmethod
@@ -282,7 +288,8 @@ class WorkflowMetadata(BaseModel):
     description: str
     category: str = Field(default="General")
     parameters: List[WorkflowParameter] = Field(default_factory=list)
-    requiresOrg: bool = Field(default=True, description="Whether workflow requires org context")
+    requiresOrg: bool = Field(
+        default=True, description="Whether workflow requires org context")
 
 
 class DataProviderMetadata(BaseModel):
@@ -294,7 +301,8 @@ class DataProviderMetadata(BaseModel):
 class MetadataResponse(BaseModel):
     """Response model for /admin/workflow endpoint"""
     workflows: List[WorkflowMetadata] = Field(default_factory=list)
-    optionGenerators: List[DataProviderMetadata] = Field(default_factory=list, alias="option_generators")
+    optionGenerators: List[DataProviderMetadata] = Field(
+        default_factory=list, alias="option_generators")
 
     class Config:
         populate_by_name = True  # Pydantic v2 - allows using alias
@@ -323,7 +331,8 @@ def entity_to_model(entity: dict, model_class: type[BaseModel]) -> BaseModel:
         Instance of the Pydantic model
     """
     # Remove Azure Table Storage metadata fields
-    clean_entity = {k: v for k, v in entity.items() if not k.startswith('odata') and k not in ['PartitionKey', 'RowKey', 'Timestamp', 'etag']}
+    clean_entity = {k: v for k, v in entity.items() if not k.startswith(
+        'odata') and k not in ['PartitionKey', 'RowKey', 'Timestamp', 'etag']}
 
     # Map entity fields to model fields (handle case differences)
     # For example: RowKey="org-123" -> id="org-123"

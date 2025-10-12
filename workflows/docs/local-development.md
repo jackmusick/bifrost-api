@@ -63,6 +63,9 @@ Required packages:
 For the fastest path to a working local environment:
 
 ```bash
+# 0. Authenticate to Azure (if using Key Vault secrets)
+python scripts/authenticate_azure.py
+
 # 1. Start Azurite (in a separate terminal)
 azurite --silent --location /tmp/azurite
 
@@ -75,20 +78,68 @@ func start
 # 4. Test health endpoint
 curl http://localhost:7072/api/health
 
-# 5. Execute a workflow
+# 5. Execute a workflow (using Easy Auth header)
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
-  -H "x-functions-key: test_local_key_12345" \
   -d '{"param": "value"}' \
   http://localhost:7072/api/workflows/YOUR_WORKFLOW_NAME
 ```
 
-**Execution time target**: ~5 seconds from seed to ready
+**Execution time target**: ~5 seconds from seed to ready (plus one-time Azure auth)
 
 ---
 
 ## Detailed Setup
+
+### Step 0: Authenticate to Azure (For Key Vault Secrets)
+
+**⚠️ Important**: If your workflows use `context.get_config()` with secret references (type: `secret_ref`), you MUST authenticate to Azure BEFORE starting your development environment.
+
+This step is required for workflows that access secrets from Azure Key Vault.
+
+```bash
+python scripts/authenticate_azure.py
+```
+
+**What this script does:**
+1. Auto-detects your Key Vault URL from `local.settings.json` or prompts you to enter it
+2. Authenticates you to Azure interactively (may open browser)
+3. Tests your Key Vault permissions (list, get)
+4. Caches credentials for subsequent use
+
+**Output example:**
+```
+✓ Found Key Vault URL in local.settings.json: https://my-vault.vault.azure.net/
+✓ Azure credential created successfully
+✓ Successfully listed secrets
+  Found 3 secret(s) in Key Vault
+✅ Azure Authentication Complete
+```
+
+**When to run:**
+- First time setup
+- When your Azure CLI credentials expire
+- When switching Azure accounts
+- Before starting development if using secrets
+
+**When to skip:**
+- Your workflows don't use secrets
+- You're using environment variable fallback (see Key Vault quickstart)
+
+**Configuration:**
+Add Key Vault URL to `local.settings.json`:
+```json
+{
+  "Values": {
+    "AZURE_KEY_VAULT_URL": "https://your-vault.vault.azure.net/"
+  }
+}
+```
+
+See: `specs/003-use-azure-key/quickstart.md` for detailed Key Vault setup
+
+---
 
 ### Step 1: Start Azurite
 
@@ -205,41 +256,12 @@ This verifies:
 
 ## Authentication
 
-The workflow engine supports **tiered authentication** with the following priority order:
+### Local Development Authentication
 
-### 1. Function Key (Highest Priority)
+**Note**: For local development, workflows run in an **unauthenticated mode** for testing purposes. The Functions host bypasses Easy Auth locally.
 
-Provides privileged access without user context. Ideal for local development and system integrations.
+In production, Azure Static Web Apps provides Easy Auth with Azure AD. The `X-MS-CLIENT-PRINCIPAL` header is automatically injected:
 
-**Via Header:**
-```bash
-curl -H "x-functions-key: your_key_here" ...
-```
-
-**Via Query Parameter:**
-```bash
-curl "http://localhost:7072/api/workflows/test?code=your_key_here"
-```
-
-**Security:**
-- All function key usage is audited to `AuditLog` table
-- Bypasses user authentication but still validates organization
-
-**Local Development Example:**
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -H "X-Organization-Id: test-org-active" \
-  -H "x-functions-key: test_local_key_12345" \
-  -d '{"test": "data"}' \
-  http://localhost:7072/api/workflows/YOUR_WORKFLOW
-```
-
-### 2. Easy Auth (Fallback)
-
-Used in production when deployed to Azure with Easy Auth enabled.
-
-Azure injects `X-MS-CLIENT-PRINCIPAL` header containing:
 ```json
 {
   "userId": "user-id-from-aad",
@@ -249,32 +271,22 @@ Azure injects `X-MS-CLIENT-PRINCIPAL` header containing:
 }
 ```
 
-This header is Base64-encoded by Azure and automatically decoded by the auth service.
+This header is Base64-encoded by Azure and automatically decoded by the auth service in production.
 
-### 3. No Authentication → 403 Forbidden
+### Azure Key Vault Authentication
 
-If neither function key nor Easy Auth is present, requests are rejected with:
+For accessing secrets via `context.get_config()`, you must authenticate to Azure:
 
-```json
-{
-  "error": "Forbidden",
-  "message": "No valid authentication credentials provided..."
-}
+```bash
+python scripts/authenticate_azure.py
 ```
 
-### Authentication Flow Diagram
+This uses `DefaultAzureCredential` which:
+- Uses Azure CLI credentials (`az login`) locally
+- Uses Managed Identity in production
+- Caches credentials for the session
 
-```
-Request arrives
-    ↓
-Check x-functions-key header
-    ↓ (not found)
-Check ?code=KEY query param
-    ↓ (not found)
-Check X-MS-CLIENT-PRINCIPAL header
-    ↓ (not found)
-Return 403 Forbidden
-```
+**See Step 0 above for detailed instructions**
 
 ---
 
@@ -313,7 +325,6 @@ async def test_workflow(context: OrganizationContext, message: str):
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
-  -H "x-functions-key: test_local_key_12345" \
   -d '{"message": "Hello, World!"}' \
   http://localhost:7072/api/workflows/test_workflow
 ```
@@ -327,7 +338,7 @@ curl -X POST \
     "echo": "Hello, World!",
     "org_id": "test-org-active",
     "org_name": "Active Test Organization",
-    "caller": "function-key@system.local"
+    "caller": "local-dev@system.local"
   },
   "durationMs": 123,
   "startedAt": "2025-01-15T10:30:00Z",
@@ -340,15 +351,15 @@ curl -X POST \
 ```bash
 # Active org (should succeed)
 curl -X POST \
+  -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
-  -H "x-functions-key: key123" \
   -d '{"message": "test"}' \
   http://localhost:7072/api/workflows/test_workflow
 
 # Inactive org (should fail with 404)
 curl -X POST \
+  -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-inactive" \
-  -H "x-functions-key: key123" \
   -d '{"message": "test"}' \
   http://localhost:7072/api/workflows/test_workflow
 ```
@@ -414,13 +425,21 @@ python --version  # Must be 3.11+
 pip install -r requirements.txt
 ```
 
-### Authentication fails (403 Forbidden)
+### Key Vault authentication fails
 
-**Error:** `No valid authentication credentials provided`
+**Error:** `Failed to create Azure credential` or `Permission denied (403)`
 
-**Solution:** Add function key header
+**Solution:** Authenticate to Azure
 ```bash
-curl -H "x-functions-key: any_key_for_local" ...
+python scripts/authenticate_azure.py
+```
+
+If already authenticated but getting 403:
+```bash
+# Grant yourself Key Vault permissions
+az keyvault set-policy --name <vault-name> \
+  --upn <your-email> \
+  --secret-permissions get list
 ```
 
 ### Workflow not found (404)
@@ -481,13 +500,13 @@ Update curl commands to use the correct port.
 
 Before starting development, ensure:
 
+- [ ] Azure authenticated (if using secrets): `python scripts/authenticate_azure.py`
 - [ ] Azurite is running on port 10002
 - [ ] Seed script has populated test data
 - [ ] Azure Functions is running and showing endpoints
 - [ ] Health endpoint responds: `curl http://localhost:7072/api/health`
 - [ ] Test workflow executes successfully
-- [ ] Function key authentication works
 
 **Ready to develop!** 🚀
 
-Create workflows in `/workspace/workflows/` and test immediately with function key auth.
+Create workflows in `/workspace/workflows/` and test immediately.

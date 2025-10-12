@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
-  title: MSP Automation Platform - Management API
+  title: Bifrost Integrations - Management API
   version: 1.0.0
   description: API for managing forms, organizations, permissions, and users. Auto-generated from Pydantic models.
   contact:
-    name: MSP Automation Platform
+    name: Bifrost Integrations
     email: jack@gocovi.com
 servers:
 - url: http://localhost:7071

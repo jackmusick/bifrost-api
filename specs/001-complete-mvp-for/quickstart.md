@@ -1,31 +1,31 @@
 # Developer Quickstart Guide
 
-**Feature**: MSP Automation Platform MVP
+**Feature**: Bifrost Integrations MVP
 **Last Updated**: 2025-10-10
 **Target Audience**: Python/React developers onboarding to the platform
 
 ## Overview
 
-This guide will get you up and running with local development for the MSP Automation Platform in under 30 minutes. You'll learn how to:
+This guide will get you up and running with local development for the Bifrost Integrations in under 30 minutes. You'll learn how to:
 
-- Set up local Azure storage emulation with Azurite
-- Run the Management API and Workflow Engine locally
-- Create your first workflow with decorators
-- Create data providers for dynamic form fields
-- Debug workflows with native Python tooling (VSCode/PyCharm)
-- Test the React frontend against local backends
+-   Set up local Azure storage emulation with Azurite
+-   Run the Management API and Workflow Engine locally
+-   Create your first workflow with decorators
+-   Create data providers for dynamic form fields
+-   Debug workflows with native Python tooling (VSCode/PyCharm)
+-   Test the React frontend against local backends
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- **Python 3.11** installed (required for Azure Functions v2)
-- **Node.js 18+** and npm/yarn
-- **Azure Functions Core Tools v4** (`npm install -g azure-functions-core-tools@4`)
-- **Azurite** for local Azure Storage emulation (`npm install -g azurite`)
-- **Git** for cloning repositories
-- **VSCode** or **PyCharm** (recommended for debugging)
-- **Azure CLI** (optional - for deployment only)
+-   **Python 3.11** installed (required for Azure Functions v2)
+-   **Node.js 18+** and npm/yarn
+-   **Azure Functions Core Tools v4** (`npm install -g azure-functions-core-tools@4`)
+-   **Azurite** for local Azure Storage emulation (`npm install -g azurite`)
+-   **Git** for cloning repositories
+-   **VSCode** or **PyCharm** (recommended for debugging)
+-   **Azure CLI** (optional - for deployment only)
 
 ## Quick Start (5 Minutes)
 
@@ -38,9 +38,10 @@ azurite --silent --location ~/azurite --debug ~/azurite/debug.log
 ```
 
 Azurite will start with:
-- **Blob Storage**: `http://127.0.0.1:10000`
-- **Queue Storage**: `http://127.0.0.1:10001`
-- **Table Storage**: `http://127.0.0.1:10002`
+
+-   **Blob Storage**: `http://127.0.0.1:10000`
+-   **Queue Storage**: `http://127.0.0.1:10001`
+-   **Table Storage**: `http://127.0.0.1:10002`
 
 Leave this running in the background.
 
@@ -203,6 +204,7 @@ async def onboard_user(
 The workflow is automatically discovered when the Workflow Engine starts! No manual registration needed.
 
 **How it works**:
+
 1. The `function_app.py` imports all modules from `workflows/` directory
 2. The `@workflow` decorator registers the function in the metadata registry
 3. The `/admin/metadata` endpoint exposes the workflow definition
@@ -261,6 +263,7 @@ async def test_onboard_user_success(mock_context):
 ```
 
 Run tests with:
+
 ```bash
 pytest tests/integration/test_user_onboarding.py -v
 ```
@@ -328,6 +331,7 @@ Reference a data provider in your `@param` decorator:
 ```
 
 When the form is rendered, the UI will:
+
 1. Call `GET /data-providers/get_available_licenses`
 2. Populate the dropdown with returned options
 3. Cache the response for 5 minutes (per `cache_ttl_seconds`)
@@ -342,29 +346,29 @@ Add to `.vscode/launch.json` in the Workflow Engine repo:
 
 ```json
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Attach to Python Functions",
-      "type": "python",
-      "request": "attach",
-      "port": 9091,
-      "preLaunchTask": "func: host start"
-    },
-    {
-      "name": "Debug Workflow (Pytest)",
-      "type": "python",
-      "request": "launch",
-      "module": "pytest",
-      "args": [
-        "tests/integration/test_user_onboarding.py::test_onboard_user_success",
-        "-v",
-        "-s"
-      ],
-      "console": "integratedTerminal",
-      "justMyCode": false
-    }
-  ]
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to Python Functions",
+            "type": "python",
+            "request": "attach",
+            "port": 9091,
+            "preLaunchTask": "func: host start"
+        },
+        {
+            "name": "Debug Workflow (Pytest)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/integration/test_user_onboarding.py::test_onboard_user_success",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ]
 }
 ```
 
@@ -442,10 +446,11 @@ async def my_workflow(context: OrganizationContext):
 ```
 
 **Available Integrations**:
-- `msgraph`: Microsoft Graph API (M365, Azure AD)
-- `halopsa`: HaloPSA ticketing system
-- `datto`: Datto RMM/PSA
-- Custom integrations can be added in `shared/integrations/`
+
+-   `msgraph`: Microsoft Graph API (M365, Azure AD)
+-   `halopsa`: HaloPSA ticketing system
+-   `datto`: Datto RMM/PSA
+-   Custom integrations can be added in `shared/integrations/`
 
 ## Project Structure Navigation
 
@@ -577,16 +582,16 @@ Use **Azure Storage Explorer** (GUI) or **Azure Storage Browser** extension for 
 
 ```json
 {
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "TABLE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
-    "BLOB_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
-    "KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
-    "AZURE_CLIENT_ID": "your-app-registration-client-id",
-    "AZURE_TENANT_ID": "your-tenant-id"
-  }
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "TABLE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+        "BLOB_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+        "KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
+        "AZURE_CLIENT_ID": "your-app-registration-client-id",
+        "AZURE_TENANT_ID": "your-tenant-id"
+    }
 }
 ```
 
@@ -671,38 +676,42 @@ def test_workflow_execution_request_invalid():
 **Problem**: `ConnectionRefusedError: [Errno 61] Connection refused`
 
 **Solution**:
-- Ensure Azurite is running: `ps aux | grep azurite`
-- Check port 10002 is not in use: `lsof -i :10002`
-- Restart Azurite: `pkill azurite && azurite --silent`
+
+-   Ensure Azurite is running: `ps aux | grep azurite`
+-   Check port 10002 is not in use: `lsof -i :10002`
+-   Restart Azurite: `pkill azurite && azurite --silent`
 
 ### Workflow Not Auto-Discovered
 
 **Problem**: New workflow doesn't appear in `/admin/metadata`
 
 **Solution**:
-- Ensure workflow file is in `workflows/` directory
-- Check `workflows/__init__.py` imports the module
-- Restart Azure Functions: Stop `func start` and restart
-- Check function logs for import errors
+
+-   Ensure workflow file is in `workflows/` directory
+-   Check `workflows/__init__.py` imports the module
+-   Restart Azure Functions: Stop `func start` and restart
+-   Check function logs for import errors
 
 ### Integration Authentication Fails
 
 **Problem**: `AuthenticationError: Failed to authenticate with Microsoft Graph`
 
 **Solution**:
-- Check `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` in `local.settings.json`
-- Verify Azure AD app registration has correct API permissions
-- Check organization has `tenantId` set in Organizations table
-- Use `az login` to authenticate locally
+
+-   Check `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` in `local.settings.json`
+-   Verify Azure AD app registration has correct API permissions
+-   Check organization has `tenantId` set in Organizations table
+-   Use `az login` to authenticate locally
 
 ### Table Storage Schema Errors
 
 **Problem**: `TypeError: Object of type datetime is not JSON serializable`
 
 **Solution**:
-- Use `datetime.isoformat()` when storing dates
-- Use `datetime.fromisoformat()` when reading dates
-- The `TableStorageService` helper handles this automatically
+
+-   Use `datetime.isoformat()` when storing dates
+-   Use `datetime.fromisoformat()` when reading dates
+-   The `TableStorageService` helper handles this automatically
 
 ## Next Steps
 
@@ -716,19 +725,19 @@ Now that you're set up:
 
 ## Resources
 
-- **Architecture Docs**: `specs/001-complete-mvp-for/plan.md`
-- **API Contracts**: `specs/001-complete-mvp-for/contracts/`
-- **Data Model**: `specs/001-complete-mvp-for/data-model.md`
-- **Constitution**: `.specify/memory/constitution.md`
-- **Azure Functions Docs**: https://learn.microsoft.com/en-us/azure/azure-functions/
-- **Azure Table Storage Docs**: https://learn.microsoft.com/en-us/azure/storage/tables/
-- **Microsoft Graph API**: https://learn.microsoft.com/en-us/graph/
+-   **Architecture Docs**: `specs/001-complete-mvp-for/plan.md`
+-   **API Contracts**: `specs/001-complete-mvp-for/contracts/`
+-   **Data Model**: `specs/001-complete-mvp-for/data-model.md`
+-   **Constitution**: `.specify/memory/constitution.md`
+-   **Azure Functions Docs**: https://learn.microsoft.com/en-us/azure/azure-functions/
+-   **Azure Table Storage Docs**: https://learn.microsoft.com/en-us/azure/storage/tables/
+-   **Microsoft Graph API**: https://learn.microsoft.com/en-us/graph/
 
 ## Getting Help
 
-- **GitHub Issues**: https://github.com/your-org/msp-automation-platform/issues
-- **Team Chat**: Slack #msp-automation-dev
-- **Documentation**: `docs/` directory in each repository
+-   **GitHub Issues**: https://github.com/your-org/msp-automation-platform/issues
+-   **Team Chat**: Slack #msp-automation-dev
+-   **Documentation**: `docs/` directory in each repository
 
 ---
 

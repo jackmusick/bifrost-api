@@ -4,6 +4,7 @@ Serves the auto-generated OpenAPI spec at /api/openapi.json and /api/openapi.yam
 Also provides Swagger UI at /api/docs
 """
 
+from generate_openapi import generate_openapi_spec
 import azure.functions as func
 import json
 import yaml
@@ -15,7 +16,6 @@ from enum import Enum
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from generate_openapi import generate_openapi_spec
 
 bp = func.Blueprint()
 
@@ -78,7 +78,7 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MSP Automation Platform - API Documentation</title>
+        <title>Bifrost Integrations - API Documentation</title>
         <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
     </head>
     <body>

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MSP Automation Platform - Start Development Environment
+# Bifrost Integrations - Start Development Environment
 # Starts: Azurite, Workflows Engine, and SWA (which includes Management API + Client)
 
 set -e
@@ -8,7 +8,7 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT"
 
-echo "🚀 Starting MSP Automation Platform..."
+echo "🚀 Starting Bifrost Integrations..."
 echo ""
 
 # 1. Start Azurite (if not already running)

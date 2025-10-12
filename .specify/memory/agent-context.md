@@ -1,4 +1,4 @@
-# Agent Context: MSP Automation Platform
+# Agent Context: Bifrost Integrations
 
 **Last Updated**: 2025-10-10
 **Version**: 1.0.0
@@ -6,51 +6,52 @@
 
 ## Platform Overview
 
-The MSP Automation Platform is a **code-first Rewst alternative** that enables MSP technicians to manage client organizations, create dynamic forms, and execute Python-based automation workflows with full local debugging support.
+The Bifrost Integrations is a **code-first Rewst alternative** that enables MSP technicians to manage client organizations, create dynamic forms, and execute Python-based automation workflows with full local debugging support.
 
 **Key Differentiators**:
-- **Code-first**: Developers write Python workflows with native debugging (VSCode/PyCharm)
-- **NO visual workflow designer**: Python functions with decorators, not drag-and-drop
-- **Multi-tenant from day one**: All data org-scoped with zero cross-org data leakage
-- **Azure-native**: Functions, Table Storage, Key Vault - no third-party cloud services
+
+-   **Code-first**: Developers write Python workflows with native debugging (VSCode/PyCharm)
+-   **NO visual workflow designer**: Python functions with decorators, not drag-and-drop
+-   **Multi-tenant from day one**: All data org-scoped with zero cross-org data leakage
+-   **Azure-native**: Functions, Table Storage, Key Vault - no third-party cloud services
 
 ## Technology Stack
 
 ### Backend
 
-- **Language**: Python 3.11 (required for Azure Functions v2 compatibility)
-- **Runtime**: Azure Functions v2 with decorator-based HTTP triggers
-- **Storage**: Azure Table Storage (NO SQL databases per constitution)
-- **Secrets**: Azure Key Vault (per-org credentials)
-- **Authentication**: Azure AD with JWT tokens
-- **Testing**: pytest, pytest-asyncio, pytest-mock
-- **Type Hints**: Required for all function signatures
-- **Async/Await**: Required for all I/O operations
+-   **Language**: Python 3.11 (required for Azure Functions v2 compatibility)
+-   **Runtime**: Azure Functions v2 with decorator-based HTTP triggers
+-   **Storage**: Azure Table Storage (NO SQL databases per constitution)
+-   **Secrets**: Azure Key Vault (per-org credentials)
+-   **Authentication**: Azure AD with JWT tokens
+-   **Testing**: pytest, pytest-asyncio, pytest-mock
+-   **Type Hints**: Required for all function signatures
+-   **Async/Await**: Required for all I/O operations
 
 ### Frontend
 
-- **Framework**: React 18+ with TypeScript 4.9+
-- **Routing**: React Router v6
-- **HTTP Client**: Axios with interceptors
-- **Authentication**: @azure/msal-browser, @azure/msal-react
-- **State Management**: React Context API (no Redux for MVP)
-- **Testing**: Jest, React Testing Library, MSW for API mocking
+-   **Framework**: React 18+ with TypeScript 4.9+
+-   **Routing**: React Router v6
+-   **HTTP Client**: Axios with interceptors
+-   **Authentication**: @azure/msal-browser, @azure/msal-react
+-   **State Management**: React Context API (no Redux for MVP)
+-   **Testing**: Jest, React Testing Library, MSW for API mocking
 
 ### Local Development
 
-- **Storage Emulation**: Azurite (Azure Storage emulator)
-- **Function Runtime**: Azure Functions Core Tools v4
-- **Dev Server**: Vite or Create React App
-- **Debugging**: Native Python debuggers (VSCode, PyCharm)
+-   **Storage Emulation**: Azurite (Azure Storage emulator)
+-   **Function Runtime**: Azure Functions Core Tools v4
+-   **Dev Server**: Vite or Create React App
+-   **Debugging**: Native Python debuggers (VSCode, PyCharm)
 
 ### Deployment
 
-- **Management API**: Azure Functions (Python 3.11, Linux runtime)
-- **Workflow Engine**: Azure Functions (Python 3.11, Linux runtime)
-- **Frontend**: Azure Static Web Apps with "Bring Your Own Functions"
-- **Storage**: Azure Storage Account (Table + Blob + Queue)
-- **Secrets**: Azure Key Vault
-- **Auth**: Azure AD App Registration (single registration for all components)
+-   **Management API**: Azure Functions (Python 3.11, Linux runtime)
+-   **Workflow Engine**: Azure Functions (Python 3.11, Linux runtime)
+-   **Frontend**: Azure Static Web Apps with "Bring Your Own Functions"
+-   **Storage**: Azure Storage Account (Table + Blob + Queue)
+-   **Secrets**: Azure Key Vault
+-   **Auth**: Azure AD App Registration (single registration for all components)
 
 ## Repository Structure
 
@@ -61,10 +62,11 @@ The platform is split across **3 separate repositories**:
 3. **`msp-automation-workflows`**: Workflow Engine (Azure Functions - Python)
 
 **Rationale**:
-- Independent deployment cycles
-- Clear separation of concerns
-- Different teams can own different components
-- All three share same Azure AD app registration and Table Storage account
+
+-   Independent deployment cycles
+-   Clear separation of concerns
+-   Different teams can own different components
+-   All three share same Azure AD app registration and Table Storage account
 
 ## Core Architectural Patterns
 
@@ -73,6 +75,7 @@ The platform is split across **3 separate repositories**:
 Workflows are Python functions decorated with `@workflow` that **automatically register** with the platform.
 
 **Pattern**:
+
 ```python
 from shared.decorators import workflow, param
 
@@ -89,6 +92,7 @@ async def my_workflow(context: OrganizationContext, param_name: str):
 ```
 
 **Auto-Discovery Mechanism**:
+
 1. `workflows/__init__.py` imports all modules from `workflows/` directory
 2. `@workflow` decorator registers function in metadata registry (singleton)
 3. `/admin/metadata` endpoint exposes all registered workflows
@@ -101,6 +105,7 @@ async def my_workflow(context: OrganizationContext, param_name: str):
 Data providers supply dynamic options for form fields (renamed from "options" per user feedback).
 
 **Pattern**:
+
 ```python
 from shared.decorators import data_provider
 
@@ -119,6 +124,7 @@ async def my_provider(context: OrganizationContext):
 ```
 
 **Linking to Workflow Parameters**:
+
 ```python
 @param("field_name", type="string", data_provider="provider_name")
 ```
@@ -128,12 +134,14 @@ async def my_provider(context: OrganizationContext):
 ### 3. Organization Context Injection
 
 Every workflow and data provider receives an `OrganizationContext` object with:
-- Organization metadata (id, name, tenant ID)
-- Configuration values (from OrgConfig table)
-- Secrets (from Azure Key Vault)
-- Pre-authenticated integration clients
+
+-   Organization metadata (id, name, tenant ID)
+-   Configuration values (from OrgConfig table)
+-   Secrets (from Azure Key Vault)
+-   Pre-authenticated integration clients
 
 **Pattern**:
+
 ```python
 async def my_workflow(context: OrganizationContext, ...):
     # Get config
@@ -148,27 +156,30 @@ async def my_workflow(context: OrganizationContext, ...):
 ```
 
 **Context Loading**:
-- Middleware decorator loads context once per request
-- Validates `X-Organization-Id` header
-- Queries OrganizationConfig table (single partition query - <20ms)
-- Fetches secrets from Key Vault (cached)
-- Injects pre-authenticated integration clients
+
+-   Middleware decorator loads context once per request
+-   Validates `X-Organization-Id` header
+-   Queries OrganizationConfig table (single partition query - <20ms)
+-   Fetches secrets from Key Vault (cached)
+-   Injects pre-authenticated integration clients
 
 ### 4. Org-Scoped Table Storage Partitioning
 
 All Table Storage entities use **org-scoped partition keys** to enforce multi-tenancy.
 
 **Standard Pattern**:
+
 ```
 PartitionKey: {OrgId}  (UUID)
 RowKey: {EntityId} or {ReverseTimestamp}_{EntityId}
 ```
 
 **Benefits**:
-- All org queries are single-partition (fast - <20ms)
-- Zero cross-org data leakage
-- Natural data isolation
-- No need for complex filtering logic
+
+-   All org queries are single-partition (fast - <20ms)
+-   Zero cross-org data leakage
+-   Natural data isolation
+-   No need for complex filtering logic
 
 **Dual-Indexing Pattern**:
 For bidirectional queries (e.g., "get user's orgs" AND "get org's users"), store same data in two tables:
@@ -200,6 +211,7 @@ RowKey: {999999999999999 - timestamp_ms}_{ExecutionId}
 Integration clients are instantiated once per request with org-specific credentials.
 
 **Pattern**:
+
 ```python
 # shared/integrations/msgraph.py
 from .base import BaseIntegration
@@ -218,21 +230,24 @@ class MsGraphIntegration(BaseIntegration):
 ```
 
 **Usage in Workflows**:
+
 ```python
 graph = context.get_integration('msgraph')  # Already authenticated
 users = await graph.users.get()
 ```
 
 **Available Integrations** (MVP):
-- `msgraph`: Microsoft Graph API (M365, Azure AD)
-- `halopsa`: HaloPSA ticketing system
-- Custom integrations extend `BaseIntegration`
+
+-   `msgraph`: Microsoft Graph API (M365, Azure AD)
+-   `halopsa`: HaloPSA ticketing system
+-   Custom integrations extend `BaseIntegration`
 
 ### 7. Pydantic Models for Validation
 
 All HTTP request/response bodies use **Pydantic models** for validation.
 
 **Pattern**:
+
 ```python
 # shared/models.py
 from pydantic import BaseModel, Field, validator
@@ -249,16 +264,18 @@ class CreateOrganizationRequest(BaseModel):
 ```
 
 **Benefits**:
-- Automatic request validation
-- Type safety with IDE autocomplete
-- OpenAPI schema generation
-- Clear error messages
+
+-   Automatic request validation
+-   Type safety with IDE autocomplete
+-   OpenAPI schema generation
+-   Clear error messages
 
 ### 8. Blueprint-Based Function Organization
 
 Azure Functions v2 uses **blueprints** for organizing related endpoints.
 
 **Pattern**:
+
 ```python
 # functions/organizations.py
 from azure.functions import Blueprint
@@ -277,6 +294,7 @@ async def get_organization(req: func.HttpRequest) -> func.HttpResponse:
 ```
 
 **Registration**:
+
 ```python
 # function_app.py
 import azure.functions as func
@@ -388,9 +406,10 @@ async def my_workflow(context: OrganizationContext, ...):
 ```
 
 **Log Storage**:
-- Stored in Azure Blob Storage: `execution-logs/{org_id}/{execution_id}.jsonl`
-- Reference stored in WorkflowExecutions table: `LogBlobUri` field
-- Queried via Management API: `GET /api/executions/{executionId}/logs`
+
+-   Stored in Azure Blob Storage: `execution-logs/{org_id}/{execution_id}.jsonl`
+-   Reference stored in WorkflowExecutions table: `LogBlobUri` field
+-   Queried via Management API: `GET /api/executions/{executionId}/logs`
 
 ## Testing Patterns
 
@@ -490,6 +509,7 @@ async def test_insert_entity(storage):
 ### Table Storage Query Optimization
 
 **Best Practices**:
+
 1. **Always use PartitionKey filters** - Single-partition queries are 10-100x faster
 2. **Use RowKey range queries** for time-series data: `RowKey ge 'start' and RowKey le 'end'`
 3. **Avoid table scans** - Every query should filter by PartitionKey
@@ -497,6 +517,7 @@ async def test_insert_entity(storage):
 5. **Select only needed properties** - Use `select` parameter to reduce payload size
 
 **Anti-Patterns**:
+
 ```python
 # ❌ BAD: Table scan (no PartitionKey filter)
 entities = storage.query_entities(filter="Name eq 'Test'")
@@ -508,12 +529,14 @@ entities = storage.query_entities(filter=f"PartitionKey eq '{org_id}' and Name e
 ### Workflow Execution Performance
 
 **Targets**:
-- Context loading: <20ms (single-partition Table Storage query)
-- Integration authentication: <100ms (cached tokens)
-- Total workflow startup: <1 second
-- Typical workflow execution: <5 seconds
+
+-   Context loading: <20ms (single-partition Table Storage query)
+-   Integration authentication: <100ms (cached tokens)
+-   Total workflow startup: <1 second
+-   Typical workflow execution: <5 seconds
 
 **Optimization Strategies**:
+
 1. **Cache access tokens** - Store in context for request duration
 2. **Parallelize API calls** - Use `asyncio.gather()` for concurrent operations
 3. **Batch Graph API requests** - Use `$batch` endpoint for multiple operations
@@ -522,12 +545,14 @@ entities = storage.query_entities(filter=f"PartitionKey eq '{org_id}' and Name e
 ### Frontend Performance
 
 **Targets**:
-- Initial page load: <2s
-- Navigation: <500ms
-- Form rendering: <100ms
-- Data provider queries: <2s
+
+-   Initial page load: <2s
+-   Navigation: <500ms
+-   Form rendering: <100ms
+-   Data provider queries: <2s
 
 **Optimization Strategies**:
+
 1. **Code splitting** - Lazy load routes with `React.lazy()`
 2. **Memoization** - Use `useMemo()` and `useCallback()` for expensive computations
 3. **API response caching** - Cache data provider responses client-side
@@ -584,6 +609,7 @@ async def create_form(req: func.HttpRequest):
 ### Secret Management
 
 **Pattern**:
+
 1. **Never store secrets in code or config files**
 2. **Store in Azure Key Vault** - Per-org secrets with naming: `{org_id}-{key}`
 3. **Access via context** - `context.get_secret('key_name')`
@@ -593,6 +619,7 @@ async def create_form(req: func.HttpRequest):
 ### Input Validation
 
 **Pattern**:
+
 1. **Pydantic models** for all request bodies (automatic validation)
 2. **Regex patterns** for string fields (email, UPN, UUID)
 3. **Min/max constraints** for numeric fields
@@ -611,11 +638,13 @@ class CreateUserRequest(BaseModel):
 ### Environment Configuration
 
 **Dev/Test/Prod Environments**:
-- **Development**: Local (Azurite + func CLI)
-- **Test**: Azure Functions (test subscription)
-- **Production**: Azure Functions (prod subscription)
+
+-   **Development**: Local (Azurite + func CLI)
+-   **Test**: Azure Functions (test subscription)
+-   **Production**: Azure Functions (prod subscription)
 
 **Environment Variables** (Azure Functions Configuration):
+
 ```
 TABLE_STORAGE_CONNECTION_STRING={connection_string}
 BLOB_STORAGE_CONNECTION_STRING={connection_string}
@@ -627,6 +656,7 @@ AZURE_TENANT_ID={tenant_id}
 ### CI/CD Pipeline
 
 **GitHub Actions Workflow**:
+
 1. **Lint**: Black, flake8, mypy (Python); ESLint, Prettier (TypeScript)
 2. **Test**: pytest with coverage (backend); Jest (frontend)
 3. **Build**: Package function app; Build React app
@@ -635,6 +665,7 @@ AZURE_TENANT_ID={tenant_id}
 ### Database Migrations
 
 **Pattern** (Table Storage doesn't have traditional migrations):
+
 1. **Additive changes only** - Add new properties, don't remove old ones
 2. **Versioned entities** - Add `SchemaVersion` property to entities
 3. **Lazy migration** - Migrate entities on read/write
@@ -660,6 +691,7 @@ async def migrate_entity_if_needed(entity):
 **Problem**: `datetime` objects are not JSON serializable
 
 **Solution**: Use `isoformat()` when storing, `fromisoformat()` when reading
+
 ```python
 entity["CreatedAt"] = datetime.utcnow().isoformat()
 ```
@@ -669,6 +701,7 @@ entity["CreatedAt"] = datetime.utcnow().isoformat()
 **Problem**: Entity size limited to 1MB
 
 **Solution**: Store large data (logs, results) in Blob Storage, reference in Table Storage
+
 ```python
 # Store large result in blob
 blob_uri = await store_to_blob(large_result)
@@ -682,6 +715,7 @@ entity["ResultBlobUri"] = blob_uri
 **Problem**: Mixing sync and async code causes runtime errors
 
 **Solution**: Use `async/await` for ALL I/O operations
+
 ```python
 # ❌ BAD
 result = table_client.query_entities(filter="...")
@@ -695,6 +729,7 @@ result = await table_client.query_entities(filter="...")
 **Problem**: Loading org config on every request is slow
 
 **Solution**: Cache config in context for request duration
+
 ```python
 class OrganizationContext:
     def __init__(self):
@@ -711,6 +746,7 @@ class OrganizationContext:
 **Problem**: PartitionKey cannot contain `/`, `\`, `#`, or `?`
 
 **Solution**: Use UUIDs without dashes or URL-safe encoding
+
 ```python
 # ❌ BAD
 partition_key = "org/test"
@@ -721,12 +757,12 @@ partition_key = "org_test" or uuid.uuid4().hex
 
 ## Key Resources
 
-- **Azure Functions Python Docs**: https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-python
-- **Azure Table Storage Docs**: https://learn.microsoft.com/en-us/azure/storage/tables/
-- **Microsoft Graph API**: https://learn.microsoft.com/en-us/graph/
-- **Pydantic Docs**: https://docs.pydantic.dev/
-- **React + TypeScript**: https://react.dev/learn/typescript
-- **MSAL React**: https://github.com/AzureAD/microsoft-authentication-library-for-js/tree/dev/lib/msal-react
+-   **Azure Functions Python Docs**: https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-python
+-   **Azure Table Storage Docs**: https://learn.microsoft.com/en-us/azure/storage/tables/
+-   **Microsoft Graph API**: https://learn.microsoft.com/en-us/graph/
+-   **Pydantic Docs**: https://docs.pydantic.dev/
+-   **React + TypeScript**: https://react.dev/learn/typescript
+-   **MSAL React**: https://github.com/AzureAD/microsoft-authentication-library-for-js/tree/dev/lib/msal-react
 
 ---
 

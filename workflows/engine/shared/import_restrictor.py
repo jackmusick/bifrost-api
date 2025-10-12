@@ -47,7 +47,9 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         'engine.shared.context',
         'engine.shared.error_handling',
         'engine.shared.models',
-        'engine.shared.registry'  # Required by decorators (internal dependency)
+        'engine.shared.registry',  # Required by decorators (internal dependency)
+        'engine.shared.config_resolver',  # Required by context (internal dependency)
+        'engine.shared.keyvault'  # Required by config_resolver (internal dependency)
     }
 
     def __init__(self, workspace_paths: List[str]) -> None:
@@ -201,6 +203,8 @@ class WorkspaceImportRestrictor(MetaPathFinder):
             error_msg = f"{error_msg}\n\nImport attempted from: {workspace_file}"
 
         # T036: Log the violation attempt to audit log for security monitoring
+        # NOTE: We only log to standard logger, not audit table, to avoid circular
+        # import issues during startup when the audit system itself imports engine modules
         logger.warning(
             f"Import restriction violated: {module_name} from {workspace_file or 'unknown'}",
             extra={
@@ -209,44 +213,6 @@ class WorkspaceImportRestrictor(MetaPathFinder):
                 'event_type': 'import_violation_attempt'
             }
         )
-
-        # Attempt to log to AuditLog table (async, best-effort)
-        try:
-            from engine.shared.audit import get_audit_logger
-            import asyncio
-
-            audit_logger = get_audit_logger()
-
-            # Get stack trace for audit
-            stack_trace = [
-                f"{frame.filename}:{frame.lineno}"
-                for frame in stack
-                if self._is_workspace_code(frame.filename)
-            ]
-
-            # Create async task to log (don't block import error)
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # If loop is running, create task
-                    loop.create_task(audit_logger.log_import_violation_attempt(
-                        blocked_module=module_name,
-                        workspace_file=workspace_file or 'unknown',
-                        stack_trace=stack_trace
-                    ))
-                else:
-                    # If no loop running, run synchronously
-                    loop.run_until_complete(audit_logger.log_import_violation_attempt(
-                        blocked_module=module_name,
-                        workspace_file=workspace_file or 'unknown',
-                        stack_trace=stack_trace
-                    ))
-            except RuntimeError:
-                # No event loop, skip audit logging
-                pass
-        except Exception as e:
-            # Don't let audit logging failure prevent security enforcement
-            logger.debug(f"Failed to audit log import violation: {e}")
 
         raise ImportError(error_msg)
 

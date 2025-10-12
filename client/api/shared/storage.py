@@ -1,5 +1,5 @@
 """
-Table Storage Service for MSP Automation Platform
+Table Storage Service for Bifrost Integrations
 Provides reusable wrappers around Azure Table Storage operations
 """
 
@@ -30,17 +30,20 @@ class TableStorageService:
         self.table_name = table_name
 
         if connection_string is None:
-            connection_string = os.environ.get("TABLE_STORAGE_CONNECTION_STRING")
+            connection_string = os.environ.get(
+                "TABLE_STORAGE_CONNECTION_STRING")
 
         if not connection_string:
-            raise ValueError("TABLE_STORAGE_CONNECTION_STRING environment variable not set")
+            raise ValueError(
+                "TABLE_STORAGE_CONNECTION_STRING environment variable not set")
 
         self.connection_string = connection_string
         self.table_client = TableClient.from_connection_string(
             connection_string, table_name
         )
 
-        logger.debug(f"TableStorageService initialized for table: {table_name}")
+        logger.debug(
+            f"TableStorageService initialized for table: {table_name}")
 
     def insert_entity(self, entity: dict) -> dict:
         """
@@ -385,7 +388,8 @@ class TableStorageService:
             if key in datetime_fields and isinstance(value, str):
                 try:
                     # Try to parse as ISO datetime
-                    result[key] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    result[key] = datetime.fromisoformat(
+                        value.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
                     # Keep as string if not valid datetime
                     result[key] = value

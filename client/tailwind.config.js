@@ -2,5 +2,5 @@
 export default {
     darkMode: ["class"],
     content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
-    plugins: [],
+    plugins: [require('@tailwindcss/typography')],
 };

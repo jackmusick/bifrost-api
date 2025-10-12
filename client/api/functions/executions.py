@@ -28,10 +28,10 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
     - orgId: Filter by organization (required)
     - workflowName: Filter by workflow name (optional)
     - status: Filter by status (optional)
-    - limit: Max results (optional, default 50)
-    - offset: Pagination offset (optional, default 0)
+    - limit: Max results (optional, default 50, max 1000)
+    - continuationToken: Pagination token (optional)
 
-    Returns: List of workflow executions
+    Returns: List of workflow executions with optional continuation token
     """
     try:
         # Get user from auth middleware
@@ -42,7 +42,10 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
         workflow_name = req.params.get('workflowName')
         status = req.params.get('status')
         limit = int(req.params.get('limit', '50'))
-        offset = int(req.params.get('offset', '0'))
+        continuation_token = req.params.get('continuationToken')
+
+        # Cap limit at 1000 to prevent abuse
+        limit = min(limit, 1000)
 
         if not org_id:
             return func.HttpResponse(
@@ -79,18 +82,30 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
 
         filter_query = ' and '.join(filter_parts)
 
-        # Query with filter
-        entities = list(executions_service.query_entities(filter_query))
+        # Use projection to only fetch needed fields (skip large JSON blobs)
+        select_fields = [
+            'ExecutionId', 'WorkflowName', 'Status', 'ExecutedBy',
+            'StartedAt', 'CompletedAt', 'FormId', 'DurationMs', 'ErrorMessage'
+        ]
+
+        # Query with server-side pagination
+        query_result = executions_service.table_client.query_entities(
+            query_filter=filter_query,
+            select=select_fields,
+            results_per_page=limit
+        )
+
+        # Get the first page
+        page_iterator = query_result.by_page(continuation_token=continuation_token)
+        page = next(page_iterator)
 
         # Convert to response format (match WorkflowExecution Pydantic model)
         executions = []
-        for entity in entities[offset:offset + limit]:
+        for entity in page:
             execution = {
                 'executionId': entity.get('ExecutionId'),
                 'workflowName': entity.get('WorkflowName'),
                 'status': _map_status_to_frontend(entity.get('Status')),
-                'inputData': json.loads(entity.get('InputData', '{}')),
-                'result': json.loads(entity.get('Result')) if entity.get('Result') else None,
                 'errorMessage': entity.get('ErrorMessage'),
                 'executedBy': entity.get('ExecutedBy'),
                 'startedAt': entity.get('StartedAt').isoformat() if entity.get('StartedAt') else None,
@@ -100,8 +115,17 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
             }
             executions.append(execution)
 
+        # Get continuation token for next page
+        next_token = page_iterator.continuation_token
+
+        # Build response with pagination info
+        response_data = {
+            'executions': executions,
+            'continuationToken': next_token
+        }
+
         return func.HttpResponse(
-            json.dumps(executions),
+            json.dumps(response_data),
             status_code=200,
             mimetype='application/json'
         )

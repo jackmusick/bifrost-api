@@ -55,7 +55,7 @@ export function Workflows() {
       ) : workflows.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {workflows.map((workflow) => (
-            <Card key={workflow.name} className="hover:border-primary transition-colors">
+            <Card key={workflow.name} className="hover:border-primary transition-colors flex flex-col">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span className="font-mono text-base">{workflow.name}</span>
@@ -80,25 +80,27 @@ export function Workflows() {
                   <CardDescription>{workflow.description}</CardDescription>
                 )}
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Parameters</p>
-                  <p className="text-sm mt-1">
-                    {workflow.parameters?.length ?? 0} parameter
-                    {workflow.parameters?.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                {workflow.tags && workflow.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {workflow.tags.map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
+              <CardContent className="space-y-4 flex-1 flex flex-col">
+                <div className="flex-1 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Parameters</p>
+                    <p className="text-sm mt-1">
+                      {workflow.parameters?.length ?? 0} parameter
+                      {workflow.parameters?.length !== 1 ? 's' : ''}
+                    </p>
                   </div>
-                )}
+                  {workflow.tags && workflow.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {workflow.tags.map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Button
-                  className="w-full"
+                  className="w-full mt-auto"
                   onClick={() => handleExecute(workflow.name ?? '')}
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />

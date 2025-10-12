@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
-  title: MSP Automation Platform - Management API
+  title: Bifrost Integrations - Management API
   description: RESTful API for managing organizations, forms, permissions, and execution history
   version: 1.0.0
   contact:
-    name: MSP Automation Platform Team
+    name: Bifrost Integrations Team
 
 servers:
   - url: https://msp-automation-api.azurewebsites.net

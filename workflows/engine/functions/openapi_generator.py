@@ -19,7 +19,7 @@ def generate_openapi_spec() -> dict:
     spec = {
         'openapi': '3.0.3',
         'info': {
-            'title': 'MSP Automation Platform - Workflow Engine',
+            'title': 'Bifrost Integrations - Workflow Engine',
             'version': '1.0.0',
             'description': 'Workflow execution and metadata API',
         },

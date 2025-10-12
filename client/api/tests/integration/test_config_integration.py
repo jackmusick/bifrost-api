@@ -152,7 +152,8 @@ class TestConfigOrgScope:
 
     def test_get_org_config(self, config_service, sample_org_config):
         """Should retrieve org-specific config"""
-        result = config_service.get_entity("test-org-123", "config:default_timeout")
+        result = config_service.get_entity(
+            "test-org-123", "config:default_timeout")
 
         assert result is not None
         assert result["Value"] == "600"
@@ -198,7 +199,8 @@ class TestSensitiveValueMasking:
 
     def test_mask_secret_keyword(self):
         """Keys containing 'secret' should be masked"""
-        masked = mask_sensitive_value("client_secret", "super-secret-value-12345")
+        masked = mask_sensitive_value(
+            "client_secret", "super-secret-value-12345")
         assert masked == "supe***2345"
         assert "secret" not in masked.lower()
 
@@ -219,7 +221,8 @@ class TestSensitiveValueMasking:
 
     def test_mask_credential_keyword(self):
         """Keys containing 'credential' should be masked"""
-        masked = mask_sensitive_value("azure_credential", "credential_value_123")
+        masked = mask_sensitive_value(
+            "azure_credential", "credential_value_123")
         assert masked == "cred***_123"
 
     def test_no_mask_for_non_sensitive(self):
@@ -247,7 +250,7 @@ class TestConfigTypes:
         entity = {
             "PartitionKey": "GLOBAL",
             "RowKey": "config:app_name",
-            "Value": "MSP Automation Platform",
+            "Value": "Bifrost Integrations",
             "Type": ConfigType.STRING.value,
             "UpdatedAt": datetime.utcnow().isoformat(),
             "UpdatedBy": "admin@test.com"
@@ -308,7 +311,8 @@ class TestConfigTypes:
         }
         config_service.upsert_entity(entity)
 
-        result = config_service.get_entity("test-org", "config:database_connection")
+        result = config_service.get_entity(
+            "test-org", "config:database_connection")
         assert result["Type"] == "secret_ref"
 
         config_service.delete_entity("test-org", "config:database_connection")
@@ -331,7 +335,8 @@ class TestConfigQueryByScope:
         config_service.upsert_entity(entity2)
 
         # Query all GLOBAL configs
-        results = list(config_service.query_by_org("GLOBAL", row_key_prefix="config:"))
+        results = list(config_service.query_by_org(
+            "GLOBAL", row_key_prefix="config:"))
 
         assert len(results) >= 2
         assert all(r["PartitionKey"] == "GLOBAL" for r in results)
@@ -353,10 +358,12 @@ class TestConfigQueryByScope:
         config_service.upsert_entity(entity2)
 
         # Query all configs for this org
-        results = list(config_service.query_by_org("test-org-123", row_key_prefix="config:"))
+        results = list(config_service.query_by_org(
+            "test-org-123", row_key_prefix="config:"))
 
         assert len(results) >= 2
         assert all(r["PartitionKey"] == "test-org-123" for r in results)
 
         # Cleanup
-        config_service.delete_entity("test-org-123", "config:org_specific_setting")
+        config_service.delete_entity(
+            "test-org-123", "config:org_specific_setting")

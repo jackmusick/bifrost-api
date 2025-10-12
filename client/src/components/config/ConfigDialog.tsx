@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -26,10 +27,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { useSetConfig } from '@/hooks/useConfig'
+import { useSecrets } from '@/hooks/useSecrets'
 import type { Config, ConfigScope } from '@/types/config'
 
 const formSchema = z.object({
@@ -47,11 +63,13 @@ interface ConfigDialogProps {
   open: boolean
   onClose: () => void
   defaultScope?: ConfigScope | undefined
+  orgId?: string | undefined
 }
 
-export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL' }: ConfigDialogProps) {
+export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL', orgId }: ConfigDialogProps) {
   const setConfig = useSetConfig()
   const isEditing = !!config
+  const [comboboxOpen, setComboboxOpen] = useState(false)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -63,6 +81,13 @@ export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL' }:
       description: '',
     },
   })
+
+  // Watch the type field to conditionally render secret selector
+  const selectedType = form.watch('type')
+  const selectedScope = form.watch('scope')
+
+  // Fetch all secrets for the dropdown
+  const { data: secretsData, isLoading: secretsLoading } = useSecrets()
 
   useEffect(() => {
     if (config) {
@@ -131,68 +156,107 @@ export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL' }:
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="string">String</SelectItem>
-                        <SelectItem value="int">Integer</SelectItem>
-                        <SelectItem value="bool">Boolean</SelectItem>
-                        <SelectItem value="json">JSON</SelectItem>
-                        <SelectItem value="secret_ref">Secret Reference</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="scope"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Scope</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select scope" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="GLOBAL">Global</SelectItem>
-                        <SelectItem value="org">Organization</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Type</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="string">String</SelectItem>
+                      <SelectItem value="int">Integer</SelectItem>
+                      <SelectItem value="bool">Boolean</SelectItem>
+                      <SelectItem value="json">JSON</SelectItem>
+                      <SelectItem value="secret_ref">Secret Reference</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {selectedType === 'secret_ref' && 'References a secret stored in Azure Key Vault'}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
               name="value"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="flex flex-col">
                   <FormLabel>Value</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Configuration value"
-                      className="font-mono"
-                      {...field}
-                    />
-                  </FormControl>
+                  {selectedType === 'secret_ref' ? (
+                    <>
+                      <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                        <FormControl>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={comboboxOpen}
+                              className={cn(
+                                'w-full justify-between font-mono',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value || 'Select a secret...'}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                        </FormControl>
+                        <PopoverContent className="p-0" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+                          <Command>
+                            <CommandInput placeholder="Search secrets..." />
+                            <CommandList>
+                              <CommandEmpty>
+                                {secretsLoading ? 'Loading secrets...' : 'No secrets found.'}
+                              </CommandEmpty>
+                              <CommandGroup>
+                                {secretsData?.secrets.map((secretName) => (
+                                  <CommandItem
+                                    key={secretName}
+                                    value={secretName}
+                                    onSelect={() => {
+                                      form.setValue('value', secretName)
+                                      setComboboxOpen(false)
+                                    }}
+                                    className="font-mono"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        'mr-2 h-4 w-4',
+                                        field.value === secretName ? 'opacity-100' : 'opacity-0'
+                                      )}
+                                    />
+                                    {secretName}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <FormDescription>
+                        Select a secret name from Azure Key Vault. Scope is determined by this config entry.
+                      </FormDescription>
+                    </>
+                  ) : (
+                    <>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Configuration value"
+                          className="font-mono"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>Enter the configuration value</FormDescription>
+                    </>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -216,7 +280,10 @@ export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL' }:
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={setConfig.isPending}>
+              <Button
+                type="submit"
+                disabled={setConfig.isPending || !form.formState.isValid}
+              >
                 {setConfig.isPending ? 'Saving...' : isEditing ? 'Update' : 'Create'}
               </Button>
             </DialogFooter>

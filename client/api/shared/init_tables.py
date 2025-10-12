@@ -1,5 +1,5 @@
 """
-Table initialization script for MSP Automation Platform
+Table initialization script for Bifrost Integrations
 Creates all required Azure Table Storage tables for both local (Azurite) and production
 
 Run this script once during initial setup or after resetting Azurite
@@ -13,16 +13,19 @@ from azure.core.exceptions import ResourceExistsError
 # Table names
 REQUIRED_TABLES = [
     "Organizations",      # Master list of client organizations
-    "Config",             # Config key-value pairs (GLOBAL or org-specific via PartitionKey)
-    "IntegrationConfig",  # Integration settings (Microsoft Graph, HaloPSA, etc.)
+    # Config key-value pairs (GLOBAL or org-specific via PartitionKey)
+    "Config",
+    # Integration settings (Microsoft Graph, HaloPSA, etc.)
+    "IntegrationConfig",
     "Users",              # MSP technician accounts and organization users
     "UserPermissions",    # User->Orgs mapping (dual-indexed)
     "OrgPermissions",     # Org->Users mapping (dual-indexed)
     "Roles",              # Role definitions for organization users
     "UserRoles",          # User->Role assignments (many-to-many)
-    "FormRoles",          # Form->Role access control (which roles can access which forms)
+    # Form->Role access control (which roles can access which forms)
+    "FormRoles",
     "Forms",              # Form definitions with field schemas
-    "WorkflowExecutions", # Execution history by organization
+    "WorkflowExecutions",  # Execution history by organization
     "UserExecutions",     # Execution history by user (dual-indexed)
 ]
 
@@ -44,12 +47,14 @@ def init_tables(connection_string: str = None) -> dict:
         connection_string = os.environ.get("TABLE_STORAGE_CONNECTION_STRING")
 
     if not connection_string:
-        raise ValueError("TABLE_STORAGE_CONNECTION_STRING environment variable not set")
+        raise ValueError(
+            "TABLE_STORAGE_CONNECTION_STRING environment variable not set")
 
     logger.info("Initializing Azure Table Storage tables...")
     logger.info(f"Connection: {_mask_connection_string(connection_string)}")
 
-    service_client = TableServiceClient.from_connection_string(connection_string)
+    service_client = TableServiceClient.from_connection_string(
+        connection_string)
 
     results = {
         "created": [],
@@ -60,7 +65,8 @@ def init_tables(connection_string: str = None) -> dict:
     for table_name in REQUIRED_TABLES:
         try:
             # Check if table already exists
-            tables = list(service_client.query_tables(f"TableName eq '{table_name}'"))
+            tables = list(service_client.query_tables(
+                f"TableName eq '{table_name}'"))
 
             if tables:
                 logger.info(f"✓ Table '{table_name}' already exists")
@@ -114,7 +120,8 @@ def _mask_connection_string(conn_str: str) -> str:
         parts = conn_str.split("AccountKey=")
         if len(parts) == 2:
             key_part = parts[1].split(";")[0]
-            masked_key = key_part[:8] + "..." + key_part[-4:] if len(key_part) > 12 else "***"
+            masked_key = key_part[:8] + "..." + \
+                key_part[-4:] if len(key_part) > 12 else "***"
             return conn_str.replace(key_part, masked_key)
 
     return conn_str

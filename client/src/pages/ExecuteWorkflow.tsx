@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowsMetadata, useExecuteWorkflow } from '@/hooks/useWorkflows'
 import { useUser } from '@/contexts/UserContext'
+import { PrettyInputDisplay } from '@/components/execution/PrettyInputDisplay'
 import type { WorkflowParameter } from '@/types/workflow'
 
 export function ExecuteWorkflow() {
@@ -192,49 +193,61 @@ export function ExecuteWorkflow() {
       </div>
 
       {executionResult && (
-        <Alert variant={executionResult.status === 'Success' ? 'default' : 'destructive'}>
-          {executionResult.status === 'Success' ? (
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          ) : (
-            <XCircle className="h-4 w-4" />
-          )}
-          <AlertTitle>
-            {executionResult.status === 'Success' ? 'Workflow Completed Successfully' : 'Workflow Execution Failed'}
-          </AlertTitle>
-          <AlertDescription>
-            <div className="space-y-2">
-              <div>
-                Execution ID: <span className="font-mono text-xs">{executionResult.executionId}</span>
-              </div>
-              {executionResult.durationMs && (
+        <>
+          <Alert variant={executionResult.status === 'Success' ? 'default' : 'destructive'}>
+            {executionResult.status === 'Success' ? (
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            <AlertTitle>
+              {executionResult.status === 'Success' ? 'Workflow Completed Successfully' : 'Workflow Execution Failed'}
+            </AlertTitle>
+            <AlertDescription>
+              <div className="space-y-2">
                 <div>
-                  Duration: <span className="font-mono text-xs">{executionResult.durationMs}ms</span>
+                  Execution ID: <span className="font-mono text-xs">{executionResult.executionId}</span>
                 </div>
-              )}
-              {executionResult.result && (
-                <div className="mt-3">
-                  <div className="font-semibold mb-1">Result:</div>
-                  <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-                    {JSON.stringify(executionResult.result, null, 2)}
-                  </pre>
+                {executionResult.durationMs && (
+                  <div>
+                    Duration: <span className="font-mono text-xs">{executionResult.durationMs}ms</span>
+                  </div>
+                )}
+                {executionResult.error && (
+                  <div className="mt-3">
+                    <div className="font-semibold mb-1">Error:</div>
+                    <div className="text-sm text-destructive">{executionResult.error}</div>
+                  </div>
+                )}
+                <Button
+                  variant="link"
+                  className="px-0 mt-2"
+                  onClick={() => navigate(`/history/${executionResult.executionId}`)}
+                >
+                  View execution details
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+
+          {executionResult.result && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Result</CardTitle>
+                <CardDescription>Workflow execution result</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-[600px] overflow-y-auto">
+                  <PrettyInputDisplay
+                    inputData={executionResult.result}
+                    showToggle={true}
+                    defaultView="json"
+                  />
                 </div>
-              )}
-              {executionResult.error && (
-                <div className="mt-3">
-                  <div className="font-semibold mb-1">Error:</div>
-                  <div className="text-sm text-destructive">{executionResult.error}</div>
-                </div>
-              )}
-              <Button
-                variant="link"
-                className="px-0 mt-2"
-                onClick={() => navigate(`/history/${executionResult.executionId}`)}
-              >
-                View execution details
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       <Card>

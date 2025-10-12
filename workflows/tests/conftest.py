@@ -1,8 +1,10 @@
 """
-Pytest fixtures for MSP Automation Platform tests
+Pytest fixtures for Bifrost Integrations tests
 Provides reusable test infrastructure for all test files
 """
 
+from shared.init_tables import init_tables, REQUIRED_TABLES
+from shared.storage import TableStorageService
 import os
 import pytest
 import uuid
@@ -13,9 +15,6 @@ from azure.data.tables import TableServiceClient
 # Add parent directory to path for imports
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from shared.storage import TableStorageService
-from shared.init_tables import init_tables, REQUIRED_TABLES
 
 
 # ==================== CONFIGURATION ====================
@@ -46,7 +45,8 @@ def azurite_tables():
     yield connection_string
 
     # Cleanup - delete all entities from all tables
-    service_client = TableServiceClient.from_connection_string(connection_string)
+    service_client = TableServiceClient.from_connection_string(
+        connection_string)
     for table_name in REQUIRED_TABLES:
         table_client = service_client.get_table_client(table_name)
         try:

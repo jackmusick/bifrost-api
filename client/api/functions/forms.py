@@ -787,18 +787,6 @@ def submit_form(req: func.HttpRequest) -> func.HttpResponse:
         # Get workflows engine config
         workflow_engine_url, function_key = get_workflows_engine_config()
 
-        if not function_key:
-            logger.error("Workflows engine function key not configured")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Workflows engine function key is not configured. Please contact your administrator."
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
-
         # Use flat JSON format (parameters at root level, metadata prefixed with _)
         workflow_payload = {
             **form_data,
@@ -814,8 +802,14 @@ def submit_form(req: func.HttpRequest) -> func.HttpResponse:
         if org_id:
             headers["X-Organization-Id"] = org_id
 
-        # Execute workflow
-        workflow_url = f"{workflow_engine_url}/api/workflows/{linked_workflow}?code={function_key}"
+        # Execute workflow - only add code parameter if function key is configured (not needed locally)
+        workflow_url = f"{workflow_engine_url}/api/workflows/{linked_workflow}"
+        if function_key:
+            workflow_url += f"?code={function_key}"
+            logger.info(f"Executing workflow via form with function key")
+        else:
+            logger.info(f"Executing workflow via form without function key (local mode)")
+
         response = requests.post(workflow_url, json=workflow_payload, headers=headers, timeout=60)
 
         if response.status_code != 200:

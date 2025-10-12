@@ -2,6 +2,9 @@ import azure.functions as func
 import json
 import logging
 import os
+import sys
+import importlib.util
+from pathlib import Path
 
 # T033-T034: Install import restrictions BEFORE importing workspace code
 from engine.shared.import_restrictor import install_import_restrictions
@@ -12,8 +15,71 @@ WORKSPACE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'works
 # Install import restrictions to prevent workspace code from importing engine internals
 install_import_restrictions([WORKSPACE_PATH])
 
-# Now safe to import workspace code - restrictions are active
-import workspace.workflows
+
+# ==================== DYNAMIC WORKSPACE DISCOVERY ====================
+def discover_workspace_modules():
+    """
+    Dynamically discover and import all Python files in workspace/ subdirectories.
+
+    This function recursively scans workspace/ for .py files and imports them
+    to trigger @workflow and @data_provider decorator registration.
+
+    No __init__.py files are required - this allows workspace/ to be purely
+    user code without any framework dependencies.
+    """
+    workspace_root = Path(WORKSPACE_PATH)
+    discovered_count = 0
+
+    logging.info(f"Starting dynamic workspace discovery in {workspace_root}")
+
+    # Recursively find all .py files in workspace subdirectories
+    for py_file in workspace_root.rglob("*.py"):
+        # Skip __init__.py and private files
+        if py_file.name.startswith("_"):
+            continue
+
+        # Calculate module path relative to workspace root
+        relative_path = py_file.relative_to(workspace_root)
+        module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
+        module_name = f"workspace.{'.'.join(module_parts)}"
+
+        try:
+            # Import the module using importlib (this triggers decorators)
+            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+
+                logging.info(f"✓ Discovered: {module_name}")
+                discovered_count += 1
+
+        except Exception as e:
+            logging.error(
+                f"✗ Failed to import {module_name}: {e}",
+                exc_info=True
+            )
+
+    logging.info(f"Workspace discovery complete: {discovered_count} modules imported")
+
+    # Log registry summary
+    from engine.shared.registry import get_registry
+    registry = get_registry()
+    summary = registry.get_summary()
+
+    logging.info(
+        f"Registry contains: {summary['workflows_count']} workflows, "
+        f"{summary['data_providers_count']} data providers"
+    )
+
+    if summary['workflows']:
+        logging.info(f"Workflows: {', '.join(summary['workflows'])}")
+    if summary['data_providers']:
+        logging.info(f"Data providers: {', '.join(summary['data_providers'])}")
+
+
+# Discover all workspace modules (examples/ and workflows/ subdirectories)
+discover_workspace_modules()
 
 # Import engine data providers to trigger auto-discovery
 import engine.data_providers

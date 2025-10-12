@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MSP Automation Platform - Check Development Services Status
+# Bifrost Integrations - Check Development Services Status
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -9,7 +9,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔍 MSP Automation Platform - Service Status${NC}"
+echo -e "${BLUE}🔍 Bifrost Integrations - Service Status${NC}"
 echo ""
 
 # Function to check if a port is in use

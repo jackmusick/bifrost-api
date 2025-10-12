@@ -1,5 +1,5 @@
 """
-Seed data script for MSP Automation Platform local development
+Seed data script for Bifrost Integrations local development
 Populates Azurite with realistic sample data for testing
 
 Run this script after initializing tables with init_tables.py
@@ -239,6 +239,8 @@ SAMPLE_FORM_ROLES = [
 ]
 
 # Sample workflow executions with reverse timestamp
+
+
 def generate_sample_executions():
     executions = []
     user_executions = []
@@ -296,7 +298,8 @@ def generate_sample_executions():
 
 def seed_table(connection_string: str, table_name: str, entities: list):
     """Seed a table with sample data (idempotent)"""
-    table_client = TableClient.from_connection_string(connection_string, table_name)
+    table_client = TableClient.from_connection_string(
+        connection_string, table_name)
 
     inserted = 0
     skipped = 0
@@ -308,7 +311,8 @@ def seed_table(connection_string: str, table_name: str, entities: list):
                 partition_key=entity["PartitionKey"],
                 row_key=entity["RowKey"]
             )
-            logger.info(f"  ⊘ Skipped {table_name}: {entity['RowKey']} (already exists)")
+            logger.info(
+                f"  ⊘ Skipped {table_name}: {entity['RowKey']} (already exists)")
             skipped += 1
         except:
             # Entity doesn't exist, insert it
@@ -325,7 +329,8 @@ def seed_all_data(connection_string: str = None):
         connection_string = os.environ.get("TABLE_STORAGE_CONNECTION_STRING")
 
     if not connection_string:
-        raise ValueError("TABLE_STORAGE_CONNECTION_STRING environment variable not set")
+        raise ValueError(
+            "TABLE_STORAGE_CONNECTION_STRING environment variable not set")
 
     logger.info("Seeding sample data for local development...")
     logger.info("="*60)
@@ -334,17 +339,20 @@ def seed_all_data(connection_string: str = None):
 
     # Seed organizations
     logger.info("\nSeeding Organizations...")
-    inserted, skipped = seed_table(connection_string, "Organizations", SAMPLE_ORGS)
+    inserted, skipped = seed_table(
+        connection_string, "Organizations", SAMPLE_ORGS)
     results["Organizations"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed org configs
     logger.info("\nSeeding Config...")
-    inserted, skipped = seed_table(connection_string, "Config", SAMPLE_ORG_CONFIGS)
+    inserted, skipped = seed_table(
+        connection_string, "Config", SAMPLE_ORG_CONFIGS)
     results["Config"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed integration configs
     logger.info("\nSeeding IntegrationConfig...")
-    inserted, skipped = seed_table(connection_string, "IntegrationConfig", SAMPLE_INTEGRATION_CONFIGS)
+    inserted, skipped = seed_table(
+        connection_string, "IntegrationConfig", SAMPLE_INTEGRATION_CONFIGS)
     results["IntegrationConfig"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed users
@@ -354,12 +362,14 @@ def seed_all_data(connection_string: str = None):
 
     # Seed user permissions
     logger.info("\nSeeding UserPermissions...")
-    inserted, skipped = seed_table(connection_string, "UserPermissions", SAMPLE_USER_PERMISSIONS)
+    inserted, skipped = seed_table(
+        connection_string, "UserPermissions", SAMPLE_USER_PERMISSIONS)
     results["UserPermissions"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed org permissions
     logger.info("\nSeeding OrgPermissions...")
-    inserted, skipped = seed_table(connection_string, "OrgPermissions", SAMPLE_ORG_PERMISSIONS)
+    inserted, skipped = seed_table(
+        connection_string, "OrgPermissions", SAMPLE_ORG_PERMISSIONS)
     results["OrgPermissions"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed roles (groups)
@@ -369,7 +379,8 @@ def seed_all_data(connection_string: str = None):
 
     # Seed user-role assignments
     logger.info("\nSeeding UserRoles...")
-    inserted, skipped = seed_table(connection_string, "UserRoles", SAMPLE_USER_ROLES)
+    inserted, skipped = seed_table(
+        connection_string, "UserRoles", SAMPLE_USER_ROLES)
     results["UserRoles"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed forms
@@ -379,15 +390,18 @@ def seed_all_data(connection_string: str = None):
 
     # Seed form-role assignments
     logger.info("\nSeeding FormRoles...")
-    inserted, skipped = seed_table(connection_string, "FormRoles", SAMPLE_FORM_ROLES)
+    inserted, skipped = seed_table(
+        connection_string, "FormRoles", SAMPLE_FORM_ROLES)
     results["FormRoles"] = {"inserted": inserted, "skipped": skipped}
 
     # Seed workflow executions
     logger.info("\nSeeding WorkflowExecutions and UserExecutions...")
     executions, user_executions = generate_sample_executions()
-    inserted, skipped = seed_table(connection_string, "WorkflowExecutions", executions)
+    inserted, skipped = seed_table(
+        connection_string, "WorkflowExecutions", executions)
     results["WorkflowExecutions"] = {"inserted": inserted, "skipped": skipped}
-    inserted, skipped = seed_table(connection_string, "UserExecutions", user_executions)
+    inserted, skipped = seed_table(
+        connection_string, "UserExecutions", user_executions)
     results["UserExecutions"] = {"inserted": inserted, "skipped": skipped}
 
     # Summary
@@ -398,7 +412,8 @@ def seed_all_data(connection_string: str = None):
     total_skipped = sum(r["skipped"] for r in results.values())
 
     for table_name, counts in results.items():
-        logger.info(f"{table_name}: +{counts['inserted']} new, ⊘{counts['skipped']} existing")
+        logger.info(
+            f"{table_name}: +{counts['inserted']} new, ⊘{counts['skipped']} existing")
 
     logger.info(f"\nTotal: {total_inserted} inserted, {total_skipped} skipped")
     logger.info("="*60)

@@ -1,9 +1,9 @@
-# Feature Specification: MSP Automation Platform MVP
+# Feature Specification: Bifrost Integrations MVP
 
 **Feature Branch**: `001-complete-mvp-for`
 **Created**: 2025-10-10
 **Status**: Draft
-**Input**: Complete MVP for MSP Automation Platform - a code-first Rewst alternative with tenant management, GDAP integration, form builder with data providers, workflow engine with Python decorators, and multi-tenant permissions
+**Input**: Complete MVP for Bifrost Integrations - a code-first Rewst alternative with tenant management, GDAP integration, form builder with data providers, workflow engine with Python decorators, and multi-tenant permissions
 
 ## User Scenarios & Testing
 
@@ -180,9 +180,10 @@ MSP administrators need to manage global MSP-level configuration and secrets (wi
 **Independent Test**: Can be tested by setting global config/secrets, adding org-specific overrides, and verifying workflow context loads with correct fallback behavior (org → global).
 
 **Architecture Note**:
-- **Config**: Combined table with `PartitionKey="GLOBAL"` for MSP-wide settings or `PartitionKey={orgId}` for overrides. Lookup order: org → global → none.
-- **Secrets**: Key Vault with `GLOBAL--secret-name` for MSP credentials or `{orgId}--secret-name` for org overrides. Lookup order: org → global → none.
-- **Integration code**: Developers write integration clients (`msgraph.py`, `halopsa.py`) in workflows repo. UI only manages config/secrets, not code.
+
+-   **Config**: Combined table with `PartitionKey="GLOBAL"` for MSP-wide settings or `PartitionKey={orgId}` for overrides. Lookup order: org → global → none.
+-   **Secrets**: Key Vault with `GLOBAL--secret-name` for MSP credentials or `{orgId}--secret-name` for org overrides. Lookup order: org → global → none.
+-   **Integration code**: Developers write integration clients (`msgraph.py`, `halopsa.py`) in workflows repo. UI only manages config/secrets, not code.
 
 **Acceptance Scenarios**:
 
@@ -234,155 +235,155 @@ MSP administrators need to monitor the health of Azure Functions, view system st
 
 ### Edge Cases
 
-- What happens when a GDAP tenant ID is invalid or the MSP no longer has access to the tenant?
-- How does the system handle a data provider that times out or returns malformed data?
-- What happens when a workflow fails with an exception - how is this communicated to the user?
-- How does the system handle concurrent form submissions for the same workflow?
-- What happens when a user's permissions are revoked while they have an active session?
-- How does the system handle workflows that take longer than standard HTTP timeout periods?
-- What happens when organization configuration values are missing but a workflow expects them?
-- How does the system handle secrets that don't exist in Key Vault?
-- What happens when Table Storage is temporarily unavailable?
-- How are workflow parameter validation errors distinguished from execution errors?
+-   What happens when a GDAP tenant ID is invalid or the MSP no longer has access to the tenant?
+-   How does the system handle a data provider that times out or returns malformed data?
+-   What happens when a workflow fails with an exception - how is this communicated to the user?
+-   How does the system handle concurrent form submissions for the same workflow?
+-   What happens when a user's permissions are revoked while they have an active session?
+-   How does the system handle workflows that take longer than standard HTTP timeout periods?
+-   What happens when organization configuration values are missing but a workflow expects them?
+-   How does the system handle secrets that don't exist in Key Vault?
+-   What happens when Table Storage is temporarily unavailable?
+-   How are workflow parameter validation errors distinguished from execution errors?
 
 ## Requirements
 
 ### Functional Requirements
 
-- **FR-001**: System MUST allow MSP administrators to create, read, update, and delete client organizations
-- **FR-002**: System MUST allow organizations to be linked to Microsoft 365 GDAP tenant IDs
-- **FR-003**: System MUST store organization-specific configuration as key-value pairs isolated by organization
-- **FR-004**: System MUST authenticate users via Azure Active Directory single sign-on
-- **FR-005**: System MUST enforce org-scoped permissions for all data access (no cross-org data leakage)
-- **FR-006**: System MUST support granular permissions per user per organization (execute workflows, manage config, manage forms, view history)
-- **FR-007**: System MUST allow developers to define workflows using Python decorator syntax (`@workflow`)
-- **FR-008**: System MUST automatically discover and register decorated workflows at startup
-- **FR-009**: System MUST provide a metadata endpoint that exposes workflow definitions with parameter details
-- **FR-010**: System MUST support workflow parameter types (string, number, email, boolean, select) with validation
-- **FR-011**: System MUST allow developers to create data provider functions using `@data_provider` decorator
-- **FR-012**: System MUST expose data provider endpoints that return label-value pairs for form fields
-- **FR-013**: System MUST allow administrators to create forms with configurable fields (text, email, number, select, checkbox, textarea)
-- **FR-014**: System MUST link forms to specific workflows for execution
-- **FR-015**: System MUST allow form fields to reference data providers for dynamic options
-- **FR-016**: System MUST render forms with client-side validation based on field types and rules
-- **FR-017**: System MUST execute workflows when forms are submitted with form data as parameters
-- **FR-018**: System MUST automatically load organization context when workflows execute
-- **FR-019**: System MUST provide workflows access to organization config, secrets, and integration clients via context object
-- **FR-020**: System MUST pre-authenticate integration clients (Microsoft Graph, HaloPSA) using organization credentials
-- **FR-021**: System MUST log all workflow executions with input, output, status, duration, and caller information
-- **FR-022**: System MUST store execution history with dual-indexing for org-scoped and user-scoped queries
-- **FR-023**: System MUST display execution history filtered by organization, user, status, or date range
-- **FR-024**: System MUST allow developers to debug workflows locally with standard Python debugging tools
-- **FR-025**: System MUST support workflows that don't require organization context (`requires_org=False`)
-- **FR-026**: System MUST provide a user management interface showing all platform users with their access levels
-- **FR-027**: System MUST auto-create user records when users first authenticate via Azure AD
-- **FR-028**: System MUST allow users to view their own profile including organizations they can access
-- **FR-029**: System MUST provide integration configuration UI for setting up Microsoft Graph, HaloPSA, and other external services per organization
-- **FR-030**: System MUST securely store integration credentials and secrets in Azure Key Vault with org-scoped access
-- **FR-031**: System MUST display workflow catalog with search and filtering capabilities
-- **FR-032**: System MUST show workflow details including parameters, types, descriptions, and linked data providers
-- **FR-033**: System MUST provide system health dashboard showing API and workflow engine status
-- **FR-034**: System MUST track and display system metrics including response times, execution counts, and error rates
+-   **FR-001**: System MUST allow MSP administrators to create, read, update, and delete client organizations
+-   **FR-002**: System MUST allow organizations to be linked to Microsoft 365 GDAP tenant IDs
+-   **FR-003**: System MUST store organization-specific configuration as key-value pairs isolated by organization
+-   **FR-004**: System MUST authenticate users via Azure Active Directory single sign-on
+-   **FR-005**: System MUST enforce org-scoped permissions for all data access (no cross-org data leakage)
+-   **FR-006**: System MUST support granular permissions per user per organization (execute workflows, manage config, manage forms, view history)
+-   **FR-007**: System MUST allow developers to define workflows using Python decorator syntax (`@workflow`)
+-   **FR-008**: System MUST automatically discover and register decorated workflows at startup
+-   **FR-009**: System MUST provide a metadata endpoint that exposes workflow definitions with parameter details
+-   **FR-010**: System MUST support workflow parameter types (string, number, email, boolean, select) with validation
+-   **FR-011**: System MUST allow developers to create data provider functions using `@data_provider` decorator
+-   **FR-012**: System MUST expose data provider endpoints that return label-value pairs for form fields
+-   **FR-013**: System MUST allow administrators to create forms with configurable fields (text, email, number, select, checkbox, textarea)
+-   **FR-014**: System MUST link forms to specific workflows for execution
+-   **FR-015**: System MUST allow form fields to reference data providers for dynamic options
+-   **FR-016**: System MUST render forms with client-side validation based on field types and rules
+-   **FR-017**: System MUST execute workflows when forms are submitted with form data as parameters
+-   **FR-018**: System MUST automatically load organization context when workflows execute
+-   **FR-019**: System MUST provide workflows access to organization config, secrets, and integration clients via context object
+-   **FR-020**: System MUST pre-authenticate integration clients (Microsoft Graph, HaloPSA) using organization credentials
+-   **FR-021**: System MUST log all workflow executions with input, output, status, duration, and caller information
+-   **FR-022**: System MUST store execution history with dual-indexing for org-scoped and user-scoped queries
+-   **FR-023**: System MUST display execution history filtered by organization, user, status, or date range
+-   **FR-024**: System MUST allow developers to debug workflows locally with standard Python debugging tools
+-   **FR-025**: System MUST support workflows that don't require organization context (`requires_org=False`)
+-   **FR-026**: System MUST provide a user management interface showing all platform users with their access levels
+-   **FR-027**: System MUST auto-create user records when users first authenticate via Azure AD
+-   **FR-028**: System MUST allow users to view their own profile including organizations they can access
+-   **FR-029**: System MUST provide integration configuration UI for setting up Microsoft Graph, HaloPSA, and other external services per organization
+-   **FR-030**: System MUST securely store integration credentials and secrets in Azure Key Vault with org-scoped access
+-   **FR-031**: System MUST display workflow catalog with search and filtering capabilities
+-   **FR-032**: System MUST show workflow details including parameters, types, descriptions, and linked data providers
+-   **FR-033**: System MUST provide system health dashboard showing API and workflow engine status
+-   **FR-034**: System MUST track and display system metrics including response times, execution counts, and error rates
 
 ### Key Entities
 
-- **Organization**: Represents a client company with optional GDAP tenant link, configuration, and permissions
-- **User**: MSP technician authenticated via Azure AD with org-scoped permissions
-- **UserPermission**: Many-to-many relationship between users and organizations with granular permission flags
-- **Workflow**: Python function registered via decorator with metadata about parameters and execution requirements
-- **DataProvider**: Python function that provides dynamic data for form fields
-- **Form**: User-facing interface with fields linked to a workflow
-- **FormField**: Individual input field with type, validation, and optional data provider reference
-- **WorkflowExecution**: Record of a workflow run with input, output, status, and audit information
-- **OrganizationConfig**: Key-value configuration storage scoped to an organization
-- **IntegrationConfig**: Settings for external service integrations (Microsoft Graph, HaloPSA) per organization
+-   **Organization**: Represents a client company with optional GDAP tenant link, configuration, and permissions
+-   **User**: MSP technician authenticated via Azure AD with org-scoped permissions
+-   **UserPermission**: Many-to-many relationship between users and organizations with granular permission flags
+-   **Workflow**: Python function registered via decorator with metadata about parameters and execution requirements
+-   **DataProvider**: Python function that provides dynamic data for form fields
+-   **Form**: User-facing interface with fields linked to a workflow
+-   **FormField**: Individual input field with type, validation, and optional data provider reference
+-   **WorkflowExecution**: Record of a workflow run with input, output, status, and audit information
+-   **OrganizationConfig**: Key-value configuration storage scoped to an organization
+-   **IntegrationConfig**: Settings for external service integrations (Microsoft Graph, HaloPSA) per organization
 
 ## Success Criteria
 
 ### Measurable Outcomes
 
-- **SC-001**: MSP technicians can create a new organization and link it to a GDAP tenant in under 2 minutes
-- **SC-002**: Developers can create a new Python workflow and see it available in the UI within 30 seconds of deployment
-- **SC-003**: Form submissions execute workflows and return results in under 5 seconds for typical operations
-- **SC-004**: The platform supports 50 concurrent workflow executions without performance degradation
-- **SC-005**: Developers can set breakpoints in workflow code and debug locally using VSCode or PyCharm
-- **SC-006**: Organization context loading (config, integrations) completes in under 20 milliseconds
-- **SC-007**: 100% of API requests enforce org-scoped permissions with no cross-org data leakage in security testing
-- **SC-008**: Data providers return dynamic options for form fields in under 2 seconds for typical queries
-- **SC-009**: Users can navigate to a form, fill it out, and execute a workflow in under 90 seconds
-- **SC-010**: Execution history queries for a single organization return results in under 200 milliseconds
-- **SC-011**: The platform handles 50-200 organizations with 10-100 forms per organization without performance issues
-- **SC-012**: Developers can add a new integration client and have it available to workflows in under 1 hour of development time
-- **SC-013**: Failed workflow executions provide clear error messages that enable troubleshooting without code inspection
-- **SC-014**: The platform operates with zero cross-organization data leaks during penetration testing
-- **SC-015**: All workflow executions are logged with complete audit trails for compliance requirements
+-   **SC-001**: MSP technicians can create a new organization and link it to a GDAP tenant in under 2 minutes
+-   **SC-002**: Developers can create a new Python workflow and see it available in the UI within 30 seconds of deployment
+-   **SC-003**: Form submissions execute workflows and return results in under 5 seconds for typical operations
+-   **SC-004**: The platform supports 50 concurrent workflow executions without performance degradation
+-   **SC-005**: Developers can set breakpoints in workflow code and debug locally using VSCode or PyCharm
+-   **SC-006**: Organization context loading (config, integrations) completes in under 20 milliseconds
+-   **SC-007**: 100% of API requests enforce org-scoped permissions with no cross-org data leakage in security testing
+-   **SC-008**: Data providers return dynamic options for form fields in under 2 seconds for typical queries
+-   **SC-009**: Users can navigate to a form, fill it out, and execute a workflow in under 90 seconds
+-   **SC-010**: Execution history queries for a single organization return results in under 200 milliseconds
+-   **SC-011**: The platform handles 50-200 organizations with 10-100 forms per organization without performance issues
+-   **SC-012**: Developers can add a new integration client and have it available to workflows in under 1 hour of development time
+-   **SC-013**: Failed workflow executions provide clear error messages that enable troubleshooting without code inspection
+-   **SC-014**: The platform operates with zero cross-organization data leaks during penetration testing
+-   **SC-015**: All workflow executions are logged with complete audit trails for compliance requirements
 
 ## User Interface & Experience Requirements
 
 ### UI Quality Standards
 
-- **UI-001**: Users MUST be able to navigate between all major sections (organizations, workflows, forms, execution history) in under 2 clicks from any page
-- **UI-002**: Forms MUST provide real-time validation feedback as users type, showing errors inline before submission
-- **UI-003**: The interface MUST be responsive and functional on desktop browsers (1920x1080 minimum, with support down to 1366x768)
-- **UI-004**: All interactive elements (buttons, form fields, dropdowns) MUST have clear visual feedback for hover, focus, and disabled states
-- **UI-005**: Loading states MUST be shown for any operation taking longer than 200ms (spinners, skeleton screens, or progress indicators)
-- **UI-006**: Error messages MUST be displayed in a consistent, user-friendly format with clear actionable guidance
-- **UI-007**: The interface MUST use consistent spacing, typography, and color schemes throughout all pages
-- **UI-008**: Form fields with data providers MUST show loading states while options are being fetched
-- **UI-009**: Complex forms MUST be broken into logical sections with clear visual hierarchy
-- **UI-010**: Users MUST be able to complete common workflows (create org, execute workflow, view history) without referring to documentation
+-   **UI-001**: Users MUST be able to navigate between all major sections (organizations, workflows, forms, execution history) in under 2 clicks from any page
+-   **UI-002**: Forms MUST provide real-time validation feedback as users type, showing errors inline before submission
+-   **UI-003**: The interface MUST be responsive and functional on desktop browsers (1920x1080 minimum, with support down to 1366x768)
+-   **UI-004**: All interactive elements (buttons, form fields, dropdowns) MUST have clear visual feedback for hover, focus, and disabled states
+-   **UI-005**: Loading states MUST be shown for any operation taking longer than 200ms (spinners, skeleton screens, or progress indicators)
+-   **UI-006**: Error messages MUST be displayed in a consistent, user-friendly format with clear actionable guidance
+-   **UI-007**: The interface MUST use consistent spacing, typography, and color schemes throughout all pages
+-   **UI-008**: Form fields with data providers MUST show loading states while options are being fetched
+-   **UI-009**: Complex forms MUST be broken into logical sections with clear visual hierarchy
+-   **UI-010**: Users MUST be able to complete common workflows (create org, execute workflow, view history) without referring to documentation
 
 ### Component Architecture Requirements
 
-- **UI-011**: UI components MUST be small, focused, and reusable (single responsibility principle)
-- **UI-012**: Each component MUST handle only one concern (e.g., a button component should not contain business logic)
-- **UI-013**: Complex pages MUST be composed of multiple smaller components rather than monolithic page components
-- **UI-014**: Shared UI components (buttons, inputs, cards, tables) MUST be consistent across the entire application
-- **UI-015**: Components MUST accept props for customization rather than hard-coding values or styles
+-   **UI-011**: UI components MUST be small, focused, and reusable (single responsibility principle)
+-   **UI-012**: Each component MUST handle only one concern (e.g., a button component should not contain business logic)
+-   **UI-013**: Complex pages MUST be composed of multiple smaller components rather than monolithic page components
+-   **UI-014**: Shared UI components (buttons, inputs, cards, tables) MUST be consistent across the entire application
+-   **UI-015**: Components MUST accept props for customization rather than hard-coding values or styles
 
 ### State Management Requirements
 
-- **UI-016**: Application state MUST be managed efficiently to prevent unnecessary re-renders
-- **UI-017**: Global state (user authentication, selected organization) MUST be accessible across components without prop drilling
-- **UI-018**: Server state (API data) MUST be separated from client state (UI toggles, form input)
-- **UI-019**: Form state MUST be managed with proper validation and error handling
-- **UI-020**: State updates MUST be predictable and debuggable
+-   **UI-016**: Application state MUST be managed efficiently to prevent unnecessary re-renders
+-   **UI-017**: Global state (user authentication, selected organization) MUST be accessible across components without prop drilling
+-   **UI-018**: Server state (API data) MUST be separated from client state (UI toggles, form input)
+-   **UI-019**: Form state MUST be managed with proper validation and error handling
+-   **UI-020**: State updates MUST be predictable and debuggable
 
 ### Code Quality Requirements
 
-- **UI-021**: All TypeScript code MUST compile without errors in strict mode
-- **UI-022**: All components MUST have proper TypeScript types for props and return values (no `any` types unless absolutely necessary)
-- **UI-023**: Code MUST pass linting checks before commit
-- **UI-024**: Component files MUST follow consistent naming conventions (PascalCase for components, camelCase for utilities)
-- **UI-025**: Complex logic MUST be extracted into custom hooks or utility functions for testability
+-   **UI-021**: All TypeScript code MUST compile without errors in strict mode
+-   **UI-022**: All components MUST have proper TypeScript types for props and return values (no `any` types unless absolutely necessary)
+-   **UI-023**: Code MUST pass linting checks before commit
+-   **UI-024**: Component files MUST follow consistent naming conventions (PascalCase for components, camelCase for utilities)
+-   **UI-025**: Complex logic MUST be extracted into custom hooks or utility functions for testability
 
 ### Visual Design Constraints
 
-- **UI-026**: The interface MUST use a professional, clean design suitable for enterprise MSP technicians
-- **UI-027**: Color palette MUST provide sufficient contrast for accessibility (WCAG AA minimum)
-- **UI-028**: Typography MUST be legible at standard screen distances with clear hierarchy (headings, body, captions)
-- **UI-029**: Interactive elements MUST be touch-friendly (minimum 44x44px tap targets) even though primary use is desktop
-- **UI-030**: The design system MUST be consistent - reusing the same patterns for similar actions throughout the app
+-   **UI-026**: The interface MUST use a professional, clean design suitable for enterprise MSP technicians
+-   **UI-027**: Color palette MUST provide sufficient contrast for accessibility (WCAG AA minimum)
+-   **UI-028**: Typography MUST be legible at standard screen distances with clear hierarchy (headings, body, captions)
+-   **UI-029**: Interactive elements MUST be touch-friendly (minimum 44x44px tap targets) even though primary use is desktop
+-   **UI-030**: The design system MUST be consistent - reusing the same patterns for similar actions throughout the app
 
 ## Assumptions
 
-- Azure AD tenant is already configured for the MSP organization
-- Developers have basic Python knowledge and familiarity with async/await patterns
-- Microsoft 365 GDAP relationships are established outside this platform
-- Azure resources (Table Storage, Key Vault, Functions) are provisioned via infrastructure-as-code
-- MSP has appropriate Microsoft CSP/GDAP permissions for client tenants
-- Network connectivity to Azure services is reliable and available
-- Local development uses Azurite for Table Storage emulation
-- Browser users have modern browsers supporting JavaScript ES6+
-- Organization configuration values use string serialization (JSON for complex types)
-- Workflow execution timeout is 5 minutes for standard operations (configurable per workflow)
-- Data provider results are limited to 1000 items maximum for performance
-- Forms are limited to 50 fields to ensure reasonable UI performance
-- Execution history is retained for 90 days by default
-- Secrets in Key Vault follow naming convention: `GLOBAL--{secret-name}` for MSP-wide or `{org-id}--{secret-name}` for org overrides
-- Integration authentication uses service principal credentials stored in Key Vault (global by default, org override if needed)
-- Configuration uses combined table: `PartitionKey="GLOBAL"` for MSP-wide or `PartitionKey={orgId}` for org overrides
-- Workflow context uses fallback pattern: check org-specific first, then global, then return None
-- Users are auto-created on first Entra ID login - no password/email management in platform
-- Two user types: MSP (technicians with full access) and ORG (organization users with role-based form access)
-- Form access for ORG users controlled via Roles system (MSP users bypass role checks)
+-   Azure AD tenant is already configured for the MSP organization
+-   Developers have basic Python knowledge and familiarity with async/await patterns
+-   Microsoft 365 GDAP relationships are established outside this platform
+-   Azure resources (Table Storage, Key Vault, Functions) are provisioned via infrastructure-as-code
+-   MSP has appropriate Microsoft CSP/GDAP permissions for client tenants
+-   Network connectivity to Azure services is reliable and available
+-   Local development uses Azurite for Table Storage emulation
+-   Browser users have modern browsers supporting JavaScript ES6+
+-   Organization configuration values use string serialization (JSON for complex types)
+-   Workflow execution timeout is 5 minutes for standard operations (configurable per workflow)
+-   Data provider results are limited to 1000 items maximum for performance
+-   Forms are limited to 50 fields to ensure reasonable UI performance
+-   Execution history is retained for 90 days by default
+-   Secrets in Key Vault follow naming convention: `GLOBAL--{secret-name}` for MSP-wide or `{org-id}--{secret-name}` for org overrides
+-   Integration authentication uses service principal credentials stored in Key Vault (global by default, org override if needed)
+-   Configuration uses combined table: `PartitionKey="GLOBAL"` for MSP-wide or `PartitionKey={orgId}` for org overrides
+-   Workflow context uses fallback pattern: check org-specific first, then global, then return None
+-   Users are auto-created on first Entra ID login - no password/email management in platform
+-   Two user types: MSP (technicians with full access) and ORG (organization users with role-based form access)
+-   Form access for ORG users controlled via Roles system (MSP users bypass role checks)

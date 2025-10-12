@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenAPI Spec Generator for MSP Automation Platform Management API
+OpenAPI Spec Generator for Bifrost Integrations Management API
 
 Generates OpenAPI YAML from Pydantic models in shared/models.py
 This provides a single source of truth for types across Python and TypeScript.
@@ -139,7 +139,8 @@ def generate_openapi_spec() -> dict:
             }
         else:
             # Get JSON schema from Pydantic model
-            model_schema = model.model_json_schema(ref_template='#/components/schemas/{model}')
+            model_schema = model.model_json_schema(
+                ref_template='#/components/schemas/{model}')
 
             # Extract nested definitions
             if '$defs' in model_schema:
@@ -155,11 +156,11 @@ def generate_openapi_spec() -> dict:
     spec = {
         'openapi': '3.0.3',
         'info': {
-            'title': 'MSP Automation Platform - Management API',
+            'title': 'Bifrost Integrations - Management API',
             'version': '1.0.0',
             'description': 'API for managing forms, organizations, permissions, and users. Auto-generated from Pydantic models.',
             'contact': {
-                'name': 'MSP Automation Platform',
+                'name': 'Bifrost Integrations',
                 'email': 'jack@gocovi.com'
             }
         },
@@ -279,7 +280,8 @@ def generate_openapi_spec() -> dict:
                     'description': 'Get form by ID',
                     'tags': ['Forms'],
                     'parameters': [
-                        {'name': 'formId', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}
+                        {'name': 'formId', 'in': 'path', 'required': True,
+                            'schema': {'type': 'string'}}
                     ],
                     'responses': {
                         '200': {
@@ -299,7 +301,8 @@ def generate_openapi_spec() -> dict:
                     'description': 'Update an existing form',
                     'tags': ['Forms'],
                     'parameters': [
-                        {'name': 'formId', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}
+                        {'name': 'formId', 'in': 'path', 'required': True,
+                            'schema': {'type': 'string'}}
                     ],
                     'requestBody': {
                         'required': True,
@@ -327,7 +330,8 @@ def generate_openapi_spec() -> dict:
                     'description': 'Delete a form (soft delete)',
                     'tags': ['Forms'],
                     'parameters': [
-                        {'name': 'formId', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}
+                        {'name': 'formId', 'in': 'path', 'required': True,
+                            'schema': {'type': 'string'}}
                     ],
                     'responses': {
                         '204': {'description': 'Form deleted'},
