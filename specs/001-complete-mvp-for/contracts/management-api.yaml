@@ -1,0 +1,838 @@
+openapi: 3.0.3
+info:
+  title: MSP Automation Platform - Management API
+  description: RESTful API for managing organizations, forms, permissions, and execution history
+  version: 1.0.0
+  contact:
+    name: MSP Automation Platform Team
+
+servers:
+  - url: https://msp-automation-api.azurewebsites.net
+    description: Production
+  - url: http://localhost:7071
+    description: Local development
+
+security:
+  - AzureAD: []
+
+components:
+  securitySchemes:
+    AzureAD:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Azure AD JWT token
+
+  parameters:
+    XOrganizationId:
+      name: X-Organization-Id
+      in: header
+      required: true
+      description: Organization ID for org-scoped requests
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Organization:
+      type: object
+      required:
+        - id
+        - name
+        - isActive
+        - createdAt
+        - createdBy
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tenantId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Microsoft 365 GDAP tenant ID
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateOrganizationRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tenantId:
+          type: string
+          format: uuid
+          nullable: true
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tenantId:
+          type: string
+          format: uuid
+          nullable: true
+        isActive:
+          type: boolean
+
+    OrgConfig:
+      type: object
+      required:
+        - key
+        - value
+        - type
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        type:
+          type: string
+          enum: [string, int, bool, json, secret_ref]
+        description:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+
+    SetConfigRequest:
+      type: object
+      required:
+        - key
+        - value
+        - type
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        type:
+          type: string
+          enum: [string, int, bool, json, secret_ref]
+        description:
+          type: string
+
+    UserPermission:
+      type: object
+      required:
+        - userId
+        - orgId
+        - canExecuteWorkflows
+        - canManageConfig
+        - canManageForms
+        - canViewHistory
+      properties:
+        userId:
+          type: string
+        orgId:
+          type: string
+          format: uuid
+        canExecuteWorkflows:
+          type: boolean
+        canManageConfig:
+          type: boolean
+        canManageForms:
+          type: boolean
+        canViewHistory:
+          type: boolean
+        grantedBy:
+          type: string
+        grantedAt:
+          type: string
+          format: date-time
+
+    GrantPermissionsRequest:
+      type: object
+      required:
+        - userId
+        - orgId
+        - permissions
+      properties:
+        userId:
+          type: string
+        orgId:
+          type: string
+          format: uuid
+        permissions:
+          type: object
+          required:
+            - canExecuteWorkflows
+            - canManageConfig
+            - canManageForms
+            - canViewHistory
+          properties:
+            canExecuteWorkflows:
+              type: boolean
+            canManageConfig:
+              type: boolean
+            canManageForms:
+              type: boolean
+            canViewHistory:
+              type: boolean
+
+    Form:
+      type: object
+      required:
+        - id
+        - name
+        - linkedWorkflow
+        - formSchema
+        - isActive
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        linkedWorkflow:
+          type: string
+        formSchema:
+          $ref: '#/components/schemas/FormSchema'
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FormSchema:
+      type: object
+      required:
+        - fields
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormField'
+
+    FormField:
+      type: object
+      required:
+        - name
+        - label
+        - type
+        - required
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+          enum: [text, email, number, select, checkbox, textarea]
+        required:
+          type: boolean
+        validation:
+          type: object
+          properties:
+            pattern:
+              type: string
+            min:
+              type: number
+            max:
+              type: number
+            message:
+              type: string
+        dataProvider:
+          type: string
+          description: Data provider name for select fields
+        defaultValue:
+          type: string
+        placeholder:
+          type: string
+        helpText:
+          type: string
+
+    CreateFormRequest:
+      type: object
+      required:
+        - name
+        - linkedWorkflow
+        - formSchema
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        linkedWorkflow:
+          type: string
+        formSchema:
+          $ref: '#/components/schemas/FormSchema'
+
+    WorkflowExecution:
+      type: object
+      required:
+        - executionId
+        - workflowName
+        - executedBy
+        - status
+        - inputData
+        - startedAt
+      properties:
+        executionId:
+          type: string
+          format: uuid
+        workflowName:
+          type: string
+        formId:
+          type: string
+          format: uuid
+          nullable: true
+        executedBy:
+          type: string
+        status:
+          type: string
+          enum: [Pending, Running, Success, Failed]
+        inputData:
+          type: object
+        result:
+          type: object
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+paths:
+  # ==================== ORGANIZATIONS ====================
+  /api/organizations:
+    get:
+      summary: List all organizations
+      description: Returns all organizations the authenticated user has access to
+      tags: [Organizations]
+      responses:
+        '200':
+          description: List of organizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Organization'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new organization
+      description: Creates a new client organization
+      tags: [Organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+
+  /api/organizations/{orgId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get organization details
+      tags: [Organizations]
+      responses:
+        '200':
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '404':
+          description: Organization not found
+        '401':
+          description: Unauthorized
+
+    patch:
+      summary: Update organization
+      tags: [Organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrganizationRequest'
+      responses:
+        '200':
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '404':
+          description: Organization not found
+        '401':
+          description: Unauthorized
+
+    delete:
+      summary: Delete organization (soft delete)
+      tags: [Organizations]
+      responses:
+        '204':
+          description: Organization deleted
+        '404':
+          description: Organization not found
+        '401':
+          description: Unauthorized
+
+  # ==================== ORGANIZATION CONFIG ====================
+  /api/organizations/{orgId}/config:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/XOrganizationId'
+
+    get:
+      summary: Get organization configuration
+      description: Returns all configuration key-value pairs for the organization
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Configuration list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrgConfig'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - insufficient permissions
+
+    post:
+      summary: Set configuration value
+      description: Creates or updates a configuration key-value pair
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetConfigRequest'
+      responses:
+        '201':
+          description: Configuration set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgConfig'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /api/organizations/{orgId}/config/{key}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/XOrganizationId'
+
+    delete:
+      summary: Delete configuration value
+      tags: [Configuration]
+      responses:
+        '204':
+          description: Configuration deleted
+        '404':
+          description: Not found
+        '401':
+          description: Unauthorized
+
+  # ==================== PERMISSIONS ====================
+  /api/permissions/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      summary: Get user permissions
+      description: Returns all organizations this user can access and their permissions
+      tags: [Permissions]
+      responses:
+        '200':
+          description: User permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPermission'
+        '401':
+          description: Unauthorized
+
+  /api/permissions/organizations/{orgId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get organization permissions
+      description: Returns all users who have access to this organization
+      tags: [Permissions]
+      responses:
+        '200':
+          description: Organization permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPermission'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /api/permissions:
+    post:
+      summary: Grant permissions
+      description: Grant a user permissions to access an organization
+      tags: [Permissions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantPermissionsRequest'
+      responses:
+        '201':
+          description: Permissions granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPermission'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+    delete:
+      summary: Revoke permissions
+      description: Revoke a user's access to an organization
+      tags: [Permissions]
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: orgId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Permissions revoked
+        '404':
+          description: Not found
+        '401':
+          description: Unauthorized
+
+  # ==================== FORMS ====================
+  /api/forms:
+    parameters:
+      - $ref: '#/components/parameters/XOrganizationId'
+
+    get:
+      summary: List forms
+      description: Returns all forms for the organization (and global forms)
+      tags: [Forms]
+      responses:
+        '200':
+          description: List of forms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Form'
+        '401':
+          description: Unauthorized
+
+    post:
+      summary: Create form
+      description: Create a new form for the organization
+      tags: [Forms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFormRequest'
+      responses:
+        '201':
+          description: Form created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /api/forms/{formId}:
+    parameters:
+      - name: formId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/XOrganizationId'
+
+    get:
+      summary: Get form details
+      tags: [Forms]
+      responses:
+        '200':
+          description: Form details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form'
+        '404':
+          description: Form not found
+        '401':
+          description: Unauthorized
+
+    put:
+      summary: Update form
+      tags: [Forms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFormRequest'
+      responses:
+        '200':
+          description: Form updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form'
+        '404':
+          description: Not found
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+    delete:
+      summary: Delete form
+      tags: [Forms]
+      responses:
+        '204':
+          description: Form deleted
+        '404':
+          description: Not found
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  # ==================== EXECUTIONS ====================
+  /api/executions:
+    parameters:
+      - $ref: '#/components/parameters/XOrganizationId'
+
+    get:
+      summary: List workflow executions
+      description: Returns execution history for the organization
+      tags: [Executions]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Running, Success, Failed]
+        - name: workflowName
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: List of executions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowExecution'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /api/executions/{executionId}:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/XOrganizationId'
+
+    get:
+      summary: Get execution details
+      tags: [Executions]
+      responses:
+        '200':
+          description: Execution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowExecution'
+        '404':
+          description: Execution not found
+        '401':
+          description: Unauthorized
+
+  /api/executions/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      summary: Get user execution history
+      description: Returns all executions by this user across all authorized organizations
+      tags: [Executions]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: User execution history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowExecution'
+        '401':
+          description: Unauthorized
+
+tags:
+  - name: Organizations
+    description: Client organization management
+  - name: Configuration
+    description: Organization configuration management
+  - name: Permissions
+    description: User permission management
+  - name: Forms
+    description: Form builder and management
+  - name: Executions
+    description: Workflow execution history

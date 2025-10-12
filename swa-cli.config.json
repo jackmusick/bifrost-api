@@ -1,0 +1,14 @@
+{
+    "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+    "configurations": {
+        "msp-automation-platform": {
+            "appLocation": "./client",
+            "outputLocation": "dist",
+            "appBuildCommand": "npm run build",
+            "appDevserverUrl": "http://localhost:5173",
+            "apiDevserverUrl": "http://localhost:7071",
+            "run": "npm run dev",
+            "swaConfigLocation": "./client"
+        }
+    }
+}

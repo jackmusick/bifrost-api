@@ -5,14 +5,118 @@
     },
     "routes": [
         {
-            "route": "/*",
+            "route": "/.auth/*",
             "allowedRoles": ["anonymous"]
+        },
+        {
+            "route": "/api/GetRoles",
+            "methods": ["POST"],
+            "allowedRoles": ["authenticated"]
+        },
+        {
+            "route": "/api/openapi.json",
+            "methods": ["GET"],
+            "allowedRoles": ["anonymous"]
+        },
+        {
+            "route": "/api/openapi.yaml",
+            "methods": ["GET"],
+            "allowedRoles": ["anonymous"]
+        },
+        {
+            "route": "/api/docs",
+            "methods": ["GET"],
+            "allowedRoles": ["anonymous"]
+        },
+        {
+            "route": "/api/forms",
+            "methods": ["GET"],
+            "allowedRoles": ["OrgUser", "PlatformAdmin"]
+        },
+        {
+            "route": "/api/forms/*",
+            "methods": ["GET"],
+            "allowedRoles": ["OrgUser", "PlatformAdmin"]
+        },
+        {
+            "route": "/api/forms/*/submit",
+            "methods": ["POST"],
+            "allowedRoles": ["OrgUser", "PlatformAdmin"]
+        },
+        {
+            "route": "/api/forms",
+            "methods": ["POST"],
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/forms/*",
+            "methods": ["PUT", "DELETE"],
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/executions*",
+            "methods": ["GET"],
+            "allowedRoles": ["OrgUser", "PlatformAdmin"]
+        },
+        {
+            "route": "/api/users*",
+            "methods": ["GET"],
+            "allowedRoles": ["OrgUser", "PlatformAdmin"]
+        },
+        {
+            "route": "/api/organizations",
+            "methods": ["GET"],
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/organizations/*",
+            "methods": ["POST", "PUT", "DELETE", "PATCH"],
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/organizations/*/integrations*",
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/roles*",
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/permissions*",
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/config*",
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/workflow-keys*",
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/*",
+            "statusCode": 403
+        },
+        {
+            "route": "/*",
+            "allowedRoles": ["authenticated"]
         }
     ],
     "responseOverrides": {
+        "401": {
+            "redirect": "/.auth/login/aad",
+            "statusCode": 302
+        },
+        "403": {
+            "statusCode": 403,
+            "rewrite": "/index.html"
+        },
         "404": {
             "rewrite": "/index.html",
             "statusCode": 200
         }
+    },
+    "auth": {
+        "rolesSource": "/api/GetRoles"
     }
 }

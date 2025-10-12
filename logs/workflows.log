@@ -1,0 +1,306 @@
+Found Python version 3.11.3 (python3).
+Selected out-of-process host.
+
+                  %%%%%%
+                 %%%%%%
+            @   %%%%%%    @
+          @@   %%%%%%      @@
+       @@@    %%%%%%%%%%%    @@@
+     @@      %%%%%%%%%%        @@
+       @@         %%%%       @@
+         @@      %%%       @@
+           @@    %%      @@
+                %%
+                %
+
+
+Azure Functions Core Tools
+Core Tools Version:       4.2.2+78afd8b84c8e31f0ddac570ba9e8128eefbd3d4a (64-bit)
+Function Runtime Version: 4.1041.200.25360
+
+[2025-10-12T03:42:16.028Z] Building host: version spec: , startup suppressed: 'False', configuration suppressed: 'False', startup operation id: 'bab32875-1330-4de6-b19f-da181d9c3b03'
+[2025-10-12T03:42:16.076Z] Reading host configuration file '/Users/jack/Downloads/msp-automation-platform/workflows/host.json'
+[2025-10-12T03:42:16.077Z] Host configuration file read:
+[2025-10-12T03:42:16.077Z] {
+[2025-10-12T03:42:16.077Z]   "version": "2.0",
+[2025-10-12T03:42:16.077Z]   "logging": {
+[2025-10-12T03:42:16.077Z]     "applicationInsights": {
+[2025-10-12T03:42:16.077Z]       "samplingSettings": {
+[2025-10-12T03:42:16.077Z]         "isEnabled": true,
+[2025-10-12T03:42:16.077Z]         "excludedTypes": "Request"
+[2025-10-12T03:42:16.077Z]       }
+[2025-10-12T03:42:16.077Z]     }
+[2025-10-12T03:42:16.077Z]   },
+[2025-10-12T03:42:16.077Z]   "extensionBundle": {
+[2025-10-12T03:42:16.077Z]     "id": "Microsoft.Azure.Functions.ExtensionBundle",
+[2025-10-12T03:42:16.077Z]     "version": "[4.*, 5.0.0)"
+[2025-10-12T03:42:16.077Z]   }
+[2025-10-12T03:42:16.077Z] }
+[2025-10-12T03:42:16.084Z] Looking for extension bundle Microsoft.Azure.Functions.ExtensionBundle at /Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle
+[2025-10-12T03:42:16.085Z] Applying platform release channel configuration LATEST. Bundle version 4.26.2 will be used
+[2025-10-12T03:42:16.085Z] Found a matching extension bundle at /Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.26.2
+[2025-10-12T03:42:16.097Z] Loading functions metadata
+[2025-10-12T03:42:16.098Z] Worker indexing is enabled
+[2025-10-12T03:42:16.098Z] Fetching metadata for workerRuntime: python
+[2025-10-12T03:42:16.098Z] Reading functions metadata (Worker)
+[2025-10-12T03:42:16.212Z]  INFO: Starting Azure Functions Python Worker.
+[2025-10-12T03:42:16.213Z]  INFO: Worker ID: ca535e54-c7ac-4637-85bd-9f154213d6ca, Request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, Host Address: 127.0.0.1:61607
+[2025-10-12T03:42:16.290Z]  INFO: Successfully opened gRPC channel to 127.0.0.1:61607 
+[2025-10-12T03:42:16.290Z]  INFO: Detaching console logging.
+[2025-10-12T03:42:18.320Z] Switched to gRPC logging.
+[2025-10-12T03:42:18.328Z] Received WorkerInitRequest, python version 3.11.3 (main, Sep 19 2025, 11:05:13) [Clang 17.0.0 (clang-1700.3.19.1)], worker version 4.38.0, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737. App Settings state: PYTHON_THREADPOOL_THREAD_COUNT: 1000 | PYTHON_ENABLE_WORKER_EXTENSIONS: False. To enable debug level logging, please refer to https://aka.ms/python-enable-debug-logging
+[2025-10-12T03:42:18.399Z] Received WorkerMetadataRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_path: /Users/jack/Downloads/msp-automation-platform/workflows/function_app.py
+[2025-10-12T03:42:18.595Z] Indexed function app and found 9 functions
+[2025-10-12T03:42:18.596Z] Successfully processed FunctionMetadataRequest for functions: Function Name: get_metadata, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: execute_workflow, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: get_data_provider_options, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: list_data_providers, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: get_openapi_json, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: get_openapi_yaml, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: get_swagger_ui, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: health, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')] Function Name: admin_workflow, Function Binding: [('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', ''), ('httpTrigger', 'req', ''), ('http', '$return', '')]. Deferred bindings enabled: False.
+[2025-10-12T03:42:18.606Z] 9 functions found (Worker)
+[2025-10-12T03:42:18.610Z] 9 functions loaded
+[2025-10-12T03:42:18.611Z] Looking for extension bundle Microsoft.Azure.Functions.ExtensionBundle at /Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle
+[2025-10-12T03:42:18.611Z] Applying platform release channel configuration LATEST. Bundle version 4.26.2 will be used
+[2025-10-12T03:42:18.611Z] Found a matching extension bundle at /Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.26.2
+[2025-10-12T03:42:18.611Z] Fetching information on versions of extension bundle Microsoft.Azure.Functions.ExtensionBundle available on https://cdn.functions.azure.com/public/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/index.json
+[2025-10-12T03:42:18.729Z] Applying platform release channel configuration LATEST. Bundle version 4.26.2 will be used
+[2025-10-12T03:42:18.729Z] Skipping bundle download since it already exists at path /Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.26.2
+[2025-10-12T03:42:18.730Z] Loading extension bundle from /Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.26.2/bin
+[2025-10-12T03:42:18.730Z] Script Startup resetting load context with base path: '/Users/jack/.azure-functions-core-tools/Functions/ExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.26.2/bin'.
+[2025-10-12T03:42:18.736Z] Reading host configuration file '/Users/jack/Downloads/msp-automation-platform/workflows/host.json'
+[2025-10-12T03:42:18.736Z] Host configuration file read:
+[2025-10-12T03:42:18.736Z] {
+[2025-10-12T03:42:18.736Z]   "version": "2.0",
+[2025-10-12T03:42:18.736Z]   "logging": {
+[2025-10-12T03:42:18.736Z]     "applicationInsights": {
+[2025-10-12T03:42:18.736Z]       "samplingSettings": {
+[2025-10-12T03:42:18.736Z]         "isEnabled": true,
+[2025-10-12T03:42:18.736Z]         "excludedTypes": "Request"
+[2025-10-12T03:42:18.736Z]       }
+[2025-10-12T03:42:18.736Z]     }
+[2025-10-12T03:42:18.736Z]   },
+[2025-10-12T03:42:18.736Z]   "extensionBundle": {
+[2025-10-12T03:42:18.736Z]     "id": "Microsoft.Azure.Functions.ExtensionBundle",
+[2025-10-12T03:42:18.736Z]     "version": "[4.*, 5.0.0)"
+[2025-10-12T03:42:18.736Z]   }
+[2025-10-12T03:42:18.736Z] }
+[2025-10-12T03:42:18.752Z] Starting host metrics provider.
+[2025-10-12T03:42:18.781Z] Initializing Warmup Extension.
+[2025-10-12T03:42:18.795Z] Initializing Host. OperationId: 'bab32875-1330-4de6-b19f-da181d9c3b03'.
+[2025-10-12T03:42:18.797Z] Host initialization: ConsecutiveErrors=0, StartupCount=1, OperationId=bab32875-1330-4de6-b19f-da181d9c3b03
+[2025-10-12T03:42:18.807Z] LoggerFilterOptions
+[2025-10-12T03:42:18.807Z] {
+[2025-10-12T03:42:18.807Z]   "MinLevel": "None",
+[2025-10-12T03:42:18.807Z]   "Rules": [
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": null,
+[2025-10-12T03:42:18.807Z]       "CategoryName": "Microsoft.Hosting.Lifetime",
+[2025-10-12T03:42:18.807Z]       "LogLevel": "None",
+[2025-10-12T03:42:18.807Z]       "Filter": null
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": "Azure.Functions.Cli.Diagnostics.ColoredConsoleLoggerProvider",
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": "None",
+[2025-10-12T03:42:18.807Z]       "Filter": null
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": "Azure.Functions.Cli.Diagnostics.ColoredConsoleLoggerProvider",
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": null,
+[2025-10-12T03:42:18.807Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": null,
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": null,
+[2025-10-12T03:42:18.807Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": null,
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": null,
+[2025-10-12T03:42:18.807Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": "Microsoft.Azure.WebJobs.Script.WebHost.Diagnostics.SystemLoggerProvider",
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": "None",
+[2025-10-12T03:42:18.807Z]       "Filter": null
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": "Microsoft.Azure.WebJobs.Script.WebHost.Diagnostics.SystemLoggerProvider",
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": null,
+[2025-10-12T03:42:18.807Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.807Z]     },
+[2025-10-12T03:42:18.807Z]     {
+[2025-10-12T03:42:18.807Z]       "ProviderName": "Azure.Functions.Cli.Diagnostics.ColoredConsoleLoggerProvider",
+[2025-10-12T03:42:18.807Z]       "CategoryName": null,
+[2025-10-12T03:42:18.807Z]       "LogLevel": null,
+[2025-10-12T03:42:18.808Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.808Z]     }
+[2025-10-12T03:42:18.808Z]   ]
+[2025-10-12T03:42:18.808Z] }
+[2025-10-12T03:42:18.808Z] LoggerFilterOptions
+[2025-10-12T03:42:18.808Z] {
+[2025-10-12T03:42:18.808Z]   "MinLevel": "None",
+[2025-10-12T03:42:18.808Z]   "Rules": [
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": null,
+[2025-10-12T03:42:18.808Z]       "CategoryName": "Microsoft.Hosting.Lifetime",
+[2025-10-12T03:42:18.808Z]       "LogLevel": "None",
+[2025-10-12T03:42:18.808Z]       "Filter": null
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": "Azure.Functions.Cli.Diagnostics.ColoredConsoleLoggerProvider",
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": "None",
+[2025-10-12T03:42:18.808Z]       "Filter": null
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": "Azure.Functions.Cli.Diagnostics.ColoredConsoleLoggerProvider",
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": null,
+[2025-10-12T03:42:18.808Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": null,
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": null,
+[2025-10-12T03:42:18.808Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": null,
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": null,
+[2025-10-12T03:42:18.808Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": "Microsoft.Azure.WebJobs.Script.WebHost.Diagnostics.SystemLoggerProvider",
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": "None",
+[2025-10-12T03:42:18.808Z]       "Filter": null
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": "Microsoft.Azure.WebJobs.Script.WebHost.Diagnostics.SystemLoggerProvider",
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": null,
+[2025-10-12T03:42:18.808Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.808Z]     },
+[2025-10-12T03:42:18.808Z]     {
+[2025-10-12T03:42:18.808Z]       "ProviderName": "Azure.Functions.Cli.Diagnostics.ColoredConsoleLoggerProvider",
+[2025-10-12T03:42:18.808Z]       "CategoryName": null,
+[2025-10-12T03:42:18.808Z]       "LogLevel": null,
+[2025-10-12T03:42:18.808Z]       "Filter": "<AddFilter>b__0"
+[2025-10-12T03:42:18.808Z]     }
+[2025-10-12T03:42:18.808Z]   ]
+[2025-10-12T03:42:18.808Z] }
+[2025-10-12T03:42:18.808Z] FunctionResultAggregatorOptions
+[2025-10-12T03:42:18.808Z] {
+[2025-10-12T03:42:18.808Z]   "BatchSize": 1000,
+[2025-10-12T03:42:18.808Z]   "FlushTimeout": "00:00:30",
+[2025-10-12T03:42:18.808Z]   "IsEnabled": true
+[2025-10-12T03:42:18.808Z] }
+[2025-10-12T03:42:18.808Z] ConcurrencyOptions
+[2025-10-12T03:42:18.808Z] {
+[2025-10-12T03:42:18.808Z]   "DynamicConcurrencyEnabled": false,
+[2025-10-12T03:42:18.808Z]   "MaximumFunctionConcurrency": 500,
+[2025-10-12T03:42:18.808Z]   "CPUThreshold": 0.8,
+[2025-10-12T03:42:18.808Z]   "SnapshotPersistenceEnabled": true
+[2025-10-12T03:42:18.808Z] }
+[2025-10-12T03:42:18.808Z] SingletonOptions
+[2025-10-12T03:42:18.808Z] {
+[2025-10-12T03:42:18.808Z]   "LockPeriod": "00:00:15",
+[2025-10-12T03:42:18.808Z]   "ListenerLockPeriod": "00:00:15",
+[2025-10-12T03:42:18.808Z]   "LockAcquisitionTimeout": "10675199.02:48:05.4775807",
+[2025-10-12T03:42:18.808Z]   "LockAcquisitionPollingInterval": "00:00:05",
+[2025-10-12T03:42:18.808Z]   "ListenerLockRecoveryPollingInterval": "00:01:00"
+[2025-10-12T03:42:18.808Z] }
+[2025-10-12T03:42:18.808Z] ScaleOptions
+[2025-10-12T03:42:18.808Z] {
+[2025-10-12T03:42:18.808Z]   "ScaleMetricsMaxAge": "00:02:00",
+[2025-10-12T03:42:18.808Z]   "ScaleMetricsSampleInterval": "00:00:10",
+[2025-10-12T03:42:18.808Z]   "MetricsPurgeEnabled": true,
+[2025-10-12T03:42:18.808Z]   "IsTargetScalingEnabled": true,
+[2025-10-12T03:42:18.808Z]   "IsRuntimeScalingEnabled": false
+[2025-10-12T03:42:18.808Z] }
+[2025-10-12T03:42:18.809Z] Starting JobHost
+[2025-10-12T03:42:18.810Z] Starting Host (HostId=ws6fdb8-58216650, InstanceId=8b4a5bbd-e73d-4a0b-8b74-afe10bd77fdf, Version=4.1041.200.25360, ProcessId=38703, AppDomainId=1, InDebugMode=False, InDiagnosticMode=False, FunctionsExtensionVersion=(null))
+[2025-10-12T03:42:18.812Z] Loading functions metadata
+[2025-10-12T03:42:18.812Z] Worker indexing is enabled
+[2025-10-12T03:42:18.812Z] Fetching metadata for workerRuntime: python
+[2025-10-12T03:42:18.812Z] Reading functions metadata (Worker)
+[2025-10-12T03:42:18.813Z] Reading functions metadata (Custom)
+[2025-10-12T03:42:18.815Z] 0 functions found (Custom)
+[2025-10-12T03:42:18.816Z] 9 functions loaded
+[2025-10-12T03:42:18.828Z] Generating 9 job function(s)
+[2025-10-12T03:42:18.828Z] Worker process started and initialized.
+[2025-10-12T03:42:18.830Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: 00374e98-986c-548b-ab0e-7c1ed9ccba7a,function_name: admin_workflow, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.830Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: 00374e98-986c-548b-ab0e-7c1ed9ccba7a,function Name: admin_workflow,programming model: V2
+[2025-10-12T03:42:18.830Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: bbeb25ed-c625-58fd-ad19-8fcb3545fb78,function_name: execute_workflow, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.830Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: bbeb25ed-c625-58fd-ad19-8fcb3545fb78,function Name: execute_workflow,programming model: V2
+[2025-10-12T03:42:18.831Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: 43956e83-7120-5389-8876-08536b12b73a,function_name: get_data_provider_options, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.831Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: 43956e83-7120-5389-8876-08536b12b73a,function Name: get_data_provider_options,programming model: V2
+[2025-10-12T03:42:18.831Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: 345070ad-c3ac-5c32-b56b-ba56c1206a1d,function_name: get_metadata, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.831Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: 345070ad-c3ac-5c32-b56b-ba56c1206a1d,function Name: get_metadata,programming model: V2
+[2025-10-12T03:42:18.831Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: f1baddb9-bde2-51ab-a073-08fe0902143a,function_name: get_openapi_json, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.832Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: f1baddb9-bde2-51ab-a073-08fe0902143a,function Name: get_openapi_json,programming model: V2
+[2025-10-12T03:42:18.832Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: 0ceef55b-f59f-51d2-aa2a-71bb2b3ef9f4,function_name: get_openapi_yaml, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.832Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: 0ceef55b-f59f-51d2-aa2a-71bb2b3ef9f4,function Name: get_openapi_yaml,programming model: V2
+[2025-10-12T03:42:18.832Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: 2c211500-7438-5bd9-863e-2eb39f2da974,function_name: get_swagger_ui, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.832Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: 2c211500-7438-5bd9-863e-2eb39f2da974,function Name: get_swagger_ui,programming model: V2
+[2025-10-12T03:42:18.832Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: c8e81137-41e9-5b1f-9d20-1a8170f90735,function_name: health, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.832Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: c8e81137-41e9-5b1f-9d20-1a8170f90735,function Name: health,programming model: V2
+[2025-10-12T03:42:18.832Z] Received WorkerLoadRequest, request ID bc08718a-62bd-4661-b3ce-4d49e1a7f737, function_id: caad8b84-a71d-5187-846c-cb48c2ad0a80,function_name: list_data_providers, function_app_directory : /Users/jack/Downloads/msp-automation-platform/workflows
+[2025-10-12T03:42:18.832Z] Successfully processed FunctionLoadRequest, request ID: bc08718a-62bd-4661-b3ce-4d49e1a7f737, function ID: caad8b84-a71d-5187-846c-cb48c2ad0a80,function Name: list_data_providers,programming model: V2
+[2025-10-12T03:42:18.844Z] Found the following functions:
+[2025-10-12T03:42:18.844Z] Host.Functions.admin_workflow
+[2025-10-12T03:42:18.844Z] Host.Functions.execute_workflow
+[2025-10-12T03:42:18.844Z] Host.Functions.get_data_provider_options
+[2025-10-12T03:42:18.844Z] Host.Functions.get_metadata
+[2025-10-12T03:42:18.844Z] Host.Functions.get_openapi_json
+[2025-10-12T03:42:18.844Z] Host.Functions.get_openapi_yaml
+[2025-10-12T03:42:18.844Z] Host.Functions.get_swagger_ui
+[2025-10-12T03:42:18.844Z] Host.Functions.health
+[2025-10-12T03:42:18.844Z] Host.Functions.list_data_providers
+[2025-10-12T03:42:18.844Z] 
+[2025-10-12T03:42:18.847Z] HttpOptions
+[2025-10-12T03:42:18.847Z] {
+[2025-10-12T03:42:18.847Z]   "DynamicThrottlesEnabled": false,
+[2025-10-12T03:42:18.847Z]   "EnableChunkedRequestBinding": false,
+[2025-10-12T03:42:18.847Z]   "MaxConcurrentRequests": -1,
+[2025-10-12T03:42:18.847Z]   "MaxOutstandingRequests": -1,
+[2025-10-12T03:42:18.847Z]   "RoutePrefix": "api"
+[2025-10-12T03:42:18.847Z] }
+[2025-10-12T03:42:18.848Z] Initializing function HTTP routes
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/registry/workflows' [GET] to 'admin_workflow'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/workflows/{workflowName}' [POST] to 'execute_workflow'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/data-providers/{providerName}' [GET] to 'get_data_provider_options'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/registry/metadata' [GET] to 'get_metadata'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/openapi.json' [GET] to 'get_openapi_json'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/openapi.yaml' [GET] to 'get_openapi_yaml'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/docs' [GET] to 'get_swagger_ui'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/health' [GET] to 'health'
+[2025-10-12T03:42:18.848Z] Mapped function route 'api/data-providers' [GET] to 'list_data_providers'
+[2025-10-12T03:42:18.848Z] 
+[2025-10-12T03:42:18.850Z] Host initialized (37ms)
+[2025-10-12T03:42:18.850Z] Host started (40ms)
+[2025-10-12T03:42:18.850Z] Job host started
+
+Functions:
+
+	admin_workflow: [GET] http://localhost:7072/api/registry/workflows
+
+	execute_workflow: [POST] http://localhost:7072/api/workflows/{workflowName}
+
+	get_data_provider_options: [GET] http://localhost:7072/api/data-providers/{providerName}
+
+	get_metadata: [GET] http://localhost:7072/api/registry/metadata
+
+	get_openapi_json: [GET] http://localhost:7072/api/openapi.json
+
+	get_openapi_yaml: [GET] http://localhost:7072/api/openapi.yaml
+
+	get_swagger_ui: [GET] http://localhost:7072/api/docs
+
+	health: [GET] http://localhost:7072/api/health
+
+	list_data_providers: [GET] http://localhost:7072/api/data-providers
+
+[2025-10-12T03:42:23.869Z] Host lock lease acquired by instance ID '00000000000000000000000016355190'.
