@@ -319,7 +319,7 @@ class OrganizationContext:
         self.log(
             "info",
             f"Retrieved OAuth credentials for '{connection_name}'",
-            {
+            data={
                 "connection_name": connection_name,
                 "expires_at": expires_at.isoformat(),
                 "is_expired": credentials.is_expired()
@@ -428,17 +428,42 @@ class OrganizationContext:
         """Get a workflow variable."""
         return self._variables.get(key, default)
 
-    def log(self, level: str, message: str, data: Dict[str, Any] = None) -> None:
+    def log(self, *args, **kwargs) -> None:
         """
         Log a message from the workflow.
+
+        Flexible signature - can be called with 1, 2, or 3 arguments:
+        - context.log("message") -> info level
+        - context.log("level", "message") -> explicit level
+        - context.log("level", "message", data={"key": "value"}) -> with structured data
 
         Logs are persisted in the execution record.
 
         Args:
-            level: "info" | "warning" | "error"
-            message: Log message
-            data: Additional structured data
+            *args: Either (message,) or (level, message)
+            **kwargs: Optional 'data' keyword argument for structured data
+
+        Examples:
+            context.log("Hello World")  # info level
+            context.log("info", "Hello World")  # explicit info
+            context.log("warning", "Something wrong")
+            context.log("error", "Failed", data={"details": "..."})
         """
+        # Parse arguments
+        if len(args) == 1:
+            # Single argument: message only, default to info
+            level = "info"
+            message = args[0]
+        elif len(args) == 2:
+            # Two arguments: level and message
+            level = args[0]
+            message = args[1]
+        else:
+            raise ValueError("log() takes 1 or 2 positional arguments")
+
+        # Get optional data kwarg
+        data = kwargs.get('data')
+
         log_entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "level": level,

@@ -50,7 +50,7 @@ class TestAuditLogger:
         """Test AuditLogger reads connection string from environment"""
         from engine.shared.audit import AuditLogger
 
-        with patch.dict('os.environ', {'TABLE_STORAGE_CONNECTION_STRING': 'env_connection'}):
+        with patch.dict('os.environ', {'AzureWebJobsStorage': 'env_connection'}):
             logger = AuditLogger()
 
             assert logger.connection_string == 'env_connection'
@@ -277,7 +277,8 @@ class TestAuditLogger:
         logger = AuditLogger(connection_string="UseDevelopmentStorage=true")
 
         with patch('engine.shared.audit.TableServiceClient') as mock_service:
-            mock_service.from_connection_string.side_effect = Exception("Connection error")
+            mock_service.from_connection_string.side_effect = Exception(
+                "Connection error")
 
             with patch('engine.shared.audit.logger') as mock_logger:
                 client = logger._get_table_client()

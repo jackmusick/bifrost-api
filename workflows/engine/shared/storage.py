@@ -30,12 +30,11 @@ class TableStorageService:
         self.table_name = table_name
 
         if connection_string is None:
-            connection_string = os.environ.get(
-                "TABLE_STORAGE_CONNECTION_STRING")
+            connection_string = os.environ.get("AzureWebJobsStorage")
 
         if not connection_string:
             raise ValueError(
-                "TABLE_STORAGE_CONNECTION_STRING environment variable not set")
+                "AzureWebJobsStorage environment variable not set")
 
         self.connection_string = connection_string
         self.table_client = TableClient.from_connection_string(

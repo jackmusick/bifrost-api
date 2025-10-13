@@ -4,12 +4,12 @@ Complete guide for setting up and testing workflows locally using Azurite and Az
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Detailed Setup](#detailed-setup)
-- [Authentication](#authentication)
-- [Testing Workflows](#testing-workflows)
-- [Troubleshooting](#troubleshooting)
+-   [Prerequisites](#prerequisites)
+-   [Quick Start](#quick-start)
+-   [Detailed Setup](#detailed-setup)
+-   [Authentication](#authentication)
+-   [Testing Workflows](#testing-workflows)
+-   [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -20,27 +20,31 @@ Before you begin, ensure you have the following installed:
 ### Required Tools
 
 1. **Python 3.11+**
-   ```bash
-   python --version  # Should be 3.11 or higher
-   ```
+
+    ```bash
+    python --version  # Should be 3.11 or higher
+    ```
 
 2. **Azure Functions Core Tools v4**
-   ```bash
-   func --version  # Should be 4.x
-   ```
 
-   Install: https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local
+    ```bash
+    func --version  # Should be 4.x
+    ```
+
+    Install: https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local
 
 3. **Azurite** (Azure Storage Emulator)
-   ```bash
-   npm install -g azurite
-   ```
 
-   Or use Docker:
-   ```bash
-   docker run -p 10000:10000 -p 10001:10001 -p 10002:10002 \
-       mcr.microsoft.com/azure-storage/azurite
-   ```
+    ```bash
+    npm install -g azurite
+    ```
+
+    Or use Docker:
+
+    ```bash
+    docker run -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+        mcr.microsoft.com/azure-storage/azurite
+    ```
 
 ### Python Dependencies
 
@@ -51,10 +55,11 @@ pip install -r requirements.txt
 ```
 
 Required packages:
-- `azure-functions` - Azure Functions runtime
-- `azure-data-tables` - Table Storage SDK
-- `pydantic` - Data validation
-- `pytest`, `pytest-asyncio` - Testing
+
+-   `azure-functions` - Azure Functions runtime
+-   `azure-data-tables` - Table Storage SDK
+-   `pydantic` - Data validation
+-   `pytest`, `pytest-asyncio` - Testing
 
 ---
 
@@ -103,12 +108,14 @@ python scripts/authenticate_azure.py
 ```
 
 **What this script does:**
+
 1. Auto-detects your Key Vault URL from `local.settings.json` or prompts you to enter it
 2. Authenticates you to Azure interactively (may open browser)
 3. Tests your Key Vault permissions (list, get)
 4. Caches credentials for subsequent use
 
 **Output example:**
+
 ```
 ✓ Found Key Vault URL in local.settings.json: https://my-vault.vault.azure.net/
 ✓ Azure credential created successfully
@@ -118,22 +125,25 @@ python scripts/authenticate_azure.py
 ```
 
 **When to run:**
-- First time setup
-- When your Azure CLI credentials expire
-- When switching Azure accounts
-- Before starting development if using secrets
+
+-   First time setup
+-   When your Azure CLI credentials expire
+-   When switching Azure accounts
+-   Before starting development if using secrets
 
 **When to skip:**
-- Your workflows don't use secrets
-- You're using environment variable fallback (see Key Vault quickstart)
+
+-   Your workflows don't use secrets
+-   You're using environment variable fallback (see Key Vault quickstart)
 
 **Configuration:**
 Add Key Vault URL to `local.settings.json`:
+
 ```json
 {
-  "Values": {
-    "AZURE_KEY_VAULT_URL": "https://your-vault.vault.azure.net/"
-  }
+    "Values": {
+        "AZURE_KEY_VAULT_URL": "https://your-vault.vault.azure.net/"
+    }
 }
 ```
 
@@ -146,11 +156,13 @@ See: `specs/003-use-azure-key/quickstart.md` for detailed Key Vault setup
 Azurite emulates Azure Table Storage locally.
 
 **Option A: npm/CLI** (Recommended)
+
 ```bash
 azurite --silent --location /tmp/azurite --debug /tmp/azurite/debug.log
 ```
 
 **Option B: Docker**
+
 ```bash
 docker run -d -p 10002:10002 \
   -v /tmp/azurite:/data \
@@ -159,11 +171,13 @@ docker run -d -p 10002:10002 \
 ```
 
 Verify Azurite is running:
+
 ```bash
 curl http://127.0.0.1:10002/devstoreaccount1
 ```
 
 **Connection String** (automatically used by seed script):
+
 ```
 DefaultEndpointsProtocol=http;
 AccountName=devstoreaccount1;
@@ -182,25 +196,29 @@ python scripts/seed_azurite.py
 **What gets seeded:**
 
 **Organizations** (3 test orgs):
-- `test-org-active` - Active test organization
-- `test-org-demo` - Demo organization (active)
-- `test-org-inactive` - Inactive test organization
+
+-   `test-org-active` - Active test organization
+-   `test-org-demo` - Demo organization (active)
+-   `test-org-inactive` - Inactive test organization
 
 **Users** (5 test users):
-- `admin@platform.local` - PlatformAdmin
-- `user1@testorg.local` - OrgUser (test-org-active)
-- `user2@testorg.local` - OrgUser (test-org-active)
-- `admin@demo.local` - OrgAdmin (test-org-demo)
-- `user@inactive.local` - OrgUser (test-org-inactive)
+
+-   `admin@platform.local` - PlatformAdmin
+-   `user1@testorg.local` - OrgUser (test-org-active)
+-   `user2@testorg.local` - OrgUser (test-org-active)
+-   `admin@demo.local` - OrgAdmin (test-org-demo)
+-   `user@inactive.local` - OrgUser (test-org-inactive)
 
 **Configuration** (10+ entries):
-- Global config: platform settings, feature flags
-- Org-specific config: API endpoints, integrations, rate limits
+
+-   Global config: platform settings, feature flags
+-   Org-specific config: API endpoints, integrations, rate limits
 
 **Features:**
-- ✓ Idempotent (can run multiple times safely)
-- ✓ <5s execution time
-- ✓ Clear console output with status
+
+-   ✓ Idempotent (can run multiple times safely)
+-   ✓ <5s execution time
+-   ✓ Clear console output with status
 
 ### Step 3: Configure Environment
 
@@ -208,12 +226,12 @@ Ensure `local.settings.json` exists with Azurite connection:
 
 ```json
 {
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "TABLE_STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
-  }
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "AzureWebJobsStorage": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+    }
 }
 ```
 
@@ -226,6 +244,7 @@ func start
 ```
 
 You should see:
+
 ```
 Azure Functions Core Tools
 ...
@@ -246,11 +265,12 @@ Run the automated test script:
 ```
 
 This verifies:
-- [x] Azurite is running
-- [x] Seed data populated
-- [x] Azure Functions responding
-- [x] Health endpoint works
-- [x] Authentication functioning
+
+-   [x] Azurite is running
+-   [x] Seed data populated
+-   [x] Azure Functions responding
+-   [x] Health endpoint works
+-   [x] Authentication functioning
 
 ---
 
@@ -264,10 +284,10 @@ In production, Azure Static Web Apps provides Easy Auth with Azure AD. The `X-MS
 
 ```json
 {
-  "userId": "user-id-from-aad",
-  "userDetails": "user@domain.com",
-  "identityProvider": "aad",
-  "userRoles": ["OrgUser", "OrgAdmin"]
+    "userId": "user-id-from-aad",
+    "userDetails": "user@domain.com",
+    "identityProvider": "aad",
+    "userRoles": ["OrgUser", "OrgAdmin"]
 }
 ```
 
@@ -282,9 +302,10 @@ python scripts/authenticate_azure.py
 ```
 
 This uses `DefaultAzureCredential` which:
-- Uses Azure CLI credentials (`az login`) locally
-- Uses Managed Identity in production
-- Caches credentials for the session
+
+-   Uses Azure CLI credentials (`az login`) locally
+-   Uses Managed Identity in production
+-   Caches credentials for the session
 
 **See Step 0 above for detailed instructions**
 
@@ -297,6 +318,7 @@ This uses `DefaultAzureCredential` which:
 **⚠️ IMPORTANT**: All workflow code MUST be written in the `/workspace/` directory ONLY. Never modify files in `/engine/` as they contain system infrastructure code.
 
 **Directory Structure**:
+
 ```
 /workspace/
 ├── workflows/          # Your workflow implementations
@@ -307,15 +329,14 @@ This uses `DefaultAzureCredential` which:
     └── error_handling.py
 ```
 
-**Allowed Imports**: Workspace code can only import from these specific modules:
+**Allowed Imports**: Workspace code uses the **bifrost module** for platform functionality:
+
 ```python
-# ✅ ALLOWED - Public API for workspace code
-from engine.shared.decorators import workflow, param, data_provider
-from engine.shared.context import OrganizationContext
+# ✅ ALLOWED - Public API via bifrost module
+from bifrost import workflow, param, data_provider, OrganizationContext
 from engine.shared.error_handling import (
     WorkflowException, ValidationError, IntegrationError, TimeoutError
 )
-from engine.shared.models import PydanticModels  # For type hints
 
 # ❌ FORBIDDEN - Internal engine modules
 from engine.shared.storage import TableStorageService  # Will be blocked!
@@ -328,8 +349,7 @@ Create a workflow in `/workspace/workflows/`:
 
 ```python
 # /workspace/workflows/test_workflow.py
-from engine.shared.decorators import workflow, param
-from engine.shared.context import OrganizationContext
+from bifrost import workflow, param, OrganizationContext
 
 @workflow(
     name="test_workflow",
@@ -359,53 +379,57 @@ async def my_workflow(context: OrganizationContext, param1: str):
     org_id = context.org_id           # Organization ID
     org_name = context.org_name       # Organization display name
     tenant_id = context.tenant_id     # Microsoft 365 tenant ID (if linked)
-    
+
     # === EXECUTION METADATA ===
     execution_id = context.execution_id
     caller_email = context.executed_by_email
     caller_name = context.executed_by_name
-    
+
     # === CONFIGURATION (with secret resolution) ===
     # Automatically resolves secret_ref types from Key Vault
     api_url = context.get_config("api_url", "https://default.com")
     api_key = context.get_config("api_key")  # Will fetch from Key Vault if secret_ref
     has_config = context.has_config("optional_setting")
-    
+
     # === SECRETS (direct Key Vault access) ===
     # Secrets are org-scoped: {org_id}--{secret_name}
     secret_value = await context.get_secret("my_secret")
-    
+
     # === OAUTH CONNECTIONS ===
     # Get pre-authenticated OAuth credentials
     oauth_creds = await context.get_oauth_connection("HaloPSA")
     headers = {"Authorization": oauth_creds.get_auth_header()}
-    
+
     # === INTEGRATIONS ===
     # Get pre-authenticated integration clients
     # graph = context.get_integration("msgraph")  # When implemented
     # halo = context.get_integration("halopsa")  # When implemented
-    
+
     # === STATE TRACKING ===
     context.save_checkpoint("step1", {"progress": "started"})
     context.set_variable("user_count", 42)
     count = context.get_variable("user_count", 0)
-    
+
     # === LOGGING ===
-    context.log("info", "Processing started", {"param1": param1})
+    context.log("Processing started")  # Simple form (info level)
+    context.log("info", "Processing started", data={"param1": param1})  # Explicit level
     context.log("warning", "Non-critical issue detected")
-    context.log("error", "Something went wrong", {"error": "details"})
+    context.log("error", "Something went wrong", data={"error": "details"})
 ```
 
 ### Installing and Using Modules
 
 **External Dependencies**: Add to `requirements.txt`:
+
 ```bash
 pip install requests
 pip install pandas
 ```
 
 **Using External Libraries**:
+
 ```python
+from bifrost import workflow, OrganizationContext
 import requests
 import pandas as pd
 
@@ -414,13 +438,14 @@ async def call_external_api(context: OrganizationContext):
     # Use external libraries normally
     response = requests.get("https://api.example.com/data")
     data = response.json()
-    
+
     # Process with pandas
     df = pd.DataFrame(data)
     return {"count": len(df)}
 ```
 
 **Local Development Modules**: Create utility modules in `/workspace/`:
+
 ```python
 # /workspace/utils.py
 def format_phone_number(phone: str) -> str:
@@ -428,6 +453,7 @@ def format_phone_number(phone: str) -> str:
     return phone.replace("-", " ").strip()
 
 # /workspace/workflows/my_workflow.py
+from bifrost import workflow, OrganizationContext
 from ..utils import format_phone_number  # Relative import
 
 @workflow(name="format_phone")
@@ -439,32 +465,36 @@ async def format_phone(context: OrganizationContext, phone: str):
 ### Testing and Breakpoint Debugging
 
 **1. Run Azure Functions in Debug Mode**:
+
 ```bash
 # Start with debugging enabled
 func start --debug
 ```
 
 **2. Set Breakpoints in Your Code**:
+
 ```python
 # /workspace/workflows/debug_workflow.py
+from bifrost import workflow, OrganizationContext
 import pdb  # Python debugger
 
 @workflow(name="debug_workflow")
 async def debug_workflow(context: OrganizationContext, data: str):
     context.log("Starting debug workflow")
-    
+
     # Set breakpoint - execution will pause here
     pdb.set_trace()
-    
+
     # You can inspect variables here
     result = process_data(data)  # Step into this function
-    
+
     context.log("Processed data", {"result": result})
     return {"result": result}
 ```
 
 **3. VS Code Debugging Setup**:
 Create `.vscode/launch.json`:
+
 ```json
 {
     "version": "0.2.0",
@@ -487,6 +517,7 @@ Create `.vscode/launch.json`:
 ```
 
 **4. Debug Workflow Execution**:
+
 ```bash
 # Terminal 1: Start Functions with debug
 func start --debug --port 9091
@@ -500,6 +531,7 @@ curl -X POST \
 ```
 
 **5. Common Debugging Commands**:
+
 ```python
 # In pdb console (when breakpoint hits):
 p context.org_id          # Print organization ID
@@ -513,6 +545,7 @@ c                        # Continue execution
 ### Azure Key Vault Local Development
 
 **Interactive Authentication**:
+
 ```bash
 # Authenticate to Azure for Key Vault access
 python scripts/authenticate_azure.py
@@ -520,15 +553,17 @@ python scripts/authenticate_azure.py
 
 **Specifying Your Key Vault**:
 Add to `local.settings.json`:
+
 ```json
 {
-  "Values": {
-    "AZURE_KEY_VAULT_URL": "https://your-key-vault-name.vault.azure.net/"
-  }
+    "Values": {
+        "AZURE_KEY_VAULT_URL": "https://your-key-vault-name.vault.azure.net/"
+    }
 }
 ```
 
 **Creating/Updating Secrets**:
+
 ```bash
 # Create secret in Azure CLI
 az keyvault secret set --vault-name your-vault-name \
@@ -544,34 +579,39 @@ az keyvault secret set --vault-name your-vault-name \
 **Remembering to Update in Both Places**:
 
 1. **Azure Key Vault** (persistent storage):
-   ```bash
-   az keyvault secret set --vault-name your-vault \
-     --name "GLOBAL--my-secret" --value "new-value"
-   ```
+
+    ```bash
+    az keyvault secret set --vault-name your-vault \
+      --name "GLOBAL--my-secret" --value "new-value"
+    ```
 
 2. **Local Configuration** (for development):
-   ```python
-   # In your workflow, use context.get_config() with secret_ref
-   api_key = context.get_config("my_api_key")  # Automatically resolves from Key Vault
-   ```
+    ```python
+    # In your workflow, use context.get_config() with secret_ref
+    api_key = context.get_config("my_api_key")  # Automatically resolves from Key Vault
+    ```
 
 **Secret Naming Convention**:
-- Global secrets: `GLOBAL--{secret-name}`
-- Org-specific secrets: `{org-id}--{secret-name}`
+
+-   Global secrets: `GLOBAL--{secret-name}`
+-   Org-specific secrets: `{org-id}--{secret-name}`
 
 **Testing Secret Access**:
+
 ```python
+from bifrost import workflow, OrganizationContext
+
 @workflow(name="test_secrets")
 async def test_secrets(context: OrganizationContext):
     try:
         # Test global secret
         global_secret = await context.get_secret("shared_api_key")
         context.log("Got global secret", {"length": len(global_secret)})
-        
+
         # Test org-specific secret
         org_secret = await context.get_secret("client_secret")
         context.log("Got org secret", {"length": len(org_secret)})
-        
+
         return {"success": True}
     except Exception as e:
         context.log("error", "Secret access failed", {"error": str(e)})
@@ -579,6 +619,7 @@ async def test_secrets(context: OrganizationContext):
 ```
 
 **Key Vault Permissions**:
+
 ```bash
 # Grant yourself Key Vault access
 az keyvault set-policy --name your-vault-name \
@@ -597,19 +638,20 @@ curl -X POST \
 ```
 
 **Expected Response:**
+
 ```json
 {
-  "executionId": "uuid-here",
-  "status": "Success",
-  "result": {
-    "echo": "Hello, World!",
-    "org_id": "test-org-active",
-    "org_name": "Active Test Organization",
-    "caller": "local-dev@system.local"
-  },
-  "durationMs": 123,
-  "startedAt": "2025-01-15T10:30:00Z",
-  "completedAt": "2025-01-15T10:30:00Z"
+    "executionId": "uuid-here",
+    "status": "Success",
+    "result": {
+        "echo": "Hello, World!",
+        "org_id": "test-org-active",
+        "org_name": "Active Test Organization",
+        "caller": "local-dev@system.local"
+    },
+    "durationMs": 123,
+    "startedAt": "2025-01-15T10:30:00Z",
+    "completedAt": "2025-01-15T10:30:00Z"
 }
 ```
 
@@ -660,6 +702,7 @@ for event in events:
 **Error:** `EADDRINUSE: address already in use`
 
 **Solution:** Kill existing Azurite process
+
 ```bash
 lsof -i :10002  # Find process using port 10002
 kill -9 <PID>
@@ -670,6 +713,7 @@ kill -9 <PID>
 **Error:** `Failed to create table client`
 
 **Solution:** Verify Azurite is running
+
 ```bash
 curl http://127.0.0.1:10002/devstoreaccount1
 ```
@@ -679,6 +723,7 @@ curl http://127.0.0.1:10002/devstoreaccount1
 **Error:** `No job functions found`
 
 **Solution:** Ensure you're in the correct directory
+
 ```bash
 cd /path/to/bifrost-integrations/workflows
 func start
@@ -687,6 +732,7 @@ func start
 **Error:** `Worker was unable to load function`
 
 **Solution:** Check Python version and dependencies
+
 ```bash
 python --version  # Must be 3.11+
 pip install -r requirements.txt
@@ -697,11 +743,13 @@ pip install -r requirements.txt
 **Error:** `Failed to create Azure credential` or `Permission denied (403)`
 
 **Solution:** Authenticate to Azure
+
 ```bash
 python scripts/authenticate_azure.py
 ```
 
 If already authenticated but getting 403:
+
 ```bash
 # Grant yourself Key Vault permissions
 az keyvault set-policy --name <vault-name> \
@@ -714,6 +762,7 @@ az keyvault set-policy --name <vault-name> \
 **Error:** `Workflow 'my_workflow' not found`
 
 **Solution:** Verify workflow is decorated and imported
+
 1. Check workflow file has `@workflow` decorator
 2. Ensure file is in `/workspace/workflows/`
 3. Check `function_app.py` imports `workspace.workflows`
@@ -723,28 +772,28 @@ az keyvault set-policy --name <vault-name> \
 
 **Error:** `Workspace code cannot import engine module`
 
-**Solution:** Use public API only
+**Solution:** Use bifrost module for public API
+
 ```python
 # ✗ WRONG - Blocks internal imports
 from engine.shared.storage import get_organization
 
-# ✓ CORRECT - Use public API
-from engine.shared.decorators import workflow, param
-from engine.shared.context import OrganizationContext
+# ✓ CORRECT - Use bifrost module
+from bifrost import workflow, param, OrganizationContext
 from engine.shared.error_handling import WorkflowException
 ```
 
 Allowed imports for workspace code:
-- `engine.shared.decorators` - @workflow, @param, @data_provider
-- `engine.shared.context` - OrganizationContext
-- `engine.shared.error_handling` - WorkflowException, ValidationError, etc.
-- `engine.shared.models` - Pydantic models
+
+-   `bifrost` - All public platform functionality (workflow, param, OrganizationContext, etc.)
+-   `engine.shared.error_handling` - WorkflowException, ValidationError, IntegrationError, TimeoutError
 
 ### Port conflicts
 
 **Error:** Azure Functions starts on different port
 
 **Solution:** Check actual port in startup output
+
 ```
 Now listening on: http://0.0.0.0:7072  # Note: Port 7072, not 7071
 ```
@@ -755,11 +804,11 @@ Update curl commands to use the correct port.
 
 ## Additional Resources
 
-- **Workspace API Documentation**: `/docs/workspace-api.md`
-- **Migration Guide**: `/docs/migration-guide.md`
-- **GitHub Actions Protection**: `/.github/workflows/protect-engine.yml`
-- **Seed Script Source**: `/scripts/seed_azurite.py`
-- **Test Script Source**: `/scripts/test_local_dev.sh`
+-   **Workspace API Documentation**: `/docs/workspace-api.md`
+-   **Migration Guide**: `/docs/migration-guide.md`
+-   **GitHub Actions Protection**: `/.github/workflows/protect-engine.yml`
+-   **Seed Script Source**: `/scripts/seed_azurite.py`
+-   **Test Script Source**: `/scripts/test_local_dev.sh`
 
 ---
 
@@ -767,12 +816,12 @@ Update curl commands to use the correct port.
 
 Before starting development, ensure:
 
-- [ ] Azure authenticated (if using secrets): `python scripts/authenticate_azure.py`
-- [ ] Azurite is running on port 10002
-- [ ] Seed script has populated test data
-- [ ] Azure Functions is running and showing endpoints
-- [ ] Health endpoint responds: `curl http://localhost:7072/api/health`
-- [ ] Test workflow executes successfully
+-   [ ] Azure authenticated (if using secrets): `python scripts/authenticate_azure.py`
+-   [ ] Azurite is running on port 10002
+-   [ ] Seed script has populated test data
+-   [ ] Azure Functions is running and showing endpoints
+-   [ ] Health endpoint responds: `curl http://localhost:7072/api/health`
+-   [ ] Test workflow executes successfully
 
 **Ready to develop!** 🚀
 

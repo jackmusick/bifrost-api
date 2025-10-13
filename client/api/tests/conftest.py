@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Set up test environment variables"""
-    os.environ["TABLE_STORAGE_CONNECTION_STRING"] = "UseDevelopmentStorage=true"
+    os.environ["AzureWebJobsStorage"] = "UseDevelopmentStorage=true"
     os.environ["KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
     os.environ["AZURE_TENANT_ID"] = "test-tenant-id"
     os.environ["AZURE_CLIENT_ID"] = "test-client-id"

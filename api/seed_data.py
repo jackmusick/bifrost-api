@@ -326,11 +326,11 @@ def seed_table(connection_string: str, table_name: str, entities: list):
 def seed_all_data(connection_string: str = None):
     """Seed all tables with sample data"""
     if connection_string is None:
-        connection_string = os.environ.get("TABLE_STORAGE_CONNECTION_STRING")
+        connection_string = os.environ.get("AzureWebJobsStorage")
 
     if not connection_string:
         raise ValueError(
-            "TABLE_STORAGE_CONNECTION_STRING environment variable not set")
+            "AzureWebJobsStorage environment variable not set")
 
     logger.info("Seeding sample data for local development...")
     logger.info("="*60)

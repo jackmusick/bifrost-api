@@ -40,15 +40,15 @@ class AuditLogger:
 
         Args:
             connection_string: Azure Storage connection string.
-                              Defaults to TABLE_STORAGE_CONNECTION_STRING env var.
+                              Defaults to AzureWebJobsStorage env var.
         """
         self.connection_string = connection_string or os.environ.get(
-            "TABLE_STORAGE_CONNECTION_STRING"
+            "AzureWebJobsStorage"
         )
 
         if not self.connection_string:
             logger.warning(
-                "TABLE_STORAGE_CONNECTION_STRING not set - audit logging disabled"
+                "AzureWebJobsStorage not set - audit logging disabled"
             )
             self._enabled = False
         else:

@@ -1,0 +1,535 @@
+openapi: 3.0.3
+info:
+  title: Workspace Files API
+  description: API for managing workspace files (manual editing mode)
+  version: 1.0.0
+  contact:
+    name: Bifrost Integrations
+
+servers:
+  - url: https://{functionsApp}.azurewebsites.net/api
+    description: Production Azure Functions
+    variables:
+      functionsApp:
+        default: bifrost-functions
+  - url: http://localhost:7071/api
+    description: Local development
+
+tags:
+  - name: Files
+    description: Workspace file operations
+  - name: Download
+    description: Workspace download operations
+
+paths:
+  /workspace/files:
+    get:
+      tags:
+        - Files
+      summary: List workspace files
+      description: List all files in workspace (recursive)
+      operationId: listWorkspaceFiles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+        - name: path
+          in: query
+          description: Directory path to list (default: root)
+          schema:
+            type: string
+          example: "workflows/tickets"
+      responses:
+        '200':
+          description: List of files and directories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                    description: Current directory path
+                    example: "workflows/tickets"
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkspaceItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspace/files/{filePath}:
+    get:
+      tags:
+        - Files
+      summary: Get file content
+      description: Read content of specific workspace file
+      operationId: getWorkspaceFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: File path relative to workspace root
+          example: "workflows/tickets/create_ticket.py"
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceFile'
+            text/plain:
+              schema:
+                type: string
+                description: Raw file content (if Accept: text/plain)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Files
+      summary: Create or update file
+      description: Create new file or update existing file content (manual editing mode only)
+      operationId: updateWorkspaceFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: File path relative to workspace root
+          example: "workflows/tickets/create_ticket.py"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  description: File content (text)
+                  example: "import requests\n\ndef create_ticket(...):\n    ..."
+                contentType:
+                  type: string
+                  description: MIME type (inferred from extension if omitted)
+                  example: "text/x-python"
+          text/plain:
+            schema:
+              type: string
+              description: Raw file content
+      responses:
+        '200':
+          description: File updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceFile'
+        '201':
+          description: File created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceFile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - GitHub sync is enabled (read-only mode)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "GitHubSyncEnabled"
+                  message:
+                    type: string
+                    example: "Cannot edit files while GitHub sync is enabled. Disconnect GitHub to enable manual editing."
+        '413':
+          description: File too large (>10MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Files
+      summary: Delete file
+      description: Delete workspace file (manual editing mode only)
+      operationId: deleteWorkspaceFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: File path relative to workspace root
+          example: "workflows/tickets/old_workflow.py"
+      responses:
+        '204':
+          description: File deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - GitHub sync is enabled (read-only mode)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "GitHubSyncEnabled"
+                  message:
+                    type: string
+                    example: "Cannot delete files while GitHub sync is enabled. Disconnect GitHub to enable manual editing."
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspace/directories/{dirPath}:
+    post:
+      tags:
+        - Files
+      summary: Create directory
+      description: Create new directory in workspace (manual editing mode only)
+      operationId: createWorkspaceDirectory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+        - name: dirPath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Directory path relative to workspace root
+          example: "workflows/new-category"
+      responses:
+        '201':
+          description: Directory created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                    example: "workflows/new-category"
+                  message:
+                    type: string
+                    example: "Directory created successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - GitHub sync is enabled (read-only mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Directory already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Files
+      summary: Delete directory
+      description: Delete directory and all contents (manual editing mode only)
+      operationId: deleteWorkspaceDirectory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+        - name: dirPath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Directory path relative to workspace root
+          example: "workflows/old-category"
+      responses:
+        '204':
+          description: Directory deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - GitHub sync is enabled (read-only mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspace/download:
+    get:
+      tags:
+        - Download
+      summary: Download workspace as ZIP
+      description: Download entire workspace as ZIP archive (data loss prevention before enabling GitHub sync)
+      operationId: downloadWorkspace
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ZIP archive of workspace
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename=workspace-20250113-103000.zip'
+            Content-Length:
+              schema:
+                type: integer
+                description: ZIP file size in bytes
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Internal server error (e.g., ZIP generation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /workspace/status:
+    get:
+      tags:
+        - Files
+      summary: Get workspace status
+      description: Get workspace mode (GitHub sync enabled/disabled) and statistics
+      operationId: getWorkspaceStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, defaults to GLOBAL)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workspace status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspacetatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  schemas:
+    WorkspaceItem:
+      type: object
+      properties:
+        name:
+          type: string
+          description: File or directory name
+          example: "create_ticket.py"
+        path:
+          type: string
+          description: Full path relative to workspace root
+          example: "workflows/tickets/create_ticket.py"
+        isDirectory:
+          type: boolean
+          description: Whether this is a directory
+        size:
+          type: integer
+          nullable: true
+          description: File size in bytes (null for directories)
+          example: 1024
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp
+
+    WorkspaceFile:
+      type: object
+      properties:
+        path:
+          type: string
+          description: File path relative to workspace root
+          example: "workflows/tickets/create_ticket.py"
+        content:
+          type: string
+          description: File content (text)
+          example: "import requests\n\ndef create_ticket(...):\n    ..."
+        contentType:
+          type: string
+          description: MIME type
+          example: "text/x-python"
+        size:
+          type: integer
+          description: File size in bytes
+          example: 1024
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp
+        etag:
+          type: string
+          description: Azure Files ETag for concurrency control
+          example: "\"0x8DCB1234567890\""
+
+    WorkspaceStatus:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [github-sync, manual-edit]
+          description: Current workspace mode
+        isReadOnly:
+          type: boolean
+          description: Whether files are read-only (GitHub sync enabled)
+        githubConnection:
+          type: object
+          nullable: true
+          description: GitHub connection details (null if manual mode)
+          properties:
+            repositoryUrl:
+              type: string
+              format: uri
+            branch:
+              type: string
+            lastSyncTimestamp:
+              type: string
+              format: date-time
+              nullable: true
+            lastSyncStatus:
+              type: string
+              nullable: true
+              enum: [success, failed, partial]
+        statistics:
+          type: object
+          properties:
+            totalFiles:
+              type: integer
+              description: Total number of files in workspace
+            totalDirectories:
+              type: integer
+              description: Total number of directories
+            totalSize:
+              type: integer
+              description: Total workspace size in bytes
+            lastModified:
+              type: string
+              format: date-time
+              description: Most recent file modification timestamp
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: "ValidationError"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid file path"
+        details:
+          type: object
+          nullable: true
+          description: Additional error context
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Not found - file or directory does not exist
+      content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Azure AD JWT token from MSAL

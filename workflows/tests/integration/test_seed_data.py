@@ -25,7 +25,7 @@ class TestAzuriteSeedData:
     def table_service_client(self):
         """Create TableServiceClient for Azurite"""
         connection_string = os.environ.get(
-            "TABLE_STORAGE_CONNECTION_STRING",
+            "AzureWebJobsStorage",
             "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
             "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
             "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
@@ -40,7 +40,8 @@ class TestAzuriteSeedData:
         # Clean before test
         for table_name in tables_to_clean:
             try:
-                table_client = table_service_client.get_table_client(table_name)
+                table_client = table_service_client.get_table_client(
+                    table_name)
                 # Delete all entities
                 entities = table_client.list_entities()
                 for entity in entities:
@@ -118,7 +119,8 @@ class TestAzuriteSeedData:
         assert len(users) <= 5
 
         # Assert different roles present
-        platform_admins = [u for u in users if 'PlatformAdmin' in u.get('Roles', [])]
+        platform_admins = [
+            u for u in users if 'PlatformAdmin' in u.get('Roles', [])]
         org_users = [u for u in users if 'OrgUser' in u.get('Roles', [])]
 
         assert len(platform_admins) >= 1, "Should have at least one PlatformAdmin"

@@ -3,7 +3,7 @@ License Data Providers
 Data providers for Microsoft 365 license selection
 """
 
-from engine.shared.decorators import data_provider
+from bifrost import data_provider
 
 
 @data_provider(

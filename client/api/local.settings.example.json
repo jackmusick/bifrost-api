@@ -3,11 +3,13 @@
     "Values": {
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "python",
-        "TABLE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
+        "AzureWebJobsSecretStorageType": "files",
         "AzureAd__TenantId": "your-tenant-id",
         "AzureAd__ClientId": "your-client-id",
-        "WorkflowEngineUrl": "http://localhost:7072"
+        "WORKFLOWS_ENGINE_URL": "http://localhost:7071",
+        "WORKFLOWS_ENGINE_FUNCTION_KEY": "test"
     },
     "Host": {
         "CORS": "*",

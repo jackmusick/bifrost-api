@@ -6,15 +6,38 @@ import sys
 import importlib.util
 from pathlib import Path
 
+# Enable debugpy for remote debugging if ENABLE_DEBUGGING=true
+if os.getenv('ENABLE_DEBUGGING') == 'true':
+    import debugpy
+    debugpy.listen(("0.0.0.0", 5678))
+    logging.info("🐛 Debugpy listening on port 5678 - attach VS Code debugger anytime")
+
 # T033-T034: Install import restrictions BEFORE importing workspace code
 from engine.shared.import_restrictor import install_import_restrictions
 
-# Calculate workspace path
-WORKSPACE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'workspace')
+# Calculate workspace path from environment variable or default to Azure Files mount
+WORKSPACE_PATH = os.environ.get('WORKSPACE_PATH', '/workspace')
 
 # Install import restrictions to prevent workspace code from importing engine internals
 install_import_restrictions([WORKSPACE_PATH])
 
+# ==================== TABLE INITIALIZATION ====================
+# Initialize Azure Table Storage tables at startup
+from engine.shared.init_tables import init_tables
+
+try:
+    logging.info("Initializing Azure Table Storage tables...")
+    results = init_tables()
+
+    if results["created"]:
+        logging.info(f"Created {len(results['created'])} tables: {', '.join(results['created'])}")
+    if results["already_exists"]:
+        logging.info(f"{len(results['already_exists'])} tables already exist")
+    if results["failed"]:
+        logging.warning(f"Failed to create {len(results['failed'])} tables - some features may not work")
+
+except Exception as e:
+    logging.warning(f"Table initialization failed: {e} - continuing without table initialization")
 
 # ==================== DYNAMIC WORKSPACE DISCOVERY ====================
 def discover_workspace_modules():

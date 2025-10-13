@@ -3,16 +3,7 @@
     "Values": {
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "python",
-        "TableStorageConnectionString": "UseDevelopmentStorage=true",
-        "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
-        "ManagementApiUrl": "http://localhost:7071",
-        "AzureAd__TenantId": "your-tenant-id",
-        "AzureAd__ClientId": "your-client-id",
-        "_comment_secrets": "=== LOCAL SECRET FALLBACK ===",
-        "_comment_secrets_org": "Org-scoped secrets: {ORG_ID}__{SECRET_KEY}",
-        "_comment_secrets_global": "Global secrets: GLOBAL__{SECRET_KEY}",
-        "_comment_secrets_example1": "Example: ORG123__MSGRAPH_CLIENT_SECRET=your-secret-here",
-        "_comment_secrets_example2": "Example: GLOBAL__SMTP_PASSWORD=your-password-here"
+        "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/"
     },
     "Host": {
         "CORS": "*",

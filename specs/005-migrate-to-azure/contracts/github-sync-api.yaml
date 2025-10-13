@@ -1,0 +1,574 @@
+openapi: 3.0.3
+info:
+  title: GitHub Workspace Sync API
+  description: API for managing GitHub repository connections and workspace synchronization
+  version: 1.0.0
+  contact:
+    name: Bifrost Integrations
+
+servers:
+  - url: https://{functionsApp}.azurewebsites.net/api
+    description: Production Azure Functions
+    variables:
+      functionsApp:
+        default: bifrost-functions
+  - url: http://localhost:7071/api
+    description: Local development
+
+tags:
+  - name: Connections
+    description: GitHub repository connection management
+  - name: Webhooks
+    description: GitHub webhook receivers
+  - name: Sync Jobs
+    description: Sync job monitoring and management
+
+paths:
+  /github-connections:
+    get:
+      tags:
+        - Connections
+      summary: List GitHub connections
+      description: List all GitHub repository connections (global and org-specific)
+      operationId: listGitHubConnections
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, returns org-specific + global if provided)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of connections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GitHubConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Connections
+      summary: Create GitHub connection
+      description: Connect a GitHub repository for workspace synchronization
+      operationId: createGitHubConnection
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, creates global connection if omitted)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - repositoryUrl
+                - personalAccessToken
+              properties:
+                repositoryUrl:
+                  type: string
+                  format: uri
+                  example: "https://github.com/msp-org/workflows.git"
+                  description: GitHub repository clone URL
+                repositoryBranch:
+                  type: string
+                  default: "main"
+                  example: "main"
+                  description: Branch to sync
+                personalAccessToken:
+                  type: string
+                  format: password
+                  example: "ghp_1234567890abcdef"
+                  description: GitHub Personal Access Token with 'repo' scope
+      responses:
+        '201':
+          description: Connection created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connection:
+                    $ref: '#/components/schemas/GitHubConnection'
+                  webhookUrl:
+                    type: string
+                    format: uri
+                    description: URL to configure in GitHub webhook settings
+                    example: "https://functions.azurewebsites.net/api/github-webhook"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Connection already exists for this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /github-connections/{orgId}:
+    get:
+      tags:
+        - Connections
+      summary: Get GitHub connection
+      description: Get GitHub connection details for specific organization or global
+      operationId: getGitHubConnection
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization ID or "GLOBAL"
+      responses:
+        '200':
+          description: Connection details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Connections
+      summary: Update GitHub connection
+      description: Update GitHub connection settings (branch, enable/disable)
+      operationId: updateGitHubConnection
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization ID or "GLOBAL"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repositoryBranch:
+                  type: string
+                  example: "main"
+                isEnabled:
+                  type: boolean
+                  description: Enable/disable synchronization
+                personalAccessToken:
+                  type: string
+                  format: password
+                  description: Update GitHub PAT (optional)
+      responses:
+        '200':
+          description: Connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubConnection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Connections
+      summary: Delete GitHub connection
+      description: Disconnect GitHub repository (workspace files remain)
+      operationId: deleteGitHubConnection
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization ID or "GLOBAL"
+      responses:
+        '204':
+          description: Connection deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /github-webhook:
+    post:
+      tags:
+        - Webhooks
+      summary: GitHub webhook receiver
+      description: Receive GitHub push events and queue workspace sync
+      operationId: receiveGitHubWebhook
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+          description: HMAC-SHA256 signature for payload verification
+          example: "sha256=1234567890abcdef"
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema:
+            type: string
+          description: GitHub event type
+          example: "push"
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique delivery ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: GitHub webhook payload (varies by event type)
+              properties:
+                ref:
+                  type: string
+                  example: "refs/heads/main"
+                after:
+                  type: string
+                  description: Commit SHA after push
+                  example: "a1b2c3d4e5f6..."
+                repository:
+                  type: object
+                  properties:
+                    clone_url:
+                      type: string
+                      format: uri
+                head_commit:
+                  type: object
+                  properties:
+                    message:
+                      type: string
+                    author:
+                      type: object
+                      properties:
+                        username:
+                          type: string
+                    timestamp:
+                      type: string
+                      format: date-time
+      responses:
+        '200':
+          description: Event acknowledged (ignored non-push event)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Event acknowledged"
+        '202':
+          description: Sync job queued successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Sync queued"
+                  commitSha:
+                    type: string
+                    example: "a1b2c3d4e5f6..."
+                  jobId:
+                    type: string
+                    format: uuid
+        '401':
+          description: Invalid webhook signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync-jobs:
+    get:
+      tags:
+        - Sync Jobs
+      summary: List sync jobs
+      description: List recent GitHub sync jobs for monitoring
+      operationId: listSyncJobs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID (optional, filters by org if provided)
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            type: string
+            enum: [queued, processing, completed, failed]
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of sync jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GitHubSyncJob'
+                  total:
+                    type: integer
+                    description: Total number of jobs (before limit)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /sync-jobs/{commitSha}:
+    get:
+      tags:
+        - Sync Jobs
+      summary: Get sync job details
+      description: Get details of specific sync job by commit SHA
+      operationId: getSyncJob
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commitSha
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{40}$'
+          description: Git commit SHA (40-character hex)
+      responses:
+        '200':
+          description: Sync job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubSyncJob'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  schemas:
+    GitHubConnection:
+      type: object
+      properties:
+        orgId:
+          type: string
+          description: Organization ID or "GLOBAL"
+          example: "org-12345"
+        repositoryUrl:
+          type: string
+          format: uri
+          example: "https://github.com/msp-org/workflows.git"
+        repositoryBranch:
+          type: string
+          example: "main"
+        webhookUrl:
+          type: string
+          format: uri
+          description: Webhook endpoint URL
+          example: "https://functions.azurewebsites.net/api/github-webhook"
+        isEnabled:
+          type: boolean
+          description: Whether synchronization is active
+        lastSyncCommitSha:
+          type: string
+          nullable: true
+          description: Last successfully synced commit
+          example: "a1b2c3d4e5f6..."
+        lastSyncTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncDurationMs:
+          type: integer
+          nullable: true
+          description: Duration of last sync in milliseconds
+        lastSyncStatus:
+          type: string
+          nullable: true
+          enum: [success, failed, partial]
+        lastSyncError:
+          type: string
+          nullable: true
+          description: Error message if last sync failed
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          description: User ID who created connection
+        updatedAt:
+          type: string
+          format: date-time
+
+    GitHubSyncJob:
+      type: object
+      properties:
+        commitSha:
+          type: string
+          example: "a1b2c3d4e5f6..."
+          description: Git commit SHA (RowKey)
+        orgId:
+          type: string
+          example: "GLOBAL"
+        repositoryUrl:
+          type: string
+          format: uri
+        branch:
+          type: string
+          example: "main"
+        commitMessage:
+          type: string
+          example: "Add new workflow"
+        commitAuthor:
+          type: string
+          example: "dev-user"
+        commitTimestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        queuedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+          description: Processing duration in milliseconds
+        filesAdded:
+          type: integer
+          nullable: true
+        filesModified:
+          type: integer
+          nullable: true
+        filesDeleted:
+          type: integer
+          nullable: true
+        totalFiles:
+          type: integer
+          nullable: true
+          description: Total files in workspace after sync
+        errorMessage:
+          type: string
+          nullable: true
+        retryCount:
+          type: integer
+          description: Number of retry attempts
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: "ValidationError"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid repository URL"
+        details:
+          type: object
+          nullable: true
+          description: Additional error context
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Not found - resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Azure AD JWT token from MSAL

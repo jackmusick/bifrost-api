@@ -1,0 +1,50 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Docker",
+            "type": "shell",
+            "command": "./start.sh",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "isBackground": true,
+            "promptOnClose": false
+        },
+        {
+            "label": "Stop Docker",
+            "type": "shell",
+            "command": "./stop.sh",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "label": "Restart Docker",
+            "type": "shell",
+            "command": "./stop.sh && ./start.sh",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "isBackground": true,
+            "promptOnClose": false
+        },
+        {
+            "label": "View Docker Logs",
+            "type": "shell",
+            "command": "docker compose -f docker-compose.dev.yml logs -f",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "isBackground": true
+        }
+    ]
+}

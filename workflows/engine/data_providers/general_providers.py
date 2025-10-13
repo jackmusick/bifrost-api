@@ -3,7 +3,7 @@ General Data Providers
 Data providers for common dropdown options
 """
 
-from engine.shared.decorators import data_provider
+from bifrost import data_provider
 
 
 @data_provider(

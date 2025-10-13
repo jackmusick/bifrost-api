@@ -1,0 +1,38 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to Docker Functions",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}/workflows",
+                    "remoteRoot": "/home/site/wwwroot"
+                }
+            ],
+            "justMyCode": false,
+            "preLaunchTask": "Start Docker"
+        },
+        {
+            "name": "Attach to Docker Functions (Manual)",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}/workflows",
+                    "remoteRoot": "/home/site/wwwroot"
+                }
+            ],
+            "justMyCode": false
+        }
+    ]
+}

@@ -1,0 +1,337 @@
+"""
+Bifrost Integrations - Type Stubs for Workflow Development
+
+Copy this file to your workflow workspace to get IDE autocomplete and type hints.
+
+Usage:
+    1. Copy bifrost.pyi to your workspace folder
+    2. Import and use with simplified imports
+    3. At runtime, the actual engine implementation is provided by the container
+
+Example:
+    from bifrost import workflow, param, OrganizationContext
+
+    @workflow(name="my_workflow", description="...")
+    @param("user_email", "string", required=True)
+    async def my_workflow(context: OrganizationContext, user_email: str):
+        context.log("info", f"Processing {user_email}")
+        return {"success": True}
+"""
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Callable, Optional, Dict, List
+from enum import Enum
+
+# ==================== CONTEXT ====================
+
+@dataclass
+class Organization:
+    """Organization entity."""
+    org_id: str
+    name: str
+    tenant_id: Optional[str]
+    is_active: bool
+
+@dataclass
+class Caller:
+    """User who triggered the workflow execution."""
+    user_id: str
+    email: str
+    name: str
+
+class OrganizationContext:
+    """
+    Context object passed to all workflows.
+
+    Provides access to:
+    - Organization information (id, name, tenant_id)
+    - Execution metadata (execution_id, caller)
+    - Configuration (key-value pairs with secret resolution)
+    - OAuth connections (pre-authenticated credentials)
+    - State tracking (checkpoints, logs, variables)
+    """
+
+    org: Optional[Organization]
+    caller: Caller
+    execution_id: str
+
+    def __init__(
+        self,
+        org: Optional[Organization],
+        config: Dict[str, Any],
+        caller: Caller,
+        execution_id: str
+    ) -> None: ...
+
+    # Organization properties
+    @property
+    def org_id(self) -> Optional[str]:
+        """Organization ID (None for platform admins in global context)."""
+        ...
+
+    @property
+    def org_name(self) -> Optional[str]:
+        """Organization display name (None for platform admins)."""
+        ...
+
+    @property
+    def tenant_id(self) -> Optional[str]:
+        """Microsoft 365 tenant ID (if linked)."""
+        ...
+
+    # Caller properties
+    @property
+    def executed_by(self) -> str:
+        """User ID who triggered this execution."""
+        ...
+
+    @property
+    def executed_by_email(self) -> str:
+        """Email of user who triggered this execution."""
+        ...
+
+    @property
+    def executed_by_name(self) -> str:
+        """Display name of user who triggered this execution."""
+        ...
+
+    # Configuration
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """
+        Get configuration value with automatic secret resolution.
+
+        Args:
+            key: Configuration key
+            default: Default value if key not found
+
+        Returns:
+            Configuration value (with secrets resolved from Key Vault)
+        """
+        ...
+
+    def has_config(self, key: str) -> bool:
+        """Check if configuration key exists."""
+        ...
+
+    # OAuth connections
+    async def get_oauth_connection(self, connection_name: str) -> OAuthCredentials:
+        """
+        Get OAuth credentials for a connection.
+
+        Retrieves OAuth credentials from storage and Key Vault.
+        Works with both org-scoped and GLOBAL contexts.
+
+        Args:
+            connection_name: Name of the OAuth connection
+
+        Returns:
+            OAuthCredentials object with access_token and metadata
+
+        Raises:
+            ValueError: If connection not found or not authorized
+        """
+        ...
+
+    async def get_secret(self, key: str) -> str:
+        """
+        Get secret from Azure Key Vault.
+
+        Args:
+            key: Secret key
+
+        Returns:
+            Secret value
+
+        Raises:
+            KeyError: If secret not found
+        """
+        ...
+
+    # State tracking
+    def save_checkpoint(self, name: str, data: Dict[str, Any]) -> None:
+        """
+        Save a state checkpoint during workflow execution.
+
+        Useful for debugging and understanding execution flow.
+
+        Args:
+            name: Checkpoint name
+            data: Checkpoint data (will be sanitized)
+        """
+        ...
+
+    def set_variable(self, key: str, value: Any) -> None:
+        """
+        Set a workflow variable (persisted in execution record).
+
+        Args:
+            key: Variable name
+            value: Variable value (will be sanitized)
+        """
+        ...
+
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """Get a workflow variable."""
+        ...
+
+    def log(self, *args, **kwargs) -> None:
+        """
+        Log a message from the workflow.
+
+        Flexible signature:
+        - context.log("message") -> info level
+        - context.log("level", "message") -> explicit level
+        - context.log("level", "message", data={"key": "value"}) -> with data
+
+        Examples:
+            context.log("Processing user")
+            context.log("info", "Processing user")
+            context.log("warning", "Rate limit approaching")
+            context.log("error", "API call failed", data={"error": str(e)})
+        """
+        ...
+
+    async def finalize_execution(self) -> Dict[str, Any]:
+        """Get final execution state for persistence."""
+        ...
+
+# ==================== DECORATORS ====================
+
+def workflow(
+    name: str,
+    description: str,
+    category: str = "General",
+    tags: Optional[List[str]] = None,
+    execution_mode: str = "sync",
+    timeout_seconds: int = 300,
+    max_duration_seconds: int = 300,
+    retry_policy: Optional[Dict[str, Any]] = None,
+    schedule: Optional[str] = None,
+    requires_org: bool = True,
+    expose_in_forms: bool = True,
+    requires_approval: bool = False,
+    required_permission: str = "canExecuteWorkflows"
+) -> Callable:
+    """
+    Decorator to register a workflow function.
+
+    Args:
+        name: Workflow name (URL-friendly, lowercase-with-dashes)
+        description: User-friendly description
+        category: Category for grouping (default: "General")
+        tags: Optional tags for filtering
+        execution_mode: "sync" or "async"
+        timeout_seconds: Max execution time
+        requires_org: Whether workflow requires org context
+        expose_in_forms: Whether workflow can be triggered from forms
+        required_permission: Permission required to execute
+
+    Example:
+        @workflow(
+            name="create_user",
+            description="Create a new user in Microsoft 365",
+            category="User Management"
+        )
+        @param("email", "string", required=True)
+        @param("first_name", "string", required=True)
+        @param("last_name", "string", required=True)
+        async def create_user(context: OrganizationContext, email: str, first_name: str, last_name: str):
+            # Workflow implementation
+            pass
+    """
+    ...
+
+def param(
+    name: str,
+    type: str,
+    label: Optional[str] = None,
+    required: bool = False,
+    validation: Optional[Dict[str, Any]] = None,
+    data_provider: Optional[str] = None,
+    default_value: Any = None,
+    help_text: Optional[str] = None
+) -> Callable:
+    """
+    Decorator to define a workflow parameter.
+
+    Args:
+        name: Parameter name (must match function argument)
+        type: Parameter type ("string", "number", "boolean", "select", etc.)
+        label: Display label (defaults to name)
+        required: Whether parameter is required
+        validation: Validation rules (pattern, min, max)
+        data_provider: Name of data provider for dynamic options
+        default_value: Default value if not provided
+        help_text: Help text for UI
+
+    Example:
+        @param("department", "select", data_provider="departments", required=True)
+        @param("notify_manager", "boolean", default_value=True)
+    """
+    ...
+
+def data_provider(
+    name: str,
+    description: str,
+    category: str = "General",
+    cache_ttl_seconds: int = 300
+) -> Callable:
+    """
+    Decorator to register a data provider for dynamic form options.
+
+    Args:
+        name: Data provider name
+        description: Description of what data it provides
+        category: Category for grouping
+        cache_ttl_seconds: How long to cache results
+
+    Example:
+        @data_provider(
+            name="departments",
+            description="List of departments from HaloPSA"
+        )
+        async def get_departments(context: OrganizationContext) -> List[Dict[str, str]]:
+            return [
+                {"value": "it", "label": "IT"},
+                {"value": "hr", "label": "HR"}
+            ]
+    """
+    ...
+
+# ==================== MODELS ====================
+
+class ExecutionStatus(str, Enum):
+    """Workflow execution status."""
+    PENDING = "Pending"
+    RUNNING = "Running"
+    SUCCESS = "Success"
+    COMPLETED_WITH_ERRORS = "CompletedWithErrors"
+    FAILED = "Failed"
+
+class OAuthCredentials:
+    """OAuth credentials for API access."""
+    connection_name: str
+    access_token: str
+    token_type: str
+    expires_at: datetime
+    refresh_token: Optional[str]
+    scopes: str
+
+    def __init__(
+        self,
+        connection_name: str,
+        access_token: str,
+        token_type: str,
+        expires_at: datetime,
+        refresh_token: Optional[str] = None,
+        scopes: str = ""
+    ) -> None: ...
+
+    def is_expired(self) -> bool:
+        """Check if access token is expired."""
+        ...
+
+    def get_auth_header(self) -> str:
+        """Get Authorization header value (e.g., 'Bearer token...')."""
+        ...

@@ -336,7 +336,7 @@ def get_connection_string() -> str:
         Azure Storage connection string
     """
     return os.environ.get(
-        "TABLE_STORAGE_CONNECTION_STRING",
+        "AzureWebJobsStorage",
         # Default Azurite connection string
         "DefaultEndpointsProtocol=http;"
         "AccountName=devstoreaccount1;"

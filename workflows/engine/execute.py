@@ -46,17 +46,19 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
     3. None → 403 Forbidden
 
     Headers:
-        X-Organization-Id: Organization ID (required)
+        X-Organization-Id: Organization ID (optional - omit for global/platform admin context)
         x-functions-key: Function key for privileged access (optional)
         X-MS-CLIENT-PRINCIPAL: Easy Auth principal (optional, set by Azure)
         X-User-Id: DEPRECATED - User info now extracted from authentication principal
 
-    Body (flat JSON with workflow parameters):
+    Body (optional - flat JSON with workflow parameters):
         {
             "param1": "value1",
             "param2": "value2",
             "_formId": "optional-form-id"  // Optional: use _ prefix for metadata
         }
+
+        If workflow has no parameters, body can be omitted entirely.
 
     Response:
         200: {
@@ -79,9 +81,19 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
     # T057: Extract user_id from context.caller (set by authentication service)
     user_id = context.caller.user_id  # Now comes from authenticated principal
 
-    # Parse request body (flat JSON)
+    # Hot-reload: Re-discover workspace modules on every request
+    # This allows adding/modifying workflows without restarting
+    from function_app import discover_workspace_modules
+    discover_workspace_modules()
+
+    # Parse request body (flat JSON) - optional, defaults to empty dict
     try:
         body = req.get_json()
+
+        # If no body provided, default to empty dict
+        if body is None:
+            body = {}
+
         if not isinstance(body, dict):
             raise ValueError("Request body must be a JSON object")
 

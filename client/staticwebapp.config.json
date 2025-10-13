@@ -1,7 +1,12 @@
 {
     "navigationFallback": {
         "rewrite": "/index.html",
-        "exclude": ["*.{css,scss,js,json,png,gif,ico,jpg,svg,woff,woff2,ttf,eot}", "/@*/*", "/src/*", "/node_modules/*"]
+        "exclude": [
+            "*.{css,scss,js,json,png,gif,ico,jpg,svg,woff,woff2,ttf,eot}",
+            "/@*/*",
+            "/src/*",
+            "/node_modules/*"
+        ]
     },
     "routes": [
         {

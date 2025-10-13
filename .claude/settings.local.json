@@ -59,7 +59,21 @@
       "Bash(npx shadcn@latest add:*)",
       "Bash(if [ -d \"/Users/jack/GitHub/bifrost-integrations/specs/004-oauth-helper-for/checklists\" ])",
       "Bash(then find \"/Users/jack/GitHub/bifrost-integrations/specs/004-oauth-helper-for/checklists\" -name \"*.md\" -type f)",
-      "Read(//Users/jack/GitHub/**)"
+      "Read(//Users/jack/GitHub/**)",
+      "Bash(if [ -f \"/Users/jack/GitHub/bifrost-integrations/workflows/docs/docker-migration-research.md\" ])",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(if [ -d \"/Users/jack/GitHub/bifrost-integrations/specs/005-migrate-to-azure/checklists\" ])",
+      "Bash(then find \"/Users/jack/GitHub/bifrost-integrations/specs/005-migrate-to-azure/checklists\" -name \"*.md\" -type f)",
+      "Bash(docker-compose:*)",
+      "Bash(docker compose:*)",
+      "Bash(ENABLE_DEBUGGING=true docker compose:*)",
+      "Bash(nc:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker build:*)",
+      "Bash(docker logs:*)",
+      "Bash(func start)",
+      "Read(//tmp/stubs/engine/shared/**)"
     ],
     "deny": [],
     "ask": []

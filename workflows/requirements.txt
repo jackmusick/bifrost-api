@@ -5,6 +5,8 @@ azure-keyvault-secrets
 msgraph-sdk
 aiohttp
 pydantic
+PyYAML
 pytest
 pytest-asyncio
 python-dotenv
+debugpy

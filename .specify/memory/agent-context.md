@@ -646,7 +646,7 @@ class CreateUserRequest(BaseModel):
 **Environment Variables** (Azure Functions Configuration):
 
 ```
-TABLE_STORAGE_CONNECTION_STRING={connection_string}
+AzureWebJobsStorage={connection_string}
 BLOB_STORAGE_CONNECTION_STRING={connection_string}
 KEY_VAULT_URL=https://{keyvault}.vault.azure.net/
 AZURE_CLIENT_ID={app_registration_id}

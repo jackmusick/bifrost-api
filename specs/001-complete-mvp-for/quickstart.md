@@ -586,7 +586,7 @@ Use **Azure Storage Explorer** (GUI) or **Azure Storage Browser** extension for 
     "Values": {
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "python",
-        "TABLE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "BLOB_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
         "KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
         "AZURE_CLIENT_ID": "your-app-registration-client-id",

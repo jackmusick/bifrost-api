@@ -183,6 +183,13 @@ All projects MUST adhere to the following technical specifications:
 -   JWT tokens validated on every request
 -   Org-scoped permissions stored in Table Storage
 
+**Workflow Development:**
+
+-   Type stubs MUST be provided via `bifrost.pyi` for IDE autocomplete
+-   Workflow developers MUST NOT require engine source code
+-   Type stubs generated from `engine.shared` modules using stubgen
+-   Distributed as single file or lightweight stub package
+
 **Performance Goals:**
 
 -   Workflow context loading: <20ms (Table Storage queries)

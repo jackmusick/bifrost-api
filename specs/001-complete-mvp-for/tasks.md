@@ -171,7 +171,7 @@ REACT_APP_AZURE_REDIRECT_URI=http://localhost:3000
     "Values": {
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "python",
-        "TABLE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "BLOB_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
         "KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
         "AZURE_CLIENT_ID": "your-app-registration-client-id",
@@ -346,7 +346,7 @@ REACT_APP_AZURE_REDIRECT_URI=http://localhost:3000
 -   Add helper for org-scoped queries: `query_by_org(org_id: str, row_key_prefix: str = None)` → builds filter string
 -   Add helper for dual-indexing: `insert_dual_indexed(entity: dict, table1: str, table2: str, pk1: str, pk2: str)` → writes to 2 tables atomically
 -   Handle datetime serialization: use `isoformat()` for storage, `fromisoformat()` for retrieval
--   Add connection string loading from `TABLE_STORAGE_CONNECTION_STRING` environment variable
+-   Add connection string loading from `AzureWebJobsStorage` environment variable
 -   Include error handling and logging
 
 **Reference Documents**:

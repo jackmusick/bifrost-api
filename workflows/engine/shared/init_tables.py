@@ -13,7 +13,7 @@ from azure.core.exceptions import ResourceExistsError
 # Table names
 REQUIRED_TABLES = [
     "Organizations",      # Master list of client organizations
-    "OrgConfig",          # Org-specific config (key-value pairs)
+    "Config",             # Config key-value pairs (GLOBAL or org-specific via PartitionKey)
     # Integration settings (Microsoft Graph, HaloPSA, etc.)
     "IntegrationConfig",
     "Users",              # MSP technician accounts
@@ -35,17 +35,17 @@ def init_tables(connection_string: str = None) -> dict:
 
     Args:
         connection_string: Azure Storage connection string
-                          Defaults to TABLE_STORAGE_CONNECTION_STRING env var
+                          Defaults to AzureWebJobsStorage env var
 
     Returns:
         dict: Summary of table creation results
     """
     if connection_string is None:
-        connection_string = os.environ.get("TABLE_STORAGE_CONNECTION_STRING")
+        connection_string = os.environ.get("AzureWebJobsStorage")
 
     if not connection_string:
         raise ValueError(
-            "TABLE_STORAGE_CONNECTION_STRING environment variable not set")
+            "AzureWebJobsStorage environment variable not set")
 
     logger.info("Initializing Azure Table Storage tables...")
     logger.info(f"Connection: {_mask_connection_string(connection_string)}")

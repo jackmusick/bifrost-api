@@ -18,16 +18,18 @@ Complete reference for the public API available to workspace workflow code.
 
 Workspace workflows have access to a **carefully curated public API** that provides all necessary functionality while maintaining security boundaries.
 
-### Import Restrictions
+### Import Pattern
 
-Workspace code can **ONLY** import from these modules:
+Workspace workflows use the **bifrost module** for all platform imports:
 
 ```python
-from engine.shared.decorators import ...  # Workflow registration
-from engine.shared.context import ...     # Organization context
-from engine.shared.error_handling import ...  # Exception types
-from engine.shared.models import ...      # Pydantic models
+from bifrost import workflow, param, OrganizationContext
 ```
+
+This provides access to:
+- **Decorators**: `workflow`, `param`, `data_provider`
+- **Context**: `OrganizationContext`, `Organization`, `Caller`
+- **Models**: `ExecutionStatus`, `OAuthCredentials`, `ConfigType`, etc.
 
 **Attempting to import any other `engine.*` modules will result in an `ImportError`.**
 
@@ -35,25 +37,27 @@ from engine.shared.models import ...      # Pydantic models
 
 ## Allowed Imports
 
-### 1. `engine.shared.decorators`
+### Standard Import Pattern
 
-Decorators for registering workflows, parameters, and data providers.
-
-```python
-from engine.shared.decorators import workflow, param, data_provider
-```
-
-### 2. `engine.shared.context`
-
-Organization context and caller information.
+All platform functionality is available through the `bifrost` module:
 
 ```python
-from engine.shared.context import OrganizationContext, Organization, Caller
+from bifrost import (
+    # Decorators
+    workflow, param, data_provider,
+
+    # Context
+    OrganizationContext, Organization, Caller,
+
+    # Models
+    ExecutionStatus, OAuthCredentials,
+    ConfigType, FormFieldType, IntegrationType
+)
 ```
 
-### 3. `engine.shared.error_handling`
+### Error Handling
 
-Exception types for structured error reporting.
+Exception types for structured error reporting:
 
 ```python
 from engine.shared.error_handling import (
@@ -61,18 +65,6 @@ from engine.shared.error_handling import (
     ValidationError,
     IntegrationError,
     TimeoutError
-)
-```
-
-### 4. `engine.shared.models`
-
-Pydantic models for type-safe data structures.
-
-```python
-from engine.shared.models import (
-    WorkflowExecutionResponse,
-    ExecutionStatus,
-    ErrorResponse
 )
 ```
 
@@ -215,14 +207,23 @@ class OrganizationContext:
 
 **Methods:**
 
-#### `log(level: str, message: str, data: dict = None) -> None`
+#### `log(*args, **kwargs) -> None`
 
 Log a message for this execution with structured data.
 
+**Flexible signature:**
+- `context.log("message")` - Log at info level
+- `context.log("level", "message")` - Explicit log level
+- `context.log("level", "message", data={"key": "value"})` - With structured data
+
 ```python
-context.log("info", "Processing user data", {"user_id": "123", "action": "create"})
-context.log("warning", "Rate limit approaching", {"remaining": 10, "reset_time": "2024-01-01T12:00:00Z"})
-context.log("error", "API call failed", {"error": "Connection timeout", "endpoint": "/users"})
+# Simple logging (info level)
+context.log("Processing user data")
+
+# Explicit level
+context.log("info", "Processing user data", data={"user_id": "123", "action": "create"})
+context.log("warning", "Rate limit approaching", data={"remaining": 10, "reset_time": "2024-01-01T12:00:00Z"})
+context.log("error", "API call failed", data={"error": "Connection timeout", "endpoint": "/users"})
 ```
 
 **Log Levels**: `"info"`, `"warning"`, `"error"`, `"debug"`
@@ -586,12 +587,11 @@ return {
 }
 ```
 
-### 7. **Don't Import Engine Internals**
+### 7. **Use the bifrost Import Style**
 
 ```python
 # ✓ GOOD
-from engine.shared.decorators import workflow
-from engine.shared.context import OrganizationContext
+from bifrost import workflow, param, OrganizationContext
 
 # ✗ BAD - Will raise ImportError
 from engine.shared.storage import get_organization
@@ -607,8 +607,7 @@ from engine.execute import execute_workflow
 Example workflow demonstrating best practices
 """
 
-from engine.shared.decorators import workflow, param
-from engine.shared.context import OrganizationContext
+from bifrost import workflow, param, OrganizationContext
 from engine.shared.error_handling import ValidationError, IntegrationError
 import aiohttp
 
