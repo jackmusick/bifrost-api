@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth, logout } from "@/hooks/useAuth";
-import { useOrgScope } from "@/contexts/OrgScopeContext";
+import { useScopeStore } from "@/stores/scopeStore";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { OrgScopeSwitcher } from "@/components/OrgScopeSwitcher";
 import { useWorkflowEngineHealth } from "@/hooks/useWorkflowEngineHealth";
@@ -32,7 +32,9 @@ import { useWorkflowEngineHealth } from "@/hooks/useWorkflowEngineHealth";
 export function Header() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { scope, setScope, isGlobalScope } = useOrgScope();
+    const scope = useScopeStore((state) => state.scope);
+    const setScope = useScopeStore((state) => state.setScope);
+    const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
     const { data: organizations, isLoading: orgsLoading } = useOrganizations();
     const {
         data: engineHealth,

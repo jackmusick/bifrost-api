@@ -5,28 +5,35 @@
 import { useQuery } from '@tanstack/react-query'
 import { executionsService } from '@/services/executions'
 import type { ExecutionFilters } from '@/types/execution'
-import { useUser } from '@/contexts/UserContext'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useExecutions(filters?: ExecutionFilters) {
-  const { orgId } = useUser()
+  const orgId = useScopeStore((state) => state.scope.orgId)
+  const hasHydrated = useScopeStore((state) => state._hasHydrated)
+
+  // Debug: log when orgId changes
+  console.log('useExecutions - orgId:', orgId, 'filters:', filters, 'hasHydrated:', hasHydrated)
 
   return useQuery({
     queryKey: ['executions', orgId, filters],
     queryFn: () => {
-      // Note: orgId is sent via X-Organization-Id header (handled by api.ts)
-      // No need to pass it as a parameter
+      console.log('useExecutions - queryFn executing for orgId:', orgId)
+      // orgId is sent via X-Organization-Id header (handled by api.ts from sessionStorage)
+      // We include orgId in the key so React Query automatically refetches when scope changes
       return executionsService.getExecutions(filters)
     },
-    // Allow querying even without orgId (for GLOBAL scope)
-    refetchInterval: 5000, // Poll every 5 seconds for live updates
+    // Wait for Zustand to rehydrate from localStorage before making API calls
+    enabled: hasHydrated,
+    // Show loading state immediately when scope changes (don't show stale data)
+    placeholderData: undefined,
+    // Don't use cached data from previous scope
+    staleTime: 0,
   })
 }
 
 export function useExecution(executionId: string | undefined) {
-  const { orgId } = useUser()
-
   return useQuery({
-    queryKey: ['executions', executionId, orgId],
+    queryKey: ['executions', executionId],
     queryFn: () => executionsService.getExecution(executionId!),
     enabled: !!executionId,
     refetchInterval: (query) => {

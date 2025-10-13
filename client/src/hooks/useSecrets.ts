@@ -1,5 +1,6 @@
 /**
  * React Query hooks for secret management
+ * All hooks use the centralized api client which handles X-Organization-Id automatically
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,10 +8,10 @@ import { secretsService } from '@/services/secrets'
 import type { SecretCreateRequest, SecretUpdateRequest } from '@/types/secret'
 import { toast } from 'sonner'
 
-export function useSecrets(orgId?: string) {
+export function useSecrets() {
   return useQuery({
-    queryKey: ['secrets', orgId],
-    queryFn: () => secretsService.listSecrets(orgId),
+    queryKey: ['secrets'],
+    queryFn: () => secretsService.listSecrets(),
     meta: {
       onError: (error: Error) => {
         toast.error('Failed to load secrets', {

@@ -2,6 +2,8 @@
  * Data Providers API service
  */
 
+import { api } from './api'
+
 export interface DataProviderOption {
   label: string
   value: string
@@ -18,25 +20,10 @@ export interface DataProviderResponse {
 export const dataProvidersService = {
   /**
    * Get options from a data provider
-   * Auth is handled automatically by SWA via X-MS-CLIENT-PRINCIPAL header
+   * Uses the api client which automatically handles X-Organization-Id from session storage
    */
-  async getOptions(providerName: string, orgId: string): Promise<DataProviderOption[]> {
-    // Call via SWA proxy (not direct to Azure Functions)
-    // SWA automatically adds X-MS-CLIENT-PRINCIPAL header from authenticated session
-    const response = await fetch(`/api/data-providers/${providerName}`, {
-      method: 'GET',
-      headers: {
-        'X-Organization-Id': orgId,
-      },
-      credentials: 'same-origin', // Include cookies for SWA auth
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || 'Failed to fetch data provider options')
-    }
-
-    const data: DataProviderResponse = await response.json()
+  async getOptions(providerName: string): Promise<DataProviderOption[]> {
+    const data = await api.get<DataProviderResponse>(`/data-providers/${providerName}`)
     return data.options
   },
 }

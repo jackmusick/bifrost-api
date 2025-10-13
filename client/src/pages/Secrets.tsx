@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Key, Plus, Pencil, Trash2, RefreshCw, Eye, EyeOff, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Key, Plus, Pencil, Trash2, RefreshCw, Eye, EyeOff, AlertCircle, Info, Circle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -54,6 +54,7 @@ import {
   useKeyVaultHealth,
 } from '@/hooks/useSecrets'
 import { useOrganizations } from '@/hooks/useOrganizations'
+import { useOrgScope } from '@/contexts/OrgScopeContext'
 
 interface SecretFormData {
   secretKey: string
@@ -70,13 +71,20 @@ export function Secrets() {
     value: '',
   })
   const [updateValue, setUpdateValue] = useState('')
+  const { scope } = useOrgScope()
 
-  const { data: secretsData, isLoading, refetch } = useSecrets()
+  const { data: secretsData, isFetching, refetch } = useSecrets()
   const { data: healthData } = useKeyVaultHealth()
 
   const createMutation = useCreateSecret()
   const updateMutation = useUpdateSecret()
   const deleteMutation = useDeleteSecret()
+
+  // Refetch secrets when scope changes (even though secrets aren't scoped,
+  // this ensures consistent UX with other pages showing loading state)
+  useEffect(() => {
+    refetch()
+  }, [scope.orgId, refetch])
 
   const handleCreate = () => {
     setFormData({ secretKey: '', value: '' })
@@ -125,20 +133,36 @@ export function Secrets() {
     setSelectedSecretName(undefined)
   }
 
-  const getHealthBadge = () => {
-    if (!healthData) return null
+  const getHealthStatus = () => {
+    if (!healthData) {
+      return {
+        color: 'text-yellow-500',
+        label: 'Checking...'
+      }
+    }
 
-    const statusColors = {
-      healthy: 'default',
-      degraded: 'secondary',
-      unhealthy: 'destructive',
-    } as const
-
-    return (
-      <Badge variant={statusColors[healthData.status]}>
-        {healthData.status.toUpperCase()}
-      </Badge>
-    )
+    switch (healthData.status) {
+      case 'healthy':
+        return {
+          color: 'text-green-500',
+          label: 'Key Vault'
+        }
+      case 'degraded':
+        return {
+          color: 'text-yellow-500',
+          label: 'Key Vault'
+        }
+      case 'unhealthy':
+        return {
+          color: 'text-red-500',
+          label: 'Key Vault'
+        }
+      default:
+        return {
+          color: 'text-gray-500',
+          label: 'Key Vault'
+        }
+    }
   }
 
   return (
@@ -155,7 +179,10 @@ export function Secrets() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {getHealthBadge()}
+            <div className="flex items-center gap-2 mr-2">
+              <Circle className={`h-4 w-4 fill-current ${getHealthStatus().color}`} />
+              <span className="text-sm text-muted-foreground">{getHealthStatus().label}</span>
+            </div>
             <Button onClick={handleCreate}>
               <Plus className="mr-2 h-4 w-4" />
               Create Secret
@@ -173,6 +200,13 @@ export function Secrets() {
         </Alert>
       )}
 
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          Secrets are stored in Azure Key Vault and are not scoped by organization. All secrets are shared across the platform and can be referenced in any organization's configuration.
+        </AlertDescription>
+      </Alert>
+
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -182,17 +216,15 @@ export function Secrets() {
                 View and manage secrets stored in Azure Key Vault
               </CardDescription>
             </div>
-            <Button variant="outline" size="icon" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
+            <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden flex flex-col">
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
+          {isFetching ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : secretsData && secretsData.secrets.length > 0 ? (
             <div className="border rounded-lg overflow-hidden flex-1">

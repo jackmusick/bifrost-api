@@ -183,24 +183,24 @@ export function Dashboard() {
               {metrics.recentFailures.slice(0, 5).map((failure) => (
                 <div
                   key={failure.executionId}
-                  className="flex items-center justify-between p-2 rounded-md border hover:bg-muted/50 cursor-pointer"
+                  className="flex items-start justify-between p-2 rounded-md border hover:bg-muted/50 cursor-pointer gap-2"
                   onClick={() => navigate(`/history/${failure.executionId}`)}
                 >
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                      <span className="font-mono text-xs font-medium truncate">
+                      <span className="font-mono text-xs font-medium break-words">
                         {failure.workflowName}
                       </span>
                     </div>
                     {failure.errorMessage && (
-                      <p className="text-xs text-muted-foreground truncate ml-6">
+                      <p className="text-xs text-muted-foreground ml-6 break-words">
                         {failure.errorMessage}
                       </p>
                     )}
                   </div>
                   {failure.startedAt && (
-                    <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
+                    <span className="text-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">
                       {new Date(failure.startedAt).toLocaleDateString()}
                     </span>
                   )}

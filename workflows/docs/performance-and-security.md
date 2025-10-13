@@ -252,7 +252,32 @@ for event in events:
 5. Verify audit logs for old key usage
 ```
 
-**Priority**: MEDIUM
+**Implementation Script**:
+```python
+# scripts/rotate_function_keys.py
+import os
+import subprocess
+from datetime import datetime
+
+def rotate_function_key():
+    """Rotate function keys with audit trail"""
+    old_key = os.getenv("AZURE_FUNCTION_KEY")
+    new_key = generate_new_function_key()
+    
+    # Log rotation
+    log_security_event("function_key_rotated", {
+        "timestamp": datetime.now().isoformat(),
+        "old_key_prefix": old_key[:8] if old_key else None,
+        "new_key_prefix": new_key[:8]
+    })
+    
+    # Update configuration
+    update_app_settings({"AZURE_FUNCTION_KEY": new_key})
+    
+    return new_key
+```
+
+**Priority**: HIGH
 
 ---
 
@@ -264,16 +289,36 @@ for event in events:
 
 **Recommendation**: Implement 90-day retention with automated cleanup
 ```python
-# Cleanup script (to be scheduled)
+# scripts/cleanup_audit_logs.py
 from datetime import datetime, timedelta
+from azure.data.tables import TableServiceClient
 
-cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-
-# Delete partitions older than cutoff
-# (Implementation needed)
+def cleanup_old_audit_logs():
+    """Remove audit logs older than 90 days"""
+    cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    
+    client = TableServiceClient.from_connection_string(CONNECTION_STRING)
+    table = client.get_table_client("AuditLog")
+    
+    # Query and delete old partitions
+    old_partitions = table.query_entities(
+        f"PartitionKey lt '{cutoff_date}'"
+    )
+    
+    deleted_count = 0
+    for entity in old_partitions:
+        table.delete_entity(entity["PartitionKey"], entity["RowKey"])
+        deleted_count += 1
+    
+    log_security_event("audit_cleanup", {
+        "deleted_count": deleted_count,
+        "cutoff_date": cutoff_date
+    })
+    
+    return deleted_count
 ```
 
-**Priority**: LOW (not urgent for MVP)
+**Priority**: MEDIUM
 
 ---
 
@@ -285,19 +330,51 @@ cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
 
 **Recommendation**: Implement rate limiting by org_id + IP
 ```python
-# Example rate limit config
-rate_limits = {
-    "default": "100 requests/hour",
-    "function_key": "1000 requests/hour",
-    "by_org": {"org-123": "500 requests/hour"}
-}
+# engine/shared/rate_limiter.py
+from collections import defaultdict
+from datetime import datetime, timedelta
+import asyncio
+
+class RateLimiter:
+    def __init__(self):
+        self.requests = defaultdict(list)
+    
+    async def check_rate_limit(self, org_id: str, ip: str, limit: int = 100, window: int = 3600):
+        """Check if request exceeds rate limit"""
+        key = f"{org_id}:{ip}"
+        now = datetime.now()
+        window_start = now - timedelta(seconds=window)
+        
+        # Clean old requests
+        self.requests[key] = [
+            req_time for req_time in self.requests[key] 
+            if req_time > window_start
+        ]
+        
+        # Check limit
+        if len(self.requests[key]) >= limit:
+            return False
+        
+        # Record request
+        self.requests[key].append(now)
+        return True
+
+# Usage in middleware
+rate_limiter = RateLimiter()
+
+async def rate_limit_middleware(request):
+    org_id = request.headers.get("X-Organization-Id")
+    ip = request.client_ip
+    
+    if not await rate_limiter.check_rate_limit(org_id, ip):
+        raise HTTPException(429, "Rate limit exceeded")
 ```
 
-**Priority**: LOW (Azure Functions has built-in throttling)
+**Priority**: MEDIUM
 
 ---
 
-#### Gap 4: Input Sanitization
+#### Gap 4: Input Sanitization and Validation
 
 **Issue**: No automated input sanitization/validation framework
 
@@ -305,20 +382,156 @@ rate_limits = {
 
 **Recommendation**: Use Pydantic models for all workflow inputs
 ```python
-from pydantic import BaseModel, EmailStr, constr
+# engine/shared/validation.py
+from pydantic import BaseModel, EmailStr, constr, validator
+import re
 
-class CreateUserInput(BaseModel):
+class SecureWorkflowInput(BaseModel):
+    """Base class with built-in security validations"""
+    
+    @validator('*')
+    def sanitize_string_fields(cls, v):
+        """Sanitize string fields to prevent injection"""
+        if isinstance(v, str):
+            # Remove potential script injections
+            v = re.sub(r'<script.*?</script>', '', v, flags=re.IGNORECASE | re.DOTALL)
+            # Remove SQL injection patterns
+            v = re.sub(r'(\b(union|select|insert|update|delete|drop|create|alter)\b)', '', v, flags=re.IGNORECASE)
+        return v
+
+class CreateUserInput(SecureWorkflowInput):
     email: EmailStr
     name: constr(min_length=1, max_length=100)
     role: constr(regex="^(OrgUser|OrgAdmin|PlatformAdmin)$")
+    notes: constr(max_length=1000) = None
+    
+    @validator('name')
+    def validate_name(cls, v):
+        """Additional name validation"""
+        if not re.match(r'^[a-zA-Z\s\-\.]+$', v):
+            raise ValueError('Name contains invalid characters')
+        return v
 
+# Usage in workflows
 @workflow(name="create_user", ...)
 async def create_user(context: OrganizationContext, input: CreateUserInput):
-    # Input automatically validated
+    # Input automatically validated and sanitized
+    user_data = input.dict()
+    # Process with confidence that input is safe
     ...
 ```
 
-**Priority**: MEDIUM (good practice, not critical for MVP)
+**Priority**: HIGH
+
+---
+
+#### Gap 5: Key Vault Access Monitoring
+
+**Issue**: No monitoring of Key Vault access patterns
+
+**Risk**: Unauthorized secret access goes undetected
+
+**Recommendation**: Implement Key Vault access monitoring
+```python
+# engine/shared/keyvault_monitor.py
+from datetime import datetime
+
+class KeyVaultMonitor:
+    def __init__(self):
+        self.access_patterns = defaultdict(list)
+    
+    def log_secret_access(self, org_id: str, secret_name: str, user_id: str):
+        """Log secret access for anomaly detection"""
+        timestamp = datetime.now()
+        access_record = {
+            "timestamp": timestamp,
+            "secret_name": secret_name,
+            "user_id": user_id
+        }
+        
+        self.access_patterns[org_id].append(access_record)
+        
+        # Check for anomalies
+        self._detect_anomalies(org_id, secret_name, user_id)
+    
+    def _detect_anomalies(self, org_id: str, secret_name: str, user_id: str):
+        """Detect unusual access patterns"""
+        recent_access = [
+            access for access in self.access_patterns[org_id][-10:]  # Last 10 accesses
+            if access["secret_name"] == secret_name
+        ]
+        
+        # Check for rapid successive access
+        if len(recent_access) > 5:
+            time_diff = recent_access[-1]["timestamp"] - recent_access[-5]["timestamp"]
+            if time_diff.total_seconds() < 60:  # 5 accesses in < 1 minute
+                self._trigger_security_alert(
+                    "rapid_secret_access",
+                    org_id, secret_name, user_id,
+                    {"access_count": len(recent_access), "time_window": time_diff.total_seconds()}
+                )
+```
+
+**Priority**: MEDIUM
+
+---
+
+#### Gap 6: Workflow Execution Timeout Enforcement
+
+**Issue**: No hard timeout enforcement for long-running workflows
+
+**Risk**: Resource exhaustion, hanging processes
+
+**Recommendation**: Implement timeout enforcement
+```python
+# engine/shared/timeout_manager.py
+import asyncio
+from datetime import datetime, timedelta
+
+class TimeoutManager:
+    def __init__(self):
+        self.running_workflows = {}
+    
+    async def execute_with_timeout(self, workflow_func, timeout_seconds, *args, **kwargs):
+        """Execute workflow with timeout enforcement"""
+        execution_id = kwargs.get('execution_id')
+        start_time = datetime.now()
+        
+        # Track execution
+        self.running_workflows[execution_id] = {
+            "start_time": start_time,
+            "timeout": timeout_seconds,
+            "workflow_name": kwargs.get('workflow_name')
+        }
+        
+        try:
+            # Execute with timeout
+            result = await asyncio.wait_for(
+                workflow_func(*args, **kwargs),
+                timeout=timeout_seconds
+            )
+            return result
+        except asyncio.TimeoutError:
+            # Log timeout
+            self._log_timeout(execution_id, start_time, timeout_seconds)
+            raise TimeoutError(f"Workflow exceeded {timeout_seconds} second timeout")
+        finally:
+            # Clean up tracking
+            self.running_workflows.pop(execution_id, None)
+    
+    def _log_timeout(self, execution_id: str, start_time: datetime, timeout_seconds: int):
+        """Log workflow timeout for monitoring"""
+        actual_duration = (datetime.now() - start_time).total_seconds()
+        
+        log_security_event("workflow_timeout", {
+            "execution_id": execution_id,
+            "timeout_limit": timeout_seconds,
+            "actual_duration": actual_duration,
+            "exceeded_by": actual_duration - timeout_seconds
+        })
+```
+
+**Priority**: HIGH
 
 ---
 

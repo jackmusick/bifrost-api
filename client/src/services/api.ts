@@ -61,9 +61,22 @@ class ApiClient {
         // Get auth token from localStorage (MSAL stores it)
         const token = localStorage.getItem("msal_token");
 
-        // Get org and user context from sessionStorage
-        const sessionOrgId = sessionStorage.getItem("current_org_id");
-        const sessionUserId = sessionStorage.getItem("current_user_id");
+        // Get org context directly from localStorage (same source as Zustand store)
+        // This avoids timing issues with Zustand rehydration
+        let contextOrgId = orgId; // Allow explicit override
+        if (!contextOrgId) {
+            try {
+                const storedScope = localStorage.getItem("msp-automation-org-scope");
+                if (storedScope) {
+                    const parsed = JSON.parse(storedScope);
+                    contextOrgId = parsed.state?.scope?.orgId || null;
+                }
+            } catch (e) {
+                console.error('[api] Error reading scope from localStorage:', e);
+            }
+        }
+
+        console.log('[api] Request to:', endpoint, '- orgId from localStorage:', contextOrgId, 'override:', orgId)
 
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
@@ -74,12 +87,15 @@ class ApiClient {
             headers["Authorization"] = `Bearer ${token}`;
         }
 
-        // Always add context headers from session (or allow explicit override)
-        const contextOrgId = orgId || sessionOrgId;
+        // Get user context from sessionStorage (kept for backwards compatibility)
+        const sessionUserId = sessionStorage.getItem("current_user_id");
         const contextUserId = userId || sessionUserId;
 
         if (contextOrgId) {
             headers["X-Organization-Id"] = contextOrgId;
+            console.log('[api] Setting X-Organization-Id header to:', contextOrgId)
+        } else {
+            console.log('[api] No X-Organization-Id header (will use GLOBAL)')
         }
         if (contextUserId) {
             headers["X-User-Id"] = contextUserId;

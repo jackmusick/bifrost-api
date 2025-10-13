@@ -417,6 +417,342 @@ After migration, verify the following:
 - [ ] Configuration is accessible through context
 - [ ] Audit logging captures function key usage
 - [ ] Tests pass (if applicable)
+- [ ] Key Vault integration works for secrets
+- [ ] OAuth connections are properly configured
+- [ ] Data providers are discoverable
+- [ ] Form validation works correctly
+- [ ] Performance benchmarks are met
+
+---
+
+## Advanced Migration Scenarios
+
+### Migrating Complex Workflows with External Dependencies
+
+For workflows that import external libraries or have complex dependencies:
+
+```python
+# ✗ BEFORE - Direct imports that may need updating
+import requests
+import pandas as pd
+from engine.shared.storage import get_organization
+
+@workflow(name="complex_workflow")
+async def complex_workflow(context):
+    org = get_organization(context.org_id)
+    data = requests.get(org.config["api_url"]).json()
+    df = pd.DataFrame(data)
+    return df.to_dict()
+
+# ✓ AFTER - Use context and async patterns
+import aiohttp
+import pandas as pd
+
+@workflow(name="complex_workflow")
+async def complex_workflow(context: OrganizationContext):
+    api_url = context.get_config("api_url")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_url) as response:
+            data = await response.json()
+    
+    df = pd.DataFrame(data)
+    return df.to_dict()
+```
+
+### Migrating Workflows with Custom Integrations
+
+For workflows that use custom integration clients:
+
+```python
+# ✗ BEFORE - Direct integration instantiation
+from integrations.custom_api import CustomAPIClient
+
+@workflow(name="custom_integration")
+async def custom_integration(context):
+    client = CustomAPIClient(api_key="hardcoded-key")
+    return client.get_data()
+
+# ✓ AFTER - Use integration registry
+@workflow(name="custom_integration")
+async def custom_integration(context: OrganizationContext):
+    # Get registered integration
+    client = context.get_integration("custom_api")
+    return await client.get_data()
+```
+
+### Migrating Scheduled Workflows
+
+For workflows that run on schedules:
+
+```python
+# ✗ BEFORE - May need schedule configuration
+@workflow(name="daily_report")
+async def daily_report(context):
+    # Generate daily report
+    pass
+
+# ✓ AFTER - Explicit schedule configuration
+@workflow(
+    name="daily_report",
+    description="Generate daily organization report",
+    execution_mode="scheduled",
+    schedule="0 8 * * *",  # Daily at 8 AM UTC
+    timeout_seconds=600,
+    expose_in_forms=False
+)
+async def daily_report(context: OrganizationContext):
+    context.log("info", "Starting daily report generation")
+    
+    # Generate report
+    report_data = await generate_report(context)
+    
+    context.save_checkpoint("report_complete", {
+        "report_id": report_data["id"],
+        "generated_at": datetime.now().isoformat()
+    })
+    
+    return report_data
+```
+
+---
+
+## Migration Testing Strategy
+
+### 1. Unit Testing
+
+Test individual workflow functions with mocked context:
+
+```python
+# tests/test_migration.py
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+from workspace.workflows.my_workflow import my_workflow
+
+@pytest.mark.asyncio
+async def test_my_workflow_migration():
+    # Mock context with new structure
+    context = MagicMock()
+    context.org.org_id = "test-org-active"
+    context.org.name = "Test Organization"
+    context.get_config = MagicMock(return_value="test_value")
+    context.log = MagicMock()
+    context.save_checkpoint = MagicMock()
+    
+    # Test workflow execution
+    result = await my_workflow(context, "test@example.com")
+    
+    # Verify results
+    assert result["success"] is True
+    context.log.assert_called()
+```
+
+### 2. Integration Testing
+
+Test full workflow execution with local environment:
+
+```bash
+#!/bin/bash
+# scripts/test_migration.sh
+
+echo "Starting migration tests..."
+
+# Start services
+azurite --silent --location /tmp/azurite &
+AZURITE_PID=$!
+sleep 2
+
+python scripts/seed_azurite.py
+func start &
+FUNCTIONS_PID=$!
+sleep 5
+
+# Test each workflow
+workflows=("create_user" "update_user" "delete_user" "generate_report")
+
+for workflow in "${workflows[@]}"; do
+    echo "Testing $workflow..."
+    
+    response=$(curl -s -w "%{http_code}" -X POST \
+      -H "Content-Type: application/json" \
+      -H "X-Organization-Id: test-org-active" \
+      -H "x-functions-key: test" \
+      -d '{"email": "test@example.com"}' \
+      http://localhost:7072/api/workflows/$workflow)
+    
+    http_code="${response: -3}"
+    if [ "$http_code" != "200" ]; then
+        echo "❌ $workflow failed with HTTP $http_code"
+        exit 1
+    else
+        echo "✅ $workflow passed"
+    fi
+done
+
+# Cleanup
+kill $AZURITE_PID $FUNCTIONS_PID
+echo "All migration tests passed!"
+```
+
+### 3. Performance Testing
+
+Verify performance benchmarks are maintained:
+
+```python
+# tests/test_performance.py
+import time
+import asyncio
+import aiohttp
+
+async def test_workflow_performance():
+    """Test that workflows meet performance targets"""
+    
+    # Test import restriction overhead
+    start = time.time()
+    from engine.shared.decorators import workflow
+    import_time = (time.time() - start) * 1000
+    
+    assert import_time < 50, f"Import time {import_time}ms exceeds 50ms target"
+    
+    # Test workflow execution time
+    start = time.time()
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "http://localhost:7072/api/workflows/simple_test",
+            headers={
+                "Content-Type": "application/json",
+                "X-Organization-Id": "test-org-active",
+                "x-functions-key": "test"
+            },
+            json={"param": "value"}
+        ) as response:
+            result = await response.json()
+    
+    execution_time = (time.time() - start) * 1000
+    assert execution_time < 5000, f"Execution time {execution_time}ms exceeds 5s target"
+    
+    print("✅ Performance tests passed")
+```
+
+---
+
+## Rollback and Recovery Procedures
+
+### Emergency Rollback
+
+If critical issues are discovered post-migration:
+
+```bash
+# 1. Stop all services
+pkill -f "func start"
+pkill -f "azurite"
+
+# 2. Restore from backup
+cp -r /workflows-backup/* /workflows/
+
+# 3. Restore git state
+git checkout main
+git reset --hard HEAD~1  # Remove migration commit
+
+# 4. Restart services
+azurite --silent --location /tmp/azurite &
+func start &
+
+# 5. Verify rollback
+curl http://localhost:7072/api/health
+```
+
+### Partial Rollback
+
+If only specific workflows have issues:
+
+```bash
+# 1. Identify problematic workflows
+grep -r "ImportError" workspace/workflows/
+
+# 2. Temporarily disable problematic workflows
+mv workspace/workflows/problematic_workflow.py workspace/workflows/problematic_workflow.py.disabled
+
+# 3. Restart Functions
+func start
+
+# 4. Fix issues and re-enable
+mv workspace/workflows/problematic_workflow.py.disabled workspace/workflows/problematic_workflow.py
+```
+
+---
+
+## Migration Monitoring
+
+### Health Checks
+
+Implement health checks to monitor migration success:
+
+```python
+# scripts/migration_health_check.py
+import asyncio
+import aiohttp
+from datetime import datetime
+
+async def check_migration_health():
+    """Comprehensive health check after migration"""
+    
+    health_status = {
+        "timestamp": datetime.now().isoformat(),
+        "checks": {}
+    }
+    
+    # Check 1: API Health
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:7072/api/health") as response:
+                if response.status == 200:
+                    health_status["checks"]["api_health"] = "✅ PASS"
+                else:
+                    health_status["checks"]["api_health"] = f"❌ FAIL - HTTP {response.status}"
+    except Exception as e:
+        health_status["checks"]["api_health"] = f"❌ FAIL - {str(e)}"
+    
+    # Check 2: Import Restrictions
+    try:
+        # Test that blocked imports are rejected
+        result = subprocess.run([
+            "python", "-c", 
+            "from engine.shared.storage import get_organization"
+        ], capture_output=True, text=True, cwd="/workflows")
+        
+        if result.returncode != 0 and "ImportError" in result.stderr:
+            health_status["checks"]["import_restrictions"] = "✅ PASS"
+        else:
+            health_status["checks"]["import_restrictions"] = "❌ FAIL - Imports not restricted"
+    except Exception as e:
+        health_status["checks"]["import_restrictions"] = f"❌ FAIL - {str(e)}"
+    
+    # Check 3: Workflow Discovery
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:7072/api/workflows") as response:
+                if response.status == 200:
+                    workflows = await response.json()
+                    if len(workflows) > 0:
+                        health_status["checks"]["workflow_discovery"] = f"✅ PASS - {len(workflows)} workflows"
+                    else:
+                        health_status["checks"]["workflow_discovery"] = "❌ FAIL - No workflows found"
+                else:
+                    health_status["checks"]["workflow_discovery"] = f"❌ FAIL - HTTP {response.status}"
+    except Exception as e:
+        health_status["checks"]["workflow_discovery"] = f"❌ FAIL - {str(e)}"
+    
+    return health_status
+
+# Run health check
+if __name__ == "__main__":
+    health = asyncio.run(check_migration_health())
+    print("Migration Health Check Results:")
+    for check, status in health["checks"].items():
+        print(f"  {check}: {status}")
+```
 
 ---
 

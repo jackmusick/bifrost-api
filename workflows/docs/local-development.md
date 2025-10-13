@@ -292,6 +292,36 @@ This uses `DefaultAzureCredential` which:
 
 ## Testing Workflows
 
+### Where to Write Code
+
+**⚠️ IMPORTANT**: All workflow code MUST be written in the `/workspace/` directory ONLY. Never modify files in `/engine/` as they contain system infrastructure code.
+
+**Directory Structure**:
+```
+/workspace/
+├── workflows/          # Your workflow implementations
+│   ├── my_workflow.py
+│   └── another_workflow.py
+└── examples/           # Reference examples and templates
+    ├── hello_world.py
+    └── error_handling.py
+```
+
+**Allowed Imports**: Workspace code can only import from these specific modules:
+```python
+# ✅ ALLOWED - Public API for workspace code
+from engine.shared.decorators import workflow, param, data_provider
+from engine.shared.context import OrganizationContext
+from engine.shared.error_handling import (
+    WorkflowException, ValidationError, IntegrationError, TimeoutError
+)
+from engine.shared.models import PydanticModels  # For type hints
+
+# ❌ FORBIDDEN - Internal engine modules
+from engine.shared.storage import TableStorageService  # Will be blocked!
+from engine.shared.auth import AuthService  # Will be blocked!
+```
+
 ### Creating a Test Workflow
 
 Create a workflow in `/workspace/workflows/`:
@@ -317,6 +347,243 @@ async def test_workflow(context: OrganizationContext, message: str):
         "org_name": context.org_name,
         "caller": context.caller.email
     }
+```
+
+### Context and Available Functions
+
+The `context` object provides access to all platform capabilities:
+
+```python
+async def my_workflow(context: OrganizationContext, param1: str):
+    # === ORGANIZATION INFORMATION ===
+    org_id = context.org_id           # Organization ID
+    org_name = context.org_name       # Organization display name
+    tenant_id = context.tenant_id     # Microsoft 365 tenant ID (if linked)
+    
+    # === EXECUTION METADATA ===
+    execution_id = context.execution_id
+    caller_email = context.executed_by_email
+    caller_name = context.executed_by_name
+    
+    # === CONFIGURATION (with secret resolution) ===
+    # Automatically resolves secret_ref types from Key Vault
+    api_url = context.get_config("api_url", "https://default.com")
+    api_key = context.get_config("api_key")  # Will fetch from Key Vault if secret_ref
+    has_config = context.has_config("optional_setting")
+    
+    # === SECRETS (direct Key Vault access) ===
+    # Secrets are org-scoped: {org_id}--{secret_name}
+    secret_value = await context.get_secret("my_secret")
+    
+    # === OAUTH CONNECTIONS ===
+    # Get pre-authenticated OAuth credentials
+    oauth_creds = await context.get_oauth_connection("HaloPSA")
+    headers = {"Authorization": oauth_creds.get_auth_header()}
+    
+    # === INTEGRATIONS ===
+    # Get pre-authenticated integration clients
+    # graph = context.get_integration("msgraph")  # When implemented
+    # halo = context.get_integration("halopsa")  # When implemented
+    
+    # === STATE TRACKING ===
+    context.save_checkpoint("step1", {"progress": "started"})
+    context.set_variable("user_count", 42)
+    count = context.get_variable("user_count", 0)
+    
+    # === LOGGING ===
+    context.log("info", "Processing started", {"param1": param1})
+    context.log("warning", "Non-critical issue detected")
+    context.log("error", "Something went wrong", {"error": "details"})
+```
+
+### Installing and Using Modules
+
+**External Dependencies**: Add to `requirements.txt`:
+```bash
+pip install requests
+pip install pandas
+```
+
+**Using External Libraries**:
+```python
+import requests
+import pandas as pd
+
+@workflow(name="api_call_workflow")
+async def call_external_api(context: OrganizationContext):
+    # Use external libraries normally
+    response = requests.get("https://api.example.com/data")
+    data = response.json()
+    
+    # Process with pandas
+    df = pd.DataFrame(data)
+    return {"count": len(df)}
+```
+
+**Local Development Modules**: Create utility modules in `/workspace/`:
+```python
+# /workspace/utils.py
+def format_phone_number(phone: str) -> str:
+    """Utility function for formatting phone numbers"""
+    return phone.replace("-", " ").strip()
+
+# /workspace/workflows/my_workflow.py
+from ..utils import format_phone_number  # Relative import
+
+@workflow(name="format_phone")
+async def format_phone(context: OrganizationContext, phone: str):
+    formatted = format_phone_number(phone)
+    return {"formatted_phone": formatted}
+```
+
+### Testing and Breakpoint Debugging
+
+**1. Run Azure Functions in Debug Mode**:
+```bash
+# Start with debugging enabled
+func start --debug
+```
+
+**2. Set Breakpoints in Your Code**:
+```python
+# /workspace/workflows/debug_workflow.py
+import pdb  # Python debugger
+
+@workflow(name="debug_workflow")
+async def debug_workflow(context: OrganizationContext, data: str):
+    context.log("Starting debug workflow")
+    
+    # Set breakpoint - execution will pause here
+    pdb.set_trace()
+    
+    # You can inspect variables here
+    result = process_data(data)  # Step into this function
+    
+    context.log("Processed data", {"result": result})
+    return {"result": result}
+```
+
+**3. VS Code Debugging Setup**:
+Create `.vscode/launch.json`:
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Azure Functions",
+            "type": "python",
+            "request": "attach",
+            "port": 9091,
+            "host": "localhost",
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "."
+                }
+            ]
+        }
+    ]
+}
+```
+
+**4. Debug Workflow Execution**:
+```bash
+# Terminal 1: Start Functions with debug
+func start --debug --port 9091
+
+# Terminal 2: Execute workflow
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Organization-Id: test-org-active" \
+  -d '{"data": "test"}' \
+  http://localhost:7072/api/workflows/debug_workflow
+```
+
+**5. Common Debugging Commands**:
+```python
+# In pdb console (when breakpoint hits):
+p context.org_id          # Print organization ID
+p data                    # Print variable value
+l                        # List code around current line
+n                        # Next line
+s                        # Step into function
+c                        # Continue execution
+```
+
+### Azure Key Vault Local Development
+
+**Interactive Authentication**:
+```bash
+# Authenticate to Azure for Key Vault access
+python scripts/authenticate_azure.py
+```
+
+**Specifying Your Key Vault**:
+Add to `local.settings.json`:
+```json
+{
+  "Values": {
+    "AZURE_KEY_VAULT_URL": "https://your-key-vault-name.vault.azure.net/"
+  }
+}
+```
+
+**Creating/Updating Secrets**:
+```bash
+# Create secret in Azure CLI
+az keyvault secret set --vault-name your-vault-name \
+  --name "GLOBAL--shared-api-key" \
+  --value "your-secret-value"
+
+# Create org-specific secret
+az keyvault secret set --vault-name your-vault-name \
+  --name "org-123--client-secret" \
+  --value "org-specific-secret"
+```
+
+**Remembering to Update in Both Places**:
+
+1. **Azure Key Vault** (persistent storage):
+   ```bash
+   az keyvault secret set --vault-name your-vault \
+     --name "GLOBAL--my-secret" --value "new-value"
+   ```
+
+2. **Local Configuration** (for development):
+   ```python
+   # In your workflow, use context.get_config() with secret_ref
+   api_key = context.get_config("my_api_key")  # Automatically resolves from Key Vault
+   ```
+
+**Secret Naming Convention**:
+- Global secrets: `GLOBAL--{secret-name}`
+- Org-specific secrets: `{org-id}--{secret-name}`
+
+**Testing Secret Access**:
+```python
+@workflow(name="test_secrets")
+async def test_secrets(context: OrganizationContext):
+    try:
+        # Test global secret
+        global_secret = await context.get_secret("shared_api_key")
+        context.log("Got global secret", {"length": len(global_secret)})
+        
+        # Test org-specific secret
+        org_secret = await context.get_secret("client_secret")
+        context.log("Got org secret", {"length": len(org_secret)})
+        
+        return {"success": True}
+    except Exception as e:
+        context.log("error", "Secret access failed", {"error": str(e)})
+        return {"success": False, "error": str(e)}
+```
+
+**Key Vault Permissions**:
+```bash
+# Grant yourself Key Vault access
+az keyvault set-policy --name your-vault-name \
+  --upn your-email@domain.com \
+  --secret-permissions get list set delete
 ```
 
 ### Executing the Workflow

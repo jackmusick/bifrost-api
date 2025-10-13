@@ -5,6 +5,7 @@ Provides access to workflow execution history with filtering capabilities.
 """
 
 import json
+import logging
 import azure.functions as func
 from typing import Optional, List
 from datetime import datetime
@@ -13,6 +14,8 @@ from shared.auth import require_auth
 from shared.storage import TableStorageService
 from shared.models import WorkflowExecution, ExecutionStatus
 from shared.auth_headers import get_scope_context
+
+logger = logging.getLogger(__name__)
 
 # Create blueprint for executions endpoints
 bp = func.Blueprint()
@@ -26,13 +29,14 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
     GET /api/executions
 
     Headers:
-    - X-Organization-Id: Organization ID (optional, defaults to GLOBAL)
+    - X-Organization-Id: Organization ID (optional, defaults to GLOBAL for admins)
 
     Query parameters:
     - workflowName: Filter by workflow name (optional)
     - status: Filter by status (optional)
     - limit: Max results (optional, default 50, max 1000)
     - continuationToken: Pagination token (optional)
+    - showAll: If "true", platform admins see executions across ALL orgs (optional, admin-only)
 
     Returns: List of workflow executions with optional continuation token
     """
@@ -47,19 +51,42 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
         status = req.params.get('status')
         limit = int(req.params.get('limit', '50'))
         continuation_token = req.params.get('continuationToken')
+        show_all = req.params.get('showAll', '').lower() == 'true'
 
         # Cap limit at 1000 to prevent abuse
         limit = min(limit, 1000)
 
-        # TODO: Validate user has permission to view org executions
-        # For now, allow all authenticated users
+        # Check if user is platform admin for showAll functionality
+        from shared.auth import get_authenticated_user, is_platform_admin
+        user = get_authenticated_user(req)
+        user_is_admin = is_platform_admin(user.user_id) if user else False
+
+        # Security: Only platform admins can use showAll
+        if show_all and not user_is_admin:
+            return func.HttpResponse(
+                json.dumps({
+                    'error': 'Forbidden',
+                    'message': 'Only platform administrators can view executions across all organizations'
+                }),
+                status_code=403,
+                mimetype='application/json'
+            )
 
         # Query WorkflowExecutions table
         executions_service = TableStorageService('WorkflowExecutions')
 
-        # Build filter query - use "GLOBAL" partition for None org_id
-        partition_key = org_id or "GLOBAL"
-        filter_parts = [f"PartitionKey eq '{partition_key}'"]
+        # Build filter query
+        filter_parts = []
+
+        # Partition filtering: showAll admins query across all partitions
+        if show_all and user_is_admin:
+            # No PartitionKey filter - query all orgs
+            logger.info(f"PlatformAdmin {user.user_id} querying executions across ALL organizations")
+        else:
+            # Standard scoped query - use "GLOBAL" partition for None org_id
+            partition_key = org_id or "GLOBAL"
+            filter_parts.append(f"PartitionKey eq '{partition_key}'")
+            logger.info(f"User {user.user_id} querying executions for partition: {partition_key}")
 
         if workflow_name:
             filter_parts.append(f"WorkflowName eq '{workflow_name}'")
@@ -76,11 +103,12 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
             backend_status = status_map.get(status.lower(), status)
             filter_parts.append(f"Status eq '{backend_status}'")
 
-        filter_query = ' and '.join(filter_parts)
+        filter_query = ' and '.join(filter_parts) if filter_parts else None
 
         # Use projection to only fetch needed fields (skip large JSON blobs)
+        # Include PartitionKey to show org scope in UI
         select_fields = [
-            'ExecutionId', 'WorkflowName', 'Status', 'ExecutedBy',
+            'PartitionKey', 'ExecutionId', 'WorkflowName', 'Status', 'ExecutedBy',
             'StartedAt', 'CompletedAt', 'FormId', 'DurationMs', 'ErrorMessage'
         ]
 
@@ -109,6 +137,7 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
             execution = {
                 'executionId': entity.get('ExecutionId'),
                 'workflowName': entity.get('WorkflowName'),
+                'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
                 'status': _map_status_to_frontend(entity.get('Status')),
                 'errorMessage': entity.get('ErrorMessage'),
                 'executedBy': entity.get('ExecutedBy'),
@@ -200,6 +229,7 @@ def get_execution(req: func.HttpRequest) -> func.HttpResponse:
         execution = {
             'executionId': entity.get('ExecutionId'),
             'workflowName': entity.get('WorkflowName'),
+            'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
             'status': _map_status_to_frontend(entity.get('Status')),
             'inputData': json.loads(entity.get('InputData', '{}')),
             'result': json.loads(entity.get('Result')) if entity.get('Result') else None,

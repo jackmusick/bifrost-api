@@ -1,5 +1,7 @@
 /**
  * Secrets API service
+ * All methods use the centralized api client which automatically handles
+ * X-Organization-Id header from sessionStorage
  */
 
 import { api } from './api'
@@ -13,11 +15,11 @@ import type {
 
 export const secretsService = {
   /**
-   * List all secrets, optionally filtered by organization
+   * List all secrets
+   * Organization context is handled automatically by the api client
    */
-  async listSecrets(orgId?: string): Promise<SecretListResponse> {
-    const params = orgId ? { org_id: orgId } : undefined
-    return api.get<SecretListResponse>('/secrets', params)
+  async listSecrets(): Promise<SecretListResponse> {
+    return api.get<SecretListResponse>('/secrets')
   },
 
   /**

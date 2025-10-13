@@ -56,7 +56,7 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
 
         try {
           setLoadingProviders((prev) => ({ ...prev, [providerName]: true }))
-          const options = await dataProvidersService.getOptions(providerName, orgId!)
+          const options = await dataProvidersService.getOptions(providerName)
           setDataProviderOptions((prev) => ({ ...prev, [providerName]: options }))
         } catch (error) {
           console.error(`Failed to load data provider ${providerName}:`, error)
@@ -66,10 +66,8 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
       }
     }
 
-    if (orgId) {
-      loadDataProviders()
-    }
-  }, [form.formSchema.fields, orgId])
+    loadDataProviders()
+  }, [form.formSchema.fields])
 
   // Build Zod schema dynamically from form fields
   const buildSchema = () => {

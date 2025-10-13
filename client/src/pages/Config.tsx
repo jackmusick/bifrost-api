@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Pencil, Plus, Trash2, Key, RefreshCw, Globe, Building2, AlertTriangle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Pencil, Plus, Trash2, Key, RefreshCw, Globe, Building2, AlertTriangle, Info, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Table,
   TableBody,
@@ -42,8 +43,13 @@ export function Config() {
 
   // Fetch configs based on current scope
   const scopeParam = isGlobalScope ? 'GLOBAL' : 'org'
-  const { data: configs, isLoading, refetch } = useConfigs(scopeParam, scope.orgId ?? undefined)
+  const { data: configs, isFetching, refetch } = useConfigs(scopeParam, scope.orgId ?? undefined)
   const deleteConfig = useDeleteConfig()
+
+  // Refetch configs when scope changes
+  useEffect(() => {
+    refetch()
+  }, [scope.orgId, refetch])
 
   const handleEdit = (config: ConfigType) => {
     setSelectedConfig(config)
@@ -127,8 +133,8 @@ export function Config() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
           <Button onClick={handleAdd}>
             <Plus className="mr-2 h-4 w-4" />
@@ -136,6 +142,15 @@ export function Config() {
           </Button>
         </div>
       </div>
+
+      {isGlobalScope && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Showing configuration from the Global partition only. Switch to an organization scope to see that organization's configuration.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
@@ -151,16 +166,15 @@ export function Config() {
           </div>
         </CardHeader>
             <CardContent>
-              {isLoading ? (
-                <div className="space-y-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
+              {isFetching ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : configs && configs.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {isGlobalScope && <TableHead>Scope</TableHead>}
                       <TableHead>Key</TableHead>
                       <TableHead>Value</TableHead>
                       <TableHead>Type</TableHead>
@@ -171,6 +185,14 @@ export function Config() {
                   <TableBody>
                     {configs.map((config) => (
                       <TableRow key={`${config.scope}-${config.key}`}>
+                        {isGlobalScope && (
+                          <TableCell>
+                            <Badge variant="default" className="text-xs">
+                              <Globe className="mr-1 h-3 w-3" />
+                              Global
+                            </Badge>
+                          </TableCell>
+                        )}
                         <TableCell className="font-mono">{config.key}</TableCell>
                         <TableCell className="max-w-xs truncate">
                           {maskValue(config.value, config.type)}

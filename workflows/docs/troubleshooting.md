@@ -483,6 +483,328 @@ del large_data  # Free memory
 
 ---
 
+## Key Vault and Secrets Issues
+
+### Error: `Key Vault access denied`
+
+**Symptom**:
+```
+Unauthorized: Key Vault access denied for secret 'my-secret'
+```
+
+**Cause**: Missing Key Vault permissions or incorrect authentication.
+
+**Solution**:
+1. Run Azure authentication script:
+```bash
+python scripts/authenticate_azure.py
+```
+
+2. Check Key Vault access policies:
+```bash
+az keyvault show --name "your-keyvault-name" --query "properties.accessPolicies"
+```
+
+3. Verify managed identity has permissions:
+```bash
+az keyvault set-policy --name "your-keyvault-name" \
+  --object-id $(az identity show --name "your-identity" --query "principalId" -o tsv) \
+  --secret-permissions get list
+```
+
+---
+
+### Error: `Secret not found in Key Vault`
+
+**Symptom**:
+```
+Secret 'my-secret' not found in Key Vault
+```
+
+**Cause**: Secret doesn't exist or wrong naming convention.
+
+**Solution**:
+1. Check secret exists with correct naming:
+```bash
+# Secrets are org-scoped: {org_id}--{secret_name}
+az keyvault secret show --vault-name "your-keyvault" --name "test-org-active--my-secret"
+```
+
+2. List all secrets for organization:
+```bash
+az keyvault secret list --vault-name "your-keyvault" \
+  --query "[?contains(name, 'test-org-active--')].name"
+```
+
+3. Create missing secret:
+```bash
+az keyvault secret set --vault-name "your-keyvault" \
+  --name "test-org-active--my-secret" --value "secret-value"
+```
+
+---
+
+## OAuth and Integration Issues
+
+### Error: `OAuth connection not found`
+
+**Symptom**:
+```
+OAuth connection 'HaloPSA' not found for organization
+```
+
+**Cause**: OAuth credentials not configured or expired.
+
+**Solution**:
+1. Check OAuth configuration in database:
+```python
+from azure.data.tables import TableServiceClient
+
+client = TableServiceClient.from_connection_string(CONNECTION_STRING)
+table = client.get_table_client("OAuthConnections")
+
+# Query for org's OAuth connections
+connections = list(table.query_entities(
+    f"PartitionKey eq 'oauth' and RowKey eq '{org_id}--HaloPSA'"
+))
+
+if not connections:
+    print("No OAuth connection found - need to configure")
+```
+
+2. Configure OAuth connection:
+```bash
+# Via API (example)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Organization-Id: test-org-active" \
+  -H "x-functions-key: test" \
+  -d '{
+    "provider": "HaloPSA",
+    "client_id": "your-client-id",
+    "client_secret": "your-client-secret",
+    "redirect_uri": "https://your-domain.com/oauth/callback"
+  }' \
+  http://localhost:7072/api/admin/oauth/configure
+```
+
+---
+
+### Error: `OAuth token expired`
+
+**Symptom**:
+```
+OAuth token expired for provider 'HaloPSA'
+```
+
+**Cause**: Access token has expired and needs refresh.
+
+**Solution**:
+1. Check token expiration:
+```python
+oauth_creds = await context.get_oauth_connection("HaloPSA")
+if oauth_creds.is_expired():
+    context.log("warning", "OAuth token expired, attempting refresh")
+    # Token will be automatically refreshed on next API call
+```
+
+2. Force token refresh:
+```python
+# Manually refresh token
+await oauth_creds.refresh_token()
+context.log("info", "OAuth token refreshed successfully")
+```
+
+---
+
+## Configuration Issues
+
+### Error: `Configuration key not found`
+
+**Symptom**:
+```
+Configuration key 'api_endpoint' not found for organization
+```
+
+**Cause**: Missing organization configuration.
+
+**Solution**:
+1. Check organization configuration:
+```python
+# In workflow
+if not context.has_config("api_endpoint"):
+    raise ConfigurationError(
+        "API endpoint not configured",
+        config_key="api_endpoint"
+    )
+
+# Or check all config
+context.log("info", "Available config", {"config": list(context.config.keys())})
+```
+
+2. Set configuration via API:
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Organization-Id: test-org-active" \
+  -H "x-functions-key: test" \
+  -d '{
+    "api_endpoint": "https://api.example.com",
+    "timeout": 30,
+    "feature_flag": true
+  }' \
+  http://localhost:7072/api/admin/config
+```
+
+---
+
+## Data Provider Issues
+
+### Error: `Data provider not found`
+
+**Symptom**:
+```
+Data provider 'get_departments' not found
+```
+
+**Cause**: Data provider function not registered or wrong import.
+
+**Solution**:
+1. Verify data provider exists:
+```bash
+find workspace/ -name "*.py" -exec grep -l "get_departments" {} \;
+```
+
+2. Check decorator is correct:
+```python
+# ✗ MISSING DECORATOR
+async def get_departments(context):
+    return []
+
+# ✓ CORRECT
+@data_provider(
+    name="get_departments",
+    description="Get list of departments"
+)
+async def get_departments(context):
+    return []
+```
+
+3. Restart Functions to trigger re-discovery:
+```bash
+func start
+```
+
+---
+
+## Form and UI Issues
+
+### Error: `Form field validation failed`
+
+**Symptom**:
+```
+Form field 'email' validation failed: Invalid email format
+```
+
+**Cause**: Input doesn't match parameter validation rules.
+
+**Solution**:
+1. Check parameter validation:
+```python
+@param("email", "email", "User email", required=True,
+       validation={"pattern": r"^[^@]+@[^@]+\.[^@]+$"})
+```
+
+2. Test with valid input:
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}' \
+  http://localhost:7072/api/workflows/my_workflow
+```
+
+---
+
+## Database and Storage Issues
+
+### Error: `Table storage connection failed`
+
+**Symptom**:
+```
+Failed to connect to table storage: Connection refused
+```
+
+**Cause**: Azurite not running or wrong connection string.
+
+**Solution**:
+1. Start Azurite:
+```bash
+azurite --silent --location /tmp/azurite
+```
+
+2. Verify connection string in local.settings.json:
+```json
+{
+  "Values": {
+    "TABLE_STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+  }
+}
+```
+
+3. Test connection:
+```bash
+curl http://127.0.0.1:10002/devstoreaccount1
+```
+
+---
+
+## Timeout Issues
+
+### Error: `Workflow execution timeout`
+
+**Symptom**:
+```
+Workflow exceeded 300 second timeout
+```
+
+**Cause**: Workflow taking longer than configured timeout.
+
+**Solution**:
+1. Increase timeout in workflow decorator:
+```python
+@workflow(
+    name="long_running_workflow",
+    timeout_seconds=1800  # 30 minutes
+)
+```
+
+2. Optimize workflow performance:
+```python
+# Use parallel processing
+import asyncio
+tasks = [
+    process_item(item) for item in large_list
+]
+results = await asyncio.gather(*tasks)
+```
+
+3. Break into smaller workflows:
+```python
+# Split large operation into multiple smaller workflows
+@workflow(name="process_batch", timeout_seconds=60)
+async def process_batch(context, batch_data):
+    # Process smaller batch
+    pass
+
+# Orchestrate from parent workflow
+@workflow(name="process_all", timeout_seconds=1800)
+async def process_all(context, all_data):
+    for batch in split_into_batches(all_data):
+        await context.execute_workflow("process_batch", {"batch_data": batch})
+```
+
+---
+
 ## Getting More Help
 
 ### Check Documentation

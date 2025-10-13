@@ -18,7 +18,7 @@ import { useOrganizations } from '@/hooks/useOrganizations'
 export function Forms() {
   const navigate = useNavigate()
   const { scope, isGlobalScope } = useOrgScope()
-  const { data: forms, isLoading, refetch } = useForms(scope.orgId ?? undefined)
+  const { data: forms, isLoading, refetch } = useForms()
   const { data: organizations } = useOrganizations()
   const deleteForm = useDeleteForm()
   const { isPlatformAdmin } = useAuth()

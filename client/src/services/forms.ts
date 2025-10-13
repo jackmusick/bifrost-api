@@ -1,5 +1,7 @@
 /**
  * Forms API service
+ * All methods use the centralized api client which automatically handles
+ * X-Organization-Id header from sessionStorage
  */
 
 import { api } from './api'
@@ -8,6 +10,7 @@ import type { Form, CreateFormRequest, UpdateFormRequest, FormSubmission, FormEx
 export const formsService = {
   /**
    * Get all forms
+   * Organization context is handled automatically by the api client
    */
   async getForms(): Promise<Form[]> {
     return api.get<Form[]>('/forms')
@@ -15,15 +18,15 @@ export const formsService = {
 
   /**
    * Get a specific form by ID
-   * @param formId - Form ID
-   * @param orgId - Organization ID (uses form's orgId to query correct partition)
+   * Organization context is handled automatically by the api client
    */
-  async getForm(formId: string, orgId?: string): Promise<Form> {
-    return api.request<Form>(`/forms/${formId}`, { method: 'GET', orgId })
+  async getForm(formId: string): Promise<Form> {
+    return api.get<Form>(`/forms/${formId}`)
   },
 
   /**
    * Create a new form
+   * Organization context is handled automatically by the api client
    */
   async createForm(request: CreateFormRequest): Promise<Form> {
     return api.post<Form>('/forms', request)
@@ -31,29 +34,23 @@ export const formsService = {
 
   /**
    * Update a form
-   * @param formId - Form ID
-   * @param request - Update request
-   * @param orgId - Organization ID (uses form's orgId to query correct partition)
+   * Organization context is handled automatically by the api client
    */
-  async updateForm(formId: string, request: UpdateFormRequest, orgId?: string): Promise<Form> {
-    return api.request<Form>(`/forms/${formId}`, {
-      method: 'PUT',
-      body: JSON.stringify(request),
-      orgId
-    })
+  async updateForm(formId: string, request: UpdateFormRequest): Promise<Form> {
+    return api.put<Form>(`/forms/${formId}`, request)
   },
 
   /**
    * Delete a form
-   * @param formId - Form ID
-   * @param orgId - Organization ID (uses form's orgId to query correct partition)
+   * Organization context is handled automatically by the api client
    */
-  async deleteForm(formId: string, orgId?: string): Promise<void> {
-    return api.request<void>(`/forms/${formId}`, { method: 'DELETE', orgId })
+  async deleteForm(formId: string): Promise<void> {
+    return api.delete<void>(`/forms/${formId}`)
   },
 
   /**
    * Activate a form
+   * Organization context is handled automatically by the api client
    */
   async activateForm(formId: string): Promise<Form> {
     return api.post<Form>(`/forms/${formId}/activate`, {})
@@ -61,6 +58,7 @@ export const formsService = {
 
   /**
    * Deactivate a form
+   * Organization context is handled automatically by the api client
    */
   async deactivateForm(formId: string): Promise<Form> {
     return api.post<Form>(`/forms/${formId}/deactivate`, {})
@@ -68,13 +66,11 @@ export const formsService = {
 
   /**
    * Submit a form to execute a workflow
-   * @param submission - Form submission with formId, formData, and optional orgId
+   * Organization context is handled automatically by the api client
    */
-  async submitForm(submission: FormSubmission & { orgId?: string }): Promise<FormExecutionResponse> {
-    return api.request<FormExecutionResponse>(`/forms/${submission.formId}/submit`, {
-      method: 'POST',
-      body: JSON.stringify({ form_data: submission.formData }),
-      orgId: submission.orgId
+  async submitForm(submission: FormSubmission): Promise<FormExecutionResponse> {
+    return api.post<FormExecutionResponse>(`/forms/${submission.formId}/submit`, {
+      form_data: submission.formData
     })
   },
 }

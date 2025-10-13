@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, AlertTriangle } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, AlertTriangle, Info, Globe, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -20,16 +20,32 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useExecutions } from '@/hooks/useExecutions'
+import { useScopeStore } from '@/stores/scopeStore'
+import { useOrganizations } from '@/hooks/useOrganizations'
 import type { ExecutionStatus } from '@/types/execution'
 
 export function ExecutionHistory() {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<ExecutionStatus | 'all'>('all')
+  const isGlobalScope = useScopeStore((state) => state.isGlobalScope)
+  const scope = useScopeStore((state) => state.scope)
+  const { data: organizations } = useOrganizations()
 
-  const { data: executions, isLoading, refetch } = useExecutions(
+  const { data: executions, isFetching, refetch } = useExecutions(
     statusFilter !== 'all' ? { status: statusFilter } : undefined
   )
+
+  // Debug: log when scope changes
+  console.log('ExecutionHistory - scope.orgId:', scope.orgId)
+
+  // Helper to get organization name from orgId
+  const getOrgName = (orgId?: string) => {
+    if (!orgId || orgId === 'GLOBAL') return 'Global'
+    const org = organizations?.find(o => o.id === orgId)
+    return org?.name || orgId
+  }
 
   const getStatusBadge = (status: ExecutionStatus) => {
     switch (status) {
@@ -99,12 +115,21 @@ export function ExecutionHistory() {
                 Recent workflow executions and their status
               </CardDescription>
             </div>
-            <Button variant="outline" size="icon" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
+            <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden flex flex-col">
+          {isGlobalScope && (
+            <Alert className="mb-4">
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                Showing execution logs from the Global partition only. Switch to an organization scope to see that organization's executions.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Tabs defaultValue="all" onValueChange={(v) => setStatusFilter(v as ExecutionStatus | 'all')} className="flex flex-col flex-1 overflow-hidden">
             <TabsList className="flex-shrink-0">
               <TabsTrigger value="all">All</TabsTrigger>
@@ -115,11 +140,9 @@ export function ExecutionHistory() {
             </TabsList>
 
             <TabsContent value={statusFilter} className="mt-6 flex-1 overflow-auto">
-              {isLoading ? (
-                <div className="space-y-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
+              {isFetching ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : filteredExecutions.length > 0 ? (
                 <div className="border rounded-lg overflow-hidden">
@@ -127,6 +150,7 @@ export function ExecutionHistory() {
                     <Table>
                       <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
+                          {isGlobalScope && <TableHead>Scope</TableHead>}
                           <TableHead>Workflow</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Executed By</TableHead>
@@ -145,8 +169,28 @@ export function ExecutionHistory() {
                               )
                             : null
 
+                          const executionOrgId = execution.orgId || 'GLOBAL'
+                          const isGlobalExecution = executionOrgId === 'GLOBAL'
+
                           return (
                             <TableRow key={execution.executionId} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewDetails(execution.executionId)}>
+                              {isGlobalScope && (
+                                <TableCell>
+                                  <Badge variant={isGlobalExecution ? 'default' : 'outline'} className="text-xs">
+                                    {isGlobalExecution ? (
+                                      <>
+                                        <Globe className="mr-1 h-3 w-3" />
+                                        Global
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Building2 className="mr-1 h-3 w-3" />
+                                        {getOrgName(executionOrgId)}
+                                      </>
+                                    )}
+                                  </Badge>
+                                </TableCell>
+                              )}
                               <TableCell className="font-mono text-sm">
                                 {execution.workflowName}
                               </TableCell>

@@ -1,5 +1,8 @@
 /**
  * OAuth Connections API service
+ * All methods use the centralized api client which automatically handles
+ * X-Organization-Id header from sessionStorage.
+ * Optional orgId parameter allows admin override when needed.
  */
 
 import { api } from './api'
@@ -14,155 +17,99 @@ import type {
 
 export const oauthService = {
   /**
-   * List all OAuth connections for an organization
+   * List all OAuth connections
+   * Organization context is handled automatically by the api client
    * Always includes GLOBAL connections as fallback
    */
-  async listConnections(
-    orgId?: string
-  ): Promise<OAuthConnectionSummary[]> {
-    return api.request<OAuthConnectionSummary[]>('/oauth/connections', {
-      method: 'GET',
-      orgId,
-    })
+  async listConnections(): Promise<OAuthConnectionSummary[]> {
+    return api.get<OAuthConnectionSummary[]>('/oauth/connections')
   },
 
   /**
    * Get OAuth connection details by name
+   * Organization context is handled automatically by the api client
    */
-  async getConnection(
-    connectionName: string,
-    orgId?: string
-  ): Promise<OAuthConnectionDetail> {
-    return api.request<OAuthConnectionDetail>(`/oauth/connections/${connectionName}`, {
-      method: 'GET',
-      orgId,
-    })
+  async getConnection(connectionName: string): Promise<OAuthConnectionDetail> {
+    return api.get<OAuthConnectionDetail>(`/oauth/connections/${connectionName}`)
   },
 
   /**
    * Create a new OAuth connection
+   * Organization context is handled automatically by the api client
    */
-  async createConnection(
-    data: CreateOAuthConnectionRequest,
-    orgId?: string
-  ): Promise<OAuthConnectionDetail> {
-    return api.request<OAuthConnectionDetail>('/oauth/connections', {
-      method: 'POST',
-      body: JSON.stringify(data),
-      orgId,
-    })
+  async createConnection(data: CreateOAuthConnectionRequest): Promise<OAuthConnectionDetail> {
+    return api.post<OAuthConnectionDetail>('/oauth/connections', data)
   },
 
   /**
    * Update an existing OAuth connection
+   * Organization context is handled automatically by the api client
    */
   async updateConnection(
     connectionName: string,
-    data: UpdateOAuthConnectionRequest,
-    orgId?: string
+    data: UpdateOAuthConnectionRequest
   ): Promise<OAuthConnectionDetail> {
-    return api.request<OAuthConnectionDetail>(`/oauth/connections/${connectionName}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-      orgId,
-    })
+    return api.put<OAuthConnectionDetail>(`/oauth/connections/${connectionName}`, data)
   },
 
   /**
    * Delete an OAuth connection
+   * Organization context is handled automatically by the api client
    */
-  async deleteConnection(
-    connectionName: string,
-    orgId?: string
-  ): Promise<void> {
-    return api.request<void>(`/oauth/connections/${connectionName}`, {
-      method: 'DELETE',
-      orgId,
-    })
+  async deleteConnection(connectionName: string): Promise<void> {
+    return api.delete<void>(`/oauth/connections/${connectionName}`)
   },
 
   /**
    * Initiate OAuth authorization flow
    * Returns authorization URL for user to visit
+   * Organization context is handled automatically by the api client
    */
-  async authorize(
-    connectionName: string,
-    orgId?: string
-  ): Promise<OAuthAuthorizeResponse> {
-    return api.request<OAuthAuthorizeResponse>(
-      `/oauth/connections/${connectionName}/authorize`,
-      {
-        method: 'POST',
-        body: JSON.stringify({}),
-        orgId,
-      }
-    )
+  async authorize(connectionName: string): Promise<OAuthAuthorizeResponse> {
+    return api.post<OAuthAuthorizeResponse>(`/oauth/connections/${connectionName}/authorize`, {})
   },
 
   /**
    * Cancel OAuth authorization (reset to not_connected status)
+   * Organization context is handled automatically by the api client
    */
-  async cancelAuthorization(
-    connectionName: string,
-    orgId?: string
-  ): Promise<void> {
-    return api.request<void>(
-      `/oauth/connections/${connectionName}/cancel`,
-      {
-        method: 'POST',
-        body: JSON.stringify({}),
-        orgId,
-      }
-    )
+  async cancelAuthorization(connectionName: string): Promise<void> {
+    return api.post<void>(`/oauth/connections/${connectionName}/cancel`, {})
   },
 
   /**
    * Manually refresh OAuth access token using refresh token
+   * Organization context is handled automatically by the api client
    */
   async refreshToken(
-    connectionName: string,
-    orgId?: string
+    connectionName: string
   ): Promise<{ success: boolean; message: string; expires_at: string }> {
-    return api.request<{ success: boolean; message: string; expires_at: string }>(
+    return api.post<{ success: boolean; message: string; expires_at: string }>(
       `/oauth/connections/${connectionName}/refresh`,
-      {
-        method: 'POST',
-        body: JSON.stringify({}),
-        orgId,
-      }
+      {}
     )
   },
 
   /**
    * Handle OAuth callback (exchange authorization code for tokens)
    * Called from the UI callback page after OAuth provider redirects
+   * Organization context is handled automatically by the api client
    */
   async handleCallback(
     connectionName: string,
     code: string,
     state?: string | null
   ): Promise<void> {
-    return api.request<void>(
-      `/oauth/callback/${connectionName}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ code, state }),
-      }
-    )
+    return api.post<void>(`/oauth/callback/${connectionName}`, { code, state })
   },
 
   /**
    * Get OAuth credentials for workflow consumption
    * WARNING: Returns sensitive access tokens
+   * Organization context is handled automatically by the api client
    */
-  async getCredentials(
-    connectionName: string,
-    orgId?: string
-  ): Promise<OAuthCredentialsResponse> {
-    return api.request<OAuthCredentialsResponse>(`/oauth/credentials/${connectionName}`, {
-      method: 'GET',
-      orgId,
-    })
+  async getCredentials(connectionName: string): Promise<OAuthCredentialsResponse> {
+    return api.get<OAuthCredentialsResponse>(`/oauth/credentials/${connectionName}`)
   },
 
   /**
@@ -170,12 +117,11 @@ export const oauthService = {
    * This is called automatically after OAuth flow completes
    */
   async testConnection(
-    connectionName: string,
-    orgId?: string
+    connectionName: string
   ): Promise<{ success: boolean; message: string }> {
     // Not a direct API endpoint - this happens automatically in the callback
     // But we can check status by fetching connection details
-    const connection = await this.getConnection(connectionName, orgId)
+    const connection = await this.getConnection(connectionName)
     return {
       success: connection.status === 'completed',
       message: connection.status_message || 'Connection status: ' + connection.status

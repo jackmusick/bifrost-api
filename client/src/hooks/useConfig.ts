@@ -1,5 +1,6 @@
 /**
  * React Query hooks for config management
+ * All hooks use the centralized api client which handles X-Organization-Id automatically
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'

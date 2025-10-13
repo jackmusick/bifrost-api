@@ -1,36 +1,33 @@
 /**
  * React Query hooks for forms management
+ * All hooks use the centralized api client which handles X-Organization-Id automatically
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formsService } from '@/services/forms'
 import type { CreateFormRequest, UpdateFormRequest, FormSubmission } from '@/types/form'
 import { toast } from 'sonner'
-import { useUser } from '@/contexts/UserContext'
 
-export function useForms(orgId?: string | undefined) {
+export function useForms() {
   return useQuery({
-    queryKey: ['forms', orgId],
-    queryFn: () => formsService.getForms(orgId !== undefined ? { orgId } : undefined),
+    queryKey: ['forms'],
+    queryFn: () => formsService.getForms(),
   })
 }
 
 export function useForm(formId: string | undefined) {
-  const { orgId } = useUser()
-
   return useQuery({
-    queryKey: ['forms', formId, orgId],
-    queryFn: () => formsService.getForm(formId!, orgId!),
-    enabled: !!formId && !!orgId,
+    queryKey: ['forms', formId],
+    queryFn: () => formsService.getForm(formId!),
+    enabled: !!formId,
   })
 }
 
 export function useCreateForm() {
   const queryClient = useQueryClient()
-  const { orgId } = useUser()
 
   return useMutation({
-    mutationFn: (request: CreateFormRequest) => formsService.createForm(request, orgId!),
+    mutationFn: (request: CreateFormRequest) => formsService.createForm(request),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['forms'] })
       toast.success('Form created', {
@@ -47,11 +44,10 @@ export function useCreateForm() {
 
 export function useUpdateForm() {
   const queryClient = useQueryClient()
-  const { orgId } = useUser()
 
   return useMutation({
     mutationFn: ({ formId, request }: { formId: string; request: UpdateFormRequest }) =>
-      formsService.updateForm(formId, request, orgId!),
+      formsService.updateForm(formId, request),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['forms'] })
       queryClient.invalidateQueries({ queryKey: ['forms', variables.formId] })
@@ -69,10 +65,9 @@ export function useUpdateForm() {
 
 export function useDeleteForm() {
   const queryClient = useQueryClient()
-  const { orgId } = useUser()
 
   return useMutation({
-    mutationFn: (formId: string) => formsService.deleteForm(formId, orgId!),
+    mutationFn: (formId: string) => formsService.deleteForm(formId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['forms'] })
       toast.success('Form deleted', {

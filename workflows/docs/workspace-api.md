@@ -215,23 +215,26 @@ class OrganizationContext:
 
 **Methods:**
 
-#### `log(message: str, level: str = "INFO") -> None`
+#### `log(level: str, message: str, data: dict = None) -> None`
 
-Log a message for this execution.
+Log a message for this execution with structured data.
 
 ```python
-context.log("Processing user data", level="INFO")
-context.log("Missing required field", level="WARNING")
-context.log("Critical error occurred", level="ERROR")
+context.log("info", "Processing user data", {"user_id": "123", "action": "create"})
+context.log("warning", "Rate limit approaching", {"remaining": 10, "reset_time": "2024-01-01T12:00:00Z"})
+context.log("error", "API call failed", {"error": "Connection timeout", "endpoint": "/users"})
 ```
+
+**Log Levels**: `"info"`, `"warning"`, `"error"`, `"debug"`
 
 #### `set_variable(key: str, value: Any) -> None`
 
-Store a variable for later retrieval.
+Store a variable for later retrieval (persisted for execution duration).
 
 ```python
 context.set_variable("user_count", 42)
 context.set_variable("api_response", {"status": "success"})
+context.set_variable("processing_stage", "validation")
 ```
 
 #### `get_variable(key: str, default: Any = None) -> Any`
@@ -240,32 +243,102 @@ Retrieve a stored variable.
 
 ```python
 user_count = context.get_variable("user_count", default=0)
+processing_stage = context.get_variable("processing_stage", "unknown")
 ```
 
-#### `save_state(state: Dict[str, Any]) -> None`
+#### `save_checkpoint(name: str, data: dict = None) -> None`
 
-Save workflow state snapshot (for debugging/auditing).
+Save workflow checkpoint for debugging and recovery.
 
 ```python
-context.save_state({
-    "step": "validation",
-    "records_processed": 100,
-    "errors": []
+context.save_checkpoint("user_validation", {
+    "email": "user@example.com",
+    "is_valid": True,
+    "timestamp": "2024-01-01T12:00:00Z"
+})
+
+context.save_checkpoint("api_call_complete", {
+    "endpoint": "/users",
+    "status_code": 201,
+    "response_id": "user-123"
 })
 ```
 
-#### `log_integration_call(service: str, endpoint: str, ...)`
+#### `get_config(key: str, default: Any = None) -> Any`
 
-Log an external API call.
+Get organization configuration value with automatic secret resolution.
 
 ```python
-context.log_integration_call(
-    service="Microsoft Graph",
-    endpoint="/users",
-    method="GET",
-    status_code=200,
-    duration_ms=250
-)
+# Regular config
+api_url = context.get_config("api_url", "https://default.api.com")
+timeout = context.get_config("request_timeout", 30)
+
+# Secret resolution (automatically fetches from Key Vault)
+api_key = context.get_config("api_key")  # Fetches from Key Vault if secret_ref
+db_password = context.get_config("database_password")
+```
+
+#### `has_config(key: str) -> bool`
+
+Check if configuration key exists.
+
+```python
+if context.has_config("feature_flag_new_ui"):
+    # Use new UI feature
+    pass
+
+if not context.has_config("api_endpoint"):
+    raise ConfigurationError("API endpoint not configured")
+```
+
+#### `get_secret(secret_name: str) -> Awaitable[str]`
+
+Get secret directly from Key Vault (org-scoped: {org_id}--{secret_name}).
+
+```python
+# Secrets are automatically scoped to organization
+api_key = await context.get_secret("my_api_key")
+db_connection_string = await context.get_secret("database_connection")
+oauth_client_secret = await context.get_secret("oauth_client_secret")
+```
+
+#### `get_oauth_connection(provider_name: str) -> Awaitable[OAuthCredentials]`
+
+Get pre-authenticated OAuth credentials for external services.
+
+```python
+# Get OAuth credentials for HaloPSA
+halo_creds = await context.get_oauth_connection("HaloPSA")
+headers = {"Authorization": halo_creds.get_auth_header()}
+
+# Check if token needs refresh
+if halo_creds.is_expired():
+    context.log("warning", "OAuth token expired, will refresh")
+
+# Use in API calls
+async with aiohttp.ClientSession() as session:
+    async with session.get("https://api.halopsa.com/tickets", headers=headers) as response:
+        data = await response.json()
+```
+
+#### `get_integration(integration_name: str) -> IntegrationClient`
+
+Get pre-authenticated integration client.
+
+```python
+# Microsoft Graph integration
+graph = context.get_integration("msgraph")
+users = await graph.get_users()
+user_details = await graph.get_user("user@example.com")
+
+# HaloPSA integration
+halo = context.get_integration("halopsa")
+tickets = await halo.get_tickets()
+client = await halo.get_client("client-123")
+
+# Custom integrations (if configured)
+custom_api = context.get_integration("custom_api")
+data = await custom_api.get_data("/endpoint")
 ```
 
 ---

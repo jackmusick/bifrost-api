@@ -7,6 +7,7 @@ import type { components } from './generated/management-api'
 // Re-export from generated types
 export type WorkflowExecution = components['schemas']['WorkflowExecution'] & {
   logs?: ExecutionLog[]  // Extended with logs from detailed endpoint
+  orgId?: string  // Organization scope (GLOBAL or org-xxx)
 }
 export type ExecutionStatus = components['schemas']['ExecutionStatus']
 
