@@ -1203,29 +1203,21 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
     logger.info(f"User {user.email} retrieving OAuth refresh job status")
 
     try:
-        # Query OAuthJobRuns table for most recent job
-        job_runs_table = TableStorageService("OAuthJobRuns")
+        # Get job status from SystemConfig table
+        system_config_table = TableStorageService("SystemConfig")
 
         try:
-            # Query for all refresh_job entries, sorted by timestamp descending
-            all_jobs = job_runs_table.query_entities(
-                filter="PartitionKey eq 'refresh_job'",
-                select=["RowKey", "Timestamp", "StartTime", "EndTime", "DurationSeconds",
-                        "Status", "TotalConnections", "NeedsRefresh", "RefreshedSuccessfully",
-                        "RefreshFailed", "Errors", "ErrorMessage"]
-            )
-
-            # Convert to list and sort by Timestamp descending
-            job_list = list(all_jobs)
+            # Single point query - very efficient!
+            job_status = system_config_table.get_entity("OAuthJobStatus", "TokenRefreshJob")
         except Exception as e:
-            # Table doesn't exist yet - no jobs have run
-            if "TableNotFound" in str(e):
-                job_list = []
+            # Table doesn't exist yet or no job has run
+            if "TableNotFound" in str(e) or "ResourceNotFound" in str(e):
+                job_status = None
             else:
                 raise
 
-        if not job_list:
-            # No jobs run yet
+        if not job_status:
+            # No job has run yet
             return func.HttpResponse(
                 json.dumps({
                     "message": "No refresh job runs yet",
@@ -1235,32 +1227,26 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
                 mimetype="application/json"
             )
 
-        # Sort by Timestamp descending to get most recent
-        job_list.sort(key=lambda x: x.get("Timestamp", ""), reverse=True)
-        last_job = job_list[0]
-
         # Parse errors if present
         errors = []
-        if last_job.get("Errors"):
+        if job_status.get("Errors"):
             try:
-                errors = json.loads(last_job.get("Errors"))
+                errors = json.loads(job_status.get("Errors"))
             except:
                 errors = []
 
         response = {
             "last_run": {
-                "job_id": last_job.get("RowKey"),
-                "timestamp": last_job.get("Timestamp"),
-                "start_time": last_job.get("StartTime"),
-                "end_time": last_job.get("EndTime"),
-                "duration_seconds": last_job.get("DurationSeconds", 0),
-                "status": last_job.get("Status"),
-                "total_connections": last_job.get("TotalConnections", 0),
-                "needs_refresh": last_job.get("NeedsRefresh", 0),
-                "refreshed_successfully": last_job.get("RefreshedSuccessfully", 0),
-                "refresh_failed": last_job.get("RefreshFailed", 0),
+                "start_time": job_status.get("StartTime"),
+                "end_time": job_status.get("EndTime"),
+                "duration_seconds": job_status.get("DurationSeconds", 0),
+                "status": job_status.get("Status"),
+                "total_connections": job_status.get("TotalConnections", 0),
+                "needs_refresh": job_status.get("NeedsRefresh", 0),
+                "refreshed_successfully": job_status.get("RefreshedSuccessfully", 0),
+                "refresh_failed": job_status.get("RefreshFailed", 0),
                 "errors": errors,
-                "error": last_job.get("ErrorMessage")  # Present if job itself failed
+                "error": job_status.get("ErrorMessage")  # Present if job itself failed
             }
         }
 
