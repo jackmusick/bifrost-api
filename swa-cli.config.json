@@ -3,7 +3,8 @@
     "configurations": {
         "msp-automation-platform": {
             "appLocation": "./client",
-            "apiLocation": "./client/api",
+            "apiLocation": "./api",
+            "apiDevserverUrl": "http://localhost:7071",
             "outputLocation": "dist",
             "appBuildCommand": "npm run build",
             "appDevserverUrl": "http://localhost:5173",

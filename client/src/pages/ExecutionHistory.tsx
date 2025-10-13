@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -38,6 +38,13 @@ export function ExecutionHistory() {
           <Badge variant="default" className="bg-green-500">
             <CheckCircle className="mr-1 h-3 w-3" />
             Completed
+          </Badge>
+        )
+      case 'CompletedWithErrors':
+        return (
+          <Badge variant="default" className="bg-yellow-500">
+            <AlertTriangle className="mr-1 h-3 w-3" />
+            With Errors
           </Badge>
         )
       case 'Failed':

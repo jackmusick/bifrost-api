@@ -1,0 +1,15 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "TABLE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+        "AZURE_KEY_VAULT_URL": "https://gocoviscripting.vault.azure.net/",
+        "AzureWebJobsSecretStorageType": "files"
+    },
+    "Host": {
+        "CORS": "*",
+        "CORSCredentials": false,
+        "LocalHttpPort": 7071
+    }
+}

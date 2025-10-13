@@ -152,6 +152,8 @@ export function PrettyInputDisplay({
             margin: 0,
             borderRadius: '0.5rem',
             fontSize: '0.875rem',
+            maxWidth: '100%',
+            overflowX: 'auto',
           }}
         >
           {JSON.stringify(inputData, null, 2)}
@@ -212,12 +214,14 @@ export function PrettyInputDisplay({
                         borderRadius: '0.25rem',
                         fontSize: '0.75rem',
                         maxHeight: '8rem',
+                        maxWidth: '100%',
+                        overflowX: 'auto',
                       }}
                     >
                       {display}
                     </SyntaxHighlighter>
                   ) : (
-                    <p className="whitespace-pre-wrap">{display}</p>
+                    <p className="whitespace-pre-wrap break-all">{display}</p>
                   )}
                 </div>
               </div>

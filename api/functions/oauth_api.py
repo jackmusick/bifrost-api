@@ -1,0 +1,1283 @@
+"""
+OAuth API endpoints
+Manage OAuth connections for workflows and integrations
+"""
+
+import logging
+import json
+import uuid
+from datetime import datetime
+from urllib.parse import urlencode
+import azure.functions as func
+from pydantic import ValidationError
+
+from shared.auth import require_auth
+from shared.keyvault import KeyVaultManager
+from shared.storage import TableStorageService
+from services.oauth_storage_service import OAuthStorageService
+from services.oauth_provider import OAuthProviderClient
+from services.oauth_test_service import OAuthTestService
+from models.oauth_connection import (
+    CreateOAuthConnectionRequest,
+    UpdateOAuthConnectionRequest,
+    OAuthCredentials,
+    OAuthCredentialsResponse
+)
+from shared.models import ErrorResponse
+
+logger = logging.getLogger(__name__)
+
+# Create blueprint for OAuth endpoints
+bp = func.Blueprint()
+
+
+@bp.function_name("oauth_create_connection")
+@bp.route(route="oauth/connections", methods=["POST"])
+@require_auth
+async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/oauth/connections
+    Create a new OAuth connection
+
+    Request body: CreateOAuthConnectionRequest
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Requires: User must be authenticated (platform admin or have canManageConfig)
+    """
+    user = req.user
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} creating OAuth connection for org {org_id}")
+
+    try:
+        # Parse and validate request body
+        request_body = req.get_json()
+        create_request = CreateOAuthConnectionRequest(**request_body)
+
+        # Create OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # Check if connection already exists
+        existing = await oauth_service.get_connection(org_id, create_request.connection_name)
+        if existing:
+            error = ErrorResponse(
+                error="Conflict",
+                message=f"OAuth connection '{create_request.connection_name}' already exists"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=409,
+                mimetype="application/json"
+            )
+
+        # Create connection
+        connection = await oauth_service.create_connection(
+            org_id=org_id,
+            request=create_request,
+            created_by=user.user_id
+        )
+
+        logger.info(f"Created OAuth connection: {create_request.connection_name}")
+
+        # Return detail response
+        detail = connection.to_detail()
+        return func.HttpResponse(
+            json.dumps(detail.model_dump(mode="json")),
+            status_code=201,
+            mimetype="application/json"
+        )
+
+    except ValidationError as e:
+        logger.warning(f"Validation error creating OAuth connection: {e}")
+        error = ErrorResponse(
+            error="ValidationError",
+            message="Invalid request data",
+            details={"errors": e.errors()}
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    except ValueError as e:
+        logger.error(f"Error parsing request: {str(e)}")
+        error = ErrorResponse(
+            error="BadRequest",
+            message="Invalid JSON in request body"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating OAuth connection: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to create OAuth connection"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_list_connections")
+@bp.route(route="oauth/connections", methods=["GET"])
+@require_auth
+async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/oauth/connections
+    List OAuth connections for an organization
+
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Returns org-specific connections + GLOBAL connections (with org-specific taking precedence)
+
+    Requires: User must be authenticated
+    """
+    user = req.user
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} listing OAuth connections for org {org_id}")
+
+    try:
+        # Create OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # List connections - always include GLOBAL fallback
+        connections = await oauth_service.list_connections(org_id, include_global=True)
+
+        # Convert to summary responses
+        summaries = [conn.to_summary() for conn in connections]
+
+        logger.info(f"Returning {len(summaries)} OAuth connections")
+
+        return func.HttpResponse(
+            json.dumps([s.model_dump(mode="json") for s in summaries]),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error listing OAuth connections: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to list OAuth connections"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_get_connection")
+@bp.route(route="oauth/connections/{connection_name}", methods=["GET"])
+@require_auth
+async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/oauth/connections/{connection_name}
+    Get OAuth connection details
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Requires: User must be authenticated
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} retrieving OAuth connection {connection_name} for org {org_id}")
+
+    try:
+        # Create OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # Get connection with org→GLOBAL fallback
+        connection = await oauth_service.get_connection(org_id, connection_name)
+
+        if not connection:
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        # Return detail response (masks sensitive fields)
+        detail = connection.to_detail()
+        return func.HttpResponse(
+            json.dumps(detail.model_dump(mode="json")),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error retrieving OAuth connection: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to retrieve OAuth connection"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_update_connection")
+@bp.route(route="oauth/connections/{connection_name}", methods=["PUT"])
+@require_auth
+async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    PUT /api/oauth/connections/{connection_name}
+    Update an OAuth connection
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+    Request body: UpdateOAuthConnectionRequest
+
+    Requires: User must be authenticated (platform admin or have canManageConfig)
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} updating OAuth connection {connection_name} for org {org_id}")
+
+    try:
+        # Parse and validate request body
+        request_body = req.get_json()
+        update_request = UpdateOAuthConnectionRequest(**request_body)
+
+        # Create OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # Update connection
+        connection = await oauth_service.update_connection(
+            org_id=org_id,
+            connection_name=connection_name,
+            request=update_request,
+            updated_by=user.user_id
+        )
+
+        if not connection:
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        logger.info(f"Updated OAuth connection: {connection_name}")
+
+        # Return detail response
+        detail = connection.to_detail()
+        return func.HttpResponse(
+            json.dumps(detail.model_dump(mode="json")),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except ValidationError as e:
+        logger.warning(f"Validation error updating OAuth connection: {e}")
+        error = ErrorResponse(
+            error="ValidationError",
+            message="Invalid request data",
+            details={"errors": e.errors()}
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    except ValueError as e:
+        logger.error(f"Error parsing request: {str(e)}")
+        error = ErrorResponse(
+            error="BadRequest",
+            message="Invalid JSON in request body"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating OAuth connection: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to update OAuth connection"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_delete_connection")
+@bp.route(route="oauth/connections/{connection_name}", methods=["DELETE"])
+@require_auth
+async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    DELETE /api/oauth/connections/{connection_name}
+    Delete an OAuth connection
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Requires: User must be authenticated (platform admin or have canManageConfig)
+
+    Note: This will be enhanced in User Story 5 to check for dependent workflows
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} deleting OAuth connection {connection_name} for org {org_id}")
+
+    try:
+        # Create OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # Delete connection (idempotent)
+        deleted = await oauth_service.delete_connection(org_id, connection_name)
+
+        if deleted:
+            logger.info(f"Deleted OAuth connection: {connection_name}")
+        else:
+            logger.debug(f"OAuth connection not found (already deleted): {connection_name}")
+
+        # Return 204 No Content (idempotent delete)
+        return func.HttpResponse(
+            status_code=204
+        )
+
+    except Exception as e:
+        logger.error(f"Error deleting OAuth connection: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to delete OAuth connection"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+# ==================== AUTHORIZATION FLOW ENDPOINTS ====================
+
+@bp.function_name("oauth_authorize")
+@bp.route(route="oauth/connections/{connection_name}/authorize", methods=["POST"])
+@require_auth
+async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/oauth/connections/{connection_name}/authorize
+    Initiate OAuth authorization flow
+
+    Returns authorization URL for user to visit
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Requires: User must be authenticated
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} initiating OAuth authorization for {connection_name}")
+
+    try:
+        # Get OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # Get connection
+        connection = await oauth_service.get_connection(org_id, connection_name)
+
+        if not connection:
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        # Check if client credentials flow (doesn't need authorization)
+        if connection.oauth_flow_type == "client_credentials":
+            error = ErrorResponse(
+                error="BadRequest",
+                message="Client credentials flow does not require authorization"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Generate state parameter for CSRF protection
+        state = str(uuid.uuid4())
+
+        # Build full redirect URI (UI callback page)
+        # req.url is like: https://domain.com/api/oauth/connections/name/authorize
+        # We need: https://domain.com/oauth/callback/connection_name (no /api/)
+        base_url = req.url.split('/api')[0] if '/api' in req.url else req.url.rsplit('/', 4)[0]
+        # Ensure redirect_uri doesn't have /api/ prefix
+        redirect_path = connection.redirect_uri
+        if redirect_path.startswith('/api/'):
+            redirect_path = redirect_path[4:]  # Remove /api prefix
+        full_redirect_uri = f"{base_url}{redirect_path}"
+
+        logger.info(f"Using redirect_uri for authorization: {full_redirect_uri}")
+
+        # Build authorization URL
+        auth_params = {
+            "client_id": connection.client_id,
+            "redirect_uri": full_redirect_uri,
+            "response_type": "code",
+            "scope": connection.scopes.replace(",", " "),  # OAuth spec uses space-separated
+            "state": state
+        }
+
+        authorization_url = f"{connection.authorization_url}?{urlencode(auth_params)}"
+
+        # Update connection status to waiting_callback
+        await oauth_service.update_connection_status(
+            org_id=org_id,
+            connection_name=connection_name,
+            status="waiting_callback",
+            status_message=f"Waiting for OAuth callback (state: {state})"
+        )
+
+        logger.info(f"Generated authorization URL for {connection_name}")
+
+        # Return authorization URL
+        return func.HttpResponse(
+            json.dumps({
+                "authorization_url": authorization_url,
+                "state": state,
+                "message": "Visit the authorization URL to complete OAuth flow"
+            }),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error initiating OAuth authorization: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to initiate OAuth authorization"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_cancel_authorization")
+@bp.route(route="oauth/connections/{connection_name}/cancel", methods=["POST"])
+@require_auth
+async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/oauth/connections/{connection_name}/cancel
+    Cancel OAuth authorization (reset to not_connected status)
+
+    Useful when authorization is stuck in waiting_callback state
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Requires: User must be authenticated
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} canceling OAuth authorization for {connection_name}")
+
+    try:
+        # Get OAuth storage service
+        oauth_service = OAuthStorageService()
+
+        # Get connection
+        connection = await oauth_service.get_connection(org_id, connection_name)
+
+        if not connection:
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        # Reset to not_connected status
+        await oauth_service.update_connection_status(
+            org_id=org_id,
+            connection_name=connection_name,
+            status="not_connected",
+            status_message="Authorization canceled by user"
+        )
+
+        logger.info(f"Canceled OAuth authorization for {connection_name}")
+
+        # Return 204 No Content
+        return func.HttpResponse(
+            status_code=204
+        )
+
+    except Exception as e:
+        logger.error(f"Error canceling OAuth authorization: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to cancel OAuth authorization"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_refresh_token")
+@bp.route(route="oauth/connections/{connection_name}/refresh", methods=["POST"])
+@require_auth
+async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/oauth/connections/{connection_name}/refresh
+    Manually refresh OAuth access token using refresh token
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to GLOBAL)
+
+    Requires: User must be authenticated
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+
+    logger.info(f"User {user.email} refreshing OAuth token for {connection_name}")
+
+    try:
+        # Create services
+        oauth_service = OAuthStorageService()
+        oauth_provider = OAuthProviderClient()
+        config_service = TableStorageService("Config")
+        keyvault = KeyVaultManager()
+
+        # Get connection
+        connection = await oauth_service.get_connection(org_id, connection_name)
+
+        if not connection:
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        # Check if connection has active tokens
+        if connection.status != "completed":
+            error = ErrorResponse(
+                error="BadRequest",
+                message=f"Cannot refresh token - connection status is {connection.status}"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Check if connection has refresh token
+        if not connection.oauth_response_ref:
+            error = ErrorResponse(
+                error="BadRequest",
+                message="Connection has no stored tokens to refresh"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Get OAuth response config entry to retrieve refresh token
+        oauth_response_key = f"config:{connection.oauth_response_ref}"
+        oauth_response_config = config_service.get_entity(
+            connection.org_id,
+            oauth_response_key
+        )
+
+        if not oauth_response_config:
+            logger.error(f"OAuth response config not found: {oauth_response_key}")
+            error = ErrorResponse(
+                error="InternalServerError",
+                message="OAuth credentials not properly configured"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Get Key Vault secret name
+        keyvault_secret_name = oauth_response_config.get("Value")
+
+        if not keyvault_secret_name:
+            logger.error("OAuth response config missing Key Vault secret name")
+            error = ErrorResponse(
+                error="InternalServerError",
+                message="OAuth credentials not properly configured"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Retrieve OAuth tokens from Key Vault
+        # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-response-HaloPSA")
+        # so we use the _client directly instead of get_secret() which expects org_id and secret_key
+        try:
+            secret = keyvault._client.get_secret(keyvault_secret_name)
+            oauth_response_json = secret.value
+            oauth_response = json.loads(oauth_response_json)
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve OAuth tokens from Key Vault: {e}",
+                extra={"secret_name": keyvault_secret_name}
+            )
+            error = ErrorResponse(
+                error="InternalServerError",
+                message="Failed to retrieve OAuth credentials"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Get refresh token
+        refresh_token = oauth_response.get("refresh_token")
+        logger.info(f"Retrieved refresh_token from Key Vault: is_none={refresh_token is None}")
+
+        if not refresh_token:
+            error = ErrorResponse(
+                error="BadRequest",
+                message="Connection has no refresh token - reconnect required"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Get client secret from Key Vault (or leave None for PKCE)
+        client_secret = None
+        if connection.client_secret_ref:
+            try:
+                # Get client secret config entry to retrieve Key Vault secret name
+                client_secret_key = f"config:{connection.client_secret_ref}"
+                client_secret_config = config_service.get_entity(
+                    connection.org_id,
+                    client_secret_key
+                )
+
+                if client_secret_config:
+                    keyvault_secret_name = client_secret_config.get("Value")
+                    if keyvault_secret_name:
+                        secret = keyvault._client.get_secret(keyvault_secret_name)
+                        client_secret = secret.value
+                        logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve client_secret from Key Vault: {e}")
+
+        # Refresh the access token
+        logger.info(f"Refreshing access token for {connection_name}")
+
+        success, result = await oauth_provider.refresh_access_token(
+            token_url=connection.token_url,
+            refresh_token=refresh_token,
+            client_id=connection.client_id,
+            client_secret=client_secret
+        )
+
+        if not success:
+            error_msg = result.get("error_description", result.get("error", "Token refresh failed"))
+            logger.error(f"Token refresh failed: {error_msg}")
+
+            await oauth_service.update_connection_status(
+                org_id=connection.org_id,
+                connection_name=connection_name,
+                status="failed",
+                status_message=f"Token refresh failed: {error_msg}"
+            )
+
+            error = ErrorResponse(
+                error="TokenRefreshFailed",
+                message=error_msg
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Store refreshed tokens
+        # Use new refresh_token if provided and not None, otherwise keep the old one
+        new_refresh_token = result.get("refresh_token") or refresh_token
+        logger.info(f"Storing tokens: new_refresh_token_from_response={result.get('refresh_token') is not None}, using_fallback={'yes' if result.get('refresh_token') is None else 'no'}, final_refresh_token_is_none={new_refresh_token is None}")
+
+        await oauth_service.store_tokens(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            access_token=result["access_token"],
+            refresh_token=new_refresh_token,  # Use new refresh token if provided, else keep old one
+            expires_at=result["expires_at"],
+            token_type=result["token_type"],
+            updated_by=user.user_id
+        )
+
+        # Update connection status with last_refresh_at timestamp
+        await oauth_service.update_connection_status(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            status="completed",
+            status_message="Token refreshed successfully",
+            expires_at=result["expires_at"],
+            last_refresh_at=datetime.utcnow()
+        )
+
+        logger.info(f"Successfully refreshed OAuth token for {connection_name}")
+
+        # Return success response
+        return func.HttpResponse(
+            json.dumps({
+                "success": True,
+                "message": "OAuth token refreshed successfully",
+                "expires_at": result["expires_at"].isoformat() if isinstance(result["expires_at"], datetime) else result["expires_at"]
+            }),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error refreshing OAuth token: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to refresh OAuth token"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+@bp.function_name("oauth_callback")
+@bp.route(route="oauth/callback/{connection_name}", methods=["POST"])
+async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/oauth/callback/{connection_name}
+    OAuth callback endpoint - exchanges authorization code for tokens
+
+    This is called by the UI callback page, not directly by the OAuth provider.
+    The UI receives the authorization code from the OAuth provider redirect,
+    then sends it here for server-side token exchange.
+
+    Route params: connection_name
+    Request body: { code, state }
+
+    Note: This endpoint is public (no auth required) - called from UI callback page
+    """
+    connection_name = req.route_params.get("connection_name")
+
+    # Get code and state from POST body instead of query params
+    try:
+        request_body = req.get_json()
+        code = request_body.get("code")
+        state = request_body.get("state")
+    except ValueError:
+        logger.error("Invalid JSON in callback request body")
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid request", "message": "Request body must be valid JSON"}),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    logger.info(f"OAuth callback received for {connection_name}")
+
+    try:
+        # Create services
+        oauth_service = OAuthStorageService()
+        oauth_provider = OAuthProviderClient()
+        oauth_test = OAuthTestService()
+
+        # Try to find connection (check GLOBAL first for simplicity)
+        connection = await oauth_service.get_connection("GLOBAL", connection_name)
+
+        if not connection:
+            # Try other orgs if needed (for now, just fail)
+            logger.error(f"OAuth connection not found: {connection_name}")
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        # Validate authorization code
+        if not code:
+            logger.error("OAuth callback missing authorization code")
+            error = ErrorResponse(
+                error="BadRequest",
+                message="Missing authorization code"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Exchange code for tokens
+        logger.info(f"Exchanging authorization code for tokens: {connection_name}")
+
+        await oauth_service.update_connection_status(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            status="testing",
+            status_message="Exchanging authorization code for access token"
+        )
+
+        # Build full redirect URI (UI callback page URL) - must match authorize endpoint
+        # req.url is like: https://domain.com/api/oauth/callback/connection_name
+        # We need: https://domain.com/oauth/callback/connection_name (no /api/)
+        base_url = req.url.split('/api')[0] if '/api' in req.url else req.url.rsplit('/', 3)[0]
+        # Ensure redirect_uri doesn't have /api/ prefix (same logic as authorize endpoint)
+        redirect_path = connection.redirect_uri
+        if redirect_path.startswith('/api/'):
+            redirect_path = redirect_path[4:]  # Remove /api prefix
+        full_redirect_uri = f"{base_url}{redirect_path}"
+
+        logger.info(f"Using redirect_uri for token exchange: {full_redirect_uri}")
+
+        # Get client secret from Key Vault (or leave None for PKCE)
+        client_secret = None
+        if connection.client_secret_ref:
+            try:
+                # Get client secret config entry to retrieve Key Vault secret name
+                config_service = TableStorageService("Config")
+                client_secret_key = f"config:{connection.client_secret_ref}"
+                client_secret_config = config_service.get_entity(
+                    connection.org_id,
+                    client_secret_key
+                )
+
+                if client_secret_config:
+                    keyvault_secret_name = client_secret_config.get("Value")
+                    if keyvault_secret_name:
+                        keyvault = KeyVaultManager()
+                        secret = keyvault._client.get_secret(keyvault_secret_name)
+                        client_secret = secret.value
+                        logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve client_secret from Key Vault: {e}")
+
+        success, result = await oauth_provider.exchange_code_for_token(
+            token_url=connection.token_url,
+            code=code,
+            client_id=connection.client_id,
+            client_secret=client_secret,
+            redirect_uri=full_redirect_uri
+        )
+
+        if not success:
+            error_msg = result.get("error_description", result.get("error", "Token exchange failed"))
+            logger.error(f"Token exchange failed: {error_msg}")
+
+            await oauth_service.update_connection_status(
+                org_id=connection.org_id,
+                connection_name=connection_name,
+                status="failed",
+                status_message=f"Token exchange failed: {error_msg}"
+            )
+
+            error = ErrorResponse(
+                error="TokenExchangeFailed",
+                message=error_msg
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=400,
+                mimetype="application/json"
+            )
+
+        # Test connection
+        logger.info(f"Testing OAuth connection: {connection_name}")
+
+        test_success, test_message = await oauth_test.test_connection(
+            access_token=result["access_token"],
+            authorization_url=connection.authorization_url,
+            token_url=connection.token_url
+        )
+
+        # Store tokens
+        await oauth_service.store_tokens(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            access_token=result["access_token"],
+            refresh_token=result.get("refresh_token"),
+            expires_at=result["expires_at"],
+            token_type=result["token_type"],
+            updated_by="system"
+        )
+
+        # Update final status
+        final_status = "completed" if test_success else "failed"
+        await oauth_service.update_connection_status(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            status=final_status,
+            status_message=test_message
+        )
+
+        logger.info(f"OAuth connection completed: {connection_name} (status={final_status})")
+
+        # Return JSON success response
+        return func.HttpResponse(
+            json.dumps({
+                "success": True,
+                "message": "OAuth connection completed successfully",
+                "status": final_status,
+                "connection_name": connection_name
+            }),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing OAuth callback: {str(e)}", exc_info=True)
+
+        # Try to update connection status
+        try:
+            await oauth_service.update_connection_status(
+                org_id="GLOBAL",  # Fallback
+                connection_name=connection_name,
+                status="failed",
+                status_message=f"Callback processing error: {str(e)}"
+            )
+        except:
+            pass
+
+        error = ErrorResponse(
+            error="InternalServerError",
+            message=f"Failed to process OAuth callback: {str(e)}"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+# ==================== CREDENTIALS ACCESS ENDPOINT (USER STORY 3) ====================
+
+@bp.function_name("oauth_get_credentials")
+@bp.route(route="oauth/credentials/{connection_name}", methods=["GET"])
+@require_auth
+async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/oauth/credentials/{connection_name}
+    Get OAuth credentials for workflow consumption
+
+    Returns actual access_token and refresh_token for use in API calls.
+    This endpoint is intended for workflow consumption only.
+
+    Route params: connection_name
+    Headers: X-Organization-Id (optional, defaults to caller's org, falls back to GLOBAL)
+
+    Requires: User must be authenticated
+
+    Security: This endpoint returns sensitive credentials. It should only be
+    called from authenticated contexts (workflows, functions).
+    """
+    user = req.user
+    connection_name = req.route_params.get("connection_name")
+    org_id = req.headers.get("X-Organization-Id", user.org_id if hasattr(user, "org_id") else "GLOBAL")
+
+    logger.info(
+        f"User {user.email} retrieving OAuth credentials for {connection_name}",
+        extra={"org_id": org_id, "user_id": user.user_id}
+    )
+
+    try:
+        # Create services
+        oauth_service = OAuthStorageService()
+        config_service = TableStorageService("Config")
+        keyvault = KeyVaultManager()
+
+        # Get connection with org→GLOBAL fallback
+        connection = await oauth_service.get_connection(org_id, connection_name)
+
+        if not connection:
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"OAuth connection '{connection_name}' not found"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=404,
+                mimetype="application/json"
+            )
+
+        # Check connection status
+        if connection.status != "completed":
+            # Return response with no credentials
+            response = OAuthCredentialsResponse(
+                connection_name=connection_name,
+                credentials=None,
+                status=connection.status,
+                expires_at=None
+            )
+            return func.HttpResponse(
+                json.dumps(response.model_dump(mode="json")),
+                status_code=200,
+                mimetype="application/json"
+            )
+
+        # Get OAuth response config entry
+        oauth_response_key = f"config:{connection.oauth_response_ref}"
+        oauth_response_config = config_service.get_entity(
+            connection.org_id,
+            oauth_response_key
+        )
+
+        if not oauth_response_config:
+            logger.error(f"OAuth response config not found: {oauth_response_key}")
+            error = ErrorResponse(
+                error="InternalServerError",
+                message=f"OAuth credentials not properly configured"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Get Key Vault secret name
+        keyvault_secret_name = oauth_response_config.get("Value")
+
+        if not keyvault_secret_name:
+            logger.error(f"OAuth response config missing Key Vault secret name")
+            error = ErrorResponse(
+                error="InternalServerError",
+                message=f"OAuth credentials not properly configured"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Retrieve actual OAuth tokens from Key Vault
+        # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-response-HaloPSA")
+        # so we use the _client directly instead of get_secret() which expects org_id and secret_key
+        try:
+            secret = keyvault._client.get_secret(keyvault_secret_name)
+            oauth_response_json = secret.value
+            oauth_response = json.loads(oauth_response_json)
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve OAuth tokens from Key Vault: {e}",
+                extra={"secret_name": keyvault_secret_name}
+            )
+            error = ErrorResponse(
+                error="InternalServerError",
+                message=f"Failed to retrieve OAuth credentials"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Parse OAuth response
+        access_token = oauth_response.get("access_token")
+        refresh_token = oauth_response.get("refresh_token")
+        token_type = oauth_response.get("token_type", "Bearer")
+        expires_at_str = oauth_response.get("expires_at")
+
+        if not access_token:
+            logger.error(f"OAuth response missing access_token")
+            error = ErrorResponse(
+                error="InternalServerError",
+                message=f"OAuth credentials incomplete"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
+
+        # Build credentials response
+        credentials = OAuthCredentials(
+            connection_name=connection_name,
+            access_token=access_token,
+            token_type=token_type,
+            expires_at=expires_at_str,
+            refresh_token=refresh_token,
+            scopes=connection.scopes
+        )
+
+        response = OAuthCredentialsResponse(
+            connection_name=connection_name,
+            credentials=credentials,
+            status=connection.status,
+            expires_at=expires_at_str
+        )
+
+        logger.info(
+            f"Retrieved OAuth credentials for {connection_name}",
+            extra={"org_id": org_id, "user_id": user.user_id}
+        )
+
+        return func.HttpResponse(
+            json.dumps(response.model_dump(mode="json")),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error retrieving OAuth credentials: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to retrieve OAuth credentials"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )
+
+
+# ==================== REFRESH JOB STATUS ENDPOINT (USER STORY 4) ====================
+
+@bp.function_name("oauth_refresh_job_status")
+@bp.route(route="oauth/refresh_job_status", methods=["GET"])
+@require_auth
+async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/oauth/refresh_job_status
+    Get status of the last OAuth token refresh job
+
+    Returns metrics and logs from the automatic token refresh scheduler
+
+    Requires: User must be authenticated
+    """
+    user = req.user
+    logger.info(f"User {user.email} retrieving OAuth refresh job status")
+
+    try:
+        # Query OAuthJobRuns table for most recent job
+        job_runs_table = TableStorageService("OAuthJobRuns")
+
+        try:
+            # Query for all refresh_job entries, sorted by timestamp descending
+            all_jobs = job_runs_table.query_entities(
+                filter="PartitionKey eq 'refresh_job'",
+                select=["RowKey", "Timestamp", "StartTime", "EndTime", "DurationSeconds",
+                        "Status", "TotalConnections", "NeedsRefresh", "RefreshedSuccessfully",
+                        "RefreshFailed", "Errors", "ErrorMessage"]
+            )
+
+            # Convert to list and sort by Timestamp descending
+            job_list = list(all_jobs)
+        except Exception as e:
+            # Table doesn't exist yet - no jobs have run
+            if "TableNotFound" in str(e):
+                job_list = []
+            else:
+                raise
+
+        if not job_list:
+            # No jobs run yet
+            return func.HttpResponse(
+                json.dumps({
+                    "message": "No refresh job runs yet",
+                    "last_run": None
+                }),
+                status_code=200,
+                mimetype="application/json"
+            )
+
+        # Sort by Timestamp descending to get most recent
+        job_list.sort(key=lambda x: x.get("Timestamp", ""), reverse=True)
+        last_job = job_list[0]
+
+        # Parse errors if present
+        errors = []
+        if last_job.get("Errors"):
+            try:
+                errors = json.loads(last_job.get("Errors"))
+            except:
+                errors = []
+
+        response = {
+            "last_run": {
+                "job_id": last_job.get("RowKey"),
+                "timestamp": last_job.get("Timestamp"),
+                "start_time": last_job.get("StartTime"),
+                "end_time": last_job.get("EndTime"),
+                "duration_seconds": last_job.get("DurationSeconds", 0),
+                "status": last_job.get("Status"),
+                "total_connections": last_job.get("TotalConnections", 0),
+                "needs_refresh": last_job.get("NeedsRefresh", 0),
+                "refreshed_successfully": last_job.get("RefreshedSuccessfully", 0),
+                "refresh_failed": last_job.get("RefreshFailed", 0),
+                "errors": errors,
+                "error": last_job.get("ErrorMessage")  # Present if job itself failed
+            }
+        }
+
+        return func.HttpResponse(
+            json.dumps(response),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error retrieving OAuth refresh job status: {str(e)}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to retrieve refresh job status"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=500,
+            mimetype="application/json"
+        )

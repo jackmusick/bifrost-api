@@ -29,7 +29,7 @@ class ExecutionLogger:
     async def create_execution(
         self,
         execution_id: str,
-        org_id: str,
+        org_id: Optional[str],
         user_id: str,
         workflow_name: str,
         input_data: Dict[str, Any],
@@ -40,7 +40,7 @@ class ExecutionLogger:
 
         Args:
             execution_id: Unique execution ID (UUID)
-            org_id: Organization ID
+            org_id: Organization ID (None for GLOBAL scope)
             user_id: User ID who executed
             workflow_name: Name of workflow
             input_data: Input parameters
@@ -51,10 +51,13 @@ class ExecutionLogger:
         """
         started_at = datetime.utcnow()
         reverse_ts = self._get_reverse_timestamp(started_at)
-        
+
+        # Use "GLOBAL" partition for None org_id (platform admin in global scope)
+        partition_key = org_id or "GLOBAL"
+
         # Create entity for WorkflowExecutions (by org)
         workflow_exec_entity = {
-            "PartitionKey": org_id,
+            "PartitionKey": partition_key,
             "RowKey": f"{reverse_ts}_{execution_id}",
             "ExecutionId": execution_id,
             "WorkflowName": workflow_name,
@@ -113,7 +116,7 @@ class ExecutionLogger:
     async def update_execution(
         self,
         execution_id: str,
-        org_id: str,
+        org_id: Optional[str],
         user_id: str,
         status: ExecutionStatus,
         result: Optional[Dict[str, Any]] = None,
@@ -131,7 +134,7 @@ class ExecutionLogger:
 
         Args:
             execution_id: Execution ID
-            org_id: Organization ID
+            org_id: Organization ID (None for GLOBAL scope)
             user_id: User ID
             status: Execution status
             result: Workflow result (if success)
@@ -148,17 +151,20 @@ class ExecutionLogger:
             Updated execution entity
         """
         completed_at = datetime.utcnow()
-        
+
+        # Use "GLOBAL" partition for None org_id
+        partition_key = org_id or "GLOBAL"
+
         # Get existing entity to get RowKey (need reverse timestamp)
         existing = await self._get_execution(org_id, execution_id)
         if not existing:
             raise ValueError(f"Execution {execution_id} not found")
-        
+
         row_key = existing['RowKey']
 
         # Update WorkflowExecutions
         workflow_exec_update = {
-            "PartitionKey": org_id,
+            "PartitionKey": partition_key,
             "RowKey": row_key,
             "Status": status.value,
             "CompletedAt": completed_at.isoformat(),
@@ -214,16 +220,23 @@ class ExecutionLogger:
             )
             raise
 
-    async def _get_execution(self, org_id: str, execution_id: str) -> Optional[Dict[str, Any]]:
+    async def _get_execution(self, org_id: Optional[str], execution_id: str) -> Optional[Dict[str, Any]]:
         """
         Get execution entity by org_id and execution_id.
-        
+
         Note: We need to query because RowKey includes reverse timestamp.
+
+        Args:
+            org_id: Organization ID (None for GLOBAL scope)
+            execution_id: Execution ID
         """
+        # Use "GLOBAL" partition for None org_id
+        partition_key = org_id or "GLOBAL"
+
         # Query WorkflowExecutions for this execution
-        filter_str = f"PartitionKey eq '{org_id}' and ExecutionId eq '{execution_id}'"
+        filter_str = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
         results = list(self.workflow_executions.query_entities(filter=filter_str))
-        
+
         if results:
             return results[0]
         return None

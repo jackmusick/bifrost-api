@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Plus, Trash2, Key, RefreshCw, Globe, Building2 } from 'lucide-react'
+import { Pencil, Plus, Trash2, Key, RefreshCw, Globe, Building2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -8,6 +8,16 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Table,
   TableBody,
@@ -26,6 +36,8 @@ import type { Config as ConfigType } from '@/types/config'
 export function Config() {
   const [selectedConfig, setSelectedConfig] = useState<ConfigType | undefined>()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [configToDelete, setConfigToDelete] = useState<ConfigType | null>(null)
   const { scope, isGlobalScope } = useOrgScope()
 
   // Fetch configs based on current scope
@@ -44,9 +56,22 @@ export function Config() {
   }
 
   const handleDelete = (config: ConfigType) => {
-    if (confirm(`Are you sure you want to delete config "${config.key}"?`)) {
-      deleteConfig.mutate({ key: config.key, scope: config.scope, orgId: config.orgId ?? null })
-    }
+    setConfigToDelete(config)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleConfirmDelete = () => {
+    if (!configToDelete) return
+
+    deleteConfig.mutate(
+      { key: configToDelete.key, scope: configToDelete.scope, orgId: configToDelete.orgId ?? null },
+      {
+        onSettled: () => {
+          setDeleteDialogOpen(false)
+          setConfigToDelete(null)
+        }
+      }
+    )
   }
 
   const handleDialogClose = () => {
@@ -199,6 +224,41 @@ export function Config() {
         defaultScope={scopeParam}
         orgId={scope.orgId ?? undefined}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Delete Configuration
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                Are you sure you want to delete the config <strong className="text-foreground">{configToDelete?.key}</strong>?
+              </p>
+              <div className="bg-muted p-3 rounded-md border border-border">
+                <p className="text-sm font-medium text-foreground mb-2">Before deleting:</p>
+                <p className="text-sm">
+                  We recommend searching for <code className="bg-background px-1.5 py-0.5 rounded text-xs">get_config('{configToDelete?.key}')</code> in your <code className="bg-background px-1.5 py-0.5 rounded text-xs">@workflows/workspace/</code> repo to confirm it isn't being used.
+                </p>
+              </div>
+              <p className="text-sm text-destructive">
+                Workflows using this config will fail if it's deleted. This action cannot be undone.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              I'm Sure - Delete Config
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

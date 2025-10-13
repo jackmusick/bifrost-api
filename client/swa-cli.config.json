@@ -4,7 +4,8 @@
         "client": {
             "appLocation": ".",
             "outputLocation": "build",
-            "apiLocation": "./api"
+            "apiLocation": "../api",
+            "apiDevserverUrl": "http://localhost:7071"
         }
     }
 }

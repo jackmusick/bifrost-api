@@ -1,0 +1,773 @@
+openapi: 3.0.3
+info:
+  title: OAuth Helper API
+  description: API for managing OAuth connections for workflows and integrations
+  version: 1.0.0
+  contact:
+    name: Bifrost Integrations
+
+servers:
+  - url: https://{environment}.azurewebsites.net/api
+    variables:
+      environment:
+        default: bifrost-integrations
+        description: Azure Functions environment
+
+security:
+  - AzureAD: []
+
+paths:
+  /oauth/connections:
+    get:
+      summary: List OAuth connections
+      description: Retrieve all OAuth connections accessible to the current organization context
+      operationId: listOAuthConnections
+      tags:
+        - OAuth Connections
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - name: include_global
+          in: query
+          description: Include global (MSP-level) connections in results
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of OAuth connections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OAuthConnectionSummary'
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create OAuth connection
+      description: Create a new OAuth connection configuration
+      operationId: createOAuthConnection
+      tags:
+        - OAuth Connections
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOAuthConnectionRequest'
+      responses:
+        '201':
+          description: OAuth connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnectionDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Connection with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/connections/{connection_name}:
+    get:
+      summary: Get OAuth connection details
+      description: Retrieve details of a specific OAuth connection
+      operationId: getOAuthConnection
+      tags:
+        - OAuth Connections
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - $ref: '#/components/parameters/ConnectionName'
+      responses:
+        '200':
+          description: OAuth connection details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnectionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update OAuth connection
+      description: Update configuration of an existing OAuth connection (requires reconnection)
+      operationId: updateOAuthConnection
+      tags:
+        - OAuth Connections
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - $ref: '#/components/parameters/ConnectionName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOAuthConnectionRequest'
+      responses:
+        '200':
+          description: OAuth connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnectionDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete OAuth connection
+      description: Delete an OAuth connection and optionally disable dependent workflows
+      operationId: deleteOAuthConnection
+      tags:
+        - OAuth Connections
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - $ref: '#/components/parameters/ConnectionName'
+        - name: confirm_disable_workflows
+          in: query
+          description: Confirm disabling of dependent workflows
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: OAuth connection deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  disabled_workflows:
+                    type: array
+                    items:
+                      type: string
+                    description: List of workflow IDs that were disabled
+        '400':
+          description: Dependent workflows exist and confirmation not provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  dependent_workflows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DependentWorkflow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/connections/{connection_name}/authorize:
+    post:
+      summary: Initiate OAuth authorization
+      description: Generate authorization URL to start OAuth flow (for authorization code flow)
+      operationId: initiateOAuthAuthorization
+      tags:
+        - OAuth Authorization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - $ref: '#/components/parameters/ConnectionName'
+      responses:
+        '200':
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorization_url:
+                    type: string
+                    format: uri
+                    description: URL to redirect user for authorization
+                  state:
+                    type: string
+                    description: State parameter for CSRF protection
+        '400':
+          description: Connection doesn't require authorization (e.g., client credentials flow)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/connections/{connection_name}/test:
+    post:
+      summary: Test OAuth connection
+      description: Manually trigger connection test to verify credentials are working
+      operationId: testOAuthConnection
+      tags:
+        - OAuth Authorization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - $ref: '#/components/parameters/ConnectionName'
+      responses:
+        '200':
+          description: Connection test completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_result:
+                    type: string
+                    enum: [success, failed]
+                  message:
+                    type: string
+                  tested_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/callback/{connection_name}:
+    get:
+      summary: OAuth callback endpoint
+      description: Receives OAuth authorization callbacks from providers (GET method)
+      operationId: handleOAuthCallbackGet
+      tags:
+        - OAuth Authorization
+      parameters:
+        - name: connection_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: code
+          in: query
+          description: Authorization code from OAuth provider
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: State parameter for CSRF protection
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          description: Error code if authorization failed
+          required: false
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          description: Human-readable error description
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Callback processed successfully (redirects to UI)
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML page showing success/failure status
+        '400':
+          description: Invalid callback parameters
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Error processing callback
+          content:
+            text/html:
+              schema:
+                type: string
+
+    post:
+      summary: OAuth callback endpoint (POST)
+      description: Receives OAuth authorization callbacks from providers (POST method)
+      operationId: handleOAuthCallbackPost
+      tags:
+        - OAuth Authorization
+      parameters:
+        - name: connection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                state:
+                  type: string
+                error:
+                  type: string
+                error_description:
+                  type: string
+      responses:
+        '200':
+          description: Callback processed successfully
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Invalid callback parameters
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Error processing callback
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /oauth/credentials/{connection_name}:
+    get:
+      summary: Get OAuth credentials for workflow
+      description: Retrieve current valid OAuth credentials for use in workflows/integrations
+      operationId: getOAuthCredentials
+      tags:
+        - OAuth Credentials
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - $ref: '#/components/parameters/ConnectionName'
+      responses:
+        '200':
+          description: OAuth credentials retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthCredentials'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Connection not found or not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Connection is not ready (still authorizing or failed)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  status:
+                    type: string
+                    enum: [not_connected, waiting_callback, testing, failed]
+                  status_message:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/workflows/{workflow_id}/dependencies:
+    post:
+      summary: Register OAuth dependency
+      description: Register that a workflow depends on specific OAuth connection
+      operationId: registerOAuthDependency
+      tags:
+        - Workflow Dependencies
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - name: workflow_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_name:
+                  type: string
+                workflow_name:
+                  type: string
+      responses:
+        '201':
+          description: Dependency registered successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get workflow OAuth dependencies
+      description: List all OAuth connections that a workflow depends on
+      operationId: getWorkflowDependencies
+      tags:
+        - Workflow Dependencies
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - name: workflow_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of OAuth connections used by workflow
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflow_id:
+                    type: string
+                  connections:
+                    type: array
+                    items:
+                      type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/workflows/disabled:
+    get:
+      summary: List disabled workflows
+      description: Retrieve all workflows that have been disabled
+      operationId: listDisabledWorkflows
+      tags:
+        - Workflow Management
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+      responses:
+        '200':
+          description: List of disabled workflows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DisabledWorkflow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /oauth/workflows/{workflow_id}/enable:
+    post:
+      summary: Enable disabled workflow
+      description: Re-enable a workflow that was previously disabled
+      operationId: enableWorkflow
+      tags:
+        - Workflow Management
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+        - name: workflow_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workflow enabled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  workflow_id:
+                    type: string
+                  enabled_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    AzureAD:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Azure AD JWT token
+
+  parameters:
+    OrganizationIdHeader:
+      name: X-Organization-Id
+      in: header
+      description: Organization ID for org-scoped operations (omit for global operations)
+      required: false
+      schema:
+        type: string
+
+    ConnectionName:
+      name: connection_name
+      in: path
+      description: Unique name of the OAuth connection
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9_-]+$'
+
+  schemas:
+    CreateOAuthConnectionRequest:
+      type: object
+      required:
+        - connection_name
+        - oauth_flow_type
+        - client_id
+        - client_secret
+        - authorization_url
+        - token_url
+      properties:
+        connection_name:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 100
+        oauth_flow_type:
+          type: string
+          enum: [authorization_code, client_credentials, refresh_token]
+        client_id:
+          type: string
+          minLength: 1
+        client_secret:
+          type: string
+          minLength: 1
+        authorization_url:
+          type: string
+          format: uri
+          pattern: '^https://'
+        token_url:
+          type: string
+          format: uri
+          pattern: '^https://'
+        scopes:
+          type: string
+          description: Comma-separated list of OAuth scopes
+          example: "user.read,mail.send"
+
+    UpdateOAuthConnectionRequest:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        authorization_url:
+          type: string
+          format: uri
+        token_url:
+          type: string
+          format: uri
+        scopes:
+          type: string
+
+    OAuthConnectionSummary:
+      type: object
+      properties:
+        connection_name:
+          type: string
+        oauth_flow_type:
+          type: string
+          enum: [authorization_code, client_credentials, refresh_token]
+        status:
+          type: string
+          enum: [not_connected, waiting_callback, testing, completed, failed]
+        status_message:
+          type: string
+        org_id:
+          type: string
+          description: Organization ID or "GLOBAL"
+        last_refresh_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    OAuthConnectionDetail:
+      type: object
+      properties:
+        connection_name:
+          type: string
+        oauth_flow_type:
+          type: string
+          enum: [authorization_code, client_credentials, refresh_token]
+        client_id:
+          type: string
+        authorization_url:
+          type: string
+        token_url:
+          type: string
+        scopes:
+          type: string
+        redirect_uri:
+          type: string
+          description: Callback URL to register with OAuth provider
+        status:
+          type: string
+          enum: [not_connected, waiting_callback, testing, completed, failed]
+        status_message:
+          type: string
+        token_expires_at:
+          type: string
+          format: date-time
+        last_refresh_at:
+          type: string
+          format: date-time
+        last_test_at:
+          type: string
+          format: date-time
+        org_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    OAuthCredentials:
+      type: object
+      properties:
+        connection_name:
+          type: string
+        access_token:
+          type: string
+          description: Current valid access token
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_at:
+          type: string
+          format: date-time
+        scopes:
+          type: string
+
+    DependentWorkflow:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+        workflow_name:
+          type: string
+        org_id:
+          type: string
+        last_accessed_at:
+          type: string
+          format: date-time
+
+    DisabledWorkflow:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+        org_id:
+          type: string
+        disabled_reason:
+          type: string
+          enum: [oauth_connection_deleted, manual, other]
+        disabled_at:
+          type: string
+          format: date-time
+        disabled_by:
+          type: string
+        related_oauth_connection:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

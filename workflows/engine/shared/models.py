@@ -25,6 +25,7 @@ class ExecutionStatus(str, Enum):
     PENDING = "Pending"
     RUNNING = "Running"
     SUCCESS = "Success"
+    COMPLETED_WITH_ERRORS = "CompletedWithErrors"
     FAILED = "Failed"
 
 
@@ -306,6 +307,44 @@ class MetadataResponse(BaseModel):
 
     class Config:
         populate_by_name = True  # Pydantic v2 - allows using alias
+
+
+# ==================== OAUTH MODELS ====================
+
+class OAuthCredentials:
+    """
+    OAuth credentials object for workflows
+
+    Provides access to OAuth access_token and refresh_token
+    for making authenticated API calls to third-party services
+    """
+
+    def __init__(
+        self,
+        connection_name: str,
+        access_token: str,
+        token_type: str,
+        expires_at: datetime,
+        refresh_token: Optional[str] = None,
+        scopes: str = ""
+    ):
+        self.connection_name = connection_name
+        self.access_token = access_token
+        self.token_type = token_type
+        self.expires_at = expires_at
+        self.refresh_token = refresh_token
+        self.scopes = scopes
+
+    def is_expired(self) -> bool:
+        """Check if access token is expired"""
+        return datetime.utcnow() >= self.expires_at
+
+    def get_auth_header(self) -> str:
+        """Get formatted Authorization header value"""
+        return f"{self.token_type} {self.access_token}"
+
+    def __repr__(self) -> str:
+        return f"<OAuthCredentials connection={self.connection_name} expires_at={self.expires_at}>"
 
 
 # ==================== ERROR MODEL ====================

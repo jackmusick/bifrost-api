@@ -13,13 +13,11 @@ export function useExecutions(filters?: ExecutionFilters) {
   return useQuery({
     queryKey: ['executions', orgId, filters],
     queryFn: () => {
-      const executionFilters: ExecutionFilters = { ...filters }
-      if (orgId) {
-        executionFilters.orgId = orgId
-      }
-      return executionsService.getExecutions(executionFilters)
+      // Note: orgId is sent via X-Organization-Id header (handled by api.ts)
+      // No need to pass it as a parameter
+      return executionsService.getExecutions(filters)
     },
-    enabled: !!orgId,
+    // Allow querying even without orgId (for GLOBAL scope)
     refetchInterval: 5000, // Poll every 5 seconds for live updates
   })
 }
@@ -29,8 +27,8 @@ export function useExecution(executionId: string | undefined) {
 
   return useQuery({
     queryKey: ['executions', executionId, orgId],
-    queryFn: () => executionsService.getExecution(executionId!, orgId!),
-    enabled: !!executionId && !!orgId,
+    queryFn: () => executionsService.getExecution(executionId!),
+    enabled: !!executionId,
     refetchInterval: (query) => {
       // Poll every 2 seconds if status is Pending or Running
       const status = query.state.data?.status

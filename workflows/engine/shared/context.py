@@ -144,6 +144,190 @@ class OrganizationContext:
         """Check if configuration key exists."""
         return key in self._config
 
+    # ==================== OAUTH CONNECTIONS ====================
+
+    async def get_oauth_connection(self, connection_name: str):
+        """
+        Get OAuth credentials for a connection.
+
+        Retrieves OAuth credentials from storage and Key Vault,
+        resolving them to actual access tokens for workflow use.
+
+        This method works with both org-scoped and GLOBAL contexts.
+        OAuth connections follow org→GLOBAL fallback pattern.
+
+        Example:
+            # In a workflow
+            creds = await context.get_oauth_connection("HaloPSA")
+            headers = {"Authorization": creds.get_auth_header()}
+            response = requests.get("https://api.example.com/v1/data", headers=headers)
+
+        Args:
+            connection_name: Name of the OAuth connection to retrieve
+
+        Returns:
+            OAuthCredentials object with access_token and metadata
+
+        Raises:
+            ValueError: If connection not found or not authorized
+            KeyError: If credentials cannot be resolved from Key Vault
+        """
+        import json
+        from .models import OAuthCredentials
+        from .storage import TableStorageService
+        from .keyvault import KeyVaultClient
+
+        # Determine scope for OAuth connection lookup
+        # For GLOBAL context (org_id=None), use "GLOBAL" as the scope
+        lookup_org_id = self.org_id if self.org_id else "GLOBAL"
+
+        logger.info(
+            f"Retrieving OAuth connection: {connection_name} (scope: {lookup_org_id})",
+            extra={"execution_id": self.execution_id, "lookup_scope": lookup_org_id}
+        )
+
+        # Get storage services
+        oauth_table = TableStorageService("OAuthConnections")
+        config_table = TableStorageService("Config")
+        keyvault = KeyVaultClient()
+
+        # Try org-specific connection first (if we have an org), then GLOBAL fallback
+        connection_entity = None
+        connection_scope = None
+
+        if self.org_id:
+            connection_entity = oauth_table.get_entity(self.org_id, connection_name)
+            if connection_entity:
+                connection_scope = self.org_id
+                logger.info(f"Using org-specific OAuth connection: {connection_name}")
+
+        # If not found in org scope (or no org), try GLOBAL
+        if not connection_entity:
+            connection_entity = oauth_table.get_entity("GLOBAL", connection_name)
+            if connection_entity:
+                connection_scope = "GLOBAL"
+                logger.info(f"Using GLOBAL OAuth connection: {connection_name}")
+
+        if not connection_entity:
+            raise ValueError(
+                f"OAuth connection '{connection_name}' not found for scope '{lookup_org_id}' or GLOBAL. "
+                f"Create connection using the OAuth Connections page in the admin UI"
+            )
+
+        # Check connection status
+        status = connection_entity.get("status", "not_connected")
+
+        if status != "completed":
+            raise ValueError(
+                f"OAuth connection '{connection_name}' is not authorized (status: {status}). "
+                f"Complete OAuth authorization flow using the 'Connect' button in the admin UI"
+            )
+
+        # Get OAuth response reference from connection
+        oauth_response_ref = connection_entity.get("oauth_response_ref")
+
+        if not oauth_response_ref:
+            raise ValueError(
+                f"OAuth connection '{connection_name}' missing oauth_response_ref"
+            )
+
+        # Get OAuth response config entry from the same scope as the connection
+        oauth_response_key = f"config:{oauth_response_ref}"
+        oauth_response_config = config_table.get_entity(connection_scope, oauth_response_key)
+
+        if not oauth_response_config:
+            raise ValueError(
+                f"OAuth response config not found: {oauth_response_key} in scope {connection_scope}"
+            )
+
+        # Get Key Vault secret name from config
+        keyvault_secret_name = oauth_response_config.get("Value")
+
+        if not keyvault_secret_name:
+            raise ValueError(
+                f"OAuth response config missing Key Vault secret name"
+            )
+
+        # Retrieve actual OAuth tokens from Key Vault
+        # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-HaloPSA-response")
+        # so we use the _client directly instead of get_secret() which expects org_id and secret_key
+        try:
+            secret = keyvault._client.get_secret(keyvault_secret_name)
+            oauth_response_json = secret.value
+            oauth_response = json.loads(oauth_response_json)
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve OAuth tokens from Key Vault: {e}",
+                extra={"execution_id": self.execution_id, "secret_name": keyvault_secret_name}
+            )
+            raise KeyError(
+                f"Failed to retrieve OAuth tokens for '{connection_name}' from Key Vault: {e}"
+            )
+
+        # Parse OAuth response
+        access_token = oauth_response.get("access_token")
+        refresh_token = oauth_response.get("refresh_token")
+        token_type = oauth_response.get("token_type", "Bearer")
+        expires_at_str = oauth_response.get("expires_at")
+
+        if not access_token:
+            raise ValueError(
+                f"OAuth response for '{connection_name}' missing access_token"
+            )
+
+        # Parse expiration timestamp
+        if expires_at_str:
+            if isinstance(expires_at_str, str):
+                expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            else:
+                expires_at = expires_at_str
+        else:
+            # Default to current time (will be marked as expired)
+            expires_at = datetime.utcnow()
+
+        # Get scopes from connection entity
+        scopes = connection_entity.get("scopes", "")
+
+        # Create credentials object
+        credentials = OAuthCredentials(
+            connection_name=connection_name,
+            access_token=access_token,
+            token_type=token_type,
+            expires_at=expires_at,
+            refresh_token=refresh_token,
+            scopes=scopes
+        )
+
+        # Check if expired
+        if credentials.is_expired():
+            logger.warning(
+                f"OAuth token for '{connection_name}' is expired (expired at {expires_at})",
+                extra={"execution_id": self.execution_id}
+            )
+
+        logger.info(
+            f"Retrieved OAuth credentials for '{connection_name}'",
+            extra={
+                "execution_id": self.execution_id,
+                "expires_at": expires_at.isoformat(),
+                "has_refresh_token": bool(refresh_token),
+                "is_expired": credentials.is_expired()
+            }
+        )
+
+        # Track credential access in context
+        self.log(
+            "info",
+            f"Retrieved OAuth credentials for '{connection_name}'",
+            {
+                "connection_name": connection_name,
+                "expires_at": expires_at.isoformat(),
+                "is_expired": credentials.is_expired()
+            }
+        )
+
+        return credentials
+
     # ==================== SECRETS ====================
 
     async def get_secret(self, key: str) -> str:

@@ -121,7 +121,7 @@ async def load_organization_context(
     org = None
     config = {}
 
-    # Load organization if org_id provided
+    # Load organization and config
     if org_id:
         # T037: Validate organization exists and is active
         org_entity = get_organization(org_id)
@@ -156,6 +156,24 @@ async def load_organization_context(
                     logger.warning(f"Failed to parse JSON config: {key}")
 
             config[key] = value
+    else:
+        # Load GLOBAL configs for platform admin context
+        logger.info("Loading GLOBAL configs for platform admin context")
+        config_entities = get_org_config("GLOBAL")
+
+        for entity in config_entities:
+            # RowKey format: "config:{key}"
+            key = entity['RowKey'].replace('config:', '', 1)
+            value = entity.get('Value')
+
+            # Parse JSON if type is json
+            if entity.get('Type') == 'json':
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse JSON config: {key}")
+
+            config[key] = value
 
     # T056: Extract caller from authenticated principal
     # Use authentication service to get principal, then create Caller
@@ -168,12 +186,23 @@ async def load_organization_context(
 
         # Create Caller based on principal type
         if isinstance(principal, FunctionKeyPrincipal):
-            # Function key authentication - system caller
-            caller = Caller(
-                user_id=f"function_key:{principal.key_name}",
-                email="function-key@system.local",
-                name=f"Function Key ({principal.key_name})"
-            )
+            # Function key authentication
+            # Check if Management API provided X-User-Id header (for proxied requests)
+            provided_user_id = req.headers.get('X-User-Id')
+            if provided_user_id:
+                # Use provided user context from Management API
+                caller = Caller(
+                    user_id=provided_user_id,
+                    email=provided_user_id,  # Management API doesn't send email, use user_id
+                    name=provided_user_id
+                )
+            else:
+                # Direct function key call - system caller
+                caller = Caller(
+                    user_id=f"function_key:{principal.key_name}",
+                    email="function-key@system.local",
+                    name=f"Function Key ({principal.key_name})"
+                )
         elif isinstance(principal, UserPrincipal):
             # User authentication - real user caller
             caller = Caller(

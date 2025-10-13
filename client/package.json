@@ -6,7 +6,7 @@
     "author": "Jack Musick <jack@gocovi.com>",
     "private": true,
     "scripts": {
-        "dev": "swa start http://localhost:5173 --run \"vite\" --api-location ./api 2>&1 |grep -v -E \"(node_modules|/src/)\"",
+        "dev": "swa start http://localhost:5173 --run \"vite\" --api-location ../api 2>&1 |grep -v -E \"(node_modules|/src/)\"",
         "dev:vite": "vite",
         "build": "tsc -b && vite build",
         "preview": "swa start dist",
@@ -40,6 +40,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
+        "date-fns": "^4.1.0",
         "lucide-react": "^0.545.0",
         "next-themes": "^0.4.6",
         "react": "^18.3.1",

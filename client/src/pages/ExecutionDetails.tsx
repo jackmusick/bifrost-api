@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, XCircle, Loader2, Clock, PlayCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, Loader2, Clock, PlayCircle, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -31,6 +31,13 @@ export function ExecutionDetails() {
             Completed
           </Badge>
         )
+      case 'CompletedWithErrors':
+        return (
+          <Badge variant="default" className="bg-yellow-500">
+            <AlertTriangle className="mr-1 h-3 w-3" />
+            Completed with Errors
+          </Badge>
+        )
       case 'Failed':
         return (
           <Badge variant="destructive">
@@ -59,6 +66,8 @@ export function ExecutionDetails() {
     switch (status) {
       case 'Success':
         return <CheckCircle className="h-12 w-12 text-green-500" />
+      case 'CompletedWithErrors':
+        return <AlertTriangle className="h-12 w-12 text-yellow-500" />
       case 'Failed':
         return <XCircle className="h-12 w-12 text-red-500" />
       case 'Running':
@@ -169,7 +178,7 @@ export function ExecutionDetails() {
         </CardContent>
       </Card>
 
-      {execution.status === 'Success' && execution.result !== null && (
+      {(execution.status === 'Success' || execution.status === 'CompletedWithErrors') && execution.result !== null && (
         <Card>
           <CardHeader>
             <CardTitle>Result</CardTitle>
@@ -183,6 +192,19 @@ export function ExecutionDetails() {
             />
           </CardContent>
         </Card>
+      )}
+
+      {execution.status === 'CompletedWithErrors' && execution.errorMessage && (
+        <Alert variant="default" className="border-yellow-500 bg-yellow-50">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-800">Non-Terminating Error</AlertTitle>
+          <AlertDescription className="text-yellow-700">
+            <p className="mt-2 text-sm">
+              The workflow completed but encountered an error during execution:
+            </p>
+            <pre className="mt-2 text-sm">{execution.errorMessage}</pre>
+          </AlertDescription>
+        </Alert>
       )}
 
       {execution.status === 'Failed' && execution.errorMessage && (

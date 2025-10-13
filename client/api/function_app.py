@@ -15,6 +15,7 @@ from functions.workflows import bp as workflows_bp
 from functions.secrets import bp as secrets_bp
 from functions.health import bp as health_bp
 from functions.dashboard import bp as dashboard_bp
+from functions.oauth_api import bp as oauth_api_bp
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -31,6 +32,7 @@ app.register_functions(workflows_bp)  # Workflow engine proxy endpoints
 app.register_functions(secrets_bp)  # Secret management endpoints
 app.register_functions(health_bp)  # Health monitoring endpoints
 app.register_functions(dashboard_bp)  # Dashboard metrics endpoints
+app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
 
 @app.route(route="health", methods=["GET"])
 def health(req: func.HttpRequest) -> func.HttpResponse:

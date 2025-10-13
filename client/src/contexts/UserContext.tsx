@@ -28,16 +28,12 @@ export function UserProvider({ children }: UserProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Initialize orgId from localStorage or default
+    // Initialize orgId from localStorage if available
     const storedOrgId = localStorage.getItem('selectedOrgId')
     if (storedOrgId) {
       setOrgIdState(storedOrgId)
-    } else {
-      // Default to first org for local development
-      // TODO: Fetch user's orgs from API and select first one
-      setOrgIdState('org-acme-123')
-      localStorage.setItem('selectedOrgId', 'org-acme-123')
     }
+    // No default - orgId can be null (for GLOBAL scope)
     setIsLoading(false)
   }, [])
 

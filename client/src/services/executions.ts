@@ -12,7 +12,8 @@ export const executionsService = {
   async getExecutions(filters?: ExecutionFilters): Promise<WorkflowExecution[]> {
     const params: Record<string, string> = {}
 
-    if (filters?.orgId) params['orgId'] = filters.orgId
+    // Note: orgId is now sent via X-Organization-Id header (handled by api.ts)
+    // Not as a query parameter
     if (filters?.workflowName) params['workflowName'] = filters.workflowName
     if (filters?.status) params['status'] = filters.status
     if (filters?.limit) params['limit'] = filters.limit.toString()
@@ -27,7 +28,8 @@ export const executionsService = {
   /**
    * Get a specific execution by ID
    */
-  async getExecution(executionId: string, orgId: string): Promise<WorkflowExecution> {
-    return api.get<WorkflowExecution>(`/executions/${executionId}`, { orgId })
+  async getExecution(executionId: string): Promise<WorkflowExecution> {
+    // Note: orgId is now sent via X-Organization-Id header (handled by api.ts)
+    return api.get<WorkflowExecution>(`/executions/${executionId}`)
   },
 }

@@ -16,6 +16,8 @@ import { ExecutionHistory } from "@/pages/ExecutionHistory";
 import { ExecutionDetails } from "@/pages/ExecutionDetails";
 import { WorkflowEngineError } from "@/pages/WorkflowEngineError";
 import { Secrets } from "@/pages/Secrets";
+import { OAuthConnections } from "@/pages/OAuthConnections";
+import { OAuthCallback } from "@/pages/OAuthCallback";
 import { Docs } from "@/pages/Docs";
 import { Dashboard } from "@/pages/Dashboard";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,6 +39,12 @@ function App() {
             <BrowserRouter>
                 <OrgScopeProvider>
                     <Routes>
+                        {/* OAuth Callback - Public (no auth, no layout) */}
+                        <Route
+                            path="oauth/callback/:connectionName"
+                            element={<OAuthCallback />}
+                        />
+
                         <Route path="/" element={<Layout />}>
                             {/* Dashboard - PlatformAdmin only (OrgUsers redirected to /forms) */}
                             <Route index element={<Dashboard />} />
@@ -181,6 +189,16 @@ function App() {
                                 element={
                                     <ProtectedRoute requirePlatformAdmin>
                                         <Secrets />
+                                    </ProtectedRoute>
+                                }
+                            />
+
+                            {/* OAuth Connections - PlatformAdmin only */}
+                            <Route
+                                path="oauth"
+                                element={
+                                    <ProtectedRoute requirePlatformAdmin>
+                                        <OAuthConnections />
                                     </ProtectedRoute>
                                 }
                             />

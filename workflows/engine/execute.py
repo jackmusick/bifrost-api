@@ -200,13 +200,39 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-        # Update execution record (status=SUCCESS)
+        # Determine execution status based on result
+        # If result is a dict with success=false, mark as COMPLETED_WITH_ERRORS
+        # This is like PowerShell's Write-Error (non-terminating error)
+        execution_status = ExecutionStatus.SUCCESS
+        error_message = None
+
+        if isinstance(result, dict) and result.get('success') is False:
+            execution_status = ExecutionStatus.COMPLETED_WITH_ERRORS
+            error_message = result.get('error', 'Workflow completed with errors')
+            logger.warning(
+                f"Workflow completed with errors: {workflow_name} - {error_message}",
+                extra={
+                    "execution_id": execution_id,
+                    "duration_ms": duration_ms
+                }
+            )
+        else:
+            logger.info(
+                f"Workflow execution completed successfully: {workflow_name}",
+                extra={
+                    "execution_id": execution_id,
+                    "duration_ms": duration_ms
+                }
+            )
+
+        # Update execution record
         await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=context.org_id,
             user_id=user_id,
-            status=ExecutionStatus.SUCCESS,
+            status=execution_status,
             result=result,
+            error_message=error_message,
             duration_ms=duration_ms,
             state_snapshots=context._state_snapshots,
             integration_calls=context._integration_calls,
@@ -214,18 +240,10 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
             variables=context._variables
         )
 
-        logger.info(
-            f"Workflow execution completed successfully: {workflow_name}",
-            extra={
-                "execution_id": execution_id,
-                "duration_ms": duration_ms
-            }
-        )
-
         # Build success response
         response = WorkflowExecutionResponse(
             executionId=execution_id,
-            status=ExecutionStatus.SUCCESS,
+            status=execution_status,
             result=result,
             durationMs=duration_ms,
             startedAt=start_time,

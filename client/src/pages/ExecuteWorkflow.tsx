@@ -9,14 +9,14 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowsMetadata, useExecuteWorkflow } from '@/hooks/useWorkflows'
-import { useUser } from '@/contexts/UserContext'
+import { useOrgScope } from '@/contexts/OrgScopeContext'
 import { PrettyInputDisplay } from '@/components/execution/PrettyInputDisplay'
 import type { WorkflowParameter } from '@/types/workflow'
 
 export function ExecuteWorkflow() {
   const { workflowName } = useParams()
   const navigate = useNavigate()
-  const { orgId } = useUser()
+  const { scope } = useOrgScope()
   const { data, isLoading } = useWorkflowsMetadata()
   const executeWorkflow = useExecuteWorkflow()
 
@@ -35,9 +35,13 @@ export function ExecuteWorkflow() {
       parameters,
     }
 
-    if (orgId) {
-      request.orgId = orgId
+    // Use OrgScopeContext to determine orgId
+    // If global scope, don't set orgId (backend will use require_org=False for admins)
+    // If org scope, set the specific orgId
+    if (scope.type === 'organization' && scope.orgId) {
+      request.orgId = scope.orgId
     }
+    // When scope is 'global', don't set request.orgId - backend will handle it
 
     const result = await executeWorkflow.mutateAsync(request)
     setExecutionResult(result)

@@ -56,7 +56,10 @@
       "Bash(curl:*)",
       "Bash(if [ -d \"/Users/jack/GitHub/bifrost-integrations/specs/003-use-azure-key/checklists\" ])",
       "Bash(then find \"/Users/jack/GitHub/bifrost-integrations/specs/003-use-azure-key/checklists\" -name \"*.md\" -type f)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(if [ -d \"/Users/jack/GitHub/bifrost-integrations/specs/004-oauth-helper-for/checklists\" ])",
+      "Bash(then find \"/Users/jack/GitHub/bifrost-integrations/specs/004-oauth-helper-for/checklists\" -name \"*.md\" -type f)",
+      "Read(//Users/jack/GitHub/**)"
     ],
     "deny": [],
     "ask": []
