@@ -74,7 +74,10 @@
       "Bash(docker logs:*)",
       "Bash(func start)",
       "Read(//tmp/stubs/engine/shared/**)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(PYTHONPATH=/Users/jack/GitHub/bifrost-integrations/workflows python -m pytest:*)",
+      "Bash(export PYTHONPATH=/Users/jack/GitHub/bifrost-integrations/workflows)"
     ],
     "deny": [],
     "ask": []

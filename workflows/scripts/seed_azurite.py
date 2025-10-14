@@ -20,6 +20,7 @@ import asyncio
 import os
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 
@@ -57,28 +58,42 @@ def print_error(message: str) -> None:
     print(f"{Colors.RED}✗{Colors.RESET} {message}")
 
 
+# Generate consistent UUIDs for seed data (deterministic based on name)
+def generate_seed_uuid(name: str) -> str:
+    """Generate a deterministic UUID based on a name for seed data"""
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"bifrost-seed-{name}"))
+
 # T043: Organization test data
 SEED_ORGANIZATIONS = [
     {
-        'PartitionKey': 'org',
-        'RowKey': 'test-org-active',
+        'PartitionKey': 'ORG',
+        'RowKey': generate_seed_uuid('active-org'),
         'Name': 'Active Test Organization',
-        'TenantId': 'tenant-active-123',
-        'IsActive': True
+        'TenantId': generate_seed_uuid('tenant-active'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'CreatedBy': 'seed-script',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat()
     },
     {
-        'PartitionKey': 'org',
-        'RowKey': 'test-org-inactive',
+        'PartitionKey': 'ORG',
+        'RowKey': generate_seed_uuid('inactive-org'),
         'Name': 'Inactive Test Organization',
-        'TenantId': 'tenant-inactive-456',
-        'IsActive': False
+        'TenantId': generate_seed_uuid('tenant-inactive'),
+        'IsActive': False,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'CreatedBy': 'seed-script',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat()
     },
     {
-        'PartitionKey': 'org',
-        'RowKey': 'test-org-demo',
+        'PartitionKey': 'ORG',
+        'RowKey': generate_seed_uuid('demo-org'),
         'Name': 'Demo Organization',
-        'TenantId': 'tenant-demo-789',
-        'IsActive': True
+        'TenantId': generate_seed_uuid('tenant-demo'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'CreatedBy': 'seed-script',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat()
     }
 ]
 
@@ -86,44 +101,59 @@ SEED_ORGANIZATIONS = [
 # T044: User test data
 SEED_USERS = [
     {
-        'PartitionKey': 'user',
-        'RowKey': 'user-platform-admin',
+        'PartitionKey': 'USER',
+        'RowKey': generate_seed_uuid('user-platform-admin'),
         'Email': 'admin@platform.local',
-        'Name': 'Platform Administrator',
+        'DisplayName': 'Platform Administrator',
         'Roles': ['PlatformAdmin'],
-        'OrgId': 'test-org-active'  # PlatformAdmin belongs to active org
+        'OrgId': generate_seed_uuid('active-org'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'LastLogin': datetime.now(timezone.utc).isoformat()
     },
     {
-        'PartitionKey': 'user',
-        'RowKey': 'user-org-user-1',
+        'PartitionKey': 'USER',
+        'RowKey': generate_seed_uuid('user-org-user-1'),
         'Email': 'user1@testorg.local',
-        'Name': 'Test User 1',
+        'DisplayName': 'Test User 1',
         'Roles': ['OrgUser'],
-        'OrgId': 'test-org-active'
+        'OrgId': generate_seed_uuid('active-org'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'LastLogin': datetime.now(timezone.utc).isoformat()
     },
     {
-        'PartitionKey': 'user',
-        'RowKey': 'user-org-user-2',
+        'PartitionKey': 'USER',
+        'RowKey': generate_seed_uuid('user-org-user-2'),
         'Email': 'user2@testorg.local',
-        'Name': 'Test User 2',
+        'DisplayName': 'Test User 2',
         'Roles': ['OrgUser'],
-        'OrgId': 'test-org-active'
+        'OrgId': generate_seed_uuid('active-org'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'LastLogin': datetime.now(timezone.utc).isoformat()
     },
     {
-        'PartitionKey': 'user',
-        'RowKey': 'user-demo-admin',
+        'PartitionKey': 'USER',
+        'RowKey': generate_seed_uuid('user-demo-admin'),
         'Email': 'admin@demo.local',
-        'Name': 'Demo Admin',
+        'DisplayName': 'Demo Admin',
         'Roles': ['OrgUser', 'OrgAdmin'],
-        'OrgId': 'test-org-demo'
+        'OrgId': generate_seed_uuid('demo-org'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'LastLogin': datetime.now(timezone.utc).isoformat()
     },
     {
-        'PartitionKey': 'user',
-        'RowKey': 'user-inactive-org',
+        'PartitionKey': 'USER',
+        'RowKey': generate_seed_uuid('user-inactive-org'),
         'Email': 'user@inactive.local',
-        'Name': 'Inactive Org User',
+        'DisplayName': 'Inactive Org User',
         'Roles': ['OrgUser'],
-        'OrgId': 'test-org-inactive'
+        'OrgId': generate_seed_uuid('inactive-org'),
+        'IsActive': True,
+        'CreatedAt': datetime.now(timezone.utc).isoformat(),
+        'LastLogin': datetime.now(timezone.utc).isoformat()
     }
 ]
 
@@ -132,70 +162,100 @@ SEED_USERS = [
 SEED_CONFIGURATION = [
     # Global configuration
     {
-        'PartitionKey': 'global',
+        'PartitionKey': 'GLOBAL',
         'RowKey': 'config:platform_name',
         'Value': 'Bifrost Integrations',
-        'Type': 'string'
+        'Type': 'string',
+        'Description': 'Platform display name',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
     {
-        'PartitionKey': 'global',
+        'PartitionKey': 'GLOBAL',
         'RowKey': 'config:max_workflow_timeout',
         'Value': '300',
-        'Type': 'int'
+        'Type': 'int',
+        'Description': 'Maximum workflow execution timeout in seconds',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
     {
-        'PartitionKey': 'global',
+        'PartitionKey': 'GLOBAL',
         'RowKey': 'config:feature_flags',
         'Value': '{"webhooks": true, "analytics": false, "beta_features": true}',
-        'Type': 'json'
+        'Type': 'json',
+        'Description': 'Global feature flags',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
 
-    # Org-specific configuration (test-org-active)
+    # Org-specific configuration (active org)
     {
-        'PartitionKey': 'test-org-active',
+        'PartitionKey': generate_seed_uuid('active-org'),
         'RowKey': 'config:api_endpoint',
         'Value': 'https://api.testorg.local',
-        'Type': 'string'
+        'Type': 'string',
+        'Description': 'Organization API endpoint',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
     {
-        'PartitionKey': 'test-org-active',
+        'PartitionKey': generate_seed_uuid('active-org'),
         'RowKey': 'config:automation_enabled',
         'Value': 'true',
-        'Type': 'bool'
+        'Type': 'bool',
+        'Description': 'Enable workflow automation',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
     {
-        'PartitionKey': 'test-org-active',
+        'PartitionKey': generate_seed_uuid('active-org'),
         'RowKey': 'config:integrations',
         'Value': '{"slack": true, "teams": true, "email": true}',
-        'Type': 'json'
+        'Type': 'json',
+        'Description': 'Enabled integrations',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
 
-    # Org-specific configuration (test-org-demo)
+    # Org-specific configuration (demo org)
     {
-        'PartitionKey': 'test-org-demo',
+        'PartitionKey': generate_seed_uuid('demo-org'),
         'RowKey': 'config:api_endpoint',
         'Value': 'https://api.demo.local',
-        'Type': 'string'
+        'Type': 'string',
+        'Description': 'Organization API endpoint',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
     {
-        'PartitionKey': 'test-org-demo',
+        'PartitionKey': generate_seed_uuid('demo-org'),
         'RowKey': 'config:demo_mode',
         'Value': 'true',
-        'Type': 'bool'
+        'Type': 'bool',
+        'Description': 'Enable demo mode restrictions',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
     {
-        'PartitionKey': 'test-org-demo',
+        'PartitionKey': generate_seed_uuid('demo-org'),
         'RowKey': 'config:rate_limits',
         'Value': '{"requests_per_hour": 100, "workflows_per_day": 50}',
-        'Type': 'json'
+        'Type': 'json',
+        'Description': 'API rate limits',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     },
 
-    # Org-specific configuration (test-org-inactive)
+    # Org-specific configuration (inactive org)
     {
-        'PartitionKey': 'test-org-inactive',
+        'PartitionKey': generate_seed_uuid('inactive-org'),
         'RowKey': 'config:api_endpoint',
         'Value': 'https://api.inactive.local',
-        'Type': 'string'
+        'Type': 'string',
+        'Description': 'Organization API endpoint',
+        'UpdatedAt': datetime.now(timezone.utc).isoformat(),
+        'UpdatedBy': 'seed-script'
     }
 ]
 
@@ -273,7 +333,7 @@ async def seed_users(service_client: TableServiceClient) -> int:
 
         roles_str = ", ".join(user_data['Roles'])
         print_success(
-            f"  {user_data['Name']} ({user_data['Email']}) - {roles_str}")
+            f"  {user_data['DisplayName']} ({user_data['Email']}) - {roles_str}")
         count += 1
 
     return count

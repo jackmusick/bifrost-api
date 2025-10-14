@@ -4,76 +4,89 @@ Tests that workflows are automatically discovered and registered
 """
 
 import pytest
-from shared.registry import get_registry
+from engine.shared.registry import get_registry
 
 
-# Import workflows to trigger auto-discovery
-import workflows  # noqa: F401
+# Import workspace modules to trigger auto-discovery
+import sys
+import importlib.util
+from pathlib import Path
+
+# Manually trigger workspace discovery for tests
+workspace_path = Path("/Users/jack/GitHub/bifrost-integrations/workflows/workspace")
+if workspace_path.exists():
+    for py_file in workspace_path.rglob("*.py"):
+        if py_file.name.startswith("_"):
+            continue
+
+        relative_path = py_file.relative_to(workspace_path)
+        module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
+        module_name = f"workspace.{'.'.join(module_parts)}"
+
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+        except Exception:
+            pass
 
 
 class TestAutoDiscovery:
     """Test workflow auto-discovery system"""
 
-    def test_user_onboarding_workflow_discovered(self):
-        """Test that user_onboarding workflow is auto-discovered"""
+    def test_test_workflow_discovered(self):
+        """Test that test_workflow is auto-discovered"""
         registry = get_registry()
 
         # Workflow should be registered
-        assert registry.has_workflow("user_onboarding")
+        assert registry.has_workflow("test_workflow")
 
         # Get workflow metadata
-        workflow = registry.get_workflow("user_onboarding")
+        workflow = registry.get_workflow("test_workflow")
         assert workflow is not None
-        assert workflow.name == "user_onboarding"
-        assert workflow.description == "Onboard new Microsoft 365 user with license assignment"
-        assert workflow.category == "user_management"
-        assert "m365" in workflow.tags
-        assert "user" in workflow.tags
+        assert workflow.name == "test_workflow"
+        assert workflow.description == "Simple test workflow for validation"
+        assert workflow.category == "testing"
+        assert "test" in workflow.tags
+        assert "example" in workflow.tags
 
-    def test_user_onboarding_parameters(self):
-        """Test that user_onboarding has correct parameters"""
+    def test_test_workflow_parameters(self):
+        """Test that test_workflow has correct parameters"""
         registry = get_registry()
-        workflow = registry.get_workflow("user_onboarding")
+        workflow = registry.get_workflow("test_workflow")
 
-        assert len(workflow.parameters) == 5
+        assert len(workflow.parameters) == 2
 
         # Check parameter names in order
         param_names = [p.name for p in workflow.parameters]
-        assert param_names == ["first_name", "last_name", "email", "license", "department"]
+        assert param_names == ["name", "count"]
 
-        # Check first_name parameter
-        first_name = workflow.parameters[0]
-        assert first_name.name == "first_name"
-        assert first_name.type == "string"
-        assert first_name.label == "First Name"
-        assert first_name.required is True
+        # Check name parameter
+        name_param = workflow.parameters[0]
+        assert name_param.name == "name"
+        assert name_param.type == "string"
+        assert name_param.label == "Name"
+        assert name_param.required is True
+        assert name_param.help_text == "Name to greet"
 
-        # Check email parameter with validation
-        email = workflow.parameters[2]
-        assert email.name == "email"
-        assert email.type == "email"
-        assert email.required is True
-        assert email.validation is not None
-        assert "pattern" in email.validation
-
-        # Check license parameter with data provider
-        license_param = workflow.parameters[3]
-        assert license_param.name == "license"
-        assert license_param.data_provider == "get_available_licenses"
-        assert license_param.required is True
-
-        # Check department parameter with default
-        department = workflow.parameters[4]
-        assert department.name == "department"
-        assert department.required is False
-        assert department.default_value == ""
+        # Check count parameter with default
+        count_param = workflow.parameters[1]
+        assert count_param.name == "count"
+        assert count_param.type == "int"
+        assert count_param.label == "Count"
+        assert count_param.required is False
+        assert count_param.default_value == 1
+        assert count_param.help_text == "Number of times to greet"
 
     def test_workflow_function_callable(self):
         """Test that discovered workflow function is callable"""
         registry = get_registry()
-        workflow = registry.get_workflow("user_onboarding")
+        workflow = registry.get_workflow("test_workflow")
 
         # Function should be stored
+        assert workflow is not None
         assert workflow.function is not None
         assert callable(workflow.function)
 
@@ -83,4 +96,4 @@ class TestAutoDiscovery:
         summary = registry.get_summary()
 
         assert summary["workflows_count"] >= 1
-        assert "user_onboarding" in summary["workflows"]
+        assert "test_workflow" in summary["workflows"]

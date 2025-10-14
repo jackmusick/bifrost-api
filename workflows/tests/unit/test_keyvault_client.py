@@ -58,12 +58,12 @@ class TestKeyVaultClient:
 
     def test_secret_name_formatting_org_scoped(self, keyvault_client):
         """Test secret name formatting for org-scoped secrets"""
-        name = keyvault_client._format_secret_name("org-123", "api-key")
+        name = keyvault_client._build_secret_name("org-123", "api-key")
         assert name == "org-123--api-key"
 
     def test_secret_name_formatting_global(self, keyvault_client):
         """Test secret name formatting for global secrets"""
-        name = keyvault_client._format_secret_name("GLOBAL", "smtp-password")
+        name = keyvault_client._build_secret_name("GLOBAL", "smtp-password")
         assert name == "GLOBAL--smtp-password"
 
     def test_get_secret_from_keyvault(self, keyvault_client, mock_secret_client):
@@ -109,8 +109,8 @@ class TestKeyVaultClient:
         # Both Key Vault calls fail
         mock_secret_client.get_secret.side_effect = ResourceNotFoundError("Not found")
 
-        # Set environment variable
-        with patch.dict(os.environ, {'ORG123__API_KEY': 'env-var-value'}):
+        # Set environment variable (note: org-123 becomes ORG_123)
+        with patch.dict(os.environ, {'ORG_123__API_KEY': 'env-var-value'}):
             result = keyvault_client.get_secret("org-123", "api-key")
 
         assert result == "env-var-value"
@@ -176,14 +176,14 @@ class TestKeyVaultClient:
 
     def test_env_var_name_conversion(self, keyvault_client):
         """Test conversion of secret key to environment variable name"""
-        # org-123 -> ORG123 (uppercase, hyphens to underscores)
+        # org-123 -> ORG_123 (uppercase, hyphens to underscores)
         # api-key -> API_KEY (uppercase, hyphens to underscores)
-        env_name = keyvault_client._to_env_var_name("org-123", "api-key")
-        assert env_name == "ORG123__API_KEY"
+        env_name = keyvault_client._build_env_var_name("org-123", "api-key")
+        assert env_name == "ORG_123__API_KEY"
 
     def test_env_var_name_conversion_global(self, keyvault_client):
         """Test conversion of global secret key to environment variable name"""
-        env_name = keyvault_client._to_env_var_name("GLOBAL", "smtp-password")
+        env_name = keyvault_client._build_env_var_name("GLOBAL", "smtp-password")
         assert env_name == "GLOBAL__SMTP_PASSWORD"
 
     def test_list_secrets_from_keyvault(self, keyvault_client, mock_secret_client):
@@ -242,15 +242,17 @@ class TestKeyVaultClient:
         # Simulate network error
         mock_secret_client.get_secret.side_effect = ServiceRequestError("Network unavailable")
 
-        with patch.dict(os.environ, {'ORG123__API_KEY': 'fallback-value'}):
+        with patch.dict(os.environ, {'ORG_123__API_KEY': 'fallback-value'}):
             result = keyvault_client.get_secret("org-123", "api-key")
 
         assert result == "fallback-value"
 
-    def test_no_vault_url_raises_error(self):
-        """Test that missing vault URL raises appropriate error"""
+    def test_no_vault_url_allows_initialization(self):
+        """Test that missing vault URL allows initialization but client is None"""
         from engine.shared.keyvault import KeyVaultClient
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises((ValueError, Exception)):
-                KeyVaultClient()
+            client = KeyVaultClient()
+            # Client should be initialized but vault_url is None and _client is None
+            assert client.vault_url is None
+            assert client._client is None

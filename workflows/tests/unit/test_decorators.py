@@ -4,8 +4,8 @@ Tests decorator registration, metadata extraction, and parameter handling
 """
 
 import pytest
-from shared.decorators import workflow, param, data_provider, VALID_PARAM_TYPES
-from shared.registry import get_registry
+from engine.shared.decorators import workflow, param, data_provider, VALID_PARAM_TYPES
+from engine.shared.registry import get_registry
 
 
 @pytest.fixture

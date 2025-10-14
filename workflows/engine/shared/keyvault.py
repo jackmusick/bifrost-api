@@ -87,6 +87,9 @@ class KeyVaultClient:
         if self._client:
             try:
                 return self._get_secret_with_fallback(org_id, secret_key)
+            except KeyError:
+                # Secret not found in Key Vault, try local fallback
+                logger.debug(f"Secret not found in Key Vault, trying local fallback")
             except ClientAuthenticationError as e:
                 logger.warning(f"Key Vault authentication failed: {e}, trying local fallback")
             except ServiceRequestError as e:
@@ -240,6 +243,47 @@ class KeyVaultClient:
         org_part = org_id.upper().replace('-', '_')
         key_part = secret_key.upper().replace('-', '_')
         return f"{org_part}__{key_part}"
+
+    def list_secrets(self, org_id: Optional[str] = None) -> list[str]:
+        """
+        List all secrets in Key Vault, optionally filtered by organization.
+
+        Args:
+            org_id: Optional organization identifier to filter by.
+                   If provided, returns secrets for that org + GLOBAL secrets.
+                   If None, returns all secrets.
+
+        Returns:
+            List of secret names
+
+        Raises:
+            Exception: If Key Vault is unavailable or permission denied
+        """
+        if not self._client:
+            logger.warning("Key Vault client not initialized, cannot list secrets")
+            return []
+
+        try:
+            # Get all secret properties from Key Vault
+            secret_properties = self._client.list_properties_of_secrets()
+
+            secret_names = []
+            for prop in secret_properties:
+                secret_name = prop.name
+
+                # If org_id filter specified, only include org-scoped and GLOBAL secrets
+                if org_id:
+                    if secret_name.startswith(f"{org_id}--") or secret_name.startswith("GLOBAL--"):
+                        secret_names.append(secret_name)
+                else:
+                    secret_names.append(secret_name)
+
+            logger.info(f"Listed {len(secret_names)} secrets from Key Vault")
+            return secret_names
+
+        except Exception as e:
+            logger.error(f"Failed to list secrets from Key Vault: {e}")
+            raise
 
     def clear_cache(self):
         """Clear all cached secrets."""

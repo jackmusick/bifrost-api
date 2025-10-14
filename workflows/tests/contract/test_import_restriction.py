@@ -90,19 +90,29 @@ class TestImportRestrictionContract:
         from engine.shared.import_restrictor import install_import_restrictions
         import tempfile
 
+        # Clear module cache to ensure restrictor can intercept the import
+        if 'engine.shared.storage' in sys.modules:
+            del sys.modules['engine.shared.storage']
+
         # Create temporary workspace directory
         with tempfile.TemporaryDirectory() as tmpdir:
             install_import_restrictions([tmpdir])
 
-            # Attempt to import blocked module
+            # Create a test file in workspace that attempts the import
+            test_file = Path(tmpdir) / "test_workspace_import.py"
+            test_file.write_text("import engine.shared.storage\n")
+
+            # Attempt to import that file (which will trigger the blocked import)
             # Note: This test simulates workspace code attempting import
             with pytest.raises(ImportError) as exc_info:
-                # Temporarily add tmpdir to path to simulate workspace import
                 sys.path.insert(0, tmpdir)
                 try:
-                    importlib.import_module('engine.shared.storage')
+                    importlib.import_module('test_workspace_import')
                 finally:
-                    sys.path.pop(0)
+                    sys.path.remove(tmpdir)
+                    # Clean up test module from cache
+                    if 'test_workspace_import' in sys.modules:
+                        del sys.modules['test_workspace_import']
 
             assert "cannot import engine module" in str(exc_info.value).lower() or \
                    "workspace" in str(exc_info.value).lower(), (

@@ -155,34 +155,6 @@ cat /tmp/deployment-output.json > "$OUTPUT_FILE"
 echo -e "${GREEN}✓ Deployment outputs saved to: ${OUTPUT_FILE}${NC}"
 echo ""
 
-# Configure API Function App with Workflows function key
-echo -e "${YELLOW}→ Configuring inter-app communication...${NC}"
-echo ""
-
-# Wait for Workflows Function App to be ready
-echo "Waiting for Workflows Function App runtime to initialize..."
-sleep 30
-
-# Get the workflows function key
-WORKFLOWS_FUNCTION_KEY=$(az functionapp keys list \
-  --name "$WORKFLOWS_FUNCTION_APP_NAME" \
-  --resource-group "$RESOURCE_GROUP_NAME" \
-  --query "functionKeys.default" -o tsv 2>/dev/null)
-
-if [ -n "$WORKFLOWS_FUNCTION_KEY" ]; then
-    # Set the function key in API Function App
-    az functionapp config appsettings set \
-      --name "$API_FUNCTION_APP_NAME" \
-      --resource-group "$RESOURCE_GROUP_NAME" \
-      --settings "WORKFLOWS_ENGINE_FUNCTION_KEY=$WORKFLOWS_FUNCTION_KEY" \
-      --output none
-
-    echo -e "${GREEN}✓ Inter-app communication configured${NC}"
-else
-    echo -e "${YELLOW}⚠ Could not retrieve Workflows function key. You may need to set WORKFLOWS_ENGINE_FUNCTION_KEY manually.${NC}"
-fi
-echo ""
-
 # Extract deployment credentials
 echo -e "${YELLOW}→ Extracting deployment credentials...${NC}"
 echo ""

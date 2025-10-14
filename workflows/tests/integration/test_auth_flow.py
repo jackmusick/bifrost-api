@@ -166,6 +166,7 @@ class TestAuthenticationFlow:
         Should raise AuthenticationError (to be converted to 403 by middleware).
         """
         from engine.shared.auth import AuthenticationService, AuthenticationError
+        import os
 
         # Create request with NO authentication
         req = func.HttpRequest(
@@ -177,10 +178,12 @@ class TestAuthenticationFlow:
 
         auth_service = AuthenticationService()
 
-        with pytest.raises(AuthenticationError) as exc_info:
-            await auth_service.authenticate(req)
+        # Simulate production environment to trigger auth error
+        with patch.dict(os.environ, {'WEBSITE_SITE_NAME': 'production-app'}):
+            with pytest.raises(AuthenticationError) as exc_info:
+                await auth_service.authenticate(req)
 
-        assert "No valid authentication credentials" in str(exc_info.value)
+            assert "No valid authentication credentials" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_function_key_from_query_parameter(self):
@@ -196,6 +199,7 @@ class TestAuthenticationFlow:
             method="POST",
             url="http://localhost:7071/api/workflows/test?code=query_key_789",
             headers={"X-Organization-Id": "test-org-123"},
+            params={"code": "query_key_789"},  # Azure Functions parses params separately
             body=b'{}'
         )
 
@@ -223,6 +227,7 @@ class TestAuthenticationFlow:
                 "X-Organization-Id": "test-org-123",
                 "x-functions-key": "header_key"
             },
+            params={"code": "query_key"},  # Azure Functions parses params separately
             body=b'{}'
         )
 
@@ -249,14 +254,15 @@ class TestAuthenticationFlow:
 
         with patch('engine.shared.storage.get_organization', return_value=mock_org_entity):
             with patch('engine.shared.storage.get_org_config', return_value=mock_config_entities):
-                context = load_organization_context("test-org-123", req)
+                context = await load_organization_context("test-org-123", req)
 
         # Assert context loaded correctly
         assert isinstance(context, OrganizationContext)
         assert context.org.org_id == "test-org-123"
         assert context.org.name == "Test Organization"
-        assert context.config["api_endpoint"] == "https://api.example.com"
-        assert context.config["features"]["automation"] is True
+        assert context.has_config("api_endpoint")
+        assert context._config["api_endpoint"] == "https://api.example.com"
+        assert context._config["features"]["automation"] is True
 
     @pytest.mark.asyncio
     async def test_invalid_easy_auth_principal_format(self):

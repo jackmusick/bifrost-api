@@ -3,8 +3,8 @@ Pytest fixtures for Bifrost Integrations tests
 Provides reusable test infrastructure for all test files
 """
 
-from shared.init_tables import init_tables, REQUIRED_TABLES
-from shared.storage import TableStorageService
+from engine.shared.init_tables import init_tables, REQUIRED_TABLES
+from engine.shared.storage import TableStorageService
 import os
 import pytest
 import uuid

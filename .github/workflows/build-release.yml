@@ -1,0 +1,170 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Only run in upstream repo to prevent forks from creating releases
+# Forks should use their own deployment workflows
+
+jobs:
+  build-api:
+    runs-on: ubuntu-latest
+    name: Build API Package
+    # Only run in upstream repo, not forks
+    if: github.repository == 'jackmusick/bifrost-integrations'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Build API package
+      run: |
+        cd api
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+
+        # Create zip excluding unnecessary files
+        zip -r ../api-latest.zip . \
+          -x "*.pyc" \
+          -x "*__pycache__*" \
+          -x "tests/*" \
+          -x ".git/*" \
+          -x ".venv/*" \
+          -x "*.md"
+
+    - name: Upload API artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-package
+        path: api-latest.zip
+        retention-days: 90
+
+  build-workflows:
+    runs-on: ubuntu-latest
+    name: Build Workflows Package
+    # Only run in upstream repo, not forks
+    if: github.repository == 'jackmusick/bifrost-integrations'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Build Workflows package
+      run: |
+        cd workflows
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+
+        # Create zip excluding unnecessary files
+        zip -r ../workflows-latest.zip . \
+          -x "*.pyc" \
+          -x "*__pycache__*" \
+          -x "tests/*" \
+          -x ".git/*" \
+          -x ".venv/*" \
+          -x "*.md"
+
+    - name: Copy type stubs for distribution
+      run: |
+        cp workflows/stubs/bifrost.pyi bifrost.pyi
+
+    - name: Upload Workflows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: workflows-package
+        path: workflows-latest.zip
+        retention-days: 90
+
+    - name: Upload Type Stubs artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: bifrost-types
+        path: bifrost.pyi
+        retention-days: 90
+
+  create-release:
+    needs: [build-api, build-workflows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download API artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: api-package
+
+    - name: Download Workflows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: workflows-package
+
+    - name: Download Type Stubs artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: bifrost-types
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          api-latest.zip
+          workflows-latest.zip
+          bifrost.pyi
+        body: |
+          ## Bifrost Integrations Release
+
+          ### Installation
+
+          **Zip Deploy (Quick Start):**
+          ```bash
+          # Deploy API
+          az functionapp deployment source config-zip \
+            --resource-group <rg-name> \
+            --name <api-app-name> \
+            --src api-latest.zip
+
+          # Deploy Workflows
+          az functionapp deployment source config-zip \
+            --resource-group <rg-name> \
+            --name <workflows-app-name> \
+            --src workflows-latest.zip
+          ```
+
+          **GitHub Actions (Recommended):**
+          Use the deployment workflows in `.github/workflows/` with publish profiles.
+
+          ### Developer Experience
+
+          **Type Stubs for Workflow Development:**
+          Download `bifrost.pyi` and add it to your workspace directory for IDE autocomplete and type hints:
+          ```bash
+          # Download type stubs
+          curl -LO https://github.com/jackmusick/bifrost-integrations/releases/latest/download/bifrost.pyi
+
+          # Copy to your workspace
+          cp bifrost.pyi /workspace/bifrost.pyi
+          ```
+
+          Then import in your workflows:
+          ```python
+          from bifrost import workflow, param, OrganizationContext
+
+          @workflow(name="my_workflow", description="...")
+          async def my_workflow(context: OrganizationContext):
+              context.info("Hello World")
+          ```
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

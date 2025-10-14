@@ -45,8 +45,7 @@ async def get_priority_levels(context):
         }
     ]
 
-    context.log(
-        "info",
+    context.info(
         f"Retrieved {len(priorities)} priority levels",
         {"org_id": context.org_id}
     )
@@ -108,8 +107,7 @@ async def get_ticket_categories(context):
         }
     ]
 
-    context.log(
-        "info",
+    context.info(
         f"Retrieved {len(categories)} ticket categories",
         {"org_id": context.org_id}
     )
@@ -178,8 +176,7 @@ async def get_departments(context):
         }
     ]
 
-    context.log(
-        "info",
+    context.info(
         f"Retrieved {len(departments)} departments",
         {"org_id": context.org_id}
     )
@@ -252,8 +249,7 @@ async def get_office_locations(context):
         }
     ]
 
-    context.log(
-        "info",
+    context.info(
         f"Retrieved {len(locations)} office locations",
         {"org_id": context.org_id}
     )
@@ -305,8 +301,7 @@ async def get_countries(context):
         {"label": "Mexico", "value": "MX"}
     ]
 
-    context.log(
-        "info",
+    context.info(
         f"Retrieved {len(countries)} countries",
         {"org_id": context.org_id}
     )

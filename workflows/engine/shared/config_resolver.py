@@ -33,14 +33,21 @@ class ConfigResolver:
             keyvault_client: Optional KeyVaultClient instance
                            If None, will be created automatically
         """
-        self.keyvault_client = keyvault_client or KeyVaultClient()
+        if keyvault_client:
+            self.keyvault_client = keyvault_client
+        else:
+            try:
+                self.keyvault_client = KeyVaultClient()
+            except Exception as e:
+                logger.warning(f"Failed to initialize KeyVaultClient: {e}. Secret references will not be available.")
+                self.keyvault_client = None
 
     def get_config(
         self,
         org_id: str,
         key: str,
         config_data: Dict[str, Any],
-        default: Any = None
+        default: Any = ...,  # Sentinel value to distinguish None from "not provided"
     ) -> Any:
         """
         Get configuration value with transparent secret reference resolution.
@@ -50,7 +57,7 @@ class ConfigResolver:
         2. Determine config type (if available)
         3. If type is secret_ref, resolve from Key Vault
         4. Otherwise, return plain value
-        5. If key not found, return default
+        5. If key not found, return default or raise KeyError
 
         Args:
             org_id: Organization identifier
@@ -58,16 +65,18 @@ class ConfigResolver:
             config_data: Configuration dictionary (from Table Storage)
                         Expected format: {key: {"value": "...", "type": "secret_ref"}}
                         or {key: "plain_value"}
-            default: Default value if key not found
+            default: Default value if key not found. If not provided, raises KeyError.
 
         Returns:
             Configuration value (with secret resolved if needed)
 
         Raises:
-            KeyError: If secret reference cannot be resolved
+            KeyError: If key not found and no default provided, or if secret reference cannot be resolved
         """
         # Check if key exists
         if key not in config_data:
+            if default is ...:  # No default provided
+                raise KeyError(f"Configuration key '{key}' not found for org '{org_id}'")
             logger.debug(f"Config key not found: {key}, returning default")
             return default
 
@@ -108,8 +117,21 @@ class ConfigResolver:
             Secret value from Key Vault
 
         Raises:
-            KeyError: If secret not found in Key Vault or local config
+            ValueError: If secret not found in Key Vault or local config, or if Key Vault client not available
         """
+        # Check if Key Vault client is available
+        if not self.keyvault_client:
+            raise ValueError(
+                f"Key Vault client not available for secret reference resolution. "
+                f"Cannot resolve secret '{secret_ref}' for config '{config_key}'."
+            )
+
+        if not self.keyvault_client._client and not self.keyvault_client.vault_url:
+            raise ValueError(
+                f"Key Vault client not available for secret reference resolution. "
+                f"Cannot resolve secret '{secret_ref}' for config '{config_key}'."
+            )
+
         try:
             # Log access attempt (without value)
             logger.info(
@@ -139,8 +161,7 @@ class ConfigResolver:
         except KeyError as e:
             # Log failure with actionable error message
             error_msg = (
-                f"Failed to resolve secret reference for config '{config_key}': {e}. "
-                f"Secret '{secret_ref}' not found for org '{org_id}'. "
+                f"Secret reference not found for config '{config_key}': {secret_ref}. "
                 f"Verify the secret exists in Key Vault or local configuration."
             )
             logger.error(error_msg, extra={
@@ -148,7 +169,7 @@ class ConfigResolver:
                 "config_key": config_key,
                 "secret_ref": secret_ref
             })
-            raise KeyError(error_msg)
+            raise ValueError(error_msg) from e
 
     def _parse_value(self, value: str, config_type: Optional[str]) -> Any:
         """
@@ -160,14 +181,21 @@ class ConfigResolver:
 
         Returns:
             Parsed value in appropriate type
+
+        Raises:
+            ValueError: If value cannot be parsed for the specified type
         """
-        if config_type == ConfigType.INT.value or config_type == "int":
-            return int(value)
-        elif config_type == ConfigType.BOOL.value or config_type == "bool":
-            return value.lower() in ("true", "1", "yes")
-        elif config_type == ConfigType.JSON.value or config_type == "json":
-            import json
-            return json.loads(value)
-        else:
-            # STRING or unknown type - return as string
-            return value
+        import json
+
+        try:
+            if config_type == ConfigType.INT.value or config_type == "int":
+                return int(value)
+            elif config_type == ConfigType.BOOL.value or config_type == "bool":
+                return value.lower() in ("true", "1", "yes")
+            elif config_type == ConfigType.JSON.value or config_type == "json":
+                return json.loads(value)
+            else:
+                # STRING or unknown type - return as string
+                return value
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
+            raise ValueError(f"Could not parse value '{value}' as type '{config_type}': {e}")

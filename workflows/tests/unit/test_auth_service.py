@@ -33,6 +33,7 @@ class TestAuthenticationService:
         url: str = "http://localhost:7071/api/test"
     ) -> func.HttpRequest:
         """Helper to create mock HttpRequest"""
+        # Build query string for URL
         if params:
             query_string = "&".join([f"{k}={v}" for k, v in params.items()])
             url = f"{url}?{query_string}"
@@ -41,6 +42,7 @@ class TestAuthenticationService:
             method="POST",
             url=url,
             headers=headers or {},
+            params=params or {},  # Pass params separately - Azure Functions doesn't parse from URL
             body=b'{}'
         )
 
@@ -257,11 +259,14 @@ class TestAuthenticationService:
     async def test_tiered_auth_no_auth_raises_error(self, auth_service):
         """Test that no authentication raises AuthenticationError"""
         from engine.shared.auth import AuthenticationError
+        import os
 
         req = self.create_request(headers={})
 
-        with pytest.raises(AuthenticationError, match="No valid authentication credentials"):
-            await auth_service.authenticate(req)
+        # Simulate production environment (not local dev)
+        with patch.dict(os.environ, {'WEBSITE_SITE_NAME': 'production-app'}):
+            with pytest.raises(AuthenticationError, match="No valid authentication credentials"):
+                await auth_service.authenticate(req)
 
     @pytest.mark.asyncio
     async def test_audit_function_key_usage_called(self, auth_service):

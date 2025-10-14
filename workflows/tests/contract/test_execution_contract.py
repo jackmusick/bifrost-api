@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 from datetime import datetime
 
-from shared.models import (
+from engine.shared.models import (
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     ExecutionStatus,

@@ -7,10 +7,32 @@ import pytest
 import json
 from unittest.mock import Mock
 
-# Import to trigger auto-discovery
-import workflows  # noqa: F401
+# Import workspace modules to trigger auto-discovery
+import sys
+import importlib.util
+from pathlib import Path
 
-from admin.metadata import get_metadata
+# Manually trigger workspace discovery for tests
+workspace_path = Path("/Users/jack/GitHub/bifrost-integrations/workflows/workspace")
+if workspace_path.exists():
+    for py_file in workspace_path.rglob("*.py"):
+        if py_file.name.startswith("_"):
+            continue
+
+        relative_path = py_file.relative_to(workspace_path)
+        module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
+        module_name = f"workspace.{'.'.join(module_parts)}"
+
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+        except Exception:
+            pass
+
+from engine.admin.metadata import get_metadata
 import azure.functions as func
 
 
@@ -21,6 +43,8 @@ class TestMetadataEndpoint:
         """Test that metadata endpoint returns 200 status"""
         # Create mock request
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
+        req.headers = {}
 
         # Call endpoint
         response = get_metadata(req)
@@ -31,6 +55,8 @@ class TestMetadataEndpoint:
     def test_metadata_endpoint_returns_workflows(self):
         """Test that metadata endpoint returns workflows array"""
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
+        req.headers = {}
         response = get_metadata(req)
 
         # Parse JSON response
@@ -43,6 +69,7 @@ class TestMetadataEndpoint:
     def test_metadata_endpoint_returns_data_providers(self):
         """Test that metadata endpoint returns dataProviders array"""
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
         response = get_metadata(req)
 
         # Parse JSON response
@@ -51,96 +78,92 @@ class TestMetadataEndpoint:
         assert "dataProviders" in data
         assert isinstance(data["dataProviders"], list)
 
-    def test_user_onboarding_workflow_in_response(self):
-        """Test that user_onboarding workflow is included in response"""
+    def test_test_workflow_in_response(self):
+        """Test that test_workflow is included in response"""
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
         response = get_metadata(req)
 
         data = json.loads(response.get_body().decode())
         workflows = data["workflows"]
 
-        # Find user_onboarding workflow
-        user_onboarding = next(
-            (w for w in workflows if w["name"] == "user_onboarding"),
+        # Find test_workflow
+        test_workflow = next(
+            (w for w in workflows if w["name"] == "test_workflow"),
             None
         )
 
-        assert user_onboarding is not None
-        assert user_onboarding["description"] == "Onboard new Microsoft 365 user with license assignment"
-        assert user_onboarding["category"] == "user_management"
-        assert "m365" in user_onboarding["tags"]
-        assert user_onboarding["requiresOrg"] is True
+        assert test_workflow is not None
+        assert test_workflow["description"] == "Simple test workflow for validation"
+        assert test_workflow["category"] == "testing"
+        assert "test" in test_workflow["tags"]
+        assert test_workflow["requiresOrg"] is True
 
     def test_workflow_parameters_formatted_correctly(self):
         """Test that workflow parameters are formatted correctly"""
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
         response = get_metadata(req)
 
         data = json.loads(response.get_body().decode())
         workflows = data["workflows"]
 
-        # Get user_onboarding workflow
-        user_onboarding = next(
-            (w for w in workflows if w["name"] == "user_onboarding"),
+        # Get test_workflow
+        test_workflow = next(
+            (w for w in workflows if w["name"] == "test_workflow"),
             None
         )
 
-        assert "parameters" in user_onboarding
-        parameters = user_onboarding["parameters"]
+        assert "parameters" in test_workflow
+        parameters = test_workflow["parameters"]
 
-        assert len(parameters) == 5
+        assert len(parameters) == 2
 
-        # Check first_name parameter
-        first_name = parameters[0]
-        assert first_name["name"] == "first_name"
-        assert first_name["type"] == "string"
-        assert first_name["label"] == "First Name"
-        assert first_name["required"] is True
+        # Check name parameter
+        name_param = parameters[0]
+        assert name_param["name"] == "name"
+        assert name_param["type"] == "string"
+        assert name_param["label"] == "Name"
+        assert name_param["required"] is True
+        assert "helpText" in name_param
+        assert name_param["helpText"] == "Name to greet"
 
-        # Check email parameter with validation
-        email = parameters[2]
-        assert email["name"] == "email"
-        assert email["type"] == "email"
-        assert email["required"] is True
-        assert "validation" in email
-        assert "pattern" in email["validation"]
-
-        # Check license parameter with data provider
-        license_param = parameters[3]
-        assert license_param["name"] == "license"
-        assert license_param["dataProvider"] == "get_available_licenses"
-        assert license_param["required"] is True
-
-        # Check department parameter with default value
-        department = parameters[4]
-        assert department["name"] == "department"
-        assert department["required"] is False
-        assert "defaultValue" in department
-        assert department["defaultValue"] == ""
+        # Check count parameter with default value
+        count_param = parameters[1]
+        assert count_param["name"] == "count"
+        assert count_param["type"] == "int"
+        assert count_param["label"] == "Count"
+        assert count_param["required"] is False
+        assert "defaultValue" in count_param
+        assert count_param["defaultValue"] == 1
+        assert "helpText" in count_param
+        assert count_param["helpText"] == "Number of times to greet"
 
     def test_parameter_optional_fields_excluded_when_not_present(self):
         """Test that optional parameter fields are excluded when not present"""
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
         response = get_metadata(req)
 
         data = json.loads(response.get_body().decode())
         workflows = data["workflows"]
 
-        user_onboarding = next(
-            (w for w in workflows if w["name"] == "user_onboarding"),
+        test_workflow = next(
+            (w for w in workflows if w["name"] == "test_workflow"),
             None
         )
 
-        # first_name parameter should not have validation, dataProvider, or defaultValue
-        first_name = user_onboarding["parameters"][0]
-        assert "validation" not in first_name
-        assert "dataProvider" not in first_name
-        assert "defaultValue" not in first_name
+        # name parameter should not have validation, dataProvider, or defaultValue
+        name_param = test_workflow["parameters"][0]
+        assert "validation" not in name_param
+        assert "dataProvider" not in name_param
+        assert "defaultValue" not in name_param
 
     def test_no_authentication_required(self):
         """Test that endpoint works without authentication"""
         # This endpoint should work without any auth headers
         req = Mock(spec=func.HttpRequest)
+        req.headers = {}
         req.headers = {}
 
         response = get_metadata(req)

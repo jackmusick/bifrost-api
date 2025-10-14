@@ -4,7 +4,7 @@ Tests singleton pattern, registration, and retrieval
 """
 
 import pytest
-from shared.registry import (
+from engine.shared.registry import (
     WorkflowRegistry,
     WorkflowMetadata,
     WorkflowParameter,

@@ -37,6 +37,7 @@ python-json-logger
 # Testing
 pytest
 pytest-asyncio
+pytest-cov  # Coverage reporting
 
 # Development
 debugpy

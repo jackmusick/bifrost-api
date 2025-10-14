@@ -175,20 +175,58 @@ class OrganizationContext:
         """Get a workflow variable."""
         ...
 
-    def log(self, *args, **kwargs) -> None:
+    def info(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
         """
-        Log a message from the workflow.
+        Log an info-level message.
 
-        Flexible signature:
-        - context.log("message") -> info level
-        - context.log("level", "message") -> explicit level
-        - context.log("level", "message", data={"key": "value"}) -> with data
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
 
         Examples:
-            context.log("Processing user")
-            context.log("info", "Processing user")
-            context.log("warning", "Rate limit approaching")
-            context.log("error", "API call failed", data={"error": str(e)})
+            context.info("Processing user")
+            context.info("User created", {"user_id": "123", "email": "user@example.com"})
+        """
+        ...
+
+    def warning(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log a warning-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Examples:
+            context.warning("Rate limit approaching")
+            context.warning("OAuth token expired", {"expires_at": "2024-01-01"})
+        """
+        ...
+
+    def error(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log an error-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Examples:
+            context.error("API call failed")
+            context.error("Connection timeout", {"endpoint": "/users", "timeout": 30})
+        """
+        ...
+
+    def debug(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log a debug-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Examples:
+            context.debug("Request details", {"headers": headers, "body": body})
         """
         ...
 
@@ -308,6 +346,28 @@ class ExecutionStatus(str, Enum):
     SUCCESS = "Success"
     COMPLETED_WITH_ERRORS = "CompletedWithErrors"
     FAILED = "Failed"
+
+class ConfigType(str, Enum):
+    """Configuration value types."""
+    STRING = "string"
+    SECRET_REF = "secret_ref"
+    JSON = "json"
+
+class FormFieldType(str, Enum):
+    """Form field types."""
+    STRING = "string"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    SELECT = "select"
+    MULTI_SELECT = "multi_select"
+    DATE = "date"
+    DATETIME = "datetime"
+
+class IntegrationType(str, Enum):
+    """Integration provider types."""
+    MSGRAPH = "msgraph"
+    HALOPSA = "halopsa"
+    OAUTH = "oauth"
 
 class OAuthCredentials:
     """OAuth credentials for API access."""

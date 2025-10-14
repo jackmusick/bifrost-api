@@ -14,3 +14,4 @@ pydantic
 # Development and testing
 python-dotenv
 pyjwt[crypto]  # Only used in test fixtures
+pytest-cov  # Coverage reporting

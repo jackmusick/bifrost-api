@@ -81,8 +81,7 @@ async def get_available_licenses(context):
     # Filter to only licenses with available units
     available = [lic for lic in mock_licenses if lic["metadata"]["available"] > 0]
 
-    context.log(
-        "info",
+    context.info(
         f"Retrieved {len(available)} available licenses",
         {"org_id": context.org_id, "total_skus": len(mock_licenses)}
     )

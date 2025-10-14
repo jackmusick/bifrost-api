@@ -9,14 +9,14 @@ import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from shared.models import (
+from engine.shared.models import (
     ExecutionStatus,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse
 )
-from shared.registry import WorkflowRegistry
-from shared.storage import TableStorageService
-from shared.context import OrganizationContext, Organization, Caller
+from engine.shared.registry import WorkflowRegistry
+from engine.shared.storage import TableStorageService
+from engine.shared.context import OrganizationContext, Organization, Caller
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ def registry():
 @pytest.fixture
 def mock_table_storage():
     """Mock table storage service"""
-    with patch('shared.storage.TableStorageService') as mock:
+    with patch('engine.shared.storage.TableStorageService') as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield instance
@@ -77,7 +77,7 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_execution_flow(self, registry, mock_context):
         """Test complete workflow execution flow"""
 
-        from shared.decorators import workflow
+        from engine.shared.decorators import workflow
 
         # Register a simple test workflow
         @workflow(
@@ -103,8 +103,8 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_with_validation_error(self, registry, mock_context):
         """Test workflow that raises ValidationError"""
 
-        from shared.error_handling import ValidationError
-        from shared.decorators import workflow
+        from engine.shared.error_handling import ValidationError
+        from engine.shared.decorators import workflow
 
         @workflow(
             name="validation_workflow",
@@ -133,7 +133,7 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_with_state_tracking(self, registry, mock_context):
         """Test that state tracking works correctly"""
 
-        from shared.decorators import workflow
+        from engine.shared.decorators import workflow
 
         @workflow(
             name="state_test_workflow",
@@ -143,7 +143,7 @@ class TestWorkflowExecutionEndpoint:
         async def track_state(context, step: str):
             """Uses state tracking features"""
             context.save_checkpoint("start", {"step": step})
-            context.log("info", "Processing", {"current_step": step})
+            context.info("Processing", {"current_step": step})
             context.set_variable("last_step", step)
             return {"completed": True}
 
@@ -167,13 +167,13 @@ class TestExecutionLogger:
     @pytest.mark.asyncio
     async def test_create_execution_dual_indexing(self, mock_table_storage):
         """Test that create_execution writes to both tables"""
-        from shared.execution_logger import ExecutionLogger
+        from engine.shared.execution_logger import ExecutionLogger
 
         # Mock table storage services
         workflow_storage = MagicMock()
         user_storage = MagicMock()
 
-        with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
+        with patch('engine.shared.execution_logger.get_table_storage_service') as mock_get_storage:
             def get_storage(table_name):
                 if table_name == "WorkflowExecutions":
                     return workflow_storage
@@ -213,7 +213,7 @@ class TestExecutionLogger:
     @pytest.mark.asyncio
     async def test_update_execution_with_result(self):
         """Test updating execution with success result"""
-        from shared.execution_logger import ExecutionLogger
+        from engine.shared.execution_logger import ExecutionLogger
 
         workflow_storage = MagicMock()
         user_storage = MagicMock()
@@ -223,7 +223,7 @@ class TestExecutionLogger:
             {'RowKey': '9999999999999_test-exec-123'}
         ]
 
-        with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
+        with patch('engine.shared.execution_logger.get_table_storage_service') as mock_get_storage:
             def get_storage(table_name):
                 if table_name == "WorkflowExecutions":
                     return workflow_storage

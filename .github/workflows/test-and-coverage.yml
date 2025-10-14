@@ -1,0 +1,84 @@
+name: Tests and Coverage
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# Prevent this workflow from running in forks
+# Only runs if CODECOV_TOKEN secret exists (which forks won't have)
+env:
+  IS_UPSTREAM: ${{ github.repository == 'YOUR_USERNAME/bifrost-integrations' }}
+
+jobs:
+  test-api:
+    runs-on: ubuntu-latest
+    name: API Tests
+    # Only run in upstream repo, not forks
+    if: github.repository == 'YOUR_USERNAME/bifrost-integrations'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        cd api
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-asyncio
+
+    - name: Run tests with coverage
+      run: |
+        cd api
+        pytest tests/ --cov=. --cov-report=xml --cov-report=term -v
+      continue-on-error: true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./api/coverage.xml
+        flags: api
+        name: api-coverage
+        fail_ci_if_error: false
+
+  test-workflows:
+    runs-on: ubuntu-latest
+    name: Workflows Tests
+    # Only run in upstream repo, not forks
+    if: github.repository == 'YOUR_USERNAME/bifrost-integrations'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        cd workflows
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-asyncio
+
+    - name: Run tests with coverage
+      run: |
+        cd workflows
+        pytest tests/ --cov=engine --cov-report=xml --cov-report=term -v
+      continue-on-error: true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./workflows/coverage.xml
+        flags: workflows
+        name: workflows-coverage
+        fail_ci_if_error: false

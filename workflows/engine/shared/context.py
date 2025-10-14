@@ -316,10 +316,9 @@ class OrganizationContext:
         )
 
         # Track credential access in context
-        self.log(
-            "info",
+        self.info(
             f"Retrieved OAuth credentials for '{connection_name}'",
-            data={
+            {
                 "connection_name": connection_name,
                 "expires_at": expires_at.isoformat(),
                 "is_expired": credentials.is_expired()
@@ -428,42 +427,15 @@ class OrganizationContext:
         """Get a workflow variable."""
         return self._variables.get(key, default)
 
-    def log(self, *args, **kwargs) -> None:
+    def _log(self, level: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
         """
-        Log a message from the workflow.
-
-        Flexible signature - can be called with 1, 2, or 3 arguments:
-        - context.log("message") -> info level
-        - context.log("level", "message") -> explicit level
-        - context.log("level", "message", data={"key": "value"}) -> with structured data
-
-        Logs are persisted in the execution record.
+        Internal logging method used by info(), warning(), error(), debug().
 
         Args:
-            *args: Either (message,) or (level, message)
-            **kwargs: Optional 'data' keyword argument for structured data
-
-        Examples:
-            context.log("Hello World")  # info level
-            context.log("info", "Hello World")  # explicit info
-            context.log("warning", "Something wrong")
-            context.log("error", "Failed", data={"details": "..."})
+            level: Log level (info, warning, error, debug)
+            message: Log message
+            data: Optional structured data dictionary
         """
-        # Parse arguments
-        if len(args) == 1:
-            # Single argument: message only, default to info
-            level = "info"
-            message = args[0]
-        elif len(args) == 2:
-            # Two arguments: level and message
-            level = args[0]
-            message = args[1]
-        else:
-            raise ValueError("log() takes 1 or 2 positional arguments")
-
-        # Get optional data kwarg
-        data = kwargs.get('data')
-
         log_entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "level": level,
@@ -478,6 +450,61 @@ class OrganizationContext:
             message,
             extra={"execution_id": self.execution_id, **log_entry.get("data", {})}
         )
+
+    def info(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log an info-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Example:
+            context.info("Processing user")
+            context.info("User created", {"user_id": "123", "email": "user@example.com"})
+        """
+        self._log("info", message, data)
+
+    def warning(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log a warning-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Example:
+            context.warning("Rate limit approaching")
+            context.warning("OAuth token expired", {"expires_at": "2024-01-01"})
+        """
+        self._log("warning", message, data)
+
+    def error(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log an error-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Example:
+            context.error("API call failed")
+            context.error("Connection timeout", {"endpoint": "/users", "timeout": 30})
+        """
+        self._log("error", message, data)
+
+    def debug(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Log a debug-level message.
+
+        Args:
+            message: Log message
+            data: Optional structured data dictionary
+
+        Example:
+            context.debug("Request details", {"headers": headers, "body": body})
+        """
+        self._log("debug", message, data)
 
     def _track_integration_call(
         self,

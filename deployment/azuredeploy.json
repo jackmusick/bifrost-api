@@ -151,14 +151,13 @@
         },
         {
             "type": "Microsoft.Web/serverfarms",
-            "apiVersion": "2024-11-01",
+            "apiVersion": "2024-04-01",
             "name": "[variables('workflowsHostingPlanName')]",
             "location": "[resourceGroup().location]",
+            "kind": "functionapp",
             "sku": {
-                "name": "Y1",
-                "tier": "Dynamic",
-                "size": "Y1",
-                "family": "Y"
+                "tier": "FlexConsumption",
+                "name": "FC1"
             },
             "properties": {
                 "reserved": true
@@ -181,6 +180,22 @@
             ],
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('workflowsHostingPlanName'))]",
+                "functionAppConfig": {
+                    "deployment": {
+                        "storage": {
+                            "type": "blobContainer",
+                            "value": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))).primaryEndpoints.blob, 'deployments')]",
+                            "authentication": {
+                                "type": "StorageAccountConnectionString",
+                                "storageAccountConnectionStringName": "AzureWebJobsStorage"
+                            }
+                        }
+                    },
+                    "runtime": {
+                        "name": "python",
+                        "version": "3.11"
+                    }
+                },
                 "siteConfig": {
                     "appSettings": [
                         {
@@ -264,14 +279,13 @@
         },
         {
             "type": "Microsoft.Web/serverfarms",
-            "apiVersion": "2024-11-01",
+            "apiVersion": "2024-04-01",
             "name": "[variables('apiHostingPlanName')]",
             "location": "[resourceGroup().location]",
+            "kind": "functionapp",
             "sku": {
-                "name": "Y1",
-                "tier": "Dynamic",
-                "size": "Y1",
-                "family": "Y"
+                "tier": "FlexConsumption",
+                "name": "FC1"
             },
             "properties": {
                 "reserved": true
@@ -295,6 +309,22 @@
             ],
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
+                "functionAppConfig": {
+                    "deployment": {
+                        "storage": {
+                            "type": "blobContainer",
+                            "value": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))).primaryEndpoints.blob, 'deployments')]",
+                            "authentication": {
+                                "type": "StorageAccountConnectionString",
+                                "storageAccountConnectionStringName": "AzureWebJobsStorage"
+                            }
+                        }
+                    },
+                    "runtime": {
+                        "name": "python",
+                        "version": "3.11"
+                    }
+                },
                 "siteConfig": {
                     "appSettings": [
                         {

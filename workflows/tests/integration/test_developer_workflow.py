@@ -36,7 +36,7 @@ class TestDeveloperWorkflow:
         2. Commits and pushes
         3. GitHub Action should PASS
         """
-        workspace_dir = repo_root / "workflows" / "workspace" / "workflows"
+        workspace_dir = repo_root / "workflows" / "workspace"
 
         # Verify workspace directory exists
         assert workspace_dir.exists(), (

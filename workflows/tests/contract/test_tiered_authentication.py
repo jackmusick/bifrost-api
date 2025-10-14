@@ -27,15 +27,17 @@ class TestTieredAuthenticationContract:
     ) -> func.HttpRequest:
         """Helper to create request with various auth combinations"""
         headers = {}
+        params = {}
         url = "http://localhost:7071/api/test"
 
         # Add function key header
         if function_key_header:
             headers["x-functions-key"] = function_key_header
 
-        # Add function key to query string
+        # Add function key to query params
         if function_key_query:
             url = f"{url}?code={function_key_query}"
+            params["code"] = function_key_query  # Azure Functions parses params separately
 
         # Add Easy Auth principal
         if easy_auth_principal:
@@ -47,6 +49,7 @@ class TestTieredAuthenticationContract:
             method="POST",
             url=url,
             headers=headers,
+            params=params,
             body=b'{}'
         )
 
@@ -129,15 +132,17 @@ class TestTieredAuthenticationContract:
         AuthenticationError (to be converted to 403 by middleware).
         """
         from engine.shared.auth import AuthenticationService, AuthenticationError
+        import os
 
         # Create request with NO authentication
         req = self.create_request_with_auth()
 
         auth_service = AuthenticationService()
 
-        # CONTRACT: Must raise AuthenticationError
-        with pytest.raises(AuthenticationError):
-            await auth_service.authenticate(req)
+        # CONTRACT: Must raise AuthenticationError (simulate production environment)
+        with patch.dict(os.environ, {'WEBSITE_SITE_NAME': 'production-app'}):
+            with pytest.raises(AuthenticationError):
+                await auth_service.authenticate(req)
 
     @pytest.mark.asyncio
     async def test_contract_function_key_header_beats_query(self):
@@ -265,19 +270,21 @@ class TestTieredAuthenticationContract:
         Authentication failures must raise AuthenticationError (not generic Exception).
         """
         from engine.shared.auth import AuthenticationService, AuthenticationError
+        import os
 
         req = self.create_request_with_auth()  # No auth
 
         auth_service = AuthenticationService()
 
-        # CONTRACT: Must raise specific AuthenticationError type
-        with pytest.raises(AuthenticationError) as exc_info:
-            await auth_service.authenticate(req)
+        # CONTRACT: Must raise specific AuthenticationError type (simulate production)
+        with patch.dict(os.environ, {'WEBSITE_SITE_NAME': 'production-app'}):
+            with pytest.raises(AuthenticationError) as exc_info:
+                await auth_service.authenticate(req)
 
-        # CONTRACT: Error message must be informative
-        error_msg = str(exc_info.value)
-        assert len(error_msg) > 0
-        assert "authentication" in error_msg.lower() or "credentials" in error_msg.lower()
+            # CONTRACT: Error message must be informative
+            error_msg = str(exc_info.value)
+            assert len(error_msg) > 0
+            assert "authentication" in error_msg.lower() or "credentials" in error_msg.lower()
 
     @pytest.mark.asyncio
     async def test_contract_empty_function_key_ignored(self):
