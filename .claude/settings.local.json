@@ -73,7 +73,8 @@
       "Bash(docker build:*)",
       "Bash(docker logs:*)",
       "Bash(func start)",
-      "Read(//tmp/stubs/engine/shared/**)"
+      "Read(//tmp/stubs/engine/shared/**)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

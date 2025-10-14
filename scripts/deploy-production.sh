@@ -20,7 +20,7 @@ DEPLOYMENT_DIR="$PROJECT_ROOT/deployment"
 # Default values
 ENVIRONMENT="${ENVIRONMENT:-prod}"
 RESOURCE_GROUP_NAME="${RESOURCE_GROUP_NAME:-bifrost-${ENVIRONMENT}-rg}"
-LOCATION="${LOCATION:-eastus}"
+LOCATION="${LOCATION:-eastus2}"
 PARAMETER_FILE="${PARAMETER_FILE:-$DEPLOYMENT_DIR/parameters/${ENVIRONMENT}.json}"
 
 echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
@@ -89,21 +89,19 @@ echo ""
 
 DEPLOYMENT_NAME="bifrost-${ENVIRONMENT}-$(date +%Y%m%d-%H%M%S)"
 
-az deployment group create \
+if az deployment group create \
   --name "$DEPLOYMENT_NAME" \
   --resource-group "$RESOURCE_GROUP_NAME" \
   --template-file "$DEPLOYMENT_DIR/azuredeploy.json" \
   --parameters "$PARAMETER_FILE" \
-  --output json > /tmp/deployment-output.json
+  --output json > /tmp/deployment-output.json 2>&1; then
 
-DEPLOYMENT_STATUS=$(jq -r '.properties.provisioningState' /tmp/deployment-output.json)
-
-if [ "$DEPLOYMENT_STATUS" = "Succeeded" ]; then
     echo ""
     echo -e "${GREEN}✓ Deployment successful!${NC}"
 else
     echo ""
-    echo -e "${RED}✗ Deployment failed with status: ${DEPLOYMENT_STATUS}${NC}"
+    echo -e "${RED}✗ Deployment failed. Check output below:${NC}"
+    cat /tmp/deployment-output.json
     exit 1
 fi
 
@@ -155,6 +153,34 @@ echo ""
 OUTPUT_FILE="$PROJECT_ROOT/deployment-outputs-${ENVIRONMENT}.json"
 cat /tmp/deployment-output.json > "$OUTPUT_FILE"
 echo -e "${GREEN}✓ Deployment outputs saved to: ${OUTPUT_FILE}${NC}"
+echo ""
+
+# Configure API Function App with Workflows function key
+echo -e "${YELLOW}→ Configuring inter-app communication...${NC}"
+echo ""
+
+# Wait for Workflows Function App to be ready
+echo "Waiting for Workflows Function App runtime to initialize..."
+sleep 30
+
+# Get the workflows function key
+WORKFLOWS_FUNCTION_KEY=$(az functionapp keys list \
+  --name "$WORKFLOWS_FUNCTION_APP_NAME" \
+  --resource-group "$RESOURCE_GROUP_NAME" \
+  --query "functionKeys.default" -o tsv 2>/dev/null)
+
+if [ -n "$WORKFLOWS_FUNCTION_KEY" ]; then
+    # Set the function key in API Function App
+    az functionapp config appsettings set \
+      --name "$API_FUNCTION_APP_NAME" \
+      --resource-group "$RESOURCE_GROUP_NAME" \
+      --settings "WORKFLOWS_ENGINE_FUNCTION_KEY=$WORKFLOWS_FUNCTION_KEY" \
+      --output none
+
+    echo -e "${GREEN}✓ Inter-app communication configured${NC}"
+else
+    echo -e "${YELLOW}⚠ Could not retrieve Workflows function key. You may need to set WORKFLOWS_ENGINE_FUNCTION_KEY manually.${NC}"
+fi
 echo ""
 
 # Extract deployment credentials

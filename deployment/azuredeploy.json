@@ -34,6 +34,20 @@
             "metadata": {
                 "description": "Storage account type for Functions runtime"
             }
+        },
+        "staticWebAppLocation": {
+            "type": "string",
+            "defaultValue": "eastus2",
+            "allowedValues": [
+                "eastus2",
+                "westus2",
+                "centralus",
+                "westeurope",
+                "eastasia"
+            ],
+            "metadata": {
+                "description": "Location for Static Web App (limited regional availability)"
+            }
         }
     },
     "variables": {
@@ -44,7 +58,6 @@
         "staticWebAppName": "[toLower(concat(parameters('baseName'), '-swa-', variables('suffix')))]",
         "keyVaultName": "[toLower(concat(parameters('baseName'), '-kv-', variables('suffix')))]",
         "appInsightsName": "[concat(parameters('baseName'), '-insights')]",
-        "logAnalyticsName": "[concat(parameters('baseName'), '-logs')]",
         "apiHostingPlanName": "[concat(parameters('baseName'), '-api-plan-', variables('suffix'))]",
         "workflowsHostingPlanName": "[concat(parameters('baseName'), '-workflows-plan-', variables('suffix'))]"
     },
@@ -80,7 +93,7 @@
                     "resources": [
                         {
                             "type": "shares",
-                            "apiVersion": "2025-02-13",
+                            "apiVersion": "2025-01-01",
                             "name": "workspaces",
                             "dependsOn": [
                                 "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
@@ -93,7 +106,7 @@
                         },
                         {
                             "type": "shares",
-                            "apiVersion": "2025-02-13",
+                            "apiVersion": "2025-01-01",
                             "name": "tmp",
                             "dependsOn": [
                                 "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
@@ -109,30 +122,13 @@
             ]
         },
         {
-            "type": "Microsoft.OperationalInsights/workspaces",
-            "apiVersion": "2025-02-01",
-            "name": "[variables('logAnalyticsName')]",
-            "location": "[resourceGroup().location]",
-            "properties": {
-                "sku": {
-                    "name": "PerGB2018"
-                },
-                "retentionInDays": 30
-            }
-        },
-        {
             "type": "Microsoft.Insights/components",
             "apiVersion": "2020-02-02",
             "name": "[variables('appInsightsName')]",
             "location": "[resourceGroup().location]",
             "kind": "web",
-            "dependsOn": [
-                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
-            ],
             "properties": {
-                "Application_Type": "web",
-                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
-                "IngestionMode": "LogAnalytics"
+                "Application_Type": "web"
             }
         },
         {
@@ -342,10 +338,6 @@
                             "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName)]"
                         },
                         {
-                            "name": "WORKFLOWS_ENGINE_FUNCTION_KEY",
-                            "value": "[listkeys(concat(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName')), '/host/default/'),'2024-11-01').functionKeys.default]"
-                        },
-                        {
                             "name": "PYTHON_ENABLE_WORKER_EXTENSIONS",
                             "value": "1"
                         }
@@ -376,7 +368,7 @@
             "type": "Microsoft.Web/staticSites",
             "apiVersion": "2024-04-01",
             "name": "[variables('staticWebAppName')]",
-            "location": "[resourceGroup().location]",
+            "location": "[parameters('staticWebAppLocation')]",
             "sku": {
                 "name": "Standard",
                 "tier": "Standard"
