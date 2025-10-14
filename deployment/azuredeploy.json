@@ -1,0 +1,439 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "baseName": {
+            "type": "string",
+            "defaultValue": "bifrost",
+            "metadata": {
+                "description": "Base name for all resources (will be made unique with suffix)"
+            }
+        },
+        "workspacesQuotaGB": {
+            "type": "int",
+            "defaultValue": 100,
+            "minValue": 1,
+            "maxValue": 1024,
+            "metadata": {
+                "description": "Azure Files workspace share quota in GB"
+            }
+        },
+        "tmpQuotaGB": {
+            "type": "int",
+            "defaultValue": 50,
+            "minValue": 1,
+            "maxValue": 1024,
+            "metadata": {
+                "description": "Azure Files tmp share quota in GB"
+            }
+        },
+        "functionsStorageAccountType": {
+            "type": "string",
+            "defaultValue": "Standard_LRS",
+            "allowedValues": ["Standard_LRS", "Standard_GRS"],
+            "metadata": {
+                "description": "Storage account type for Functions runtime"
+            }
+        }
+    },
+    "variables": {
+        "suffix": "[substring(toLower(uniqueString(resourceGroup().id, resourceGroup().location)), 0, 5)]",
+        "storageAccountName": "[toLower(concat('st', parameters('baseName'), variables('suffix')))]",
+        "apiFunctionAppName": "[toLower(concat(parameters('baseName'), '-api-', variables('suffix')))]",
+        "workflowsFunctionAppName": "[toLower(concat(parameters('baseName'), '-workflows-', variables('suffix')))]",
+        "staticWebAppName": "[toLower(concat(parameters('baseName'), '-swa-', variables('suffix')))]",
+        "keyVaultName": "[toLower(concat(parameters('baseName'), '-kv-', variables('suffix')))]",
+        "appInsightsName": "[concat(parameters('baseName'), '-insights')]",
+        "logAnalyticsName": "[concat(parameters('baseName'), '-logs')]",
+        "apiHostingPlanName": "[concat(parameters('baseName'), '-api-plan-', variables('suffix'))]",
+        "workflowsHostingPlanName": "[concat(parameters('baseName'), '-workflows-plan-', variables('suffix'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2025-01-01",
+            "name": "[variables('storageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "supportsHttpsTrafficOnly": true,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": false
+            },
+            "resources": [
+                {
+                    "type": "fileServices",
+                    "apiVersion": "2025-01-01",
+                    "name": "default",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+                    ],
+                    "properties": {
+                        "shareDeleteRetentionPolicy": {
+                            "enabled": true,
+                            "days": 7
+                        }
+                    },
+                    "resources": [
+                        {
+                            "type": "shares",
+                            "apiVersion": "2025-02-13",
+                            "name": "workspaces",
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
+                            ],
+                            "properties": {
+                                "shareQuota": "[parameters('workspacesQuotaGB')]",
+                                "enabledProtocols": "SMB",
+                                "accessTier": "Hot"
+                            }
+                        },
+                        {
+                            "type": "shares",
+                            "apiVersion": "2025-02-13",
+                            "name": "tmp",
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
+                            ],
+                            "properties": {
+                                "shareQuota": "[parameters('tmpQuotaGB')]",
+                                "enabledProtocols": "SMB",
+                                "accessTier": "Hot"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2025-02-01",
+            "name": "[variables('logAnalyticsName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "sku": {
+                    "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+            }
+        },
+        {
+            "type": "Microsoft.Insights/components",
+            "apiVersion": "2020-02-02",
+            "name": "[variables('appInsightsName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "web",
+            "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+            ],
+            "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "IngestionMode": "LogAnalytics"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults",
+            "apiVersion": "2025-05-01",
+            "name": "[variables('keyVaultName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "sku": {
+                    "family": "A",
+                    "name": "standard"
+                },
+                "tenantId": "[subscription().tenantId]",
+                "enableRbacAuthorization": true,
+                "enabledForDeployment": true,
+                "enabledForTemplateDeployment": true,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 90
+            }
+        },
+        {
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2024-11-01",
+            "name": "[variables('workflowsHostingPlanName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Y1",
+                "tier": "Dynamic",
+                "size": "Y1",
+                "family": "Y"
+            },
+            "properties": {
+                "reserved": true
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2024-11-01",
+            "name": "[variables('workflowsFunctionAppName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "functionapp,linux",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('workflowsHostingPlanName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+            ],
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('workflowsHostingPlanName'))]",
+                "siteConfig": {
+                    "appSettings": [
+                        {
+                            "name": "AzureWebJobsStorage",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTSHARE",
+                            "value": "[toLower(variables('workflowsFunctionAppName'))]"
+                        },
+                        {
+                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                            "value": "~4"
+                        },
+                        {
+                            "name": "FUNCTIONS_WORKER_RUNTIME",
+                            "value": "python"
+                        },
+                        {
+                            "name": "AZURE_FUNCTIONS_ENVIRONMENT",
+                            "value": "Production"
+                        },
+                        {
+                            "name": "KEY_VAULT_NAME",
+                            "value": "[variables('keyVaultName')]"
+                        },
+                        {
+                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).InstrumentationKey]"
+                        },
+                        {
+                            "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).ConnectionString]"
+                        },
+                        {
+                            "name": "PYTHON_ENABLE_WORKER_EXTENSIONS",
+                            "value": "1"
+                        }
+                    ],
+                    "azureStorageAccounts": {
+                        "workspaces": {
+                            "type": "AzureFiles",
+                            "accountName": "[variables('storageAccountName')]",
+                            "shareName": "workspaces",
+                            "mountPath": "/workspace",
+                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
+                        },
+                        "tmp": {
+                            "type": "AzureFiles",
+                            "accountName": "[variables('storageAccountName')]",
+                            "shareName": "tmp",
+                            "mountPath": "/tmp",
+                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
+                        }
+                    },
+                    "ftpsState": "Disabled",
+                    "minTlsVersion": "1.2",
+                    "http20Enabled": true
+                },
+                "httpsOnly": true
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName')), 'Key Vault Secrets User Workflows')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults', '/', variables('keyVaultName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+                "[resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6')]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName')), '2024-11-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2024-11-01",
+            "name": "[variables('apiHostingPlanName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Y1",
+                "tier": "Dynamic",
+                "size": "Y1",
+                "family": "Y"
+            },
+            "properties": {
+                "reserved": true
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2024-11-01",
+            "name": "[variables('apiFunctionAppName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "functionapp,linux",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+                "[resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))]"
+            ],
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
+                "siteConfig": {
+                    "appSettings": [
+                        {
+                            "name": "AzureWebJobsStorage",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTSHARE",
+                            "value": "[toLower(variables('apiFunctionAppName'))]"
+                        },
+                        {
+                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                            "value": "~4"
+                        },
+                        {
+                            "name": "FUNCTIONS_WORKER_RUNTIME",
+                            "value": "python"
+                        },
+                        {
+                            "name": "AZURE_FUNCTIONS_ENVIRONMENT",
+                            "value": "Production"
+                        },
+                        {
+                            "name": "KEY_VAULT_NAME",
+                            "value": "[variables('keyVaultName')]"
+                        },
+                        {
+                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).InstrumentationKey]"
+                        },
+                        {
+                            "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).ConnectionString]"
+                        },
+                        {
+                            "name": "WORKFLOWS_ENGINE_URL",
+                            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName)]"
+                        },
+                        {
+                            "name": "WORKFLOWS_ENGINE_FUNCTION_KEY",
+                            "value": "[listkeys(concat(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName')), '/host/default/'),'2024-11-01').functionKeys.default]"
+                        },
+                        {
+                            "name": "PYTHON_ENABLE_WORKER_EXTENSIONS",
+                            "value": "1"
+                        }
+                    ],
+                    "ftpsState": "Disabled",
+                    "minTlsVersion": "1.2",
+                    "http20Enabled": true
+                },
+                "httpsOnly": true
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('apiFunctionAppName')), 'Key Vault Secrets User API')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults', '/', variables('keyVaultName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+                "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6')]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('apiFunctionAppName')), '2024-11-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Web/staticSites",
+            "apiVersion": "2024-04-01",
+            "name": "[variables('staticWebAppName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard",
+                "tier": "Standard"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
+            ],
+            "properties": {
+                "linkedBackends": [
+                    {
+                        "backendResourceId": "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]",
+                        "region": "[resourceGroup().location]"
+                    }
+                ]
+            }
+        }
+    ],
+    "outputs": {
+        "apiFunctionAppUrl": {
+            "type": "string",
+            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))).defaultHostName)]"
+        },
+        "apiFunctionAppName": {
+            "type": "string",
+            "value": "[variables('apiFunctionAppName')]"
+        },
+        "workflowsFunctionAppUrl": {
+            "type": "string",
+            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName)]"
+        },
+        "workflowsFunctionAppName": {
+            "type": "string",
+            "value": "[variables('workflowsFunctionAppName')]"
+        },
+        "staticWebAppUrl": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))).defaultHostname]"
+        },
+        "staticWebAppName": {
+            "type": "string",
+            "value": "[variables('staticWebAppName')]"
+        },
+        "githubWebhookUrl": {
+            "type": "string",
+            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName, '/api/github-webhook')]"
+        },
+        "storageAccountName": {
+            "type": "string",
+            "value": "[variables('storageAccountName')]"
+        },
+        "keyVaultName": {
+            "type": "string",
+            "value": "[variables('keyVaultName')]"
+        },
+        "resourceGroupName": {
+            "type": "string",
+            "value": "[resourceGroup().name]"
+        }
+    }
+}

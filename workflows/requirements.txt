@@ -1,12 +1,42 @@
+# Azure Functions Core
 azure-functions
 azure-data-tables
 azure-identity
 azure-keyvault-secrets
+azure-storage-blob
+
+# Microsoft Graph and API integrations
 msgraph-sdk
+msal
+
+# HTTP and async
 aiohttp
+requests
+httpx
+
+# Data processing and validation
 pydantic
 PyYAML
+python-dateutil
+pytz
+
+# Common data manipulation
+jmespath
+
+# Templating (for email, reports, etc.)
+jinja2
+
+# Common file formats
+openpyxl  # Excel
+python-docx  # Word documents
+
+# Utilities
+python-dotenv
+python-json-logger
+
+# Testing
 pytest
 pytest-asyncio
-python-dotenv
+
+# Development
 debugpy

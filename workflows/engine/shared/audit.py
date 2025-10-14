@@ -208,8 +208,8 @@ class AuditLogger:
             now = datetime.now(timezone.utc)
             entity = self._create_entity(event_type, now, data)
 
-            # Insert into table (fire and forget)
-            await table_client.create_entity(entity)
+            # Insert into table (fire and forget - synchronous SDK)
+            table_client.create_entity(entity)
 
             logger.info(
                 f"Audit event logged: {event_type}",
