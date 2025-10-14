@@ -42,7 +42,7 @@ def create_mock_request(user_id, email="test@example.com", display_name="Test Us
 class TestGetIntegrations:
     """Integration tests for GET /api/organizations/{orgId}/integrations"""
 
-    def test_get_integrations_with_permission(
+    async def test_get_integrations_with_permission(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -88,7 +88,7 @@ class TestGetIntegrations:
         req.route_params = {"orgId": org_id}
 
         # Call endpoint
-        response = get_integrations(req)
+        response = await get_integrations(req)
 
         # Assertions
         assert response.status_code == 200
@@ -106,7 +106,7 @@ class TestGetIntegrations:
         assert msgraph["enabled"] is True
         assert msgraph["settings"]["tenant_id"] == "12345678-1234-1234-1234-123456789012"
 
-    def test_get_integrations_without_permission(
+    async def test_get_integrations_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -119,14 +119,14 @@ class TestGetIntegrations:
         req.route_params = {"orgId": test_user_with_no_permissions["org_id"]}
 
         # Call endpoint
-        response = get_integrations(req)
+        response = await get_integrations(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_get_integrations_empty(
+    async def test_get_integrations_empty(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -139,7 +139,7 @@ class TestGetIntegrations:
         req.route_params = {"orgId": test_user_with_full_permissions["org_id"]}
 
         # Call endpoint
-        response = get_integrations(req)
+        response = await get_integrations(req)
 
         # Assertions
         assert response.status_code == 200
@@ -151,7 +151,7 @@ class TestGetIntegrations:
 class TestSetIntegration:
     """Integration tests for POST /api/organizations/{orgId}/integrations"""
 
-    def test_set_msgraph_integration_create_new(
+    async def test_set_msgraph_integration_create_new(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -173,7 +173,7 @@ class TestSetIntegration:
         }
 
         # Call endpoint
-        response = set_integration(req)
+        response = await set_integration(req)
 
         # Assertions
         assert response.status_code == 201  # Created
@@ -183,7 +183,7 @@ class TestSetIntegration:
         assert integration["settings"]["tenant_id"] == "12345678-1234-1234-1234-123456789012"
         assert integration["updatedBy"] == test_user_with_full_permissions["user_id"]
 
-    def test_set_halopsa_integration_create_new(
+    async def test_set_halopsa_integration_create_new(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -205,7 +205,7 @@ class TestSetIntegration:
         }
 
         # Call endpoint
-        response = set_integration(req)
+        response = await set_integration(req)
 
         # Assertions
         assert response.status_code == 201  # Created
@@ -214,7 +214,7 @@ class TestSetIntegration:
         assert integration["enabled"] is True
         assert integration["settings"]["api_url"] == "https://tenant.halopsa.com"
 
-    def test_set_integration_update_existing(
+    async def test_set_integration_update_existing(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -254,7 +254,7 @@ class TestSetIntegration:
         }
 
         # Call endpoint
-        response = set_integration(req)
+        response = await set_integration(req)
 
         # Assertions
         assert response.status_code == 200  # OK (updated)
@@ -264,7 +264,7 @@ class TestSetIntegration:
         assert integration["settings"]["tenant_id"] == "new-tenant-id"
         assert integration["updatedBy"] == test_user_with_full_permissions["user_id"]
 
-    def test_set_integration_without_permission(
+    async def test_set_integration_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -286,14 +286,14 @@ class TestSetIntegration:
         }
 
         # Call endpoint
-        response = set_integration(req)
+        response = await set_integration(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_set_integration_validation_error_missing_tenant_id(
+    async def test_set_integration_validation_error_missing_tenant_id(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -315,14 +315,14 @@ class TestSetIntegration:
         }
 
         # Call endpoint
-        response = set_integration(req)
+        response = await set_integration(req)
 
         # Assertions
         assert response.status_code == 400
         error = json.loads(response.get_body())
         assert error["error"] == "ValidationError"
 
-    def test_set_integration_validation_error_invalid_type(
+    async def test_set_integration_validation_error_invalid_type(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -340,7 +340,7 @@ class TestSetIntegration:
         }
 
         # Call endpoint
-        response = set_integration(req)
+        response = await set_integration(req)
 
         # Assertions
         assert response.status_code == 400
@@ -351,7 +351,7 @@ class TestSetIntegration:
 class TestDeleteIntegration:
     """Integration tests for DELETE /api/organizations/{orgId}/integrations/{type}"""
 
-    def test_delete_integration(
+    async def test_delete_integration(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -382,7 +382,7 @@ class TestDeleteIntegration:
         req.route_params = {"orgId": org_id, "type": "msgraph"}
 
         # Call endpoint
-        response = delete_integration(req)
+        response = await delete_integration(req)
 
         # Assertions
         assert response.status_code == 204
@@ -394,7 +394,7 @@ class TestDeleteIntegration:
         except:
             pass  # Expected - integration doesn't exist
 
-    def test_delete_integration_idempotent(
+    async def test_delete_integration_idempotent(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -410,12 +410,12 @@ class TestDeleteIntegration:
         }
 
         # Call endpoint
-        response = delete_integration(req)
+        response = await delete_integration(req)
 
         # Assertions - should return 204 even if integration doesn't exist
         assert response.status_code == 204
 
-    def test_delete_integration_without_permission(
+    async def test_delete_integration_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -431,7 +431,7 @@ class TestDeleteIntegration:
         }
 
         # Call endpoint
-        response = delete_integration(req)
+        response = await delete_integration(req)
 
         # Assertions
         assert response.status_code == 403

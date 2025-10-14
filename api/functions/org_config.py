@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import List, Optional
 import azure.functions as func
 
-from shared.auth import require_auth, is_platform_admin
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context, require_platform_admin
+from shared.storage import get_table_service
 from shared.models import (
     Config,
     SetConfigRequest,
@@ -20,6 +20,7 @@ from shared.models import (
     IntegrationType,
     ErrorResponse
 )
+from shared.validation import validate_scope_parameter
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -28,23 +29,31 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-def get_config_value(key: str, org_id: Optional[str] = None) -> Optional[dict]:
+def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optional[dict]:
     """
     Get config value with fallback pattern: org-specific → GLOBAL → None
 
     Args:
+        context: Request context
         key: Config key to lookup
         org_id: Organization ID (optional, will only check GLOBAL if None)
 
     Returns:
         Config entity dict or None if not found
     """
-    config_service = TableStorageService("Config")
+    from shared.request_context import RequestContext
+
     row_key = f"config:{key}"
 
     # Try org-specific first (if org_id provided)
     if org_id:
         try:
+            org_context = RequestContext(
+                user_id=context.user_id,
+                user_type=context.user_type,
+                org_scope=org_id
+            )
+            config_service = get_table_service("Config", org_context)
             org_config = config_service.get_entity(org_id, row_key)
             if org_config:
                 logger.debug(f"Found org-specific config for key '{key}' in org {org_id}")
@@ -54,6 +63,12 @@ def get_config_value(key: str, org_id: Optional[str] = None) -> Optional[dict]:
 
     # Fallback to GLOBAL
     try:
+        global_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope="GLOBAL"
+        )
+        config_service = get_table_service("Config", global_context)
         global_config = config_service.get_entity("GLOBAL", row_key)
         if global_config:
             logger.debug(f"Found GLOBAL config for key '{key}'")
@@ -87,8 +102,9 @@ def mask_sensitive_value(key: str, value: str, value_type: str) -> str:
 
 @bp.function_name("config_get_config")
 @bp.route(route="config", methods=["GET"])
-@require_auth
-def get_config(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def get_config(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/config?scope=global|org&orgId={id}
     Get configuration with scope filtering
@@ -97,44 +113,34 @@ def get_config(req: func.HttpRequest) -> func.HttpResponse:
         scope: 'global' for GLOBAL configs only, 'org' for org-specific (requires orgId)
         orgId: Organization ID (required when scope=org)
 
-    Requires: User must be authenticated (MSP users can access all, ORG users need org access)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     scope = req.params.get("scope", "global").lower()
     org_id = req.params.get("orgId")
 
-    logger.info(f"User {user.email} retrieving config with scope={scope}, orgId={org_id}")
+    logger.info(f"User {context.user_id} retrieving config with scope={scope}, orgId={org_id}")
 
     try:
         # Validate scope parameter
-        if scope not in ["global", "org"]:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="scope parameter must be 'global' or 'org'"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # If scope=org, orgId is required
-        if scope == "org" and not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="orgId parameter is required when scope=org"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
+        is_valid, error_response = validate_scope_parameter(scope, org_id)
+        if not is_valid:
+            return error_response
 
         # Query Config table based on scope
-        # Note: Access control handled by SWA rules - only PlatformAdmins can reach this endpoint
-        config_service = TableStorageService("Config")
-        partition_key = "GLOBAL" if scope == "global" else org_id
-        config_entities = list(config_service.query_by_org(partition_key, row_key_prefix="config:"))
+        from shared.request_context import RequestContext
+
+        # Create context for the requested scope
+        scoped_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope="GLOBAL" if scope == "global" else org_id
+        )
+
+        config_service = get_table_service("Config", scoped_context)
+        config_entities = list(config_service.query_entities(
+            filter="RowKey ge 'config:' and RowKey lt 'config;'"
+        ))
 
         # Convert to response models
         configs = []
@@ -183,8 +189,9 @@ def get_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_set_config")
 @bp.route(route="config", methods=["POST"])
-@require_auth
-def set_config(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def set_config(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/config
     Set a configuration key-value pair (global or org-specific)
@@ -192,12 +199,12 @@ def set_config(req: func.HttpRequest) -> func.HttpResponse:
     Request body includes 'scope' field to determine GLOBAL vs org-specific
     If scope=org, orgId query parameter is required
 
-    Requires: User must have canManageConfig permission (for org configs)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     org_id = req.params.get("orgId")
 
-    logger.info(f"User {user.email} setting config (orgId={org_id})")
+    logger.info(f"User {context.user_id} setting config (orgId={org_id})")
 
     try:
         # Parse and validate request body
@@ -217,14 +224,20 @@ def set_config(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json"
                 )
 
-            # Access control handled by SWA rules - only PlatformAdmins can reach this endpoint
             partition_key = org_id
         else:
-            # GLOBAL config - only PlatformAdmins can set (enforced by SWA rules)
             partition_key = "GLOBAL"
 
+        # Create context for the requested scope
+        from shared.request_context import RequestContext
+        scoped_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope=partition_key
+        )
+
         # Check if this is a new config or update
-        config_service = TableStorageService("Config")
+        config_service = get_table_service("Config", scoped_context)
         row_key = f"config:{set_request.key}"
 
         existing_config = None
@@ -242,7 +255,7 @@ def set_config(req: func.HttpRequest) -> func.HttpResponse:
             "Type": set_request.type.value,
             "Description": set_request.description,
             "UpdatedAt": now.isoformat(),
-            "UpdatedBy": user.user_id
+            "UpdatedBy": context.user_id
         }
 
         # Insert or update
@@ -266,7 +279,7 @@ def set_config(req: func.HttpRequest) -> func.HttpResponse:
             orgId=org_id if set_request.scope == "org" else None,
             description=set_request.description,
             updatedAt=now,
-            updatedBy=user.user_id
+            updatedBy=context.user_id
         )
 
         return func.HttpResponse(
@@ -315,8 +328,9 @@ def set_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_delete_config")
 @bp.route(route="config/{key}", methods=["DELETE"])
-@require_auth
-def delete_config(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/config/{key}?scope=global|org&orgId={id}
     Delete a configuration key
@@ -325,29 +339,22 @@ def delete_config(req: func.HttpRequest) -> func.HttpResponse:
         scope: 'global' or 'org'
         orgId: Required when scope=org
 
-    Requires: User must have canManageConfig permission (for org configs)
+    Platform admin only endpoint
 
     Note: Prevents deletion if config is referenced by OAuth connections
     """
-    user = req.user
+    context = req.context
     key = req.route_params.get("key")
     scope = req.params.get("scope", "global").lower()
     org_id = req.params.get("orgId")
 
-    logger.info(f"User {user.email} deleting config key '{key}' (scope={scope}, orgId={org_id})")
+    logger.info(f"User {context.user_id} deleting config key '{key}' (scope={scope}, orgId={org_id})")
 
     try:
         # Validate scope
-        if scope not in ["global", "org"]:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="scope parameter must be 'global' or 'org'"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
+        is_valid, error_response = validate_scope_parameter(scope, org_id)
+        if not is_valid:
+            return error_response
 
         # Determine partition key and check permissions
         if scope == "org":
@@ -362,11 +369,17 @@ def delete_config(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json"
                 )
 
-            # Access control handled by SWA rules - only PlatformAdmins can reach this endpoint
             partition_key = org_id
         else:
-            # GLOBAL config - only PlatformAdmins can delete (enforced by SWA rules)
             partition_key = "GLOBAL"
+
+        # Create context for the requested scope
+        from shared.request_context import RequestContext
+        scoped_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope=partition_key
+        )
 
         # Check if config is referenced by OAuth connections
         # OAuth connection configs follow patterns:
@@ -378,21 +391,24 @@ def delete_config(req: func.HttpRequest) -> func.HttpResponse:
             # Key patterns: oauth_{name}_client_secret, oauth_{name}_oauth_response, oauth_{name}_metadata
             parts = key.split("_")
             if len(parts) >= 3:
-                # Check if there's an OAuthConnection using this config
-                oauth_table = TableStorageService("OAuthConnections")
+                # Check if there's an OAuth entity using this config
+                entities_service = get_table_service("Entities", scoped_context)
                 try:
-                    # Query all connections for this org
-                    connections = list(oauth_table.query_by_org(partition_key))
+                    # Query all OAuth connections for this org (stored as oauth:{name} in Entities table)
+                    connections = list(entities_service.query_entities(
+                        filter="RowKey ge 'oauth:' and RowKey lt 'oauth;'"
+                    ))
 
                     # Find any connection that references this config key
                     referenced_by = []
                     for conn in connections:
-                        client_secret_ref = conn.get("client_secret_ref", "")
-                        oauth_response_ref = conn.get("oauth_response_ref", "")
+                        client_secret_ref = conn.get("ClientSecretRef", "")
+                        oauth_response_ref = conn.get("OAuthResponseRef", "")
 
                         # Check if this config is referenced by the connection
                         if client_secret_ref == key or oauth_response_ref == key or key.endswith("_metadata"):
-                            referenced_by.append(conn.get("RowKey"))
+                            oauth_name = conn.get("RowKey", "").replace("oauth:", "", 1)
+                            referenced_by.append(oauth_name)
 
                     if referenced_by:
                         error = ErrorResponse(
@@ -409,7 +425,7 @@ def delete_config(req: func.HttpRequest) -> func.HttpResponse:
                     logger.warning(f"Could not check OAuth references for config '{key}': {e}")
 
         # Delete config (idempotent - no error if key doesn't exist)
-        config_service = TableStorageService("Config")
+        config_service = get_table_service("Config", scoped_context)
         row_key = f"config:{key}"
 
         try:
@@ -441,25 +457,34 @@ def delete_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_get_integrations")
 @bp.route(route="organizations/{orgId}/integrations", methods=["GET"])
-@require_auth
-def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/organizations/{orgId}/integrations
     Get all integration configurations for an organization
 
-    Requires: User must have permission to view history (canViewHistory)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     org_id = req.route_params.get("orgId")
 
-    logger.info(f"User {user.email} retrieving integrations for org {org_id}")
+    logger.info(f"User {context.user_id} retrieving integrations for org {org_id}")
 
     try:
-        # Access control handled by SWA rules - only PlatformAdmins can reach this endpoint
+        # Create context for the requested org
+        from shared.request_context import RequestContext
+        org_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope=org_id
+        )
 
-        # Query IntegrationConfig table for this org
-        integration_service = TableStorageService("IntegrationConfig")
-        integration_entities = list(integration_service.query_by_org(org_id, row_key_prefix="integration:"))
+        # Query Config table for integration configs (stored with "integration:" prefix)
+        config_service = get_table_service("Config", org_context)
+        integration_entities = list(config_service.query_entities(
+            filter="RowKey ge 'integration:' and RowKey lt 'integration;'"
+        ))
 
         # Convert to response models
         integrations = []
@@ -499,33 +524,40 @@ def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_set_integration")
 @bp.route(route="organizations/{orgId}/integrations", methods=["POST"])
-@require_auth
-def set_integration(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/organizations/{orgId}/integrations
     Create or update an integration configuration
 
-    Requires: User must have permission to manage config (canManageConfig)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     org_id = req.route_params.get("orgId")
 
-    logger.info(f"User {user.email} setting integration for org {org_id}")
+    logger.info(f"User {context.user_id} setting integration for org {org_id}")
 
     try:
-        # Access control handled by SWA rules - only PlatformAdmins can reach this endpoint
+        # Create context for the requested org
+        from shared.request_context import RequestContext
+        org_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope=org_id
+        )
 
         # Parse and validate request body
         request_body = req.get_json()
         set_request = SetIntegrationConfigRequest(**request_body)
 
         # Check if this is a new integration or update
-        integration_service = TableStorageService("IntegrationConfig")
+        config_service = get_table_service("Config", org_context)
         row_key = f"integration:{set_request.type.value}"
 
         existing_integration = None
         try:
-            existing_integration = integration_service.get_entity(org_id, row_key)
+            existing_integration = config_service.get_entity(org_id, row_key)
         except:
             pass  # Integration doesn't exist, will create new
 
@@ -537,18 +569,18 @@ def set_integration(req: func.HttpRequest) -> func.HttpResponse:
             "Enabled": set_request.enabled,
             "Settings": json.dumps(set_request.settings),  # Store as JSON string
             "UpdatedAt": now.isoformat(),
-            "UpdatedBy": user.user_id
+            "UpdatedBy": context.user_id
         }
 
         # Insert or update
         if existing_integration:
             # Update existing integration
-            integration_service.update_entity(entity)
+            config_service.update_entity(entity)
             status_code = 200
             logger.info(f"Updated {set_request.type.value} integration for org {org_id}")
         else:
             # Create new integration
-            integration_service.insert_entity(entity)
+            config_service.insert_entity(entity)
             status_code = 201
             logger.info(f"Created {set_request.type.value} integration for org {org_id}")
 
@@ -558,7 +590,7 @@ def set_integration(req: func.HttpRequest) -> func.HttpResponse:
             enabled=set_request.enabled,
             settings=set_request.settings,
             updatedAt=now,
-            updatedBy=user.user_id
+            updatedBy=context.user_id
         )
 
         return func.HttpResponse(
@@ -615,30 +647,37 @@ def set_integration(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_delete_integration")
 @bp.route(route="organizations/{orgId}/integrations/{type}", methods=["DELETE"])
-@require_auth
-def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/organizations/{orgId}/integrations/{type}
     Delete an integration configuration
 
-    Requires: User must have permission to manage config (canManageConfig)
+    Platform admin only endpoint
     Note: This only deletes the config reference, NOT the Key Vault secrets
     """
-    user = req.user
+    context = req.context
     org_id = req.route_params.get("orgId")
     integration_type = req.route_params.get("type")
 
-    logger.info(f"User {user.email} deleting {integration_type} integration for org {org_id}")
+    logger.info(f"User {context.user_id} deleting {integration_type} integration for org {org_id}")
 
     try:
-        # Access control handled by SWA rules - only PlatformAdmins can reach this endpoint
+        # Create context for the requested org
+        from shared.request_context import RequestContext
+        org_context = RequestContext(
+            user_id=context.user_id,
+            user_type=context.user_type,
+            org_scope=org_id
+        )
 
         # Delete integration (idempotent - no error if doesn't exist)
-        integration_service = TableStorageService("IntegrationConfig")
+        config_service = get_table_service("Config", org_context)
         row_key = f"integration:{integration_type}"
 
         try:
-            integration_service.delete_entity(org_id, row_key)
+            config_service.delete_entity(org_id, row_key)
             logger.info(f"Deleted {integration_type} integration for org {org_id}")
         except Exception as e:
             # Even if entity doesn't exist, return 204 (idempotent delete)

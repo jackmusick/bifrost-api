@@ -4,8 +4,9 @@
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "python",
         "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
-        "WORKFLOWS_ENGINE_URL": "http://localhost:7072",
-        "WORKFLOWS_ENGINE_FUNCTION_KEY": "test"
+        "WORKSPACE_PATH": "./workspace",
+        "TMP_PATH": "./tmp",
+        "ENABLE_DEBUGGING": "false"
     },
     "Host": {
         "CORS": "*",

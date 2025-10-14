@@ -11,14 +11,15 @@ from datetime import datetime
 from typing import Optional
 import azure.functions as func
 
-from shared.auth import require_auth
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context, require_platform_admin
+from shared.storage import get_table_service
 from shared.models import (
     WorkflowKey,
     WorkflowKeyResponse,
     ErrorResponse,
     UserType
 )
+from shared.validation import validate_scope_parameter
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +52,19 @@ def mask_workflow_key(key: str) -> str:
     return "***"
 
 
-def get_workflow_key_entity(scope: str, org_id: Optional[str] = None) -> Optional[dict]:
+def get_workflow_key_entity(context, scope: str, org_id: Optional[str] = None) -> Optional[dict]:
     """
     Get workflow key entity from Config table
 
     Args:
+        context: Request context
         scope: 'GLOBAL' or 'org'
         org_id: Organization ID (required if scope='org')
 
     Returns:
         Workflow key entity or None if not found
     """
-    config_service = TableStorageService("Config")
+    config_service = get_table_service("Config", context)
     partition_key = "GLOBAL" if scope == "GLOBAL" else org_id
     row_key = "config:workflow_key"
 
@@ -75,8 +77,9 @@ def get_workflow_key_entity(scope: str, org_id: Optional[str] = None) -> Optiona
 
 @bp.function_name("workflow_keys_get")
 @bp.route(route="workflow-keys", methods=["GET"])
-@require_auth
-def get_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def get_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/workflow-keys?scope=global|org&orgId={id}
     Get workflow key (masked) for global or org-specific scope
@@ -85,87 +88,22 @@ def get_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
         scope: 'global' for GLOBAL keys, 'org' for org-specific (requires orgId)
         orgId: Organization ID (required when scope=org)
 
-    Requires:
-        - For global keys: User must be MSP admin
-        - For org keys: User must have canManageConfig permission
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     scope = req.params.get("scope", "global").upper()
     org_id = req.params.get("orgId")
 
-    logger.info(f"User {user.email} retrieving workflow key (scope={scope}, orgId={org_id})")
+    logger.info(f"User {context.user_id} retrieving workflow key (scope={scope}, orgId={org_id})")
 
     try:
         # Validate scope parameter
-        if scope not in ["GLOBAL", "ORG"]:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="scope parameter must be 'global' or 'org'"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # If scope=org, orgId is required
-        if scope == "ORG" and not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="orgId parameter is required when scope=org"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # Permission checks
-        if scope == "GLOBAL":
-            # Only MSP admins can access global workflow key
-            if not user.is_msp_admin:
-                logger.warning(f"User {user.email} is not MSP admin, cannot access global workflow key")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="Only MSP administrators can access global workflow keys"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
-        else:
-            # Check org permissions
-            permissions_service = TableStorageService("UserPermissions")
-            permission = permissions_service.get_entity(user.user_id, org_id)
-
-            if not permission:
-                logger.warning(f"User {user.email} denied access to org {org_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="You don't have access to this organization"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
-
-            # Check canManageConfig permission
-            if not permission.get("CanManageConfig", False):
-                logger.warning(f"User {user.email} lacks canManageConfig permission for org {org_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="You don't have permission to view workflow keys"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
+        is_valid, error_response = validate_scope_parameter(scope, org_id)
+        if not is_valid:
+            return error_response
 
         # Get workflow key
-        key_entity = get_workflow_key_entity(scope, org_id)
+        key_entity = get_workflow_key_entity(context, scope, org_id)
 
         if not key_entity:
             error = ErrorResponse(
@@ -211,8 +149,9 @@ def get_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("workflow_keys_generate")
 @bp.route(route="workflow-keys", methods=["POST"])
-@require_auth
-def generate_workflow_key_endpoint(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def generate_workflow_key_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/workflow-keys?scope=global|org&orgId={id}
     Generate or regenerate a workflow key for global or org-specific scope
@@ -221,86 +160,21 @@ def generate_workflow_key_endpoint(req: func.HttpRequest) -> func.HttpResponse:
         scope: 'global' for GLOBAL keys, 'org' for org-specific (requires orgId)
         orgId: Organization ID (required when scope=org)
 
-    Requires:
-        - For global keys: User must be MSP admin
-        - For org keys: User must have canManageConfig permission
+    Platform admin only endpoint
 
     Note: This will REPLACE any existing workflow key for the scope
     """
-    user = req.user
+    context = req.context
     scope = req.params.get("scope", "global").upper()
     org_id = req.params.get("orgId")
 
-    logger.info(f"User {user.email} generating workflow key (scope={scope}, orgId={org_id})")
+    logger.info(f"User {context.user_id} generating workflow key (scope={scope}, orgId={org_id})")
 
     try:
         # Validate scope parameter
-        if scope not in ["GLOBAL", "ORG"]:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="scope parameter must be 'global' or 'org'"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # If scope=org, orgId is required
-        if scope == "ORG" and not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="orgId parameter is required when scope=org"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # Permission checks
-        if scope == "GLOBAL":
-            # Only MSP admins can generate global workflow key
-            if not user.is_msp_admin:
-                logger.warning(f"User {user.email} is not MSP admin, cannot generate global workflow key")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="Only MSP administrators can generate global workflow keys"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
-        else:
-            # Check org permissions
-            permissions_service = TableStorageService("UserPermissions")
-            permission = permissions_service.get_entity(user.user_id, org_id)
-
-            if not permission:
-                logger.warning(f"User {user.email} denied access to org {org_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="You don't have access to this organization"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
-
-            # Check canManageConfig permission
-            if not permission.get("CanManageConfig", False):
-                logger.warning(f"User {user.email} lacks canManageConfig permission for org {org_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="You don't have permission to manage workflow keys"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
+        is_valid, error_response = validate_scope_parameter(scope, org_id)
+        if not is_valid:
+            return error_response
 
         # Generate new workflow key
         new_key = generate_workflow_key()
@@ -318,15 +192,15 @@ def generate_workflow_key_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             "Type": "SECRET_REF",  # Mark as sensitive
             "Description": f"Workflow key for HTTP-triggered workflows ({'global' if scope == 'GLOBAL' else f'org {org_id}'})",
             "CreatedAt": now.isoformat(),
-            "CreatedBy": user.user_id,
+            "CreatedBy": context.user_id,
             "UpdatedAt": now.isoformat(),
-            "UpdatedBy": user.user_id,
+            "UpdatedBy": context.user_id,
             "LastUsedAt": None
         }
 
         # Check if key already exists
-        config_service = TableStorageService("Config")
-        existing_key = get_workflow_key_entity(scope, org_id)
+        config_service = get_table_service("Config", context)
+        existing_key = get_workflow_key_entity(context, scope, org_id)
 
         if existing_key:
             # Replace existing key
@@ -345,7 +219,7 @@ def generate_workflow_key_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             orgId=org_id if scope == "ORG" else None,
             key=new_key,
             createdAt=now,
-            createdBy=user.user_id
+            createdBy=context.user_id
         )
 
         return func.HttpResponse(
@@ -369,8 +243,9 @@ def generate_workflow_key_endpoint(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("workflow_keys_delete")
 @bp.route(route="workflow-keys", methods=["DELETE"])
-@require_auth
-def delete_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/workflow-keys?scope=global|org&orgId={id}
     Revoke a workflow key for global or org-specific scope
@@ -379,89 +254,24 @@ def delete_workflow_key(req: func.HttpRequest) -> func.HttpResponse:
         scope: 'global' for GLOBAL keys, 'org' for org-specific (requires orgId)
         orgId: Organization ID (required when scope=org)
 
-    Requires:
-        - For global keys: User must be MSP admin
-        - For org keys: User must have canManageConfig permission
+    Platform admin only endpoint
 
     Note: This will prevent all webhook executions for the scope until a new key is generated
     """
-    user = req.user
+    context = req.context
     scope = req.params.get("scope", "global").upper()
     org_id = req.params.get("orgId")
 
-    logger.info(f"User {user.email} deleting workflow key (scope={scope}, orgId={org_id})")
+    logger.info(f"User {context.user_id} deleting workflow key (scope={scope}, orgId={org_id})")
 
     try:
         # Validate scope parameter
-        if scope not in ["GLOBAL", "ORG"]:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="scope parameter must be 'global' or 'org'"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # If scope=org, orgId is required
-        if scope == "ORG" and not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="orgId parameter is required when scope=org"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # Permission checks
-        if scope == "GLOBAL":
-            # Only MSP admins can delete global workflow key
-            if not user.is_msp_admin:
-                logger.warning(f"User {user.email} is not MSP admin, cannot delete global workflow key")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="Only MSP administrators can delete global workflow keys"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
-        else:
-            # Check org permissions
-            permissions_service = TableStorageService("UserPermissions")
-            permission = permissions_service.get_entity(user.user_id, org_id)
-
-            if not permission:
-                logger.warning(f"User {user.email} denied access to org {org_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="You don't have access to this organization"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
-
-            # Check canManageConfig permission
-            if not permission.get("CanManageConfig", False):
-                logger.warning(f"User {user.email} lacks canManageConfig permission for org {org_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="You don't have permission to delete workflow keys"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
+        is_valid, error_response = validate_scope_parameter(scope, org_id)
+        if not is_valid:
+            return error_response
 
         # Delete workflow key (idempotent)
-        config_service = TableStorageService("Config")
+        config_service = get_table_service("Config", context)
         partition_key = "GLOBAL" if scope == "GLOBAL" else org_id
         row_key = "config:workflow_key"
 

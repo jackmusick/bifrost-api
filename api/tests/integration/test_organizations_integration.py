@@ -19,7 +19,6 @@ from functions.organizations import (
     update_organization,
     delete_organization
 )
-from shared.auth import AuthenticatedUser
 
 
 def create_mock_request(user_id, email="test@example.com", display_name="Test User", **kwargs):
@@ -43,7 +42,7 @@ def create_mock_request(user_id, email="test@example.com", display_name="Test Us
 class TestListOrganizations:
     """Integration tests for GET /api/organizations"""
 
-    def test_list_organizations_with_access(
+    async def test_list_organizations_with_access(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -60,7 +59,7 @@ class TestListOrganizations:
         req.url = "http://localhost:7071/api/organizations"
 
         # Call endpoint (decorator will inject req.user)
-        response = list_organizations(req)
+        response = await list_organizations(req)
 
         # Assertions
         assert response.status_code == 200
@@ -70,13 +69,13 @@ class TestListOrganizations:
         assert orgs[0]["id"] == test_user_with_full_permissions["org_id"]
         assert orgs[0]["name"] == "Test Organization"
 
-    def test_list_organizations_no_access(self, test_user, azurite_tables):
+    async def test_list_organizations_no_access(self, test_user, azurite_tables):
         """Test listing organizations when user has no permissions"""
         # Create mock request
         req = create_mock_request(test_user["user_id"], test_user["email"])
 
         # Call endpoint
-        response = list_organizations(req)
+        response = await list_organizations(req)
 
         # Assertions
         assert response.status_code == 200
@@ -88,7 +87,7 @@ class TestListOrganizations:
 class TestCreateOrganization:
     """Integration tests for POST /api/organizations"""
 
-    def test_create_organization_valid(self, test_user, azurite_tables):
+    async def test_create_organization_valid(self, test_user, azurite_tables):
         """Test creating a new organization with valid data"""
         # Create mock request
         req = create_mock_request(test_user["user_id"], test_user["email"])
@@ -98,7 +97,7 @@ class TestCreateOrganization:
         }
 
         # Call endpoint
-        response = create_organization(req)
+        response = await create_organization(req)
 
         # Assertions
         assert response.status_code == 201
@@ -110,14 +109,14 @@ class TestCreateOrganization:
         assert "id" in org
         assert org["id"].startswith("org-")
 
-    def test_create_organization_without_tenant_id(self, test_user, azurite_tables):
+    async def test_create_organization_without_tenant_id(self, test_user, azurite_tables):
         """Test creating organization without tenantId (optional field)"""
         # Create mock request
         req = create_mock_request(test_user["user_id"], test_user["email"])
         req.get_json.return_value = {"name": "Org Without Tenant"}
 
         # Call endpoint
-        response = create_organization(req)
+        response = await create_organization(req)
 
         # Assertions
         assert response.status_code == 201
@@ -125,14 +124,14 @@ class TestCreateOrganization:
         assert org["name"] == "Org Without Tenant"
         assert org["tenantId"] is None
 
-    def test_create_organization_invalid_empty_name(self, test_user, azurite_tables):
+    async def test_create_organization_invalid_empty_name(self, test_user, azurite_tables):
         """Test creating organization with empty name fails validation"""
         # Create mock request
         req = create_mock_request(test_user["user_id"], test_user["email"])
         req.get_json.return_value = {"name": ""}
 
         # Call endpoint
-        response = create_organization(req)
+        response = await create_organization(req)
 
         # Assertions
         assert response.status_code == 400
@@ -140,14 +139,14 @@ class TestCreateOrganization:
         assert error["error"] == "ValidationError"
         assert "errors" in error["details"]
 
-    def test_create_organization_missing_name(self, test_user, azurite_tables):
+    async def test_create_organization_missing_name(self, test_user, azurite_tables):
         """Test creating organization without name fails validation"""
         # Create mock request
         req = create_mock_request(test_user["user_id"], test_user["email"])
         req.get_json.return_value = {}
 
         # Call endpoint
-        response = create_organization(req)
+        response = await create_organization(req)
 
         # Assertions
         assert response.status_code == 400
@@ -158,7 +157,7 @@ class TestCreateOrganization:
 class TestGetOrganization:
     """Integration tests for GET /api/organizations/{orgId}"""
 
-    def test_get_organization_with_access(
+    async def test_get_organization_with_access(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -172,7 +171,7 @@ class TestGetOrganization:
         req.route_params = {"orgId": test_user_with_full_permissions["org_id"]}
 
         # Call endpoint
-        response = get_organization(req)
+        response = await get_organization(req)
 
         # Assertions
         assert response.status_code == 200
@@ -180,7 +179,7 @@ class TestGetOrganization:
         assert org["id"] == test_user_with_full_permissions["org_id"]
         assert org["name"] == "Test Organization"
 
-    def test_get_organization_without_access(
+    async def test_get_organization_without_access(
         self,
         test_org,
         test_user_2,
@@ -192,14 +191,14 @@ class TestGetOrganization:
         req.route_params = {"orgId": test_org["org_id"]}
 
         # Call endpoint
-        response = get_organization(req)
+        response = await get_organization(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_get_organization_not_found(
+    async def test_get_organization_not_found(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -227,7 +226,7 @@ class TestGetOrganization:
         req.route_params = {"orgId": "non-existent-org"}
 
         # Call endpoint
-        response = get_organization(req)
+        response = await get_organization(req)
 
         # Assertions
         assert response.status_code == 404
@@ -238,7 +237,7 @@ class TestGetOrganization:
 class TestUpdateOrganization:
     """Integration tests for PATCH /api/organizations/{orgId}"""
 
-    def test_update_organization_name(
+    async def test_update_organization_name(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -253,7 +252,7 @@ class TestUpdateOrganization:
         req.get_json.return_value = {"name": "Updated Organization Name"}
 
         # Call endpoint
-        response = update_organization(req)
+        response = await update_organization(req)
 
         # Assertions
         assert response.status_code == 200
@@ -261,7 +260,7 @@ class TestUpdateOrganization:
         assert org["name"] == "Updated Organization Name"
         assert org["id"] == test_user_with_full_permissions["org_id"]
 
-    def test_update_organization_without_permission(
+    async def test_update_organization_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -276,14 +275,14 @@ class TestUpdateOrganization:
         req.get_json.return_value = {"name": "Should Not Update"}
 
         # Call endpoint
-        response = update_organization(req)
+        response = await update_organization(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_update_organization_validation_error(
+    async def test_update_organization_validation_error(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -298,7 +297,7 @@ class TestUpdateOrganization:
         req.get_json.return_value = {"name": ""}  # Empty name
 
         # Call endpoint
-        response = update_organization(req)
+        response = await update_organization(req)
 
         # Assertions
         assert response.status_code == 400
@@ -309,7 +308,7 @@ class TestUpdateOrganization:
 class TestDeleteOrganization:
     """Integration tests for DELETE /api/organizations/{orgId}"""
 
-    def test_delete_organization(
+    async def test_delete_organization(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -323,18 +322,19 @@ class TestDeleteOrganization:
         req.route_params = {"orgId": test_user_with_full_permissions["org_id"]}
 
         # Call endpoint
-        response = delete_organization(req)
+        response = await delete_organization(req)
 
         # Assertions
         assert response.status_code == 204
 
-        # Verify org is marked inactive
+        # Verify org is marked inactive by querying Entities table
         from shared.storage import TableStorageService
-        orgs_service = TableStorageService("Organizations")
-        org = orgs_service.get_entity("ORG", test_user_with_full_permissions["org_id"])
+        entities_service = TableStorageService("Entities")
+        org = entities_service.get_entity("GLOBAL", f"org:{test_user_with_full_permissions['org_id']}")
+        assert org is not None, f"Organization {test_user_with_full_permissions['org_id']} not found"
         assert org["IsActive"] is False
 
-    def test_delete_organization_without_permission(
+    async def test_delete_organization_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -348,7 +348,7 @@ class TestDeleteOrganization:
         req.route_params = {"orgId": test_user_with_no_permissions["org_id"]}
 
         # Call endpoint
-        response = delete_organization(req)
+        response = await delete_organization(req)
 
         # Assertions
         assert response.status_code == 403

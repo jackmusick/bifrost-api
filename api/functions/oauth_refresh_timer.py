@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import azure.functions as func
 from services.oauth_storage_service import OAuthStorageService
 from services.oauth_provider import OAuthProviderClient
-from shared.keyvault import KeyVaultManager
+from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
     oauth_service = OAuthStorageService()
     oauth_provider = OAuthProviderClient()
     config_service = TableStorageService("Config")
-    keyvault = KeyVaultManager()
+    keyvault = KeyVaultClient()
     system_config_table = TableStorageService("SystemConfig")
 
     # Ensure SystemConfig table exists

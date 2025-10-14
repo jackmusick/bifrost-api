@@ -1,173 +1,209 @@
 """
-Authentication helpers for Azure Static Web Apps + Azure Functions
-Works in both production (Azure Easy Auth) and local development (mock)
+Authentication and Authorization for Azure Functions
+
+Unified authentication system supporting:
+- Azure Easy Auth (X-MS-CLIENT-PRINCIPAL) for user authentication
+- Function keys (x-functions-key header or ?code query param) for service-to-service
+- Organization context derivation and validation
 """
 
 import os
 import logging
 import base64
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Union, List, Tuple
 from functools import wraps
+from dataclasses import dataclass, field
 import azure.functions as func
 
 logger = logging.getLogger(__name__)
 
 
-class AuthenticatedUser:
-    """Represents an authenticated user from Azure AD"""
+# ==================== ENVIRONMENT DETECTION ====================
 
-    def __init__(self, user_id: str, email: str, display_name: str = None):
-        self.user_id = user_id
-        self.email = email
-        self.display_name = display_name or email.split('@')[0]
-
-    def to_dict(self) -> Dict[str, str]:
-        return {
-            "user_id": self.user_id,
-            "email": self.email,
-            "display_name": self.display_name
-        }
-
-
-def get_authenticated_user(req: func.HttpRequest) -> Optional[AuthenticatedUser]:
+def is_production() -> bool:
     """
-    Extract authenticated user from Azure Static Web Apps headers
-
-    Works in both production and local development:
-    - Production: Azure SWA injects X-MS-CLIENT-PRINCIPAL-* headers
-    - Local dev: Accepts X-Test-User-* headers for testing
-
-    Args:
-        req: Azure Functions HttpRequest
+    Check if running in production environment.
 
     Returns:
-        AuthenticatedUser if authenticated, None otherwise
+        True if in production (Azure), False if local development
+    """
+    return bool(
+        os.environ.get('WEBSITE_SITE_NAME') or  # Azure App Service
+        os.environ.get('AZURE_FUNCTIONS_ENVIRONMENT', '').lower() == 'production'
+    )
+
+
+# ==================== PRINCIPAL DATACLASSES ====================
+
+@dataclass
+class FunctionKeyPrincipal:
+    """
+    Principal for function key authentication (service-to-service).
+    Provides privileged access without user context.
+    """
+    key_id: str
+    key_name: str = "default"
+
+    @property
+    def is_function_key(self) -> bool:
+        return True
+
+    def __str__(self) -> str:
+        return f"FunctionKey({self.key_name})"
+
+
+@dataclass
+class UserPrincipal:
+    """
+    Principal for user authentication via Azure Easy Auth.
+    Represents an authenticated end-user with identity and roles.
+    """
+    user_id: str
+    email: str
+    name: str = ""
+    roles: List[str] = field(default_factory=list)
+    identity_provider: str = "aad"
+
+    @property
+    def is_function_key(self) -> bool:
+        return False
+
+    def has_role(self, role: str) -> bool:
+        """Check if user has specific role"""
+        return role in self.roles
+
+    def __str__(self) -> str:
+        return f"User({self.email})"
+
+
+# ==================== EXCEPTIONS ====================
+
+class AuthenticationError(Exception):
+    """Raised when authentication fails"""
+    pass
+
+
+class AuthorizationError(Exception):
+    """Raised when user is authenticated but not authorized"""
+    pass
+
+
+# ==================== AUTHENTICATION SERVICE ====================
+
+class AuthenticationService:
+    """
+    Tiered authentication with priority:
+    1. Function key (x-functions-key header or ?code query param)
+    2. Easy Auth (X-MS-CLIENT-PRINCIPAL header)
+    3. Local dev bypass (only if not in production)
     """
 
-    # Production: Check for Azure SWA headers
-    client_principal_id = req.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-    client_principal_name = req.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
+    async def authenticate(self, req: func.HttpRequest) -> Union[FunctionKeyPrincipal, UserPrincipal]:
+        """
+        Authenticate request using tiered priority system.
 
-    if client_principal_id and client_principal_name:
-        # Parse full principal if available (contains display name)
-        client_principal_b64 = req.headers.get("X-MS-CLIENT-PRINCIPAL")
-        display_name = None
+        Raises:
+            AuthenticationError: If no valid authentication found
+        """
+        # Priority 1: Function key
+        principal = await self._try_function_key(req)
+        if principal:
+            return principal
 
-        if client_principal_b64:
-            try:
-                principal_json = base64.b64decode(client_principal_b64).decode('utf-8')
-                principal = json.loads(principal_json)
-                display_name = principal.get("claims", {}).get("name")
-            except Exception as e:
-                logger.warning(f"Failed to parse X-MS-CLIENT-PRINCIPAL: {e}")
+        # Priority 2: Easy Auth user
+        principal = await self._try_easy_auth(req)
+        if principal:
+            return principal
 
-        logger.info(f"Authenticated user from Azure SWA: {client_principal_name}")
-        return AuthenticatedUser(
-            user_id=client_principal_id,
-            email=client_principal_name,
-            display_name=display_name
+        # Priority 3: Local dev bypass (development only)
+        if not is_production():
+            logger.warning("Using local dev bypass authentication")
+            return FunctionKeyPrincipal(key_id="local-dev", key_name="local-development")
+
+        # No valid authentication
+        raise AuthenticationError(
+            "Authentication required. Provide x-functions-key header, ?code query param, "
+            "or X-MS-CLIENT-PRINCIPAL header from Azure Easy Auth."
         )
 
-    # Local development: Check for test headers
-    is_local = os.getenv("AZURE_FUNCTIONS_ENVIRONMENT") == "Development"
-    if is_local:
-        test_user_id = req.headers.get("X-Test-User-Id")
-        test_email = req.headers.get("X-Test-User-Email")
-        test_name = req.headers.get("X-Test-User-Name")
+    async def _try_function_key(self, req: func.HttpRequest) -> Optional[FunctionKeyPrincipal]:
+        """Try to authenticate with function key"""
+        # Check header first
+        key = req.headers.get('x-functions-key')
 
-        if test_user_id or test_email or test_name:
-            logger.info(f"Authenticated test user (local dev): {test_email or 'jack@gocovi.com'}")
-            return AuthenticatedUser(
-                user_id=test_user_id or "jack@gocovi.com",  # Default to platform admin email
-                email=test_email or "jack@gocovi.com",
-                display_name=test_name or "Jack Musick"
+        # Check query param as fallback
+        if not key:
+            key = req.params.get('code')
+
+        if key and key.strip():
+            principal = FunctionKeyPrincipal(key_id=key.strip(), key_name="default")
+
+            # Audit function key usage
+            await self._audit_key_usage(req, principal)
+
+            logger.info(f"Authenticated with function key: {principal.key_name}")
+            return principal
+
+        return None
+
+    async def _try_easy_auth(self, req: func.HttpRequest) -> Optional[UserPrincipal]:
+        """Try to authenticate with Azure Easy Auth"""
+        header = req.headers.get('X-MS-CLIENT-PRINCIPAL')
+        if not header:
+            return None
+
+        try:
+            # Decode base64 JSON
+            data = json.loads(base64.b64decode(header).decode('utf-8'))
+
+            user_id = data.get('userId')
+            if not user_id:
+                raise AuthenticationError("X-MS-CLIENT-PRINCIPAL missing userId")
+
+            principal = UserPrincipal(
+                user_id=user_id,
+                email=data.get('userDetails', ''),
+                name=data.get('userDetails', '').split('@')[0],
+                roles=data.get('userRoles', []),
+                identity_provider=data.get('identityProvider', 'aad')
             )
 
-        # Default test user for local development (platform admin)
-        logger.info("Using default test user for local development (platform admin)")
-        return AuthenticatedUser(
-            user_id="jack@gocovi.com",  # Using email as user ID for consistency
-            email="jack@gocovi.com",
-            display_name="Jack Musick"
-        )
+            logger.info(f"Authenticated user: {principal.email}")
+            return principal
 
-    # No authentication found
-    logger.warning("No authentication headers found in request")
-    return None
+        except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}")
 
+    async def _audit_key_usage(self, req: func.HttpRequest, principal: FunctionKeyPrincipal) -> None:
+        """Audit function key usage (fire and forget)"""
+        try:
+            from shared.audit import get_audit_logger
 
-def require_auth(func_to_wrap):
-    """
-    Decorator to require authentication on Azure Function endpoints
-
-    Usage:
-        @require_auth
-        async def my_function(req: func.HttpRequest) -> func.HttpResponse:
-            user = req.user  # AuthenticatedUser object
-            return func.HttpResponse(f"Hello {user.display_name}")
-    """
-    import asyncio
-    import inspect
-
-    @wraps(func_to_wrap)
-    async def async_wrapper(req: func.HttpRequest) -> func.HttpResponse:
-        user = get_authenticated_user(req)
-
-        if not user:
-            logger.warning(f"Unauthorized request to {req.url}")
-            return func.HttpResponse(
-                json.dumps({
-                    "error": "Unauthorized",
-                    "message": "Authentication required. Please login."
-                }),
-                status_code=401,
-                mimetype="application/json"
+            audit_logger = get_audit_logger()
+            await audit_logger.log_function_key_access(
+                key_id=principal.key_id[:8] + "...",
+                key_name=principal.key_name,
+                org_id=req.headers.get('X-Organization-Id', 'unknown'),
+                endpoint=req.url,
+                method=req.method,
+                remote_addr=req.headers.get('X-Forwarded-For', 'unknown'),
+                user_agent=req.headers.get('User-Agent', 'unknown'),
+                status_code=0,
+                details=None
             )
+        except Exception as e:
+            logger.debug(f"Failed to audit function key usage: {e}")
 
-        # Inject user into request for downstream use
-        req.user = user
 
-        # Call the actual function
-        return await func_to_wrap(req)
-
-    @wraps(func_to_wrap)
-    def sync_wrapper(req: func.HttpRequest) -> func.HttpResponse:
-        user = get_authenticated_user(req)
-
-        if not user:
-            logger.warning(f"Unauthorized request to {req.url}")
-            return func.HttpResponse(
-                json.dumps({
-                    "error": "Unauthorized",
-                    "message": "Authentication required. Please login."
-                }),
-                status_code=401,
-                mimetype="application/json"
-            )
-
-        # Inject user into request for downstream use
-        req.user = user
-
-        # Call the actual function
-        return func_to_wrap(req)
-
-    # Return async wrapper if function is async, otherwise sync wrapper
-    if inspect.iscoroutinefunction(func_to_wrap):
-        return async_wrapper
-    else:
-        return sync_wrapper
-
+# ==================== AUTHORIZATION ====================
 
 def is_platform_admin(user_id: str) -> bool:
     """
-    Check if a user is a platform admin by looking up their record
-
-    Args:
-        user_id: User ID
+    Check if user is a platform admin.
 
     Returns:
-        True if user is platform admin, False otherwise
+        True if platform admin, False otherwise
     """
     from shared.storage import TableStorageService
 
@@ -176,7 +212,10 @@ def is_platform_admin(user_id: str) -> bool:
         user_entity = users_service.get_entity("USER", user_id)
 
         if user_entity:
-            return user_entity.get("IsPlatformAdmin", False) and user_entity.get("UserType") == "PLATFORM"
+            return (
+                user_entity.get("IsPlatformAdmin", False) and
+                user_entity.get("UserType") == "PLATFORM"
+            )
 
         return False
     except Exception as e:
@@ -184,152 +223,158 @@ def is_platform_admin(user_id: str) -> bool:
         return False
 
 
-def has_form_access(user_id: str, form_id: str) -> bool:
+def get_user_org_id(user_id: str) -> Optional[str]:
     """
-    Check if a user has access to execute a specific form
-
-    Access is granted if:
-    1. User is a platform admin, OR
-    2. Form is public (isPublic=true), OR
-    3. User is in a group that has been assigned to the form
-
-    Args:
-        user_id: User ID
-        form_id: Form ID
+    Get user's organization ID from database.
 
     Returns:
-        True if user can access the form, False otherwise
+        Organization ID or None if not found
     """
     from shared.storage import TableStorageService
 
     try:
-        # Check if user is platform admin (bypass all checks)
-        if is_platform_admin(user_id):
-            logger.debug(f"User {user_id} is platform admin - granting form access")
-            return True
+        users_table = TableStorageService("Users")
+        entities = list(users_table.query_entities(f"RowKey eq '{user_id}'"))
 
-        # Get form to check if it's public
-        forms_service = TableStorageService("Forms")
-        # Try to find form in any partition (we don't know the partition key here)
-        # This is a limitation - we'll need to query by form ID
-        form_entities = list(forms_service.query_entities(filter=f"RowKey eq '{form_id}'"))
+        if not entities:
+            logger.warning(f"User {user_id} not found in database")
+            return None
 
-        if not form_entities:
-            logger.warning(f"Form {form_id} not found")
-            return False
+        if len(entities) > 1:
+            logger.warning(f"Multiple users found for {user_id}, using first")
 
-        form_entity = form_entities[0]
-
-        # Check if form is public
-        if form_entity.get("IsPublic", False):
-            logger.debug(f"Form {form_id} is public - granting access")
-            return True
-
-        # Check if user is in any group assigned to this form
-        # 1. Get user's groups from UserRoles table
-        user_roles_service = TableStorageService("UserRoles")
-        user_role_entities = list(user_roles_service.query_entities(
-            filter=f"UserId eq '{user_id}'"
-        ))
-
-        if not user_role_entities:
-            logger.debug(f"User {user_id} has no group assignments")
-            return False
-
-        user_group_ids = [entity["RoleId"] for entity in user_role_entities]
-        logger.debug(f"User {user_id} is in groups: {user_group_ids}")
-
-        # 2. Check if form is assigned to any of these groups via FormRoles table
-        form_roles_service = TableStorageService("FormRoles")
-        for group_id in user_group_ids:
-            form_role_entity = form_roles_service.get_entity(form_id, f"role:{group_id}")
-            if form_role_entity:
-                logger.debug(f"User {user_id} has access to form {form_id} via group {group_id}")
-                return True
-
-        logger.debug(f"User {user_id} has no group-based access to form {form_id}")
-        return False
+        org_id = entities[0].get("PartitionKey")
+        logger.debug(f"User {user_id} belongs to org: {org_id}")
+        return org_id
 
     except Exception as e:
-        logger.error(f"Error checking form access for user {user_id}, form {form_id}: {e}", exc_info=True)
-        return False
+        logger.error(f"Error looking up user org: {e}")
+        return None
 
 
-def get_org_id(req: func.HttpRequest) -> Optional[str]:
+# ==================== ORGANIZATION CONTEXT ====================
+
+def get_org_context(req: func.HttpRequest) -> Tuple[Optional[str], str, Optional[func.HttpResponse]]:
     """
-    Extract organization ID from X-Organization-Id header
+    Get organization context with security enforcement.
 
-    Args:
-        req: Azure Functions HttpRequest
+    Rules:
+    - Platform admins: Can pass X-Organization-Id to impersonate, or None for global scope
+    - Regular users: org_id derived from database, cannot override
 
     Returns:
-        Organization ID if present, None otherwise
-    """
-    org_id = req.headers.get("X-Organization-Id")
+        (org_id, user_id, error_response)
+        - org_id: Organization ID or None for global scope
+        - user_id: User ID from principal
+        - error_response: HttpResponse if error, None if success
 
+    Usage:
+        org_id, user_id, error = get_org_context(req)
+        if error:
+            return error
+    """
+    # Get authenticated principal from request
+    principal = getattr(req, 'principal', None)
+    if not principal:
+        return None, None, _error_response(401, "Unauthorized", "Authentication required")
+
+    # Function keys operate in global scope
+    if isinstance(principal, FunctionKeyPrincipal):
+        org_id = req.headers.get('X-Organization-Id')  # Optional
+        logger.info(f"Function key auth: org={org_id or 'GLOBAL'}")
+        return org_id, "function-key", None
+
+    # User authentication
+    user_id = principal.user_id
+    is_admin = is_platform_admin(user_id)
+    provided_org_id = req.headers.get('X-Organization-Id')
+
+    # Platform admin logic
+    if is_admin:
+        # Admin can specify org or work in global scope
+        org_id = provided_org_id  # May be None
+        logger.info(f"Admin {principal.email}: org={org_id or 'GLOBAL'}")
+        return org_id, user_id, None
+
+    # Regular user logic
+    if provided_org_id:
+        # Non-admin cannot override org context
+        logger.warning(f"Non-admin {principal.email} attempted to set X-Organization-Id")
+        return None, None, _error_response(
+            403, "Forbidden",
+            "Only platform administrators can override organization context"
+        )
+
+    # Derive org from database
+    org_id = get_user_org_id(user_id)
     if not org_id:
-        logger.debug("No X-Organization-Id header found in request")
+        return None, None, _error_response(
+            404, "NotFound",
+            "User organization not found. Contact administrator."
+        )
 
-    return org_id
+    logger.info(f"User {principal.email}: org={org_id}")
+    return org_id, user_id, None
 
 
-def require_org_header(func_to_wrap):
+# ==================== DECORATORS ====================
+
+def require_auth(handler):
     """
-    Decorator to require X-Organization-Id header
-    Must be used AFTER @require_auth
+    Decorator to require authentication for endpoints.
+    Injects req.principal for use in handler.
 
     Usage:
         @require_auth
-        @require_org_header
-        async def my_function(req: func.HttpRequest) -> func.HttpResponse:
-            user = req.user
-            org_id = req.org_id
-            return func.HttpResponse(f"User {user.email} accessing org {org_id}")
+        async def my_handler(req: func.HttpRequest) -> func.HttpResponse:
+            principal = req.principal
+            # ...
     """
-    import inspect
+    @wraps(handler)
+    async def wrapper(req: func.HttpRequest) -> func.HttpResponse:
+        try:
+            # Authenticate request
+            auth_service = AuthenticationService()
+            principal = await auth_service.authenticate(req)
 
-    @wraps(func_to_wrap)
-    async def async_wrapper(req: func.HttpRequest) -> func.HttpResponse:
-        org_id = get_org_id(req)
+            # Inject principal into request
+            req.principal = principal
 
-        if not org_id:
-            logger.warning(f"Missing X-Organization-Id header on {req.url}")
-            return func.HttpResponse(
-                json.dumps({
-                    "error": "BadRequest",
-                    "message": "X-Organization-Id header is required"
-                }),
-                status_code=400,
-                mimetype="application/json"
-            )
+            # Call handler
+            return await handler(req)
 
-        # Inject org_id into request
-        req.org_id = org_id
+        except AuthenticationError as e:
+            logger.warning(f"Authentication failed: {e}")
+            return _error_response(403, "Forbidden", str(e))
 
-        return await func_to_wrap(req)
+        except Exception as e:
+            logger.error(f"Unexpected auth error: {e}", exc_info=True)
+            return _error_response(500, "InternalServerError", "Authentication system error")
 
-    @wraps(func_to_wrap)
-    def sync_wrapper(req: func.HttpRequest) -> func.HttpResponse:
-        org_id = get_org_id(req)
+    return wrapper
 
-        if not org_id:
-            logger.warning(f"Missing X-Organization-Id header on {req.url}")
-            return func.HttpResponse(
-                json.dumps({
-                    "error": "BadRequest",
-                    "message": "X-Organization-Id header is required"
-                }),
-                status_code=400,
-                mimetype="application/json"
-            )
 
-        # Inject org_id into request
-        req.org_id = org_id
+# ==================== HELPERS ====================
 
-        return func_to_wrap(req)
+def get_principal(req: func.HttpRequest) -> Optional[Union[FunctionKeyPrincipal, UserPrincipal]]:
+    """Get authenticated principal from request"""
+    return getattr(req, 'principal', None)
 
-    # Return async wrapper if function is async, otherwise sync wrapper
-    if inspect.iscoroutinefunction(func_to_wrap):
-        return async_wrapper
-    else:
-        return sync_wrapper
+
+def is_function_key_auth(req: func.HttpRequest) -> bool:
+    """Check if authenticated with function key"""
+    return isinstance(get_principal(req), FunctionKeyPrincipal)
+
+
+def is_user_auth(req: func.HttpRequest) -> bool:
+    """Check if authenticated with user credentials"""
+    return isinstance(get_principal(req), UserPrincipal)
+
+
+def _error_response(status_code: int, error: str, message: str) -> func.HttpResponse:
+    """Create standardized error response"""
+    return func.HttpResponse(
+        json.dumps({"error": error, "message": message}),
+        status_code=status_code,
+        mimetype="application/json"
+    )

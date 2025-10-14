@@ -10,7 +10,7 @@ from typing import List, Optional
 from azure.core.exceptions import ResourceNotFoundError
 
 from shared.storage import TableStorageService
-from shared.keyvault import KeyVaultManager
+from shared.keyvault import KeyVaultClient
 from models.oauth_connection import (
     OAuthConnection,
     CreateOAuthConnectionRequest,
@@ -126,7 +126,7 @@ class OAuthStorageService:
         # Value is the Key Vault secret name
         # Note: Client secret is optional for PKCE flow
         if request.client_secret:
-            keyvault = KeyVaultManager()
+            keyvault = KeyVaultClient()
             keyvault_secret_name = f"{org_id}--oauth-{request.connection_name}-client-secret"
 
             try:
@@ -319,7 +319,7 @@ class OAuthStorageService:
             return False
 
         # Delete secrets from Key Vault
-        keyvault = KeyVaultManager()
+        keyvault = KeyVaultClient()
         keyvault_secret_names = [
             f"{org_id}--oauth-{connection_name}-client-secret",
             f"{org_id}--oauth-{connection_name}-response"
@@ -384,7 +384,7 @@ class OAuthStorageService:
         }
 
         # Store OAuth response JSON in Key Vault
-        keyvault = KeyVaultManager()
+        keyvault = KeyVaultClient()
         keyvault_secret_name = f"{org_id}--oauth-{connection_name}-response"
 
         try:

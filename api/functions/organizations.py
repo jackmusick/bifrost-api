@@ -5,18 +5,18 @@ CRUD operations for client organizations
 
 import logging
 import json
-import uuid
 from datetime import datetime
 from typing import List
 import azure.functions as func
 
-from shared.auth import require_auth, get_org_id
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context, require_platform_admin
+from shared.storage import get_table_service
 from shared.models import (
     Organization,
     CreateOrganizationRequest,
     UpdateOrganizationRequest,
-    ErrorResponse
+    ErrorResponse,
+    generate_entity_id
 )
 from pydantic import ValidationError
 
@@ -28,8 +28,9 @@ bp = func.Blueprint()
 
 @bp.function_name("orgs_list_organizations")
 @bp.route(route="organizations", methods=["GET"])
-@require_auth
-def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/organizations
     List all organizations
@@ -37,35 +38,25 @@ def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
     - Platform Admins: See all organizations
     - Organization Users: Access denied (403)
     """
-    from shared.auth import is_platform_admin
-
-    user = req.user
-    logger.info(f"User {user.email} listing organizations")
+    context = req.context
+    logger.info(f"User {context.user_id} listing organizations")
 
     try:
-        # Check if user is platform admin
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied org list access")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can list organizations"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
+        # Platform admin - get ALL organizations from Entities table
+        entities_service = get_table_service("Entities", context)
 
-        # Platform admin - get ALL organizations
-        orgs_service = TableStorageService("Organizations")
-        org_entities = list(orgs_service.query_entities(
-            filter="PartitionKey eq 'ORG' and IsActive eq true"
+        # Query for all org entities in GLOBAL partition
+        org_entities = list(entities_service.query_entities(
+            filter="PartitionKey eq 'GLOBAL' and RowKey ge 'org:' and RowKey lt 'org;' and IsActive eq true"
         ))
 
         organizations = []
         for org_entity in org_entities:
+            # Extract UUID from RowKey "org:uuid"
+            org_id = org_entity["RowKey"].split(":", 1)[1]
+
             org = Organization(
-                id=org_entity["RowKey"],
+                id=org_id,
                 name=org_entity["Name"],
                 tenantId=org_entity.get("TenantId"),
                 isActive=org_entity.get("IsActive", True),
@@ -78,7 +69,7 @@ def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
         # Sort by name
         organizations.sort(key=lambda o: o["name"])
 
-        logger.info(f"Returning {len(organizations)} organizations for platform admin {user.email}")
+        logger.info(f"Returning {len(organizations)} organizations for platform admin {context.user_id}")
 
         return func.HttpResponse(
             json.dumps(organizations),
@@ -101,39 +92,41 @@ def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("orgs_create_organization")
 @bp.route(route="organizations", methods=["POST"])
-@require_auth
-def create_organization(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def create_organization(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/organizations
     Create a new client organization
     """
-    user = req.user
-    logger.info(f"User {user.email} creating organization")
+    context = req.context
+    logger.info(f"User {context.user_id} creating organization")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         create_request = CreateOrganizationRequest(**request_body)
 
-        # Generate new organization ID
-        org_id = f"org-{uuid.uuid4()}"
+        # Generate new organization UUID
+        org_id = generate_entity_id()
         now = datetime.utcnow()
 
         # Create entity for Table Storage
+        # Organizations go in GLOBAL partition with RowKey "org:uuid"
         entity = {
-            "PartitionKey": "ORG",
-            "RowKey": org_id,
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"org:{org_id}",
             "Name": create_request.name,
             "TenantId": create_request.tenantId,
             "IsActive": True,
             "CreatedAt": now.isoformat(),
-            "CreatedBy": user.user_id,
+            "CreatedBy": context.user_id,
             "UpdatedAt": now.isoformat()
         }
 
-        # Insert into Organizations table
-        orgs_service = TableStorageService("Organizations")
-        orgs_service.insert_entity(entity)
+        # Insert into Entities table
+        entities_service = get_table_service("Entities", context)
+        entities_service.insert_entity(entity)
 
         logger.info(f"Created organization {org_id}: {create_request.name}")
 
@@ -144,7 +137,7 @@ def create_organization(req: func.HttpRequest) -> func.HttpResponse:
             tenantId=create_request.tenantId,
             isActive=True,
             createdAt=now,
-            createdBy=user.user_id,
+            createdBy=context.user_id,
             updatedAt=now
         )
 
@@ -194,37 +187,24 @@ def create_organization(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("orgs_get_organization")
 @bp.route(route="organizations/{orgId}", methods=["GET"])
-@require_auth
-def get_organization(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def get_organization(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/organizations/{orgId}
     Get a specific organization by ID
+
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     org_id = req.route_params.get("orgId")
 
-    logger.info(f"User {user.email} retrieving organization {org_id}")
+    logger.info(f"User {context.user_id} retrieving organization {org_id}")
 
     try:
-        # Check if user has access to this org
-        permissions_service = TableStorageService("UserPermissions")
-        permission = permissions_service.get_entity(user.user_id, org_id)
-
-        if not permission:
-            logger.warning(f"User {user.email} denied access to org {org_id}")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="You don't have access to this organization"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
-        # Get organization
-        orgs_service = TableStorageService("Organizations")
-        org_entity = orgs_service.get_entity("ORG", org_id)
+        # Get organization from Entities table
+        entities_service = get_table_service("Entities", context)
+        org_entity = entities_service.get_entity("GLOBAL", f"org:{org_id}")
 
         if not org_entity:
             logger.warning(f"Organization {org_id} not found")
@@ -240,7 +220,7 @@ def get_organization(req: func.HttpRequest) -> func.HttpResponse:
 
         # Create response model
         org = Organization(
-            id=org_entity["RowKey"],
+            id=org_id,
             name=org_entity["Name"],
             tenantId=org_entity.get("TenantId"),
             isActive=org_entity.get("IsActive", True),
@@ -270,47 +250,24 @@ def get_organization(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("orgs_update_organization")
 @bp.route(route="organizations/{orgId}", methods=["PATCH"])
-@require_auth
-def update_organization(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
     """
     PATCH /api/organizations/{orgId}
     Update an organization
+
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     org_id = req.route_params.get("orgId")
 
-    logger.info(f"User {user.email} updating organization {org_id}")
+    logger.info(f"User {context.user_id} updating organization {org_id}")
 
     try:
-        # Check if user has canManageConfig permission
-        permissions_service = TableStorageService("UserPermissions")
-        permission = permissions_service.get_entity(user.user_id, org_id)
-
-        if not permission:
-            error = ErrorResponse(
-                error="Forbidden",
-                message="You don't have access to this organization"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
-        if not permission.get("CanManageConfig", False):
-            error = ErrorResponse(
-                error="Forbidden",
-                message="You don't have permission to manage this organization"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
-        # Get existing organization
-        orgs_service = TableStorageService("Organizations")
-        org_entity = orgs_service.get_entity("ORG", org_id)
+        # Get existing organization from Entities table
+        entities_service = get_table_service("Entities", context)
+        org_entity = entities_service.get_entity("GLOBAL", f"org:{org_id}")
 
         if not org_entity:
             error = ErrorResponse(
@@ -340,13 +297,13 @@ def update_organization(req: func.HttpRequest) -> func.HttpResponse:
         org_entity["UpdatedAt"] = datetime.utcnow().isoformat()
 
         # Update in table storage
-        orgs_service.update_entity(org_entity)
+        entities_service.update_entity(org_entity)
 
         logger.info(f"Updated organization {org_id}")
 
         # Create response model
         org = Organization(
-            id=org_entity["RowKey"],
+            id=org_id,
             name=org_entity["Name"],
             tenantId=org_entity.get("TenantId"),
             isActive=org_entity.get("IsActive", True),
@@ -389,47 +346,24 @@ def update_organization(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("orgs_delete_organization")
 @bp.route(route="organizations/{orgId}", methods=["DELETE"])
-@require_auth
-def delete_organization(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_organization(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/organizations/{orgId}
     Soft delete an organization (sets IsActive=False)
+
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     org_id = req.route_params.get("orgId")
 
-    logger.info(f"User {user.email} deleting organization {org_id}")
+    logger.info(f"User {context.user_id} deleting organization {org_id}")
 
     try:
-        # Check if user has canManageConfig permission
-        permissions_service = TableStorageService("UserPermissions")
-        permission = permissions_service.get_entity(user.user_id, org_id)
-
-        if not permission:
-            error = ErrorResponse(
-                error="Forbidden",
-                message="You don't have access to this organization"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
-        if not permission.get("CanManageConfig", False):
-            error = ErrorResponse(
-                error="Forbidden",
-                message="You don't have permission to manage this organization"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
-        # Get existing organization
-        orgs_service = TableStorageService("Organizations")
-        org_entity = orgs_service.get_entity("ORG", org_id)
+        # Get existing organization from Entities table
+        entities_service = get_table_service("Entities", context)
+        org_entity = entities_service.get_entity("GLOBAL", f"org:{org_id}")
 
         if not org_entity:
             error = ErrorResponse(
@@ -446,7 +380,7 @@ def delete_organization(req: func.HttpRequest) -> func.HttpResponse:
         org_entity["IsActive"] = False
         org_entity["UpdatedAt"] = datetime.utcnow().isoformat()
 
-        orgs_service.update_entity(org_entity)
+        entities_service.update_entity(org_entity)
 
         logger.info(f"Soft deleted organization {org_id}")
 

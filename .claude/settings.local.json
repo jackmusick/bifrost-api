@@ -77,7 +77,14 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(PYTHONPATH=/Users/jack/GitHub/bifrost-integrations/workflows python -m pytest:*)",
-      "Bash(export PYTHONPATH=/Users/jack/GitHub/bifrost-integrations/workflows)"
+      "Bash(export PYTHONPATH=/Users/jack/GitHub/bifrost-integrations/workflows)",
+      "SlashCommand(/speckit.tasks)",
+      "Bash(PYTHONPATH=. python -m pytest:*)",
+      "Bash(xargs:*)",
+      "Bash(func start --port 7072)",
+      "Bash(lsof:*)",
+      "Bash(timeout:*)",
+      "Read(//private/tmp/**)"
     ],
     "deny": [],
     "ask": []

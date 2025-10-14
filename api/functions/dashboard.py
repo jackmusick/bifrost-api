@@ -5,13 +5,16 @@ Provides aggregated statistics for the dashboard
 
 import json
 import azure.functions as func
+import logging
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-from shared.auth import require_auth, is_platform_admin
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context
+from shared.storage import get_table_service
 from shared.models import ErrorResponse
+
+logger = logging.getLogger(__name__)
 
 # Create blueprint for dashboard endpoints
 bp = func.Blueprint()
@@ -19,13 +22,10 @@ bp = func.Blueprint()
 
 @bp.function_name("dashboard_metrics")
 @bp.route(route="dashboard/metrics", methods=["GET"])
-@require_auth
-def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/dashboard/metrics
-
-    Query parameters:
-    - orgId: Organization ID (optional for platform admins)
 
     Returns aggregated metrics:
     - Workflow count
@@ -34,18 +34,11 @@ def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
     - Recent failures
     - Success rate
     """
-    from shared.auth_headers import get_auth_headers
     from functions.workflows import get_workflows_engine_config
     import requests
-    import logging
 
-    logger = logging.getLogger(__name__)
-    user = req.user
-
-    # Get auth headers - org is optional for platform admins
-    org_id, user_id, error = get_auth_headers(req, require_org=False)
-    if error:
-        return error
+    context = req.context
+    logger.info(f"User {context.user_id} retrieving dashboard metrics")
 
     try:
         metrics = {}
@@ -75,44 +68,25 @@ def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
             metrics["workflowCount"] = 0
             metrics["dataProviderCount"] = 0
 
-        # 2. Get form count
-        forms_service = TableStorageService("Forms")
+        # 2. Get form count from Entities table
+        entities_service = get_table_service("Entities", context)
 
-        if org_id:
-            # Org-specific + global forms
-            org_forms = list(forms_service.query_entities(
-                filter=f"PartitionKey eq '{org_id}' and IsActive eq true"
-            ))
-            global_forms = list(forms_service.query_entities(
-                filter="PartitionKey eq 'GLOBAL' and IsActive eq true"
-            ))
-            metrics["formCount"] = len(org_forms) + len(global_forms)
-        else:
-            # Platform admin - all forms
-            all_forms = list(forms_service.query_entities(
-                filter="IsActive eq true"
-            ))
-            metrics["formCount"] = len(all_forms)
+        # Query forms in context scope (automatically applied by table service)
+        form_entities = list(entities_service.query_entities(
+            filter="RowKey ge 'form:' and RowKey lt 'form;' and IsActive eq true"
+        ))
+        metrics["formCount"] = len(form_entities)
 
         # 3. Get execution statistics (last 30 days)
-        executions_service = TableStorageService("WorkflowExecutions")
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
 
         # Calculate reverse timestamp for 30 days ago
         reverse_ts_30_days = _get_reverse_timestamp(thirty_days_ago)
 
-        # Build filter for last 30 days
-        if org_id:
-            # Single org
-            filter_query = f"PartitionKey eq '{org_id}' and RowKey le '{reverse_ts_30_days}_~'"
-        else:
-            # Platform admin - need to query all orgs
-            # This is expensive, but acceptable for admin dashboard
-            filter_query = f"RowKey le '{reverse_ts_30_days}_~'"
-
-        # Use projection to only fetch needed fields
-        execution_entities = list(executions_service.query_entities(
-            filter=filter_query,
+        # Query executions from Entities table (newest first due to reverse timestamp)
+        # RowKey format: execution:reverse_ts_uuid
+        execution_entities = list(entities_service.query_entities(
+            filter=f"RowKey ge 'execution:' and RowKey le 'execution:{reverse_ts_30_days}_~'",
             select=["ExecutionId", "Status", "WorkflowName", "StartedAt", "CompletedAt", "ErrorMessage", "DurationMs"]
         ))
 
@@ -164,7 +138,7 @@ def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
 
         metrics["recentFailures"] = recent_failures
 
-        logger.info(f"Dashboard metrics retrieved for org {org_id or 'all'}")
+        logger.info(f"Dashboard metrics retrieved for user {context.user_id}")
 
         return func.HttpResponse(
             json.dumps(metrics),

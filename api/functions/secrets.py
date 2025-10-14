@@ -17,9 +17,10 @@ from shared.models import (
     SecretResponse,
     ErrorResponse
 )
-from shared.keyvault import KeyVaultManager
-from shared.auth import require_auth, is_platform_admin
-from shared.storage import TableStorageService
+from shared.keyvault import KeyVaultClient
+from shared.decorators import with_request_context, require_platform_admin
+from shared.storage import get_table_service
+from shared.validation import check_key_vault_available, create_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ bp = func.Blueprint()
 
 # Initialize Key Vault manager
 try:
-    kv_manager = KeyVaultManager()
+    kv_manager = KeyVaultClient()
 except Exception as e:
     logger.error(f"Failed to initialize Key Vault manager: {e}")
     kv_manager = None
@@ -36,8 +37,9 @@ except Exception as e:
 
 @bp.function_name("secrets_list")
 @bp.route(route="secrets", methods=["GET"])
-@require_auth
-def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/secrets
 
@@ -46,44 +48,24 @@ def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
     Query Parameters:
         org_id (optional): Filter secrets by organization (returns org-scoped + GLOBAL secrets)
 
+    Platform admin only endpoint
+
     Returns:
         200: SecretListResponse with list of secret names
-        403: Permission denied (not platform admin)
         500: Key Vault error or service unavailable
 
     Example:
         GET /api/secrets?org_id=org-123
         Response: {"secrets": ["org-123--api-key", "GLOBAL--smtp-password"], "orgId": "org-123", "count": 2}
     """
-    user = req.user
-    logger.info(f"User {user.email} listing secrets")
+    context = req.context
+    logger.info(f"User {context.user_id} listing secrets")
 
     try:
-        # Check if user is platform admin
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied secrets list access")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can list secrets"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Check if Key Vault is available
-        if not kv_manager:
-            logger.error("Key Vault manager not initialized")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Key Vault service is not configured"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
+        is_available, error_response = check_key_vault_available(kv_manager)
+        if not is_available:
+            return error_response
 
         # Get org_id filter from query params
         org_id = req.params.get('org_id')
@@ -124,8 +106,9 @@ def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("secrets_create")
 @bp.route(route="secrets", methods=["POST"])
-@require_auth
-def create_secret(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def create_secret(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/secrets
 
@@ -138,10 +121,11 @@ def create_secret(req: func.HttpRequest) -> func.HttpResponse:
             "value": "secret-value"
         }
 
+    Platform admin only endpoint
+
     Returns:
         201: SecretResponse with created secret details
         400: Validation error or invalid request
-        403: Permission denied (not platform admin)
         409: Secret already exists
         500: Key Vault error
 
@@ -150,35 +134,14 @@ def create_secret(req: func.HttpRequest) -> func.HttpResponse:
         Body: {"orgId": "org-123", "secretKey": "api-key", "value": "my-secret"}
         Response: {"name": "org-123--api-key", "orgId": "org-123", "secretKey": "api-key", "value": "my-secret", "message": "Secret created successfully"}
     """
-    user = req.user
-    logger.info(f"User {user.email} creating secret")
+    context = req.context
+    logger.info(f"User {context.user_id} creating secret")
 
     try:
-        # Check if user is platform admin
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied secret create access")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can create secrets"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Check if Key Vault is available
-        if not kv_manager:
-            logger.error("Key Vault manager not initialized")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Key Vault service is not configured"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
+        is_available, error_response = check_key_vault_available(kv_manager)
+        if not is_available:
+            return error_response
 
         # Parse request body
         try:
@@ -242,7 +205,7 @@ def create_secret(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(
             f"Created secret {secret_name}",
-            extra={"secret_name": secret_name, "org_id": create_request.orgId, "created_by": user.email}
+            extra={"secret_name": secret_name, "org_id": create_request.orgId, "created_by": context.user_id}
         )
 
         return func.HttpResponse(
@@ -266,8 +229,9 @@ def create_secret(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("secrets_update")
 @bp.route(route="secrets/{name}", methods=["PUT"])
-@require_auth
-def update_secret(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def update_secret(req: func.HttpRequest) -> func.HttpResponse:
     """
     PUT /api/secrets/{name}
 
@@ -281,10 +245,11 @@ def update_secret(req: func.HttpRequest) -> func.HttpResponse:
             "value": "new-secret-value"
         }
 
+    Platform admin only endpoint
+
     Returns:
         200: SecretResponse with updated secret details
         400: Validation error or invalid request
-        403: Permission denied (not platform admin)
         404: Secret not found
         500: Key Vault error
 
@@ -293,36 +258,15 @@ def update_secret(req: func.HttpRequest) -> func.HttpResponse:
         Body: {"value": "updated-secret"}
         Response: {"name": "org-123--api-key", "orgId": "org-123", "secretKey": "api-key", "value": "updated-secret", "message": "Secret updated successfully"}
     """
-    user = req.user
+    context = req.context
     secret_name = req.route_params.get('name')
-    logger.info(f"User {user.email} updating secret {secret_name}")
+    logger.info(f"User {context.user_id} updating secret {secret_name}")
 
     try:
-        # Check if user is platform admin
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied secret update access")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can update secrets"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Check if Key Vault is available
-        if not kv_manager:
-            logger.error("Key Vault manager not initialized")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Key Vault service is not configured"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
+        is_available, error_response = check_key_vault_available(kv_manager)
+        if not is_available:
+            return error_response
 
         # Validate secret name format
         if not secret_name or '--' not in secret_name:
@@ -385,7 +329,7 @@ def update_secret(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(
             f"Updated secret {secret_name}",
-            extra={"secret_name": secret_name, "org_id": org_id, "updated_by": user.email}
+            extra={"secret_name": secret_name, "org_id": org_id, "updated_by": context.user_id}
         )
 
         return func.HttpResponse(
@@ -422,8 +366,9 @@ def update_secret(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("secrets_delete")
 @bp.route(route="secrets/{name}", methods=["DELETE"])
-@require_auth
-def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/secrets/{name}
 
@@ -435,9 +380,10 @@ def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
     Path Parameters:
         name: Full secret name (e.g., "org-123--api-key" or "GLOBAL--smtp-password")
 
+    Platform admin only endpoint
+
     Returns:
         200: Success message
-        403: Permission denied (not platform admin)
         404: Secret not found
         409: Secret is referenced by configurations (warning)
         500: Key Vault error
@@ -446,36 +392,15 @@ def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
         DELETE /api/secrets/org-123--api-key
         Response: {"name": "org-123--api-key", "orgId": "org-123", "secretKey": "api-key", "message": "Secret deleted successfully"}
     """
-    user = req.user
+    context = req.context
     secret_name = req.route_params.get('name')
-    logger.info(f"User {user.email} deleting secret {secret_name}")
+    logger.info(f"User {context.user_id} deleting secret {secret_name}")
 
     try:
-        # Check if user is platform admin
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied secret delete access")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can delete secrets"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Check if Key Vault is available
-        if not kv_manager:
-            logger.error("Key Vault manager not initialized")
-            error = ErrorResponse(
-                error="ServiceUnavailable",
-                message="Key Vault service is not configured"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=503,
-                mimetype="application/json"
-            )
+        is_available, error_response = check_key_vault_available(kv_manager)
+        if not is_available:
+            return error_response
 
         # Validate secret name format
         if not secret_name or '--' not in secret_name:
@@ -494,18 +419,28 @@ def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
         org_id = parts[0]
         secret_key = parts[1]
 
-        # Check if secret is referenced in configurations or OAuth connections
+        # Check if secret is referenced in configurations
         # This is a hard block - we check Table Storage for all references
         dependencies = []
 
         try:
-            config_service = TableStorageService("Config")
+            # Create a context that can query all orgs (platform admin scope)
+            # We need to check both GLOBAL and all org-specific configs
+            from shared.request_context import RequestContext
 
             # Check GLOBAL configs
             try:
-                global_configs = list(config_service.query_by_org("GLOBAL"))
+                global_context = RequestContext(
+                    user_id=context.user_id,
+                    user_type=context.user_type,
+                    org_scope="GLOBAL"
+                )
+                config_service = get_table_service("Config", global_context)
+                global_configs = list(config_service.query_entities(
+                    filter="RowKey ge 'config:' and RowKey lt 'config;'"
+                ))
                 for config in global_configs:
-                    if config.get('Type') == 'secret_ref' and config.get('Value') == secret_name:
+                    if config.get('Type') == 'SECRET_REF' and config.get('Value') == secret_name:
                         config_key = config.get('RowKey', '').replace('config:', '', 1)
                         dependencies.append({
                             "type": "config",
@@ -515,12 +450,20 @@ def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
             except Exception as e:
                 logger.debug(f"Could not check GLOBAL configs: {e}")
 
-            # Check org-specific configs if not GLOBAL
+            # Check org-specific configs if the secret is org-scoped
             if org_id != "GLOBAL":
                 try:
-                    org_configs = list(config_service.query_by_org(org_id))
+                    org_context = RequestContext(
+                        user_id=context.user_id,
+                        user_type=context.user_type,
+                        org_scope=org_id
+                    )
+                    config_service = get_table_service("Config", org_context)
+                    org_configs = list(config_service.query_entities(
+                        filter="RowKey ge 'config:' and RowKey lt 'config;'"
+                    ))
                     for config in org_configs:
-                        if config.get('Type') == 'secret_ref' and config.get('Value') == secret_name:
+                        if config.get('Type') == 'SECRET_REF' and config.get('Value') == secret_name:
                             config_key = config.get('RowKey', '').replace('config:', '', 1)
                             dependencies.append({
                                 "type": "config",
@@ -529,31 +472,6 @@ def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
                             })
                 except Exception as e:
                     logger.debug(f"Could not check org configs for {org_id}: {e}")
-
-            # Check OAuth connections (they store Key Vault secret names in Config entries)
-            # OAuth connections create configs with Value=keyvault_secret_name
-            oauth_table = TableStorageService("OAuthConnections")
-
-            # Check GLOBAL OAuth connections
-            try:
-                global_oauth = list(oauth_table.query_by_org("GLOBAL"))
-                for conn in global_oauth:
-                    # OAuth connections reference Key Vault secrets via Config entries
-                    # We've already found those above in the Config check
-                    pass
-            except Exception as e:
-                logger.debug(f"Could not check GLOBAL OAuth connections: {e}")
-
-            # Check org OAuth connections if not GLOBAL
-            if org_id != "GLOBAL":
-                try:
-                    org_oauth = list(oauth_table.query_by_org(org_id))
-                    for conn in org_oauth:
-                        # OAuth connections reference Key Vault secrets via Config entries
-                        # We've already found those above in the Config check
-                        pass
-                except Exception as e:
-                    logger.debug(f"Could not check org OAuth connections for {org_id}: {e}")
 
         except Exception as e:
             logger.warning(f"Could not check for secret references: {e}")
@@ -593,7 +511,7 @@ def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(
             f"Deleted secret {secret_name}",
-            extra={"secret_name": secret_name, "org_id": org_id, "deleted_by": user.email}
+            extra={"secret_name": secret_name, "org_id": org_id, "deleted_by": context.user_id}
         )
 
         return func.HttpResponse(

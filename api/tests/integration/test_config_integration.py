@@ -61,7 +61,7 @@ def sample_org_config(config_service):
 class TestConfigGlobalScope:
     """Test GLOBAL config operations"""
 
-    def test_create_global_config(self, config_service):
+    async def test_create_global_config(self, config_service):
         """Should create GLOBAL config successfully"""
         entity = {
             "PartitionKey": "GLOBAL",
@@ -84,7 +84,7 @@ class TestConfigGlobalScope:
         # Cleanup
         config_service.delete_entity("GLOBAL", "config:test_key")
 
-    def test_get_global_config(self, config_service, sample_global_config):
+    async def test_get_global_config(self, config_service, sample_global_config):
         """Should retrieve GLOBAL config"""
         result = config_service.get_entity("GLOBAL", "config:default_timeout")
 
@@ -92,7 +92,7 @@ class TestConfigGlobalScope:
         assert result["Value"] == "300"
         assert result["Type"] == ConfigType.INT.value
 
-    def test_update_global_config(self, config_service, sample_global_config):
+    async def test_update_global_config(self, config_service, sample_global_config):
         """Should update existing GLOBAL config"""
         # Update the config
         sample_global_config["Value"] = "450"
@@ -103,7 +103,7 @@ class TestConfigGlobalScope:
         result = config_service.get_entity("GLOBAL", "config:default_timeout")
         assert result["Value"] == "450"
 
-    def test_delete_global_config(self, config_service):
+    async def test_delete_global_config(self, config_service):
         """Should delete GLOBAL config"""
         # Create config
         entity = {
@@ -127,7 +127,7 @@ class TestConfigGlobalScope:
 class TestConfigOrgScope:
     """Test org-specific config operations"""
 
-    def test_create_org_config(self, config_service):
+    async def test_create_org_config(self, config_service):
         """Should create org-specific config successfully"""
         entity = {
             "PartitionKey": "org-456",
@@ -150,7 +150,7 @@ class TestConfigOrgScope:
         # Cleanup
         config_service.delete_entity("org-456", "config:org_setting")
 
-    def test_get_org_config(self, config_service, sample_org_config):
+    async def test_get_org_config(self, config_service, sample_org_config):
         """Should retrieve org-specific config"""
         result = config_service.get_entity(
             "test-org-123", "config:default_timeout")
@@ -163,7 +163,7 @@ class TestConfigOrgScope:
 class TestConfigFallbackPattern:
     """Test config fallback: org-specific � GLOBAL � None"""
 
-    def test_fallback_finds_org_config_first(self, config_service, sample_global_config, sample_org_config):
+    async def test_fallback_finds_org_config_first(self, config_service, sample_global_config, sample_org_config):
         """When both GLOBAL and org config exist, should return org config"""
         result = get_config_value("default_timeout", "test-org-123")
 
@@ -171,7 +171,7 @@ class TestConfigFallbackPattern:
         assert result["Value"] == "600"  # Org value, not GLOBAL 300
         assert result["PartitionKey"] == "test-org-123"
 
-    def test_fallback_to_global_when_org_missing(self, config_service, sample_global_config):
+    async def test_fallback_to_global_when_org_missing(self, config_service, sample_global_config):
         """When org config missing, should fallback to GLOBAL"""
         result = get_config_value("default_timeout", "nonexistent-org")
 
@@ -179,13 +179,13 @@ class TestConfigFallbackPattern:
         assert result["Value"] == "300"  # GLOBAL value
         assert result["PartitionKey"] == "GLOBAL"
 
-    def test_fallback_returns_none_when_both_missing(self, config_service):
+    async def test_fallback_returns_none_when_both_missing(self, config_service):
         """When both org and GLOBAL missing, should return None"""
         result = get_config_value("nonexistent_key", "test-org-123")
 
         assert result is None
 
-    def test_fallback_global_only_when_no_org_id(self, config_service, sample_global_config):
+    async def test_fallback_global_only_when_no_org_id(self, config_service, sample_global_config):
         """When no org_id provided, should only check GLOBAL"""
         result = get_config_value("default_timeout", None)
 
@@ -197,46 +197,46 @@ class TestConfigFallbackPattern:
 class TestSensitiveValueMasking:
     """Test sensitive config value masking"""
 
-    def test_mask_secret_keyword(self):
+    async def test_mask_secret_keyword(self):
         """Keys containing 'secret' should be masked"""
         masked = mask_sensitive_value(
             "client_secret", "super-secret-value-12345")
         assert masked == "supe***2345"
         assert "secret" not in masked.lower()
 
-    def test_mask_password_keyword(self):
+    async def test_mask_password_keyword(self):
         """Keys containing 'password' should be masked"""
         masked = mask_sensitive_value("database_password", "MyP@ssw0rd123!")
         assert masked == "MyP@***123!"
 
-    def test_mask_token_keyword(self):
+    async def test_mask_token_keyword(self):
         """Keys containing 'token' should be masked"""
         masked = mask_sensitive_value("api_token", "tok_abcdefgh1234567890")
         assert masked == "tok_***7890"
 
-    def test_mask_key_keyword(self):
+    async def test_mask_key_keyword(self):
         """Keys containing 'key' should be masked"""
         masked = mask_sensitive_value("api_key", "sk_live_1234567890abcdef")
         assert masked == "sk_l***cdef"
 
-    def test_mask_credential_keyword(self):
+    async def test_mask_credential_keyword(self):
         """Keys containing 'credential' should be masked"""
         masked = mask_sensitive_value(
             "azure_credential", "credential_value_123")
         assert masked == "cred***_123"
 
-    def test_no_mask_for_non_sensitive(self):
+    async def test_no_mask_for_non_sensitive(self):
         """Non-sensitive keys should not be masked"""
         value = "normal_config_value"
         masked = mask_sensitive_value("timeout", value)
         assert masked == value
 
-    def test_mask_short_value(self):
+    async def test_mask_short_value(self):
         """Short sensitive values should be fully masked"""
         masked = mask_sensitive_value("secret", "short")
         assert masked == "***"
 
-    def test_mask_case_insensitive(self):
+    async def test_mask_case_insensitive(self):
         """Masking should be case-insensitive"""
         masked = mask_sensitive_value("CLIENT_SECRET", "value123")
         assert "***" in masked
@@ -245,7 +245,7 @@ class TestSensitiveValueMasking:
 class TestConfigTypes:
     """Test different config value types"""
 
-    def test_string_type(self, config_service):
+    async def test_string_type(self, config_service):
         """Should store and retrieve STRING type"""
         entity = {
             "PartitionKey": "GLOBAL",
@@ -263,7 +263,7 @@ class TestConfigTypes:
 
         config_service.delete_entity("GLOBAL", "config:app_name")
 
-    def test_int_type(self, config_service):
+    async def test_int_type(self, config_service):
         """Should store and retrieve INT type"""
         entity = {
             "PartitionKey": "GLOBAL",
@@ -281,7 +281,7 @@ class TestConfigTypes:
 
         config_service.delete_entity("GLOBAL", "config:max_retries")
 
-    def test_bool_type(self, config_service):
+    async def test_bool_type(self, config_service):
         """Should store and retrieve BOOL type"""
         entity = {
             "PartitionKey": "GLOBAL",
@@ -299,7 +299,7 @@ class TestConfigTypes:
 
         config_service.delete_entity("GLOBAL", "config:debug_mode")
 
-    def test_secret_ref_type(self, config_service):
+    async def test_secret_ref_type(self, config_service):
         """Should store SECRET_REF type (pointer to Key Vault)"""
         entity = {
             "PartitionKey": "test-org",
@@ -321,7 +321,7 @@ class TestConfigTypes:
 class TestConfigQueryByScope:
     """Test querying configs by scope (GLOBAL vs org)"""
 
-    def test_query_global_configs(self, config_service, sample_global_config):
+    async def test_query_global_configs(self, config_service, sample_global_config):
         """Should query all GLOBAL configs"""
         # Create another GLOBAL config
         entity2 = {
@@ -344,7 +344,7 @@ class TestConfigQueryByScope:
         # Cleanup
         config_service.delete_entity("GLOBAL", "config:another_setting")
 
-    def test_query_org_configs(self, config_service, sample_org_config):
+    async def test_query_org_configs(self, config_service, sample_org_config):
         """Should query all configs for specific org"""
         # Create another org config
         entity2 = {

@@ -9,15 +9,20 @@ import json
 from datetime import datetime
 from typing import List
 import azure.functions as func
-import uuid
 
-from shared.auth import require_auth, is_platform_admin
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context, require_platform_admin
+from shared.authorization import (
+    can_user_view_form,
+    can_user_execute_form,
+    get_user_visible_forms
+)
+from shared.storage import get_table_service
 from shared.models import (
     Form,
     CreateFormRequest,
     UpdateFormRequest,
-    ErrorResponse
+    ErrorResponse,
+    generate_entity_id
 )
 from pydantic import ValidationError
 
@@ -29,112 +34,52 @@ bp = func.Blueprint()
 
 @bp.function_name("forms_list_forms")
 @bp.route(route="forms", methods=["GET"])
-@require_auth
-def list_forms(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/forms
-    List all forms for an organization (org-specific + global)
-
-    Headers:
-    - X-Organization-Id: Organization ID (optional for platform admins)
+    List all forms visible to the user
 
     Returns:
-    - Platform admins without org: All forms (all orgs + global)
-    - Platform admins with org: Org forms + global forms
-    - Org users: Only forms they can access (public forms + forms assigned to their groups)
+    - Platform admins: All forms in their org scope (or all if no org)
+    - Regular users: Only forms they can access (public forms + forms assigned to their roles)
     """
-    from shared.auth_headers import get_auth_headers
-
-    user = req.user
-
-    # Get auth headers - org is optional for platform admins
-    org_id, user_id, error = get_auth_headers(req, require_org=False)
-    if error:
-        return error
-
-    logger.info(f"User {user.email} listing forms for org {org_id}")
+    context = req.context
+    logger.info(f"User {context.user_id} listing forms (org: {context.org_id or 'GLOBAL'})")
 
     try:
-        # Query Forms table for forms
-        forms_service = TableStorageService("Forms")
+        # Use authorization helper to get visible forms
+        form_entities = get_user_visible_forms(context)
 
-        # Platform admins without org_id: get ALL forms from all orgs
-        if not org_id:
-            logger.info(f"Platform admin {user.email} listing all forms (no org filter)")
-            all_forms = list(forms_service.query_entities(
-                filter="IsActive eq true"
-            ))
-        else:
-            # Org-specific query: get org-specific + global forms
-            # Get org-specific forms
-            org_forms = list(forms_service.query_entities(
-                filter=f"PartitionKey eq '{org_id}' and IsActive eq true"
-            ))
-
-            # Get global forms
-            global_forms = list(forms_service.query_entities(
-                filter="PartitionKey eq 'GLOBAL' and IsActive eq true"
-            ))
-
-            all_forms = org_forms + global_forms
-
-        # Filter forms based on user access
-        is_admin = is_platform_admin(user.user_id)
-
-        # Get user's groups for filtering (if not admin)
-        user_group_ids = []
-        if not is_admin:
-            user_roles_service = TableStorageService("UserRoles")
-            user_role_entities = list(user_roles_service.query_entities(
-                filter=f"UserId eq '{user.user_id}'"
-            ))
-            user_group_ids = [entity["RoleId"] for entity in user_role_entities]
-            logger.debug(f"User {user.user_id} is in groups: {user_group_ids}")
-
-        # Get form-group assignments for filtering
-        form_roles_service = TableStorageService("FormRoles")
-
-        # Convert to response models and filter
+        # Convert to response models
         forms = []
-        for entity in all_forms:
+        for entity in form_entities:
+            # Extract form UUID from RowKey "form:uuid"
+            form_id = entity["RowKey"].split(":", 1)[1]
+
             # Parse formSchema from JSON string
             form_schema = json.loads(entity["FormSchema"]) if isinstance(entity["FormSchema"], str) else entity["FormSchema"]
 
-            # Check if user has access to this form
-            if is_admin:
-                has_access = True
-            elif entity.get("IsPublic", False):
-                has_access = True
-            else:
-                # Check if form is assigned to any of user's groups
-                form_id = entity["RowKey"]
-                has_access = False
-                for group_id in user_group_ids:
-                    if form_roles_service.get_entity(form_id, f"role:{group_id}"):
-                        has_access = True
-                        break
-
-            if has_access:
-                form = Form(
-                    id=entity["RowKey"],
-                    orgId=entity["PartitionKey"],
-                    name=entity["Name"],
-                    description=entity.get("Description"),
-                    linkedWorkflow=entity["LinkedWorkflow"],
-                    formSchema=form_schema,
-                    isActive=entity.get("IsActive", True),
-                    isGlobal=entity["PartitionKey"] == "GLOBAL",
-                    isPublic=entity.get("IsPublic", False),
-                    createdBy=entity["CreatedBy"],
-                    createdAt=entity["CreatedAt"],
-                    updatedAt=entity["UpdatedAt"]
-                )
-                forms.append(form.model_dump(mode="json"))
+            form = Form(
+                id=form_id,
+                orgId=entity["PartitionKey"],
+                name=entity["Name"],
+                description=entity.get("Description"),
+                linkedWorkflow=entity["LinkedWorkflow"],
+                formSchema=form_schema,
+                isActive=entity.get("IsActive", True),
+                isGlobal=entity["PartitionKey"] == "GLOBAL",
+                isPublic=entity.get("IsPublic", False),
+                createdBy=entity["CreatedBy"],
+                createdAt=entity["CreatedAt"],
+                updatedAt=entity["UpdatedAt"]
+            )
+            forms.append(form.model_dump(mode="json"))
 
         # Sort by name
         forms.sort(key=lambda f: f["name"])
 
-        logger.info(f"Returning {len(forms)} forms for org {org_id} (user has access to)")
+        logger.info(f"Returning {len(forms)} forms for user {context.user_id}")
 
         return func.HttpResponse(
             json.dumps(forms),
@@ -157,77 +102,52 @@ def list_forms(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_create_form")
 @bp.route(route="forms", methods=["POST"])
-@require_auth
-def create_form(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def create_form(req: func.HttpRequest) -> func.HttpResponse:
     """
-    POST /api/forms    Create a new form
+    POST /api/forms
+    Create a new form
 
-    Headers:
-    - X-Organization-Id: Organization ID (required)
-
-    Requires: User must be PlatformAdmin
+    Platform admin only endpoint
     """
-    user = req.user
-    org_id = req.headers.get("X-Organization-Id")
-
-    logger.info(f"User {user.email} creating form for org {org_id}")
+    context = req.context
+    logger.info(f"User {context.user_id} creating form for org {context.org_id or 'GLOBAL'}")
 
     try:
-        # Validate query parameter
-        if not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="X-Organization-Id header is required"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # Only platform admins can create forms
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied form creation")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can create forms"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Parse and validate request body
         request_body = req.get_json()
         create_request = CreateFormRequest(**request_body)
 
-        # Create form entity
-        form_id = str(uuid.uuid4())
+        # Generate form UUID
+        form_id = generate_entity_id()
         now = datetime.utcnow()
 
         # Determine partition key based on isGlobal flag
-        partition_key = "GLOBAL" if create_request.isGlobal else org_id
+        # If isGlobal is True, store in GLOBAL partition
+        # Otherwise, store in org's partition (from context.scope)
+        partition_key = "GLOBAL" if create_request.isGlobal else context.scope
 
+        # Create form entity for Entities table
         form_entity = {
             "PartitionKey": partition_key,
-            "RowKey": form_id,
+            "RowKey": f"form:{form_id}",
             "Name": create_request.name,
             "Description": create_request.description,
             "LinkedWorkflow": create_request.linkedWorkflow,
             "FormSchema": json.dumps(create_request.formSchema.model_dump()),
             "IsActive": True,
             "IsPublic": create_request.isPublic,
-            "CreatedBy": user.user_id,
+            "CreatedBy": context.user_id,
             "CreatedAt": now.isoformat(),
             "UpdatedAt": now.isoformat()
         }
 
-        # Insert entity
-        forms_service = TableStorageService("Forms")
-        forms_service.upsert_entity(form_entity)
+        # Insert entity into Entities table
+        entities_service = get_table_service("Entities", context)
+        entities_service.insert_entity(form_entity)
 
-        logger.info(f"Created form {form_id} for org {org_id}")
+        logger.info(f"Created form {form_id} in partition {partition_key}")
 
         # Create response model
         form_response = Form(
@@ -240,7 +160,7 @@ def create_form(req: func.HttpRequest) -> func.HttpResponse:
             isActive=True,
             isGlobal=create_request.isGlobal,
             isPublic=create_request.isPublic,
-            createdBy=user.user_id,
+            createdBy=context.user_id,
             createdAt=now,
             updatedAt=now
         )
@@ -299,28 +219,23 @@ def create_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_get_form")
 @bp.route(route="forms/{formId}", methods=["GET"])
-@require_auth
-def get_form(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def get_form(req: func.HttpRequest) -> func.HttpResponse:
     """
-    GET /api/forms/{formId}    Get a specific form by ID
+    GET /api/forms/{formId}
+    Get a specific form by ID
 
-    Headers:
-    - X-Organization-Id: Organization ID (optional - platform admins can omit)
-
-    Requires: User must have access to the form (public or group-assigned)
+    Requires: User must have access to the form (public or role-assigned)
     """
-    from shared.auth import has_form_access
-
-    user = req.user
+    context = req.context
     form_id = req.route_params.get("formId")
-    org_id = req.headers.get("X-Organization-Id")
 
-    logger.info(f"User {user.email} retrieving form {form_id} (org: {org_id or 'none'})")
+    logger.info(f"User {context.user_id} retrieving form {form_id}")
 
     try:
         # Check if user has access to this form
-        if not has_form_access(user.user_id, form_id):
-            logger.warning(f"User {user.email} denied access to form {form_id}")
+        if not can_user_view_form(context, form_id):
+            logger.warning(f"User {context.user_id} denied access to form {form_id}")
             error = ErrorResponse(
                 error="Forbidden",
                 message="You don't have permission to access this form"
@@ -331,16 +246,17 @@ def get_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Try to get form from org partition (if provided), then GLOBAL
-        forms_service = TableStorageService("Forms")
+        # Get form from Entities table
+        # Try context.scope first, then GLOBAL
+        entities_service = get_table_service("Entities", context)
         form_entity = None
 
-        if org_id:
-            form_entity = forms_service.get_entity(org_id, form_id)
+        # Try to get from context scope
+        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
 
-        if not form_entity:
+        if not form_entity and context.scope != "GLOBAL":
             # Try GLOBAL partition
-            form_entity = forms_service.get_entity("GLOBAL", form_id)
+            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
 
         if not form_entity:
             logger.warning(f"Form {form_id} not found")
@@ -372,7 +288,7 @@ def get_form(req: func.HttpRequest) -> func.HttpResponse:
 
         # Convert to response model
         form = Form(
-            id=form_entity["RowKey"],
+            id=form_id,
             orgId=form_entity["PartitionKey"],
             name=form_entity["Name"],
             description=form_entity.get("Description"),
@@ -409,59 +325,34 @@ def get_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_update_form")
 @bp.route(route="forms/{formId}", methods=["PUT"])
-@require_auth
-def update_form(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def update_form(req: func.HttpRequest) -> func.HttpResponse:
     """
-    PUT /api/forms/{formId}    Update a form
+    PUT /api/forms/{formId}
+    Update a form
 
-    Headers:
-    - X-Organization-Id: Organization ID (required)
-
-    Requires: User must be PlatformAdmin
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     form_id = req.route_params.get("formId")
-    org_id = req.headers.get("X-Organization-Id")
 
-    logger.info(f"User {user.email} updating form {form_id}")
+    logger.info(f"User {context.user_id} updating form {form_id}")
 
     try:
-        # Validate query parameter
-        if not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="X-Organization-Id header is required"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
-
-        # Only platform admins can update forms
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied form update")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can update forms"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Parse and validate request body
         request_body = req.get_json()
         update_request = UpdateFormRequest(**request_body)
 
-        # Get existing form
-        forms_service = TableStorageService("Forms")
-        form_entity = forms_service.get_entity(org_id, form_id)
+        # Get existing form from Entities table
+        entities_service = get_table_service("Entities", context)
 
-        if not form_entity:
+        # Try context scope first, then GLOBAL
+        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
+
+        if not form_entity and context.scope != "GLOBAL":
             # Try GLOBAL partition
-            form_entity = forms_service.get_entity("GLOBAL", form_id)
+            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
 
         if not form_entity:
             logger.warning(f"Form {form_id} not found")
@@ -488,19 +379,6 @@ def update_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Cannot update GLOBAL forms from org context
-        if form_entity["PartitionKey"] == "GLOBAL":
-            logger.warning(f"User {user.email} attempted to update global form {form_id}")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Cannot update global forms"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Update entity fields
         now = datetime.utcnow()
 
@@ -516,7 +394,7 @@ def update_form(req: func.HttpRequest) -> func.HttpResponse:
         form_entity["UpdatedAt"] = now.isoformat()
 
         # Update entity
-        forms_service.upsert_entity(form_entity)
+        entities_service.update_entity(form_entity)
 
         logger.info(f"Updated form {form_id}")
 
@@ -525,7 +403,7 @@ def update_form(req: func.HttpRequest) -> func.HttpResponse:
 
         # Create response model
         form_response = Form(
-            id=form_entity["RowKey"],
+            id=form_id,
             orgId=form_entity["PartitionKey"],
             name=form_entity["Name"],
             description=form_entity.get("Description"),
@@ -593,66 +471,30 @@ def update_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_delete_form")
 @bp.route(route="forms/{formId}", methods=["DELETE"])
-@require_auth
-def delete_form(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_form(req: func.HttpRequest) -> func.HttpResponse:
     """
-    DELETE /api/forms/{formId}    Soft delete a form (set IsActive=False)
+    DELETE /api/forms/{formId}
+    Soft delete a form (set IsActive=False)
 
-    Headers:
-    - X-Organization-Id: Organization ID (required)
-
-    Requires: User must be PlatformAdmin
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     form_id = req.route_params.get("formId")
-    org_id = req.headers.get("X-Organization-Id")
 
-    logger.info(f"User {user.email} deleting form {form_id}")
+    logger.info(f"User {context.user_id} deleting form {form_id}")
 
     try:
-        # Validate query parameter
-        if not org_id:
-            error = ErrorResponse(
-                error="BadRequest",
-                message="X-Organization-Id header is required"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
-                mimetype="application/json"
-            )
+        # Get existing form from Entities table
+        entities_service = get_table_service("Entities", context)
 
-        # Only platform admins can delete forms
-        if not is_platform_admin(user.user_id):
-            logger.warning(f"User {user.email} is not a platform admin - denied form deletion")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="Only platform administrators can delete forms"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
+        # Try context scope first, then GLOBAL
+        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
 
-        # Get existing form
-        forms_service = TableStorageService("Forms")
-        form_entity = forms_service.get_entity(org_id, form_id)
-
-        if not form_entity:
-            # Try GLOBAL partition (but can't delete global forms)
-            form_entity = forms_service.get_entity("GLOBAL", form_id)
-            if form_entity:
-                logger.warning(f"User {user.email} attempted to delete global form {form_id}")
-                error = ErrorResponse(
-                    error="Forbidden",
-                    message="Cannot delete global forms"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=403,
-                    mimetype="application/json"
-                )
+        if not form_entity and context.scope != "GLOBAL":
+            # Try GLOBAL partition
+            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
 
         if not form_entity:
             # Idempotent - return 204 even if not found
@@ -662,7 +504,7 @@ def delete_form(req: func.HttpRequest) -> func.HttpResponse:
         # Soft delete by setting IsActive=False
         form_entity["IsActive"] = False
         form_entity["UpdatedAt"] = datetime.utcnow().isoformat()
-        forms_service.upsert_entity(form_entity)
+        entities_service.update_entity(form_entity)
 
         logger.info(f"Soft deleted form {form_id}")
 
@@ -683,13 +525,11 @@ def delete_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_submit_form")
 @bp.route(route="forms/{formId}/submit", methods=["POST"])
-@require_auth
-def submit_form(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def submit_form(req: func.HttpRequest) -> func.HttpResponse:
     """
-    POST /api/forms/{formId}/submit    Submit a form and execute the linked workflow
-
-    Headers:
-    - X-Organization-Id: Organization ID (optional for platform admins)
+    POST /api/forms/{formId}/submit
+    Submit a form and execute the linked workflow
 
     Request Body:
     {
@@ -701,23 +541,20 @@ def submit_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Returns workflow execution result
 
-    Requires: User must have access to the form (public or group-assigned)
+    Requires: User must have access to execute the form (public or role-assigned)
     """
     import requests
-    from shared.auth import has_form_access
     from functions.workflows import get_workflows_engine_config
 
-    user = req.user
+    context = req.context
     form_id = req.route_params.get("formId")
-    org_id = req.headers.get("X-Organization-Id")
 
-    logger.info(f"User {user.email} submitting form {form_id} (org: {org_id or 'none'})")
+    logger.info(f"User {context.user_id} submitting form {form_id}")
 
     try:
-
-        # Check if user has access to this form
-        if not has_form_access(user.user_id, form_id):
-            logger.warning(f"User {user.email} denied access to form {form_id}")
+        # Check if user has permission to execute this form
+        if not can_user_execute_form(context, form_id):
+            logger.warning(f"User {context.user_id} denied access to execute form {form_id}")
             error = ErrorResponse(
                 error="Forbidden",
                 message="You don't have permission to execute this form"
@@ -728,16 +565,15 @@ def submit_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Get form - try org partition (if provided), then GLOBAL
-        forms_service = TableStorageService("Forms")
-        form_entity = None
+        # Get form from Entities table
+        entities_service = get_table_service("Entities", context)
 
-        if org_id:
-            form_entity = forms_service.get_entity(org_id, form_id)
+        # Try context scope first, then GLOBAL
+        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
 
-        if not form_entity:
+        if not form_entity and context.scope != "GLOBAL":
             # Try GLOBAL partition
-            form_entity = forms_service.get_entity("GLOBAL", form_id)
+            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
 
         if not form_entity:
             logger.warning(f"Form {form_id} not found")
@@ -795,12 +631,12 @@ def submit_form(req: func.HttpRequest) -> func.HttpResponse:
 
         headers = {
             "Content-Type": "application/json",
-            "X-User-Id": user.user_id
+            "X-User-Id": context.user_id
         }
 
-        # Only add org header if present
-        if org_id:
-            headers["X-Organization-Id"] = org_id
+        # Add org header if present
+        if context.org_id:
+            headers["X-Organization-Id"] = context.org_id
 
         # Execute workflow - only add code parameter if function key is configured (not needed locally)
         workflow_url = f"{workflow_engine_url}/api/workflows/{linked_workflow}"

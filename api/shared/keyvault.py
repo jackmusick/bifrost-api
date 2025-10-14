@@ -20,7 +20,7 @@ from azure.core.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-class KeyVaultManager:
+class KeyVaultClient:
     """
     Manager for Azure Key Vault with full CRUD operations.
 

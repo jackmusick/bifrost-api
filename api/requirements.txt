@@ -3,15 +3,46 @@ azure-functions
 azure-data-tables
 azure-identity
 azure-keyvault-secrets
+azure-storage-blob
+azure-storage-file-share>=12.14.1
 
-# HTTP client (for calling Workflows Function App)
+# Microsoft Graph and API integrations
+msgraph-sdk
+msal
+
+# HTTP and async
 aiohttp
 requests
+httpx
 
-# Data validation and models
+# Data processing and validation
 pydantic
+PyYAML
+python-dateutil
+pytz
 
-# Development and testing
+# Common data manipulation
+jmespath
+
+# Templating (for email, reports, etc.)
+jinja2
+
+# Common file formats
+openpyxl  # Excel
+python-docx  # Word documents
+
+# Git integration for workspace sync
+gitpython
+
+# Utilities
 python-dotenv
-pyjwt[crypto]  # Only used in test fixtures
+python-json-logger
+
+# Testing
+pytest
+pytest-asyncio
 pytest-cov  # Coverage reporting
+pyjwt[crypto]  # Only used in test fixtures
+
+# Development and debugging
+debugpy>=1.8.0

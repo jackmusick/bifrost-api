@@ -10,10 +10,10 @@ import azure.functions as func
 from typing import Optional, List
 from datetime import datetime
 
-from shared.auth import require_auth
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context
+from shared.authorization import can_user_view_execution, get_user_executions
+from shared.storage import get_table_service
 from shared.models import WorkflowExecution, ExecutionStatus
-from shared.auth_headers import get_scope_context
 
 logger = logging.getLogger(__name__)
 
@@ -23,73 +23,37 @@ bp = func.Blueprint()
 
 @bp.function_name("executions_list")
 @bp.route(route="executions", methods=["GET"])
-@require_auth
-def list_executions(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/executions
-
-    Headers:
-    - X-Organization-Id: Organization ID (optional, defaults to GLOBAL for admins)
 
     Query parameters:
     - workflowName: Filter by workflow name (optional)
     - status: Filter by status (optional)
     - limit: Max results (optional, default 50, max 1000)
-    - continuationToken: Pagination token (optional)
-    - showAll: If "true", platform admins see executions across ALL orgs (optional, admin-only)
 
-    Returns: List of workflow executions with optional continuation token
+    Returns: List of workflow executions (filtered by user permissions)
+    - Platform admins: All executions in their org scope
+    - Regular users: Only THEIR executions
     """
     try:
-        # Get scope context - platform admins can have org_id=None for GLOBAL scope
-        org_id, user_id, error = get_scope_context(req)
-        if error:
-            return error
+        context = req.context
 
         # Get query parameters
         workflow_name = req.params.get('workflowName')
         status = req.params.get('status')
         limit = int(req.params.get('limit', '50'))
-        continuation_token = req.params.get('continuationToken')
-        show_all = req.params.get('showAll', '').lower() == 'true'
 
         # Cap limit at 1000 to prevent abuse
         limit = min(limit, 1000)
 
-        # Check if user is platform admin for showAll functionality
-        from shared.auth import get_authenticated_user, is_platform_admin
-        user = get_authenticated_user(req)
-        user_is_admin = is_platform_admin(user.user_id) if user else False
+        # Use authorization helper to get executions user can view
+        executions_list = get_user_executions(context, limit=limit)
 
-        # Security: Only platform admins can use showAll
-        if show_all and not user_is_admin:
-            return func.HttpResponse(
-                json.dumps({
-                    'error': 'Forbidden',
-                    'message': 'Only platform administrators can view executions across all organizations'
-                }),
-                status_code=403,
-                mimetype='application/json'
-            )
-
-        # Query WorkflowExecutions table
-        executions_service = TableStorageService('WorkflowExecutions')
-
-        # Build filter query
-        filter_parts = []
-
-        # Partition filtering: showAll admins query across all partitions
-        if show_all and user_is_admin:
-            # No PartitionKey filter - query all orgs
-            logger.info(f"PlatformAdmin {user.user_id} querying executions across ALL organizations")
-        else:
-            # Standard scoped query - use "GLOBAL" partition for None org_id
-            partition_key = org_id or "GLOBAL"
-            filter_parts.append(f"PartitionKey eq '{partition_key}'")
-            logger.info(f"User {user.user_id} querying executions for partition: {partition_key}")
-
+        # Apply additional filters if specified
         if workflow_name:
-            filter_parts.append(f"WorkflowName eq '{workflow_name}'")
+            executions_list = [e for e in executions_list if e.get('WorkflowName') == workflow_name]
 
         if status:
             # Map frontend status to backend status
@@ -101,31 +65,14 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
                 'failed': 'Failed'
             }
             backend_status = status_map.get(status.lower(), status)
-            filter_parts.append(f"Status eq '{backend_status}'")
+            executions_list = [e for e in executions_list if e.get('Status') == backend_status]
 
-        filter_query = ' and '.join(filter_parts) if filter_parts else None
-
-        # Use projection to only fetch needed fields (skip large JSON blobs)
-        # Include PartitionKey to show org scope in UI
-        select_fields = [
-            'PartitionKey', 'ExecutionId', 'WorkflowName', 'Status', 'ExecutedBy',
-            'StartedAt', 'CompletedAt', 'FormId', 'DurationMs', 'ErrorMessage'
-        ]
-
-        # Query with server-side pagination
-        query_result = executions_service.table_client.query_entities(
-            query_filter=filter_query,
-            select=select_fields,
-            results_per_page=limit
-        )
-
-        # Get the first page
-        page_iterator = query_result.by_page(continuation_token=continuation_token)
-        page = next(page_iterator)
+        # Apply limit
+        executions_list = executions_list[:limit]
 
         # Convert to response format (match WorkflowExecution Pydantic model)
         executions = []
-        for entity in page:
+        for entity in executions_list:
             # Helper to convert datetime field to ISO string
             def to_iso(value):
                 if value is None:
@@ -134,8 +81,15 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
                     return value  # Already a string
                 return value.isoformat()  # Convert datetime to string
 
+            # Extract execution ID from RowKey "execution:reverse_ts_uuid"
+            row_key_parts = entity['RowKey'].split(':', 1)
+            if len(row_key_parts) > 1:
+                execution_id = entity.get('ExecutionId', row_key_parts[1])
+            else:
+                execution_id = entity.get('ExecutionId')
+
             execution = {
-                'executionId': entity.get('ExecutionId'),
+                'executionId': execution_id,
                 'workflowName': entity.get('WorkflowName'),
                 'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
                 'status': _map_status_to_frontend(entity.get('Status')),
@@ -148,13 +102,11 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
             }
             executions.append(execution)
 
-        # Get continuation token for next page
-        next_token = page_iterator.continuation_token
+        logger.info(f"Returning {len(executions)} executions for user {context.user_id}")
 
-        # Build response with pagination info
+        # Build response
         response_data = {
-            'executions': executions,
-            'continuationToken': next_token
+            'executions': executions
         }
 
         return func.HttpResponse(
@@ -164,6 +116,7 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+        logger.error(f"Error listing executions: {str(e)}", exc_info=True)
         return func.HttpResponse(
             json.dumps({
                 'error': 'InternalServerError',
@@ -176,34 +129,27 @@ def list_executions(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("executions_get")
 @bp.route(route="executions/{executionId}", methods=["GET"])
-@require_auth
-def get_execution(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/executions/{executionId}
 
-    Headers:
-    - X-Organization-Id: Organization ID (optional, defaults to GLOBAL)
-
-    Returns: Single workflow execution details
+    Returns: Single workflow execution details (with authorization check)
+    - Platform admins: Can view any execution in their scope
+    - Regular users: Can only view THEIR executions
     """
     try:
-        # Get scope context - platform admins can have org_id=None for GLOBAL scope
-        org_id, user_id, error = get_scope_context(req)
-        if error:
-            return error
+        context = req.context
 
         # Get execution ID from route
         execution_id = req.route_params.get('executionId')
 
-        # TODO: Validate user has permission to view org executions
+        # Query Entities table for execution
+        entities_service = get_table_service('Entities', context)
 
-        # Query WorkflowExecutions table
-        executions_service = TableStorageService('WorkflowExecutions')
-
-        # Find the execution by ExecutionId - use "GLOBAL" partition for None org_id
-        partition_key = org_id or "GLOBAL"
-        filter_query = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
-        entities = list(executions_service.query_entities(filter_query))
+        # Find the execution by ExecutionId field (stored in entity)
+        filter_query = f"ExecutionId eq '{execution_id}'"
+        entities = list(entities_service.query_entities(filter_query))
 
         if not entities:
             return func.HttpResponse(
@@ -216,6 +162,18 @@ def get_execution(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         entity = entities[0]
+
+        # Check if user has permission to view this execution
+        if not can_user_view_execution(context, entity):
+            logger.warning(f"User {context.user_id} denied access to execution {execution_id}")
+            return func.HttpResponse(
+                json.dumps({
+                    'error': 'Forbidden',
+                    'message': 'You do not have permission to view this execution'
+                }),
+                status_code=403,
+                mimetype='application/json'
+            )
 
         # Helper to convert datetime field to ISO string
         def to_iso(value):
@@ -249,6 +207,7 @@ def get_execution(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
+        logger.error(f"Error getting execution: {str(e)}", exc_info=True)
         return func.HttpResponse(
             json.dumps({
                 'error': 'InternalServerError',

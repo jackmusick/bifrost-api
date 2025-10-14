@@ -10,9 +10,9 @@ from datetime import datetime
 from urllib.parse import urlencode
 import azure.functions as func
 from pydantic import ValidationError
-
-from shared.auth import require_auth
-from shared.keyvault import KeyVaultManager
+from shared.types import get_context, get_route_param
+from shared.decorators import with_request_context
+from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 from services.oauth_storage_service import OAuthStorageService
 from services.oauth_provider import OAuthProviderClient
@@ -33,21 +33,20 @@ bp = func.Blueprint()
 
 @bp.function_name("oauth_create_connection")
 @bp.route(route="oauth/connections", methods=["POST"])
-@require_auth
+@with_request_context
 async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections
     Create a new OAuth connection
 
     Request body: CreateOAuthConnectionRequest
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
 
     Requires: User must be authenticated (platform admin or have canManageConfig)
     """
-    user = req.user
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    org_id = context.scope
 
-    logger.info(f"User {user.email} creating OAuth connection for org {org_id}")
+    logger.info(f"User {context.email} creating OAuth connection for org {org_id}")
 
     try:
         # Parse and validate request body
@@ -74,7 +73,7 @@ async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
         connection = await oauth_service.create_connection(
             org_id=org_id,
             request=create_request,
-            created_by=user.user_id
+            created_by=context.user_id
         )
 
         logger.info(f"Created OAuth connection: {create_request.connection_name}")
@@ -127,22 +126,20 @@ async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_list_connections")
 @bp.route(route="oauth/connections", methods=["GET"])
-@require_auth
+@with_request_context
 async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/connections
     List OAuth connections for an organization
 
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
-
     Returns org-specific connections + GLOBAL connections (with org-specific taking precedence)
 
     Requires: User must be authenticated
     """
-    user = req.user
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    org_id = context.scope
 
-    logger.info(f"User {user.email} listing OAuth connections for org {org_id}")
+    logger.info(f"User {context.email} listing OAuth connections for org {org_id}")
 
     try:
         # Create OAuth storage service
@@ -177,22 +174,21 @@ async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_get_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["GET"])
-@require_auth
+@with_request_context
 async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/connections/{connection_name}
     Get OAuth connection details
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
 
     Requires: User must be authenticated
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
-    logger.info(f"User {user.email} retrieving OAuth connection {connection_name} for org {org_id}")
+    logger.info(f"User {context.email} retrieving OAuth connection {connection_name} for org {org_id}")
 
     try:
         # Create OAuth storage service
@@ -235,23 +231,22 @@ async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_update_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["PUT"])
-@require_auth
+@with_request_context
 async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     PUT /api/oauth/connections/{connection_name}
     Update an OAuth connection
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
     Request body: UpdateOAuthConnectionRequest
 
     Requires: User must be authenticated (platform admin or have canManageConfig)
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
-    logger.info(f"User {user.email} updating OAuth connection {connection_name} for org {org_id}")
+    logger.info(f"User {context.email} updating OAuth connection {connection_name} for org {org_id}")
 
     try:
         # Parse and validate request body
@@ -266,7 +261,7 @@ async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
             org_id=org_id,
             connection_name=connection_name,
             request=update_request,
-            updated_by=user.user_id
+            updated_by=context.user_id
         )
 
         if not connection:
@@ -330,24 +325,23 @@ async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_delete_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["DELETE"])
-@require_auth
+@with_request_context
 async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/oauth/connections/{connection_name}
     Delete an OAuth connection
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
 
     Requires: User must be authenticated (platform admin or have canManageConfig)
 
     Note: This will be enhanced in User Story 5 to check for dependent workflows
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
-    logger.info(f"User {user.email} deleting OAuth connection {connection_name} for org {org_id}")
+    logger.info(f"User {context.email} deleting OAuth connection {connection_name} for org {org_id}")
 
     try:
         # Create OAuth storage service
@@ -383,7 +377,7 @@ async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_authorize")
 @bp.route(route="oauth/connections/{connection_name}/authorize", methods=["POST"])
-@require_auth
+@with_request_context
 async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections/{connection_name}/authorize
@@ -392,15 +386,14 @@ async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse
     Returns authorization URL for user to visit
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
 
     Requires: User must be authenticated
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
-    logger.info(f"User {user.email} initiating OAuth authorization for {connection_name}")
+    logger.info(f"User {context.email} initiating OAuth authorization for {connection_name}")
 
     try:
         # Get OAuth storage service
@@ -494,7 +487,7 @@ async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse
 
 @bp.function_name("oauth_cancel_authorization")
 @bp.route(route="oauth/connections/{connection_name}/cancel", methods=["POST"])
-@require_auth
+@with_request_context
 async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections/{connection_name}/cancel
@@ -503,15 +496,14 @@ async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse
     Useful when authorization is stuck in waiting_callback state
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
 
     Requires: User must be authenticated
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
-    logger.info(f"User {user.email} canceling OAuth authorization for {connection_name}")
+    logger.info(f"User {context.email} canceling OAuth authorization for {connection_name}")
 
     try:
         # Get OAuth storage service
@@ -561,29 +553,28 @@ async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse
 
 @bp.function_name("oauth_refresh_token")
 @bp.route(route="oauth/connections/{connection_name}/refresh", methods=["POST"])
-@require_auth
+@with_request_context
 async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections/{connection_name}/refresh
     Manually refresh OAuth access token using refresh token
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to GLOBAL)
 
     Requires: User must be authenticated
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
-    logger.info(f"User {user.email} refreshing OAuth token for {connection_name}")
+    logger.info(f"User {context.email} refreshing OAuth token for {connection_name}")
 
     try:
         # Create services
         oauth_service = OAuthStorageService()
         oauth_provider = OAuthProviderClient()
         config_service = TableStorageService("Config")
-        keyvault = KeyVaultManager()
+        keyvault = KeyVaultClient()
 
         # Get connection
         connection = await oauth_service.get_connection(org_id, connection_name)
@@ -757,7 +748,7 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
             refresh_token=new_refresh_token,  # Use new refresh token if provided, else keep old one
             expires_at=result["expires_at"],
             token_type=result["token_type"],
-            updated_by=user.user_id
+            updated_by=context.user_id
         )
 
         # Update connection status with last_refresh_at timestamp
@@ -812,7 +803,7 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
 
     Note: This endpoint is public (no auth required) - called from UI callback page
     """
-    connection_name = req.route_params.get("connection_name")
+    connection_name = get_route_param(req, "connection_name")
 
     # Get code and state from POST body instead of query params
     try:
@@ -901,7 +892,7 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
                 if client_secret_config:
                     keyvault_secret_name = client_secret_config.get("Value")
                     if keyvault_secret_name:
-                        keyvault = KeyVaultManager()
+                        keyvault = KeyVaultClient()
                         secret = keyvault._client.get_secret(keyvault_secret_name)
                         client_secret = secret.value
                         logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
@@ -1009,7 +1000,7 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_get_credentials")
 @bp.route(route="oauth/credentials/{connection_name}", methods=["GET"])
-@require_auth
+@with_request_context
 async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/credentials/{connection_name}
@@ -1019,27 +1010,26 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
     This endpoint is intended for workflow consumption only.
 
     Route params: connection_name
-    Headers: X-Organization-Id (optional, defaults to caller's org, falls back to GLOBAL)
 
     Requires: User must be authenticated
 
     Security: This endpoint returns sensitive credentials. It should only be
     called from authenticated contexts (workflows, functions).
     """
-    user = req.user
-    connection_name = req.route_params.get("connection_name")
-    org_id = req.headers.get("X-Organization-Id", user.org_id if hasattr(user, "org_id") else "GLOBAL")
+    context = get_context(req)
+    connection_name = get_route_param(req, "connection_name")
+    org_id = context.scope
 
     logger.info(
-        f"User {user.email} retrieving OAuth credentials for {connection_name}",
-        extra={"org_id": org_id, "user_id": user.user_id}
+        f"User {context.email} retrieving OAuth credentials for {connection_name}",
+        extra={"org_id": org_id, "user_id": context.user_id}
     )
 
     try:
         # Create services
         oauth_service = OAuthStorageService()
         config_service = TableStorageService("Config")
-        keyvault = KeyVaultManager()
+        keyvault = KeyVaultClient()
 
         # Get connection with org→GLOBAL fallback
         connection = await oauth_service.get_connection(org_id, connection_name)
@@ -1163,7 +1153,7 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(
             f"Retrieved OAuth credentials for {connection_name}",
-            extra={"org_id": org_id, "user_id": user.user_id}
+            extra={"org_id": org_id, "user_id": context.user_id}
         )
 
         return func.HttpResponse(
@@ -1189,7 +1179,7 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_refresh_job_status")
 @bp.route(route="oauth/refresh_job_status", methods=["GET"])
-@require_auth
+@with_request_context
 async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/refresh_job_status
@@ -1199,8 +1189,8 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
 
     Requires: User must be authenticated
     """
-    user = req.user
-    logger.info(f"User {user.email} retrieving OAuth refresh job status")
+    context = get_context(req)
+    logger.info(f"User {context.email} retrieving OAuth refresh job status")
 
     try:
         # Get job status from SystemConfig table

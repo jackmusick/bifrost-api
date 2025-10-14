@@ -10,23 +10,23 @@ import logging
 from azure.data.tables import TableServiceClient
 from azure.core.exceptions import ResourceExistsError
 
-# Table names
+# Table names (consolidated from 14 → 4 tables)
 REQUIRED_TABLES = [
-    "Organizations",      # Master list of client organizations
-    # Config key-value pairs (GLOBAL or org-specific via PartitionKey)
-    "Config",
-    # Integration settings (Microsoft Graph, HaloPSA, etc.)
-    "IntegrationConfig",
-    "Users",              # MSP technician accounts and organization users
-    "UserPermissions",    # User->Orgs mapping (dual-indexed)
-    "OrgPermissions",     # Org->Users mapping (dual-indexed)
-    "Roles",              # Role definitions for organization users
-    "UserRoles",          # User->Role assignments (many-to-many)
-    # Form->Role access control (which roles can access which forms)
-    "FormRoles",
-    "Forms",              # Form definitions with field schemas
-    "WorkflowExecutions",  # Execution history by organization
-    "UserExecutions",     # Execution history by user (dual-indexed)
+    "Config",        # Consolidated: Config + IntegrationConfig + OAuthConnections + SystemConfig
+                     # PartitionKey: org_id (UUID) or "GLOBAL"
+                     # RowKey: config:{key}, integration:{provider}, oauth:{provider}, system:{key}
+
+    "Entities",      # Consolidated: Organizations + Forms + WorkflowExecutions + AuditLog
+                     # PartitionKey: org_id (UUID) or "GLOBAL"
+                     # RowKey: org:{uuid}, form:{uuid}, execution:{reverse_ts}_{uuid}, audit:{reverse_ts}_{uuid}
+
+    "Relationships", # Consolidated: Roles + UserRoles + FormRoles + UserPermissions + OrgPermissions + UserExecutions
+                     # PartitionKey: "GLOBAL" (all relationships in one partition)
+                     # RowKey: role:{uuid}, assignedrole:{uuid}:{id}, userrole:{id}:{uuid}, formrole:{uuid}:{uuid}, etc.
+
+    "Users",         # Unchanged - cross-org user lookup
+                     # PartitionKey: user_id
+                     # RowKey: "user"
 ]
 
 logger = logging.getLogger(__name__)

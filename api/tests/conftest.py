@@ -63,49 +63,46 @@ def azurite_tables():
 
 
 @pytest.fixture
-def table_service(azurite_tables):
-    """Returns TableStorageService instance for Organizations table"""
-    return TableStorageService("Organizations")
+def entities_service(azurite_tables):
+    """Returns TableStorageService instance for Entities table (orgs, forms, executions, audit)"""
+    return TableStorageService("Entities")
 
 
 @pytest.fixture
-def org_config_service(azurite_tables):
-    """Returns TableStorageService instance for OrgConfig table"""
-    return TableStorageService("OrgConfig")
+def config_service(azurite_tables):
+    """Returns TableStorageService instance for Config table (config, integrations, oauth, system)"""
+    return TableStorageService("Config")
 
 
 @pytest.fixture
-def user_service(azurite_tables):
+def users_service(azurite_tables):
     """Returns TableStorageService instance for Users table"""
     return TableStorageService("Users")
 
 
 @pytest.fixture
-def permissions_service(azurite_tables):
-    """Returns TableStorageService instance for UserPermissions table"""
-    return TableStorageService("UserPermissions")
-
-
-@pytest.fixture
-def forms_service(azurite_tables):
-    """Returns TableStorageService instance for Forms table"""
-    return TableStorageService("Forms")
+def relationships_service(azurite_tables):
+    """Returns TableStorageService instance for Relationships table (roles, permissions, etc.)"""
+    return TableStorageService("Relationships")
 
 
 # ==================== ENTITY FIXTURES ====================
 
 @pytest.fixture
-def test_org(table_service) -> Dict[str, Any]:
+def test_org(entities_service) -> Dict[str, Any]:
     """
-    Creates a test organization
+    Creates a test organization in the new 4-table structure
+    Table: Entities
+    PartitionKey: GLOBAL
+    RowKey: org:{uuid}
     Returns dict with org_id, name, tenant_id
     """
-    org_id = f"org-test-{uuid.uuid4()}"
+    org_id = str(uuid.uuid4())
     tenant_id = str(uuid.uuid4())
 
     entity = {
-        "PartitionKey": "ORG",
-        "RowKey": org_id,
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"org:{org_id}",
         "Name": "Test Organization",
         "TenantId": tenant_id,
         "IsActive": True,
@@ -114,7 +111,7 @@ def test_org(table_service) -> Dict[str, Any]:
         "UpdatedAt": datetime.utcnow().isoformat(),
     }
 
-    table_service.insert_entity(entity)
+    entities_service.insert_entity(entity)
 
     return {
         "org_id": org_id,
@@ -124,16 +121,19 @@ def test_org(table_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_org_2(table_service) -> Dict[str, Any]:
+def test_org_2(entities_service) -> Dict[str, Any]:
     """
     Creates a second test organization for multi-org tests
+    Table: Entities
+    PartitionKey: GLOBAL
+    RowKey: org:{uuid}
     """
-    org_id = f"org-test-2-{uuid.uuid4()}"
+    org_id = str(uuid.uuid4())
     tenant_id = str(uuid.uuid4())
 
     entity = {
-        "PartitionKey": "ORG",
-        "RowKey": org_id,
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"org:{org_id}",
         "Name": "Test Organization 2",
         "TenantId": tenant_id,
         "IsActive": True,
@@ -142,7 +142,7 @@ def test_org_2(table_service) -> Dict[str, Any]:
         "UpdatedAt": datetime.utcnow().isoformat(),
     }
 
-    table_service.insert_entity(entity)
+    entities_service.insert_entity(entity)
 
     return {
         "org_id": org_id,
@@ -152,16 +152,19 @@ def test_org_2(table_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_user(user_service) -> Dict[str, Any]:
+def test_user(users_service) -> Dict[str, Any]:
     """
     Creates a test user
+    Table: Users
+    PartitionKey: {user_id}
+    RowKey: "user"
     Returns dict with user_id, email
     """
-    user_id = f"user-test-{uuid.uuid4()}"
+    user_id = str(uuid.uuid4())
 
     entity = {
-        "PartitionKey": "USER",
-        "RowKey": user_id,
+        "PartitionKey": user_id,
+        "RowKey": "user",
         "Email": "test@example.com",
         "DisplayName": "Test User",
         "IsActive": True,
@@ -169,7 +172,7 @@ def test_user(user_service) -> Dict[str, Any]:
         "LastLogin": datetime.utcnow().isoformat(),
     }
 
-    user_service.insert_entity(entity)
+    users_service.insert_entity(entity)
 
     return {
         "user_id": user_id,
@@ -179,15 +182,18 @@ def test_user(user_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_user_2(user_service) -> Dict[str, Any]:
+def test_user_2(users_service) -> Dict[str, Any]:
     """
     Creates a second test user for permission tests
+    Table: Users
+    PartitionKey: {user_id}
+    RowKey: "user"
     """
-    user_id = f"user-test-2-{uuid.uuid4()}"
+    user_id = str(uuid.uuid4())
 
     entity = {
-        "PartitionKey": "USER",
-        "RowKey": user_id,
+        "PartitionKey": user_id,
+        "RowKey": "user",
         "Email": "test2@example.com",
         "DisplayName": "Test User 2",
         "IsActive": True,
@@ -195,7 +201,7 @@ def test_user_2(user_service) -> Dict[str, Any]:
         "LastLogin": datetime.utcnow().isoformat(),
     }
 
-    user_service.insert_entity(entity)
+    users_service.insert_entity(entity)
 
     return {
         "user_id": user_id,
@@ -207,41 +213,57 @@ def test_user_2(user_service) -> Dict[str, Any]:
 # ==================== PERMISSION FIXTURES ====================
 
 @pytest.fixture
-def test_user_with_full_permissions(test_org, test_user, permissions_service) -> Dict[str, Any]:
+def test_user_with_full_permissions(test_org, test_user, relationships_service) -> Dict[str, Any]:
     """
-    Grants all 4 permissions to test_user for test_org
+    Creates a user with full permissions via role assignment in new 4-table structure
+    Table: Relationships
+    PartitionKey: GLOBAL
+    RowKey patterns: userrole:{user_id}:{role_id} and assignedrole:{role_id}:{user_id}
     Returns combined dict with user and org info
     """
-    user_permission_entity = {
-        "PartitionKey": test_user["user_id"],
-        "RowKey": test_org["org_id"],
-        "CanExecuteWorkflows": True,
-        "CanManageConfig": True,
-        "CanManageForms": True,
-        "CanViewHistory": True,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
+    # Create an "admin" role for testing
+    admin_role_id = str(uuid.uuid4())
+    role_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"role:{admin_role_id}",
+        "Name": "Admin",
+        "Description": "Admin role for testing",
+        "IsActive": True,
+        "CreatedBy": "test-system",
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "UpdatedAt": datetime.utcnow().isoformat()
     }
+    relationships_service.insert_entity(role_entity)
 
-    permissions_service.insert_entity(user_permission_entity)
+    # Assign user to admin role (dual-indexed)
+    now = datetime.utcnow()
 
-    # Also insert into OrgPermissions table (dual-indexed)
-    org_permissions_service = TableStorageService("OrgPermissions")
-    org_permission_entity = {
-        "PartitionKey": test_org["org_id"],
-        "RowKey": test_user["user_id"],
-        "CanExecuteWorkflows": True,
-        "CanManageConfig": True,
-        "CanManageForms": True,
-        "CanViewHistory": True,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
+    # Primary index: assignedrole:role_uuid:user_id (for querying users by role)
+    entity1 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"assignedrole:{admin_role_id}:{test_user['user_id']}",
+        "UserId": test_user["user_id"],
+        "RoleId": admin_role_id,
+        "AssignedBy": "test-system",
+        "AssignedAt": now.isoformat()
     }
-    org_permissions_service.insert_entity(org_permission_entity)
+    relationships_service.insert_entity(entity1)
+
+    # Dual index: userrole:user_id:role_uuid (for querying roles by user)
+    entity2 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userrole:{test_user['user_id']}:{admin_role_id}",
+        "UserId": test_user["user_id"],
+        "RoleId": admin_role_id,
+        "AssignedBy": "test-system",
+        "AssignedAt": now.isoformat()
+    }
+    relationships_service.insert_entity(entity2)
 
     return {
         **test_user,
         **test_org,
+        "role_id": admin_role_id,
         "permissions": {
             "canExecuteWorkflows": True,
             "canManageConfig": True,
@@ -252,37 +274,11 @@ def test_user_with_full_permissions(test_org, test_user, permissions_service) ->
 
 
 @pytest.fixture
-def test_user_with_no_permissions(test_org, test_user, permissions_service) -> Dict[str, Any]:
+def test_user_with_no_permissions(test_org, test_user) -> Dict[str, Any]:
     """
-    Creates user with zero permissions (all flags False)
+    Creates user with no role assignments (no permissions)
+    No entities created in Relationships table - user has no roles
     """
-    user_permission_entity = {
-        "PartitionKey": test_user["user_id"],
-        "RowKey": test_org["org_id"],
-        "CanExecuteWorkflows": False,
-        "CanManageConfig": False,
-        "CanManageForms": False,
-        "CanViewHistory": False,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-
-    permissions_service.insert_entity(user_permission_entity)
-
-    # Also insert into OrgPermissions table
-    org_permissions_service = TableStorageService("OrgPermissions")
-    org_permission_entity = {
-        "PartitionKey": test_org["org_id"],
-        "RowKey": test_user["user_id"],
-        "CanExecuteWorkflows": False,
-        "CanManageConfig": False,
-        "CanManageForms": False,
-        "CanViewHistory": False,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-    org_permissions_service.insert_entity(org_permission_entity)
-
     return {
         **test_user,
         **test_org,
@@ -296,40 +292,52 @@ def test_user_with_no_permissions(test_org, test_user, permissions_service) -> D
 
 
 @pytest.fixture
-def test_user_with_limited_permissions(test_org, test_user, permissions_service) -> Dict[str, Any]:
+def test_user_with_limited_permissions(test_org, test_user, relationships_service) -> Dict[str, Any]:
     """
-    Creates user with limited permissions (can execute and view, but not manage)
+    Creates user with limited permissions via "viewer" role assignment
+    Table: Relationships
     """
-    user_permission_entity = {
-        "PartitionKey": test_user["user_id"],
-        "RowKey": test_org["org_id"],
-        "CanExecuteWorkflows": True,
-        "CanManageConfig": False,
-        "CanManageForms": False,
-        "CanViewHistory": True,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
+    # Create a "viewer" role for testing (limited permissions)
+    viewer_role_id = str(uuid.uuid4())
+    role_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"role:{viewer_role_id}",
+        "Name": "Viewer",
+        "Description": "Viewer role for testing (limited permissions)",
+        "IsActive": True,
+        "CreatedBy": "test-system",
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "UpdatedAt": datetime.utcnow().isoformat()
     }
+    relationships_service.insert_entity(role_entity)
 
-    permissions_service.insert_entity(user_permission_entity)
+    # Assign user to viewer role (dual-indexed)
+    now = datetime.utcnow()
 
-    # Also insert into OrgPermissions table
-    org_permissions_service = TableStorageService("OrgPermissions")
-    org_permission_entity = {
-        "PartitionKey": test_org["org_id"],
-        "RowKey": test_user["user_id"],
-        "CanExecuteWorkflows": True,
-        "CanManageConfig": False,
-        "CanManageForms": False,
-        "CanViewHistory": True,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
+    entity1 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"assignedrole:{viewer_role_id}:{test_user['user_id']}",
+        "UserId": test_user["user_id"],
+        "RoleId": viewer_role_id,
+        "AssignedBy": "test-system",
+        "AssignedAt": now.isoformat()
     }
-    org_permissions_service.insert_entity(org_permission_entity)
+    relationships_service.insert_entity(entity1)
+
+    entity2 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userrole:{test_user['user_id']}:{viewer_role_id}",
+        "UserId": test_user["user_id"],
+        "RoleId": viewer_role_id,
+        "AssignedBy": "test-system",
+        "AssignedAt": now.isoformat()
+    }
+    relationships_service.insert_entity(entity2)
 
     return {
         **test_user,
         **test_org,
+        "role_id": viewer_role_id,
         "permissions": {
             "canExecuteWorkflows": True,
             "canManageConfig": False,
@@ -342,9 +350,12 @@ def test_user_with_limited_permissions(test_org, test_user, permissions_service)
 # ==================== CONFIG FIXTURES ====================
 
 @pytest.fixture
-def test_org_with_config(test_org, org_config_service) -> Dict[str, Any]:
+def test_org_with_config(test_org, config_service) -> Dict[str, Any]:
     """
-    Creates org with sample configs
+    Creates org with sample configs in new 4-table structure
+    Table: Config
+    PartitionKey: {org_id}
+    RowKey: config:{key}
     """
     configs = [
         {
@@ -368,7 +379,7 @@ def test_org_with_config(test_org, org_config_service) -> Dict[str, Any]:
     ]
 
     for config in configs:
-        org_config_service.insert_entity(config)
+        config_service.insert_entity(config)
 
     return {
         **test_org,
@@ -382,13 +393,16 @@ def test_org_with_config(test_org, org_config_service) -> Dict[str, Any]:
 # ==================== FORM FIXTURES ====================
 
 @pytest.fixture
-def test_form(test_org, forms_service) -> Dict[str, Any]:
+def test_form(test_org, entities_service) -> Dict[str, Any]:
     """
-    Creates a sample form linked to user_onboarding workflow
+    Creates a sample form linked to user_onboarding workflow in new 4-table structure
+    Table: Entities
+    PartitionKey: {org_id}
+    RowKey: form:{uuid}
     """
     import json
 
-    form_id = f"form-test-{uuid.uuid4()}"
+    form_id = str(uuid.uuid4())
 
     form_schema = {
         "fields": [
@@ -415,18 +429,19 @@ def test_form(test_org, forms_service) -> Dict[str, Any]:
 
     entity = {
         "PartitionKey": test_org["org_id"],
-        "RowKey": form_id,
+        "RowKey": f"form:{form_id}",
         "Name": "Test User Onboarding Form",
         "Description": "Test form for user onboarding workflow",
         "LinkedWorkflow": "user_onboarding",
         "FormSchema": json.dumps(form_schema),
         "IsActive": True,
+        "IsPublic": False,
         "CreatedBy": "test-system",
         "CreatedAt": datetime.utcnow().isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     }
 
-    forms_service.insert_entity(entity)
+    entities_service.insert_entity(entity)
 
     return {
         "form_id": form_id,
@@ -438,13 +453,16 @@ def test_form(test_org, forms_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_global_form(forms_service) -> Dict[str, Any]:
+def test_global_form(entities_service) -> Dict[str, Any]:
     """
-    Creates a global form (available to all organizations)
+    Creates a global form (available to all organizations) in new 4-table structure
+    Table: Entities
+    PartitionKey: GLOBAL
+    RowKey: form:{uuid}
     """
     import json
 
-    form_id = f"form-global-{uuid.uuid4()}"
+    form_id = str(uuid.uuid4())
 
     form_schema = {
         "fields": [
@@ -459,18 +477,19 @@ def test_global_form(forms_service) -> Dict[str, Any]:
 
     entity = {
         "PartitionKey": "GLOBAL",
-        "RowKey": form_id,
+        "RowKey": f"form:{form_id}",
         "Name": "Global Customer Onboarding Form",
         "Description": "Global template for customer onboarding",
         "LinkedWorkflow": "global_customer_onboarding",
         "FormSchema": json.dumps(form_schema),
         "IsActive": True,
+        "IsPublic": True,
         "CreatedBy": "test-system",
         "CreatedAt": datetime.utcnow().isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     }
 
-    forms_service.insert_entity(entity)
+    entities_service.insert_entity(entity)
 
     return {
         "form_id": form_id,

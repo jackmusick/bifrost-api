@@ -1,16 +1,24 @@
 """
 Table Storage Service for Bifrost Integrations
-Provides reusable wrappers around Azure Table Storage operations
+Provides reusable wrappers around Azure Table Storage operations with context-aware scoping
 """
 
 import os
 import logging
-from typing import List, Optional, Dict, Any, Iterator
+from typing import List, Optional, Dict, Any, Iterator, TYPE_CHECKING
 from datetime import datetime
 from azure.data.tables import TableClient, TableServiceClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
 
+if TYPE_CHECKING:
+    from shared.request_context import RequestContext
+
 logger = logging.getLogger(__name__)
+
+# Table scoping metadata - defines how PartitionKey is determined
+SCOPED_TABLES = ["Config", "Entities"]  # PartitionKey = org_id (UUID) or "GLOBAL"
+GLOBAL_TABLES = ["Relationships"]       # PartitionKey = "GLOBAL" (all data in one partition)
+CUSTOM_TABLES = {"Users": "user_id"}    # Custom partitioning schemes
 
 
 class TableStorageService:
@@ -19,15 +27,17 @@ class TableStorageService:
     Provides org-scoped query helpers and common CRUD operations
     """
 
-    def __init__(self, table_name: str, connection_string: str = None):
+    def __init__(self, table_name: str, connection_string: str = None, context: Optional['RequestContext'] = None):
         """
         Initialize Table Storage client
 
         Args:
             table_name: Name of the table to work with
             connection_string: Optional connection string override
+            context: Optional RequestContext for automatic scoping
         """
         self.table_name = table_name
+        self.context = context
 
         if connection_string is None:
             connection_string = os.environ.get(
@@ -42,15 +52,22 @@ class TableStorageService:
             connection_string, table_name
         )
 
+        # Determine scoping strategy
+        self.is_scoped = table_name in SCOPED_TABLES
+        self.is_global = table_name in GLOBAL_TABLES
+        self.custom_partition = CUSTOM_TABLES.get(table_name)
+
         logger.debug(
-            f"TableStorageService initialized for table: {table_name}")
+            f"TableStorageService initialized for table: {table_name} "
+            f"(scoped={self.is_scoped}, global={self.is_global}, context={context is not None})"
+        )
 
     def insert_entity(self, entity: dict) -> dict:
         """
-        Insert a new entity into the table
+        Insert a new entity into the table with automatic partition key handling.
 
         Args:
-            entity: Entity dictionary with PartitionKey and RowKey
+            entity: Entity dictionary with RowKey (PartitionKey auto-applied if context provided)
 
         Returns:
             The inserted entity with metadata
@@ -59,6 +76,9 @@ class TableStorageService:
             ResourceExistsError: If entity already exists
             ValueError: If PartitionKey or RowKey is missing
         """
+        # Auto-apply PartitionKey if not set
+        entity = self._apply_partition_key(entity)
+
         if "PartitionKey" not in entity or "RowKey" not in entity:
             raise ValueError("Entity must have PartitionKey and RowKey")
 
@@ -87,12 +107,65 @@ class TableStorageService:
             logger.error(f"Failed to insert entity: {str(e)}")
             raise
 
-    def update_entity(self, entity: dict, mode: str = "merge") -> dict:
+    def _apply_partition_key(self, entity: dict) -> dict:
         """
-        Update an existing entity
+        Apply partition key based on table scoping rules and context.
+
+        Priority:
+        1. Explicit PartitionKey in entity (always respected)
+        2. Context-based scoping for scoped tables
+        3. GLOBAL for global tables
+        4. Error for custom tables without explicit key
 
         Args:
-            entity: Entity dictionary with PartitionKey and RowKey
+            entity: Entity dictionary
+
+        Returns:
+            Entity with PartitionKey set
+
+        Raises:
+            ValueError: If PartitionKey cannot be determined
+        """
+        # If already set, respect it
+        if "PartitionKey" in entity:
+            return entity
+
+        # Scoped tables (Config, Entities)
+        if self.is_scoped:
+            if self.context:
+                entity["PartitionKey"] = self.context.scope  # org_id or "GLOBAL"
+                return entity
+            else:
+                raise ValueError(
+                    f"Table '{self.table_name}' requires context for automatic scoping. "
+                    f"Either provide context or set PartitionKey explicitly."
+                )
+
+        # Global tables (Relationships)
+        if self.is_global:
+            entity["PartitionKey"] = "GLOBAL"
+            return entity
+
+        # Custom tables (Users)
+        if self.custom_partition:
+            raise ValueError(
+                f"Table '{self.table_name}' uses custom partitioning ('{self.custom_partition}'). "
+                f"Must explicitly set PartitionKey."
+            )
+
+        # Unknown table - require explicit PartitionKey
+        raise ValueError(
+            f"Table '{self.table_name}' not in scoping rules. "
+            f"Must explicitly set PartitionKey."
+        )
+
+
+    def update_entity(self, entity: dict, mode: str = "merge") -> dict:
+        """
+        Update an existing entity with automatic partition key handling.
+
+        Args:
+            entity: Entity dictionary with RowKey (PartitionKey auto-applied if context provided)
             mode: Update mode - "merge" (default) or "replace"
 
         Returns:
@@ -101,6 +174,9 @@ class TableStorageService:
         Raises:
             ResourceNotFoundError: If entity doesn't exist
         """
+        # Auto-apply PartitionKey if not set
+        entity = self._apply_partition_key(entity)
+
         if "PartitionKey" not in entity or "RowKey" not in entity:
             raise ValueError("Entity must have PartitionKey and RowKey")
 
@@ -134,15 +210,18 @@ class TableStorageService:
 
     def upsert_entity(self, entity: dict, mode: str = "merge") -> dict:
         """
-        Insert or update an entity (creates if doesn't exist)
+        Insert or update an entity (creates if doesn't exist) with automatic partition key handling.
 
         Args:
-            entity: Entity dictionary with PartitionKey and RowKey
+            entity: Entity dictionary with RowKey (PartitionKey auto-applied if context provided)
             mode: Update mode - "merge" (default) or "replace"
 
         Returns:
             The upserted entity
         """
+        # Auto-apply PartitionKey if not set
+        entity = self._apply_partition_key(entity)
+
         if "PartitionKey" not in entity or "RowKey" not in entity:
             raise ValueError("Entity must have PartitionKey and RowKey")
 
@@ -223,7 +302,10 @@ class TableStorageService:
                     select=select
                 )
             else:
-                entities = self.table_client.query_entities(select=select)
+                entities = self.table_client.query_entities(
+                    query_filter="",
+                    select=select
+                )
 
             # Yield deserialized entities
             for entity in entities:
@@ -397,3 +479,84 @@ class TableStorageService:
                 result[key] = value
 
         return result
+
+
+# Singleton instance cache for convenience
+_storage_service_cache = {}
+
+
+def get_table_storage_service(table_name: str = "Organizations") -> TableStorageService:
+    """
+    Get or create a TableStorageService instance (cached, no context)
+
+    Args:
+        table_name: Table name to access
+
+    Returns:
+        TableStorageService instance without context
+    """
+    if table_name not in _storage_service_cache:
+        _storage_service_cache[table_name] = TableStorageService(table_name)
+
+    return _storage_service_cache[table_name]
+
+
+def get_table_service(table_name: str, context: 'RequestContext') -> TableStorageService:
+    """
+    Create a context-aware TableStorageService instance (not cached).
+
+    Use this factory when you have a RequestContext and want automatic partition key scoping.
+
+    Args:
+        table_name: Table name to access
+        context: RequestContext for automatic scoping
+
+    Returns:
+        TableStorageService instance with context
+
+    Example:
+        @with_request_context
+        async def my_handler(req: func.HttpRequest):
+            context = req.context
+            entities_service = get_table_service("Entities", context)
+            # Entities automatically scoped to context.scope
+    """
+    return TableStorageService(table_name, context=context)
+
+
+def get_organization(org_id: str) -> Optional[dict]:
+    """
+    Get organization by ID
+
+    Args:
+        org_id: Organization ID (UUID)
+
+    Returns:
+        Organization entity or None if not found
+    """
+    # Organizations are stored in Entities table with PartitionKey=GLOBAL or org_id, RowKey=org:{uuid}
+    # For the middleware, we need to query by org_id to find the organization entity
+    storage = get_table_storage_service("Entities")
+
+    # Try GLOBAL first (most organizations should be here)
+    org_entity = storage.get_entity(partition_key="GLOBAL", row_key=f"org:{org_id}")
+
+    if not org_entity:
+        # Try org's own partition (org-scoped organizations)
+        org_entity = storage.get_entity(partition_key=org_id, row_key=f"org:{org_id}")
+
+    return org_entity
+
+
+def get_org_config(org_id: str) -> List[dict]:
+    """
+    Get all config entries for an organization
+
+    Args:
+        org_id: Organization ID
+
+    Returns:
+        List of config entities
+    """
+    storage = get_table_storage_service("Config")
+    return list(storage.query_by_org(org_id, row_key_prefix="config:"))

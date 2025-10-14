@@ -13,7 +13,7 @@ from shared.models import (
     KeyVaultHealthResponse,
     ErrorResponse
 )
-from shared.keyvault import KeyVaultManager
+from shared.keyvault import KeyVaultClient
 from shared.auth import require_auth, is_platform_admin
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ bp = func.Blueprint()
 
 # Initialize Key Vault manager
 try:
-    kv_manager = KeyVaultManager()
+    kv_manager = KeyVaultClient()
 except Exception as e:
     logger.error(f"Failed to initialize Key Vault manager: {e}")
     kv_manager = None
@@ -92,7 +92,7 @@ def keyvault_health(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Perform health check using KeyVaultManager
+        # Perform health check using KeyVaultClient
         health_result = kv_manager.health_check()
 
         # Determine overall status based on health check results

@@ -41,18 +41,19 @@ A developer wants to start working on workflows locally without complex environm
 
 ### User Story 2 - Simplified Production Deployment (Priority: P1)
 
-An administrator needs to deploy the platform to Azure without managing complex infrastructure or build pipelines. They provide configuration parameters, run the deployment template, and have a fully operational production environment with all required Azure services connected and configured.
+An administrator needs to deploy the platform to Azure without managing complex infrastructure or build pipelines. They provide configuration parameters, run the deployment template, and have a fully operational production environment with all required Azure services connected and configured using a single unified Function App.
 
-**Why this priority**: Production deployment complexity is a major barrier to adoption. Simplifying this to a single template execution makes the platform accessible to more organizations and reduces deployment errors.
+**Why this priority**: Production deployment complexity is a major barrier to adoption. Simplifying this to a single template execution with a unified Function App (combining API and workflow execution) makes the platform accessible to more organizations, reduces deployment errors, and eliminates cross-service authentication complexity.
 
-**Independent Test**: Administrator provides required configuration (subscription, resource group, etc.), executes deployment template, and can access working production instance within 30 minutes.
+**Independent Test**: Administrator provides required configuration (subscription, resource group, etc.), executes deployment template, and can access working production instance within 30 minutes with all API and workflow functionality running in a single Function App.
 
 **Acceptance Scenarios**:
 
-1. **Given** an Azure subscription and resource group, **When** administrator runs the ARM deployment template with configuration parameters (including frontend GitHub repository URL), **Then** all Azure resources are created and properly connected (Azure Functions with Docker runtime, Static Web App with GitHub CI/CD, Storage, Key Vault, Application Insights)
+1. **Given** an Azure subscription and resource group, **When** administrator runs the ARM deployment template with configuration parameters (including frontend GitHub repository URL), **Then** all Azure resources are created and properly connected (single Azure Functions app with Docker runtime containing both API and workflow engine, Static Web App with GitHub CI/CD, Storage, Key Vault, Application Insights)
 2. **Given** the deployment completes, **When** administrator navigates to the Static Web App URL, **Then** they can log in and access all platform features (frontend automatically deployed from GitHub)
-3. **Given** workspace code exists in mounted storage, **When** a workflow is triggered via the UI, **Then** it executes successfully using the mounted workspace in Azure Functions container
+3. **Given** workspace code exists in mounted storage, **When** a workflow is triggered via the UI, **Then** it executes successfully within the same Function App without cross-service HTTP calls
 4. **Given** frontend code is pushed to connected GitHub repository, **When** Static Web App CI/CD detects the change, **Then** updated frontend is automatically deployed and accessible
+5. **Given** the unified Function App is running, **When** API endpoint calls workflow execution, **Then** execution happens via direct function invocation without requiring workflow engine URL or function key configuration
 
 ---
 
@@ -106,11 +107,12 @@ A user without GitHub integration wants to create and edit workflow scripts dire
 ### Functional Requirements
 
 -   **FR-001**: System MUST provide containerized deployment package that includes all platform dependencies
+-   **FR-001a**: System MUST use single unified Azure Function App containing both API (management endpoints) and workflow execution engine without separate services or cross-function HTTP calls
 -   **FR-002**: System MUST support mounting external workspace folder for workflow scripts
 -   **FR-003**: System MUST provide separate development and production configuration profiles
 -   **FR-004**: Local development environment MUST support interactive debugging with breakpoints in workspace code via debugger attachment (e.g., VS Code)
 -   **FR-005**: System MUST provide automated deployment template for all required Azure infrastructure
--   **FR-006**: ARM deployment template MUST create and configure all platform resources: Azure Functions (container-enabled with Docker runtime from Docker Hub), Static Web App (connected to frontend GitHub repository for automatic CI/CD), Key Vault, single Storage Account with Azure Files (Hot tier with /workspace and /tmp shares), Table Storage, and Queue Storage, plus Application Insights with proper connectivity and permissions
+-   **FR-006**: ARM deployment template MUST create and configure all platform resources: single Azure Functions app (container-enabled with Docker runtime from Docker Hub, containing unified API and workflow engine), Static Web App (connected to frontend GitHub repository for automatic CI/CD), Key Vault, single Storage Account with Azure Files (Hot tier with /workspace and /tmp shares), Table Storage, and Queue Storage, plus Application Insights with proper connectivity and permissions
 -   **FR-007**: Production environment MUST mount Azure Files shares at `/workspace` (for user workflow code) and `/tmp` (for temporary file storage) with Hot tier performance; quota configurable via ARM template parameter
 -   **FR-008**: System MUST support GitHub repository connection for workspace synchronization
 -   **FR-009**: System MUST respond to GitHub webhook events to trigger workspace synchronization using rsync-style logic (update changed files, remove deleted files to match repository state exactly)
@@ -149,7 +151,8 @@ A user without GitHub integration wants to create and edit workflow scripts dire
 -   **SC-007**: Platform supports at least 100 workflow executions per hour in production configuration
 -   **SC-008**: Workspace storage remains accessible with 99.9% uptime
 -   **SC-009**: Script editor operations (open, edit, save) complete in under 2 seconds for files up to 10KB
--   **SC-010**: Zero manual configuration steps required after deployment template completes
+-   **SC-010**: Zero manual configuration steps required after deployment template completes (no workflow engine URL or function key configuration needed)
+-   **SC-011**: Workflow execution latency is under 100ms from API endpoint to workflow execution start (direct invocation, no HTTP overhead)
 
 ## Out of Scope
 
@@ -161,6 +164,7 @@ A user without GitHub integration wants to create and edit workflow scripts dire
 -   Alternative version control systems (GitLab, Bitbucket, etc.)
 -   Production debugging capabilities (debugging is for local development only)
 -   Automated rollback of failed deployments
+-   Separate workflow engine Function App deployment (architecture uses single unified Function App for both API and workflow execution)
 
 ## Assumptions
 

@@ -9,11 +9,10 @@ import logging
 import json
 from datetime import datetime
 from typing import List
-import uuid
 import azure.functions as func
 
-from shared.auth import require_auth
-from shared.storage import TableStorageService
+from shared.decorators import with_request_context, require_platform_admin
+from shared.storage import get_table_service
 from shared.models import (
     Role,
     CreateRoleRequest,
@@ -24,7 +23,8 @@ from shared.models import (
     AssignFormsToRoleRequest,
     User,
     UserType,
-    ErrorResponse
+    ErrorResponse,
+    generate_entity_id
 )
 from pydantic import ValidationError
 
@@ -36,32 +36,32 @@ bp = func.Blueprint()
 
 @bp.function_name("roles_list_roles")
 @bp.route(route="roles", methods=["GET"])
-@require_auth
-def list_roles(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def list_roles(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/roles
     List all roles
 
     Requires: User must be authenticated
     """
-    user = req.user
-
-    logger.info(f"User {user.email} listing all roles")
+    context = req.context
+    logger.info(f"User {context.user_id} listing all roles")
 
     try:
-        # Query all roles (single partition for all roles)
-        roles_service = TableStorageService("Roles")
-        role_entities = list(roles_service.query_by_org("ROLES", row_key_prefix="role:"))
+        # Query all roles from Relationships table (GLOBAL partition, row key prefix "role:")
+        relationships_service = get_table_service("Relationships", context)
+        role_entities = list(relationships_service.query_entities(
+            filter="PartitionKey eq 'GLOBAL' and RowKey ge 'role:' and RowKey lt 'role;' and IsActive eq true"
+        ))
 
         # Convert to response models
         roles = []
         for entity in role_entities:
-            # Skip soft-deleted roles unless specifically requested
-            if not entity.get("IsActive", True):
-                continue
+            # Extract UUID from RowKey "role:uuid"
+            role_id = entity["RowKey"].split(":", 1)[1]
 
             role = Role(
-                id=entity["RowKey"].replace("role:", "", 1),
+                id=role_id,
                 name=entity["Name"],
                 description=entity.get("Description"),
                 isActive=entity.get("IsActive", True),
@@ -94,42 +94,42 @@ def list_roles(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_create_role")
 @bp.route(route="roles", methods=["POST"])
-@require_auth
-def create_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def create_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/roles
     Create a new role
 
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
-
-    logger.info(f"User {user.email} creating new role")
+    context = req.context
+    logger.info(f"User {context.user_id} creating new role")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         create_request = CreateRoleRequest(**request_body)
 
-        # Generate role ID
-        role_id = str(uuid.uuid4())
+        # Generate role UUID
+        role_id = generate_entity_id()
 
-        # Create entity for Table Storage
+        # Create entity for Relationships table
         now = datetime.utcnow()
         entity = {
-            "PartitionKey": "ROLES",  # Single partition for all roles
+            "PartitionKey": "GLOBAL",  # All roles in GLOBAL partition
             "RowKey": f"role:{role_id}",
             "Name": create_request.name,
             "Description": create_request.description,
             "IsActive": True,
-            "CreatedBy": user.user_id,
+            "CreatedBy": context.user_id,
             "CreatedAt": now.isoformat(),
             "UpdatedAt": now.isoformat()
         }
 
-        # Insert role
-        roles_service = TableStorageService("Roles")
-        roles_service.insert_entity(entity)
+        # Insert role into Relationships table
+        relationships_service = get_table_service("Relationships", context)
+        relationships_service.insert_entity(entity)
 
         logger.info(f"Created role '{create_request.name}' with ID {role_id}")
 
@@ -139,7 +139,7 @@ def create_role(req: func.HttpRequest) -> func.HttpResponse:
             name=create_request.name,
             description=create_request.description,
             isActive=True,
-            createdBy=user.user_id,
+            createdBy=context.user_id,
             createdAt=now,
             updatedAt=now
         )
@@ -190,29 +190,30 @@ def create_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_update_role")
 @bp.route(route="roles/{roleId}", methods=["PUT"])
-@require_auth
-def update_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def update_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     PUT /api/roles/{roleId}
     Update a role
 
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
 
-    logger.info(f"User {user.email} updating role {role_id}")
+    logger.info(f"User {context.user_id} updating role {role_id}")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         update_request = UpdateRoleRequest(**request_body)
 
-        # Get existing role
-        roles_service = TableStorageService("Roles")
+        # Get existing role from Relationships table
+        relationships_service = get_table_service("Relationships", context)
         row_key = f"role:{role_id}"
 
-        existing_role = roles_service.get_entity("ROLES", row_key)
+        existing_role = relationships_service.get_entity("GLOBAL", row_key)
         if not existing_role:
             error = ErrorResponse(
                 error="NotFound",
@@ -233,7 +234,7 @@ def update_role(req: func.HttpRequest) -> func.HttpResponse:
         existing_role["UpdatedAt"] = now.isoformat()
 
         # Update entity
-        roles_service.update_entity(existing_role)
+        relationships_service.update_entity(existing_role)
 
         logger.info(f"Updated role {role_id}")
 
@@ -282,25 +283,26 @@ def update_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_delete_role")
 @bp.route(route="roles/{roleId}", methods=["DELETE"])
-@require_auth
-def delete_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/roles/{roleId}
     Soft delete a role (set IsActive=False)
 
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
 
-    logger.info(f"User {user.email} deleting role {role_id}")
+    logger.info(f"User {context.user_id} deleting role {role_id}")
 
     try:
-        # Get existing role
-        roles_service = TableStorageService("Roles")
+        # Get existing role from Relationships table
+        relationships_service = get_table_service("Relationships", context)
         row_key = f"role:{role_id}"
 
-        existing_role = roles_service.get_entity("ROLES", row_key)
+        existing_role = relationships_service.get_entity("GLOBAL", row_key)
         if not existing_role:
             # Idempotent delete - return 204 even if not found
             logger.debug(f"Role {role_id} not found, but returning 204")
@@ -309,7 +311,7 @@ def delete_role(req: func.HttpRequest) -> func.HttpResponse:
         # Soft delete
         existing_role["IsActive"] = False
         existing_role["UpdatedAt"] = datetime.utcnow().isoformat()
-        roles_service.update_entity(existing_role)
+        relationships_service.update_entity(existing_role)
 
         logger.info(f"Soft deleted role {role_id}")
 
@@ -330,26 +332,28 @@ def delete_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_get_role_users")
 @bp.route(route="roles/{roleId}/users", methods=["GET"])
-@require_auth
-def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/roles/{roleId}/users
     Get all users assigned to a role
 
     Requires: User must be authenticated
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
 
-    logger.info(f"User {user.email} getting users for role {role_id}")
+    logger.info(f"User {context.user_id} getting users for role {role_id}")
 
     try:
-        # Query UserRoles table by role (partition by roleId)
-        user_roles_service = TableStorageService("UserRoles")
-        user_role_entities = list(user_roles_service.query_by_org(role_id, row_key_prefix="user:"))
+        # Query Relationships table for assigned roles (assignedrole:role_uuid:user_id pattern)
+        relationships_service = get_table_service("Relationships", context)
+        user_role_entities = list(relationships_service.query_entities(
+            filter=f"PartitionKey eq 'GLOBAL' and RowKey ge 'assignedrole:{role_id}:' and RowKey lt 'assignedrole:{role_id};'"
+        ))
 
-        # Extract user IDs
-        user_ids = [entity["RowKey"].replace("user:", "", 1) for entity in user_role_entities]
+        # Extract user IDs from RowKey "assignedrole:role_uuid:user_id"
+        user_ids = [entity["RowKey"].split(":", 2)[2] for entity in user_role_entities]
 
         logger.info(f"Role {role_id} has {len(user_ids)} users assigned")
 
@@ -374,29 +378,28 @@ def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_assign_users_to_role")
 @bp.route(route="roles/{roleId}/users", methods=["POST"])
-@require_auth
-def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/roles/{roleId}/users
     Assign users to a role (batch operation)
 
-    Validates that users are ORG type (MSP users cannot be assigned to roles)
-
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
 
-    logger.info(f"User {user.email} assigning users to role {role_id}")
+    logger.info(f"User {context.user_id} assigning users to role {role_id}")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         assign_request = AssignUsersToRoleRequest(**request_body)
 
-        # Validate role exists
-        roles_service = TableStorageService("Roles")
-        role_exists = roles_service.get_entity("ROLES", f"role:{role_id}")
+        # Validate role exists in Relationships table
+        relationships_service = get_table_service("Relationships", context)
+        role_exists = relationships_service.get_entity("GLOBAL", f"role:{role_id}")
         if not role_exists:
             error = ErrorResponse(
                 error="NotFound",
@@ -408,8 +411,8 @@ def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Validate that all users are ORG type (not MSP)
-        users_service = TableStorageService("Users")
+        # Validate that all users exist
+        users_service = get_table_service("Users", context)
         for user_id in assign_request.userIds:
             user_entity = users_service.get_entity(user_id, "user")
             if not user_entity:
@@ -423,39 +426,41 @@ def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json"
                 )
 
-            # Check user type
-            user_type = user_entity.get("UserType", "MSP")
-            if user_type == "MSP":
-                error = ErrorResponse(
-                    error="BadRequest",
-                    message=f"Cannot assign MSP user {user_id} to a role. Only ORG users can have roles."
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=400,
-                    mimetype="application/json"
-                )
-
-        # Batch insert UserRoles (PartitionKey=roleId, RowKey=user:{userId})
-        user_roles_service = TableStorageService("UserRoles")
+        # Batch insert user-role assignments with DUAL INDEXING
+        # Pattern: assignedrole:role_uuid:user_id AND userrole:user_id:role_uuid
         now = datetime.utcnow()
 
         for user_id in assign_request.userIds:
-            entity = {
-                "PartitionKey": role_id,
-                "RowKey": f"user:{user_id}",
+            # Primary index: assignedrole:role_uuid:user_id (for querying users by role)
+            entity1 = {
+                "PartitionKey": "GLOBAL",
+                "RowKey": f"assignedrole:{role_id}:{user_id}",
                 "UserId": user_id,
                 "RoleId": role_id,
-                "AssignedBy": user.user_id,
+                "AssignedBy": context.user_id,
                 "AssignedAt": now.isoformat()
             }
 
-            # Upsert (overwrite if already exists)
+            # Dual index: userrole:user_id:role_uuid (for querying roles by user)
+            entity2 = {
+                "PartitionKey": "GLOBAL",
+                "RowKey": f"userrole:{user_id}:{role_id}",
+                "UserId": user_id,
+                "RoleId": role_id,
+                "AssignedBy": context.user_id,
+                "AssignedAt": now.isoformat()
+            }
+
+            # Upsert both indexes
             try:
-                user_roles_service.insert_entity(entity)
+                relationships_service.insert_entity(entity1)
             except:
-                # If already exists, update it
-                user_roles_service.update_entity(entity)
+                relationships_service.update_entity(entity1)
+
+            try:
+                relationships_service.insert_entity(entity2)
+            except:
+                relationships_service.update_entity(entity2)
 
         logger.info(f"Assigned {len(assign_request.userIds)} users to role {role_id}")
 
@@ -493,31 +498,38 @@ def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_remove_user_from_role")
 @bp.route(route="roles/{roleId}/users/{userId}", methods=["DELETE"])
-@require_auth
-def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/roles/{roleId}/users/{userId}
     Remove a user from a role
 
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
     user_id = req.route_params.get("userId")
 
-    logger.info(f"User {user.email} removing user {user_id} from role {role_id}")
+    logger.info(f"User {context.user_id} removing user {user_id} from role {role_id}")
 
     try:
-        # Delete UserRole entity (idempotent)
-        user_roles_service = TableStorageService("UserRoles")
-        row_key = f"user:{user_id}"
+        # Delete BOTH dual-indexed entities (idempotent)
+        relationships_service = get_table_service("Relationships", context)
 
+        # Delete primary index: assignedrole:role_uuid:user_id
         try:
-            user_roles_service.delete_entity(role_id, row_key)
-            logger.info(f"Removed user {user_id} from role {role_id}")
+            relationships_service.delete_entity("GLOBAL", f"assignedrole:{role_id}:{user_id}")
         except:
-            # Even if not found, return 204 (idempotent)
-            logger.debug(f"UserRole not found, but returning 204")
+            pass  # Idempotent
+
+        # Delete dual index: userrole:user_id:role_uuid
+        try:
+            relationships_service.delete_entity("GLOBAL", f"userrole:{user_id}:{role_id}")
+        except:
+            pass  # Idempotent
+
+        logger.info(f"Removed user {user_id} from role {role_id}")
 
         return func.HttpResponse(status_code=204)
 
@@ -536,32 +548,28 @@ def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_get_role_forms")
 @bp.route(route="roles/{roleId}/forms", methods=["GET"])
-@require_auth
-def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+async def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/roles/{roleId}/forms
     Get all forms assigned to a role
 
     Requires: User must be authenticated
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
 
-    logger.info(f"User {user.email} getting forms for role {role_id}")
+    logger.info(f"User {context.user_id} getting forms for role {role_id}")
 
     try:
-        # Query FormRoles table by form (partition by formId)
-        # Note: We need to scan all partitions to find forms for this role
-        # This is acceptable for POC, but consider dual-indexing for production
-        form_roles_service = TableStorageService("FormRoles")
-
-        # For now, we'll use a simple approach: query with filter
-        # In production, consider maintaining a RoleFormsIndex table
-        all_form_roles = list(form_roles_service.query_entities(
-            filter=f"RoleId eq '{role_id}'"
+        # Query Relationships table for role-form assignments (roleform:role_uuid:form_uuid pattern)
+        relationships_service = get_table_service("Relationships", context)
+        role_form_entities = list(relationships_service.query_entities(
+            filter=f"PartitionKey eq 'GLOBAL' and RowKey ge 'roleform:{role_id}:' and RowKey lt 'roleform:{role_id};'"
         ))
 
-        form_ids = [entity["PartitionKey"] for entity in all_form_roles]
+        # Extract form UUIDs from RowKey "roleform:role_uuid:form_uuid"
+        form_ids = [entity["RowKey"].split(":", 2)[2] for entity in role_form_entities]
 
         logger.info(f"Role {role_id} has access to {len(form_ids)} forms")
 
@@ -586,27 +594,28 @@ def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_assign_forms_to_role")
 @bp.route(route="roles/{roleId}/forms", methods=["POST"])
-@require_auth
-def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/roles/{roleId}/forms
     Assign forms to a role (batch operation)
 
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
 
-    logger.info(f"User {user.email} assigning forms to role {role_id}")
+    logger.info(f"User {context.user_id} assigning forms to role {role_id}")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         assign_request = AssignFormsToRoleRequest(**request_body)
 
-        # Validate role exists
-        roles_service = TableStorageService("Roles")
-        role_exists = roles_service.get_entity("ROLES", f"role:{role_id}")
+        # Validate role exists in Relationships table
+        relationships_service = get_table_service("Relationships", context)
+        role_exists = relationships_service.get_entity("GLOBAL", f"role:{role_id}")
         if not role_exists:
             error = ErrorResponse(
                 error="NotFound",
@@ -618,26 +627,41 @@ def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Batch insert FormRoles (PartitionKey=formId, RowKey=role:{roleId})
-        form_roles_service = TableStorageService("FormRoles")
+        # Batch insert form-role assignments with DUAL INDEXING
+        # Pattern: formrole:form_uuid:role_uuid AND roleform:role_uuid:form_uuid
         now = datetime.utcnow()
 
         for form_id in assign_request.formIds:
-            entity = {
-                "PartitionKey": form_id,
-                "RowKey": f"role:{role_id}",
+            # Primary index: formrole:form_uuid:role_uuid (for querying roles by form)
+            entity1 = {
+                "PartitionKey": "GLOBAL",
+                "RowKey": f"formrole:{form_id}:{role_id}",
                 "FormId": form_id,
                 "RoleId": role_id,
-                "AssignedBy": user.user_id,
+                "AssignedBy": context.user_id,
                 "AssignedAt": now.isoformat()
             }
 
-            # Upsert (overwrite if already exists)
+            # Dual index: roleform:role_uuid:form_uuid (for querying forms by role)
+            entity2 = {
+                "PartitionKey": "GLOBAL",
+                "RowKey": f"roleform:{role_id}:{form_id}",
+                "FormId": form_id,
+                "RoleId": role_id,
+                "AssignedBy": context.user_id,
+                "AssignedAt": now.isoformat()
+            }
+
+            # Upsert both indexes
             try:
-                form_roles_service.insert_entity(entity)
+                relationships_service.insert_entity(entity1)
             except:
-                # If already exists, update it
-                form_roles_service.update_entity(entity)
+                relationships_service.update_entity(entity1)
+
+            try:
+                relationships_service.insert_entity(entity2)
+            except:
+                relationships_service.update_entity(entity2)
 
         logger.info(f"Assigned {len(assign_request.formIds)} forms to role {role_id}")
 
@@ -675,31 +699,38 @@ def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_remove_form_from_role")
 @bp.route(route="roles/{roleId}/forms/{formId}", methods=["DELETE"])
-@require_auth
-def remove_form_from_role(req: func.HttpRequest) -> func.HttpResponse:
+@with_request_context
+@require_platform_admin
+async def remove_form_from_role(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/roles/{roleId}/forms/{formId}
     Remove a form from a role
 
-    Requires: User must be MSP admin (TODO: implement check)
+    Platform admin only endpoint
     """
-    user = req.user
+    context = req.context
     role_id = req.route_params.get("roleId")
     form_id = req.route_params.get("formId")
 
-    logger.info(f"User {user.email} removing form {form_id} from role {role_id}")
+    logger.info(f"User {context.user_id} removing form {form_id} from role {role_id}")
 
     try:
-        # Delete FormRole entity (idempotent)
-        form_roles_service = TableStorageService("FormRoles")
-        row_key = f"role:{role_id}"
+        # Delete BOTH dual-indexed entities (idempotent)
+        relationships_service = get_table_service("Relationships", context)
 
+        # Delete primary index: formrole:form_uuid:role_uuid
         try:
-            form_roles_service.delete_entity(form_id, row_key)
-            logger.info(f"Removed form {form_id} from role {role_id}")
+            relationships_service.delete_entity("GLOBAL", f"formrole:{form_id}:{role_id}")
         except:
-            # Even if not found, return 204 (idempotent)
-            logger.debug(f"FormRole not found, but returning 204")
+            pass  # Idempotent
+
+        # Delete dual index: roleform:role_uuid:form_uuid
+        try:
+            relationships_service.delete_entity("GLOBAL", f"roleform:{role_id}:{form_id}")
+        except:
+            pass  # Idempotent
+
+        logger.info(f"Removed form {form_id} from role {role_id}")
 
         return func.HttpResponse(status_code=204)
 

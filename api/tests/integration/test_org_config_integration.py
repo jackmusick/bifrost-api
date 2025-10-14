@@ -42,7 +42,7 @@ def create_mock_request(user_id, email="test@example.com", display_name="Test Us
 class TestGetOrgConfig:
     """Integration tests for GET /api/organizations/{orgId}/config"""
 
-    def test_get_org_config_with_permission(
+    async def test_get_org_config_with_permission(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -80,7 +80,7 @@ class TestGetOrgConfig:
         req.route_params = {"orgId": org_id}
 
         # Call endpoint
-        response = get_config(req)
+        response = await get_config(req)
 
         # Assertions
         assert response.status_code == 200
@@ -93,7 +93,7 @@ class TestGetOrgConfig:
         assert "api_timeout" in config_keys
         assert "enable_notifications" in config_keys
 
-    def test_get_org_config_without_permission(
+    async def test_get_org_config_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -106,14 +106,14 @@ class TestGetOrgConfig:
         req.route_params = {"orgId": test_user_with_no_permissions["org_id"]}
 
         # Call endpoint
-        response = get_config(req)
+        response = await get_config(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_get_org_config_empty(
+    async def test_get_org_config_empty(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -126,7 +126,7 @@ class TestGetOrgConfig:
         req.route_params = {"orgId": test_user_with_full_permissions["org_id"]}
 
         # Call endpoint
-        response = get_config(req)
+        response = await get_config(req)
 
         # Assertions
         assert response.status_code == 200
@@ -138,7 +138,7 @@ class TestGetOrgConfig:
 class TestSetOrgConfig:
     """Integration tests for POST /api/organizations/{orgId}/config"""
 
-    def test_set_org_config_create_new(
+    async def test_set_org_config_create_new(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -157,7 +157,7 @@ class TestSetOrgConfig:
         }
 
         # Call endpoint
-        response = set_config(req)
+        response = await set_config(req)
 
         # Assertions
         assert response.status_code == 201  # Created
@@ -168,7 +168,7 @@ class TestSetOrgConfig:
         assert config["description"] == "API timeout in seconds"
         assert config["updatedBy"] == test_user_with_full_permissions["user_id"]
 
-    def test_set_org_config_update_existing(
+    async def test_set_org_config_update_existing(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -202,7 +202,7 @@ class TestSetOrgConfig:
         }
 
         # Call endpoint
-        response = set_config(req)
+        response = await set_config(req)
 
         # Assertions
         assert response.status_code == 200  # OK (updated)
@@ -212,7 +212,7 @@ class TestSetOrgConfig:
         assert config["description"] == "Updated timeout"
         assert config["updatedBy"] == test_user_with_full_permissions["user_id"]
 
-    def test_set_org_config_without_permission(
+    async def test_set_org_config_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -230,14 +230,14 @@ class TestSetOrgConfig:
         }
 
         # Call endpoint
-        response = set_config(req)
+        response = await set_config(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_set_org_config_validation_error(
+    async def test_set_org_config_validation_error(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -255,14 +255,14 @@ class TestSetOrgConfig:
         }
 
         # Call endpoint
-        response = set_config(req)
+        response = await set_config(req)
 
         # Assertions
         assert response.status_code == 400
         error = json.loads(response.get_body())
         assert error["error"] == "ValidationError"
 
-    def test_set_org_config_all_types(
+    async def test_set_org_config_all_types(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -288,7 +288,7 @@ class TestSetOrgConfig:
                 "type": config_type.value
             }
 
-            response = set_config(req)
+            response = await set_config(req)
             assert response.status_code == 201
             config = json.loads(response.get_body())
             assert config["key"] == key
@@ -299,7 +299,7 @@ class TestSetOrgConfig:
 class TestDeleteOrgConfig:
     """Integration tests for DELETE /api/organizations/{orgId}/config/{key}"""
 
-    def test_delete_org_config(
+    async def test_delete_org_config(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -327,7 +327,7 @@ class TestDeleteOrgConfig:
         req.route_params = {"orgId": org_id, "key": "test_key"}
 
         # Call endpoint
-        response = delete_config(req)
+        response = await delete_config(req)
 
         # Assertions
         assert response.status_code == 204
@@ -339,7 +339,7 @@ class TestDeleteOrgConfig:
         except:
             pass  # Expected - config doesn't exist
 
-    def test_delete_org_config_idempotent(
+    async def test_delete_org_config_idempotent(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -355,12 +355,12 @@ class TestDeleteOrgConfig:
         }
 
         # Call endpoint
-        response = delete_config(req)
+        response = await delete_config(req)
 
         # Assertions - should return 204 even if key doesn't exist
         assert response.status_code == 204
 
-    def test_delete_org_config_without_permission(
+    async def test_delete_org_config_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -376,7 +376,7 @@ class TestDeleteOrgConfig:
         }
 
         # Call endpoint
-        response = delete_config(req)
+        response = await delete_config(req)
 
         # Assertions
         assert response.status_code == 403

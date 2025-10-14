@@ -45,7 +45,7 @@ def create_mock_request(user_id, email="test@example.com", display_name="Test Us
 class TestListForms:
     """Test GET /api/forms"""
 
-    def test_list_forms_for_org(
+    async def test_list_forms_for_org(
         self,
         test_user_with_full_permissions,
         test_form,
@@ -58,7 +58,7 @@ class TestListForms:
         )
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = list_forms(req)
+        response = await list_forms(req)
 
         assert response.status_code == 200
         forms = json.loads(response.get_body())
@@ -69,7 +69,7 @@ class TestListForms:
         test_form_found = any(f["id"] == test_form["form_id"] for f in forms)
         assert test_form_found
 
-    def test_list_forms_includes_global(
+    async def test_list_forms_includes_global(
         self,
         test_user_with_full_permissions,
         test_global_form,
@@ -82,7 +82,7 @@ class TestListForms:
         )
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = list_forms(req)
+        response = await list_forms(req)
 
         assert response.status_code == 200
         forms = json.loads(response.get_body())
@@ -91,7 +91,7 @@ class TestListForms:
         global_forms = [f for f in forms if f["isGlobal"]]
         assert len(global_forms) >= 1
 
-    def test_list_forms_missing_org_id(
+    async def test_list_forms_missing_org_id(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -103,13 +103,13 @@ class TestListForms:
         )
         req.params = {}
 
-        response = list_forms(req)
+        response = await list_forms(req)
 
         assert response.status_code == 400
         error = json.loads(response.get_body())
         assert error["error"] == "BadRequest"
 
-    def test_list_forms_no_permission(
+    async def test_list_forms_no_permission(
         self,
         test_user_2,
         test_org,
@@ -122,7 +122,7 @@ class TestListForms:
         )
         req.params = {"orgId": test_org["org_id"]}
 
-        response = list_forms(req)
+        response = await list_forms(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())
@@ -132,7 +132,7 @@ class TestListForms:
 class TestCreateForm:
     """Test POST /api/forms"""
 
-    def test_create_form(
+    async def test_create_form(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -166,7 +166,7 @@ class TestCreateForm:
             "isGlobal": False
         }
 
-        response = create_form(req)
+        response = await create_form(req)
 
         assert response.status_code == 201  # Created
         form = json.loads(response.get_body())
@@ -185,7 +185,7 @@ class TestCreateForm:
         assert stored_form is not None
         assert stored_form["Name"] == "New Customer Form"
 
-    def test_create_global_form(
+    async def test_create_global_form(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -205,7 +205,7 @@ class TestCreateForm:
             "isGlobal": True
         }
 
-        response = create_form(req)
+        response = await create_form(req)
 
         assert response.status_code == 201
         form = json.loads(response.get_body())
@@ -217,7 +217,7 @@ class TestCreateForm:
         stored_form = forms_service.get_entity("GLOBAL", form["id"])
         assert stored_form is not None
 
-    def test_create_form_missing_org_id(
+    async def test_create_form_missing_org_id(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -234,13 +234,13 @@ class TestCreateForm:
             "formSchema": {"fields": []}
         }
 
-        response = create_form(req)
+        response = await create_form(req)
 
         assert response.status_code == 400
         error = json.loads(response.get_body())
         assert error["error"] == "BadRequest"
 
-    def test_create_form_without_permission(
+    async def test_create_form_without_permission(
         self,
         test_user_with_limited_permissions,
         azurite_tables
@@ -257,14 +257,14 @@ class TestCreateForm:
             "formSchema": {"fields": []}
         }
 
-        response = create_form(req)
+        response = await create_form(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
         assert "manage forms" in error["message"].lower()
 
-    def test_create_form_validation_error(
+    async def test_create_form_validation_error(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -280,7 +280,7 @@ class TestCreateForm:
             # Missing: linkedWorkflow, formSchema
         }
 
-        response = create_form(req)
+        response = await create_form(req)
 
         assert response.status_code == 400
         error = json.loads(response.get_body())
@@ -290,7 +290,7 @@ class TestCreateForm:
 class TestGetForm:
     """Test GET /api/forms/{formId}"""
 
-    def test_get_form(
+    async def test_get_form(
         self,
         test_user_with_full_permissions,
         test_form,
@@ -304,14 +304,14 @@ class TestGetForm:
         req.route_params = {"formId": test_form["form_id"]}
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = get_form(req)
+        response = await get_form(req)
 
         assert response.status_code == 200
         form = json.loads(response.get_body())
         assert form["id"] == test_form["form_id"]
         assert form["name"] == test_form["name"]
 
-    def test_get_global_form(
+    async def test_get_global_form(
         self,
         test_user_with_full_permissions,
         test_global_form,
@@ -325,7 +325,7 @@ class TestGetForm:
         req.route_params = {"formId": test_global_form["form_id"]}
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = get_form(req)
+        response = await get_form(req)
 
         assert response.status_code == 200
         form = json.loads(response.get_body())
@@ -333,7 +333,7 @@ class TestGetForm:
         assert form["isGlobal"] is True
         assert form["orgId"] == "GLOBAL"
 
-    def test_get_form_not_found(
+    async def test_get_form_not_found(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -346,13 +346,13 @@ class TestGetForm:
         req.route_params = {"formId": "non-existent-form-id"}
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = get_form(req)
+        response = await get_form(req)
 
         assert response.status_code == 404
         error = json.loads(response.get_body())
         assert error["error"] == "NotFound"
 
-    def test_get_form_without_permission(
+    async def test_get_form_without_permission(
         self,
         test_user_2,
         test_org,
@@ -367,7 +367,7 @@ class TestGetForm:
         req.route_params = {"formId": test_form["form_id"]}
         req.params = {"orgId": test_org["org_id"]}
 
-        response = get_form(req)
+        response = await get_form(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())
@@ -377,7 +377,7 @@ class TestGetForm:
 class TestUpdateForm:
     """Test PUT /api/forms/{formId}"""
 
-    def test_update_form_name(
+    async def test_update_form_name(
         self,
         test_user_with_full_permissions,
         test_form,
@@ -394,7 +394,7 @@ class TestUpdateForm:
             "name": "Updated Form Name"
         }
 
-        response = update_form(req)
+        response = await update_form(req)
 
         assert response.status_code == 200
         form = json.loads(response.get_body())
@@ -408,7 +408,7 @@ class TestUpdateForm:
         )
         assert stored_form["Name"] == "Updated Form Name"
 
-    def test_update_form_schema(
+    async def test_update_form_schema(
         self,
         test_user_with_full_permissions,
         test_form,
@@ -434,14 +434,14 @@ class TestUpdateForm:
             }
         }
 
-        response = update_form(req)
+        response = await update_form(req)
 
         assert response.status_code == 200
         form = json.loads(response.get_body())
         assert len(form["formSchema"]["fields"]) == 1
         assert form["formSchema"]["fields"][0]["name"] == "new_field"
 
-    def test_update_form_not_found(
+    async def test_update_form_not_found(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -457,13 +457,13 @@ class TestUpdateForm:
             "name": "Updated Name"
         }
 
-        response = update_form(req)
+        response = await update_form(req)
 
         assert response.status_code == 404
         error = json.loads(response.get_body())
         assert error["error"] == "NotFound"
 
-    def test_update_global_form_forbidden(
+    async def test_update_global_form_forbidden(
         self,
         test_user_with_full_permissions,
         test_global_form,
@@ -480,14 +480,14 @@ class TestUpdateForm:
             "name": "Updated Name"
         }
 
-        response = update_form(req)
+        response = await update_form(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
         assert "global" in error["message"].lower()
 
-    def test_update_form_without_permission(
+    async def test_update_form_without_permission(
         self,
         test_user_with_limited_permissions,
         test_form,
@@ -519,7 +519,7 @@ class TestUpdateForm:
             "name": "Updated Name"
         }
 
-        response = update_form(req)
+        response = await update_form(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())
@@ -530,7 +530,7 @@ class TestUpdateForm:
 class TestDeleteForm:
     """Test DELETE /api/forms/{formId}"""
 
-    def test_delete_form(
+    async def test_delete_form(
         self,
         test_user_with_full_permissions,
         test_form,
@@ -544,7 +544,7 @@ class TestDeleteForm:
         req.route_params = {"formId": test_form["form_id"]}
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = delete_form(req)
+        response = await delete_form(req)
 
         assert response.status_code == 204
 
@@ -557,7 +557,7 @@ class TestDeleteForm:
         assert stored_form is not None
         assert stored_form["IsActive"] is False
 
-    def test_delete_form_idempotent(
+    async def test_delete_form_idempotent(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -570,11 +570,11 @@ class TestDeleteForm:
         req.route_params = {"formId": "non-existent-form-id"}
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = delete_form(req)
+        response = await delete_form(req)
 
         assert response.status_code == 204
 
-    def test_delete_global_form_forbidden(
+    async def test_delete_global_form_forbidden(
         self,
         test_user_with_full_permissions,
         test_global_form,
@@ -588,14 +588,14 @@ class TestDeleteForm:
         req.route_params = {"formId": test_global_form["form_id"]}
         req.params = {"orgId": test_user_with_full_permissions["org_id"]}
 
-        response = delete_form(req)
+        response = await delete_form(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
         assert "global" in error["message"].lower()
 
-    def test_delete_form_without_permission(
+    async def test_delete_form_without_permission(
         self,
         test_user_with_limited_permissions,
         azurite_tables
@@ -623,7 +623,7 @@ class TestDeleteForm:
         req.route_params = {"formId": form_id}
         req.params = {"orgId": test_user_with_limited_permissions["org_id"]}
 
-        response = delete_form(req)
+        response = await delete_form(req)
 
         assert response.status_code == 403
         error = json.loads(response.get_body())

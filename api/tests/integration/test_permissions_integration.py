@@ -44,7 +44,7 @@ def create_mock_request(user_id, email="test@example.com", display_name="Test Us
 class TestListUsers:
     """Integration tests for GET /api/users"""
 
-    def test_list_users(self, test_user, test_user_2, azurite_tables):
+    async def test_list_users(self, test_user, test_user_2, azurite_tables):
         """Test listing all users"""
         # Create users in Users table
         users_service = TableStorageService("Users")
@@ -72,7 +72,7 @@ class TestListUsers:
         req = create_mock_request(test_user["user_id"], test_user["email"])
 
         # Call endpoint
-        response = list_users(req)
+        response = await list_users(req)
 
         # Assertions
         assert response.status_code == 200
@@ -84,13 +84,13 @@ class TestListUsers:
         assert users[0]["id"] == test_user_2["user_id"]  # Most recent login
         assert users[1]["id"] == test_user["user_id"]
 
-    def test_list_users_empty(self, azurite_tables):
+    async def test_list_users_empty(self, azurite_tables):
         """Test listing users when no additional users created (fixture creates one)"""
         # Use a temporary user ID for authentication
         req = create_mock_request("temp-user-id", "temp@example.com")
 
         # Call endpoint
-        response = list_users(req)
+        response = await list_users(req)
 
         # Assertions
         assert response.status_code == 200
@@ -103,7 +103,7 @@ class TestListUsers:
 class TestGetUserPermissions:
     """Integration tests for GET /api/permissions/users/{userId}"""
 
-    def test_get_user_permissions(
+    async def test_get_user_permissions(
         self,
         test_user_with_full_permissions,
         test_org,
@@ -131,7 +131,7 @@ class TestGetUserPermissions:
         req.route_params = {"userId": test_user_with_full_permissions["user_id"]}
 
         # Call endpoint
-        response = get_user_permissions(req)
+        response = await get_user_permissions(req)
 
         # Assertions
         assert response.status_code == 200
@@ -145,7 +145,7 @@ class TestGetUserPermissions:
         # At least one of these should be present
         assert test_org["org_id"] in org_ids or test_user_with_full_permissions["org_id"] in org_ids
 
-    def test_get_user_permissions_forbidden(
+    async def test_get_user_permissions_forbidden(
         self,
         test_user,
         test_user_2,
@@ -156,14 +156,14 @@ class TestGetUserPermissions:
         req.route_params = {"userId": test_user_2["user_id"]}
 
         # Call endpoint
-        response = get_user_permissions(req)
+        response = await get_user_permissions(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_get_user_permissions_empty(
+    async def test_get_user_permissions_empty(
         self,
         test_user,
         azurite_tables
@@ -173,7 +173,7 @@ class TestGetUserPermissions:
         req.route_params = {"userId": test_user["user_id"]}
 
         # Call endpoint
-        response = get_user_permissions(req)
+        response = await get_user_permissions(req)
 
         # Assertions
         assert response.status_code == 200
@@ -185,7 +185,7 @@ class TestGetUserPermissions:
 class TestGetOrgPermissions:
     """Integration tests for GET /api/permissions/organizations/{orgId}"""
 
-    def test_get_org_permissions(
+    async def test_get_org_permissions(
         self,
         test_user_with_full_permissions,
         test_user_2,
@@ -227,7 +227,7 @@ class TestGetOrgPermissions:
         req.route_params = {"orgId": org_id}
 
         # Call endpoint
-        response = get_org_permissions(req)
+        response = await get_org_permissions(req)
 
         # Assertions
         assert response.status_code == 200
@@ -240,7 +240,7 @@ class TestGetOrgPermissions:
         assert test_user_with_full_permissions["user_id"] in user_ids
         assert test_user_2["user_id"] in user_ids
 
-    def test_get_org_permissions_without_permission(
+    async def test_get_org_permissions_without_permission(
         self,
         test_user_with_no_permissions,
         azurite_tables
@@ -253,7 +253,7 @@ class TestGetOrgPermissions:
         req.route_params = {"orgId": test_user_with_no_permissions["org_id"]}
 
         # Call endpoint
-        response = get_org_permissions(req)
+        response = await get_org_permissions(req)
 
         # Assertions
         assert response.status_code == 403
@@ -264,7 +264,7 @@ class TestGetOrgPermissions:
 class TestGrantPermissions:
     """Integration tests for POST /api/permissions"""
 
-    def test_grant_permissions(
+    async def test_grant_permissions(
         self,
         test_user_with_full_permissions,
         test_user_2,
@@ -287,7 +287,7 @@ class TestGrantPermissions:
         }
 
         # Call endpoint
-        response = grant_permissions(req)
+        response = await grant_permissions(req)
 
         # Assertions
         assert response.status_code == 201  # Created
@@ -315,7 +315,7 @@ class TestGrantPermissions:
         assert org_perm is not None
         assert org_perm["CanExecuteWorkflows"] is True
 
-    def test_grant_permissions_update_existing(
+    async def test_grant_permissions_update_existing(
         self,
         test_user_with_full_permissions,
         test_user_2,
@@ -366,7 +366,7 @@ class TestGrantPermissions:
         }
 
         # Call endpoint
-        response = grant_permissions(req)
+        response = await grant_permissions(req)
 
         # Assertions
         assert response.status_code == 201
@@ -374,7 +374,7 @@ class TestGrantPermissions:
         assert permission["canExecuteWorkflows"] is True
         assert permission["canManageConfig"] is True
 
-    def test_grant_permissions_without_permission(
+    async def test_grant_permissions_without_permission(
         self,
         test_user_with_no_permissions,
         test_user_2,
@@ -397,7 +397,7 @@ class TestGrantPermissions:
         }
 
         # Call endpoint
-        response = grant_permissions(req)
+        response = await grant_permissions(req)
 
         # Assertions
         assert response.status_code == 403
@@ -408,7 +408,7 @@ class TestGrantPermissions:
 class TestRevokePermissions:
     """Integration tests for DELETE /api/permissions"""
 
-    def test_revoke_permissions(
+    async def test_revoke_permissions(
         self,
         test_user_with_full_permissions,
         test_user_2,
@@ -454,7 +454,7 @@ class TestRevokePermissions:
         }.get(key)
 
         # Call endpoint
-        response = revoke_permissions(req)
+        response = await revoke_permissions(req)
 
         # Assertions
         assert response.status_code == 204
@@ -472,7 +472,7 @@ class TestRevokePermissions:
         except:
             pass  # Expected
 
-    def test_revoke_permissions_idempotent(
+    async def test_revoke_permissions_idempotent(
         self,
         test_user_with_full_permissions,
         test_user_2,
@@ -490,12 +490,12 @@ class TestRevokePermissions:
         }.get(key)
 
         # Call endpoint
-        response = revoke_permissions(req)
+        response = await revoke_permissions(req)
 
         # Assertions - should return 204 even if permission doesn't exist
         assert response.status_code == 204
 
-    def test_revoke_permissions_without_permission(
+    async def test_revoke_permissions_without_permission(
         self,
         test_user_with_no_permissions,
         test_user_2,
@@ -513,14 +513,14 @@ class TestRevokePermissions:
         }.get(key)
 
         # Call endpoint
-        response = revoke_permissions(req)
+        response = await revoke_permissions(req)
 
         # Assertions
         assert response.status_code == 403
         error = json.loads(response.get_body())
         assert error["error"] == "Forbidden"
 
-    def test_revoke_permissions_missing_params(
+    async def test_revoke_permissions_missing_params(
         self,
         test_user_with_full_permissions,
         azurite_tables
@@ -534,7 +534,7 @@ class TestRevokePermissions:
         req.params.get = lambda key: None
 
         # Call endpoint
-        response = revoke_permissions(req)
+        response = await revoke_permissions(req)
 
         # Assertions
         assert response.status_code == 400

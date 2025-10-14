@@ -1,5 +1,5 @@
 """
-Seed data script for Bifrost Integrations local development
+Seed data script for Bifrost Integrations local development (4-table structure with UUIDs)
 Populates Azurite with realistic sample data for testing
 
 Run this script after initializing tables with init_tables.py
@@ -15,145 +15,115 @@ from azure.core.exceptions import ResourceExistsError
 
 logger = logging.getLogger(__name__)
 
-# Sample data
-SAMPLE_ORGS = [
-    {
-        "PartitionKey": "ORG",
-        "RowKey": "org-acme-123",
-        "Name": "Covi Development",
-        "TenantId": "12345678-1234-1234-1234-123456789012",
-        "IsActive": True,
-        "CreatedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
-        "CreatedBy": "jack@gocovi.com",  # Platform admin email
-        "UpdatedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
-    },
-]
+# Generate UUIDs for all entities
+ORG_ACME_ID = str(uuid.uuid4())
+ORG_CONTOSO_ID = str(uuid.uuid4())
+FORM_GREETING_ID = str(uuid.uuid4())
+FORM_ONBOARDING_ID = str(uuid.uuid4())
+ROLE_IT_MANAGERS_ID = str(uuid.uuid4())
+ROLE_HELP_DESK_ID = str(uuid.uuid4())
 
-SAMPLE_ORG_CONFIGS = [
+logger.info(f"Generated UUIDs for seed data:")
+logger.info(f"  Org ACME: {ORG_ACME_ID}")
+logger.info(f"  Org Contoso: {ORG_CONTOSO_ID}")
+logger.info(f"  Form Greeting: {FORM_GREETING_ID}")
+logger.info(f"  Form Onboarding: {FORM_ONBOARDING_ID}")
+logger.info(f"  Role IT Managers: {ROLE_IT_MANAGERS_ID}")
+logger.info(f"  Role Help Desk: {ROLE_HELP_DESK_ID}")
+
+# ==================== TABLE 1: CONFIG ====================
+
+SAMPLE_CONFIG_ENTITIES = [
+    # System config (GLOBAL)
     {
-        "PartitionKey": "org-acme-123",
+        "PartitionKey": "GLOBAL",
+        "RowKey": "system:version",
+        "Value": "1.0.0",
+        "Type": "string",
+        "Description": "Platform version",
+        "UpdatedAt": datetime.utcnow().isoformat(),
+        "UpdatedBy": "system",
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": "system:maintenance_mode",
+        "Value": "false",
+        "Type": "bool",
+        "Description": "System maintenance mode flag",
+        "UpdatedAt": datetime.utcnow().isoformat(),
+        "UpdatedBy": "system",
+    },
+    # Org-specific config
+    {
+        "PartitionKey": ORG_ACME_ID,
         "RowKey": "config:default_office_location",
         "Value": "New York",
         "Type": "string",
         "Description": "Default office location for new users",
         "UpdatedAt": datetime.utcnow().isoformat(),
-        "UpdatedBy": "jack@gocovi.com",  # Platform admin email
+        "UpdatedBy": "jack@gocovi.com",
     },
     {
-        "PartitionKey": "org-acme-123",
+        "PartitionKey": ORG_ACME_ID,
         "RowKey": "config:default_license_tier",
         "Value": "Microsoft 365 Business Standard",
         "Type": "string",
         "Description": "Default license for new users",
         "UpdatedAt": datetime.utcnow().isoformat(),
-        "UpdatedBy": "jack@gocovi.com",  # Platform admin email
+        "UpdatedBy": "jack@gocovi.com",
     },
-]
-
-SAMPLE_INTEGRATION_CONFIGS = [
+    # Integration config
     {
-        "PartitionKey": "org-acme-123",
+        "PartitionKey": ORG_ACME_ID,
         "RowKey": "integration:msgraph",
         "Enabled": True,
         "Settings": json.dumps({
             "tenant_id": "12345678-1234-1234-1234-123456789012",
             "client_id": "app-client-id-123",
-            "client_secret_ref": "org-acme-123--msgraph-secret",
+            "client_secret_ref": f"{ORG_ACME_ID}--msgraph-secret",
         }),
         "UpdatedAt": datetime.utcnow().isoformat(),
-        "UpdatedBy": "jack@gocovi.com",  # Platform admin email
+        "UpdatedBy": "jack@gocovi.com",
     },
-]
-
-SAMPLE_USERS = [
+    # OAuth config (example - would be encrypted in production)
     {
-        "PartitionKey": "USER",
-        "RowKey": "jack@gocovi.com",  # Using email as user ID for consistency with SWA CLI
-        "Email": "jack@gocovi.com",
-        "DisplayName": "Jack Musick",
-        "UserType": "PLATFORM",
-        "IsPlatformAdmin": True,
-        "IsActive": True,
-        "LastLogin": datetime.utcnow().isoformat(),
-        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
-    },
-    {
-        "PartitionKey": "USER",
-        "RowKey": "jack@gocovi.dev",  # Using email as user ID for consistency with SWA CLI
-        "Email": "jack@gocovi.dev",
-        "DisplayName": "Jack Musick",
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "LastLogin": datetime.utcnow().isoformat(),
-        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
-    },
-]
-
-SAMPLE_USER_PERMISSIONS = [
-    {
-        "PartitionKey": "jack@gocovi.dev",  # Using email as user ID
-        "RowKey": "org-acme-123",
-        "CanExecuteWorkflows": True,
-        "CanManageConfig": False,
-        "CanManageForms": False,
-        "CanViewHistory": True,
-        "GrantedBy": "jack@gocovi.com",  # Platform admin email
-        "GrantedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
-    },
-]
-
-SAMPLE_ORG_PERMISSIONS = [
-    {
-        "PartitionKey": "org-acme-123",
-        "RowKey": "jack@gocovi.dev",  # Using email as user ID
-        "CanExecuteWorkflows": True,
-        "CanManageConfig": False,
-        "CanManageForms": False,
-        "CanViewHistory": True,
-        "GrantedBy": "jack@gocovi.com",  # Platform admin email
-        "GrantedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
-    },
-]
-
-SAMPLE_ROLES = [
-    {
-        "PartitionKey": "ROLES",
-        "RowKey": "role:it-managers",
-        "Name": "IT Managers",
-        "Description": "IT department managers with access to user onboarding and system configuration",
-        "IsActive": True,
-        "CreatedBy": "jack@gocovi.com",
-        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    },
-    {
-        "PartitionKey": "ROLES",
-        "RowKey": "role:help-desk",
-        "Name": "Help Desk",
-        "Description": "Help desk staff with limited access to common tasks",
-        "IsActive": True,
-        "CreatedBy": "jack@gocovi.com",
-        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+        "PartitionKey": ORG_ACME_ID,
+        "RowKey": "oauth:microsoft",
+        "AccessToken": "sample_encrypted_access_token",
+        "RefreshToken": "sample_encrypted_refresh_token",
+        "ExpiresAt": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     },
 ]
 
-SAMPLE_USER_ROLES = [
-    {
-        "PartitionKey": "it-managers",
-        "RowKey": "user:jack@gocovi.dev",
-        "UserId": "jack@gocovi.dev",
-        "RoleId": "it-managers",
-        "AssignedBy": "jack@gocovi.com",
-        "AssignedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
-    },
-]
+# ==================== TABLE 2: ENTITIES ====================
 
-SAMPLE_FORMS = [
+SAMPLE_ENTITIES = [
+    # Organizations (GLOBAL partition)
     {
         "PartitionKey": "GLOBAL",
-        "RowKey": "form-simple-greeting",
+        "RowKey": f"org:{ORG_ACME_ID}",
+        "Name": "Covi Development",
+        "TenantId": "12345678-1234-1234-1234-123456789012",
+        "IsActive": True,
+        "CreatedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
+        "CreatedBy": "jack@gocovi.com",
+        "UpdatedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"org:{ORG_CONTOSO_ID}",
+        "Name": "Contoso Ltd",
+        "TenantId": "87654321-4321-4321-4321-210987654321",
+        "IsActive": True,
+        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+        "CreatedBy": "jack@gocovi.com",
+        "UpdatedAt": (datetime.utcnow() - timedelta(days=20)).isoformat(),
+    },
+    # Forms (GLOBAL and org-scoped)
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"form:{FORM_GREETING_ID}",
         "Name": "Simple Greeting",
         "Description": "Generate a personalized greeting message (instant response)",
         "FormSchema": json.dumps({
@@ -183,14 +153,15 @@ SAMPLE_FORMS = [
         }),
         "LinkedWorkflow": "simple_greeting",
         "IsActive": True,
+        "IsGlobal": True,
         "IsPublic": True,  # Public form - anyone can execute
         "CreatedBy": "jack@gocovi.com",
         "CreatedAt": (datetime.utcnow() - timedelta(days=5)).isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     },
     {
-        "PartitionKey": "org-acme-123",
-        "RowKey": "form-user-onboarding",
+        "PartitionKey": ORG_ACME_ID,
+        "RowKey": f"form:{FORM_ONBOARDING_ID}",
         "Name": "New User Onboarding",
         "Description": "Creates a new Microsoft 365 user with licenses",
         "FormSchema": json.dumps({
@@ -220,48 +191,37 @@ SAMPLE_FORMS = [
         }),
         "LinkedWorkflow": "user_onboarding",
         "IsActive": True,
-        "IsPublic": False,  # Restricted form - requires group assignment
+        "IsGlobal": False,
+        "IsPublic": False,  # Restricted form - requires role assignment
         "CreatedBy": "jack@gocovi.com",
         "CreatedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     },
 ]
 
-SAMPLE_FORM_ROLES = [
-    {
-        "PartitionKey": "form-user-onboarding",
-        "RowKey": "role:it-managers",
-        "FormId": "form-user-onboarding",
-        "RoleId": "it-managers",
-        "AssignedBy": "jack@gocovi.com",
-        "AssignedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
-    },
-]
-
-# Sample workflow executions with reverse timestamp
-
 
 def generate_sample_executions():
-    executions = []
-    user_executions = []
+    """Generate sample workflow executions with reverse timestamps"""
+    entities_executions = []
+    relationships_executions = []
     base_time = datetime.utcnow()
 
     for i in range(5):
         execution_time = base_time - timedelta(minutes=i * 30)
         reverse_ts = 9999999999999 - int(execution_time.timestamp() * 1000)
         exec_id = str(uuid.uuid4())
-        row_key = f"{reverse_ts}_{exec_id}"
 
         status = "Success" if i % 2 == 0 else "Failed"
         workflow = "user_onboarding" if i % 2 == 0 else "license_management"
 
-        execution = {
-            "PartitionKey": "org-acme-123",
-            "RowKey": row_key,
+        # Entities table (org-scoped execution)
+        execution_entity = {
+            "PartitionKey": ORG_ACME_ID,
+            "RowKey": f"execution:{reverse_ts}_{exec_id}",
             "ExecutionId": exec_id,
             "WorkflowName": workflow,
-            "FormId": "form-user-onboarding" if workflow == "user_onboarding" else "form-simple-greeting",
-            "ExecutedBy": "jack@gocovi.dev",  # Org user email
+            "FormId": FORM_ONBOARDING_ID if workflow == "user_onboarding" else FORM_GREETING_ID,
+            "ExecutedBy": "jack@gocovi.dev",
             "Status": status,
             "InputData": json.dumps({
                 "first_name": "Test",
@@ -280,20 +240,114 @@ def generate_sample_executions():
             "CompletedAt": (execution_time + timedelta(seconds=2 + i * 0.1)).isoformat(),
         }
 
-        user_execution = {
-            "PartitionKey": "jack@gocovi.dev",  # Org user email
-            "RowKey": row_key,
+        # Relationships table (user → execution dual index)
+        user_exec_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"userexec:jack@gocovi.dev:{reverse_ts}_{exec_id}",
             "ExecutionId": exec_id,
-            "OrgId": "org-acme-123",
+            "OrgId": ORG_ACME_ID,
             "WorkflowName": workflow,
             "Status": status,
             "StartedAt": execution_time.isoformat(),
         }
 
-        executions.append(execution)
-        user_executions.append(user_execution)
+        entities_executions.append(execution_entity)
+        relationships_executions.append(user_exec_entity)
 
-    return executions, user_executions
+    return entities_executions, relationships_executions
+
+
+# ==================== TABLE 3: RELATIONSHIPS ====================
+
+SAMPLE_RELATIONSHIPS = [
+    # Roles
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"role:{ROLE_IT_MANAGERS_ID}",
+        "Name": "IT Managers",
+        "Description": "IT department managers with access to user onboarding and system configuration",
+        "IsActive": True,
+        "CreatedBy": "jack@gocovi.com",
+        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+        "UpdatedAt": datetime.utcnow().isoformat(),
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"role:{ROLE_HELP_DESK_ID}",
+        "Name": "Help Desk",
+        "Description": "Help desk staff with limited access to common tasks",
+        "IsActive": True,
+        "CreatedBy": "jack@gocovi.com",
+        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+        "UpdatedAt": datetime.utcnow().isoformat(),
+    },
+    # User-to-Role assignments (dual indexed)
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"assignedrole:{ROLE_IT_MANAGERS_ID}:jack@gocovi.dev",
+        "AssignedBy": "jack@gocovi.com",
+        "AssignedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userrole:jack@gocovi.dev:{ROLE_IT_MANAGERS_ID}",
+        "AssignedBy": "jack@gocovi.com",
+        "AssignedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+    },
+    # Form-to-Role assignments (dual indexed)
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"formrole:{FORM_ONBOARDING_ID}:{ROLE_IT_MANAGERS_ID}",
+        "AssignedBy": "jack@gocovi.com",
+        "AssignedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"roleform:{ROLE_IT_MANAGERS_ID}:{FORM_ONBOARDING_ID}",
+        "AssignedBy": "jack@gocovi.com",
+        "AssignedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+    },
+    # User-to-Org permissions (dual indexed)
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userperm:jack@gocovi.dev:{ORG_ACME_ID}",
+        "GrantedBy": "jack@gocovi.com",
+        "GrantedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"orgperm:{ORG_ACME_ID}:jack@gocovi.dev",
+        "GrantedBy": "jack@gocovi.com",
+        "GrantedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
+    },
+]
+
+# ==================== TABLE 4: USERS ====================
+
+SAMPLE_USERS = [
+    {
+        "PartitionKey": "jack@gocovi.com",
+        "RowKey": "user",
+        "Email": "jack@gocovi.com",
+        "DisplayName": "Jack Musick (Admin)",
+        "UserType": "PLATFORM",
+        "IsPlatformAdmin": True,
+        "IsActive": True,
+        "LastLogin": datetime.utcnow().isoformat(),
+        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
+    },
+    {
+        "PartitionKey": "jack@gocovi.dev",
+        "RowKey": "user",
+        "Email": "jack@gocovi.dev",
+        "DisplayName": "Jack Musick (Org User)",
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
+        "IsActive": True,
+        "LastLogin": datetime.utcnow().isoformat(),
+        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
+    },
+]
 
 
 def seed_table(connection_string: str, table_name: str, entities: list):
@@ -312,12 +366,12 @@ def seed_table(connection_string: str, table_name: str, entities: list):
                 row_key=entity["RowKey"]
             )
             logger.info(
-                f"  ⊘ Skipped {table_name}: {entity['RowKey']} (already exists)")
+                f"  ⊘ Skipped {table_name}: {entity['RowKey'][:50]}... (already exists)")
             skipped += 1
         except:
             # Entity doesn't exist, insert it
             table_client.create_entity(entity)
-            logger.info(f"  ✓ Inserted {table_name}: {entity['RowKey']}")
+            logger.info(f"  ✓ Inserted {table_name}: {entity['RowKey'][:50]}...")
             inserted += 1
 
     return inserted, skipped
@@ -332,77 +386,36 @@ def seed_all_data(connection_string: str = None):
         raise ValueError(
             "AzureWebJobsStorage environment variable not set")
 
-    logger.info("Seeding sample data for local development...")
+    logger.info("Seeding sample data for local development (4-table structure)...")
     logger.info("="*60)
 
     results = {}
 
-    # Seed organizations
-    logger.info("\nSeeding Organizations...")
+    # Seed Config table
+    logger.info("\nSeeding Config table...")
     inserted, skipped = seed_table(
-        connection_string, "Organizations", SAMPLE_ORGS)
-    results["Organizations"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed org configs
-    logger.info("\nSeeding Config...")
-    inserted, skipped = seed_table(
-        connection_string, "Config", SAMPLE_ORG_CONFIGS)
+        connection_string, "Config", SAMPLE_CONFIG_ENTITIES)
     results["Config"] = {"inserted": inserted, "skipped": skipped}
 
-    # Seed integration configs
-    logger.info("\nSeeding IntegrationConfig...")
+    # Seed Entities table
+    logger.info("\nSeeding Entities table...")
+    entities_executions, relationships_executions = generate_sample_executions()
+    all_entities = SAMPLE_ENTITIES + entities_executions
     inserted, skipped = seed_table(
-        connection_string, "IntegrationConfig", SAMPLE_INTEGRATION_CONFIGS)
-    results["IntegrationConfig"] = {"inserted": inserted, "skipped": skipped}
+        connection_string, "Entities", all_entities)
+    results["Entities"] = {"inserted": inserted, "skipped": skipped}
 
-    # Seed users
-    logger.info("\nSeeding Users...")
+    # Seed Relationships table
+    logger.info("\nSeeding Relationships table...")
+    all_relationships = SAMPLE_RELATIONSHIPS + relationships_executions
+    inserted, skipped = seed_table(
+        connection_string, "Relationships", all_relationships)
+    results["Relationships"] = {"inserted": inserted, "skipped": skipped}
+
+    # Seed Users table
+    logger.info("\nSeeding Users table...")
     inserted, skipped = seed_table(connection_string, "Users", SAMPLE_USERS)
     results["Users"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed user permissions
-    logger.info("\nSeeding UserPermissions...")
-    inserted, skipped = seed_table(
-        connection_string, "UserPermissions", SAMPLE_USER_PERMISSIONS)
-    results["UserPermissions"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed org permissions
-    logger.info("\nSeeding OrgPermissions...")
-    inserted, skipped = seed_table(
-        connection_string, "OrgPermissions", SAMPLE_ORG_PERMISSIONS)
-    results["OrgPermissions"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed roles (groups)
-    logger.info("\nSeeding Roles...")
-    inserted, skipped = seed_table(connection_string, "Roles", SAMPLE_ROLES)
-    results["Roles"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed user-role assignments
-    logger.info("\nSeeding UserRoles...")
-    inserted, skipped = seed_table(
-        connection_string, "UserRoles", SAMPLE_USER_ROLES)
-    results["UserRoles"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed forms
-    logger.info("\nSeeding Forms...")
-    inserted, skipped = seed_table(connection_string, "Forms", SAMPLE_FORMS)
-    results["Forms"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed form-role assignments
-    logger.info("\nSeeding FormRoles...")
-    inserted, skipped = seed_table(
-        connection_string, "FormRoles", SAMPLE_FORM_ROLES)
-    results["FormRoles"] = {"inserted": inserted, "skipped": skipped}
-
-    # Seed workflow executions
-    logger.info("\nSeeding WorkflowExecutions and UserExecutions...")
-    executions, user_executions = generate_sample_executions()
-    inserted, skipped = seed_table(
-        connection_string, "WorkflowExecutions", executions)
-    results["WorkflowExecutions"] = {"inserted": inserted, "skipped": skipped}
-    inserted, skipped = seed_table(
-        connection_string, "UserExecutions", user_executions)
-    results["UserExecutions"] = {"inserted": inserted, "skipped": skipped}
 
     # Summary
     logger.info("\n" + "="*60)
@@ -416,6 +429,13 @@ def seed_all_data(connection_string: str = None):
             f"{table_name}: +{counts['inserted']} new, ⊘{counts['skipped']} existing")
 
     logger.info(f"\nTotal: {total_inserted} inserted, {total_skipped} skipped")
+    logger.info("\nGenerated UUIDs (save these for testing):")
+    logger.info(f"  ORG_ACME_ID = '{ORG_ACME_ID}'")
+    logger.info(f"  ORG_CONTOSO_ID = '{ORG_CONTOSO_ID}'")
+    logger.info(f"  FORM_GREETING_ID = '{FORM_GREETING_ID}'")
+    logger.info(f"  FORM_ONBOARDING_ID = '{FORM_ONBOARDING_ID}'")
+    logger.info(f"  ROLE_IT_MANAGERS_ID = '{ROLE_IT_MANAGERS_ID}'")
+    logger.info(f"  ROLE_HELP_DESK_ID = '{ROLE_HELP_DESK_ID}'")
     logger.info("="*60)
 
     return results
