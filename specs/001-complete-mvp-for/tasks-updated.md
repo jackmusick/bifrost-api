@@ -45,7 +45,7 @@ Tasks are organized into phases aligned with user stories:
 
 **Goal**: Initialize all three repositories with proper tooling and local development environment
 
-**Independent Test**: Can run all three components locally (client on port 3000, Management API on port 7071, Workflow Engine on port 7072) with Azurite
+**Independent Test**: Can run all three components locally (client on port 3000, Management API on port 7071, Workflow Engine on port 7071) with Azurite
 
 **Checkpoint**: ✅ All repos initialized, Azurite running, tables created, basic "hello world" endpoints functional
 
@@ -65,7 +65,7 @@ Tasks are organized into phases aligned with user stories:
 
 ```env
 REACT_APP_MANAGEMENT_API_URL=http://localhost:7071
-REACT_APP_WORKFLOW_API_URL=http://localhost:7072
+REACT_APP_WORKFLOW_API_URL=http://localhost:7071
 REACT_APP_AZURE_CLIENT_ID=your-app-registration-client-id
 REACT_APP_AZURE_TENANT_ID=your-tenant-id
 REACT_APP_AZURE_REDIRECT_URI=http://localhost:3000

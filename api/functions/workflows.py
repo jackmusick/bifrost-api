@@ -1,5 +1,5 @@
 """
-Workflow Execution Endpoint
+Workflow Execution API
 Handles execution of registered workflows with org context
 """
 
@@ -11,9 +11,11 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from shared.middleware import with_org_context
+from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
 from shared.execution_logger import get_execution_logger
 from shared.models import (
+    WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     ExecutionStatus,
     ErrorResponse
@@ -32,7 +34,23 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-@bp.route(route="workflows/{workflowName}", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@bp.route(route="workflows/{workflowName}/execute", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@openapi_endpoint(
+    path="/workflows/{workflowName}/execute",
+    method="POST",
+    summary="Execute a workflow",
+    description="Execute a workflow with the provided parameters",
+    tags=["Workflows"],
+    request_model=WorkflowExecutionRequest,
+    response_model=WorkflowExecutionResponse,
+    path_params={
+        "workflowName": {
+            "description": "Name of the workflow to execute",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_org_context
 async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
     """

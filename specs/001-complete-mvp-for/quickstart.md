@@ -88,10 +88,10 @@ pip install -r requirements.txt
 cp local.settings.json.example local.settings.json
 
 # Start the Workflow Engine
-func start --port 7072
+func start --port 7071
 ```
 
-The Workflow Engine will start on `http://localhost:7072`.
+The Workflow Engine will start on `http://localhost:7071`.
 
 ### 4. Clone and Set Up React Client
 
@@ -215,7 +215,7 @@ The workflow is automatically discovered when the Workflow Engine starts! No man
 **Option 1: REST API (cURL)**
 
 ```bash
-curl -X POST http://localhost:7072/workflows/user_onboarding \
+curl -X POST http://localhost:7071/workflows/user_onboarding \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: your-test-org-id" \
   -d '{
@@ -603,7 +603,7 @@ Same as Workflow Engine - both share the same Azure resources.
 
 ```env
 REACT_APP_MANAGEMENT_API_URL=http://localhost:7071
-REACT_APP_WORKFLOW_API_URL=http://localhost:7072
+REACT_APP_WORKFLOW_API_URL=http://localhost:7071
 REACT_APP_AZURE_CLIENT_ID=your-app-registration-client-id
 REACT_APP_AZURE_TENANT_ID=your-tenant-id
 REACT_APP_AZURE_REDIRECT_URI=http://localhost:3000

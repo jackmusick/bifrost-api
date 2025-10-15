@@ -63,6 +63,7 @@ def generate_seed_uuid(name: str) -> str:
     """Generate a deterministic UUID based on a name for seed data"""
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"bifrost-seed-{name}"))
 
+
 # T043: Organization test data
 SEED_ORGANIZATIONS = [
     {
@@ -449,7 +450,7 @@ async def main() -> int:
 
         print_header("\n✓ Ready for local development!")
         print_info("Start Azure Functions: func start")
-        print_info("Test endpoint: curl http://localhost:7072/api/health\n")
+        print_info("Test endpoint: curl http://localhost:7071/api/health\n")
 
         return 0
 

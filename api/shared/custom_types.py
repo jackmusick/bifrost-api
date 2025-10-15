@@ -2,7 +2,7 @@
 Type definitions for Azure Functions with custom extensions
 """
 
-from typing import Protocol, Optional, Union, cast, TYPE_CHECKING
+from typing import Protocol, Optional, Union, cast, TYPE_CHECKING, Any
 import azure.functions as func
 
 if TYPE_CHECKING:
@@ -59,6 +59,20 @@ def get_route_param(req: func.HttpRequest, param_name: str) -> str:
     return value
 
 
+def get_org_context(req: func.HttpRequest) -> Any:
+    """
+    Type-safe helper to extract OrganizationContext from HttpRequest.
+
+    Usage:
+        @with_org_context
+        async def handler(req: func.HttpRequest):
+            context = get_org_context(req)
+            # context is now properly typed as OrganizationContext
+    """
+    req_with_context = cast(HttpRequestWithOrgContext, req)
+    return req_with_context.org_context
+
+
 class HttpRequestWithPrincipal(Protocol):
     """
     Extended HttpRequest with injected principal attribute.
@@ -85,6 +99,25 @@ class HttpRequestWithUser(Protocol):
     Used by old @require_auth decorator.
     """
     user: "UserPrincipal"
+
+    # Standard HttpRequest attributes
+    method: str
+    url: str
+    headers: dict
+    params: dict
+    route_params: dict
+
+    def get_body(self) -> bytes: ...
+    def get_json(self) -> dict: ...
+
+
+class HttpRequestWithOrgContext(Protocol):
+    """
+    Extended HttpRequest with injected org_context attribute.
+
+    Used by @with_org_context decorator to inject OrganizationContext.
+    """
+    org_context: "Any"  # OrganizationContext from shared.auth
 
     # Standard HttpRequest attributes
     method: str

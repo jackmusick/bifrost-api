@@ -16,14 +16,14 @@ import { useEffect } from 'react'
 export function WorkflowEngineError() {
   const navigate = useNavigate()
   const { isPlatformAdmin } = useAuth()
-  const { data: engineHealth, refetch, isRefetching } = useWorkflowEngineHealth()
+  const { data: serverHealth, refetch, isRefetching } = useWorkflowEngineHealth()
 
-  // If the engine becomes healthy, redirect to workflows page
+  // If the server becomes healthy, redirect to workflows page
   useEffect(() => {
-    if (engineHealth?.status === 'healthy') {
+    if (serverHealth?.status === 'healthy') {
       navigate('/workflows')
     }
-  }, [engineHealth, navigate])
+  }, [serverHealth, navigate])
 
   const handleRetry = async () => {
     await refetch()
@@ -38,9 +38,9 @@ export function WorkflowEngineError() {
               <AlertCircle className="h-8 w-8 text-destructive" />
             </div>
             <div>
-              <CardTitle className="text-2xl">Workflow Engine Unavailable</CardTitle>
+              <CardTitle className="text-2xl">Server Unavailable</CardTitle>
               <CardDescription>
-                Unable to connect to the workflow execution engine
+                Unable to connect to the server
               </CardDescription>
             </div>
           </div>
@@ -50,7 +50,7 @@ export function WorkflowEngineError() {
             <Terminal className="h-4 w-4" />
             <AlertTitle>Service Status</AlertTitle>
             <AlertDescription>
-              The workflow engine is currently unavailable. Workflows, forms, and execution
+              The server is currently unavailable. Workflows, forms, and execution
               history cannot be accessed until the service is restored.
             </AlertDescription>
           </Alert>
@@ -66,7 +66,7 @@ export function WorkflowEngineError() {
               <CardContent>
                 <Button
                   variant="outline"
-                  onClick={() => navigate('/docs/troubleshooting/workflow-engine-unavailable')}
+                  onClick={() => navigate('/docs/troubleshooting/server-unavailable')}
                   className="w-full"
                 >
                   <BookOpen className="mr-2 h-4 w-4" />
@@ -85,7 +85,7 @@ export function WorkflowEngineError() {
               <AlertTitle>Contact Administrator</AlertTitle>
               <AlertDescription>
                 Please contact your platform administrator to resolve this issue.
-                Workflows and forms will be unavailable until the workflow engine is restored.
+                Workflows and forms will be unavailable until the server is restored.
               </AlertDescription>
             </Alert>
           )}

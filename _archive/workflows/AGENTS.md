@@ -5,6 +5,7 @@ This guide helps AI agents assist developers in creating custom workflows, integ
 ## 🚨 CRITICAL RULES
 
 ### WHERE TO WRITE CODE
+
 **⚠️ ABSOLUTE RULE**: ALL workflow and user code MUST be written **ONLY** in the `/workspace/` directory. NEVER modify files in `/engine/` as they contain system infrastructure code.
 
 ### RECOMMENDED FOLDER STRUCTURE
@@ -82,12 +83,13 @@ This guide helps AI agents assist developers in creating custom workflows, integ
 ```
 
 **Benefits of this structure**:
-- 🎯 **Organized by category** - Easy to find related workflows
-- 📊 **Auto-generated diagrams** - Visual workflow documentation
-- 🔧 **Workflow-specific libraries** - Isolated helper functions
-- 🧪 **Workflow-specific tests** - Focused testing
-- 📦 **Reusable components** - Shared data providers and utilities
-- 📁 **Proper Python packages** - All directories have `__init__.py` files
+
+-   🎯 **Organized by category** - Easy to find related workflows
+-   📊 **Auto-generated diagrams** - Visual workflow documentation
+-   🔧 **Workflow-specific libraries** - Isolated helper functions
+-   🧪 **Workflow-specific tests** - Focused testing
+-   📦 **Reusable components** - Shared data providers and utilities
+-   📁 **Proper Python packages** - All directories have `__init__.py` files
 
 ### MERMAID DIAGRAM GENERATION
 
@@ -111,22 +113,24 @@ flowchart TD
     D --> N[End: Error]
     H --> N
     M --> O[End: Success]
-    
+
     style A fill:#e1f5fe
     style O fill:#e8f5e8
     style N fill:#ffebee
 ```
 
 **Diagram Generation Guidelines**:
-- 🔄 **Auto-generate** - Create diagrams automatically when implementing workflows
-- 📊 **Flowchart format** - Use Mermaid flowchart syntax
-- 🎯 **Decision points** - Show conditional logic with diamonds
-- ✅ **Success/error paths** - Clearly indicate happy path and error handling
-- 📍 **Checkpoints** - Mark where `context.save_checkpoint()` is called
-- 🔗 **Integration calls** - Show external system interactions
-- 📝 **Keep updated** - Update diagram when workflow logic changes
+
+-   🔄 **Auto-generate** - Create diagrams automatically when implementing workflows
+-   📊 **Flowchart format** - Use Mermaid flowchart syntax
+-   🎯 **Decision points** - Show conditional logic with diamonds
+-   ✅ **Success/error paths** - Clearly indicate happy path and error handling
+-   📍 **Checkpoints** - Mark where `context.save_checkpoint()` is called
+-   🔗 **Integration calls** - Show external system interactions
+-   📝 **Keep updated** - Update diagram when workflow logic changes
 
 **Diagram Best Practices**:
+
 1. **Start/End nodes** - Use clear start and end points
 2. **Color coding** - Use colors to indicate success (green), error (red), and neutral (blue) states
 3. **Descriptive labels** - Use clear, action-oriented node descriptions
@@ -135,6 +139,7 @@ flowchart TD
 6. **Checkpoints** - Indicate where state is saved for debugging
 
 **Example Complex Workflow Diagram**:
+
 ```mermaid
 flowchart TD
     A[Start: Bulk User Import] --> B[Parse CSV Data]
@@ -163,7 +168,7 @@ flowchart TD
     E --> V[End: Error]
     U --> W[End: Success]
     V --> X[End: Error]
-    
+
     style A fill:#e1f5fe
     style W fill:#e8f5e8
     style V fill:#ffebee
@@ -183,6 +188,7 @@ flowchart TD
 ```
 
 ### IMPORT RESTRICTIONS
+
 Workspace code can ONLY import from these specific modules:
 
 ```python
@@ -190,7 +196,7 @@ Workspace code can ONLY import from these specific modules:
 from engine.shared.decorators import workflow, param, data_provider
 from engine.shared.context import OrganizationContext
 from engine.shared.error_handling import (
-    WorkflowException, ValidationError, IntegrationError, 
+    WorkflowException, ValidationError, IntegrationError,
     TimeoutError, ConfigurationError, PermissionError
 )
 from engine.shared.models import (
@@ -219,43 +225,43 @@ from engine.shared.context import OrganizationContext
     description="Clear description of what this workflow does",
     category="user_management",  # Categories: user_management, automation, reporting, etc.
     tags=["m365", "automation"],  # Optional tags for filtering
-    
+
     # Execution settings
     execution_mode="sync",  # "sync", "async", "scheduled"
     timeout_seconds=300,   # Max execution time
-    
+
     # Access control
     requires_org=True,      # Requires organization context?
     expose_in_forms=True,   # Can be called from forms?
 )
 @param("user_email", "email", "User email address", required=True)
-@param("department", "string", "Department name", 
+@param("department", "string", "Department name",
        data_provider="get_departments")  # Dynamic options
 async def my_workflow(context: OrganizationContext, user_email: str, department: str):
     """
     Workflow implementation.
-    
+
     Args:
         context: Organization context with access to org data, config, secrets
         user_email: User's email address
         department: Department name (from dropdown)
-    
+
     Returns:
         dict: Workflow result
     """
     # Log execution start
     context.log("info", f"Processing user: {user_email}", {"department": department})
-    
+
     # Save checkpoint for debugging
     context.save_checkpoint("user_validation", {"email": user_email})
-    
+
     try:
         # Your workflow logic here
         result = await process_user(context, user_email, department)
-        
+
         context.log("info", "Workflow completed successfully")
         return {"success": True, "result": result}
-        
+
     except Exception as e:
         context.log("error", "Workflow failed", {"error": str(e)})
         raise WorkflowException(f"Failed to process user: {str(e)}")
@@ -276,17 +282,19 @@ async def my_workflow(context: OrganizationContext, user_email: str, department:
 ```
 
 **Valid Parameter Types**:
-- `string` - Text values
-- `int` - Integer numbers
-- `bool` - True/False values
-- `float` - Decimal numbers
-- `email` - Email addresses (with validation)
-- `json` - JSON objects
-- `list` - Arrays/lists
+
+-   `string` - Text values
+-   `int` - Integer numbers
+-   `bool` - True/False values
+-   `float` - Decimal numbers
+-   `email` - Email addresses (with validation)
+-   `json` - JSON objects
+-   `list` - Arrays/lists
 
 ## CONTEXT API REFERENCE
 
 ### Organization Information
+
 ```python
 org_id = context.org_id           # Organization ID
 org_name = context.org_name       # Organization display name
@@ -294,6 +302,7 @@ tenant_id = context.tenant_id     # Microsoft 365 tenant ID
 ```
 
 ### Execution Metadata
+
 ```python
 execution_id = context.execution_id
 caller_email = context.executed_by_email
@@ -301,6 +310,7 @@ caller_name = context.executed_by_name
 ```
 
 ### Configuration (with Secret Resolution)
+
 ```python
 # Get config value (automatically resolves secret_ref from Key Vault)
 api_url = context.get_config("api_url", "https://default.com")
@@ -313,12 +323,14 @@ if context.has_config("feature_flag"):
 ```
 
 ### Secrets (Direct Key Vault Access)
+
 ```python
 # Secrets are org-scoped: {org_id}--{secret_name}
 secret_value = await context.get_secret("my_secret")
 ```
 
 ### OAuth Connections
+
 ```python
 # Get pre-authenticated OAuth credentials
 oauth_creds = await context.get_oauth_connection("HaloPSA")
@@ -330,6 +342,7 @@ if oauth_creds.is_expired():
 ```
 
 ### Integrations (When Available)
+
 ```python
 # Get pre-authenticated integration clients
 graph = context.get_integration("msgraph")  # Microsoft Graph
@@ -341,6 +354,7 @@ tickets = await halo.get_tickets()
 ```
 
 ### State Tracking
+
 ```python
 # Save checkpoints for debugging
 context.save_checkpoint("step1", {"progress": "started", "user_id": user_id})
@@ -374,7 +388,7 @@ async def get_departments(context: OrganizationContext):
     """Return department options for form dropdown."""
     # Example: Return from config or external API
     departments = context.get_config("departments", "IT,HR,Finance").split(",")
-    
+
     return [
         {"label": dept.strip(), "value": dept.strip()}
         for dept in departments
@@ -390,7 +404,7 @@ async def get_available_licenses(context: OrganizationContext):
     try:
         graph = context.get_integration("msgraph")
         skus = await graph.get_subscribed_skus()
-        
+
         return [
             {
                 "label": sku.sku_part_number,
@@ -414,7 +428,7 @@ Use structured error handling for better debugging:
 
 ```python
 from engine.shared.error_handling import (
-    ValidationError, IntegrationError, TimeoutError, 
+    ValidationError, IntegrationError, TimeoutError,
     ConfigurationError, PermissionError, WorkflowException
 )
 
@@ -423,14 +437,14 @@ async def robust_workflow(context: OrganizationContext, user_email: str):
     # Input validation
     if not user_email or "@" not in user_email:
         raise ValidationError("Invalid email address", field="user_email")
-    
+
     # Configuration validation
     if not context.has_config("api_endpoint"):
         raise ConfigurationError(
             "API endpoint not configured",
             config_key="api_endpoint"
         )
-    
+
     # Integration calls with error handling
     try:
         graph = context.get_integration("msgraph")
@@ -441,7 +455,7 @@ async def robust_workflow(context: OrganizationContext, user_email: str):
             message=f"Failed to get user: {str(e)}",
             status_code=getattr(e, 'status_code', None)
         )
-    
+
     return {"user": user}
 ```
 
@@ -462,10 +476,10 @@ Create automated workflows that run on schedules:
 async def daily_license_audit(context: OrganizationContext):
     """Automated daily license audit."""
     context.log("info", "Starting daily license audit")
-    
+
     graph = context.get_integration("msgraph")
     skus = await graph.get_subscribed_skus()
-    
+
     unused_licenses = []
     for sku in skus.value:
         available = sku.prepaid_units.enabled - sku.consumed_units
@@ -474,21 +488,22 @@ async def daily_license_audit(context: OrganizationContext):
                 "sku": sku.sku_part_number,
                 "available": available
             })
-    
+
     context.save_checkpoint("audit_complete", {
         "total_skus": len(skus.value),
         "unused_count": len(unused_licenses)
     })
-    
+
     return {"unused_licenses": unused_licenses}
 ```
 
 **Cron Schedule Examples**:
-- `"0 9 * * *"` - Every day at 9 AM UTC
-- `"*/15 * * * *"` - Every 15 minutes
-- `"0 0 * * 1"` - Every Monday at midnight
-- `"0 9 * * 1-5"` - Weekdays at 9 AM
-- `"0 0 1 * *"` - First day of month at midnight
+
+-   `"0 9 * * *"` - Every day at 9 AM UTC
+-   `"*/15 * * * *"` - Every 15 minutes
+-   `"0 0 * * 1"` - Every Monday at midnight
+-   `"0 9 * * 1-5"` - Weekdays at 9 AM
+-   `"0 0 1 * *"` - First day of month at midnight
 
 ## ASYNC WORKFLOWS
 
@@ -505,40 +520,40 @@ async def bulk_user_import(context: OrganizationContext, csv_data: str):
     """Import users from CSV data."""
     import csv
     from io import StringIO
-    
+
     context.log("info", "Starting bulk user import")
-    
+
     # Parse CSV
     csv_reader = csv.DictReader(StringIO(csv_data))
     users = list(csv_reader)
-    
+
     context.set_variable("total_users", len(users))
     context.set_variable("processed_users", 0)
     context.set_variable("failed_users", [])
-    
+
     results = []
     for i, user_data in enumerate(users):
         try:
             # Process each user
             result = await create_user(context, user_data)
             results.append(result)
-            
+
             # Update progress
             context.set_variable("processed_users", i + 1)
             context.save_checkpoint(f"user_{i+1}", {"email": user_data.get("email")})
-            
+
         except Exception as e:
             failed = context.get_variable("failed_users", [])
             failed.append({"email": user_data.get("email"), "error": str(e)})
             context.set_variable("failed_users", failed)
-    
+
     summary = {
         "total": len(users),
         "processed": context.get_variable("processed_users"),
         "failed": len(context.get_variable("failed_users", [])),
         "results": results
     }
-    
+
     context.log("info", "Bulk import completed", summary)
     return summary
 ```
@@ -555,27 +570,27 @@ import aiohttp
 
 class CustomAPIIntegration(BaseIntegration):
     integration_name = "custom_api"
-    
+
     async def authenticate(self):
         """Authenticate to custom API."""
         api_key = await self.get_secret("custom_api_key")
         base_url = self.get_config("custom_api_url")
-        
+
         self.base_url = base_url
         self.headers = {"Authorization": f"Bearer {api_key}"}
-        
+
         return api_key
-    
+
     async def get_data(self, endpoint: str):
         """Get data from API endpoint."""
         started_at = datetime.utcnow()
         url = f"{self.base_url}{endpoint}"
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=self.headers) as response:
                     data = await response.json()
-                    
+
                     # Track successful call
                     duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
                     self.context._track_integration_call(
@@ -585,9 +600,9 @@ class CustomAPIIntegration(BaseIntegration):
                         status_code=response.status,
                         duration_ms=duration_ms
                     )
-                    
+
                     return data
-                    
+
         except Exception as e:
             # Track failed call
             duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -599,7 +614,7 @@ class CustomAPIIntegration(BaseIntegration):
                 duration_ms=duration_ms,
                 error=str(e)
             )
-            
+
             raise IntegrationError(
                 integration="custom_api",
                 message=f"API call failed: {str(e)}"
@@ -629,15 +644,15 @@ async def test_my_workflow_success():
     context.get_config = MagicMock(return_value="test_value")
     context.log = MagicMock()
     context.save_checkpoint = MagicMock()
-    
+
     # Mock integration
     mock_graph = AsyncMock()
     mock_graph.get_user = AsyncMock(return_value={"id": "user-123", "email": "test@example.com"})
     context.get_integration = MagicMock(return_value=mock_graph)
-    
+
     # Execute workflow
     result = await my_workflow(context, "test@example.com")
-    
+
     # Assert
     assert result["success"] is True
     mock_graph.get_user.assert_called_once_with("test@example.com")
@@ -657,57 +672,65 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"user_email": "test@example.com"}' \
-  http://localhost:7072/api/workflows/my_workflow
+  http://localhost:7071/api/workflows/my_workflow
 ```
 
 ## BEST PRACTICES
 
 ### 1. Workflow Design
-- Keep workflows focused on single responsibilities
-- Use descriptive names and categories
-- Add comprehensive parameter validation
-- Log important steps and decisions
-- Save checkpoints at key milestones
+
+-   Keep workflows focused on single responsibilities
+-   Use descriptive names and categories
+-   Add comprehensive parameter validation
+-   Log important steps and decisions
+-   Save checkpoints at key milestones
 
 ### 2. Error Handling
-- Use specific exception types
-- Include context in error messages
-- Log errors before raising exceptions
-- Provide actionable error details
+
+-   Use specific exception types
+-   Include context in error messages
+-   Log errors before raising exceptions
+-   Provide actionable error details
 
 ### 3. Performance
-- Use async/await for I/O operations
-- Cache expensive operations in variables
-- Limit data processing to necessary items
-- Set appropriate timeouts
+
+-   Use async/await for I/O operations
+-   Cache expensive operations in variables
+-   Limit data processing to necessary items
+-   Set appropriate timeouts
 
 ### 4. Security
-- Never log sensitive data (passwords, tokens)
-- Use context.get_secret() for credentials
-- Validate all input parameters
-- Follow principle of least privilege
+
+-   Never log sensitive data (passwords, tokens)
+-   Use context.get_secret() for credentials
+-   Validate all input parameters
+-   Follow principle of least privilege
 
 ### 5. Maintainability
-- Add clear docstrings
-- Use type hints
-- Break complex logic into helper functions
-- Add comments for non-obvious code
+
+-   Add clear docstrings
+-   Use type hints
+-   Break complex logic into helper functions
+-   Add comments for non-obvious code
 
 ## TROUBLESHOOTING
 
 ### Common Issues
 
 1. **Import Error**: "Workspace code cannot import engine module"
-   - Solution: Only import from allowed modules listed above
+
+    - Solution: Only import from allowed modules listed above
 
 2. **Workflow Not Found**: 404 when executing workflow
-   - Solution: Ensure workflow is in `/workspace/workflows/` and has `@workflow` decorator
+
+    - Solution: Ensure workflow is in `/workspace/workflows/` and has `@workflow` decorator
 
 3. **Secret Access Failed**: KeyVault permission denied
-   - Solution: Run `python scripts/authenticate_azure.py` and check Key Vault permissions
+
+    - Solution: Run `python scripts/authenticate_azure.py` and check Key Vault permissions
 
 4. **Timeout Error**: Workflow exceeds time limit
-   - Solution: Increase `timeout_seconds` in `@workflow` decorator or optimize workflow
+    - Solution: Increase `timeout_seconds` in `@workflow` decorator or optimize workflow
 
 ### Debugging Tips
 
@@ -732,6 +755,7 @@ context.set_variable("debug_data", complex_object)
 ## QUICK REFERENCE
 
 ### Essential Imports
+
 ```python
 from engine.shared.decorators import workflow, param, data_provider
 from engine.shared.context import OrganizationContext
@@ -741,6 +765,7 @@ from engine.shared.error_handling import (
 ```
 
 ### Workflow Template
+
 ```python
 @workflow(name="workflow_name", description="Description")
 @param("param1", "string", "Parameter 1", required=True)
@@ -751,6 +776,7 @@ async def workflow_name(context: OrganizationContext, param1: str):
 ```
 
 ### Context Methods
+
 ```python
 context.get_config(key, default)
 context.has_config(key)

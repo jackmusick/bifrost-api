@@ -50,12 +50,12 @@ export function Header() {
     const isPlatformAdmin = user?.userDetails === "jack@gocovi.com"; // TODO: Get from user profile
 
     // Determine status color and message
-    const getEngineStatus = () => {
+    const getServerStatus = () => {
         if (healthLoading || isRefetching) {
             return {
                 color: "text-yellow-500",
                 status: "checking",
-                message: "Checking workflow engine...",
+                message: "Checking server status...",
                 canClick: false,
             };
         }
@@ -64,7 +64,7 @@ export function Header() {
             return {
                 color: "text-green-500",
                 status: "healthy",
-                message: "Workflow engine is healthy",
+                message: "Server is healthy",
                 canClick: true,
             };
         }
@@ -72,17 +72,17 @@ export function Header() {
         return {
             color: "text-red-500",
             status: "unhealthy",
-            message: "Workflow engine is unavailable",
+            message: "Server is unavailable",
             canClick: true,
         };
     };
 
-    const engineStatus = getEngineStatus();
+    const serverStatus = getServerStatus();
 
     const handleStatusClick = () => {
-        if (engineStatus.status === "unhealthy") {
+        if (serverStatus.status === "unhealthy") {
             navigate("/workflow-engine-error");
-        } else if (engineStatus.canClick) {
+        } else if (serverStatus.canClick) {
             refetch();
         }
     };
@@ -101,7 +101,7 @@ export function Header() {
                 {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* Workflow Engine Status Indicator */}
+                {/* Server Status Indicator */}
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -109,33 +109,33 @@ export function Header() {
                                 variant="ghost"
                                 size="sm"
                                 className={`mr-4 gap-2 ${
-                                    engineStatus.canClick
+                                    serverStatus.canClick
                                         ? "cursor-pointer"
                                         : "cursor-default"
                                 }`}
                                 onClick={handleStatusClick}
-                                disabled={!engineStatus.canClick}
+                                disabled={!serverStatus.canClick}
                             >
                                 {isRefetching ? (
                                     <RefreshCw className="h-4 w-4 animate-spin text-yellow-500" />
                                 ) : (
                                     <Circle
-                                        className={`h-4 w-4 fill-current ${engineStatus.color}`}
+                                        className={`h-4 w-4 fill-current ${serverStatus.color}`}
                                     />
                                 )}
                                 <span className="hidden sm:inline-block text-sm">
-                                    Workflow Engine
+                                    Server
                                 </span>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>{engineStatus.message}</p>
-                            {engineStatus.status === "healthy" && (
+                            <p>{serverStatus.message}</p>
+                            {serverStatus.status === "healthy" && (
                                 <p className="text-xs text-muted-foreground mt-1">
                                     Click to refresh
                                 </p>
                             )}
-                            {engineStatus.status === "unhealthy" && (
+                            {serverStatus.status === "unhealthy" && (
                                 <p className="text-xs text-muted-foreground mt-1">
                                     Click for details
                                 </p>

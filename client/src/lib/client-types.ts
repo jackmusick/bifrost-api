@@ -1,64 +1,48 @@
 /**
- * OAuth Connection types
+ * Client-only types that extend or complement the API types
+ * These are NOT generated from the OpenAPI spec
  */
 
-export type OAuthFlowType = 'authorization_code' | 'client_credentials' | 'refresh_token'
+import type { components } from './v1'
 
-export type OAuthStatus =
-  | 'not_connected'
-  | 'waiting_callback'
-  | 'testing'
-  | 'completed'
-  | 'failed'
+// ==================== EXECUTION TYPES ====================
 
-export interface OAuthConnectionSummary {
-  connection_name: string
-  description?: string
-  oauth_flow_type: OAuthFlowType
-  status: OAuthStatus
-  status_message?: string
-  expires_at?: string
-  last_refresh_at?: string
-  created_at: string
+export interface ExecutionLog {
+  timestamp: string
+  level: 'info' | 'warning' | 'error'
+  message: string
+  metadata?: Record<string, unknown>
 }
 
-export interface OAuthConnectionDetail {
-  connection_name: string
-  description?: string
-  oauth_flow_type: OAuthFlowType
-  client_id: string
-  authorization_url: string
-  token_url: string
-  scopes: string
-  redirect_uri: string
-  status: OAuthStatus
-  status_message?: string
-  expires_at?: string
-  last_refresh_at?: string
-  last_test_at?: string
-  created_at: string
-  created_by: string
-  updated_at: string
+export interface ExecutionFilters {
+  status?: components['schemas']['ExecutionStatus']
+  workflowName?: string
+  startDate?: string
+  endDate?: string
 }
 
-export interface CreateOAuthConnectionRequest {
-  connection_name: string
-  description?: string
-  oauth_flow_type: OAuthFlowType
-  client_id: string
-  client_secret?: string // Optional for PKCE flow
-  authorization_url: string
-  token_url: string
-  scopes?: string
+export interface ExecutionListResponse {
+  executions: components['schemas']['WorkflowExecution'][]
+  total: number
+  page: number
+  pageSize: number
 }
 
-export interface UpdateOAuthConnectionRequest {
-  client_id?: string
-  client_secret?: string
-  authorization_url?: string
-  token_url?: string
-  scopes?: string
+// ==================== FORM TYPES ====================
+
+export interface FormSubmission {
+  formId: string
+  formData: Record<string, unknown>
 }
+
+export interface FormExecutionResponse {
+  executionId: string
+  status: components['schemas']['ExecutionStatus']
+  result?: unknown
+  errorMessage?: string
+}
+
+// ==================== OAUTH TYPES ====================
 
 export interface OAuthAuthorizeResponse {
   authorization_url: string
@@ -66,27 +50,10 @@ export interface OAuthAuthorizeResponse {
   message: string
 }
 
-export interface OAuthCredentials {
-  connection_name: string
-  access_token: string
-  token_type: string
-  expires_at: string
-  refresh_token?: string
-  scopes: string
-}
-
-export interface OAuthCredentialsResponse {
-  connection_name: string
-  credentials?: OAuthCredentials
-  status: OAuthStatus
-  expires_at?: string
-}
-
-// OAuth provider presets for easy configuration
 export interface OAuthProviderPreset {
   name: string
   displayName: string
-  oauth_flow_type: OAuthFlowType
+  oauth_flow_type: 'authorization_code' | 'client_credentials'
   authorization_url: string
   token_url: string
   default_scopes: string
@@ -103,7 +70,7 @@ export const OAUTH_PROVIDER_PRESETS: Record<string, OAuthProviderPreset> = {
     token_url: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     default_scopes: 'User.Read Mail.Read',
     documentation_url: 'https://learn.microsoft.com/en-us/graph/auth/',
-    icon: '🔷'
+    icon: '🔷',
   },
   google: {
     name: 'google',
@@ -113,7 +80,7 @@ export const OAUTH_PROVIDER_PRESETS: Record<string, OAuthProviderPreset> = {
     token_url: 'https://oauth2.googleapis.com/token',
     default_scopes: 'https://www.googleapis.com/auth/userinfo.email',
     documentation_url: 'https://developers.google.com/identity/protocols/oauth2',
-    icon: '🔴'
+    icon: '🔴',
   },
   github: {
     name: 'github',
@@ -123,7 +90,7 @@ export const OAUTH_PROVIDER_PRESETS: Record<string, OAuthProviderPreset> = {
     token_url: 'https://github.com/login/oauth/access_token',
     default_scopes: 'repo user',
     documentation_url: 'https://docs.github.com/en/developers/apps/building-oauth-apps/authorizing-oauth-apps',
-    icon: '⚫'
+    icon: '⚫',
   },
   azure_ad: {
     name: 'azure_ad',
@@ -133,12 +100,12 @@ export const OAUTH_PROVIDER_PRESETS: Record<string, OAuthProviderPreset> = {
     token_url: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
     default_scopes: 'https://graph.microsoft.com/.default',
     documentation_url: 'https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow',
-    icon: '🔷'
-  }
+    icon: '🔷',
+  },
 }
 
-// Helper functions
-export function getStatusColor(status: OAuthStatus): string {
+// OAuth helper functions
+export function getStatusColor(status: string): string {
   switch (status) {
     case 'completed':
       return 'green'
@@ -154,7 +121,7 @@ export function getStatusColor(status: OAuthStatus): string {
   }
 }
 
-export function getStatusLabel(status: OAuthStatus): string {
+export function getStatusLabel(status: string): string {
   switch (status) {
     case 'completed':
       return 'Connected'
@@ -182,3 +149,7 @@ export function expiresSoon(expires_at?: string, hoursThreshold: number = 4): bo
   const thresholdDate = new Date(Date.now() + hoursThreshold * 60 * 60 * 1000)
   return expiresDate <= thresholdDate
 }
+
+// ==================== TYPE ALIASES ====================
+
+export type ConfigScope = 'GLOBAL' | 'org'

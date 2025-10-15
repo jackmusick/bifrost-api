@@ -91,9 +91,9 @@ async def hot_reload_test(
             form_data = create_form_response.json()
             form_id = form_data["id"]
 
-            # Step 3: Submit the form (this should trigger hot-reload + execution)
+            # Step 3: Execute the form (this should trigger hot-reload + execution)
             submit_response = requests.post(
-                f"{base_url}/forms/{form_id}/submit",
+                f"{base_url}/forms/{form_id}/execute",
                 headers=org_user_headers,
                 json={
                     "form_data": {
@@ -153,9 +153,9 @@ async def hot_reload_test(
         assert greeting_form is not None, "Simple Greeting form not found in seed data"
         form_id = greeting_form["id"]
 
-        # Step 2: Submit the form
+        # Step 2: Execute the form
         submit_response = requests.post(
-            f"{base_url}/forms/{form_id}/submit",
+            f"{base_url}/forms/{form_id}/execute",
             headers=org_user_headers,
             json={
                 "form_data": {
@@ -280,7 +280,7 @@ async def hot_reload_test(
 
         # Submit with invalid/missing data
         submit_response = requests.post(
-            f"{base_url}/forms/{form_id}/submit",
+            f"{base_url}/forms/{form_id}/execute",
             headers=org_user_headers,
             json={}  # Missing form_data
         )
@@ -291,7 +291,7 @@ async def hot_reload_test(
     def test_submit_nonexistent_form_not_found(self, base_url, org_user_headers):
         """Submitting a nonexistent form returns error status"""
         response = requests.post(
-            f"{base_url}/forms/nonexistent-form-id/submit",
+            f"{base_url}/forms/nonexistent-form-id/execute",
             headers=org_user_headers,
             json={
                 "form_data": {

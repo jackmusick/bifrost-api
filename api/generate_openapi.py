@@ -16,56 +16,9 @@ from pydantic import BaseModel
 import yaml
 from typing import Type
 from shared.openapi_decorators import build_openapi_spec
-from shared.models import (
-    # Enums
-    ConfigType,
-    ExecutionStatus,
-    FormFieldType,
-    IntegrationType,
-    UserType,
-
-    # Organizations
-    Organization,
-    CreateOrganizationRequest,
-    UpdateOrganizationRequest,
-
-    # Config
-    Config,
-    SetConfigRequest,
-
-    # Integration Config
-    IntegrationConfig,
-    SetIntegrationConfigRequest,
-
-    # Users & Roles
-    User,
-    Role,
-    CreateRoleRequest,
-    UpdateRoleRequest,
-    UserRole,
-    FormRole,
-    AssignUsersToRoleRequest,
-    AssignFormsToRoleRequest,
-
-    # Permissions
-    UserPermission,
-    PermissionsData,
-    GrantPermissionsRequest,
-
-    # Forms
-    FormFieldValidation,
-    FormField,
-    FormSchema,
-    Form,
-    CreateFormRequest,
-    UpdateFormRequest,
-
-    # Executions
-    WorkflowExecution,
-
-    # Common
-    ErrorResponse,
-)
+import shared.models as models_module
+import models.oauth_connection as oauth_models
+from functions.data_providers import DataProviderListResponse
 
 
 def generate_openapi_spec() -> dict:
@@ -86,60 +39,34 @@ def generate_openapi_spec() -> dict:
     import functions.org_config
     import functions.oauth_api
     import functions.secrets
-    import functions.dashboard
-    # Note: health endpoint is in function_app.py and doesn't use decorators yet
+    import functions.metrics
+    import functions.health
 
-    # List of all models to include in the spec
-    models: list[Type[BaseModel]] = [
-        # Enums
-        ConfigType,
-        ExecutionStatus,
-        FormFieldType,
-        IntegrationType,
-        UserType,
+    # Import engine endpoints (now unified in functions/)
+    import functions.data_providers
+    import functions.discovery
+    import functions.workflows
 
-        # Organizations
-        Organization,
-        CreateOrganizationRequest,
-        UpdateOrganizationRequest,
+    # Auto-collect all models from shared.models.__all__
+    # This ensures we never forget to add new models to the spec!
+    models: list[Type[BaseModel]] = []
 
-        # Config
-        Config,
-        SetConfigRequest,
+    # Add all models from shared.models (auto-discovered from __all__)
+    for name in models_module.__all__:
+        obj = getattr(models_module, name)
+        # Only include BaseModel subclasses (skip regular classes, enums, and functions)
+        if isinstance(obj, type) and issubclass(obj, BaseModel):
+            models.append(obj)
 
-        # Integration Config
-        IntegrationConfig,
-        SetIntegrationConfigRequest,
+    # Add OAuth models (auto-discovered from __all__)
+    for name in oauth_models.__all__:
+        obj = getattr(oauth_models, name)
+        # Only include BaseModel subclasses
+        if isinstance(obj, type) and issubclass(obj, BaseModel):
+            models.append(obj)
 
-        # Users & Roles
-        User,
-        Role,
-        CreateRoleRequest,
-        UpdateRoleRequest,
-        UserRole,
-        FormRole,
-        AssignUsersToRoleRequest,
-        AssignFormsToRoleRequest,
-
-        # Permissions
-        UserPermission,
-        PermissionsData,
-        GrantPermissionsRequest,
-
-        # Forms
-        FormFieldValidation,
-        FormField,
-        FormSchema,
-        Form,
-        CreateFormRequest,
-        UpdateFormRequest,
-
-        # Executions
-        WorkflowExecution,
-
-        # Common
-        ErrorResponse,
-    ]
+    # Add Data Provider models
+    models.append(DataProviderListResponse)
 
     # Build spec using decorator system
     spec = build_openapi_spec(

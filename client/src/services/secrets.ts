@@ -1,52 +1,60 @@
 /**
- * Secrets API service
- * All methods use the centralized api client which automatically handles
- * X-Organization-Id header from sessionStorage
+ * Secrets API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
-import type {
-  SecretListResponse,
-  SecretCreateRequest,
-  SecretUpdateRequest,
-  SecretResponse,
-  KeyVaultHealthResponse,
-} from '@/types/secret'
+import { apiClient } from '@/lib/api-client'
+import type { components } from '@/lib/v1'
 
 export const secretsService = {
   /**
    * List all secrets
-   * Organization context is handled automatically by the api client
    */
-  async listSecrets(): Promise<SecretListResponse> {
-    return api.get<SecretListResponse>('/secrets')
+  async listSecrets() {
+    const { data, error } = await apiClient.GET('/secrets')
+    if (error) throw new Error(`Failed to list secrets: ${error}`)
+    return data
   },
 
   /**
    * Create a new secret
    */
-  async createSecret(data: SecretCreateRequest): Promise<SecretResponse> {
-    return api.post<SecretResponse>('/secrets', data)
+  async createSecret(request: components['schemas']['SecretCreateRequest']) {
+    const { data, error } = await apiClient.POST('/secrets', {
+      body: request,
+    })
+    if (error) throw new Error(`Failed to create secret: ${error}`)
+    return data
   },
 
   /**
    * Update an existing secret
    */
-  async updateSecret(secretName: string, data: SecretUpdateRequest): Promise<SecretResponse> {
-    return api.put<SecretResponse>(`/secrets/${secretName}`, data)
+  async updateSecret(secretName: string, request: components['schemas']['SecretUpdateRequest']) {
+    const { data, error } = await apiClient.PUT('/secrets/{name}', {
+      params: { path: { name: secretName } },
+      body: request,
+    })
+    if (error) throw new Error(`Failed to update secret: ${error}`)
+    return data
   },
 
   /**
    * Delete a secret
    */
-  async deleteSecret(secretName: string): Promise<SecretResponse> {
-    return api.delete<SecretResponse>(`/secrets/${secretName}`)
+  async deleteSecret(secretName: string) {
+    const { data, error } = await apiClient.DELETE('/secrets/{name}', {
+      params: { path: { name: secretName } },
+    })
+    if (error) throw new Error(`Failed to delete secret: ${error}`)
+    return data
   },
 
   /**
    * Check Key Vault health status
    */
-  async getHealthStatus(): Promise<KeyVaultHealthResponse> {
-    return api.get<KeyVaultHealthResponse>('/health/keyvault')
+  async getHealthStatus() {
+    const { data, error } = await apiClient.GET('/health/keyvault')
+    if (error) throw new Error(`Failed to check Key Vault health: ${error}`)
+    return data
   },
 }

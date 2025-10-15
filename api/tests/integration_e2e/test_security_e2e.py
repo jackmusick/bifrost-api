@@ -497,7 +497,7 @@ class TestRoleBasedFormAccess:
 
         # Try to submit as org user (who doesn't have this role)
         submit_response = requests.post(
-            f"{base_url}/forms/{form_id}/submit",
+            f"{base_url}/forms/{form_id}/execute",
             headers=org_user_headers,
             json={"form_data": {}}
         )

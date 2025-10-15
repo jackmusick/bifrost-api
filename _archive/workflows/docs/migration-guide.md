@@ -4,14 +4,14 @@ Guide for migrating existing workflows to the new `/engine` and `/workspace` str
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [What Changed](#what-changed)
-- [Migration Checklist](#migration-checklist)
-- [Import Path Updates](#import-path-updates)
-- [Breaking Changes](#breaking-changes)
-- [Step-by-Step Migration](#step-by-step-migration)
-- [Verification](#verification)
-- [Rollback Plan](#rollback-plan)
+-   [Overview](#overview)
+-   [What Changed](#what-changed)
+-   [Migration Checklist](#migration-checklist)
+-   [Import Path Updates](#import-path-updates)
+-   [Breaking Changes](#breaking-changes)
+-   [Step-by-Step Migration](#step-by-step-migration)
+-   [Verification](#verification)
+-   [Rollback Plan](#rollback-plan)
 
 ---
 
@@ -30,6 +30,7 @@ The workflow engine has been restructured to separate system code (`/engine`) fr
 ### Directory Structure
 
 **Before:**
+
 ```
 /workflows/
 ├── admin/              # Admin functions
@@ -42,6 +43,7 @@ The workflow engine has been restructured to separate system code (`/engine`) fr
 ```
 
 **After:**
+
 ```
 /workflows/
 ├── engine/             # Protected system code (DO NOT MODIFY)
@@ -68,15 +70,15 @@ The workflow engine has been restructured to separate system code (`/engine`) fr
 
 ## Migration Checklist
 
-- [x] ✅ System code moved to `/engine/` (automated)
-- [x] ✅ Workflows moved to `/workspace/workflows/` (automated)
-- [x] ✅ Import paths updated (automated)
-- [x] ✅ GitHub Actions protection enabled
-- [x] ✅ Import restrictions installed
-- [x] ✅ Authentication system updated
-- [ ] ⚠️ **Manual Step**: Review your workflow imports
-- [ ] ⚠️ **Manual Step**: Test your workflows locally
-- [ ] ⚠️ **Manual Step**: Update any deployment scripts
+-   [x] ✅ System code moved to `/engine/` (automated)
+-   [x] ✅ Workflows moved to `/workspace/workflows/` (automated)
+-   [x] ✅ Import paths updated (automated)
+-   [x] ✅ GitHub Actions protection enabled
+-   [x] ✅ Import restrictions installed
+-   [x] ✅ Authentication system updated
+-   [ ] ⚠️ **Manual Step**: Review your workflow imports
+-   [ ] ⚠️ **Manual Step**: Test your workflows locally
+-   [ ] ⚠️ **Manual Step**: Update any deployment scripts
 
 ---
 
@@ -87,6 +89,7 @@ The workflow engine has been restructured to separate system code (`/engine`) fr
 The following import changes were applied automatically:
 
 **Engine Code:**
+
 ```python
 # Before
 from shared.context import OrganizationContext
@@ -100,6 +103,7 @@ from engine.shared.storage import get_organization
 ```
 
 **Workspace Code:**
+
 ```python
 # Before (in /workflows/workflows/)
 from shared.decorators import workflow
@@ -134,18 +138,21 @@ from engine.shared.error_handling import ValidationError
 **What Changed**: Workspace code can NO LONGER import engine internals.
 
 **Allowed Imports**:
-- `engine.shared.decorators` - @workflow, @param, @data_provider
-- `engine.shared.context` - OrganizationContext, Organization, Caller
-- `engine.shared.error_handling` - WorkflowException, ValidationError, etc.
-- `engine.shared.models` - Pydantic models
+
+-   `engine.shared.decorators` - @workflow, @param, @data_provider
+-   `engine.shared.context` - OrganizationContext, Organization, Caller
+-   `engine.shared.error_handling` - WorkflowException, ValidationError, etc.
+-   `engine.shared.models` - Pydantic models
 
 **Blocked Imports** (will raise `ImportError`):
-- `engine.shared.storage` - Use context.config instead
-- `engine.shared.middleware` - Use public API
-- `engine.execute` - Use public API
-- Any other `engine.*` modules not in allowed list
+
+-   `engine.shared.storage` - Use context.config instead
+-   `engine.shared.middleware` - Use public API
+-   `engine.execute` - Use public API
+-   Any other `engine.*` modules not in allowed list
 
 **Migration Path**:
+
 ```python
 # ✗ BEFORE - Direct storage access
 from engine.shared.storage import get_organization
@@ -163,10 +170,12 @@ async def my_workflow(context: OrganizationContext):
 **What Changed**: User ID now extracted from authenticated principal (not X-User-Id header).
 
 **Impact**: If you reference `context.caller`:
-- `user_id` may now be `"function_key:default"` for function key auth
-- `email` may now be `"function-key@system.local"` for function key auth
+
+-   `user_id` may now be `"function_key:default"` for function key auth
+-   `email` may now be `"function-key@system.local"` for function key auth
 
 **Migration Path**:
+
 ```python
 # ✗ BEFORE - Assumed always real user
 if context.caller.email == "admin@example.com":
@@ -184,6 +193,7 @@ if not is_function_key_auth(req) and context.caller.email == "admin@example.com"
 **What Changed**: Config now loaded through context (no direct storage access).
 
 **Migration Path**:
+
 ```python
 # ✗ BEFORE
 from engine.shared.storage import get_org_config
@@ -242,7 +252,7 @@ curl -X POST \
   -H "X-Organization-Id: test-org-active" \
   -H "x-functions-key: test_key" \
   -d '{"param": "value"}' \
-  http://localhost:7072/api/workflows/YOUR_WORKFLOW
+  http://localhost:7071/api/workflows/YOUR_WORKFLOW
 ```
 
 ### Step 5: Run Tests (If You Have Them)
@@ -284,6 +294,7 @@ func start
 ```
 
 Expected error:
+
 ```
 ImportError: Workspace code cannot import engine module 'engine.shared.storage'.
 
@@ -297,6 +308,7 @@ Workspace code can only import from the public API:
 If you see this error, import restrictions are working! ✅
 
 Remove the test file:
+
 ```bash
 rm workspace/workflows/test_blocked_import.py
 ```
@@ -316,13 +328,13 @@ git push origin test-protection
 # Create PR - GitHub Actions should block it
 ```
 
-Expected: GitHub Action fails with error "Modifications to /engine/* are not allowed"
+Expected: GitHub Action fails with error "Modifications to /engine/\* are not allowed"
 
 ### Verify Authentication Works
 
 ```bash
 # Test function key auth
-curl -H "x-functions-key: test" http://localhost:7072/api/health
+curl -H "x-functions-key: test" http://localhost:7071/api/health
 
 # Should return health status (not 403)
 ```
@@ -355,6 +367,7 @@ git restore .
 **Symptom**: `ImportError: Workspace code cannot import engine module`
 
 **Solution**: Update imports to use public API:
+
 ```python
 # Remove blocked import
 # from engine.shared.storage import get_organization
@@ -369,12 +382,13 @@ async def workflow(context: OrganizationContext):
 **Symptom**: Getting 403 Forbidden with function key
 
 **Solution**: Ensure key is in header or query param:
+
 ```bash
 # Header (recommended)
 curl -H "x-functions-key: YOUR_KEY" ...
 
 # Query param (alternative)
-curl "http://localhost:7072/api/workflows/test?code=YOUR_KEY"
+curl "http://localhost:7071/api/workflows/test?code=YOUR_KEY"
 ```
 
 ### Issue 3: Workflows Not Discovered
@@ -382,6 +396,7 @@ curl "http://localhost:7072/api/workflows/test?code=YOUR_KEY"
 **Symptom**: Workflow returns 404 Not Found
 
 **Solution**: Ensure workflow file is in `/workspace/workflows/` and has `@workflow` decorator:
+
 ```bash
 # Check file location
 ls -la workspace/workflows/
@@ -395,6 +410,7 @@ func start
 **Symptom**: `KeyError` when accessing config
 
 **Solution**: Use `.get()` with default:
+
 ```python
 # ✗ BAD - May raise KeyError
 api_endpoint = context.config["api_endpoint"]
@@ -409,19 +425,19 @@ api_endpoint = context.config.get("api_endpoint", "https://default.api.com")
 
 After migration, verify the following:
 
-- [ ] All workflows execute successfully
-- [ ] Import restrictions prevent engine imports
-- [ ] GitHub Actions block `/engine` modifications
-- [ ] Local development works (Azurite + seed + Functions)
-- [ ] Authentication works (function key + Easy Auth)
-- [ ] Configuration is accessible through context
-- [ ] Audit logging captures function key usage
-- [ ] Tests pass (if applicable)
-- [ ] Key Vault integration works for secrets
-- [ ] OAuth connections are properly configured
-- [ ] Data providers are discoverable
-- [ ] Form validation works correctly
-- [ ] Performance benchmarks are met
+-   [ ] All workflows execute successfully
+-   [ ] Import restrictions prevent engine imports
+-   [ ] GitHub Actions block `/engine` modifications
+-   [ ] Local development works (Azurite + seed + Functions)
+-   [ ] Authentication works (function key + Easy Auth)
+-   [ ] Configuration is accessible through context
+-   [ ] Audit logging captures function key usage
+-   [ ] Tests pass (if applicable)
+-   [ ] Key Vault integration works for secrets
+-   [ ] OAuth connections are properly configured
+-   [ ] Data providers are discoverable
+-   [ ] Form validation works correctly
+-   [ ] Performance benchmarks are met
 
 ---
 
@@ -451,11 +467,11 @@ import pandas as pd
 @workflow(name="complex_workflow")
 async def complex_workflow(context: OrganizationContext):
     api_url = context.get_config("api_url")
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.get(api_url) as response:
             data = await response.json()
-    
+
     df = pd.DataFrame(data)
     return df.to_dict()
 ```
@@ -503,15 +519,15 @@ async def daily_report(context):
 )
 async def daily_report(context: OrganizationContext):
     context.log("info", "Starting daily report generation")
-    
+
     # Generate report
     report_data = await generate_report(context)
-    
+
     context.save_checkpoint("report_complete", {
         "report_id": report_data["id"],
         "generated_at": datetime.now().isoformat()
     })
-    
+
     return report_data
 ```
 
@@ -538,10 +554,10 @@ async def test_my_workflow_migration():
     context.get_config = MagicMock(return_value="test_value")
     context.log = MagicMock()
     context.save_checkpoint = MagicMock()
-    
+
     # Test workflow execution
     result = await my_workflow(context, "test@example.com")
-    
+
     # Verify results
     assert result["success"] is True
     context.log.assert_called()
@@ -572,14 +588,14 @@ workflows=("create_user" "update_user" "delete_user" "generate_report")
 
 for workflow in "${workflows[@]}"; do
     echo "Testing $workflow..."
-    
+
     response=$(curl -s -w "%{http_code}" -X POST \
       -H "Content-Type: application/json" \
       -H "X-Organization-Id: test-org-active" \
       -H "x-functions-key: test" \
       -d '{"email": "test@example.com"}' \
-      http://localhost:7072/api/workflows/$workflow)
-    
+      http://localhost:7071/api/workflows/$workflow)
+
     http_code="${response: -3}"
     if [ "$http_code" != "200" ]; then
         echo "❌ $workflow failed with HTTP $http_code"
@@ -606,20 +622,20 @@ import aiohttp
 
 async def test_workflow_performance():
     """Test that workflows meet performance targets"""
-    
+
     # Test import restriction overhead
     start = time.time()
     from engine.shared.decorators import workflow
     import_time = (time.time() - start) * 1000
-    
+
     assert import_time < 50, f"Import time {import_time}ms exceeds 50ms target"
-    
+
     # Test workflow execution time
     start = time.time()
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            "http://localhost:7072/api/workflows/simple_test",
+            "http://localhost:7071/api/workflows/simple_test",
             headers={
                 "Content-Type": "application/json",
                 "X-Organization-Id": "test-org-active",
@@ -628,10 +644,10 @@ async def test_workflow_performance():
             json={"param": "value"}
         ) as response:
             result = await response.json()
-    
+
     execution_time = (time.time() - start) * 1000
     assert execution_time < 5000, f"Execution time {execution_time}ms exceeds 5s target"
-    
+
     print("✅ Performance tests passed")
 ```
 
@@ -660,7 +676,7 @@ azurite --silent --location /tmp/azurite &
 func start &
 
 # 5. Verify rollback
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 ```
 
 ### Partial Rollback
@@ -697,42 +713,42 @@ from datetime import datetime
 
 async def check_migration_health():
     """Comprehensive health check after migration"""
-    
+
     health_status = {
         "timestamp": datetime.now().isoformat(),
         "checks": {}
     }
-    
+
     # Check 1: API Health
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://localhost:7072/api/health") as response:
+            async with session.get("http://localhost:7071/api/health") as response:
                 if response.status == 200:
                     health_status["checks"]["api_health"] = "✅ PASS"
                 else:
                     health_status["checks"]["api_health"] = f"❌ FAIL - HTTP {response.status}"
     except Exception as e:
         health_status["checks"]["api_health"] = f"❌ FAIL - {str(e)}"
-    
+
     # Check 2: Import Restrictions
     try:
         # Test that blocked imports are rejected
         result = subprocess.run([
-            "python", "-c", 
+            "python", "-c",
             "from engine.shared.storage import get_organization"
         ], capture_output=True, text=True, cwd="/workflows")
-        
+
         if result.returncode != 0 and "ImportError" in result.stderr:
             health_status["checks"]["import_restrictions"] = "✅ PASS"
         else:
             health_status["checks"]["import_restrictions"] = "❌ FAIL - Imports not restricted"
     except Exception as e:
         health_status["checks"]["import_restrictions"] = f"❌ FAIL - {str(e)}"
-    
+
     # Check 3: Workflow Discovery
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://localhost:7072/api/workflows") as response:
+            async with session.get("http://localhost:7071/api/workflows") as response:
                 if response.status == 200:
                     workflows = await response.json()
                     if len(workflows) > 0:
@@ -743,7 +759,7 @@ async def check_migration_health():
                     health_status["checks"]["workflow_discovery"] = f"❌ FAIL - HTTP {response.status}"
     except Exception as e:
         health_status["checks"]["workflow_discovery"] = f"❌ FAIL - {str(e)}"
-    
+
     return health_status
 
 # Run health check
@@ -761,9 +777,10 @@ if __name__ == "__main__":
 **If you encounter migration issues:**
 
 1. **Check documentation**:
-   - Workspace API: `/docs/workspace-api.md`
-   - Local Development: `/docs/local-development.md`
-   - Troubleshooting: `/docs/troubleshooting.md`
+
+    - Workspace API: `/docs/workspace-api.md`
+    - Local Development: `/docs/local-development.md`
+    - Troubleshooting: `/docs/troubleshooting.md`
 
 2. **Review error messages**: Import errors include specific guidance
 
@@ -776,21 +793,24 @@ if __name__ == "__main__":
 ## Summary
 
 **What You Need to Do**:
+
 1. ✅ Pull latest code (system migration already done)
 2. ⚠️ Update any custom imports in your workflows
 3. ⚠️ Test workflows locally
 4. ⚠️ Update deployment scripts (if any)
 
 **What's Already Done**:
-- ✅ System code moved to `/engine`
-- ✅ Your workflows moved to `/workspace`
-- ✅ Import paths updated automatically
-- ✅ Protection mechanisms enabled
+
+-   ✅ System code moved to `/engine`
+-   ✅ Your workflows moved to `/workspace`
+-   ✅ Import paths updated automatically
+-   ✅ Protection mechanisms enabled
 
 **Benefits**:
-- 🔒 Protected system code (can't accidentally modify)
-- 🚀 Faster local development (Azurite + seed script)
-- 🛡️ Enhanced security (import restrictions + audit logging)
-- 📚 Clear API boundaries (public API documentation)
+
+-   🔒 Protected system code (can't accidentally modify)
+-   🚀 Faster local development (Azurite + seed script)
+-   🛡️ Enhanced security (import restrictions + audit logging)
+-   📚 Clear API boundaries (public API documentation)
 
 Migration should be straightforward for most workflows. If you encounter issues, refer to the troubleshooting section or contact the platform team.

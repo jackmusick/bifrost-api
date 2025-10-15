@@ -8,6 +8,24 @@ from typing import Optional, Literal
 from pydantic import BaseModel, Field
 
 
+# ==================== PUBLIC API ====================
+
+__all__ = [
+    # Request models
+    'CreateOAuthConnectionRequest',
+    'UpdateOAuthConnectionRequest',
+
+    # Response models
+    'OAuthConnectionSummary',
+    'OAuthConnectionDetail',
+    'OAuthConnection',
+
+    # Credentials models
+    'OAuthCredentials',
+    'OAuthCredentialsResponse',
+]
+
+
 # ==================== ENUMS ====================
 
 # OAuth flow types (as string literals for validation)

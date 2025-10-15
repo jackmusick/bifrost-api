@@ -43,7 +43,7 @@ fi
 
 # Step 3: Check if Azure Functions is running
 echo -e "\n${YELLOW}[3/5] Checking if Azure Functions is running...${NC}"
-if curl -s http://localhost:7072/api/health > /dev/null 2>&1; then
+if curl -s http://localhost:7071/api/health > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Azure Functions is running${NC}"
 else
     echo -e "${RED}✗ Azure Functions is not running${NC}"
@@ -54,7 +54,7 @@ fi
 
 # Step 4: Test health endpoint
 echo -e "\n${YELLOW}[4/5] Testing health endpoint...${NC}"
-HEALTH_RESPONSE=$(curl -s http://localhost:7072/api/health)
+HEALTH_RESPONSE=$(curl -s http://localhost:7071/api/health)
 if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
     echo -e "${GREEN}✓ Health endpoint responding correctly${NC}"
     echo "   Response: $HEALTH_RESPONSE"
@@ -74,7 +74,7 @@ WORKFLOW_RESPONSE=$(curl -s -X POST \
     -H "X-Organization-Id: test-org-active" \
     -H "x-functions-key: test_local_key_12345" \
     -d '{"test": "data"}' \
-    http://localhost:7072/api/workflows/test_workflow 2>&1)
+    http://localhost:7071/api/workflows/test_workflow 2>&1)
 
 # Check if we got a proper response (not 403 Forbidden)
 if echo "$WORKFLOW_RESPONSE" | grep -q "Forbidden\|No valid authentication"; then
@@ -102,5 +102,5 @@ echo "2. Test with: curl -X POST \\"
 echo "      -H 'X-Organization-Id: test-org-active' \\"
 echo "      -H 'x-functions-key: your_key' \\"
 echo "      -d '{\"param\": \"value\"}' \\"
-echo "      http://localhost:7072/api/workflows/YOUR_WORKFLOW"
+echo "      http://localhost:7071/api/workflows/YOUR_WORKFLOW"
 echo ""

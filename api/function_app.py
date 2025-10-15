@@ -157,11 +157,8 @@ def discover_workspace_modules():
 # Discover all workspace modules
 discover_workspace_modules()
 
-# T008: Import engine data providers to trigger auto-discovery
-import engine.data_providers
-
 # ==================== BLUEPRINT IMPORTS ====================
-# API Management Blueprints (existing)
+# API Management Blueprints
 from functions.organizations import bp as organizations_bp
 from functions.org_config import bp as org_config_bp
 from functions.permissions import bp as permissions_bp
@@ -172,14 +169,14 @@ from functions.roles_source import bp as roles_source_bp
 from functions.openapi import bp as openapi_bp
 from functions.secrets import bp as secrets_bp
 from functions.health import bp as health_bp
-from functions.dashboard import bp as dashboard_bp
+from functions.metrics import bp as metrics_bp
 from functions.oauth_api import bp as oauth_api_bp
 from functions.oauth_refresh_timer import bp as oauth_refresh_timer_bp
 
-# Workflow Engine Blueprints (from merged workflows/)
-from engine.admin.metadata import bp as workflow_metadata_bp
-from engine.execute import bp as workflow_execute_bp
-from engine.functions.data_provider_api import bp as data_provider_api_bp
+# Workflow Engine Blueprints (unified in functions/)
+from functions.discovery import bp as discovery_bp
+from functions.workflows import bp as workflows_bp
+from functions.data_providers import bp as data_providers_bp
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -189,24 +186,16 @@ app.register_functions(org_config_bp)
 app.register_functions(permissions_bp)
 app.register_functions(forms_bp)
 app.register_functions(roles_bp)
-app.register_functions(executions_bp)  # Updated to use direct workflow execution (T009)
+app.register_functions(executions_bp)  # Workflow execution history
 app.register_functions(roles_source_bp)  # SWA roles source
 app.register_functions(openapi_bp)  # OpenAPI/Swagger endpoints
 app.register_functions(secrets_bp)  # Secret management endpoints
 app.register_functions(health_bp)  # Health monitoring endpoints
-app.register_functions(dashboard_bp)  # Dashboard metrics endpoints
+app.register_functions(metrics_bp)  # System metrics endpoints
 app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
 app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer
 
-# Register blueprints - Workflow Engine (unified architecture)
-app.register_functions(workflow_metadata_bp)  # Workflow metadata endpoints
-app.register_functions(workflow_execute_bp)  # Direct workflow execution
-app.register_functions(data_provider_api_bp)  # Data provider API endpoints
-
-@app.route(route="health", methods=["GET"])
-def health(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("Health check endpoint called")
-    return func.HttpResponse(
-        json.dumps({"status": "healthy", "service": "Management API"}),
-        mimetype="application/json"
-    )
+# Register blueprints - Workflow Engine (unified in functions/)
+app.register_functions(discovery_bp)  # Workflow and data provider discovery
+app.register_functions(workflows_bp)  # Workflow execution
+app.register_functions(data_providers_bp)  # Data provider API endpoints

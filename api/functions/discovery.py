@@ -1,5 +1,5 @@
 """
-Admin Metadata Endpoint
+Discovery API
 Returns metadata for all registered workflows and data providers
 """
 
@@ -7,18 +7,28 @@ import logging
 import json
 import azure.functions as func
 
+from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
+from shared.models import MetadataResponse
 
 logger = logging.getLogger(__name__)
 
-# Create blueprint for admin endpoints
+# Create blueprint for discovery endpoints
 bp = func.Blueprint()
 
 
-@bp.route(route="registry/metadata", methods=["GET"], auth_level=func.AuthLevel.ADMIN)
-def get_metadata(req: func.HttpRequest) -> func.HttpResponse:
+@bp.route(route="discovery", methods=["GET"], auth_level=func.AuthLevel.ADMIN)
+@openapi_endpoint(
+    path="/discovery",
+    method="GET",
+    summary="Discover available workflows and data providers",
+    description="Returns metadata for all registered workflows and data providers",
+    tags=["Discovery"],
+    response_model=MetadataResponse
+)
+async def get_discovery_metadata(req: func.HttpRequest) -> func.HttpResponse:
     """
-    GET /registry/metadata
+    GET /api/discovery
     Return metadata for all registered workflows and data providers
 
     Requires function key (Management API can call this)

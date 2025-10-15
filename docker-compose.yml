@@ -24,7 +24,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     ports:
-      - "7072:80" # Azure Functions runtime
+      - "7071:80" # Azure Functions runtime
       - "5678:5678" # Debugpy (when ENABLE_DEBUGGING=true)
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;

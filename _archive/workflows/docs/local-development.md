@@ -81,14 +81,14 @@ python scripts/seed_azurite.py
 func start
 
 # 4. Test health endpoint
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 
 # 5. Execute a workflow (using Easy Auth header)
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"param": "value"}' \
-  http://localhost:7072/api/workflows/YOUR_WORKFLOW_NAME
+  http://localhost:7071/api/workflows/YOUR_WORKFLOW_NAME
 ```
 
 **Execution time target**: ~5 seconds from seed to ready (plus one-time Azure auth)
@@ -249,12 +249,12 @@ You should see:
 Azure Functions Core Tools
 ...
 Functions:
-    execute_workflow: [POST] http://localhost:7072/api/workflows/{workflowName}
-    health: [GET] http://localhost:7072/api/health
+    execute_workflow: [POST] http://localhost:7071/api/workflows/{workflowName}
+    health: [GET] http://localhost:7071/api/health
     ...
 ```
 
-**Port**: Default is `7071`, but may be `7072` if `7071` is in use.
+**Port**: Default is `7071`, but may be `7071` if `7071` is in use.
 
 ### Step 5: Verify Setup
 
@@ -527,7 +527,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"data": "test"}' \
-  http://localhost:7072/api/workflows/debug_workflow
+  http://localhost:7071/api/workflows/debug_workflow
 ```
 
 **5. Common Debugging Commands**:
@@ -634,7 +634,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"message": "Hello, World!"}' \
-  http://localhost:7072/api/workflows/test_workflow
+  http://localhost:7071/api/workflows/test_workflow
 ```
 
 **Expected Response:**
@@ -663,14 +663,14 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"message": "test"}' \
-  http://localhost:7072/api/workflows/test_workflow
+  http://localhost:7071/api/workflows/test_workflow
 
 # Inactive org (should fail with 404)
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Organization-Id: test-org-inactive" \
   -d '{"message": "test"}' \
-  http://localhost:7072/api/workflows/test_workflow
+  http://localhost:7071/api/workflows/test_workflow
 ```
 
 ### Viewing Execution Logs
@@ -795,7 +795,7 @@ Allowed imports for workspace code:
 **Solution:** Check actual port in startup output
 
 ```
-Now listening on: http://0.0.0.0:7072  # Note: Port 7072, not 7071
+Now listening on: http://0.0.0.0:7071  # Note: Port 7071, not 7071
 ```
 
 Update curl commands to use the correct port.
@@ -820,7 +820,7 @@ Before starting development, ensure:
 -   [ ] Azurite is running on port 10002
 -   [ ] Seed script has populated test data
 -   [ ] Azure Functions is running and showing endpoints
--   [ ] Health endpoint responds: `curl http://localhost:7072/api/health`
+-   [ ] Health endpoint responds: `curl http://localhost:7071/api/health`
 -   [ ] Test workflow executes successfully
 
 **Ready to develop!** 🚀

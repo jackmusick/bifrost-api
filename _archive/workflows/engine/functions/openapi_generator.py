@@ -25,7 +25,7 @@ def generate_openapi_spec() -> dict:
         },
         'servers': [
             {
-                'url': 'http://localhost:7072',
+                'url': 'http://localhost:7071',
                 'description': 'Local development server'
             }
         ],

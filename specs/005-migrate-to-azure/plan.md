@@ -10,94 +10,106 @@
 Migrate the platform to Azure Functions with Docker runtime support, enabling simplified local development via docker-compose and production deployment via ARM templates. The architecture will use a **single unified Function App** containing both the management API and workflow execution engine, eliminating cross-service HTTP calls and configuration complexity.
 
 Key changes:
-- **Unified Function App**: Merge `/api` and `/workflows` projects into single codebase
-- **Docker-first**: Use `func init --docker-only` for containerized deployment
-- **Azure Files mounts**: `/workspace` (user workflows) and `/tmp` (temporary storage)
-- **ARM template deployment**: Single template creates all Azure resources
-- **GitHub sync**: Optional webhook-based workspace synchronization
-- **Local debugging**: VS Code attach support with `ENABLE_DEBUGGING` flag
+
+-   **Unified Function App**: Merge `/api` and `/workflows` projects into single codebase
+-   **Docker-first**: Use `func init --docker-only` for containerized deployment
+-   **Azure Files mounts**: `/workspace` (user workflows) and `/tmp` (temporary storage)
+-   **ARM template deployment**: Single template creates all Azure resources
+-   **GitHub sync**: Optional webhook-based workspace synchronization
+-   **Local debugging**: VS Code attach support with `ENABLE_DEBUGGING` flag
 
 ## Technical Context
 
 **Language/Version**: Python 3.11 (Azure Functions v2 programming model)
 **Primary Dependencies**:
-- Backend: azure-functions, azure-data-tables, azure-storage-file-share, aiohttp, pydantic, debugpy
-- Frontend: React 18+, TypeScript 4.9+, @azure/msal-browser
-- Infrastructure: Bicep (ARM templates)
+
+-   Backend: azure-functions, azure-data-tables, azure-storage-file-share, aiohttp, pydantic, debugpy
+-   Frontend: React 18+, TypeScript 4.9+, @azure/msal-browser
+-   Infrastructure: Bicep (ARM templates)
 
 **Storage**:
-- Persistent data: Azure Table Storage
-- Secrets: Azure Key Vault
-- Workspace files: Azure Files (Hot tier, `/workspace` and `/tmp` mounts)
-- Logs: Azure Blob Storage (via Application Insights)
+
+-   Persistent data: Azure Table Storage
+-   Secrets: Azure Key Vault
+-   Workspace files: Azure Files (Hot tier, `/workspace` and `/tmp` mounts)
+-   Logs: Azure Blob Storage (via Application Insights)
 
 **Testing**: pytest, pytest-asyncio (backend); Jest, React Testing Library (frontend)
 **Target Platform**: Azure Functions (Linux containers), Azure Static Web Apps (frontend)
 **Project Type**: Web application with unified backend Function App
 **Performance Goals**:
-- Workflow execution latency: <100ms from API to execution (direct invocation)
-- Local dev startup: <5 minutes
-- Production deployment: <30 minutes
-- GitHub sync latency: <2 minutes
+
+-   Workflow execution latency: <100ms from API to execution (direct invocation)
+-   Local dev startup: <5 minutes
+-   Production deployment: <30 minutes
+-   GitHub sync latency: <2 minutes
 
 **Constraints**:
-- Container image size: <2GB
-- File path length: 260 chars (Windows), 4096 (Linux)
-- Workspace file size: <10MB per file
-- GitHub webhook payload: <5MB
+
+-   Container image size: <2GB
+-   File path length: 260 chars (Windows), 4096 (Linux)
+-   Workspace file size: <10MB per file
+-   GitHub webhook payload: <5MB
 
 **Scale/Scope**:
-- Target: 50-200 client organizations
-- Workflows: 100-1000 executions/day
-- Local: single developer experience
-- Production: 100 concurrent executions/hour
+
+-   Target: 50-200 client organizations
+-   Workflows: 100-1000 executions/day
+-   Local: single developer experience
+-   Production: 100 concurrent executions/hour
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Principle I: Azure-First Architecture ✅ **PASS**
-- ✅ All compute uses Azure Functions (unified Function App with Docker runtime)
-- ✅ Storage uses Azure Table Storage + Azure Files + Key Vault
-- ✅ Authentication uses Azure AD (Static Web App integration)
-- ✅ Local development uses Azurite
+
+-   ✅ All compute uses Azure Functions (unified Function App with Docker runtime)
+-   ✅ Storage uses Azure Table Storage + Azure Files + Key Vault
+-   ✅ Authentication uses Azure AD (Static Web App integration)
+-   ✅ Local development uses Azurite
 
 ### Principle II: Table Storage Only ✅ **PASS**
-- ✅ All persistent data in Azure Table Storage
-- ✅ NO SQL databases
-- ✅ Org-scoped partition keys maintained
-- ✅ Dual-indexing pattern for permissions
-- ✅ Azurite for local development
+
+-   ✅ All persistent data in Azure Table Storage
+-   ✅ NO SQL databases
+-   ✅ Org-scoped partition keys maintained
+-   ✅ Dual-indexing pattern for permissions
+-   ✅ Azurite for local development
 
 ### Principle III: Python Backend Standard ✅ **PASS**
-- ✅ Unified Function App uses Python 3.11
-- ✅ Azure Functions v2 programming model
-- ✅ Shared code in `engine/shared/` module (workflow engine shared with API)
-- ✅ Type hints for all function signatures
-- ✅ Async/await for I/O operations
-- ✅ Pydantic for models
+
+-   ✅ Unified Function App uses Python 3.11
+-   ✅ Azure Functions v2 programming model
+-   ✅ Shared code in `engine/shared/` module (workflow engine shared with API)
+-   ✅ Type hints for all function signatures
+-   ✅ Async/await for I/O operations
+-   ✅ Pydantic for models
 
 **Note**: Constitution currently states "All shared code between API and Workflows MUST be in `shared/` module". With the merger, this becomes `engine/shared/` as the unified shared module.
 
 ### Principle IV: Test-First Development ✅ **PASS**
-- ✅ Contract tests for all API endpoints (existing + new)
-- ✅ Integration tests for Docker compose startup
-- ✅ Integration tests for GitHub sync workflow
-- ✅ Integration tests for workspace file operations
-- ⚠️ **Exemption**: Infrastructure setup tasks (Dockerfile, docker-compose, ARM templates) do not require tests per constitution
+
+-   ✅ Contract tests for all API endpoints (existing + new)
+-   ✅ Integration tests for Docker compose startup
+-   ✅ Integration tests for GitHub sync workflow
+-   ✅ Integration tests for workspace file operations
+-   ⚠️ **Exemption**: Infrastructure setup tasks (Dockerfile, docker-compose, ARM templates) do not require tests per constitution
 
 ### Principle V: Single-MSP Multi-Organization Design ✅ **PASS**
-- ✅ Org-scoped partition keys maintained
-- ✅ Global config/secrets use `PartitionKey = "GLOBAL"`
-- ✅ `X-Organization-Id` header validation continues
-- ✅ Permission checks unchanged
-- ✅ Organization context loading unchanged
+
+-   ✅ Org-scoped partition keys maintained
+-   ✅ Global config/secrets use `PartitionKey = "GLOBAL"`
+-   ✅ `X-Organization-Id` header validation continues
+-   ✅ Permission checks unchanged
+-   ✅ Organization context loading unchanged
 
 **Post-Merger Architecture Benefits**:
-- ✅ **Simplified deployment**: Single Function App reduces complexity
-- ✅ **Better performance**: Direct function calls instead of HTTP proxy calls
-- ✅ **Easier debugging**: Single codebase, single container
-- ✅ **Reduced configuration**: No workflow engine URL/key needed
+
+-   ✅ **Simplified deployment**: Single Function App reduces complexity
+-   ✅ **Better performance**: Direct function calls instead of HTTP proxy calls
+-   ✅ **Easier debugging**: Single codebase, single container
+-   ✅ **Reduced configuration**: No workflow engine URL/key needed
 
 ### Constitution Compliance: ✅ **ALL GATES PASSED**
 
@@ -124,6 +136,7 @@ specs/005-migrate-to-azure/
 ### Source Code (repository root)
 
 **BEFORE** (Current - Two Separate Projects):
+
 ```
 api/                     # Management API Function App
 ├── functions/           # API endpoints
@@ -143,6 +156,7 @@ workflows/               # Workflow Engine Function App (SEPARATE)
 ```
 
 **AFTER** (Target - Unified Architecture):
+
 ```
 api/                     # UNIFIED Function App (merged project)
 ├── functions/           # API endpoints (management)
@@ -194,16 +208,16 @@ docker-compose.yml      # UPDATED: Single service (no separate workflows)
 
 ## Complexity Tracking
 
-*No complexity violations - unified architecture reduces complexity.*
+_No complexity violations - unified architecture reduces complexity._
 
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| Function Apps | 2 | 1 | ✅ -50% |
-| HTTP proxy calls | ~10/request | 0 | ✅ -100% |
-| Configuration vars | 2 (URL + key) | 0 | ✅ -100% |
-| Docker containers (local) | 2 | 1 | ✅ -50% |
-| ARM template resources | 2 Function Apps | 1 Function App | ✅ Simpler |
-| Codebase complexity | Split repos | Unified | ✅ Simpler |
+| Metric                    | Before          | After          | Change     |
+| ------------------------- | --------------- | -------------- | ---------- |
+| Function Apps             | 2               | 1              | ✅ -50%    |
+| HTTP proxy calls          | ~10/request     | 0              | ✅ -100%   |
+| Configuration vars        | 2 (URL + key)   | 0              | ✅ -100%   |
+| Docker containers (local) | 2               | 1              | ✅ -50%    |
+| ARM template resources    | 2 Function Apps | 1 Function App | ✅ Simpler |
+| Codebase complexity       | Split repos     | Unified        | ✅ Simpler |
 
 **Architectural Simplification**: This change **reduces** overall system complexity by eliminating inter-service communication, removing configuration burden, and consolidating deployment.
 
@@ -212,39 +226,43 @@ docker-compose.yml      # UPDATED: Single service (no separate workflows)
 ### Research Tasks
 
 1. **Azure Functions Docker Support**
-   - `func init --docker-only` usage and best practices
-   - Container runtime requirements (Python 3.11 base image)
-   - Debug configuration for VS Code attachment
-   - Volume mount patterns for workspace and source code
-   - Live reload in container development
+
+    - `func init --docker-only` usage and best practices
+    - Container runtime requirements (Python 3.11 base image)
+    - Debug configuration for VS Code attachment
+    - Volume mount patterns for workspace and source code
+    - Live reload in container development
 
 2. **Azure Files Integration**
-   - Mounting Azure Files to Function App container (`/workspace`, `/tmp`)
-   - Hot tier vs Cool tier performance characteristics
-   - File share quota sizing (defaults and limits)
-   - SDK usage: azure-storage-file-share for Python
-   - Recursive file operations (list, upload, delete)
+
+    - Mounting Azure Files to Function App container (`/workspace`, `/tmp`)
+    - Hot tier vs Cool tier performance characteristics
+    - File share quota sizing (defaults and limits)
+    - SDK usage: azure-storage-file-share for Python
+    - Recursive file operations (list, upload, delete)
 
 3. **GitHub Integration Patterns**
-   - Webhook signature verification (HMAC-SHA256)
-   - Personal Access Token (PAT) permissions required
-   - Webhook payload structure and limits (5MB)
-   - Idempotency handling for duplicate webhooks
-   - Rsync-style synchronization logic (diff + apply)
+
+    - Webhook signature verification (HMAC-SHA256)
+    - Personal Access Token (PAT) permissions required
+    - Webhook payload structure and limits (5MB)
+    - Idempotency handling for duplicate webhooks
+    - Rsync-style synchronization logic (diff + apply)
 
 4. **ARM Template Best Practices**
-   - Bicep module organization
-   - Static Web App GitHub CI/CD connection
-   - Managed identity for Key Vault access
-   - Application Insights integration
-   - Docker container deployment from Docker Hub
+
+    - Bicep module organization
+    - Static Web App GitHub CI/CD connection
+    - Managed identity for Key Vault access
+    - Application Insights integration
+    - Docker container deployment from Docker Hub
 
 5. **Unified Function App Architecture**
-   - Merging two function_app.py files (blueprint registration)
-   - Shared module structure (`engine/shared/`)
-   - Workspace discovery in unified app
-   - Import restriction for workspace code
-   - Direct function invocation patterns (no HTTP)
+    - Merging two function_app.py files (blueprint registration)
+    - Shared module structure (`engine/shared/`)
+    - Workspace discovery in unified app
+    - Import restriction for workspace code
+    - Direct function invocation patterns (no HTTP)
 
 ### Decisions
 
@@ -257,106 +275,119 @@ docker-compose.yml      # UPDATED: Single service (no separate workflows)
 **Entities**:
 
 1. **GitHubConnection**
-   - PartitionKey: `"GITHUB_CONNECTIONS"`
-   - RowKey: `{OrgId}` or `"GLOBAL"`
-   - Fields: RepositoryUrl, RepositoryBranch, IsEnabled, WebhookSecret, LastSync*, CreatedAt, UpdatedAt
-   - Purpose: Track GitHub repository connections for workspace sync
+
+    - PartitionKey: `"GITHUB_CONNECTIONS"`
+    - RowKey: `{OrgId}` or `"GLOBAL"`
+    - Fields: RepositoryUrl, RepositoryBranch, IsEnabled, WebhookSecret, LastSync\*, CreatedAt, UpdatedAt
+    - Purpose: Track GitHub repository connections for workspace sync
 
 2. **GitHubSyncJob**
-   - PartitionKey: `"SYNC_JOBS"`
-   - RowKey: `{CommitSha}`
-   - Fields: Status, CommitMessage, Author, Files* counts, StartedAt, CompletedAt, DurationMs, ErrorMessage, RetryCount
-   - Purpose: Track sync job execution and status
+
+    - PartitionKey: `"SYNC_JOBS"`
+    - RowKey: `{CommitSha}`
+    - Fields: Status, CommitMessage, Author, Files\* counts, StartedAt, CompletedAt, DurationMs, ErrorMessage, RetryCount
+    - Purpose: Track sync job execution and status
 
 3. **WorkspaceFile** (virtual - stored in Azure Files)
-   - Location: `/workspace` Azure Files share
-   - Metadata: File path, size, last modified (from Azure Files API)
-   - Purpose: User-defined workflow scripts
+    - Location: `/workspace` Azure Files share
+    - Metadata: File path, size, last modified (from Azure Files API)
+    - Purpose: User-defined workflow scripts
 
 **Relationships**:
-- GitHubConnection (1) → GitHubSyncJob (many) via OrgId
-- Organization (1) → GitHubConnection (0..1) via OrgId
+
+-   GitHubConnection (1) → GitHubSyncJob (many) via OrgId
+-   Organization (1) → GitHubConnection (0..1) via OrgId
 
 ### 2. API Contracts (`contracts/`)
 
 #### `github-sync-api.yaml` (NEW)
-- `POST /api/github-connections` - Create GitHub connection
-- `GET /api/github-connections` - List connections
-- `GET /api/github-connections/{orgId}` - Get connection
-- `PUT /api/github-connections/{orgId}` - Update connection
-- `DELETE /api/github-connections/{orgId}` - Disconnect
-- `POST /api/github-webhook` - Receive GitHub webhook
+
+-   `POST /api/github-connections` - Create GitHub connection
+-   `GET /api/github-connections` - List connections
+-   `GET /api/github-connections/{orgId}` - Get connection
+-   `PUT /api/github-connections/{orgId}` - Update connection
+-   `DELETE /api/github-connections/{orgId}` - Disconnect
+-   `POST /api/github-webhook` - Receive GitHub webhook
 
 #### `workspace-files-api.yaml` (NEW)
-- `GET /api/workspace/files` - List workspace files
-- `GET /api/workspace/files/{filePath}` - Read file
-- `PUT /api/workspace/files/{filePath}` - Create/update file
-- `DELETE /api/workspace/files/{filePath}` - Delete file
-- `POST /api/workspace/directories/{dirPath}` - Create directory
-- `DELETE /api/workspace/directories/{dirPath}` - Delete directory
-- `GET /api/workspace/download` - Download workspace as ZIP
-- `GET /api/workspace/status` - Get workspace mode and statistics
+
+-   `GET /api/workspace/files` - List workspace files
+-   `GET /api/workspace/files/{filePath}` - Read file
+-   `PUT /api/workspace/files/{filePath}` - Create/update file
+-   `DELETE /api/workspace/files/{filePath}` - Delete file
+-   `POST /api/workspace/directories/{dirPath}` - Create directory
+-   `DELETE /api/workspace/directories/{dirPath}` - Delete directory
+-   `GET /api/workspace/download` - Download workspace as ZIP
+-   `GET /api/workspace/status` - Get workspace mode and statistics
 
 #### `workflow-execution-api.yaml` (UPDATED)
-- `GET /api/workflows/metadata` - Get workflow metadata (UPDATED: direct registry access)
-- `POST /api/workflows/{workflowName}` - Execute workflow (UPDATED: direct invocation)
-- `GET /api/data-providers/{providerName}` - Get data provider options (UPDATED: direct call)
+
+-   `GET /api/workflows/metadata` - Get workflow metadata (UPDATED: direct registry access)
+-   `POST /api/workflows/{workflowName}` - Execute workflow (UPDATED: direct invocation)
+-   `GET /api/data-providers/{providerName}` - Get data provider options (UPDATED: direct call)
 
 **Changes from Current API**:
-- **REMOVE**: `/api/config/validate-workflows-engine` (no longer needed)
-- **REMOVE**: `/api/workflows/health` (unified health endpoint)
-- **UPDATE**: Workflow execution endpoints no longer proxy to external service
+
+-   **REMOVE**: `/api/config/validate-workflows-engine` (no longer needed)
+-   **REMOVE**: `/api/workflows/health` (unified health endpoint)
+-   **UPDATE**: Workflow execution endpoints no longer proxy to external service
 
 ### 3. Quickstart Guide (`quickstart.md`)
 
 **Sections**:
+
 1. **Local Development Setup**
-   - Prerequisites (Docker Desktop)
-   - Running `docker-compose up`
-   - Accessing UI at http://localhost:7071
-   - Enabling debugging with `ENABLE_DEBUGGING=true`
-   - Attaching VS Code debugger
+
+    - Prerequisites (Docker Desktop)
+    - Running `docker-compose up`
+    - Accessing UI at http://localhost:7071
+    - Enabling debugging with `ENABLE_DEBUGGING=true`
+    - Attaching VS Code debugger
 
 2. **Production Deployment**
-   - Building Docker image
-   - Pushing to Docker Hub
-   - Configuring ARM template parameters
-   - Running `az deployment group create`
-   - Accessing deployed services
+
+    - Building Docker image
+    - Pushing to Docker Hub
+    - Configuring ARM template parameters
+    - Running `az deployment group create`
+    - Accessing deployed services
 
 3. **GitHub Integration**
-   - Creating Personal Access Token
-   - Connecting repository via API
-   - Configuring webhook
-   - Testing sync workflow
+
+    - Creating Personal Access Token
+    - Connecting repository via API
+    - Configuring webhook
+    - Testing sync workflow
 
 4. **Manual Workspace Editing**
-   - Accessing script editor
-   - Creating/editing files
-   - Downloading workspace backup
-   - Switching between GitHub and manual modes
+    - Accessing script editor
+    - Creating/editing files
+    - Downloading workspace backup
+    - Switching between GitHub and manual modes
 
 ### 4. Agent Context Update
 
 Run `.specify/scripts/bash/update-agent-context.sh` to add:
-- Docker container development patterns
-- Azure Files SDK usage
-- GitHub webhook handling
-- ARM template deployment
-- **Unified Function App architecture** (single codebase patterns)
+
+-   Docker container development patterns
+-   Azure Files SDK usage
+-   GitHub webhook handling
+-   ARM template deployment
+-   **Unified Function App architecture** (single codebase patterns)
 
 ## Phase 2: Implementation Tasks
 
 **Output**: `tasks.md` (generated by `/speckit.tasks` command - NOT by this command)
 
 The tasks.md will break down implementation into:
-- **Phase 1: Setup** - Dockerfile, docker-compose, infrastructure directory
-- **Phase 2: Merge Projects** - Copy engine code to api/, update imports, remove proxy endpoints
-- **Phase 3: Local Development** - Debug configuration, volume mounts, workspace discovery
-- **Phase 4: Production Deployment** - ARM templates, deployment scripts
-- **Phase 5: GitHub Sync** - Webhook handler, sync service, UI
-- **Phase 6: Manual Editing** - Workspace file CRUD, script editor UI
-- **Phase 7: Polish** - Health checks, documentation, testing
+
+-   **Phase 1: Setup** - Dockerfile, docker-compose, infrastructure directory
+-   **Phase 2: Merge Projects** - Copy engine code to api/, update imports, remove proxy endpoints
+-   **Phase 3: Local Development** - Debug configuration, volume mounts, workspace discovery
+-   **Phase 4: Production Deployment** - ARM templates, deployment scripts
+-   **Phase 5: GitHub Sync** - Webhook handler, sync service, UI
+-   **Phase 6: Manual Editing** - Workspace file CRUD, script editor UI
+-   **Phase 7: Polish** - Health checks, documentation, testing
 
 ## Key Integration Points
 
@@ -445,11 +476,12 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
 ```
 
 **Benefits**:
-- ✅ No HTTP overhead (sub-100ms latency)
-- ✅ No function key configuration needed
-- ✅ No cross-service authentication
-- ✅ Direct access to registry and context
-- ✅ Easier debugging (single call stack)
+
+-   ✅ No HTTP overhead (sub-100ms latency)
+-   ✅ No function key configuration needed
+-   ✅ No cross-service authentication
+-   ✅ Direct access to registry and context
+-   ✅ Easier debugging (single call stack)
 
 ### 3. Docker Compose Simplification
 
@@ -457,50 +489,51 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
 
 ```yaml
 services:
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite:latest
-    ports:
-      - "10000:10000" # Blob
-      - "10001:10001" # Queue
-      - "10002:10002" # Table
-      - "10003:10003" # Files (NEW)
-    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --fileHost 0.0.0.0 --loose"
-    volumes:
-      - azurite-data:/data
+    azurite:
+        image: mcr.microsoft.com/azure-storage/azurite:latest
+        ports:
+            - "10000:10000" # Blob
+            - "10001:10001" # Queue
+            - "10002:10002" # Table
+            - "10003:10003" # Files (NEW)
+        command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --fileHost 0.0.0.0 --loose"
+        volumes:
+            - azurite-data:/data
 
-  api:  # RENAMED from 'functions' - single unified service
-    build:
-      context: ./api  # Single build context
-      dockerfile: Dockerfile
-    ports:
-      - "7071:80"      # Azure Functions
-      - "5678:5678"    # Debugpy
-    environment:
-      - AzureWebJobsStorage=...  # Connection to azurite
-      - AZURE_FILES_CONNECTION_STRING=...  # For workspace/tmp mounts
-      - ENABLE_DEBUGGING=${ENABLE_DEBUGGING:-false}
-      - WORKSPACE_PATH=/workspace
-      - AZURE_FUNCTIONS_ENVIRONMENT=Development
-    volumes:
-      - ./api:/home/site/wwwroot  # Live source reload
-      - workspace-data:/workspace  # Workspace files
-      - tmp-data:/tmp              # Temporary storage
-    depends_on:
-      - azurite
+    api: # RENAMED from 'functions' - single unified service
+        build:
+            context: ./api # Single build context
+            dockerfile: Dockerfile
+        ports:
+            - "7071:80" # Azure Functions
+            - "5678:5678" # Debugpy
+        environment:
+            - AzureWebJobsStorage=... # Connection to azurite
+            - AZURE_FILES_CONNECTION_STRING=... # For workspace/tmp mounts
+            - ENABLE_DEBUGGING=${ENABLE_DEBUGGING:-false}
+            - WORKSPACE_PATH=/workspace
+            - AZURE_FUNCTIONS_ENVIRONMENT=Development
+        volumes:
+            - ./api:/home/site/wwwroot # Live source reload
+            - workspace-data:/workspace # Workspace files
+            - tmp-data:/tmp # Temporary storage
+        depends_on:
+            - azurite
 
-  # REMOVED: workflows service (merged into api service)
+    # REMOVED: workflows service (merged into api service)
 
 volumes:
-  azurite-data:
-  workspace-data:
-  tmp-data:
+    azurite-data:
+    workspace-data:
+    tmp-data:
 ```
 
 **Key Changes**:
-- ✅ Single service instead of two
-- ✅ One port (7071) instead of two (7071 + 7072)
-- ✅ No inter-container networking needed
-- ✅ Simpler environment configuration
+
+-   ✅ Single service instead of two
+-   ✅ One port (7071) instead of two (7071 + 7071)
+-   ✅ No inter-container networking needed
+-   ✅ Simpler environment configuration
 
 ### 4. ARM Template Simplification
 
@@ -530,58 +563,63 @@ module functionApp 'modules/functions.bicep' = {
 ```
 
 **Benefits**:
-- ✅ One Function App resource instead of two
-- ✅ Simpler networking (no VNet peering needed)
-- ✅ Lower cost (single App Service Plan)
-- ✅ Easier monitoring (single Application Insights resource)
+
+-   ✅ One Function App resource instead of two
+-   ✅ Simpler networking (no VNet peering needed)
+-   ✅ Lower cost (single App Service Plan)
+-   ✅ Easier monitoring (single Application Insights resource)
 
 ## Testing Strategy
 
 ### Contract Tests (Required by Constitution)
 
 1. **GitHub Sync API** (`tests/contract/test_github_sync_api.py`)
-   - POST /api/github-connections creates connection
-   - GET /api/github-connections lists connections
-   - PUT /api/github-connections/{orgId} updates connection
-   - DELETE /api/github-connections/{orgId} removes connection
-   - POST /api/github-webhook validates signature and queues job
+
+    - POST /api/github-connections creates connection
+    - GET /api/github-connections lists connections
+    - PUT /api/github-connections/{orgId} updates connection
+    - DELETE /api/github-connections/{orgId} removes connection
+    - POST /api/github-webhook validates signature and queues job
 
 2. **Workspace Files API** (`tests/contract/test_workspace_files_api.py`)
-   - GET /api/workspace/files lists files
-   - PUT /api/workspace/files/{path} creates/updates file
-   - DELETE /api/workspace/files/{path} removes file
-   - GET /api/workspace/download returns ZIP
+
+    - GET /api/workspace/files lists files
+    - PUT /api/workspace/files/{path} creates/updates file
+    - DELETE /api/workspace/files/{path} removes file
+    - GET /api/workspace/download returns ZIP
 
 3. **Updated Workflow Execution** (`tests/contract/test_workflow_execution.py`)
-   - Verify direct execution (no HTTP proxy)
-   - Verify sub-100ms latency
-   - Verify no function key required
+    - Verify direct execution (no HTTP proxy)
+    - Verify sub-100ms latency
+    - Verify no function key required
 
 ### Integration Tests (Required for Complex Flows)
 
 1. **Docker Compose Startup** (`tests/integration/test_docker_compose_startup.py`)
-   - `docker-compose up` completes successfully
-   - Health endpoint returns 200
-   - Workspace mount accessible
-   - Registry discovers workspace modules
+
+    - `docker-compose up` completes successfully
+    - Health endpoint returns 200
+    - Workspace mount accessible
+    - Registry discovers workspace modules
 
 2. **GitHub Sync Workflow** (`tests/integration/test_github_sync_workflow.py`)
-   - Create GitHub connection
-   - Simulate webhook event
-   - Verify files synced to Azure Files
-   - Verify workflows reload
+
+    - Create GitHub connection
+    - Simulate webhook event
+    - Verify files synced to Azure Files
+    - Verify workflows reload
 
 3. **Manual Workspace Editing** (`tests/integration/test_workspace_editing.py`)
-   - Create file via API
-   - Read file via API
-   - Execute workflow using created file
-   - Download workspace ZIP
+    - Create file via API
+    - Read file via API
+    - Execute workflow using created file
+    - Download workspace ZIP
 
 ### Manual Verification (Infrastructure)
 
-- Local development: `docker-compose up` + VS Code attach
-- Production deployment: Run ARM template → verify all resources
-- GitHub integration: Connect repo → push commit → verify sync
+-   Local development: `docker-compose up` + VS Code attach
+-   Production deployment: Run ARM template → verify all resources
+-   GitHub integration: Connect repo → push commit → verify sync
 
 ## Deployment Workflow
 
@@ -605,10 +643,10 @@ module functionApp 'modules/functions.bicep' = {
 
 ### CI/CD (Future Enhancement)
 
-- GitHub Actions to build/push Docker image on `main` branch
-- Automated ARM template deployment to staging
-- Manual approval gate for production
-- Smoke tests post-deployment
+-   GitHub Actions to build/push Docker image on `main` branch
+-   Automated ARM template deployment to staging
+-   Manual approval gate for production
+-   Smoke tests post-deployment
 
 ## Migration from Current State
 
@@ -623,28 +661,29 @@ module functionApp 'modules/functions.bicep' = {
 7. **Clean up**: Remove workflow engine URL/key configuration
 
 **For New Deployments** (in scope):
-- Single ARM template deploys everything
-- No migration needed
+
+-   Single ARM template deploys everything
+-   No migration needed
 
 ## Success Metrics
 
-- **SC-001**: Local dev startup: <5 minutes ✅ Measured via `time docker-compose up`
-- **SC-002**: Production deployment: <30 minutes ✅ Measured via ARM template execution time
-- **SC-003**: GitHub sync latency: <2 minutes ✅ Measured via webhook timestamp → workflow available
-- **SC-010**: Zero manual config: ✅ No workflow engine URL or function key needed
-- **SC-011**: Execution latency: <100ms ✅ Measured via API endpoint → workflow start time
+-   **SC-001**: Local dev startup: <5 minutes ✅ Measured via `time docker-compose up`
+-   **SC-002**: Production deployment: <30 minutes ✅ Measured via ARM template execution time
+-   **SC-003**: GitHub sync latency: <2 minutes ✅ Measured via webhook timestamp → workflow available
+-   **SC-010**: Zero manual config: ✅ No workflow engine URL or function key needed
+-   **SC-011**: Execution latency: <100ms ✅ Measured via API endpoint → workflow start time
 
 ## Risks & Mitigation
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| Container image >2GB | Medium | Medium | Optimize .dockerignore, multi-stage build |
-| ARM deployment quota exceeded | Low | High | Document quota requirements, validation script |
-| Workspace mount unavailable | Low | High | Health check for Azure Files, retry logic |
-| GitHub webhook signature fails | Medium | Medium | Unit tests for HMAC verification, test payloads |
-| Workspace sync conflicts (GitHub + manual edits) | Medium | Medium | Block manual editing when GitHub enabled, ZIP download before sync |
-| Import restriction bypass | Low | High | Comprehensive tests for import restrictor |
-| Merge breaks existing tests | High | Medium | Run full test suite after merge, fix incrementally |
+| Risk                                             | Likelihood | Impact | Mitigation                                                         |
+| ------------------------------------------------ | ---------- | ------ | ------------------------------------------------------------------ |
+| Container image >2GB                             | Medium     | Medium | Optimize .dockerignore, multi-stage build                          |
+| ARM deployment quota exceeded                    | Low        | High   | Document quota requirements, validation script                     |
+| Workspace mount unavailable                      | Low        | High   | Health check for Azure Files, retry logic                          |
+| GitHub webhook signature fails                   | Medium     | Medium | Unit tests for HMAC verification, test payloads                    |
+| Workspace sync conflicts (GitHub + manual edits) | Medium     | Medium | Block manual editing when GitHub enabled, ZIP download before sync |
+| Import restriction bypass                        | Low        | High   | Comprehensive tests for import restrictor                          |
+| Merge breaks existing tests                      | High       | Medium | Run full test suite after merge, fix incrementally                 |
 
 ## Next Steps
 

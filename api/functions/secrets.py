@@ -18,6 +18,7 @@ from shared.models import (
     ErrorResponse
 )
 from shared.keyvault import KeyVaultClient
+from shared.openapi_decorators import openapi_endpoint
 from shared.decorators import with_request_context, require_platform_admin
 from shared.storage import get_table_service
 from shared.validation import check_key_vault_available, create_error_response
@@ -37,6 +38,21 @@ except Exception as e:
 
 @bp.function_name("secrets_list")
 @bp.route(route="secrets", methods=["GET"])
+@openapi_endpoint(
+    path="/secrets",
+    method="GET",
+    summary="List secrets",
+    description="List available secrets from Key Vault, optionally filtered by organization (Platform admin only)",
+    tags=["Secrets"],
+    response_model=SecretListResponse,
+    query_params={
+        "org_id": {
+            "description": "Filter secrets by organization ID (returns org-scoped + GLOBAL secrets)",
+            "schema": {"type": "string"},
+            "required": False
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
@@ -106,6 +122,15 @@ async def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("secrets_create")
 @bp.route(route="secrets", methods=["POST"])
+@openapi_endpoint(
+    path="/secrets",
+    method="POST",
+    summary="Create a secret",
+    description="Create a new secret in Azure Key Vault (Platform admin only)",
+    tags=["Secrets"],
+    request_model=SecretCreateRequest,
+    response_model=SecretResponse
+)
 @with_request_context
 @require_platform_admin
 async def create_secret(req: func.HttpRequest) -> func.HttpResponse:
@@ -229,6 +254,21 @@ async def create_secret(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("secrets_update")
 @bp.route(route="secrets/{name}", methods=["PUT"])
+@openapi_endpoint(
+    path="/secrets/{name}",
+    method="PUT",
+    summary="Update a secret",
+    description="Update an existing secret in Azure Key Vault (Platform admin only)",
+    tags=["Secrets"],
+    request_model=SecretUpdateRequest,
+    response_model=SecretResponse,
+    path_params={
+        "name": {
+            "description": "Full secret name (e.g., 'org-123--api-key' or 'GLOBAL--smtp-password')",
+            "schema": {"type": "string"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def update_secret(req: func.HttpRequest) -> func.HttpResponse:
@@ -366,6 +406,20 @@ async def update_secret(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("secrets_delete")
 @bp.route(route="secrets/{name}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/secrets/{name}",
+    method="DELETE",
+    summary="Delete a secret",
+    description="Delete a secret from Azure Key Vault. WARNING: This will delete the secret permanently. (Platform admin only)",
+    tags=["Secrets"],
+    response_model=SecretResponse,
+    path_params={
+        "name": {
+            "description": "Full secret name (e.g., 'org-123--api-key' or 'GLOBAL--smtp-password')",
+            "schema": {"type": "string"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:

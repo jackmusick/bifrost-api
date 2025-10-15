@@ -9,41 +9,43 @@ The workflow engine is a critical component that executes workflows and forms. W
 1. Navigate to the Azure Portal
 2. Find your workflow engine Function App
 3. Check the **Overview** page for:
-   - Status (should be "Running")
-   - Recent errors in the logs
-   - HTTP trigger status
+    - Status (should be "Running")
+    - Recent errors in the logs
+    - HTTP trigger status
 
 ### Verify Function App Configuration
 
 1. Check **Configuration** > **Application settings**:
-   - `AZURE_STORAGE_ACCOUNT_NAME` - should point to your storage account
-   - `KEYVAULT_URL` - should be set to your Key Vault URL
-   - `AZURE_TABLES_CONNECTION_STRING` - should be valid
+
+    - `AZURE_STORAGE_ACCOUNT_NAME` - should point to your storage account
+    - `KEYVAULT_URL` - should be set to your Key Vault URL
+    - `AZURE_TABLES_CONNECTION_STRING` - should be valid
 
 2. Verify **Identity** is enabled:
-   - System-assigned managed identity should be **On**
-   - This identity needs Key Vault access
+    - System-assigned managed identity should be **On**
+    - This identity needs Key Vault access
 
 ### Check Function App Logs
 
 1. Go to **Monitoring** > **Log stream**
 2. Look for startup errors or exceptions
 3. Common issues:
-   - Storage account connection failures
-   - Key Vault access denied
-   - Missing environment variables
+    - Storage account connection failures
+    - Key Vault access denied
+    - Missing environment variables
 
 ### Verify Network Connectivity
 
 1. If using VNet integration, check:
-   - VNet configuration is correct
-   - Network security groups allow traffic
-   - Private endpoints are configured properly
+
+    - VNet configuration is correct
+    - Network security groups allow traffic
+    - Private endpoints are configured properly
 
 2. Test the health endpoint:
-   ```bash
-   curl https://your-workflow-engine.azurewebsites.net/api/health
-   ```
+    ```bash
+    curl https://your-workflow-engine.azurewebsites.net/api/health
+    ```
 
 ### Check CORS Configuration
 
@@ -58,35 +60,38 @@ If the workflow engine is running but the client can't connect:
 ### Start the Local Workflow Engine
 
 1. Navigate to the workflows directory:
-   ```bash
-   cd workflows
-   ```
+
+    ```bash
+    cd workflows
+    ```
 
 2. Start Azurite (local storage emulator):
-   ```bash
-   # In a separate terminal
-   azurite --silent --location azurite --debug azurite\debug.log
-   ```
+
+    ```bash
+    # In a separate terminal
+    azurite --silent --location azurite --debug azurite\debug.log
+    ```
 
 3. Start the Function App:
-   ```bash
-   func start
-   ```
+
+    ```bash
+    func start
+    ```
 
 4. Verify it's running:
-   ```bash
-   curl http://localhost:7072/api/health
-   ```
+    ```bash
+    curl http://localhost:7071/api/health
+    ```
 
 ### Common Development Issues
 
 #### Port Already in Use
 
-If port 7072 is already in use:
+If port 7071 is already in use:
 
 ```bash
 # Find the process
-lsof -i :7072
+lsof -i :7071
 
 # Kill it
 kill -9 <PID>
@@ -105,9 +110,10 @@ pip install -r requirements.txt
 If you see storage connection errors:
 
 1. Start Azurite:
-   ```bash
-   azurite --silent --location azurite --debug azurite\debug.log
-   ```
+
+    ```bash
+    azurite --silent --location azurite --debug azurite\debug.log
+    ```
 
 2. Verify it's running on the default ports (10000, 10001, 10002)
 
@@ -117,14 +123,14 @@ Check your `local.settings.json`:
 
 ```json
 {
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "AZURE_STORAGE_ACCOUNT_NAME": "devstoreaccount1",
-    "KEYVAULT_URL": "your-keyvault-url",
-    "AZURE_TABLES_CONNECTION_STRING": "UseDevelopmentStorage=true"
-  }
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "AZURE_STORAGE_ACCOUNT_NAME": "devstoreaccount1",
+        "KEYVAULT_URL": "your-keyvault-url",
+        "AZURE_TABLES_CONNECTION_STRING": "UseDevelopmentStorage=true"
+    }
 }
 ```
 

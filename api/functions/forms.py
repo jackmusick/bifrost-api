@@ -11,6 +11,7 @@ from typing import List
 import azure.functions as func
 
 from shared.decorators import with_request_context, require_platform_admin
+from shared.openapi_decorators import openapi_endpoint
 from shared.middleware import with_org_context
 from shared.authorization import (
     can_user_view_form,
@@ -22,6 +23,7 @@ from shared.models import (
     Form,
     CreateFormRequest,
     UpdateFormRequest,
+    FormExecuteRequest,
     ErrorResponse,
     generate_entity_id
 )
@@ -35,6 +37,14 @@ bp = func.Blueprint()
 
 @bp.function_name("forms_list_forms")
 @bp.route(route="forms", methods=["GET"])
+@openapi_endpoint(
+    path="/forms",
+    method="GET",
+    summary="List forms",
+    description="List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).",
+    tags=["Forms"],
+    response_model=Form
+)
 @with_request_context
 async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -103,6 +113,15 @@ async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_create_form")
 @bp.route(route="forms", methods=["POST"])
+@openapi_endpoint(
+    path="/forms",
+    method="POST",
+    summary="Create a new form",
+    description="Create a new form (Platform admin only)",
+    tags=["Forms"],
+    request_model=CreateFormRequest,
+    response_model=Form
+)
 @with_request_context
 @require_platform_admin
 async def create_form(req: func.HttpRequest) -> func.HttpResponse:
@@ -220,6 +239,20 @@ async def create_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_get_form")
 @bp.route(route="forms/{formId}", methods=["GET"])
+@openapi_endpoint(
+    path="/forms/{formId}",
+    method="GET",
+    summary="Get form by ID",
+    description="Get a specific form by ID. User must have access to the form (public or role-assigned).",
+    tags=["Forms"],
+    response_model=Form,
+    path_params={
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 async def get_form(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -326,6 +359,21 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_update_form")
 @bp.route(route="forms/{formId}", methods=["PUT"])
+@openapi_endpoint(
+    path="/forms/{formId}",
+    method="PUT",
+    summary="Update a form",
+    description="Update an existing form (Platform admin only)",
+    tags=["Forms"],
+    request_model=UpdateFormRequest,
+    response_model=Form,
+    path_params={
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def update_form(req: func.HttpRequest) -> func.HttpResponse:
@@ -472,6 +520,19 @@ async def update_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_delete_form")
 @bp.route(route="forms/{formId}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/forms/{formId}",
+    method="DELETE",
+    summary="Delete a form",
+    description="Soft delete a form by setting IsActive=False (Platform admin only)",
+    tags=["Forms"],
+    path_params={
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def delete_form(req: func.HttpRequest) -> func.HttpResponse:
@@ -524,13 +585,27 @@ async def delete_form(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
-@bp.function_name("forms_submit_form")
-@bp.route(route="forms/{formId}/submit", methods=["POST"])
+@bp.function_name("forms_execute_form")
+@bp.route(route="forms/{formId}/execute", methods=["POST"])
+@openapi_endpoint(
+    path="/forms/{formId}/execute",
+    method="POST",
+    summary="Execute a form",
+    description="Execute a form and run the linked workflow. User must have access to execute the form (public or role-assigned).",
+    tags=["Forms"],
+    request_model=FormExecuteRequest,
+    path_params={
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context  # For authorization - sets req.context
 @with_org_context      # For workflow execution - sets req.org_context
-async def submit_form(req: func.HttpRequest) -> func.HttpResponse:
+async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
     """
-    POST /api/forms/{formId}/submit
+    POST /api/forms/{formId}/execute
     Submit a form and execute the linked workflow
 
     Request Body:

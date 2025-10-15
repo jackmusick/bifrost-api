@@ -11,6 +11,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from shared.decorators import with_request_context
+from shared.openapi_decorators import openapi_endpoint
 from shared.authorization import can_user_view_execution, get_user_executions
 from shared.storage import get_table_service
 from shared.models import WorkflowExecution, ExecutionStatus
@@ -23,6 +24,31 @@ bp = func.Blueprint()
 
 @bp.function_name("executions_list")
 @bp.route(route="executions", methods=["GET"])
+@openapi_endpoint(
+    path="/executions",
+    method="GET",
+    summary="List workflow executions",
+    description="List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.",
+    tags=["Executions"],
+    response_model=WorkflowExecution,
+    query_params={
+        "workflowName": {
+            "description": "Filter by workflow name",
+            "schema": {"type": "string"},
+            "required": False
+        },
+        "status": {
+            "description": "Filter by execution status",
+            "schema": {"type": "string", "enum": ["Pending", "Running", "Success", "Failed", "CompletedWithErrors"]},
+            "required": False
+        },
+        "limit": {
+            "description": "Maximum number of results (default: 50, max: 1000)",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "required": False
+        }
+    }
+)
 @with_request_context
 async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -129,6 +155,20 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("executions_get")
 @bp.route(route="executions/{executionId}", methods=["GET"])
+@openapi_endpoint(
+    path="/executions/{executionId}",
+    method="GET",
+    summary="Get execution details",
+    description="Get detailed information about a specific execution. Platform admins can view any execution in their scope. Regular users can only view their own executions.",
+    tags=["Executions"],
+    response_model=WorkflowExecution,
+    path_params={
+        "executionId": {
+            "description": "Execution ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
     """

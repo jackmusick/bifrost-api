@@ -9,7 +9,7 @@ info:
 servers:
   - url: https://msp-automation-workflows.azurewebsites.net
     description: Production
-  - url: http://localhost:7072
+  - url: http://localhost:7071
     description: Local development
 
 security:
@@ -54,7 +54,7 @@ components:
         parameters:
           type: array
           items:
-            $ref: '#/components/schemas/WorkflowParameter'
+            $ref: "#/components/schemas/WorkflowParameter"
         tags:
           type: array
           items:
@@ -137,7 +137,7 @@ components:
         parameters:
           type: array
           items:
-            $ref: '#/components/schemas/DataProviderParameter'
+            $ref: "#/components/schemas/DataProviderParameter"
           description: Optional parameters for data provider
 
     DataProviderParameter:
@@ -166,11 +166,11 @@ components:
         workflows:
           type: array
           items:
-            $ref: '#/components/schemas/WorkflowMetadata'
+            $ref: "#/components/schemas/WorkflowMetadata"
         dataProviders:
           type: array
           items:
-            $ref: '#/components/schemas/DataProviderMetadata'
+            $ref: "#/components/schemas/DataProviderMetadata"
 
     WorkflowExecutionRequest:
       type: object
@@ -275,12 +275,12 @@ paths:
       tags: [Admin]
       security: []
       responses:
-        '200':
+        "200":
           description: Metadata for all workflows and data providers
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MetadataResponse'
+                $ref: "#/components/schemas/MetadataResponse"
               examples:
                 example:
                   value:
@@ -318,7 +318,7 @@ paths:
         description: Name of the workflow to execute
         schema:
           type: string
-      - $ref: '#/components/parameters/XOrganizationId'
+      - $ref: "#/components/parameters/XOrganizationId"
 
     post:
       summary: Execute a workflow
@@ -329,7 +329,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WorkflowExecutionRequest'
+              $ref: "#/components/schemas/WorkflowExecutionRequest"
             examples:
               onboarding:
                 summary: User onboarding example
@@ -342,36 +342,36 @@ paths:
                     formId: 123e4567-e89b-12d3-a456-426614174000
                     executedBy: user@example.com
       responses:
-        '200':
+        "200":
           description: Workflow execution completed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkflowExecutionResponse'
-        '202':
+                $ref: "#/components/schemas/WorkflowExecutionResponse"
+        "202":
           description: Workflow execution started (async workflows)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkflowExecutionResponse'
-        '400':
+                $ref: "#/components/schemas/WorkflowExecutionResponse"
+        "400":
           description: Bad request - invalid parameters
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '401':
+                $ref: "#/components/schemas/Error"
+        "401":
           description: Unauthorized
-        '403':
+        "403":
           description: Forbidden - user lacks canExecuteWorkflows permission
-        '404':
+        "404":
           description: Workflow not found
-        '500':
+        "500":
           description: Workflow execution failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkflowExecutionResponse'
+                $ref: "#/components/schemas/WorkflowExecutionResponse"
 
   # ==================== DATA PROVIDERS ====================
   /data-providers/{providerName}:
@@ -382,7 +382,7 @@ paths:
         description: Name of the data provider to execute
         schema:
           type: string
-      - $ref: '#/components/parameters/XOrganizationId'
+      - $ref: "#/components/parameters/XOrganizationId"
 
     get:
       summary: Get data provider options
@@ -395,12 +395,12 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Data provider options
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DataProviderResponse'
+                $ref: "#/components/schemas/DataProviderResponse"
               examples:
                 licenses:
                   summary: Available M365 licenses
@@ -418,18 +418,18 @@ paths:
                           available: 42
                     cached: true
                     cachedAt: "2025-10-10T14:32:00Z"
-        '401':
+        "401":
           description: Unauthorized
-        '403':
+        "403":
           description: Forbidden - user lacks permissions
-        '404':
+        "404":
           description: Data provider not found
-        '500':
+        "500":
           description: Data provider execution failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
 tags:
   - name: Admin

@@ -4,9 +4,9 @@ Performance targets and security audit for the workflow engine restructuring.
 
 ## Table of Contents
 
-- [Performance Benchmarks](#performance-benchmarks)
-- [Security Review](#security-review)
-- [Audit Recommendations](#audit-recommendations)
+-   [Performance Benchmarks](#performance-benchmarks)
+-   [Security Review](#security-review)
+-   [Audit Recommendations](#audit-recommendations)
 
 ---
 
@@ -14,13 +14,13 @@ Performance targets and security audit for the workflow engine restructuring.
 
 ### Target Metrics
 
-| Component | Target | Actual | Status |
-|-----------|--------|--------|--------|
-| Import restriction overhead | <50ms | ~5-10ms | ✅ PASS |
-| GitHub Action validation | <10s | ~2-5s | ✅ PASS |
-| Azurite seed script | <5s | ~1-3s | ✅ PASS |
-| Function key authentication | <10ms | ~2-5ms | ✅ PASS |
-| Audit log write (async) | Non-blocking | Async | ✅ PASS |
+| Component                   | Target       | Actual  | Status  |
+| --------------------------- | ------------ | ------- | ------- |
+| Import restriction overhead | <50ms        | ~5-10ms | ✅ PASS |
+| GitHub Action validation    | <10s         | ~2-5s   | ✅ PASS |
+| Azurite seed script         | <5s          | ~1-3s   | ✅ PASS |
+| Function key authentication | <10ms        | ~2-5ms  | ✅ PASS |
+| Audit log write (async)     | Non-blocking | Async   | ✅ PASS |
 
 ### Measurement Methodology
 
@@ -67,11 +67,13 @@ Measured via audit logs - function key authentication adds negligible overhead (
 **Mechanism**: GitHub Action validates all commits/PRs
 
 **Protection**:
-- Blocks unauthorized modifications to `/engine/**`
-- Allows authorized bots (upstream-sync[bot], github-actions[bot])
-- Fast failure (2-minute timeout)
+
+-   Blocks unauthorized modifications to `/engine/**`
+-   Allows authorized bots (upstream-sync[bot], github-actions[bot])
+-   Fast failure (2-minute timeout)
 
 **Test**:
+
 ```bash
 # Attempt to modify engine code
 echo "# test" >> engine/shared/storage.py
@@ -93,18 +95,21 @@ git push
 **Mechanism**: Python MetaPathFinder with stack inspection
 
 **Protection**:
-- Workspace code cannot import `engine.*` (except public API)
-- Violations logged to AuditLog table
-- Clear error messages guide developers to public API
+
+-   Workspace code cannot import `engine.*` (except public API)
+-   Violations logged to AuditLog table
+-   Clear error messages guide developers to public API
 
 **Whitelisted Public API**:
-- `engine.shared.decorators` - Workflow registration
-- `engine.shared.context` - Organization context
-- `engine.shared.error_handling` - Exception types
-- `engine.shared.models` - Pydantic models
-- `engine.shared.registry` - Internal dependency of decorators
+
+-   `engine.shared.decorators` - Workflow registration
+-   `engine.shared.context` - Organization context
+-   `engine.shared.error_handling` - Exception types
+-   `engine.shared.models` - Pydantic models
+-   `engine.shared.registry` - Internal dependency of decorators
 
 **Test**:
+
 ```python
 # In workspace/workflows/test.py
 from engine.shared.storage import get_organization  # BLOCKED
@@ -123,22 +128,25 @@ from engine.shared.storage import get_organization  # BLOCKED
 **Mechanism**: AuthenticationService with priority-based auth
 
 **Priority Order**:
+
 1. Function key (x-functions-key header or ?code=KEY) - HIGHEST
 2. Easy Auth (X-MS-CLIENT-PRINCIPAL header from Azure) - FALLBACK
 3. None → 403 Forbidden
 
 **Protection**:
-- All function key usage audited
-- No anonymous access
-- Organization validation enforced regardless of auth method
+
+-   All function key usage audited
+-   No anonymous access
+-   Organization validation enforced regardless of auth method
 
 **Test**:
+
 ```bash
 # No auth - should return 403
-curl http://localhost:7072/api/workflows/test
+curl http://localhost:7071/api/workflows/test
 
 # With function key - should succeed
-curl -H "x-functions-key: test" http://localhost:7072/api/workflows/test
+curl -H "x-functions-key: test" http://localhost:7071/api/workflows/test
 ```
 
 **Status**: ✅ Active and tested
@@ -152,9 +160,10 @@ curl -H "x-functions-key: test" http://localhost:7072/api/workflows/test
 **Mechanism**: Middleware enforces org validation for ALL requests
 
 **Protection**:
-- Function key auth still requires valid org_id
-- Inactive orgs rejected (404)
-- Cross-org access by PlatformAdmins audited
+
+-   Function key auth still requires valid org_id
+-   Inactive orgs rejected (404)
+-   Cross-org access by PlatformAdmins audited
 
 **Status**: ✅ Active and tested
 
@@ -167,13 +176,15 @@ curl -H "x-functions-key: test" http://localhost:7072/api/workflows/test
 **Mechanism**: AuditLogger writes to Table Storage with date partitioning
 
 **Logged Events**:
-- `function_key_access` - Function key authentication usage
-- `cross_org_access` - PlatformAdmin accessing other orgs
-- `engine_violation_attempt` - Workspace code attempting blocked imports
+
+-   `function_key_access` - Function key authentication usage
+-   `cross_org_access` - PlatformAdmin accessing other orgs
+-   `engine_violation_attempt` - Workspace code attempting blocked imports
 
 **Retention**: 90 days (recommended - configurable)
 
 **Query Example**:
+
 ```python
 from azure.data.tables import TableServiceClient
 
@@ -243,6 +254,7 @@ for event in events:
 **Risk**: Compromised keys remain valid indefinitely
 
 **Recommendation**: Implement 90-day key rotation policy
+
 ```bash
 # Manual rotation procedure (to be automated)
 1. Generate new function key in Azure Portal
@@ -253,6 +265,7 @@ for event in events:
 ```
 
 **Implementation Script**:
+
 ```python
 # scripts/rotate_function_keys.py
 import os
@@ -263,17 +276,17 @@ def rotate_function_key():
     """Rotate function keys with audit trail"""
     old_key = os.getenv("AZURE_FUNCTION_KEY")
     new_key = generate_new_function_key()
-    
+
     # Log rotation
     log_security_event("function_key_rotated", {
         "timestamp": datetime.now().isoformat(),
         "old_key_prefix": old_key[:8] if old_key else None,
         "new_key_prefix": new_key[:8]
     })
-    
+
     # Update configuration
     update_app_settings({"AZURE_FUNCTION_KEY": new_key})
-    
+
     return new_key
 ```
 
@@ -288,6 +301,7 @@ def rotate_function_key():
 **Risk**: Unbounded storage growth
 
 **Recommendation**: Implement 90-day retention with automated cleanup
+
 ```python
 # scripts/cleanup_audit_logs.py
 from datetime import datetime, timedelta
@@ -296,25 +310,25 @@ from azure.data.tables import TableServiceClient
 def cleanup_old_audit_logs():
     """Remove audit logs older than 90 days"""
     cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-    
+
     client = TableServiceClient.from_connection_string(CONNECTION_STRING)
     table = client.get_table_client("AuditLog")
-    
+
     # Query and delete old partitions
     old_partitions = table.query_entities(
         f"PartitionKey lt '{cutoff_date}'"
     )
-    
+
     deleted_count = 0
     for entity in old_partitions:
         table.delete_entity(entity["PartitionKey"], entity["RowKey"])
         deleted_count += 1
-    
+
     log_security_event("audit_cleanup", {
         "deleted_count": deleted_count,
         "cutoff_date": cutoff_date
     })
-    
+
     return deleted_count
 ```
 
@@ -329,6 +343,7 @@ def cleanup_old_audit_logs():
 **Risk**: Denial of service, resource exhaustion
 
 **Recommendation**: Implement rate limiting by org_id + IP
+
 ```python
 # engine/shared/rate_limiter.py
 from collections import defaultdict
@@ -338,23 +353,23 @@ import asyncio
 class RateLimiter:
     def __init__(self):
         self.requests = defaultdict(list)
-    
+
     async def check_rate_limit(self, org_id: str, ip: str, limit: int = 100, window: int = 3600):
         """Check if request exceeds rate limit"""
         key = f"{org_id}:{ip}"
         now = datetime.now()
         window_start = now - timedelta(seconds=window)
-        
+
         # Clean old requests
         self.requests[key] = [
-            req_time for req_time in self.requests[key] 
+            req_time for req_time in self.requests[key]
             if req_time > window_start
         ]
-        
+
         # Check limit
         if len(self.requests[key]) >= limit:
             return False
-        
+
         # Record request
         self.requests[key].append(now)
         return True
@@ -365,7 +380,7 @@ rate_limiter = RateLimiter()
 async def rate_limit_middleware(request):
     org_id = request.headers.get("X-Organization-Id")
     ip = request.client_ip
-    
+
     if not await rate_limiter.check_rate_limit(org_id, ip):
         raise HTTPException(429, "Rate limit exceeded")
 ```
@@ -381,6 +396,7 @@ async def rate_limit_middleware(request):
 **Risk**: Injection attacks, malformed data
 
 **Recommendation**: Use Pydantic models for all workflow inputs
+
 ```python
 # engine/shared/validation.py
 from pydantic import BaseModel, EmailStr, constr, validator
@@ -388,7 +404,7 @@ import re
 
 class SecureWorkflowInput(BaseModel):
     """Base class with built-in security validations"""
-    
+
     @validator('*')
     def sanitize_string_fields(cls, v):
         """Sanitize string fields to prevent injection"""
@@ -404,7 +420,7 @@ class CreateUserInput(SecureWorkflowInput):
     name: constr(min_length=1, max_length=100)
     role: constr(regex="^(OrgUser|OrgAdmin|PlatformAdmin)$")
     notes: constr(max_length=1000) = None
-    
+
     @validator('name')
     def validate_name(cls, v):
         """Additional name validation"""
@@ -432,6 +448,7 @@ async def create_user(context: OrganizationContext, input: CreateUserInput):
 **Risk**: Unauthorized secret access goes undetected
 
 **Recommendation**: Implement Key Vault access monitoring
+
 ```python
 # engine/shared/keyvault_monitor.py
 from datetime import datetime
@@ -439,7 +456,7 @@ from datetime import datetime
 class KeyVaultMonitor:
     def __init__(self):
         self.access_patterns = defaultdict(list)
-    
+
     def log_secret_access(self, org_id: str, secret_name: str, user_id: str):
         """Log secret access for anomaly detection"""
         timestamp = datetime.now()
@@ -448,19 +465,19 @@ class KeyVaultMonitor:
             "secret_name": secret_name,
             "user_id": user_id
         }
-        
+
         self.access_patterns[org_id].append(access_record)
-        
+
         # Check for anomalies
         self._detect_anomalies(org_id, secret_name, user_id)
-    
+
     def _detect_anomalies(self, org_id: str, secret_name: str, user_id: str):
         """Detect unusual access patterns"""
         recent_access = [
             access for access in self.access_patterns[org_id][-10:]  # Last 10 accesses
             if access["secret_name"] == secret_name
         ]
-        
+
         # Check for rapid successive access
         if len(recent_access) > 5:
             time_diff = recent_access[-1]["timestamp"] - recent_access[-5]["timestamp"]
@@ -483,6 +500,7 @@ class KeyVaultMonitor:
 **Risk**: Resource exhaustion, hanging processes
 
 **Recommendation**: Implement timeout enforcement
+
 ```python
 # engine/shared/timeout_manager.py
 import asyncio
@@ -491,19 +509,19 @@ from datetime import datetime, timedelta
 class TimeoutManager:
     def __init__(self):
         self.running_workflows = {}
-    
+
     async def execute_with_timeout(self, workflow_func, timeout_seconds, *args, **kwargs):
         """Execute workflow with timeout enforcement"""
         execution_id = kwargs.get('execution_id')
         start_time = datetime.now()
-        
+
         # Track execution
         self.running_workflows[execution_id] = {
             "start_time": start_time,
             "timeout": timeout_seconds,
             "workflow_name": kwargs.get('workflow_name')
         }
-        
+
         try:
             # Execute with timeout
             result = await asyncio.wait_for(
@@ -518,11 +536,11 @@ class TimeoutManager:
         finally:
             # Clean up tracking
             self.running_workflows.pop(execution_id, None)
-    
+
     def _log_timeout(self, execution_id: str, start_time: datetime, timeout_seconds: int):
         """Log workflow timeout for monitoring"""
         actual_duration = (datetime.now() - start_time).total_seconds()
-        
+
         log_security_event("workflow_timeout", {
             "execution_id": execution_id,
             "timeout_limit": timeout_seconds,
@@ -542,16 +560,18 @@ class TimeoutManager:
 **Frequency**: Weekly
 
 **Focus**:
-- Function key usage patterns
-- Failed authentication attempts
-- Import violation attempts
-- Cross-org access by PlatformAdmins
+
+-   Function key usage patterns
+-   Failed authentication attempts
+-   Import violation attempts
+-   Cross-org access by PlatformAdmins
 
 **Red Flags**:
-- Unusual function key usage (midnight, weekends)
-- Repeated failed auth attempts from same IP
-- Import violations (indicates developer confusion or malicious intent)
-- Cross-org access without support ticket reference
+
+-   Unusual function key usage (midnight, weekends)
+-   Repeated failed auth attempts from same IP
+-   Import violations (indicates developer confusion or malicious intent)
+-   Cross-org access without support ticket reference
 
 ---
 
@@ -560,13 +580,14 @@ class TimeoutManager:
 **Frequency**: Monthly
 
 **Checklist**:
-- [ ] Review function key rotation status
-- [ ] Check for unauthorized `/engine` modifications
-- [ ] Audit workspace code for security issues
-- [ ] Review access patterns for anomalies
-- [ ] Verify GitHub Actions protection still active
-- [ ] Test import restrictions still working
-- [ ] Review audit log storage size
+
+-   [ ] Review function key rotation status
+-   [ ] Check for unauthorized `/engine` modifications
+-   [ ] Audit workspace code for security issues
+-   [ ] Review access patterns for anomalies
+-   [ ] Verify GitHub Actions protection still active
+-   [ ] Test import restrictions still working
+-   [ ] Review audit log storage size
 
 ---
 
@@ -575,11 +596,12 @@ class TimeoutManager:
 **Frequency**: Quarterly
 
 **Scenarios**:
-- Attempt to bypass GitHub Actions protection
-- Attempt to import blocked engine modules
-- Attempt cross-org data access
-- Attempt to execute workflows without auth
-- Fuzz testing on workflow input parameters
+
+-   Attempt to bypass GitHub Actions protection
+-   Attempt to import blocked engine modules
+-   Attempt cross-org data access
+-   Attempt to execute workflows without auth
+-   Fuzz testing on workflow input parameters
 
 ---
 
@@ -587,21 +609,21 @@ class TimeoutManager:
 
 #### GDPR
 
-- **Audit Logs**: May contain PII (user emails, IPs)
-- **Recommendation**: Document audit log retention in privacy policy
-- **Action**: Implement data subject access request (DSAR) for audit logs
+-   **Audit Logs**: May contain PII (user emails, IPs)
+-   **Recommendation**: Document audit log retention in privacy policy
+-   **Action**: Implement data subject access request (DSAR) for audit logs
 
 #### SOC 2
 
-- **Access Controls**: Function key + Easy Auth satisfy access control requirements
-- **Audit Logging**: Comprehensive audit trail for privileged operations
-- **Code Review**: GitHub Actions enforce code review for engine changes
+-   **Access Controls**: Function key + Easy Auth satisfy access control requirements
+-   **Audit Logging**: Comprehensive audit trail for privileged operations
+-   **Code Review**: GitHub Actions enforce code review for engine changes
 
 #### ISO 27001
 
-- **Access Management**: Tiered authentication with audit trail
-- **Change Management**: GitHub Actions + PR process for engine changes
-- **Incident Response**: Audit logs enable incident investigation
+-   **Access Management**: Tiered authentication with audit trail
+-   **Change Management**: GitHub Actions + PR process for engine changes
+-   **Incident Response**: Audit logs enable incident investigation
 
 ---
 
@@ -610,15 +632,17 @@ class TimeoutManager:
 ### Performance
 
 ✅ All performance targets met:
-- Import restrictions: <50ms (actual: 5-10ms)
-- GitHub Actions: <10s (actual: 2-5s)
-- Seed script: <5s (actual: 1-3s)
-- Authentication: Negligible overhead
-- Audit logging: Non-blocking (async)
+
+-   Import restrictions: <50ms (actual: 5-10ms)
+-   GitHub Actions: <10s (actual: 2-5s)
+-   Seed script: <5s (actual: 1-3s)
+-   Authentication: Negligible overhead
+-   Audit logging: Non-blocking (async)
 
 ### Security
 
 ✅ Multiple layers of defense:
+
 1. GitHub Actions (commit-time protection)
 2. Import restrictions (runtime protection)
 3. Tiered authentication (access control)
@@ -635,8 +659,8 @@ class TimeoutManager:
 
 ### Residual Risks
 
-- Function key compromise (mitigated by audit logging + rotation)
-- Storage growth from audit logs (mitigated by retention policy)
+-   Function key compromise (mitigated by audit logging + rotation)
+-   Storage growth from audit logs (mitigated by retention policy)
 
 **Overall Security Posture**: STRONG ✅
 

@@ -11,7 +11,9 @@ from typing import List
 import azure.functions as func
 
 from shared.decorators import with_request_context, require_platform_admin
+from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
+from shared.custom_types import get_context, get_route_param
 from shared.models import (
     User,
     UserType,
@@ -29,6 +31,26 @@ bp = func.Blueprint()
 
 @bp.function_name("permissions_list_users")
 @bp.route(route="users", methods=["GET"])
+@openapi_endpoint(
+    path="/users",
+    method="GET",
+    summary="List users",
+    description="List all users with optional filtering by type and organization (Platform admin only)",
+    tags=["Users", "Permissions"],
+    response_model=User,
+    query_params={
+        "type": {
+            "description": "Filter by user type: 'platform' or 'org'",
+            "schema": {"type": "string", "enum": ["platform", "org"]},
+            "required": False
+        },
+        "orgId": {
+            "description": "Filter org users by organization ID",
+            "schema": {"type": "string", "format": "uuid"},
+            "required": False
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def list_users(req: func.HttpRequest) -> func.HttpResponse:
@@ -42,7 +64,7 @@ async def list_users(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = get_context(req)
     user_type_filter = req.params.get("type", "").lower()
     org_id_filter = req.params.get("orgId")
 
@@ -108,6 +130,21 @@ async def list_users(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_get_user")
 @bp.route(route="users/{userId}", methods=["GET"])
+@openapi_endpoint(
+    path="/users/{userId}",
+    method="GET",
+    summary="Get user details",
+    description="Get a specific user's details (Platform admin only)",
+    tags=["Users", "Permissions"],
+    path_params={
+        "userId": {
+            "description": "User ID",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    },
+    response_model=User
+)
 @with_request_context
 @require_platform_admin
 async def get_user(req: func.HttpRequest) -> func.HttpResponse:
@@ -121,15 +158,18 @@ async def get_user(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
-    user_id = req.route_params.get("userId")
+    context = get_context(req)
+    user_id = get_route_param(req, "userId")
 
     logger.info(f"User {context.user_id} retrieving details for user {user_id}")
 
     try:
         # Get user from Users table (no context needed - uses custom partitioning)
         users_service = get_table_service("Users", context)
-        user_entity = users_service.get_entity("USER", user_id)
+        try:
+            user_entity = users_service.get_entity("USER", user_id)
+        except Exception:
+            user_entity = None
 
         if not user_entity:
             logger.warning(f"User not found: {user_id}")
@@ -178,6 +218,20 @@ async def get_user(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_get_user_permissions")
 @bp.route(route="permissions/users/{userId}", methods=["GET"])
+@openapi_endpoint(
+    path="/permissions/users/{userId}",
+    method="GET",
+    summary="Get user permissions (deprecated)",
+    description="DEPRECATED: Org-specific permissions have been removed. Returns empty list for backward compatibility.",
+    tags=["Permissions", "Deprecated"],
+    path_params={
+        "userId": {
+            "description": "User ID",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_user_permissions(req: func.HttpRequest) -> func.HttpResponse:
@@ -188,8 +242,8 @@ async def get_user_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
     Returns empty list for backward compatibility.
     """
-    context = req.context
-    user_id = req.route_params.get("userId")
+    context = get_context(req)
+    user_id = get_route_param(req, "userId")
 
     logger.info(f"User {context.user_id} retrieving permissions for user {user_id} (DEPRECATED endpoint)")
 
@@ -203,6 +257,20 @@ async def get_user_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_get_org_permissions")
 @bp.route(route="permissions/organizations/{orgId}", methods=["GET"])
+@openapi_endpoint(
+    path="/permissions/organizations/{orgId}",
+    method="GET",
+    summary="Get organization permissions (deprecated)",
+    description="DEPRECATED: Org-specific permissions have been removed. Returns empty list for backward compatibility.",
+    tags=["Permissions", "Deprecated"],
+    path_params={
+        "orgId": {
+            "description": "Organization ID",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_org_permissions(req: func.HttpRequest) -> func.HttpResponse:
@@ -213,8 +281,8 @@ async def get_org_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
     Returns empty list for backward compatibility.
     """
-    context = req.context
-    org_id = req.route_params.get("orgId")
+    context = get_context(req)
+    org_id = get_route_param(req, "orgId")
 
     logger.info(f"User {context.user_id} retrieving permissions for org {org_id} (DEPRECATED endpoint)")
 
@@ -228,6 +296,15 @@ async def get_org_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_grant_permissions")
 @bp.route(route="permissions", methods=["POST"])
+@openapi_endpoint(
+    path="/permissions",
+    method="POST",
+    summary="Grant user permissions (deprecated)",
+    description="DEPRECATED: Org-specific permissions have been removed. Use role-based access control instead.",
+    tags=["Permissions", "Deprecated"],
+    request_model=GrantPermissionsRequest,
+    response_model=ErrorResponse
+)
 @with_request_context
 @require_platform_admin
 async def grant_permissions(req: func.HttpRequest) -> func.HttpResponse:
@@ -238,7 +315,7 @@ async def grant_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
     Use role assignments instead (see /api/roles endpoints).
     """
-    context = req.context
+    context = get_context(req)
     logger.info(f"User {context.user_id} attempting to grant permissions (DEPRECATED endpoint)")
 
     error = ErrorResponse(
@@ -254,6 +331,26 @@ async def grant_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_revoke_permissions")
 @bp.route(route="permissions", methods=["DELETE"])
+@openapi_endpoint(
+    path="/permissions",
+    method="DELETE",
+    summary="Revoke user permissions (deprecated)",
+    description="DEPRECATED: Org-specific permissions have been removed. Use role-based access control instead.",
+    tags=["Permissions", "Deprecated"],
+    query_params={
+        "userId": {
+            "description": "User ID",
+            "schema": {"type": "string"},
+            "required": True
+        },
+        "orgId": {
+            "description": "Organization ID",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    },
+    response_model=ErrorResponse
+)
 @with_request_context
 @require_platform_admin
 async def revoke_permissions(req: func.HttpRequest) -> func.HttpResponse:
@@ -264,7 +361,7 @@ async def revoke_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
     Use role assignments instead (see /api/roles endpoints).
     """
-    context = req.context
+    context = get_context(req)
     logger.info(f"User {context.user_id} attempting to revoke permissions (DEPRECATED endpoint)")
 
     error = ErrorResponse(
@@ -283,6 +380,20 @@ async def revoke_permissions(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_get_user_roles")
 @bp.route(route="users/{userId}/roles", methods=["GET"])
+@openapi_endpoint(
+    path="/users/{userId}/roles",
+    method="GET",
+    summary="Get user roles",
+    description="Get all roles assigned to a user (Platform admin only)",
+    tags=["Users", "Roles"],
+    path_params={
+        "userId": {
+            "description": "User ID",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_user_roles(req: func.HttpRequest) -> func.HttpResponse:
@@ -292,8 +403,8 @@ async def get_user_roles(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
-    user_id = req.route_params.get("userId")
+    context = get_context(req)
+    user_id = get_route_param(req, "userId")
 
     logger.info(f"User {context.user_id} getting roles for user {user_id}")
 
@@ -336,6 +447,20 @@ async def get_user_roles(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("permissions_get_user_forms")
 @bp.route(route="users/{userId}/forms", methods=["GET"])
+@openapi_endpoint(
+    path="/users/{userId}/forms",
+    method="GET",
+    summary="Get user forms",
+    description="Get all forms a user can access based on their roles (Platform admin only)",
+    tags=["Users", "Forms"],
+    path_params={
+        "userId": {
+            "description": "User ID",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_user_forms(req: func.HttpRequest) -> func.HttpResponse:
@@ -349,15 +474,18 @@ async def get_user_forms(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
-    user_id = req.route_params.get("userId")
+    context = get_context(req)
+    user_id = get_route_param(req, "userId")
 
     logger.info(f"User {context.user_id} getting forms for user {user_id}")
 
     try:
         # Get user entity to check type
         users_service = get_table_service("Users", context)
-        user_entity = users_service.get_entity("USER", user_id)
+        try:
+            user_entity = users_service.get_entity("USER", user_id)
+        except Exception:
+            user_entity = None
 
         if not user_entity:
             error = ErrorResponse(

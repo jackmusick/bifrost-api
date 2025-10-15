@@ -11,6 +11,7 @@ from typing import List, Optional
 import azure.functions as func
 
 from shared.decorators import with_request_context, require_platform_admin
+from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
 from shared.models import (
     Config,
@@ -92,6 +93,26 @@ def mask_sensitive_value(key: str, value: str, value_type: str) -> str:
 
 @bp.function_name("config_get_config")
 @bp.route(route="config", methods=["GET"])
+@openapi_endpoint(
+    path="/config",
+    method="GET",
+    summary="Get configuration values",
+    description="Get configuration values with scope filtering (Platform admin only)",
+    tags=["Configuration"],
+    response_model=Config,
+    query_params={
+        "scope": {
+            "description": "Configuration scope: 'global' for global config or 'org' for organization-specific",
+            "schema": {"type": "string", "enum": ["global", "org"]},
+            "required": True
+        },
+        "orgId": {
+            "description": "Organization ID (required when scope=org)",
+            "schema": {"type": "string", "format": "uuid"},
+            "required": False
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_config(req: func.HttpRequest) -> func.HttpResponse:
@@ -173,6 +194,15 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_set_config")
 @bp.route(route="config", methods=["POST"])
+@openapi_endpoint(
+    path="/config",
+    method="POST",
+    summary="Set configuration value",
+    description="Set a configuration value (Platform admin only)",
+    tags=["Configuration"],
+    request_model=SetConfigRequest,
+    response_model=Config
+)
 @with_request_context
 @require_platform_admin
 async def set_config(req: func.HttpRequest) -> func.HttpResponse:
@@ -309,6 +339,19 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_delete_config")
 @bp.route(route="config/{key}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/config/{key}",
+    method="DELETE",
+    summary="Delete configuration value",
+    description="Delete a configuration value by key (Platform admin only)",
+    tags=["Configuration"],
+    path_params={
+        "key": {
+            "description": "Configuration key to delete",
+            "schema": {"type": "string"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
@@ -430,6 +473,20 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_get_integrations")
 @bp.route(route="organizations/{orgId}/integrations", methods=["GET"])
+@openapi_endpoint(
+    path="/organizations/{orgId}/integrations",
+    method="GET",
+    summary="Get organization integrations",
+    description="Get all integration configurations for an organization (Platform admin only)",
+    tags=["Integrations"],
+    response_model=IntegrationConfig,
+    path_params={
+        "orgId": {
+            "description": "Organization ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
@@ -489,6 +546,21 @@ async def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_set_integration")
 @bp.route(route="organizations/{orgId}/integrations", methods=["POST"])
+@openapi_endpoint(
+    path="/organizations/{orgId}/integrations",
+    method="POST",
+    summary="Set organization integration",
+    description="Set or update an integration configuration for an organization (Platform admin only)",
+    tags=["Integrations"],
+    request_model=SetIntegrationConfigRequest,
+    response_model=IntegrationConfig,
+    path_params={
+        "orgId": {
+            "description": "Organization ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
@@ -604,6 +676,23 @@ async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("config_delete_integration")
 @bp.route(route="organizations/{orgId}/integrations/{type}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/organizations/{orgId}/integrations/{type}",
+    method="DELETE",
+    summary="Delete organization integration",
+    description="Delete an integration configuration for an organization (Platform admin only)",
+    tags=["Integrations"],
+    path_params={
+        "orgId": {
+            "description": "Organization ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        },
+        "type": {
+            "description": "Integration type",
+            "schema": {"type": "string", "enum": ["msgraph", "halopsa"]}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:

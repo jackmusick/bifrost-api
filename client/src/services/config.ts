@@ -1,37 +1,44 @@
 /**
- * Config API service
- * All methods use the centralized api client which automatically handles
- * X-Organization-Id header from sessionStorage
+ * Config API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
-import type { Config, SetConfigRequest } from '@/types/config'
+import { apiClient } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
 
 export const configService = {
-  /**
-   * Get all configs (global or org-specific)
-   * Organization context is handled automatically by the api client
-   * @param params.scope - Optional scope filter ('global' or 'org')
-   */
-  async getConfigs(params?: { scope?: 'global' | 'org' }): Promise<Config[]> {
-    return api.get<Config[]>('/config', params as Record<string, string>)
-  },
+    /**
+     * Get all configs (global or org-specific)
+     */
+    async getConfigs(params?: { scope?: "global" | "org" }) {
+        const { data, error } = await apiClient.GET("/config", {
+            params: { query: params as Record<string, string> },
+        });
+        if (error) throw new Error(`Failed to fetch configs: ${error}`);
+        return data;
+    },
 
-  /**
-   * Set a config value
-   * Organization context is handled automatically by the api client
-   */
-  async setConfig(request: SetConfigRequest): Promise<Config> {
-    return api.post<Config>('/config', request)
-  },
+    /**
+     * Set a config value
+     */
+    async setConfig(request: components["schemas"]["SetConfigRequest"]) {
+        const { data, error } = await apiClient.POST("/config", {
+            body: request,
+        });
+        if (error) throw new Error(`Failed to set config: ${error}`);
+        return data;
+    },
 
-  /**
-   * Delete a config
-   * Organization context is handled automatically by the api client
-   * @param key - Config key to delete
-   * @param params.scope - Optional scope filter ('global' or 'org')
-   */
-  async deleteConfig(key: string, params?: { scope?: 'global' | 'org' }): Promise<void> {
-    return api.delete<void>(`/config/${key}`, params as Record<string, string>)
-  },
-}
+    /**
+     * Delete a config
+     */
+    async deleteConfig(key: string, params?: { scope?: "global" | "org" }) {
+        const { data, error } = await apiClient.DELETE("/config/{key}", {
+            params: {
+                path: { key },
+                query: params as Record<string, string>,
+            },
+        });
+        if (error) throw new Error(`Failed to delete config: ${error}`);
+        return data;
+    },
+};

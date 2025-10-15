@@ -99,7 +99,7 @@ from shared.decorators import workflow
 curl -H "x-functions-key: YOUR_KEY" ...
 
 # Via query parameter
-curl "http://localhost:7072/api/workflows/test?code=YOUR_KEY"
+curl "http://localhost:7071/api/workflows/test?code=YOUR_KEY"
 ```
 
 **Local Development**: Any non-empty string works as function key:
@@ -295,7 +295,7 @@ func start
 
 ### Error: Functions starts on wrong port
 
-**Symptom**: Functions starts on port 7072 instead of 7071.
+**Symptom**: Functions starts on port 7071 instead of 7071.
 
 **Cause**: Port 7071 already in use.
 
@@ -304,13 +304,13 @@ func start
 1. Note the actual port in startup output:
 
 ```
-Now listening on: http://0.0.0.0:7072
+Now listening on: http://0.0.0.0:7071
 ```
 
 2. Update curl commands to use correct port:
 
 ```bash
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 ```
 
 3. Or kill process using 7071:
@@ -382,7 +382,7 @@ curl -X POST \
   -H "X-Organization-Id: test-org-active" \
   -H "x-functions-key: test" \
   -d '{"email": "user@example.com", "name": "John"}' \
-  http://localhost:7072/api/workflows/my_workflow
+  http://localhost:7071/api/workflows/my_workflow
 ```
 
 **Check**: Review `@param` decorators in workflow for required fields.
@@ -651,7 +651,7 @@ curl -X POST \
     "client_secret": "your-client-secret",
     "redirect_uri": "https://your-domain.com/oauth/callback"
   }' \
-  http://localhost:7072/api/admin/oauth/configure
+  http://localhost:7071/api/admin/oauth/configure
 ```
 
 ---
@@ -727,7 +727,7 @@ curl -X POST \
     "timeout": 30,
     "feature_flag": true
   }' \
-  http://localhost:7072/api/admin/config
+  http://localhost:7071/api/admin/config
 ```
 
 ---
@@ -803,7 +803,7 @@ Form field 'email' validation failed: Invalid email format
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com"}' \
-  http://localhost:7072/api/workflows/my_workflow
+  http://localhost:7071/api/workflows/my_workflow
 ```
 
 ---
@@ -962,7 +962,7 @@ func start
 python scripts/seed_azurite.py
 
 # Test health
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 
 # Test workflow
 curl -X POST \
@@ -970,7 +970,7 @@ curl -X POST \
   -H "X-Organization-Id: test-org-active" \
   -H "x-functions-key: test" \
   -d '{"param": "value"}' \
-  http://localhost:7072/api/workflows/WORKFLOW_NAME
+  http://localhost:7071/api/workflows/WORKFLOW_NAME
 ```
 
 ### Environment Check

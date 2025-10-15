@@ -1,6 +1,6 @@
 """
-Dashboard Metrics API endpoints
-Provides aggregated statistics for the dashboard
+Metrics API
+Provides aggregated statistics and metrics
 """
 
 import json
@@ -11,21 +11,30 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 from shared.decorators import with_request_context
+from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
-from shared.models import ErrorResponse
+from shared.models import ErrorResponse, DashboardMetricsResponse
 
 logger = logging.getLogger(__name__)
 
-# Create blueprint for dashboard endpoints
+# Create blueprint for metrics endpoints
 bp = func.Blueprint()
 
 
-@bp.function_name("dashboard_metrics")
-@bp.route(route="dashboard/metrics", methods=["GET"])
+@bp.function_name("get_metrics")
+@bp.route(route="metrics", methods=["GET"])
+@openapi_endpoint(
+    path="/metrics",
+    method="GET",
+    summary="Get system metrics",
+    description="Get aggregated system statistics including workflow count, form count, execution statistics (30 days), recent failures, and success rate",
+    tags=["Metrics"],
+    response_model=DashboardMetricsResponse
+)
 @with_request_context
-async def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
+async def get_metrics(req: func.HttpRequest) -> func.HttpResponse:
     """
-    GET /api/dashboard/metrics
+    GET /api/metrics
 
     Returns aggregated metrics:
     - Workflow count

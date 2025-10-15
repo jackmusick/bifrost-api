@@ -5,6 +5,7 @@ Tests that the metadata endpoint returns correct workflow and data provider info
 
 import pytest
 import json
+import asyncio
 from unittest.mock import Mock
 
 # Import workspace modules to trigger auto-discovery
@@ -32,7 +33,7 @@ if workspace_path.exists():
         except Exception:
             pass
 
-from engine.admin.metadata import get_metadata
+from functions.discovery import get_discovery_metadata
 import azure.functions as func
 
 
@@ -47,7 +48,7 @@ class TestMetadataEndpoint:
         req.headers = {}
 
         # Call endpoint
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         assert response.status_code == 200
         assert response.mimetype == "application/json"
@@ -57,7 +58,7 @@ class TestMetadataEndpoint:
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
         req.headers = {}
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         # Parse JSON response
         data = json.loads(response.get_body().decode())
@@ -70,7 +71,7 @@ class TestMetadataEndpoint:
         """Test that metadata endpoint returns dataProviders array"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         # Parse JSON response
         data = json.loads(response.get_body().decode())
@@ -82,7 +83,7 @@ class TestMetadataEndpoint:
         """Test that test_workflow is included in response"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         data = json.loads(response.get_body().decode())
         workflows = data["workflows"]
@@ -103,7 +104,7 @@ class TestMetadataEndpoint:
         """Test that workflow parameters are formatted correctly"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         data = json.loads(response.get_body().decode())
         workflows = data["workflows"]
@@ -143,7 +144,7 @@ class TestMetadataEndpoint:
         """Test that optional parameter fields are excluded when not present"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         data = json.loads(response.get_body().decode())
         workflows = data["workflows"]
@@ -166,7 +167,7 @@ class TestMetadataEndpoint:
         req.headers = {}
         req.headers = {}
 
-        response = get_metadata(req)
+        response = asyncio.run(get_discovery_metadata(req))
 
         # Should still return 200
         assert response.status_code == 200

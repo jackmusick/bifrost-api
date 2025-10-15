@@ -1,35 +1,45 @@
 /**
- * Workflows API service
- * Uses centralized api client which automatically handles X-Organization-Id
+ * Workflows API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
-import type { MetadataResponse, WorkflowExecutionRequest, WorkflowExecutionResponse } from '@/types/workflow'
+import { apiClient, withContext } from '@/lib/api-client'
+import type { components } from '@/lib/v1'
 
 export const workflowsService = {
   /**
    * Get all workflows and data providers metadata
-   * Organization context is handled automatically by the api client
    */
-  async getMetadata(): Promise<MetadataResponse> {
-    return api.get<MetadataResponse>('/workflows/metadata')
+  async getMetadata() {
+    const { data, error } = await apiClient.GET('/discovery')
+    if (error) throw new Error(`Failed to fetch metadata: ${error}`)
+    return data
   },
 
   /**
    * Execute a workflow with parameters
-   * Organization context is handled automatically by the api client
-   *
-   * @param request - Workflow execution request
-   * @param request.orgId - Optional: only provide if admin overriding context
-   * @param request.userId - Optional: only provide if admin overriding context
+   * @param workflowName - Name of the workflow to execute
+   * @param parameters - Workflow input parameters
+   * @param orgId - Optional: override organization context (admin only)
+   * @param userId - Optional: override user context (admin only)
    */
-  async executeWorkflow(request: WorkflowExecutionRequest): Promise<WorkflowExecutionResponse> {
-    // Use api.request to allow optional orgId/userId override for admin use case
-    return api.request<WorkflowExecutionResponse>(`/workflows/${request.workflowName}`, {
-      method: 'POST',
-      body: JSON.stringify(request.parameters),
-      orgId: request.orgId,
-      userId: request.userId
+  async executeWorkflow(
+    workflowName: string,
+    parameters: Record<string, unknown>,
+    options?: { orgId?: string; userId?: string }
+  ) {
+    const client = options?.orgId && options?.userId
+      ? withContext(options.orgId, options.userId)
+      : apiClient
+
+    const { data, error } = await client.POST('/workflows/{workflowName}/execute', {
+      params: { path: { workflowName } },
+      body: {
+        workflowName,
+        inputData: parameters,
+      } as components['schemas']['WorkflowExecutionRequest'],
     })
+
+    if (error) throw new Error(`Failed to execute workflow: ${error}`)
+    return data
   },
 }

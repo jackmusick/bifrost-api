@@ -1,43 +1,62 @@
 /**
- * Organizations API service
+ * Organizations API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
-import type { Organization, CreateOrganizationRequest, UpdateOrganizationRequest } from '@/types/organization'
+import { apiClient } from '@/lib/api-client'
+import type { components } from '@/lib/v1'
 
 export const organizationsService = {
   /**
    * Get all organizations
    */
-  async getOrganizations(): Promise<Organization[]> {
-    return api.get<Organization[]>('/organizations')
+  async getOrganizations() {
+    const { data, error } = await apiClient.GET('/organizations')
+    if (error) throw new Error(`Failed to fetch organizations: ${error}`)
+    return data
   },
 
   /**
    * Get a specific organization by ID
    */
-  async getOrganization(orgId: string): Promise<Organization> {
-    return api.get<Organization>(`/organizations/${orgId}`)
+  async getOrganization(orgId: string) {
+    const { data, error } = await apiClient.GET('/organizations/{orgId}', {
+      params: { path: { orgId } },
+    })
+    if (error) throw new Error(`Failed to fetch organization: ${error}`)
+    return data
   },
 
   /**
    * Create a new organization
    */
-  async createOrganization(data: CreateOrganizationRequest): Promise<Organization> {
-    return api.post<Organization>('/organizations', data)
+  async createOrganization(request: components['schemas']['CreateOrganizationRequest']) {
+    const { data, error } = await apiClient.POST('/organizations', {
+      body: request,
+    })
+    if (error) throw new Error(`Failed to create organization: ${error}`)
+    return data
   },
 
   /**
    * Update an existing organization
    */
-  async updateOrganization(orgId: string, data: UpdateOrganizationRequest): Promise<Organization> {
-    return api.put<Organization>(`/organizations/${orgId}`, data)
+  async updateOrganization(orgId: string, request: components['schemas']['UpdateOrganizationRequest']) {
+    const { data, error } = await apiClient.PATCH('/organizations/{orgId}', {
+      params: { path: { orgId } },
+      body: request,
+    })
+    if (error) throw new Error(`Failed to update organization: ${error}`)
+    return data
   },
 
   /**
    * Delete an organization
    */
-  async deleteOrganization(orgId: string): Promise<void> {
-    return api.delete<void>(`/organizations/${orgId}`)
+  async deleteOrganization(orgId: string) {
+    const { data, error } = await apiClient.DELETE('/organizations/{orgId}', {
+      params: { path: { orgId } },
+    })
+    if (error) throw new Error(`Failed to delete organization: ${error}`)
+    return data
   },
 }

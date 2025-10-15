@@ -822,7 +822,7 @@ cd workflow-engine
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-func start --port 7072 --python
+func start --port 7071 --python
 
 # Terminal 4: Start React UI
 cd client
@@ -848,7 +848,7 @@ npm run dev  # Vite dev server on port 5173
 
 // client/.env.local
 VITE_API_URL=http://localhost:7071/api
-VITE_WORKFLOW_URL=http://localhost:7072/api
+VITE_WORKFLOW_URL=http://localhost:7071/api
 VITE_AZURE_CLIENT_ID={your-client-id}
 VITE_AZURE_TENANT_ID={your-tenant-id}
 ```

@@ -1,32 +1,31 @@
 import { useQuery } from '@tanstack/react-query'
 
-interface WorkflowEngineHealthResponse {
+interface ServerHealthResponse {
   status: 'healthy' | 'unhealthy'
   service: string
 }
 
 export function useWorkflowEngineHealth() {
   return useQuery({
-    queryKey: ['workflowEngineHealth'],
+    queryKey: ['serverHealth'],
     queryFn: async () => {
       try {
-        // Call the client API which proxies to workflow engine
-        // This goes through /api/workflows/health which is handled by the client API
-        const response = await fetch('/api/workflows/health', {
+        // Call the unified API health endpoint
+        const response = await fetch('/api/health', {
           method: 'GET',
           credentials: 'same-origin',
         })
 
         if (!response.ok) {
-          throw new Error('Workflow engine health check failed')
+          throw new Error('Server health check failed')
         }
 
-        return await response.json() as WorkflowEngineHealthResponse
+        return await response.json() as ServerHealthResponse
       } catch (error) {
         // Return unhealthy status instead of throwing to avoid error boundaries
         return {
           status: 'unhealthy' as const,
-          service: 'Workflow Engine',
+          service: 'Server',
           error: error instanceof Error ? error.message : 'Unknown error'
         }
       }

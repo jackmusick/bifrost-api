@@ -37,6 +37,7 @@ PYTHONPATH=. python -m pytest tests/ -v
 ### Run Tests by Layer
 
 #### 1. Contract Tests (Schema Validation)
+
 Fast tests that validate data models and API contracts:
 
 ```bash
@@ -48,6 +49,7 @@ PYTHONPATH=. python -m pytest tests/contract/ -v
 ```
 
 #### 2. End-to-End Integration Tests
+
 Tests against real running API with Azurite:
 
 ```bash
@@ -56,22 +58,24 @@ Tests against real running API with Azurite:
 azurite --silent --location /tmp/azurite --debug /tmp/azurite/debug.log
 
 # Terminal 2: Start API
-func start --port 7072
+func start --port 7071
 
 # Terminal 3: Run E2E tests
 PYTHONPATH=. python -m pytest tests/integration_e2e/ -v
 ```
 
 **E2E Test Categories:**
-- `test_organizations_e2e.py` - Organizations CRUD (9 tests)
-- `test_forms_e2e.py` - Forms CRUD (11 tests)
-- `test_config_e2e.py` - Config management (15 tests)
-- `test_oauth_e2e.py` - OAuth connections (12 tests)
-- `test_roles_permissions_e2e.py` - Roles & permissions (11 tests)
-- `test_workflow_execution_e2e.py` - Workflow execution (7 tests)
-- `test_security_e2e.py` - Security & authorization (22 tests) ⭐
+
+-   `test_organizations_e2e.py` - Organizations CRUD (9 tests)
+-   `test_forms_e2e.py` - Forms CRUD (11 tests)
+-   `test_config_e2e.py` - Config management (15 tests)
+-   `test_oauth_e2e.py` - OAuth connections (12 tests)
+-   `test_roles_permissions_e2e.py` - Roles & permissions (11 tests)
+-   `test_workflow_execution_e2e.py` - Workflow execution (7 tests)
+-   `test_security_e2e.py` - Security & authorization (22 tests) ⭐
 
 #### 3. Engine Tests
+
 Workflow engine tests:
 
 ```bash
@@ -187,7 +191,7 @@ azurite --silent --location /tmp/azurite --debug /tmp/azurite/debug.log
 ```bash
 # Terminal 2
 cd /Users/jack/GitHub/bifrost-integrations/api
-func start --port 7072
+func start --port 7071
 ```
 
 ### 3. Seed Test Data (Optional - E2E tests create their own data)
@@ -211,7 +215,7 @@ PYTHONPATH=. python -m pytest tests/integration_e2e/ -v
 The E2E tests use these default values:
 
 ```python
-BASE_URL = "http://localhost:7072/api"
+BASE_URL = "http://localhost:7071/api"
 STORAGE_CONNECTION_STRING = "UseDevelopmentStorage=true"
 ```
 
@@ -243,10 +247,10 @@ asyncio_mode = auto
 
 E2E tests use these fixtures (defined in `tests/integration_e2e/conftest.py`):
 
-- `base_url` - API base URL (http://localhost:7072/api)
-- `platform_admin_headers` - Headers for platform admin user
-- `org_user_headers` - Headers for org user (jack@gocovi.dev)
-- `anonymous_headers` - Headers with no auth (empty dict)
+-   `base_url` - API base URL (http://localhost:7071/api)
+-   `platform_admin_headers` - Headers for platform admin user
+-   `org_user_headers` - Headers for org user (jack@gocovi.dev)
+-   `anonymous_headers` - Headers with no auth (empty dict)
 
 ## Continuous Integration
 
@@ -273,8 +277,8 @@ PYTHONPATH=. python -m pytest tests/ -v
 ### E2E Tests Failing with Connection Errors
 
 1. Check Azurite is running: `curl http://127.0.0.1:10002/devstoreaccount1`
-2. Check API is running: `curl http://localhost:7072/api/health`
-3. Check for port conflicts: `lsof -i :7072` and `lsof -i :10000-10002`
+2. Check API is running: `curl http://localhost:7071/api/health`
+3. Check for port conflicts: `lsof -i :7071` and `lsof -i :10000-10002`
 
 ### "No tests collected"
 
@@ -289,17 +293,17 @@ ls tests/integration_e2e/test_*.py
 
 Current test coverage (as of last update):
 
-- **Contract Tests**: ~15 tests (schema validation)
-- **E2E Integration Tests**: 87 tests
-  - Organizations: 9 tests
-  - Forms: 11 tests
-  - Config: 15 tests
-  - OAuth: 12 tests
-  - Roles/Permissions: 11 tests
-  - Workflow Execution: 7 tests
-  - **Security: 22 tests** ⭐
-- **Engine Tests**: ~26 tests
-- **Total**: ~128 tests
+-   **Contract Tests**: ~15 tests (schema validation)
+-   **E2E Integration Tests**: 87 tests
+    -   Organizations: 9 tests
+    -   Forms: 11 tests
+    -   Config: 15 tests
+    -   OAuth: 12 tests
+    -   Roles/Permissions: 11 tests
+    -   Workflow Execution: 7 tests
+    -   **Security: 22 tests** ⭐
+-   **Engine Tests**: ~26 tests
+-   **Total**: ~128 tests
 
 ## Key Security Tests
 
@@ -340,22 +344,25 @@ pytest -v
 ## Next Steps
 
 1. **Before committing code**: Run contract tests (fast validation)
-   ```bash
-   pytest tests/contract/ -v
-   ```
+
+    ```bash
+    pytest tests/contract/ -v
+    ```
 
 2. **Before pushing to main**: Run full E2E suite
-   ```bash
-   pytest tests/integration_e2e/ -v
-   ```
+
+    ```bash
+    pytest tests/integration_e2e/ -v
+    ```
 
 3. **For comprehensive validation**: Run entire test suite
-   ```bash
-   npm test
-   # or just: pytest
-   ```
+
+    ```bash
+    npm test
+    # or just: pytest
+    ```
 
 4. **Check everything** (lint + typecheck + tests):
-   ```bash
-   npm run check
-   ```
+    ```bash
+    npm run check
+    ```

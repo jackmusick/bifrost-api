@@ -9,6 +9,100 @@ from pydantic import BaseModel, Field, field_validator, UUID4
 from enum import Enum
 
 
+# ==================== PUBLIC API ====================
+# All models exported for OpenAPI spec generation
+
+__all__ = [
+    # Enums
+    'ConfigType',
+    'ExecutionStatus',
+    'FormFieldType',
+    'IntegrationType',
+    'UserType',
+
+    # Organizations
+    'Organization',
+    'CreateOrganizationRequest',
+    'UpdateOrganizationRequest',
+
+    # Config
+    'Config',
+    'SetConfigRequest',
+
+    # Integration Config
+    'IntegrationConfig',
+    'SetIntegrationConfigRequest',
+
+    # Users & Roles
+    'User',
+    'Role',
+    'CreateRoleRequest',
+    'UpdateRoleRequest',
+    'UserRole',
+    'FormRole',
+    'AssignUsersToRoleRequest',
+    'AssignFormsToRoleRequest',
+
+    # Permissions
+    'UserPermission',
+    'PermissionsData',
+    'GrantPermissionsRequest',
+
+    # Forms
+    'FormFieldValidation',
+    'FormField',
+    'FormSchema',
+    'Form',
+    'CreateFormRequest',
+    'UpdateFormRequest',
+    'FormExecuteRequest',
+
+    # Workflow Execution
+    'WorkflowExecution',
+    'WorkflowExecutionRequest',
+    'WorkflowExecutionResponse',
+
+    # Metadata
+    'WorkflowParameter',
+    'WorkflowMetadata',
+    'DataProviderMetadata',
+    'MetadataResponse',
+
+    # Data Providers
+    'DataProviderOption',
+    'DataProviderResponse',
+
+    # Secrets
+    'SecretListResponse',
+    'SecretCreateRequest',
+    'SecretUpdateRequest',
+    'SecretResponse',
+
+    # Health
+    'HealthCheck',
+    'GeneralHealthResponse',
+    'KeyVaultHealthResponse',
+
+    # Dashboard
+    'ExecutionStats',
+    'RecentFailure',
+    'DashboardMetricsResponse',
+
+    # OAuth (not a BaseModel, but exported for workflows)
+    'OAuthCredentials',
+
+    # Common
+    'ErrorResponse',
+
+    # Helper functions
+    'generate_entity_id',
+    'parse_row_key',
+    'parse_composite_row_key',
+    'entity_to_model',
+    'model_to_entity',
+]
+
+
 # ==================== ENUMS ====================
 
 class ConfigType(str, Enum):
@@ -327,6 +421,11 @@ class UpdateFormRequest(BaseModel):
     formSchema: Optional[FormSchema] = None
 
 
+class FormExecuteRequest(BaseModel):
+    """Request model for executing a form"""
+    form_data: Dict[str, Any] = Field(..., description="Form field values")
+
+
 # ==================== WORKFLOW EXECUTION MODELS ====================
 
 class WorkflowExecution(BaseModel):
@@ -395,30 +494,24 @@ class MetadataResponse(BaseModel):
         populate_by_name = True  # Pydantic v2 - allows using alias
 
 
-# ==================== WORKFLOW KEY MODELS ====================
+# ==================== DATA PROVIDER RESPONSE MODELS ====================
 
-class WorkflowKey(BaseModel):
-    """Workflow key for HTTP-triggered workflows"""
-    scope: Literal["GLOBAL", "org"] = Field(
-        ..., description="GLOBAL for MSP-wide or 'org' for org-specific")
-    orgId: Optional[str] = Field(
-        None, description="Organization ID (only for org-specific keys)")
-    key: str = Field(..., description="The workflow key (masked in responses)")
-    createdAt: datetime
-    createdBy: str
-    lastUsedAt: Optional[datetime] = None
+class DataProviderOption(BaseModel):
+    """Data provider option item"""
+    label: str
+    value: str
+    metadata: Optional[Dict[str, Any]] = None
 
 
-class WorkflowKeyResponse(BaseModel):
-    """Response model when generating a workflow key"""
-    scope: Literal["GLOBAL", "org"]
-    orgId: Optional[str] = None
-    key: str = Field(...,
-                     description="The full workflow key (only shown once)")
-    createdAt: datetime
-    createdBy: str
-    message: str = Field(
-        default="Store this key securely. It won't be shown again.")
+class DataProviderResponse(BaseModel):
+    """Response model for data provider endpoint"""
+    provider: str = Field(..., description="Name of the data provider")
+    options: List[DataProviderOption] = Field(..., description="List of options returned by the provider")
+    cached: bool = Field(..., description="Whether this result was served from cache")
+    cacheExpiresAt: str = Field(..., alias="cache_expires_at", description="Cache expiration timestamp")
+
+    class Config:
+        populate_by_name = True  # Pydantic v2 - allows using alias
 
 
 # ==================== SECRET MODELS ====================
@@ -466,6 +559,22 @@ class SecretResponse(BaseModel):
 
 
 # ==================== HEALTH MODELS ====================
+
+class HealthCheck(BaseModel):
+    """Individual health check result"""
+    service: str = Field(..., description="Display name of the service (e.g., 'API', 'Key Vault')")
+    healthy: bool = Field(..., description="Whether the service is healthy")
+    message: str = Field(..., description="Health check message")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional service-specific metadata")
+
+
+class GeneralHealthResponse(BaseModel):
+    """General health check response with multiple service checks"""
+    status: Literal["healthy", "degraded", "unhealthy"] = Field(..., description="Overall system health status")
+    service: str = Field(default="Bifrost Integrations API", description="Service name")
+    timestamp: datetime = Field(..., description="Health check timestamp")
+    checks: List[HealthCheck] = Field(..., description="Individual service health checks")
+
 
 class KeyVaultHealthResponse(BaseModel):
     """Health check response for Azure Key Vault"""
@@ -521,6 +630,36 @@ class OAuthCredentials:
 
     def __repr__(self) -> str:
         return f"<OAuthCredentials connection={self.connection_name} expires_at={self.expires_at}>"
+
+
+# ==================== DASHBOARD MODELS ====================
+
+class ExecutionStats(BaseModel):
+    """Execution statistics for dashboard"""
+    totalExecutions: int
+    successCount: int
+    failedCount: int
+    runningCount: int
+    pendingCount: int
+    successRate: float
+    avgDurationSeconds: float
+
+
+class RecentFailure(BaseModel):
+    """Recent failed execution info"""
+    executionId: str
+    workflowName: str
+    errorMessage: Optional[str]
+    startedAt: Optional[str]
+
+
+class DashboardMetricsResponse(BaseModel):
+    """Dashboard metrics response"""
+    workflowCount: int
+    dataProviderCount: int
+    formCount: int
+    executionStats: ExecutionStats
+    recentFailures: List[RecentFailure]
 
 
 # ==================== ERROR MODEL ====================

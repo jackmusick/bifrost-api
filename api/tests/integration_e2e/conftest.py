@@ -10,7 +10,7 @@ import time
 
 
 # Base URL for Azure Functions
-BASE_URL = "http://localhost:7072/api"
+BASE_URL = "http://localhost:7071/api"
 
 
 @pytest.fixture(scope="session")
@@ -106,7 +106,7 @@ def setup_test_environment(ensure_services_running):
     import sys
     import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    
+
     try:
         from seed_data import seed_all_data
         seed_all_data("UseDevelopmentStorage=true")

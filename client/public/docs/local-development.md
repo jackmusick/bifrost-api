@@ -4,12 +4,12 @@ Complete guide for setting up and developing with Bifrost Integrations locally u
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Development Workflow](#development-workflow)
-- [Testing with API Clients](#testing-with-api-clients)
-- [Debugging](#debugging)
-- [Troubleshooting](#troubleshooting)
+-   [Prerequisites](#prerequisites)
+-   [Quick Start](#quick-start)
+-   [Development Workflow](#development-workflow)
+-   [Testing with API Clients](#testing-with-api-clients)
+-   [Debugging](#debugging)
+-   [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -17,16 +17,16 @@ Complete guide for setting up and developing with Bifrost Integrations locally u
 
 ### Required Software
 
-- **Docker Desktop 24+** - Container runtime
-- **Git** - Version control
-- **VS Code** (recommended) - Code editor with Python and Docker extensions
-- **Node.js 18+** - For frontend development (if working on client)
+-   **Docker Desktop 24+** - Container runtime
+-   **Git** - Version control
+-   **VS Code** (recommended) - Code editor with Python and Docker extensions
+-   **Node.js 18+** - For frontend development (if working on client)
 
 ### Optional Tools
 
-- **Postman** or **Insomnia** - API testing
-- **curl** - Command-line API testing
-- **Azure Storage Explorer** - View Azurite data
+-   **Postman** or **Insomnia** - API testing
+-   **curl** - Command-line API testing
+-   **Azure Storage Explorer** - View Azurite data
 
 ---
 
@@ -53,15 +53,16 @@ cd ..
 ```
 
 This starts:
-- **Azurite** - Azure Storage emulator (Table, Blob, Queue)
-- **Workflows Engine** - Azure Functions runtime in Docker
-- **Debugger** - Remote debugging on port 5678 (if ENABLE_DEBUGGING=true)
+
+-   **Azurite** - Azure Storage emulator (Table, Blob, Queue)
+-   **Workflows Engine** - Azure Functions runtime in Docker
+-   **Debugger** - Remote debugging on port 5678 (if ENABLE_DEBUGGING=true)
 
 ### 3. Verify Services
 
 ```bash
 # Check health endpoint
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 
 # Expected response:
 # {"status": "healthy", "version": "1.0.0"}
@@ -69,10 +70,10 @@ curl http://localhost:7072/api/health
 
 ### 4. Access the Platform
 
-- **API**: http://localhost:7072
-- **Health Check**: http://localhost:7072/api/health
-- **OpenAPI Spec**: http://localhost:7072/api/openapi.json
-- **Swagger UI**: http://localhost:7072/api/docs
+-   **API**: http://localhost:7071
+-   **Health Check**: http://localhost:7071/api/health
+-   **OpenAPI Spec**: http://localhost:7071/api/openapi.json
+-   **Swagger UI**: http://localhost:7071/api/docs
 
 ---
 
@@ -102,14 +103,16 @@ bifrost-integrations/
 ### Making Changes
 
 **Backend Changes (Python)**:
+
 1. Edit files in `workflows/` directory
 2. Restart Docker container to pick up changes:
-   ```bash
-   ./stop.sh
-   ./start.sh
-   ```
+    ```bash
+    ./stop.sh
+    ./start.sh
+    ```
 
 **Workflow Changes**:
+
 1. Edit files in `/workspace/workflows/` (mounted volume)
 2. Changes are picked up automatically on next execution
 3. For decorator changes (e.g., new `@workflow` or `@param`), restart is required
@@ -117,12 +120,14 @@ bifrost-integrations/
 ### Building Docker Images
 
 **For local development** (uses pre-built image):
+
 ```bash
 cd workflows
 docker build -t bifrost-workflows:latest .
 ```
 
 **For production** (push to Docker Hub):
+
 ```bash
 # Build with version tag
 docker build -t yourdockerhub/bifrost-workflows:v1.0.0 .
@@ -147,45 +152,50 @@ The Docker environment uses **function keys** for authentication (matching produ
 **Authentication Methods**:
 
 1. **Header (recommended)**:
-   ```bash
-   -H "x-functions-key: test"
-   ```
+
+    ```bash
+    -H "x-functions-key: test"
+    ```
 
 2. **Query parameter**:
-   ```bash
-   ?code=test
-   ```
+    ```bash
+    ?code=test
+    ```
 
 ### Common API Endpoints
 
 #### Health Check
+
 ```bash
 # No authentication required
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 ```
 
 #### List All Workflows
+
 ```bash
 curl -H "x-functions-key: test" \
      -H "X-Organization-Id: test-org-active" \
-     http://localhost:7072/api/registry/metadata
+     http://localhost:7071/api/registry/metadata
 ```
 
 #### Execute a Workflow
+
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "x-functions-key: test" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"name": "Alice", "language": "spanish"}' \
-  http://localhost:7072/api/workflows/hello_world
+  http://localhost:7071/api/workflows/hello_world
 ```
 
 #### Get Data Provider Options
+
 ```bash
 curl -H "x-functions-key: test" \
      -H "X-Organization-Id: test-org-active" \
-     http://localhost:7072/api/data-providers/get_greeting_languages
+     http://localhost:7071/api/data-providers/get_greeting_languages
 ```
 
 ### Testing with Postman
@@ -199,26 +209,30 @@ curl -H "x-functions-key: test" \
 #### 2. Set Collection Variables
 
 Add these variables to the collection:
-- `base_url`: `http://localhost:7072`
-- `api_key`: `test`
-- `org_id`: `test-org-active`
+
+-   `base_url`: `http://localhost:7071`
+-   `api_key`: `test`
+-   `org_id`: `test-org-active`
 
 #### 3. Add Authentication Header
 
 In Collection settings → Authorization:
-- Type: **API Key**
-- Key: `x-functions-key`
-- Value: `{{api_key}}`
-- Add to: **Header**
+
+-   Type: **API Key**
+-   Key: `x-functions-key`
+-   Value: `{{api_key}}`
+-   Add to: **Header**
 
 #### 4. Create Requests
 
 **Health Check**:
+
 ```
 GET {{base_url}}/api/health
 ```
 
 **List Workflows**:
+
 ```
 GET {{base_url}}/api/registry/metadata
 Headers:
@@ -226,6 +240,7 @@ Headers:
 ```
 
 **Execute Workflow**:
+
 ```
 POST {{base_url}}/api/workflows/hello_world
 Headers:
@@ -252,7 +267,7 @@ curl -X POST \
     "name": "Alice",
     "language": "spanish"
   }' \
-  http://localhost:7072/api/workflows/hello_world | jq
+  http://localhost:7071/api/workflows/hello_world | jq
 ```
 
 #### Test User Onboarding Workflow
@@ -269,7 +284,7 @@ curl -X POST \
     "department": "Engineering",
     "license_sku": "SPE_E3"
   }' \
-  http://localhost:7072/api/workflows/onboard_new_user | jq
+  http://localhost:7071/api/workflows/onboard_new_user | jq
 ```
 
 #### Get Available Licenses (Data Provider)
@@ -277,7 +292,7 @@ curl -X POST \
 ```bash
 curl -H "x-functions-key: test" \
      -H "X-Organization-Id: test-org-active" \
-     http://localhost:7072/api/data-providers/get_available_licenses | jq
+     http://localhost:7071/api/data-providers/get_available_licenses | jq
 ```
 
 ### Postman Collection Export
@@ -286,57 +301,57 @@ You can export/import this Postman collection:
 
 ```json
 {
-  "info": {
-    "name": "Bifrost Integrations - Local",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "variable": [
-    {"key": "base_url", "value": "http://localhost:7072"},
-    {"key": "api_key", "value": "test"},
-    {"key": "org_id", "value": "test-org-active"}
-  ],
-  "auth": {
-    "type": "apikey",
-    "apikey": [
-      {"key": "key", "value": "x-functions-key"},
-      {"key": "value", "value": "{{api_key}}"},
-      {"key": "in", "value": "header"}
-    ]
-  },
-  "item": [
-    {
-      "name": "Health Check",
-      "request": {
-        "method": "GET",
-        "url": "{{base_url}}/api/health"
-      }
+    "info": {
+        "name": "Bifrost Integrations - Local",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
-    {
-      "name": "List Workflows",
-      "request": {
-        "method": "GET",
-        "header": [
-          {"key": "X-Organization-Id", "value": "{{org_id}}"}
-        ],
-        "url": "{{base_url}}/api/registry/metadata"
-      }
+    "variable": [
+        { "key": "base_url", "value": "http://localhost:7071" },
+        { "key": "api_key", "value": "test" },
+        { "key": "org_id", "value": "test-org-active" }
+    ],
+    "auth": {
+        "type": "apikey",
+        "apikey": [
+            { "key": "key", "value": "x-functions-key" },
+            { "key": "value", "value": "{{api_key}}" },
+            { "key": "in", "value": "header" }
+        ]
     },
-    {
-      "name": "Execute Hello World",
-      "request": {
-        "method": "POST",
-        "header": [
-          {"key": "Content-Type", "value": "application/json"},
-          {"key": "X-Organization-Id", "value": "{{org_id}}"}
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\"name\": \"Alice\", \"language\": \"spanish\"}"
+    "item": [
+        {
+            "name": "Health Check",
+            "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/health"
+            }
         },
-        "url": "{{base_url}}/api/workflows/hello_world"
-      }
-    }
-  ]
+        {
+            "name": "List Workflows",
+            "request": {
+                "method": "GET",
+                "header": [
+                    { "key": "X-Organization-Id", "value": "{{org_id}}" }
+                ],
+                "url": "{{base_url}}/api/registry/metadata"
+            }
+        },
+        {
+            "name": "Execute Hello World",
+            "request": {
+                "method": "POST",
+                "header": [
+                    { "key": "Content-Type", "value": "application/json" },
+                    { "key": "X-Organization-Id", "value": "{{org_id}}" }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\"name\": \"Alice\", \"language\": \"spanish\"}"
+                },
+                "url": "{{base_url}}/api/workflows/hello_world"
+            }
+        }
+    ]
 }
 ```
 
@@ -354,25 +369,25 @@ The `.vscode/launch.json` is already configured:
 
 ```json
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Attach to Docker Functions",
-      "type": "debugpy",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5678
-      },
-      "pathMappings": [
+    "version": "0.2.0",
+    "configurations": [
         {
-          "localRoot": "${workspaceFolder}",
-          "remoteRoot": "/workspace"
+            "name": "Attach to Docker Functions",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "/workspace"
+                }
+            ],
+            "justMyCode": true
         }
-      ],
-      "justMyCode": true
-    }
-  ]
+    ]
 }
 ```
 
@@ -389,19 +404,22 @@ The `.vscode/launch.json` is already configured:
 #### 3. Debugging Tips
 
 **Inspect Variables**:
-- Hover over variables to see values
-- Use the Debug Console to evaluate expressions
-- View the Call Stack to understand execution flow
+
+-   Hover over variables to see values
+-   Use the Debug Console to evaluate expressions
+-   View the Call Stack to understand execution flow
 
 **Step Through Code**:
-- `F10` - Step over
-- `F11` - Step into
-- `Shift+F11` - Step out
-- `F5` - Continue
+
+-   `F10` - Step over
+-   `F11` - Step into
+-   `Shift+F11` - Step out
+-   `F5` - Continue
 
 **Watch Expressions**:
-- Add variables to the Watch panel
-- Monitor `context.org_id`, `context.execution_id`, etc.
+
+-   Add variables to the Watch panel
+-   Monitor `context.org_id`, `context.execution_id`, etc.
 
 ### Debugging Without VS Code
 
@@ -428,16 +446,19 @@ export ENABLE_DEBUGGING=false
 ### Viewing Logs
 
 **Real-time logs**:
+
 ```bash
 docker compose logs -f functions
 ```
 
 **Azurite logs**:
+
 ```bash
 docker compose logs -f azurite
 ```
 
 **All logs**:
+
 ```bash
 docker compose logs -f
 ```
@@ -451,6 +472,7 @@ docker compose logs -f
 **Symptoms**: `docker compose up` fails
 
 **Solutions**:
+
 ```bash
 # Check logs
 docker compose logs functions
@@ -462,7 +484,7 @@ docker compose build --no-cache
 docker build -t test ./workflows
 
 # Check port conflicts
-lsof -i :7072
+lsof -i :7071
 lsof -i :5678
 ```
 
@@ -471,6 +493,7 @@ lsof -i :5678
 **Symptoms**: Functions start but fail to connect to Azurite
 
 **Solutions**:
+
 ```bash
 # Verify Azurite is running
 docker compose ps
@@ -487,6 +510,7 @@ docker compose restart
 **Symptoms**: VS Code won't attach to debugger
 
 **Checklist**:
+
 1. ✓ `ENABLE_DEBUGGING=true` in docker-compose.yml
 2. ✓ Port 5678 is exposed and mapped
 3. ✓ Container logs show "Waiting for debugger attach"
@@ -494,6 +518,7 @@ docker compose restart
 5. ✓ No other process using port 5678
 
 **Solutions**:
+
 ```bash
 # Check if debugpy is listening
 nc -zv localhost 5678
@@ -511,6 +536,7 @@ docker compose up --build
 **Symptoms**: Code changes don't take effect
 
 **Solutions**:
+
 ```bash
 # For decorator changes (@workflow, @param), restart required
 docker compose restart functions
@@ -524,18 +550,19 @@ docker compose up --build
 
 ### Health Check Fails
 
-**Symptoms**: `curl http://localhost:7072/api/health` returns error
+**Symptoms**: `curl http://localhost:7071/api/health` returns error
 
 **Solutions**:
+
 ```bash
 # Wait for Functions runtime to start (can take 10-30 seconds)
-sleep 10 && curl http://localhost:7072/api/health
+sleep 10 && curl http://localhost:7071/api/health
 
-# Check if port is correct (7072 not 7071)
-curl http://localhost:7072/api/health
+# Check if port is correct (7071 not 7071)
+curl http://localhost:7071/api/health
 
 # Verify function key
-curl -H "x-functions-key: test" http://localhost:7072/api/health
+curl -H "x-functions-key: test" http://localhost:7071/api/health
 
 # Check container is running
 docker ps | grep functions
@@ -546,9 +573,10 @@ docker ps | grep functions
 **Symptoms**: API calls return 401 error
 
 **Solutions**:
+
 ```bash
 # Verify function key is correct
-curl -H "x-functions-key: test" http://localhost:7072/api/health
+curl -H "x-functions-key: test" http://localhost:7071/api/health
 
 # Check key in container
 docker exec functions cat /azure-functions-host/Secrets/host.json
@@ -566,22 +594,25 @@ docker compose up
 ### Docker Compose Configuration
 
 **Local** (`example_clean_workspace/docker-compose.yml`):
-- Uses pre-built image: `bifrost-workflows:latest`
-- Mounts workspace as volume: `./:/workspace`
-- Debugging enabled by default
-- Uses Azurite for storage
-- Port 7072 (to avoid conflicts with other services)
+
+-   Uses pre-built image: `bifrost-workflows:latest`
+-   Mounts workspace as volume: `./:/workspace`
+-   Debugging enabled by default
+-   Uses Azurite for storage
+-   Port 7071 (to avoid conflicts with other services)
 
 **Production** (Azure):
-- Pulls from Docker Hub: `yourdockerhub/bifrost-workflows:latest`
-- No volume mounts (code baked into image)
-- Debugging disabled
-- Uses Azure Storage
-- Standard HTTPS port
+
+-   Pulls from Docker Hub: `yourdockerhub/bifrost-workflows:latest`
+-   No volume mounts (code baked into image)
+-   Debugging disabled
+-   Uses Azure Storage
+-   Standard HTTPS port
 
 ### Environment Variables
 
 **Local**:
+
 ```yaml
 AzureWebJobsStorage=http://azurite:10002/devstoreaccount1
 AzureWebJobsSecretStorageType=files
@@ -590,6 +621,7 @@ WEBSITE_AUTH_ENCRYPTION_KEY=C0sm0Rk3y567890123456789...
 ```
 
 **Production**:
+
 ```yaml
 AzureWebJobsStorage={Azure Storage connection string}
 ENABLE_DEBUGGING=false
@@ -606,10 +638,10 @@ ENABLE_DEBUGGING=false
 
 ## Next Steps
 
-- **Create Your First Workflow**: See [getting-started.md](./getting-started.md)
-- **Workflow Development**: See [workflow-development.md](./workflow-development.md)
-- **OAuth Setup**: See [secrets-and-oauth.md](./secrets-and-oauth.md)
-- **Production Deployment**: See [/specs/005-migrate-to-azure/quickstart.md](../../specs/005-migrate-to-azure/quickstart.md)
+-   **Create Your First Workflow**: See [getting-started.md](./getting-started.md)
+-   **Workflow Development**: See [workflow-development.md](./workflow-development.md)
+-   **OAuth Setup**: See [secrets-and-oauth.md](./secrets-and-oauth.md)
+-   **Production Deployment**: See [/specs/005-migrate-to-azure/quickstart.md](../../specs/005-migrate-to-azure/quickstart.md)
 
 ---
 
@@ -637,23 +669,23 @@ curl -X POST \
   -H "x-functions-key: test" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"param": "value"}' \
-  http://localhost:7072/api/workflows/workflow_name
+  http://localhost:7071/api/workflows/workflow_name
 ```
 
 ### Key Files
 
-- `docker-compose.yml` - Local dev environment configuration
-- `workflows/Dockerfile` - Container image definition
-- `workflows/requirements.txt` - Python dependencies
-- `workflows/function_app.py` - Azure Functions entry point
-- `.vscode/launch.json` - VS Code debugger configuration
+-   `docker-compose.yml` - Local dev environment configuration
+-   `workflows/Dockerfile` - Container image definition
+-   `workflows/requirements.txt` - Python dependencies
+-   `workflows/function_app.py` - Azure Functions entry point
+-   `.vscode/launch.json` - VS Code debugger configuration
 
 ### Important URLs
 
-- API: http://localhost:7072
-- Health: http://localhost:7072/api/health
-- OpenAPI: http://localhost:7072/api/openapi.json
-- Debugger: localhost:5678
+-   API: http://localhost:7071
+-   Health: http://localhost:7071/api/health
+-   OpenAPI: http://localhost:7071/api/openapi.json
+-   Debugger: localhost:5678
 
 ---
 

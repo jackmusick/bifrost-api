@@ -12,15 +12,15 @@ interface WorkflowEngineGuardProps {
  */
 export function WorkflowEngineGuard({ children }: WorkflowEngineGuardProps) {
   const navigate = useNavigate()
-  const { data: engineHealth, isLoading } = useWorkflowEngineHealth()
+  const { data: serverHealth, isLoading } = useWorkflowEngineHealth()
 
   useEffect(() => {
     // Only redirect if we have data and it's unhealthy
     // Don't redirect while loading to avoid flash
-    if (!isLoading && engineHealth?.status === 'unhealthy') {
+    if (!isLoading && serverHealth?.status === 'unhealthy') {
       navigate('/workflow-engine-error', { replace: true })
     }
-  }, [engineHealth, isLoading, navigate])
+  }, [serverHealth, isLoading, navigate])
 
   // Show children while loading or if healthy
   // The redirect will happen in useEffect if unhealthy

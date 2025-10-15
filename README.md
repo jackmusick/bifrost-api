@@ -116,7 +116,7 @@ cd ..
 
 ```bash
 # Check health endpoint
-curl http://localhost:7072/api/health
+curl http://localhost:7071/api/health
 
 # Expected response:
 # {"status": "healthy", "version": "1.0.0"}
@@ -124,9 +124,9 @@ curl http://localhost:7072/api/health
 
 #### Access the Platform
 
--   **API**: http://localhost:7072
--   **OpenAPI Spec**: http://localhost:7072/api/openapi.json
--   **Swagger UI**: http://localhost:7072/api/docs
+-   **API**: http://localhost:7071
+-   **OpenAPI Spec**: http://localhost:7071/api/openapi.json
+-   **Swagger UI**: http://localhost:7071/api/docs
 
 #### Test a Workflow
 
@@ -136,7 +136,7 @@ curl -X POST \
   -H "x-functions-key: test" \
   -H "X-Organization-Id: test-org-active" \
   -d '{"name": "Alice", "language": "spanish"}' \
-  http://localhost:7072/api/workflows/hello_world
+  http://localhost:7071/api/workflows/hello_world
 ```
 
 **Expected Response:**
@@ -230,32 +230,34 @@ graph TB
 
 Click the "Deploy to Azure" button above and fill in the form:
 
-| Parameter | Description | Default | Required |
-|-----------|-------------|---------|----------|
-| **Subscription** | Azure subscription for billing | - | ✓ |
-| **Resource Group** | Container for all resources (will be created) | bifrost-prod-rg | ✓ |
-| **Region** | Azure region (eastus recommended) | eastus | ✓ |
-| **Base Name** | Prefix for resource names (made unique with suffix) | bifrost | ✓ |
-| **Workspaces Quota GB** | Azure Files workspace share size | 100 | ✓ |
-| **Tmp Quota GB** | Azure Files tmp share size | 50 | ✓ |
+| Parameter               | Description                                         | Default         | Required |
+| ----------------------- | --------------------------------------------------- | --------------- | -------- |
+| **Subscription**        | Azure subscription for billing                      | -               | ✓        |
+| **Resource Group**      | Container for all resources (will be created)       | bifrost-prod-rg | ✓        |
+| **Region**              | Azure region (eastus recommended)                   | eastus          | ✓        |
+| **Base Name**           | Prefix for resource names (made unique with suffix) | bifrost         | ✓        |
+| **Workspaces Quota GB** | Azure Files workspace share size                    | 100             | ✓        |
+| **Tmp Quota GB**        | Azure Files tmp share size                          | 50              | ✓        |
 
 Click **Review + create**, then **Create**. Deployment takes ~10-15 minutes and creates:
-- Azure Functions (Consumption plan)
-- Storage Account (Tables, Blobs, Files)
-- Key Vault
-- Application Insights
-- Log Analytics
+
+-   Azure Functions (Consumption plan)
+-   Storage Account (Tables, Blobs, Files)
+-   Key Vault
+-   Application Insights
+-   Log Analytics
 
 ![Azure Portal - Custom Deployment](docs/images/azure-custom-deployment.png)
 
 <!-- TODO: Add screenshot of Azure Portal custom deployment form -->
 
 **Save these deployment outputs** (found in Outputs tab):
-- `functionAppName` - Needed for GitHub Actions
-- `functionAppUrl` - API endpoint
-- `keyVaultName` - For secrets management
-- `storageAccountName` - For storage access
-- `resourceGroupName` - For GitHub Actions
+
+-   `functionAppName` - Needed for GitHub Actions
+-   `functionAppUrl` - API endpoint
+-   `keyVaultName` - For secrets management
+-   `storageAccountName` - For storage access
+-   `resourceGroupName` - For GitHub Actions
 
 ![Azure Portal - Deployment Outputs](docs/images/azure-deployment-outputs.png)
 
@@ -267,21 +269,22 @@ In Azure Portal:
 
 1. Go to **Create a resource** → Search **Static Web App**
 2. Fill in the form:
-   - **Resource Group**: Use the same as Functions
-   - **Name**: `bifrost-swa-{unique-suffix}`
-   - **Plan**: Free
-   - **Deployment source**: GitHub
-   - **Repository**: Select your forked repository
-   - **Branch**: main
-   - **Build Presets**: Custom
-   - **App location**: `/client`
-   - **Output location**: `dist`
+    - **Resource Group**: Use the same as Functions
+    - **Name**: `bifrost-swa-{unique-suffix}`
+    - **Plan**: Free
+    - **Deployment source**: GitHub
+    - **Repository**: Select your forked repository
+    - **Branch**: main
+    - **Build Presets**: Custom
+    - **App location**: `/client`
+    - **Output location**: `dist`
 3. Click **Review + create**, then **Create**
 
 Azure will:
-- Create a GitHub Actions workflow in your repository
-- Deploy the frontend automatically
-- Provide a public URL
+
+-   Create a GitHub Actions workflow in your repository
+-   Deploy the frontend automatically
+-   Provide a public URL
 
 ![Static Web App Creation](docs/images/swa-create.png)
 
@@ -291,13 +294,14 @@ Azure will:
 
 In your GitHub repository, go to **Settings** → **Secrets and variables** → **Actions** and add:
 
-| Secret Name | Value | How to Get |
-|-------------|-------|------------|
-| `AZURE_FUNCTIONAPP_NAME` | Function App name | From deployment outputs (step 1) |
-| `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` | Publish profile XML | Download from Azure Portal → Function App → Get publish profile |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
+| Secret Name                         | Value                | How to Get                                                      |
+| ----------------------------------- | -------------------- | --------------------------------------------------------------- |
+| `AZURE_FUNCTIONAPP_NAME`            | Function App name    | From deployment outputs (step 1)                                |
+| `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` | Publish profile XML  | Download from Azure Portal → Function App → Get publish profile |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN`   | SWA deployment token | Azure Portal → Static Web App → Manage deployment token         |
 
 **To get the publish profile:**
+
 1. Navigate to your Function App in Azure Portal
 2. Click **Download publish profile** (top toolbar)
 3. Open the `.PublishSettings` file in a text editor
@@ -317,15 +321,17 @@ git push origin main
 ```
 
 Or trigger manually in GitHub:
+
 1. Go to **Actions** tab
 2. Select **Deploy Azure Functions** or **Deploy Static Web App**
 3. Click **Run workflow**
 
 GitHub Actions will:
-- Build the Functions code
-- Deploy to Azure Functions (Consumption plan)
-- Build the React frontend
-- Deploy to Static Web App
+
+-   Build the Functions code
+-   Deploy to Azure Functions (Consumption plan)
+-   Build the React frontend
+-   Deploy to Static Web App
 
 ![GitHub Actions Running](docs/images/github-actions-running.png)
 
@@ -348,6 +354,7 @@ curl https://bifrost-func-xyz.azurewebsites.net/api/health
 <!-- TODO: Add screenshot of Postman or browser showing successful health check -->
 
 You can also verify in Azure Portal:
+
 1. Navigate to your resource group
 2. Click the Function App resource
 3. Go to **Functions** → Select any function → Click **Test/Run**
@@ -385,6 +392,7 @@ az keyvault secret show \
 ```
 
 Or retrieve directly from Azure Portal:
+
 1. Navigate to your Key Vault resource
 2. Go to **Secrets** → Find `github-webhook-secret-global`
 3. Click the secret → Click **Show Secret Value**
@@ -409,6 +417,7 @@ az keyvault secret set \
 ```
 
 Or use Azure Portal:
+
 1. Navigate to your Key Vault resource
 2. Go to **Secrets** → Click **Generate/Import**
 3. Enter secret name and value
@@ -446,9 +455,10 @@ View logs, metrics, and performance data:
 <!-- TODO: Add screenshot of Application Insights showing metrics -->
 
 **Quick links from deployment outputs:**
-- Use `functionAppName` to find your Function App
-- Use `storageAccountName` to find your Storage Account
-- Use `keyVaultName` to find your Key Vault
+
+-   Use `functionAppName` to find your Function App
+-   Use `storageAccountName` to find your Storage Account
+-   Use `keyVaultName` to find your Key Vault
 
 #### Function App Logs
 
@@ -462,6 +472,7 @@ az webapp log tail \
 ```
 
 Or view in Azure Portal:
+
 1. Navigate to your Function App resource
 2. Go to **Monitoring** → **Log stream**
 3. View real-time logs
@@ -551,13 +562,13 @@ Bifrost Integrations uses a modern, scalable architecture built on Azure service
 **Typical Production Deployment:**
 
 -   **Azure Functions (Consumption)**: $0-5/month
-  - First 1M executions free, then $0.20 per million
-  - First 400,000 GB-s free, then $0.000016 per GB-s
-  - Example: 50k executions/month = $0.01
+-   First 1M executions free, then $0.20 per million
+-   First 400,000 GB-s free, then $0.000016 per GB-s
+-   Example: 50k executions/month = $0.01
 -   **Storage Account**: $2-5/month
-  - Tables: $0.05 per GB
-  - Files (100 GB): ~$2.30
-  - Blobs: $0.02 per GB
+-   Tables: $0.05 per GB
+-   Files (100 GB): ~$2.30
+-   Blobs: $0.02 per GB
 -   **Key Vault**: $0.50/month (10k operations free, then $0.03 per 10k)
 -   **Application Insights**: $2-5/month (first 5 GB free)
 -   **Static Web App**: $0 (Free tier)
@@ -565,14 +576,16 @@ Bifrost Integrations uses a modern, scalable architecture built on Azure service
 **Total: ~$5-15/month for small-to-medium workloads**
 
 **Cost grows with:**
-- Number of workflow executions (pay-per-use)
-- Storage used (Tables, Files, Blobs)
-- Application Insights data ingestion
+
+-   Number of workflow executions (pay-per-use)
+-   Storage used (Tables, Files, Blobs)
+-   Application Insights data ingestion
 
 **Example scenarios:**
-- **5 customers, 10k executions/month**: ~$5-7/month
-- **25 customers, 100k executions/month**: ~$10-15/month
-- **100 customers, 500k executions/month**: ~$25-35/month
+
+-   **5 customers, 10k executions/month**: ~$5-7/month
+-   **25 customers, 100k executions/month**: ~$10-15/month
+-   **100 customers, 500k executions/month**: ~$25-35/month
 
 **Note**: Consumption plan means you only pay for what you use. Monitor costs in Azure Cost Management.
 

@@ -1,29 +1,28 @@
 /**
- * Data Providers API service
+ * Data Providers API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
+import { apiClient } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
 
-export interface DataProviderOption {
-  label: string
-  value: string
-  metadata?: Record<string, unknown>
-}
-
-export interface DataProviderResponse {
-  provider: string
-  options: DataProviderOption[]
-  cached: boolean
-  cache_expires_at: string
-}
+// Re-export types for convenience
+export type DataProviderOption = components["schemas"]["DataProviderOption"];
+export type DataProviderResponse =
+    components["schemas"]["DataProviderResponse"];
 
 export const dataProvidersService = {
-  /**
-   * Get options from a data provider
-   * Uses the api client which automatically handles X-Organization-Id from session storage
-   */
-  async getOptions(providerName: string): Promise<DataProviderOption[]> {
-    const data = await api.get<DataProviderResponse>(`/data-providers/${providerName}`)
-    return data.options
-  },
-}
+    /**
+     * Get options from a data provider
+     */
+    async getOptions(providerName: string): Promise<DataProviderOption[]> {
+        const { data, error } = await apiClient.GET(
+            "/data-providers/{providerName}",
+            {
+                params: { path: { providerName } },
+            }
+        );
+        if (error)
+            throw new Error(`Failed to fetch data provider options: ${error}`);
+        return data.options;
+    },
+};

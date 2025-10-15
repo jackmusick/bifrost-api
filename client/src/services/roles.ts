@@ -1,86 +1,119 @@
 /**
- * Roles API service
+ * Roles API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
-import type {
-  Role,
-  CreateRoleRequest,
-  UpdateRoleRequest,
-  UserRole,
-  FormRole,
-  AssignUsersToRoleRequest,
-  AssignFormsToRoleRequest,
-} from '@/types/role'
+import { apiClient } from '@/lib/api-client'
+import type { components } from '@/lib/v1'
 
 export const rolesService = {
   /**
    * Get all roles
    */
-  async getRoles(): Promise<Role[]> {
-    return api.get<Role[]>('/roles')
+  async getRoles() {
+    const { data, error } = await apiClient.GET('/roles')
+    if (error) throw new Error(`Failed to fetch roles: ${error}`)
+    return data
   },
 
   /**
    * Create a new role
    */
-  async createRole(request: CreateRoleRequest): Promise<Role> {
-    return api.post<Role>('/roles', request)
+  async createRole(request: components['schemas']['CreateRoleRequest']) {
+    const { data, error } = await apiClient.POST('/roles', {
+      body: request,
+    })
+    if (error) throw new Error(`Failed to create role: ${error}`)
+    return data
   },
 
   /**
    * Update a role
    */
-  async updateRole(roleId: string, request: UpdateRoleRequest): Promise<Role> {
-    return api.put<Role>(`/roles/${roleId}`, request)
+  async updateRole(roleId: string, request: components['schemas']['UpdateRoleRequest']) {
+    const { data, error } = await apiClient.PUT('/roles/{roleId}', {
+      params: { path: { roleId } },
+      body: request,
+    })
+    if (error) throw new Error(`Failed to update role: ${error}`)
+    return data
   },
 
   /**
    * Delete a role (soft delete)
    */
-  async deleteRole(roleId: string): Promise<void> {
-    return api.delete<void>(`/roles/${roleId}`)
+  async deleteRole(roleId: string) {
+    const { data, error } = await apiClient.DELETE('/roles/{roleId}', {
+      params: { path: { roleId } },
+    })
+    if (error) throw new Error(`Failed to delete role: ${error}`)
+    return data
   },
 
   /**
    * Get users in a role
    */
-  async getRoleUsers(roleId: string): Promise<UserRole[]> {
-    return api.get<UserRole[]>(`/roles/${roleId}/users`)
+  async getRoleUsers(roleId: string) {
+    const { data, error } = await apiClient.GET('/roles/{roleId}/users', {
+      params: { path: { roleId } },
+    })
+    if (error) throw new Error(`Failed to fetch role users: ${error}`)
+    return data
   },
 
   /**
    * Assign users to a role (batch)
    */
-  async assignUsersToRole(roleId: string, request: AssignUsersToRoleRequest): Promise<void> {
-    return api.post<void>(`/roles/${roleId}/users`, request)
+  async assignUsersToRole(roleId: string, request: components['schemas']['AssignUsersToRoleRequest']) {
+    const { data, error } = await apiClient.POST('/roles/{roleId}/users', {
+      params: { path: { roleId } },
+      body: request,
+    })
+    if (error) throw new Error(`Failed to assign users to role: ${error}`)
+    return data
   },
 
   /**
    * Remove a user from a role
    */
-  async removeUserFromRole(roleId: string, userId: string): Promise<void> {
-    return api.delete<void>(`/roles/${roleId}/users/${userId}`)
+  async removeUserFromRole(roleId: string, userId: string) {
+    const { data, error } = await apiClient.DELETE('/roles/{roleId}/users/{userId}', {
+      params: { path: { roleId, userId } },
+    })
+    if (error) throw new Error(`Failed to remove user from role: ${error}`)
+    return data
   },
 
   /**
    * Get forms assigned to a role
    */
-  async getRoleForms(roleId: string): Promise<FormRole[]> {
-    return api.get<FormRole[]>(`/roles/${roleId}/forms`)
+  async getRoleForms(roleId: string) {
+    const { data, error } = await apiClient.GET('/roles/{roleId}/forms', {
+      params: { path: { roleId } },
+    })
+    if (error) throw new Error(`Failed to fetch role forms: ${error}`)
+    return data
   },
 
   /**
    * Assign forms to a role (batch)
    */
-  async assignFormsToRole(roleId: string, request: AssignFormsToRoleRequest): Promise<void> {
-    return api.post<void>(`/roles/${roleId}/forms`, request)
+  async assignFormsToRole(roleId: string, request: components['schemas']['AssignFormsToRoleRequest']) {
+    const { data, error } = await apiClient.POST('/roles/{roleId}/forms', {
+      params: { path: { roleId } },
+      body: request,
+    })
+    if (error) throw new Error(`Failed to assign forms to role: ${error}`)
+    return data
   },
 
   /**
    * Remove a form from a role
    */
-  async removeFormFromRole(roleId: string, formId: string): Promise<void> {
-    return api.delete<void>(`/roles/${roleId}/forms/${formId}`)
+  async removeFormFromRole(roleId: string, formId: string) {
+    const { data, error } = await apiClient.DELETE('/roles/{roleId}/forms/{formId}', {
+      params: { path: { roleId, formId } },
+    })
+    if (error) throw new Error(`Failed to remove form from role: ${error}`)
+    return data
   },
 }

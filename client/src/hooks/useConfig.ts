@@ -13,7 +13,8 @@ export function useConfigs(scope: ConfigScope = 'GLOBAL', orgId?: string | undef
     queryKey: ['configs', scope, orgId],
     queryFn: () => configService.getConfigs({
       scope: scope === 'GLOBAL' ? 'global' : scope,
-      ...(orgId !== undefined ? { orgId } : {})
+      // Note: orgId is NOT passed as a query param - it's sent via X-Organization-Id header
+      // by the api client automatically
     }),
   })
 }
@@ -43,8 +44,8 @@ export function useDeleteConfig() {
   return useMutation({
     mutationFn: ({ key, scope, orgId }: { key: string; scope?: ConfigScope | undefined; orgId?: string | null }) =>
       configService.deleteConfig(key, {
-        ...(scope !== undefined ? { scope: scope === 'GLOBAL' ? 'global' : scope } : {}),
-        ...(orgId !== undefined && orgId !== null ? { orgId } : {})
+        scope: scope === 'GLOBAL' ? 'global' : scope,
+        // Note: orgId is NOT passed as a query param - it's sent via X-Organization-Id header
       }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['configs'] })

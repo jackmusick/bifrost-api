@@ -36,7 +36,7 @@ Tasks are organized into phases aligned with user stories:
 
 **Goal**: Initialize all three repositories with proper tooling and local development environment
 
-**Independent Test**: Can run all three components locally (client on port 3000, Management API on port 7071, Workflow Engine on port 7072) with Azurite
+**Independent Test**: Can run all three components locally (client on port 3000, Management API on port 7071, Workflow Engine on port 7071) with Azurite
 
 **Checkpoint**: ✅ All repos initialized, Azurite running, basic "hello world" endpoints functional
 

@@ -1,76 +1,99 @@
 /**
- * Forms API service
- * All methods use the centralized api client which automatically handles
- * X-Organization-Id header from sessionStorage
+ * Forms API service - fully type-safe with openapi-fetch
  */
 
-import { api } from './api'
-import type { Form, CreateFormRequest, UpdateFormRequest, FormSubmission, FormExecutionResponse } from '@/types/form'
+import { apiClient } from '@/lib/api-client'
+import type { components } from '@/lib/v1'
+import type { FormSubmission, FormExecutionResponse } from '@/lib/client-types'
 
 export const formsService = {
   /**
    * Get all forms
-   * Organization context is handled automatically by the api client
    */
-  async getForms(): Promise<Form[]> {
-    return api.get<Form[]>('/forms')
+  async getForms() {
+    const { data, error } = await apiClient.GET('/forms')
+    if (error) throw new Error(`Failed to fetch forms: ${error}`)
+    return data
   },
 
   /**
    * Get a specific form by ID
-   * Organization context is handled automatically by the api client
    */
-  async getForm(formId: string): Promise<Form> {
-    return api.get<Form>(`/forms/${formId}`)
+  async getForm(formId: string) {
+    const { data, error } = await apiClient.GET('/forms/{formId}', {
+      params: { path: { formId } },
+    })
+    if (error) throw new Error(`Failed to fetch form: ${error}`)
+    return data
   },
 
   /**
    * Create a new form
-   * Organization context is handled automatically by the api client
    */
-  async createForm(request: CreateFormRequest): Promise<Form> {
-    return api.post<Form>('/forms', request)
+  async createForm(request: components['schemas']['CreateFormRequest']) {
+    const { data, error } = await apiClient.POST('/forms', {
+      body: request,
+    })
+    if (error) throw new Error(`Failed to create form: ${error}`)
+    return data
   },
 
   /**
    * Update a form
-   * Organization context is handled automatically by the api client
    */
-  async updateForm(formId: string, request: UpdateFormRequest): Promise<Form> {
-    return api.put<Form>(`/forms/${formId}`, request)
+  async updateForm(formId: string, request: components['schemas']['UpdateFormRequest']) {
+    const { data, error } = await apiClient.PUT('/forms/{formId}', {
+      params: { path: { formId } },
+      body: request,
+    })
+    if (error) throw new Error(`Failed to update form: ${error}`)
+    return data
   },
 
   /**
    * Delete a form
-   * Organization context is handled automatically by the api client
    */
-  async deleteForm(formId: string): Promise<void> {
-    return api.delete<void>(`/forms/${formId}`)
+  async deleteForm(formId: string) {
+    const { data, error } = await apiClient.DELETE('/forms/{formId}', {
+      params: { path: { formId } },
+    })
+    if (error) throw new Error(`Failed to delete form: ${error}`)
+    return data
   },
 
-  /**
-   * Activate a form
-   * Organization context is handled automatically by the api client
-   */
-  async activateForm(formId: string): Promise<Form> {
-    return api.post<Form>(`/forms/${formId}/activate`, {})
-  },
+  // TODO: These endpoints don't exist in the OpenAPI spec yet
+  // Uncomment when backend endpoints are implemented
+  // /**
+  //  * Activate a form
+  //  */
+  // async activateForm(formId: string) {
+  //   const { data, error } = await apiClient.POST('/forms/{formId}/activate', {
+  //     params: { path: { formId } },
+  //   })
+  //   if (error) throw new Error(`Failed to activate form: ${error}`)
+  //   return data
+  // },
+
+  // /**
+  //  * Deactivate a form
+  //  */
+  // async deactivateForm(formId: string) {
+  //   const { data, error } = await apiClient.POST('/forms/{formId}/deactivate', {
+  //     params: { path: { formId } },
+  //   })
+  //   if (error) throw new Error(`Failed to deactivate form: ${error}`)
+  //   return data
+  // },
 
   /**
-   * Deactivate a form
-   * Organization context is handled automatically by the api client
-   */
-  async deactivateForm(formId: string): Promise<Form> {
-    return api.post<Form>(`/forms/${formId}/deactivate`, {})
-  },
-
-  /**
-   * Submit a form to execute a workflow
-   * Organization context is handled automatically by the api client
+   * Execute a form to run workflow
    */
   async submitForm(submission: FormSubmission): Promise<FormExecutionResponse> {
-    return api.post<FormExecutionResponse>(`/forms/${submission.formId}/submit`, {
-      form_data: submission.formData
+    const { data, error } = await apiClient.POST('/forms/{formId}/execute', {
+      params: { path: { formId: submission.formId } },
+      body: { form_data: submission.formData },
     })
+    if (error) throw new Error(`Failed to submit form: ${error}`)
+    return data as FormExecutionResponse
   },
 }

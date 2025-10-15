@@ -9,9 +9,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
+from pydantic import BaseModel
 from shared.middleware import with_org_context
+from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
-from shared.models import ErrorResponse
+from shared.models import ErrorResponse, DataProviderResponse, DataProviderMetadata
+from shared.custom_types import get_org_context
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,28 @@ _cache: Dict[str, Dict[str, Any]] = {}
 
 
 @bp.route(route="data-providers/{providerName}", methods=["GET"], auth_level=func.AuthLevel.ADMIN)
+@openapi_endpoint(
+    path="/data-providers/{providerName}",
+    method="GET",
+    summary="Get data provider options",
+    description="Call a data provider and return options",
+    tags=["Data Providers"],
+    response_model=DataProviderResponse,
+    path_params={
+        "providerName": {
+            "description": "Name of the data provider",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    },
+    query_params={
+        "no_cache": {
+            "description": "Set to 'true' to bypass cache",
+            "schema": {"type": "string"},
+            "required": False
+        }
+    }
+)
 @with_org_context
 async def get_data_provider_options(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -55,9 +80,19 @@ async def get_data_provider_options(req: func.HttpRequest) -> func.HttpResponse:
         500: Provider execution error
     """
     # Get context from request (injected by @with_org_context decorator)
-    context = req.org_context
+    context = get_org_context(req)
 
     provider_name = req.route_params.get('providerName')
+    if not provider_name:
+        error = ErrorResponse(
+            error="BadRequest",
+            message="providerName is required"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
     no_cache = req.params.get('no_cache', '').lower() == 'true'
 
     # Get provider from registry
@@ -188,8 +223,21 @@ async def get_data_provider_options(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
+class DataProviderListResponse(BaseModel):
+    """Response model for listing data providers"""
+    providers: List[DataProviderMetadata]
+
+
 @bp.route(route="data-providers", methods=["GET"])
-def list_data_providers(req: func.HttpRequest) -> func.HttpResponse:
+@openapi_endpoint(
+    path="/data-providers",
+    method="GET",
+    summary="List data providers",
+    description="List all available data providers",
+    tags=["Data Providers"],
+    response_model=DataProviderListResponse
+)
+async def list_data_providers(req: func.HttpRequest) -> func.HttpResponse:
     """
     List all available data providers.
 

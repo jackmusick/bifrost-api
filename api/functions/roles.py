@@ -12,6 +12,7 @@ from typing import List
 import azure.functions as func
 
 from shared.decorators import with_request_context, require_platform_admin
+from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
 from shared.models import (
     Role,
@@ -36,6 +37,14 @@ bp = func.Blueprint()
 
 @bp.function_name("roles_list_roles")
 @bp.route(route="roles", methods=["GET"])
+@openapi_endpoint(
+    path="/roles",
+    method="GET",
+    summary="List all roles",
+    description="Get all roles (Platform admin only)",
+    tags=["Roles"],
+    response_model=Role
+)
 @with_request_context
 @require_platform_admin
 async def list_roles(req: func.HttpRequest) -> func.HttpResponse:
@@ -95,6 +104,15 @@ async def list_roles(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_create_role")
 @bp.route(route="roles", methods=["POST"])
+@openapi_endpoint(
+    path="/roles",
+    method="POST",
+    summary="Create a role",
+    description="Create a new role (Platform admin only)",
+    tags=["Roles"],
+    request_model=CreateRoleRequest,
+    response_model=Role
+)
 @with_request_context
 @require_platform_admin
 async def create_role(req: func.HttpRequest) -> func.HttpResponse:
@@ -191,6 +209,21 @@ async def create_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_update_role")
 @bp.route(route="roles/{roleId}", methods=["PUT"])
+@openapi_endpoint(
+    path="/roles/{roleId}",
+    method="PUT",
+    summary="Update a role",
+    description="Update a role (Platform admin only)",
+    tags=["Roles"],
+    request_model=UpdateRoleRequest,
+    response_model=Role,
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def update_role(req: func.HttpRequest) -> func.HttpResponse:
@@ -284,6 +317,19 @@ async def update_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_delete_role")
 @bp.route(route="roles/{roleId}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/roles/{roleId}",
+    method="DELETE",
+    summary="Delete a role",
+    description="Soft delete a role (set IsActive=False) (Platform admin only)",
+    tags=["Roles"],
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
@@ -333,6 +379,19 @@ async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_get_role_users")
 @bp.route(route="roles/{roleId}/users", methods=["GET"])
+@openapi_endpoint(
+    path="/roles/{roleId}/users",
+    method="GET",
+    summary="Get role users",
+    description="Get all users assigned to a role (Platform admin only)",
+    tags=["Roles"],
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
@@ -380,6 +439,20 @@ async def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_assign_users_to_role")
 @bp.route(route="roles/{roleId}/users", methods=["POST"])
+@openapi_endpoint(
+    path="/roles/{roleId}/users",
+    method="POST",
+    summary="Assign users to role",
+    description="Assign users to a role (batch operation) (Platform admin only)",
+    tags=["Roles"],
+    request_model=AssignUsersToRoleRequest,
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
@@ -500,6 +573,23 @@ async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_remove_user_from_role")
 @bp.route(route="roles/{roleId}/users/{userId}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/roles/{roleId}/users/{userId}",
+    method="DELETE",
+    summary="Remove user from role",
+    description="Remove a user from a role (Platform admin only)",
+    tags=["Roles"],
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        },
+        "userId": {
+            "description": "User ID",
+            "schema": {"type": "string"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
@@ -550,6 +640,19 @@ async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_get_role_forms")
 @bp.route(route="roles/{roleId}/forms", methods=["GET"])
+@openapi_endpoint(
+    path="/roles/{roleId}/forms",
+    method="GET",
+    summary="Get role forms",
+    description="Get all forms assigned to a role (Platform admin only)",
+    tags=["Roles"],
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
@@ -597,6 +700,20 @@ async def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_assign_forms_to_role")
 @bp.route(route="roles/{roleId}/forms", methods=["POST"])
+@openapi_endpoint(
+    path="/roles/{roleId}/forms",
+    method="POST",
+    summary="Assign forms to role",
+    description="Assign forms to a role (batch operation) (Platform admin only)",
+    tags=["Roles"],
+    request_model=AssignFormsToRoleRequest,
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
@@ -702,6 +819,23 @@ async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("roles_remove_form_from_role")
 @bp.route(route="roles/{roleId}/forms/{formId}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/roles/{roleId}/forms/{formId}",
+    method="DELETE",
+    summary="Remove form from role",
+    description="Remove a form from a role (Platform admin only)",
+    tags=["Roles"],
+    path_params={
+        "roleId": {
+            "description": "Role ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        },
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def remove_form_from_role(req: func.HttpRequest) -> func.HttpResponse:

@@ -120,8 +120,8 @@ const navSections: NavSection[] = [
 ]
 
 export function Sidebar() {
-  const { data: engineHealth } = useWorkflowEngineHealth()
-  const isEngineHealthy = engineHealth?.status === 'healthy'
+  const { data: serverHealth } = useWorkflowEngineHealth()
+  const isServerHealthy = serverHealth?.status === 'healthy'
 
   return (
     <aside className="sticky top-16 h-[calc(100vh-4rem)] w-64 border-r bg-background">
@@ -133,7 +133,7 @@ export function Sidebar() {
             </h3>
             {section.items.map((item) => {
               const Icon = item.icon
-              const isDisabled = item.requiresWorkflowEngine && !isEngineHealthy
+              const isDisabled = item.requiresWorkflowEngine && !isServerHealthy
 
               if (isDisabled) {
                 return (

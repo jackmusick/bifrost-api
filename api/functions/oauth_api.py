@@ -12,6 +12,7 @@ import azure.functions as func
 from pydantic import ValidationError
 from shared.custom_types import get_context, get_route_param
 from shared.decorators import with_request_context, require_platform_admin
+from shared.openapi_decorators import openapi_endpoint
 from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 from services.oauth_storage_service import OAuthStorageService
@@ -33,6 +34,14 @@ bp = func.Blueprint()
 
 @bp.function_name("oauth_create_connection")
 @bp.route(route="oauth/connections", methods=["POST"])
+@openapi_endpoint(
+    path="/oauth/connections",
+    method="POST",
+    summary="Create OAuth connection",
+    description="Create a new OAuth connection for integrations (Platform admin only)",
+    tags=["OAuth"],
+    request_model=CreateOAuthConnectionRequest
+)
 @with_request_context
 @require_platform_admin
 async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
@@ -127,6 +136,13 @@ async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_list_connections")
 @bp.route(route="oauth/connections", methods=["GET"])
+@openapi_endpoint(
+    path="/oauth/connections",
+    method="GET",
+    summary="List OAuth connections",
+    description="List all OAuth connections (Platform admin only)",
+    tags=["OAuth"]
+)
 @with_request_context
 @require_platform_admin
 async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
@@ -176,6 +192,20 @@ async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_get_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["GET"])
+@openapi_endpoint(
+    path="/oauth/connections/{connection_name}",
+    method="GET",
+    summary="Get OAuth connection",
+    description="Get OAuth connection details (Platform admin only)",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
@@ -234,6 +264,21 @@ async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_update_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["PUT"])
+@openapi_endpoint(
+    path="/oauth/connections/{connection_name}",
+    method="PUT",
+    summary="Update OAuth connection",
+    description="Update an OAuth connection (Platform admin only)",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    },
+    request_model=UpdateOAuthConnectionRequest
+)
 @with_request_context
 @require_platform_admin
 async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
@@ -329,6 +374,20 @@ async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_delete_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/oauth/connections/{connection_name}",
+    method="DELETE",
+    summary="Delete OAuth connection",
+    description="Delete an OAuth connection (Platform admin only)",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
@@ -382,6 +441,20 @@ async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_authorize")
 @bp.route(route="oauth/connections/{connection_name}/authorize", methods=["POST"])
+@openapi_endpoint(
+    path="/oauth/connections/{connection_name}/authorize",
+    method="POST",
+    summary="Authorize OAuth connection",
+    description="Initiate OAuth authorization flow (Platform admin only)",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
@@ -493,6 +566,20 @@ async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse
 
 @bp.function_name("oauth_cancel_authorization")
 @bp.route(route="oauth/connections/{connection_name}/cancel", methods=["POST"])
+@openapi_endpoint(
+    path="/oauth/connections/{connection_name}/cancel",
+    method="POST",
+    summary="Cancel OAuth authorization",
+    description="Cancel OAuth authorization (Platform admin only)",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse:
@@ -560,6 +647,20 @@ async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse
 
 @bp.function_name("oauth_refresh_token")
 @bp.route(route="oauth/connections/{connection_name}/refresh", methods=["POST"])
+@openapi_endpoint(
+    path="/oauth/connections/{connection_name}/refresh",
+    method="POST",
+    summary="Refresh OAuth token",
+    description="Manually refresh OAuth access token using refresh token (Platform admin only)",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 @with_request_context
 @require_platform_admin
 async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
@@ -797,6 +898,20 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_callback")
 @bp.route(route="oauth/callback/{connection_name}", methods=["POST"])
+@openapi_endpoint(
+    path="/oauth/callback/{connection_name}",
+    method="POST",
+    summary="OAuth callback",
+    description="OAuth callback endpoint - exchanges authorization code for tokens",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
 async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/callback/{connection_name}
@@ -1008,6 +1123,21 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_get_credentials")
 @bp.route(route="oauth/credentials/{connection_name}", methods=["GET"])
+@openapi_endpoint(
+    path="/oauth/credentials/{connection_name}",
+    method="GET",
+    summary="Get OAuth credentials",
+    description="Get OAuth credentials for workflow consumption",
+    tags=["OAuth"],
+    path_params={
+        "connection_name": {
+            "description": "Connection name",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    },
+    response_model=OAuthCredentialsResponse
+)
 @with_request_context
 async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -1187,6 +1317,13 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("oauth_refresh_job_status")
 @bp.route(route="oauth/refresh_job_status", methods=["GET"])
+@openapi_endpoint(
+    path="/oauth/refresh_job_status",
+    method="GET",
+    summary="Get OAuth refresh job status",
+    description="Get status of the last OAuth token refresh job (Platform admin only)",
+    tags=["OAuth"]
+)
 @with_request_context
 @require_platform_admin
 async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpResponse:

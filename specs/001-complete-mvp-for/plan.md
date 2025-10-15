@@ -482,7 +482,7 @@ Follow quickstart.md to set up your local environment:
 
 1. Start Azurite for local Azure Storage
 2. Run Management API on port 7071
-3. Run Workflow Engine on port 7072
+3. Run Workflow Engine on port 7071
 4. Run React dev server on port 3000
 5. Use native Python debugging in VSCode/PyCharm
 
