@@ -5,7 +5,7 @@
             "appLocation": ".",
             "outputLocation": "build",
             "apiLocation": "../api",
-            "apiDevserverUrl": "http://localhost:7071"
+            "apiDevServerUrl": "http://localhost:7071"
         }
     }
 }

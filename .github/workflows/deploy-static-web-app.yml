@@ -37,7 +37,7 @@ jobs:
           output_location: "dist"
 
   close_pull_request_job:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.repository == 'jackmusick/bifrost-integrations'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
     steps:

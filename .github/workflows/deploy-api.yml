@@ -21,6 +21,15 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: 'Run API Tests'
+      shell: bash
+      run: |
+        cd api
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio
+        pytest tests/ -v
+
     - name: 'Resolve Project Dependencies Using Pip'
       shell: bash
       run: |

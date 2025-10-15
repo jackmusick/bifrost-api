@@ -54,12 +54,10 @@
         "suffix": "[substring(toLower(uniqueString(resourceGroup().id, resourceGroup().location)), 0, 5)]",
         "storageAccountName": "[toLower(concat('st', parameters('baseName'), variables('suffix')))]",
         "apiFunctionAppName": "[toLower(concat(parameters('baseName'), '-api-', variables('suffix')))]",
-        "workflowsFunctionAppName": "[toLower(concat(parameters('baseName'), '-workflows-', variables('suffix')))]",
         "staticWebAppName": "[toLower(concat(parameters('baseName'), '-swa-', variables('suffix')))]",
         "keyVaultName": "[toLower(concat(parameters('baseName'), '-kv-', variables('suffix')))]",
         "appInsightsName": "[concat(parameters('baseName'), '-insights')]",
-        "apiHostingPlanName": "[concat(parameters('baseName'), '-api-plan-', variables('suffix'))]",
-        "workflowsHostingPlanName": "[concat(parameters('baseName'), '-workflows-plan-', variables('suffix'))]"
+        "apiHostingPlanName": "[concat(parameters('baseName'), '-api-plan-', variables('suffix'))]"
     },
     "resources": [
         {
@@ -152,134 +150,6 @@
         {
             "type": "Microsoft.Web/serverfarms",
             "apiVersion": "2024-04-01",
-            "name": "[variables('workflowsHostingPlanName')]",
-            "location": "[resourceGroup().location]",
-            "kind": "functionapp",
-            "sku": {
-                "tier": "FlexConsumption",
-                "name": "FC1"
-            },
-            "properties": {
-                "reserved": true
-            }
-        },
-        {
-            "type": "Microsoft.Web/sites",
-            "apiVersion": "2024-11-01",
-            "name": "[variables('workflowsFunctionAppName')]",
-            "location": "[resourceGroup().location]",
-            "kind": "functionapp,linux",
-            "identity": {
-                "type": "SystemAssigned"
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.Web/serverfarms', variables('workflowsHostingPlanName'))]",
-                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
-                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
-            ],
-            "properties": {
-                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('workflowsHostingPlanName'))]",
-                "functionAppConfig": {
-                    "deployment": {
-                        "storage": {
-                            "type": "blobContainer",
-                            "value": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))).primaryEndpoints.blob, 'deployments')]",
-                            "authentication": {
-                                "type": "StorageAccountConnectionString",
-                                "storageAccountConnectionStringName": "AzureWebJobsStorage"
-                            }
-                        }
-                    },
-                    "runtime": {
-                        "name": "python",
-                        "version": "3.11"
-                    }
-                },
-                "siteConfig": {
-                    "appSettings": [
-                        {
-                            "name": "AzureWebJobsStorage",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-                        },
-                        {
-                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-                        },
-                        {
-                            "name": "WEBSITE_CONTENTSHARE",
-                            "value": "[toLower(variables('workflowsFunctionAppName'))]"
-                        },
-                        {
-                            "name": "FUNCTIONS_EXTENSION_VERSION",
-                            "value": "~4"
-                        },
-                        {
-                            "name": "FUNCTIONS_WORKER_RUNTIME",
-                            "value": "python"
-                        },
-                        {
-                            "name": "AZURE_FUNCTIONS_ENVIRONMENT",
-                            "value": "Production"
-                        },
-                        {
-                            "name": "KEY_VAULT_NAME",
-                            "value": "[variables('keyVaultName')]"
-                        },
-                        {
-                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).InstrumentationKey]"
-                        },
-                        {
-                            "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
-                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).ConnectionString]"
-                        },
-                        {
-                            "name": "PYTHON_ENABLE_WORKER_EXTENSIONS",
-                            "value": "1"
-                        }
-                    ],
-                    "azureStorageAccounts": {
-                        "workspaces": {
-                            "type": "AzureFiles",
-                            "accountName": "[variables('storageAccountName')]",
-                            "shareName": "workspaces",
-                            "mountPath": "/workspace",
-                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
-                        },
-                        "tmp": {
-                            "type": "AzureFiles",
-                            "accountName": "[variables('storageAccountName')]",
-                            "shareName": "tmp",
-                            "mountPath": "/tmp",
-                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
-                        }
-                    },
-                    "ftpsState": "Disabled",
-                    "minTlsVersion": "1.2",
-                    "http20Enabled": true
-                },
-                "httpsOnly": true
-            }
-        },
-        {
-            "type": "Microsoft.Authorization/roleAssignments",
-            "apiVersion": "2022-04-01",
-            "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName')), 'Key Vault Secrets User Workflows')]",
-            "scope": "[concat('Microsoft.KeyVault/vaults', '/', variables('keyVaultName'))]",
-            "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-                "[resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))]"
-            ],
-            "properties": {
-                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6')]",
-                "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName')), '2024-11-01', 'Full').identity.principalId]",
-                "principalType": "ServicePrincipal"
-            }
-        },
-        {
-            "type": "Microsoft.Web/serverfarms",
-            "apiVersion": "2024-04-01",
             "name": "[variables('apiHostingPlanName')]",
             "location": "[resourceGroup().location]",
             "kind": "functionapp",
@@ -304,8 +174,7 @@
                 "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
                 "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
-                "[resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))]"
+                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
             ],
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
@@ -364,14 +233,26 @@
                             "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).ConnectionString]"
                         },
                         {
-                            "name": "WORKFLOWS_ENGINE_URL",
-                            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName)]"
-                        },
-                        {
                             "name": "PYTHON_ENABLE_WORKER_EXTENSIONS",
                             "value": "1"
                         }
                     ],
+                    "azureStorageAccounts": {
+                        "workspaces": {
+                            "type": "AzureFiles",
+                            "accountName": "[variables('storageAccountName')]",
+                            "shareName": "workspaces",
+                            "mountPath": "/workspace",
+                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
+                        },
+                        "tmp": {
+                            "type": "AzureFiles",
+                            "accountName": "[variables('storageAccountName')]",
+                            "shareName": "tmp",
+                            "mountPath": "/tmp",
+                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
+                        }
+                    },
                     "ftpsState": "Disabled",
                     "minTlsVersion": "1.2",
                     "http20Enabled": true
@@ -425,14 +306,6 @@
             "type": "string",
             "value": "[variables('apiFunctionAppName')]"
         },
-        "workflowsFunctionAppUrl": {
-            "type": "string",
-            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName)]"
-        },
-        "workflowsFunctionAppName": {
-            "type": "string",
-            "value": "[variables('workflowsFunctionAppName')]"
-        },
         "staticWebAppUrl": {
             "type": "string",
             "value": "[reference(resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))).defaultHostname]"
@@ -440,10 +313,6 @@
         "staticWebAppName": {
             "type": "string",
             "value": "[variables('staticWebAppName')]"
-        },
-        "githubWebhookUrl": {
-            "type": "string",
-            "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('workflowsFunctionAppName'))).defaultHostName, '/api/github-webhook')]"
         },
         "storageAccountName": {
             "type": "string",
