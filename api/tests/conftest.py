@@ -564,3 +564,176 @@ def clear_table(table_name: str):
             partition_key=entity["PartitionKey"],
             row_key=entity["RowKey"]
         )
+
+
+# ==================== AUTHENTICATION FIXTURES ====================
+
+@pytest.fixture
+def platform_admin_context():
+    """
+    Returns a RequestContext for a platform admin user
+    Used for testing admin-only endpoints and GLOBAL scope operations
+    """
+    from shared.request_context import RequestContext
+    
+    return RequestContext(
+        user_id="admin-user-12345",
+        email="admin@test.com",
+        name="Test Platform Admin",
+        org_id=None,  # GLOBAL scope
+        is_platform_admin=True,
+        is_function_key=False
+    )
+
+
+@pytest.fixture
+def org_user_context(test_org):
+    """
+    Returns a RequestContext for an organization user
+    Used for testing org-scoped operations
+    """
+    from shared.request_context import RequestContext
+    
+    return RequestContext(
+        user_id="org-user-67890",
+        email="user@test.com",
+        name="Test Org User",
+        org_id=test_org["org_id"],
+        is_platform_admin=False,
+        is_function_key=False
+    )
+
+
+@pytest.fixture
+def function_key_context():
+    """
+    Returns a RequestContext for function key authentication
+    Used for testing system-to-system operations
+    """
+    from shared.request_context import RequestContext
+    
+    return RequestContext(
+        user_id="system",
+        email="system@local",
+        name="System (Function Key)",
+        org_id=None,  # Can be set via headers
+        is_platform_admin=True,
+        is_function_key=True
+    )
+
+
+@pytest.fixture
+def mock_admin_request():
+    """
+    Returns a mock HTTP request with platform admin authentication
+    Used for testing admin endpoints
+    """
+    from tests.helpers.mock_requests import MockRequestHelper
+    
+    return MockRequestHelper.create_platform_admin_request(
+        method="GET",
+        url="/api/test"
+    )
+
+
+@pytest.fixture
+def mock_org_user_request(test_org):
+    """
+    Returns a mock HTTP request with org user authentication
+    Used for testing org user endpoints
+    """
+    from tests.helpers.mock_requests import MockRequestHelper
+    
+    return MockRequestHelper.create_org_user_request(
+        method="GET",
+        url="/api/test",
+        org_id=test_org["org_id"]
+    )
+
+
+@pytest.fixture
+def mock_function_key_request():
+    """
+    Returns a mock HTTP request with function key authentication
+    Used for testing system endpoints
+    """
+    from tests.helpers.mock_requests import MockRequestHelper
+    
+    return MockRequestHelper.create_function_key_request(
+        method="GET",
+        url="/api/test"
+    )
+
+
+@pytest.fixture
+def mock_anonymous_request():
+    """
+    Returns a mock HTTP request without authentication
+    Used for testing anonymous endpoints
+    """
+    from tests.helpers.mock_requests import MockRequestHelper
+    
+    return MockRequestHelper.create_anonymous_request(
+        method="GET",
+        url="/api/test"
+    )
+
+
+@pytest.fixture
+def test_org_with_user(test_org, test_user, users_service):
+    """
+    Creates a test organization with an assigned user
+    Returns combined dict with org and user info
+    """
+    # Update user entity to include org assignment
+    user_entity = {
+        "PartitionKey": test_org["org_id"],
+        "RowKey": test_user["user_id"],
+        "Email": test_user["email"],
+        "DisplayName": test_user["display_name"],
+        "IsActive": True,
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+    
+    users_service.upsert_entity(user_entity)
+    
+    return {
+        **test_org,
+        **test_user,
+        "user_type": "ORG",
+        "is_platform_admin": False
+    }
+
+
+@pytest.fixture
+def test_platform_admin_user(users_service):
+    """
+    Creates a platform admin user for testing
+    Returns dict with user info
+    """
+    user_id = str(uuid.uuid4())
+    
+    user_entity = {
+        "PartitionKey": "USER",
+        "RowKey": user_id,
+        "Email": "admin@test.com",
+        "DisplayName": "Test Platform Admin",
+        "IsActive": True,
+        "UserType": "PLATFORM",
+        "IsPlatformAdmin": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+    
+    users_service.upsert_entity(user_entity)
+    
+    return {
+        "user_id": user_id,
+        "email": "admin@test.com",
+        "display_name": "Test Platform Admin",
+        "user_type": "PLATFORM",
+        "is_platform_admin": True
+    }

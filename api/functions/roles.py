@@ -37,12 +37,13 @@ bp = func.Blueprint()
 @bp.function_name("roles_list_roles")
 @bp.route(route="roles", methods=["GET"])
 @with_request_context
+@require_platform_admin
 async def list_roles(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/roles
     List all roles
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = req.context
     logger.info(f"User {context.user_id} listing all roles")
@@ -333,12 +334,13 @@ async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("roles_get_role_users")
 @bp.route(route="roles/{roleId}/users", methods=["GET"])
 @with_request_context
+@require_platform_admin
 async def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/roles/{roleId}/users
     Get all users assigned to a role
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = req.context
     role_id = req.route_params.get("roleId")
@@ -549,12 +551,13 @@ async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("roles_get_role_forms")
 @bp.route(route="roles/{roleId}/forms", methods=["GET"])
 @with_request_context
+@require_platform_admin
 async def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/roles/{roleId}/forms
     Get all forms assigned to a role
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = req.context
     role_id = req.route_params.get("roleId")

@@ -48,12 +48,7 @@ def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optiona
     # Try org-specific first (if org_id provided)
     if org_id:
         try:
-            org_context = RequestContext(
-                user_id=context.user_id,
-                user_type=context.user_type,
-                org_scope=org_id
-            )
-            config_service = get_table_service("Config", org_context)
+            config_service = get_table_service("Config", context)
             org_config = config_service.get_entity(org_id, row_key)
             if org_config:
                 logger.debug(f"Found org-specific config for key '{key}' in org {org_id}")
@@ -63,12 +58,7 @@ def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optiona
 
     # Fallback to GLOBAL
     try:
-        global_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope="GLOBAL"
-        )
-        config_service = get_table_service("Config", global_context)
+        config_service = get_table_service("Config", context)
         global_config = config_service.get_entity("GLOBAL", row_key)
         if global_config:
             logger.debug(f"Found GLOBAL config for key '{key}'")
@@ -128,18 +118,12 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
             return error_response
 
         # Query Config table based on scope
-        from shared.request_context import RequestContext
+        # Determine partition key for the query
+        partition_key = "GLOBAL" if scope == "global" else org_id
 
-        # Create context for the requested scope
-        scoped_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope="GLOBAL" if scope == "global" else org_id
-        )
-
-        config_service = get_table_service("Config", scoped_context)
+        config_service = get_table_service("Config", context)
         config_entities = list(config_service.query_entities(
-            filter="RowKey ge 'config:' and RowKey lt 'config;'"
+            filter=f"PartitionKey eq '{partition_key}' and RowKey ge 'config:' and RowKey lt 'config;'"
         ))
 
         # Convert to response models
@@ -228,16 +212,8 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
         else:
             partition_key = "GLOBAL"
 
-        # Create context for the requested scope
-        from shared.request_context import RequestContext
-        scoped_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope=partition_key
-        )
-
         # Check if this is a new config or update
-        config_service = get_table_service("Config", scoped_context)
+        config_service = get_table_service("Config", context)
         row_key = f"config:{set_request.key}"
 
         existing_config = None
@@ -270,10 +246,15 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
             status_code = 201
             logger.info(f"Created config key '{set_request.key}' (scope={set_request.scope})")
 
-        # Create response model
+        # Create response model with masked sensitive values
+        masked_value = mask_sensitive_value(
+            set_request.key,
+            set_request.value,
+            set_request.type.value
+        )
         config = Config(
             key=set_request.key,
-            value=set_request.value,
+            value=masked_value,
             type=set_request.type,
             scope=set_request.scope,
             orgId=org_id if set_request.scope == "org" else None,
@@ -373,14 +354,6 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
         else:
             partition_key = "GLOBAL"
 
-        # Create context for the requested scope
-        from shared.request_context import RequestContext
-        scoped_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope=partition_key
-        )
-
         # Check if config is referenced by OAuth connections
         # OAuth connection configs follow patterns:
         # - oauth_{connection_name}_client_secret
@@ -392,7 +365,7 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
             parts = key.split("_")
             if len(parts) >= 3:
                 # Check if there's an OAuth entity using this config
-                entities_service = get_table_service("Entities", scoped_context)
+                entities_service = get_table_service("Entities", context)
                 try:
                     # Query all OAuth connections for this org (stored as oauth:{name} in Entities table)
                     connections = list(entities_service.query_entities(
@@ -425,7 +398,7 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
                     logger.warning(f"Could not check OAuth references for config '{key}': {e}")
 
         # Delete config (idempotent - no error if key doesn't exist)
-        config_service = get_table_service("Config", scoped_context)
+        config_service = get_table_service("Config", context)
         row_key = f"config:{key}"
 
         try:
@@ -472,18 +445,10 @@ async def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving integrations for org {org_id}")
 
     try:
-        # Create context for the requested org
-        from shared.request_context import RequestContext
-        org_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope=org_id
-        )
-
         # Query Config table for integration configs (stored with "integration:" prefix)
-        config_service = get_table_service("Config", org_context)
+        config_service = get_table_service("Config", context)
         integration_entities = list(config_service.query_entities(
-            filter="RowKey ge 'integration:' and RowKey lt 'integration;'"
+            filter=f"PartitionKey eq '{org_id}' and RowKey ge 'integration:' and RowKey lt 'integration;'"
         ))
 
         # Convert to response models
@@ -539,20 +504,12 @@ async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} setting integration for org {org_id}")
 
     try:
-        # Create context for the requested org
-        from shared.request_context import RequestContext
-        org_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope=org_id
-        )
-
         # Parse and validate request body
         request_body = req.get_json()
         set_request = SetIntegrationConfigRequest(**request_body)
 
         # Check if this is a new integration or update
-        config_service = get_table_service("Config", org_context)
+        config_service = get_table_service("Config", context)
         row_key = f"integration:{set_request.type.value}"
 
         existing_integration = None
@@ -664,16 +621,8 @@ async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} deleting {integration_type} integration for org {org_id}")
 
     try:
-        # Create context for the requested org
-        from shared.request_context import RequestContext
-        org_context = RequestContext(
-            user_id=context.user_id,
-            user_type=context.user_type,
-            org_scope=org_id
-        )
-
         # Delete integration (idempotent - no error if doesn't exist)
-        config_service = get_table_service("Config", org_context)
+        config_service = get_table_service("Config", context)
         row_key = f"integration:{integration_type}"
 
         try:

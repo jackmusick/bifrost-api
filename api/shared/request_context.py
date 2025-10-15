@@ -197,7 +197,8 @@ def _is_platform_admin(user_id: str) -> bool:
 
     try:
         users_service = TableStorageService("Users")
-        user_entity = users_service.get_entity("USER", user_id)
+        # Users table structure: PK=email, RK="user"
+        user_entity = users_service.get_entity(user_id, "user")
 
         if user_entity:
             return (
@@ -212,23 +213,37 @@ def _is_platform_admin(user_id: str) -> bool:
 
 
 def _get_user_org_id(user_id: str) -> Optional[str]:
-    """Look up user's organization ID from database"""
+    """
+    Look up user's organization ID from database.
+
+    Queries the Relationships table for user-to-org permissions.
+    Structure: PK="GLOBAL", RK="userperm:{user_email}:{org_id}"
+    """
     from shared.storage import TableStorageService
 
     try:
-        users_table = TableStorageService("Users")
-        entities = list(users_table.query_entities(f"RowKey eq '{user_id}'"))
+        relationships_table = TableStorageService("Relationships")
+        # Query for user permissions
+        # Use string comparison: 'userperm:email:' to 'userperm:email~' (~ is after : in ASCII)
+        query_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'userperm:{user_id}:' and RowKey lt 'userperm:{user_id}~'"
+        entities = list(relationships_table.query_entities(query_filter))
 
         if not entities:
-            logger.warning(f"User {user_id} not found in database")
+            logger.warning(f"User {user_id} has no org assignments")
             return None
 
         if len(entities) > 1:
-            logger.warning(f"Multiple users found for {user_id}, using first")
+            logger.warning(f"Multiple org assignments for {user_id}, using first")
 
-        org_id = entities[0].get("PartitionKey")
-        logger.debug(f"User {user_id} belongs to org: {org_id}")
-        return org_id
+        # Extract org_id from RowKey "userperm:{user_id}:{org_id}"
+        row_key = entities[0].get("RowKey")
+        parts = row_key.split(":", 2)
+        if len(parts) >= 3:
+            org_id = parts[2]
+            logger.debug(f"User {user_id} belongs to org: {org_id}")
+            return org_id
+
+        return None
 
     except Exception as e:
         logger.error(f"Error looking up user org: {e}")

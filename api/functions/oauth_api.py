@@ -10,8 +10,8 @@ from datetime import datetime
 from urllib.parse import urlencode
 import azure.functions as func
 from pydantic import ValidationError
-from shared.types import get_context, get_route_param
-from shared.decorators import with_request_context
+from shared.custom_types import get_context, get_route_param
+from shared.decorators import with_request_context, require_platform_admin
 from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 from services.oauth_storage_service import OAuthStorageService
@@ -34,6 +34,7 @@ bp = func.Blueprint()
 @bp.function_name("oauth_create_connection")
 @bp.route(route="oauth/connections", methods=["POST"])
 @with_request_context
+@require_platform_admin
 async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections
@@ -127,6 +128,7 @@ async def create_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("oauth_list_connections")
 @bp.route(route="oauth/connections", methods=["GET"])
 @with_request_context
+@require_platform_admin
 async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/connections
@@ -134,7 +136,7 @@ async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
 
     Returns org-specific connections + GLOBAL connections (with org-specific taking precedence)
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = get_context(req)
     org_id = context.scope
@@ -175,6 +177,7 @@ async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("oauth_get_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["GET"])
 @with_request_context
+@require_platform_admin
 async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/connections/{connection_name}
@@ -182,7 +185,7 @@ async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 
     Route params: connection_name
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = get_context(req)
     connection_name = get_route_param(req, "connection_name")
@@ -232,6 +235,7 @@ async def get_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("oauth_update_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["PUT"])
 @with_request_context
+@require_platform_admin
 async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     PUT /api/oauth/connections/{connection_name}
@@ -326,6 +330,7 @@ async def update_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("oauth_delete_connection")
 @bp.route(route="oauth/connections/{connection_name}", methods=["DELETE"])
 @with_request_context
+@require_platform_admin
 async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/oauth/connections/{connection_name}
@@ -378,6 +383,7 @@ async def delete_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("oauth_authorize")
 @bp.route(route="oauth/connections/{connection_name}/authorize", methods=["POST"])
 @with_request_context
+@require_platform_admin
 async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections/{connection_name}/authorize
@@ -387,7 +393,7 @@ async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse
 
     Route params: connection_name
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = get_context(req)
     connection_name = get_route_param(req, "connection_name")
@@ -488,6 +494,7 @@ async def authorize_oauth_connection(req: func.HttpRequest) -> func.HttpResponse
 @bp.function_name("oauth_cancel_authorization")
 @bp.route(route="oauth/connections/{connection_name}/cancel", methods=["POST"])
 @with_request_context
+@require_platform_admin
 async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections/{connection_name}/cancel
@@ -497,7 +504,7 @@ async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse
 
     Route params: connection_name
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = get_context(req)
     connection_name = get_route_param(req, "connection_name")
@@ -554,6 +561,7 @@ async def cancel_oauth_authorization(req: func.HttpRequest) -> func.HttpResponse
 @bp.function_name("oauth_refresh_token")
 @bp.route(route="oauth/connections/{connection_name}/refresh", methods=["POST"])
 @with_request_context
+@require_platform_admin
 async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/oauth/connections/{connection_name}/refresh
@@ -561,7 +569,7 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
 
     Route params: connection_name
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = get_context(req)
     connection_name = get_route_param(req, "connection_name")
@@ -1180,6 +1188,7 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("oauth_refresh_job_status")
 @bp.route(route="oauth/refresh_job_status", methods=["GET"])
 @with_request_context
+@require_platform_admin
 async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/oauth/refresh_job_status
@@ -1187,7 +1196,7 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
 
     Returns metrics and logs from the automatic token refresh scheduler
 
-    Requires: User must be authenticated
+    Platform admin only endpoint
     """
     context = get_context(req)
     logger.info(f"User {context.email} retrieving OAuth refresh job status")

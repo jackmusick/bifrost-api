@@ -84,7 +84,14 @@
       "Bash(func start --port 7072)",
       "Bash(lsof:*)",
       "Bash(timeout:*)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(./tests/integration_e2e/setup.sh:*)",
+      "Bash(pytest:*)",
+      "Bash(export AzureWebJobsStorage=\"UseDevelopmentStorage=true\")",
+      "Bash(for i in {1..15})",
+      "Bash(do curl -s http://localhost:7072/api/health)",
+      "Bash(break)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
