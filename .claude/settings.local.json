@@ -91,7 +91,8 @@
       "Bash(for i in {1..15})",
       "Bash(do curl -s http://localhost:7072/api/health)",
       "Bash(break)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(npm test:*)"
     ],
     "deny": [],
     "ask": []

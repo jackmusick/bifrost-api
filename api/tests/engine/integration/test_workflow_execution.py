@@ -64,7 +64,7 @@ def registry():
 @pytest.fixture
 def mock_table_storage():
     """Mock table storage service"""
-    with patch('engine.shared.storage.TableStorageService') as mock:
+    with patch('shared.storage.TableStorageService') as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield instance
@@ -173,7 +173,7 @@ class TestExecutionLogger:
         workflow_storage = MagicMock()
         user_storage = MagicMock()
 
-        with patch('engine.shared.execution_logger.get_table_storage_service') as mock_get_storage:
+        with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
             def get_storage(table_name):
                 if table_name == "WorkflowExecutions":
                     return workflow_storage
@@ -223,7 +223,7 @@ class TestExecutionLogger:
             {'RowKey': '9999999999999_test-exec-123'}
         ]
 
-        with patch('engine.shared.execution_logger.get_table_storage_service') as mock_get_storage:
+        with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
             def get_storage(table_name):
                 if table_name == "WorkflowExecutions":
                     return workflow_storage

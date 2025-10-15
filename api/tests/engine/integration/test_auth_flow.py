@@ -92,8 +92,8 @@ class TestAuthenticationFlow:
         # Create request with function key
         req = self.create_mock_request(function_key="test_key_12345")
 
-        with patch('engine.shared.storage.get_organization', return_value=mock_org_entity):
-            with patch('engine.shared.storage.get_org_config', return_value=mock_config_entities):
+        with patch('shared.storage.get_organization', return_value=mock_org_entity):
+            with patch('shared.storage.get_org_config', return_value=mock_config_entities):
                 auth_service = AuthenticationService()
                 principal = await auth_service.authenticate(req)
 
@@ -124,8 +124,8 @@ class TestAuthenticationFlow:
 
         req = self.create_mock_request(easy_auth_principal=easy_auth_data)
 
-        with patch('engine.shared.storage.get_organization', return_value=mock_org_entity):
-            with patch('engine.shared.storage.get_org_config', return_value=mock_config_entities):
+        with patch('shared.storage.get_organization', return_value=mock_org_entity):
+            with patch('shared.storage.get_org_config', return_value=mock_config_entities):
                 auth_service = AuthenticationService()
                 principal = await auth_service.authenticate(req)
 
@@ -252,8 +252,8 @@ class TestAuthenticationFlow:
         # Create request with function key
         req = self.create_mock_request(function_key="test_key")
 
-        with patch('engine.shared.storage.get_organization', return_value=mock_org_entity):
-            with patch('engine.shared.storage.get_org_config', return_value=mock_config_entities):
+        with patch('shared.storage.get_organization', return_value=mock_org_entity):
+            with patch('shared.storage.get_org_config', return_value=mock_config_entities):
                 context = await load_organization_context("test-org-123", req)
 
         # Assert context loaded correctly

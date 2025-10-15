@@ -4,6 +4,8 @@ Tests context creation, scope determination, and user type detection
 """
 
 import pytest
+import json
+import base64
 from unittest.mock import Mock, MagicMock
 from shared.request_context import RequestContext, get_request_context
 from shared.storage import TableStorageService
@@ -103,15 +105,18 @@ class TestGetRequestContext:
     @pytest.fixture
     def mock_users_table(self, monkeypatch):
         """Mock Users table for user lookups"""
-        mock_table = Mock(spec=TableStorageService)
+        mock_users_table = Mock(spec=TableStorageService)
+        mock_relationships_table = Mock(spec=TableStorageService)
 
-        def mock_get_table_service(table_name, context=None):
+        def mock_table_service_init(table_name):
             if table_name == "Users":
-                return mock_table
+                return mock_users_table
+            elif table_name == "Relationships":
+                return mock_relationships_table
             return Mock(spec=TableStorageService)
 
-        monkeypatch.setattr("shared.request_context.get_table_service", mock_get_table_service)
-        return mock_table
+        monkeypatch.setattr("shared.storage.TableStorageService", mock_table_service_init)
+        return mock_users_table
 
     def test_function_key_auth_global_scope(self, mock_users_table):
         """Function key auth with no X-Organization-Id header"""
@@ -119,6 +124,7 @@ class TestGetRequestContext:
         req.headers = {
             "x-functions-key": "test-key"
         }
+        req.params = {}
 
         context = get_request_context(req)
 
@@ -134,6 +140,7 @@ class TestGetRequestContext:
             "x-functions-key": "test-key",
             "X-Organization-Id": "org-123"
         }
+        req.params = {}
 
         context = get_request_context(req)
 
@@ -147,17 +154,23 @@ class TestGetRequestContext:
         # Mock user lookup - platform admin
         mock_users_table.get_entity.return_value = {
             "PartitionKey": "admin@example.com",
-            "RowKey": "admin@example.com",
+            "RowKey": "user",
             "Email": "admin@example.com",
             "Name": "Admin User",
             "IsPlatformAdmin": True,
-            "OrgId": None
+            "UserType": "PLATFORM"
         }
+
+        # Create principal header (base64 encoded JSON)
+        import base64
+        principal = {"userId": "admin@example.com", "userDetails": "admin@example.com"}
+        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
 
         req = Mock(spec=func.HttpRequest)
         req.headers = {
-            "X-MS-CLIENT-PRINCIPAL-ID": "admin@example.com"
+            "X-MS-CLIENT-PRINCIPAL": principal_header
         }
+        req.params = {}
 
         context = get_request_context(req)
 
@@ -171,18 +184,24 @@ class TestGetRequestContext:
         # Mock user lookup - platform admin
         mock_users_table.get_entity.return_value = {
             "PartitionKey": "admin@example.com",
-            "RowKey": "admin@example.com",
+            "RowKey": "user",
             "Email": "admin@example.com",
             "Name": "Admin User",
             "IsPlatformAdmin": True,
-            "OrgId": None
+            "UserType": "PLATFORM"
         }
+
+        # Create principal header (base64 encoded JSON)
+        import base64
+        principal = {"userId": "admin@example.com", "userDetails": "admin@example.com"}
+        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
 
         req = Mock(spec=func.HttpRequest)
         req.headers = {
-            "X-MS-CLIENT-PRINCIPAL-ID": "admin@example.com",
+            "X-MS-CLIENT-PRINCIPAL": principal_header,
             "X-Organization-Id": "org-456"
         }
+        req.params = {}
 
         context = get_request_context(req)
 
@@ -191,22 +210,43 @@ class TestGetRequestContext:
         assert context.org_id == "org-456"
         assert context.scope == "org-456"
 
-    def test_regular_user_with_org(self, mock_users_table):
+    def test_regular_user_with_org(self, mock_users_table, monkeypatch):
         """Regular user with fixed org_id from database"""
-        # Mock user lookup - regular user
+        # Mock user lookup - regular user (not platform admin)
         mock_users_table.get_entity.return_value = {
             "PartitionKey": "user@example.com",
-            "RowKey": "user@example.com",
+            "RowKey": "user",
             "Email": "user@example.com",
             "Name": "Regular User",
             "IsPlatformAdmin": False,
-            "OrgId": "org-789"
+            "UserType": "ORG"
         }
+
+        # Mock relationships table to return org assignment
+        mock_relationships_table = Mock(spec=TableStorageService)
+        mock_relationships_table.query_entities.return_value = [
+            {"RowKey": "userperm:user@example.com:org-789"}
+        ]
+
+        def mock_table_service_init(table_name):
+            if table_name == "Users":
+                return mock_users_table
+            elif table_name == "Relationships":
+                return mock_relationships_table
+            return Mock(spec=TableStorageService)
+
+        monkeypatch.setattr("shared.storage.TableStorageService", mock_table_service_init)
+
+        # Create principal header (base64 encoded JSON)
+        import base64
+        principal = {"userId": "user@example.com", "userDetails": "user@example.com"}
+        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
 
         req = Mock(spec=func.HttpRequest)
         req.headers = {
-            "X-MS-CLIENT-PRINCIPAL-ID": "user@example.com"
+            "X-MS-CLIENT-PRINCIPAL": principal_header
         }
+        req.params = {}
 
         context = get_request_context(req)
 
@@ -215,34 +255,54 @@ class TestGetRequestContext:
         assert context.org_id == "org-789"
         assert context.scope == "org-789"
 
-    def test_regular_user_ignores_org_header(self, mock_users_table):
-        """Regular user cannot override org_id via header"""
-        # Mock user lookup - regular user
+    def test_regular_user_ignores_org_header(self, mock_users_table, monkeypatch):
+        """Regular user cannot override org_id via header - raises PermissionError"""
+        # Mock user lookup - regular user (not platform admin)
         mock_users_table.get_entity.return_value = {
             "PartitionKey": "user@example.com",
-            "RowKey": "user@example.com",
+            "RowKey": "user",
             "Email": "user@example.com",
             "Name": "Regular User",
             "IsPlatformAdmin": False,
-            "OrgId": "org-789"
+            "UserType": "ORG"
         }
+
+        # Mock relationships table to return org assignment
+        mock_relationships_table = Mock(spec=TableStorageService)
+        mock_relationships_table.query_entities.return_value = [
+            {"RowKey": "userperm:user@example.com:org-789"}
+        ]
+
+        def mock_table_service_init(table_name):
+            if table_name == "Users":
+                return mock_users_table
+            elif table_name == "Relationships":
+                return mock_relationships_table
+            return Mock(spec=TableStorageService)
+
+        monkeypatch.setattr("shared.storage.TableStorageService", mock_table_service_init)
+
+        # Create principal header (base64 encoded JSON)
+        import base64
+        principal = {"userId": "user@example.com", "userDetails": "user@example.com"}
+        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
 
         req = Mock(spec=func.HttpRequest)
         req.headers = {
-            "X-MS-CLIENT-PRINCIPAL-ID": "user@example.com",
-            "X-Organization-Id": "org-different"  # Should be ignored
+            "X-MS-CLIENT-PRINCIPAL": principal_header,
+            "X-Organization-Id": "org-different"  # Should raise PermissionError
         }
+        req.params = {}
 
-        context = get_request_context(req)
-
-        # Regular user's org_id comes from database, not header
-        assert context.org_id == "org-789"
-        assert context.scope == "org-789"
+        # Regular user attempting to override org_id should raise PermissionError
+        with pytest.raises(PermissionError, match="Only platform administrators"):
+            get_request_context(req)
 
     def test_local_dev_mode(self, mock_users_table):
         """Local development mode with no auth headers"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
+        req.params = {}
 
         context = get_request_context(req)
 
