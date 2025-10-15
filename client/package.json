@@ -12,7 +12,7 @@
         "preview": "swa start dist",
         "lint": "eslint .",
         "deploy": "swa deploy",
-        "generate:types": "npx openapi-typescript http://localhost:7071/api/openapi.json -o src/types/generated/management-api.ts && npx openapi-typescript http://localhost:7072/api/openapi.json -o src/types/generated/workflow-api.ts"
+        "generate:types": "npx openapi-typescript http://localhost:7071/api/openapi.json -o src/types/generated/api.ts"
     },
     "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^1.7.7",

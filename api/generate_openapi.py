@@ -2,7 +2,10 @@
 """
 OpenAPI Spec Generator for Bifrost Integrations Management API
 
-Generates OpenAPI YAML from Pydantic models in shared/models.py
+Generates OpenAPI YAML from:
+1. Decorator registry (endpoints with @openapi_endpoint)
+2. Pydantic models (request/response schemas)
+
 This provides a single source of truth for types across Python and TypeScript.
 
 Usage:
@@ -12,6 +15,7 @@ Usage:
 from pydantic import BaseModel
 import yaml
 from typing import Type
+from shared.openapi_decorators import build_openapi_spec
 from shared.models import (
     # Enums
     ConfigType,
@@ -66,11 +70,24 @@ from shared.models import (
 
 def generate_openapi_spec() -> dict:
     """
-    Generate OpenAPI 3.0 spec from Pydantic models.
+    Generate OpenAPI 3.0 spec using decorator registry + Pydantic models.
 
     Returns:
         dict: OpenAPI specification
     """
+
+    # Import all endpoint modules to ensure decorators are executed
+    # This triggers the @openapi_endpoint decorators and populates the registry
+    import functions.organizations
+    import functions.roles
+    import functions.permissions
+    import functions.forms
+    import functions.executions
+    import functions.org_config
+    import functions.oauth_api
+    import functions.secrets
+    import functions.dashboard
+    # Note: health endpoint is in function_app.py and doesn't use decorators yet
 
     # List of all models to include in the spec
     models: list[Type[BaseModel]] = [
@@ -124,47 +141,12 @@ def generate_openapi_spec() -> dict:
         ErrorResponse,
     ]
 
-    # Generate schemas from Pydantic models
-    schemas = {}
-    from enum import Enum
-
-    for model in models:
-        # Handle Enums differently
-        if isinstance(model, type) and issubclass(model, Enum):
-            # Generate enum schema manually
-            enum_values = [e.value for e in model]
-            schemas[model.__name__] = {
-                'type': 'string',
-                'enum': enum_values
-            }
-        else:
-            # Get JSON schema from Pydantic model
-            model_schema = model.model_json_schema(
-                ref_template='#/components/schemas/{model}')
-
-            # Extract nested definitions
-            if '$defs' in model_schema:
-                for def_name, def_schema in model_schema['$defs'].items():
-                    if def_name not in schemas:
-                        schemas[def_name] = def_schema
-                del model_schema['$defs']
-
-            # Add model schema
-            schemas[model.__name__] = model_schema
-
-    # Build OpenAPI spec
-    spec = {
-        'openapi': '3.0.3',
-        'info': {
-            'title': 'Bifrost Integrations - Management API',
-            'version': '1.0.0',
-            'description': 'API for managing forms, organizations, permissions, and users. Auto-generated from Pydantic models.',
-            'contact': {
-                'name': 'Bifrost Integrations',
-                'email': 'jack@gocovi.com'
-            }
-        },
-        'servers': [
+    # Build spec using decorator system
+    spec = build_openapi_spec(
+        title='Bifrost Integrations - Management API',
+        version='1.0.0',
+        description='API for managing forms, organizations, permissions, and users. Auto-generated from decorators and Pydantic models.',
+        servers=[
             {
                 'url': 'http://localhost:7071',
                 'description': 'Local development server'
@@ -180,204 +162,8 @@ def generate_openapi_spec() -> dict:
                 }
             }
         ],
-        'components': {
-            'schemas': schemas,
-            'securitySchemes': {
-                'BearerAuth': {
-                    'type': 'http',
-                    'scheme': 'bearer',
-                    'bearerFormat': 'JWT',
-                    'description': 'Azure AD JWT token'
-                }
-            }
-        },
-        'security': [
-            {'BearerAuth': []}
-        ],
-        'paths': {
-            '/api/health': {
-                'get': {
-                    'summary': 'Health check',
-                    'description': 'Check if the API is running',
-                    'tags': ['Health'],
-                    'responses': {
-                        '200': {
-                            'description': 'API is healthy',
-                            'content': {
-                                'application/json': {
-                                    'schema': {
-                                        'type': 'object',
-                                        'properties': {
-                                            'status': {'type': 'string', 'example': 'healthy'},
-                                            'timestamp': {'type': 'string', 'format': 'date-time'}
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            '/api/forms': {
-                'get': {
-                    'summary': 'List forms',
-                    'description': 'Get all forms for an organization',
-                    'tags': ['Forms'],
-                    'parameters': [
-                        {
-                            'name': 'orgId',
-                            'in': 'query',
-                            'schema': {'type': 'string'},
-                            'description': 'Filter by organization ID'
-                        }
-                    ],
-                    'responses': {
-                        '200': {
-                            'description': 'List of forms',
-                            'content': {
-                                'application/json': {
-                                    'schema': {
-                                        'type': 'array',
-                                        'items': {'$ref': '#/components/schemas/Form'}
-                                    }
-                                }
-                            }
-                        },
-                        '401': {'$ref': '#/components/responses/UnauthorizedError'},
-                        '500': {'$ref': '#/components/responses/InternalError'}
-                    }
-                },
-                'post': {
-                    'summary': 'Create form',
-                    'description': 'Create a new form',
-                    'tags': ['Forms'],
-                    'requestBody': {
-                        'required': True,
-                        'content': {
-                            'application/json': {
-                                'schema': {'$ref': '#/components/schemas/CreateFormRequest'}
-                            }
-                        }
-                    },
-                    'responses': {
-                        '201': {
-                            'description': 'Form created',
-                            'content': {
-                                'application/json': {
-                                    'schema': {'$ref': '#/components/schemas/Form'}
-                                }
-                            }
-                        },
-                        '400': {'$ref': '#/components/responses/BadRequestError'},
-                        '401': {'$ref': '#/components/responses/UnauthorizedError'},
-                        '500': {'$ref': '#/components/responses/InternalError'}
-                    }
-                }
-            },
-            '/api/forms/{formId}': {
-                'get': {
-                    'summary': 'Get form',
-                    'description': 'Get form by ID',
-                    'tags': ['Forms'],
-                    'parameters': [
-                        {'name': 'formId', 'in': 'path', 'required': True,
-                            'schema': {'type': 'string'}}
-                    ],
-                    'responses': {
-                        '200': {
-                            'description': 'Form details',
-                            'content': {
-                                'application/json': {
-                                    'schema': {'$ref': '#/components/schemas/Form'}
-                                }
-                            }
-                        },
-                        '404': {'$ref': '#/components/responses/NotFoundError'},
-                        '500': {'$ref': '#/components/responses/InternalError'}
-                    }
-                },
-                'put': {
-                    'summary': 'Update form',
-                    'description': 'Update an existing form',
-                    'tags': ['Forms'],
-                    'parameters': [
-                        {'name': 'formId', 'in': 'path', 'required': True,
-                            'schema': {'type': 'string'}}
-                    ],
-                    'requestBody': {
-                        'required': True,
-                        'content': {
-                            'application/json': {
-                                'schema': {'$ref': '#/components/schemas/UpdateFormRequest'}
-                            }
-                        }
-                    },
-                    'responses': {
-                        '200': {
-                            'description': 'Form updated',
-                            'content': {
-                                'application/json': {
-                                    'schema': {'$ref': '#/components/schemas/Form'}
-                                }
-                            }
-                        },
-                        '404': {'$ref': '#/components/responses/NotFoundError'},
-                        '500': {'$ref': '#/components/responses/InternalError'}
-                    }
-                },
-                'delete': {
-                    'summary': 'Delete form',
-                    'description': 'Delete a form (soft delete)',
-                    'tags': ['Forms'],
-                    'parameters': [
-                        {'name': 'formId', 'in': 'path', 'required': True,
-                            'schema': {'type': 'string'}}
-                    ],
-                    'responses': {
-                        '204': {'description': 'Form deleted'},
-                        '404': {'$ref': '#/components/responses/NotFoundError'},
-                        '500': {'$ref': '#/components/responses/InternalError'}
-                    }
-                }
-            }
-        }
-    }
-
-    # Add common responses
-    spec['components']['responses'] = {
-        'BadRequestError': {
-            'description': 'Bad request',
-            'content': {
-                'application/json': {
-                    'schema': {'$ref': '#/components/schemas/ErrorResponse'}
-                }
-            }
-        },
-        'UnauthorizedError': {
-            'description': 'Unauthorized',
-            'content': {
-                'application/json': {
-                    'schema': {'$ref': '#/components/schemas/ErrorResponse'}
-                }
-            }
-        },
-        'NotFoundError': {
-            'description': 'Resource not found',
-            'content': {
-                'application/json': {
-                    'schema': {'$ref': '#/components/schemas/ErrorResponse'}
-                }
-            }
-        },
-        'InternalError': {
-            'description': 'Internal server error',
-            'content': {
-                'application/json': {
-                    'schema': {'$ref': '#/components/schemas/ErrorResponse'}
-                }
-            }
-        }
-    }
+        models=models
+    )
 
     return spec
 
