@@ -283,9 +283,7 @@ class TestGetUserVisibleForms:
 
         monkeypatch.setattr("shared.authorization.TableStorageService", mock_table_storage_service)
 
-        # Also need to mock RequestContext import
-        from shared import context as context_module
-        monkeypatch.setattr("shared.authorization.RC", context_module.RequestContext)
+        # RequestContext is imported directly in the module, no need to patch
 
         context = RequestContext(
             user_id="user@example.com",

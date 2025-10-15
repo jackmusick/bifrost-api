@@ -24,12 +24,12 @@ class TestTypeStubAccuracy:
     @pytest.fixture
     def stub_path(self):
         """Get path to bifrost.pyi stub file"""
-        return Path(__file__).parent.parent.parent / "stubs" / "bifrost.pyi"
+        return Path(__file__).parent.parent.parent.parent / "stubs" / "bifrost.pyi"
 
     @pytest.fixture
     def bifrost_py_path(self):
         """Get path to bifrost.py runtime shim"""
-        return Path(__file__).parent.parent.parent / "bifrost.py"
+        return Path(__file__).parent.parent.parent.parent / "bifrost.py"
 
     def test_stub_file_exists(self, stub_path):
         """Contract: Type stub file must exist"""
@@ -205,7 +205,7 @@ class TestTypeStubAccuracy:
 
     def test_stub_file_contains_new_logger_methods(self):
         """Contract: Stub file must document new logger-style methods"""
-        stub_path = Path(__file__).parent.parent.parent / "stubs" / "bifrost.pyi"
+        stub_path = Path(__file__).parent.parent.parent.parent / "stubs" / "bifrost.pyi"
         stub_content = stub_path.read_text()
 
         # Check that stub has new methods

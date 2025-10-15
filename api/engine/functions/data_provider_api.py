@@ -55,7 +55,7 @@ async def get_data_provider_options(req: func.HttpRequest) -> func.HttpResponse:
         500: Provider execution error
     """
     # Get context from request (injected by @with_org_context decorator)
-    context = req.context
+    context = req.org_context
 
     provider_name = req.route_params.get('providerName')
     no_cache = req.params.get('no_cache', '').lower() == 'true'

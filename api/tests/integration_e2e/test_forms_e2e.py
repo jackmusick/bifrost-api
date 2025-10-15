@@ -245,19 +245,3 @@ class TestFormsE2E:
         assert response.status_code == 400
         error = response.json()
         assert error["error"] == "ValidationError"
-
-    @pytest.mark.skip(reason="Local dev mode treats anonymous as admin (production has SWA auth layer)")
-    def test_list_forms_anonymous_unauthorized(self, base_url, anonymous_headers):
-        """
-        Anonymous users should be rejected in production.
-
-        NOTE: This test is skipped in local dev because request_context.py lines 113-126
-        treat anonymous requests as local-dev admin users. In production, Azure Static Web Apps
-        authentication layer rejects unauthenticated requests before they reach Functions.
-        """
-        response = requests.get(
-            f"{base_url}/forms",
-            headers=anonymous_headers
-        )
-
-        assert response.status_code == 401

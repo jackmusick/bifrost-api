@@ -239,16 +239,6 @@ class TestConfigE2E:
 
         assert response.status_code == 403
 
-    @pytest.mark.skip(reason="Local dev mode treats anonymous as admin")
-    def test_config_anonymous_unauthorized(self, base_url, anonymous_headers):
-        """Anonymous users should be rejected in production"""
-        response = requests.get(
-            f"{base_url}/config?scope=global",
-            headers=anonymous_headers
-        )
-
-        assert response.status_code == 401
-
 
 class TestIntegrationConfigE2E:
     """Test Integration Config API endpoints"""

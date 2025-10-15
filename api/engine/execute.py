@@ -74,7 +74,7 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
         500: Execution error
     """
     # Get context from request (injected by @with_org_context decorator)
-    context = req.context
+    context = req.org_context
 
     workflow_name = req.route_params.get('workflowName')
 

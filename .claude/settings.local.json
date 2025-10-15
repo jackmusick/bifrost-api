@@ -92,7 +92,10 @@
       "Bash(do curl -s http://localhost:7072/api/health)",
       "Bash(break)",
       "Bash(done)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(pkill:*)",
+      "Bash(git fetch:*)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "ask": []

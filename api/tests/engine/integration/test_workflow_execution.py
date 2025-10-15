@@ -170,15 +170,15 @@ class TestExecutionLogger:
         from shared.execution_logger import ExecutionLogger
 
         # Mock table storage services
-        workflow_storage = MagicMock()
-        user_storage = MagicMock()
+        entities_storage = MagicMock()
+        relationships_storage = MagicMock()
 
         with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
             def get_storage(table_name):
-                if table_name == "WorkflowExecutions":
-                    return workflow_storage
-                elif table_name == "UserExecutions":
-                    return user_storage
+                if table_name == "Entities":
+                    return entities_storage
+                elif table_name == "Relationships":
+                    return relationships_storage
 
             mock_get_storage.side_effect = get_storage
 
@@ -194,41 +194,43 @@ class TestExecutionLogger:
             )
 
             # Verify both tables were written to
-            workflow_storage.insert_entity.assert_called_once()
-            user_storage.insert_entity.assert_called_once()
+            entities_storage.insert_entity.assert_called_once()
+            relationships_storage.insert_entity.assert_called_once()
 
-            # Verify WorkflowExecutions entity structure
-            workflow_entity = workflow_storage.insert_entity.call_args[0][0]
-            assert workflow_entity['PartitionKey'] == 'org-456'
-            assert workflow_entity['ExecutionId'] == 'test-exec-123'
-            assert workflow_entity['WorkflowName'] == 'test_workflow'
-            assert workflow_entity['FormId'] == 'form-abc'
+            # Verify Entities entity structure
+            entities_entity = entities_storage.insert_entity.call_args[0][0]
+            assert entities_entity['PartitionKey'] == 'org-456'
+            assert entities_entity['ExecutionId'] == 'test-exec-123'
+            assert entities_entity['WorkflowName'] == 'test_workflow'
+            assert entities_entity['FormId'] == 'form-abc'
 
-            # Verify UserExecutions entity structure
-            user_entity = user_storage.insert_entity.call_args[0][0]
-            assert user_entity['PartitionKey'] == 'user-789'
-            assert user_entity['ExecutionId'] == 'test-exec-123'
-            assert user_entity['OrgId'] == 'org-456'
+            # Verify Relationships entity structure
+            relationships_entity = relationships_storage.insert_entity.call_args[0][0]
+            assert relationships_entity['PartitionKey'] == 'GLOBAL'
+            assert relationships_entity['RowKey'] == 'userexec:user-789:test-exec-123'
+            assert relationships_entity['ExecutionId'] == 'test-exec-123'
+            assert relationships_entity['UserId'] == 'user-789'
+            assert relationships_entity['OrgId'] == 'org-456'
 
     @pytest.mark.asyncio
     async def test_update_execution_with_result(self):
         """Test updating execution with success result"""
         from shared.execution_logger import ExecutionLogger
 
-        workflow_storage = MagicMock()
-        user_storage = MagicMock()
+        entities_storage = MagicMock()
+        relationships_storage = MagicMock()
 
         # Mock existing entity
-        workflow_storage.query_entities.return_value = [
+        entities_storage.query_entities.return_value = [
             {'RowKey': '9999999999999_test-exec-123'}
         ]
 
         with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
             def get_storage(table_name):
-                if table_name == "WorkflowExecutions":
-                    return workflow_storage
-                elif table_name == "UserExecutions":
-                    return user_storage
+                if table_name == "Entities":
+                    return entities_storage
+                elif table_name == "Relationships":
+                    return relationships_storage
 
             mock_get_storage.side_effect = get_storage
 
@@ -244,11 +246,11 @@ class TestExecutionLogger:
             )
 
             # Verify both tables were updated
-            workflow_storage.update_entity.assert_called_once()
-            user_storage.update_entity.assert_called_once()
+            entities_storage.update_entity.assert_called_once()
+            relationships_storage.update_entity.assert_called_once()
 
             # Verify update included result
-            workflow_update = workflow_storage.update_entity.call_args[0][0]
-            assert workflow_update['Status'] == 'Success'
-            assert 'Result' in workflow_update
-            assert workflow_update['DurationMs'] == 1500
+            entities_update = entities_storage.update_entity.call_args[0][0]
+            assert entities_update['Status'] == 'Success'
+            assert 'Result' in entities_update
+            assert entities_update['DurationMs'] == 1500

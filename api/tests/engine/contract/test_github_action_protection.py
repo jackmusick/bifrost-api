@@ -18,8 +18,17 @@ class TestGitHubActionContract:
     @pytest.fixture
     def workflow_file_path(self):
         """Path to the GitHub Actions workflow file"""
-        # Navigate from workflows/tests/contract/ to repo root
-        repo_root = Path(__file__).parent.parent.parent.parent
+        # Find repo root by looking for .github directory
+        current = Path(__file__).parent
+        while current != current.parent:
+            if (current / ".github").exists():
+                repo_root = current
+                break
+            current = current.parent
+        else:
+            # Fallback: go up 4 levels from api/tests/engine/contract/
+            repo_root = Path(__file__).parent.parent.parent.parent
+        
         return repo_root / ".github" / "workflows" / "protect-engine.yml"
 
     @pytest.fixture

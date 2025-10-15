@@ -24,8 +24,8 @@ class TestAuthenticationFlow:
     def mock_org_entity(self):
         """Mock organization entity from Table Storage"""
         return {
-            'PartitionKey': 'org',
-            'RowKey': 'test-org-123',
+            'PartitionKey': 'GLOBAL',
+            'RowKey': 'org:test-org-123',
             'Name': 'Test Organization',
             'TenantId': 'tenant-456',
             'IsActive': True
@@ -183,7 +183,7 @@ class TestAuthenticationFlow:
             with pytest.raises(AuthenticationError) as exc_info:
                 await auth_service.authenticate(req)
 
-            assert "No valid authentication credentials" in str(exc_info.value)
+            assert "Authentication required" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_function_key_from_query_parameter(self):

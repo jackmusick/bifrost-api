@@ -156,10 +156,11 @@ class TestCreateOAuthConnectionRequest:
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"oauth_flow_type", "client_id", "client_secret",
+        required_fields = {"oauth_flow_type", "client_id",
                           "authorization_url", "token_url"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
+        # client_secret is optional (for PKCE flow)
 
     def test_scopes_optional_defaults_to_empty(self):
         """Test that scopes field is optional and defaults to empty string"""

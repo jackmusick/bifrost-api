@@ -58,7 +58,9 @@ def with_org_context(handler: Callable) -> Callable:
                 )
 
             # Inject context into request object
-            req.context = context
+            # Use req.org_context instead of req.context to allow coexistence
+            # with @with_request_context decorator
+            req.org_context = context
 
             # Call handler
             return await handler(req)

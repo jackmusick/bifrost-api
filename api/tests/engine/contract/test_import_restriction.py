@@ -91,8 +91,8 @@ class TestImportRestrictionContract:
         import tempfile
 
         # Clear module cache to ensure restrictor can intercept the import
-        if 'engine.shared.storage' in sys.modules:
-            del sys.modules['engine.shared.storage']
+        if 'shared.storage' in sys.modules:
+            del sys.modules['shared.storage']
 
         # Create temporary workspace directory
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -114,7 +114,7 @@ class TestImportRestrictionContract:
                     if 'test_workspace_import' in sys.modules:
                         del sys.modules['test_workspace_import']
 
-            assert "cannot import engine module" in str(exc_info.value).lower() or \
+            assert "cannot import" in str(exc_info.value).lower() or \
                    "workspace" in str(exc_info.value).lower(), (
                 "Error message must indicate workspace cannot import engine modules"
             )
@@ -140,12 +140,21 @@ class TestImportRestrictionContract:
         from shared.import_restrictor import install_import_restrictions
         import tempfile
 
+        # Clear module cache
+        if 'shared.registry' in sys.modules:
+            del sys.modules['shared.registry']
+
         with tempfile.TemporaryDirectory() as tmpdir:
             install_import_restrictions([tmpdir])
 
+            # Create a test file in workspace that attempts blocked import
+            test_file = Path(tmpdir) / "test_import_guidance.py"
+            test_file.write_text("import shared.registry\n")
+
             try:
                 sys.path.insert(0, tmpdir)
-                importlib.import_module('engine.shared.registry')
+                importlib.import_module('test_import_guidance')
+                pytest.fail("Expected ImportError was not raised")
             except ImportError as e:
                 error_msg = str(e).lower()
                 # Check for helpful guidance in error message
@@ -155,9 +164,11 @@ class TestImportRestrictionContract:
                     'workspace',
                     'decorators',
                     'context'
-                ]), "Error message must provide guidance to developers"
+                ]), f"Error message must provide guidance to developers. Got: {error_msg}"
             finally:
-                sys.path.pop(0)
+                sys.path.remove(tmpdir)
+                if 'test_import_guidance' in sys.modules:
+                    del sys.modules['test_import_guidance']
 
 
 class TestImportRestrictionBehavior:

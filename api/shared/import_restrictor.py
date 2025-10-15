@@ -49,7 +49,11 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         'engine.shared.models',
         'engine.shared.registry',  # Required by decorators (internal dependency)
         'engine.shared.config_resolver',  # Required by context (internal dependency)
-        'engine.shared.keyvault'  # Required by config_resolver (internal dependency)
+        'engine.shared.keyvault',  # Required by config_resolver (internal dependency)
+        'bifrost',  # Public API shim - allows simplified imports
+        'shared.decorators',  # Required by bifrost (internal dependency)
+        'shared.context',  # Required by bifrost (internal dependency)
+        'shared.models',  # Required by bifrost (internal dependency)
     }
 
     def __init__(self, workspace_paths: List[str]) -> None:
@@ -122,7 +126,11 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         Inspect call stack to determine if import originated from workspace code.
 
         Returns:
-            True if any frame in the call stack is from workspace directory
+            True if THE IMMEDIATE CALLER is from workspace directory
+
+        Note: We only check the immediate caller (the frame that contains the import
+        statement), not the entire call chain. This allows engine modules like bifrost.py
+        to import from shared.* even when called from workspace code.
         """
         # Get current call stack
         try:
@@ -132,16 +140,22 @@ class WorkspaceImportRestrictor(MetaPathFinder):
             # In this case, we're definitely not in workspace code (we're in startup)
             return False
 
-        # Check each frame to see if it's from workspace
+        # Find the frame that contains the actual import statement
+        # Skip frames from the import system itself and this restrictor
         for frame_info in stack:
             filename = frame_info.filename
 
-            # Normalize path for comparison
-            normalized_path = os.path.normpath(os.path.abspath(filename))
+            # Skip frames from this restrictor module
+            if 'import_restrictor' in filename:
+                continue
 
-            # Check if this file is in any workspace path
-            if self._is_workspace_code(normalized_path):
-                return True
+            # Skip frames from Python's import machinery
+            if '<frozen importlib' in filename or 'importlib' in filename:
+                continue
+
+            # This is the actual import statement - check if it's in workspace
+            normalized_path = os.path.normpath(os.path.abspath(filename))
+            return self._is_workspace_code(normalized_path)
 
         return False
 

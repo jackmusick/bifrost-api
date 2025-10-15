@@ -246,21 +246,15 @@ class TestFormField:
         assert field.validation == {"min": 0, "max": 120}
 
     def test_field_with_data_provider(self):
-        """Test field with dataProvider object"""
+        """Test field with dataProvider string"""
         field = FormField(
             name="organization",
             label="Organization",
             type=FormFieldType.SELECT,
             required=True,
-            dataProvider={
-                "type": "msgraph",
-                "resource": "organizations",
-                "valueField": "id",
-                "labelField": "displayName"
-            }
+            dataProvider="msgraph_organizations"
         )
-        assert field.dataProvider["type"] == "msgraph"
-        assert field.dataProvider["resource"] == "organizations"
+        assert field.dataProvider == "msgraph_organizations"
 
     def test_field_defaults(self):
         """Test that optional fields have proper defaults"""

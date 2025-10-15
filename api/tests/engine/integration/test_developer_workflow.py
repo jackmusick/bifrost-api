@@ -25,7 +25,7 @@ class TestDeveloperWorkflow:
     def repo_root(self):
         """Get repository root directory"""
         # Navigate from workflows/tests/integration/ to repo root
-        return Path(__file__).parent.parent.parent.parent
+        return Path(__file__).parent.parent.parent.parent.parent
 
     def test_workspace_changes_allowed(self, repo_root):
         """
@@ -36,7 +36,7 @@ class TestDeveloperWorkflow:
         2. Commits and pushes
         3. GitHub Action should PASS
         """
-        workspace_dir = repo_root / "workflows" / "workspace"
+        workspace_dir = repo_root / "api" / "workspace"
 
         # Verify workspace directory exists
         assert workspace_dir.exists(), (
@@ -60,7 +60,7 @@ class TestDeveloperWorkflow:
         2. Commits and pushes
         3. GitHub Action should FAIL with clear error message
         """
-        engine_dir = repo_root / "workflows" / "engine"
+        engine_dir = repo_root / "api" / "shared"
 
         # Verify engine directory exists
         assert engine_dir.exists(), (

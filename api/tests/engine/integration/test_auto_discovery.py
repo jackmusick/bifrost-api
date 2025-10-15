@@ -13,7 +13,7 @@ import importlib.util
 from pathlib import Path
 
 # Manually trigger workspace discovery for tests
-workspace_path = Path("/Users/jack/GitHub/bifrost-integrations/workflows/workspace")
+workspace_path = Path(__file__).parent.parent.parent.parent / "workspace"
 if workspace_path.exists():
     for py_file in workspace_path.rglob("*.py"):
         if py_file.name.startswith("_"):
@@ -29,7 +29,9 @@ if workspace_path.exists():
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
-        except Exception:
+                print(f"Successfully imported {module_name}")
+        except Exception as e:
+            print(f"Failed to import {module_name}: {e}")
             pass
 
 

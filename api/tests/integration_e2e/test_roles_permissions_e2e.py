@@ -150,7 +150,7 @@ class TestRoleFormAccessE2E:
             f"{base_url}/roles/{role_id}/forms",
             headers=platform_admin_headers,
             json={
-                "formId": form_id
+                "formIds": [form_id]
             }
         )
 
@@ -163,9 +163,10 @@ class TestRoleFormAccessE2E:
         )
 
         assert list_response.status_code == 200
-        forms = list_response.json()
-        form_ids = [f.get("id") or f.get("formId") for f in forms]
-        assert form_id in form_ids
+        forms_data = list_response.json()
+        assert "formIds" in forms_data
+        assert isinstance(forms_data["formIds"], list)
+        assert form_id in forms_data["formIds"]
 
     def test_remove_form_from_role(self, base_url, platform_admin_headers):
         """Platform admin can remove forms from roles"""
@@ -216,9 +217,10 @@ class TestRoleFormAccessE2E:
             f"{base_url}/roles/{role_id}/forms",
             headers=platform_admin_headers
         )
-        forms = list_response.json()
-        form_ids = [f.get("id") or f.get("formId") for f in forms]
-        assert form_id not in form_ids
+        forms_data = list_response.json()
+        assert "formIds" in forms_data
+        assert isinstance(forms_data["formIds"], list)
+        assert form_id not in forms_data["formIds"]
 
     def test_list_forms_for_role(self, base_url, platform_admin_headers):
         """Platform admin can list forms assigned to a role"""
@@ -241,8 +243,9 @@ class TestRoleFormAccessE2E:
         )
 
         assert response.status_code == 200
-        forms = response.json()
-        assert isinstance(forms, list)
+        forms_data = response.json()
+        assert "formIds" in forms_data
+        assert isinstance(forms_data["formIds"], list)
 
 
 class TestRoleUserAssignmentE2E:
@@ -267,7 +270,7 @@ class TestRoleUserAssignmentE2E:
             f"{base_url}/roles/{role_id}/users",
             headers=platform_admin_headers,
             json={
-                "userId": "jack@gocovi.dev"
+                "userIds": ["jack@gocovi.dev"]
             }
         )
 
@@ -281,9 +284,10 @@ class TestRoleUserAssignmentE2E:
         )
 
         assert list_response.status_code == 200
-        users = list_response.json()
-        user_ids = [u.get("userId") or u.get("id") for u in users]
-        assert "jack@gocovi.dev" in user_ids
+        users_data = list_response.json()
+        assert "userIds" in users_data
+        assert isinstance(users_data["userIds"], list)
+        assert "jack@gocovi.dev" in users_data["userIds"]
 
     def test_remove_user_from_role(self, base_url, platform_admin_headers):
         """Platform admin can remove users from roles"""
@@ -335,16 +339,17 @@ class TestRoleUserAssignmentE2E:
         )
 
         assert response.status_code == 200
-        users = response.json()
-        assert isinstance(users, list)
+        users_data = response.json()
+        assert "userIds" in users_data
+        assert isinstance(users_data["userIds"], list)
 
 
 class TestPermissionsE2E:
     """Test Permissions API endpoints"""
 
     def test_create_permission(self, base_url, platform_admin_headers):
-        """Platform admin can create permissions"""
-        # Create a role first
+        """Platform admin cannot create permissions (deprecated endpoint)"""
+        # Create role first
         role_response = requests.post(
             f"{base_url}/roles",
             headers=platform_admin_headers,
@@ -356,7 +361,7 @@ class TestPermissionsE2E:
         assert role_response.status_code in [200, 201]
         role_id = role_response.json()["id"]
 
-        # Create permission
+        # Try to create permission (should fail - deprecated)
         response = requests.post(
             f"{base_url}/permissions",
             headers=platform_admin_headers,
@@ -367,11 +372,13 @@ class TestPermissionsE2E:
             }
         )
 
-        # May return 200 (OK) or 201 (created)
-        assert response.status_code in [200, 201]
+        # Should return 501 (Not Implemented) - permissions are deprecated
+        assert response.status_code == 501
+        error_data = response.json()
+        assert error_data["error"] == "NotImplemented"
 
     def test_delete_permission(self, base_url, platform_admin_headers):
-        """Platform admin can delete permissions"""
+        """Platform admin cannot delete permissions (deprecated endpoint)"""
         # Create role
         role_response = requests.post(
             f"{base_url}/roles",
@@ -384,18 +391,7 @@ class TestPermissionsE2E:
         assert role_response.status_code in [200, 201]
         role_id = role_response.json()["id"]
 
-        # Create permission
-        requests.post(
-            f"{base_url}/permissions",
-            headers=platform_admin_headers,
-            json={
-                "roleId": role_id,
-                "resource": "forms",
-                "action": "submit"
-            }
-        )
-
-        # Delete permission
+        # Try to delete permission (should fail - deprecated)
         delete_response = requests.delete(
             f"{base_url}/permissions",
             headers=platform_admin_headers,
@@ -406,7 +402,10 @@ class TestPermissionsE2E:
             }
         )
 
-        assert delete_response.status_code == 204
+        # Should return 501 (Not Implemented) - permissions are deprecated
+        assert delete_response.status_code == 501
+        error_data = delete_response.json()
+        assert error_data["error"] == "NotImplemented"
 
     def test_get_user_roles(self, base_url, platform_admin_headers):
         """Platform admin can get roles for a user"""
@@ -416,8 +415,9 @@ class TestPermissionsE2E:
         )
 
         assert response.status_code == 200
-        roles = response.json()
-        assert isinstance(roles, list)
+        roles_data = response.json()
+        assert "roleIds" in roles_data
+        assert isinstance(roles_data["roleIds"], list)
 
     def test_permissions_org_user_forbidden(self, base_url, org_user_headers):
         """Org users cannot manage permissions (platform admin only)"""

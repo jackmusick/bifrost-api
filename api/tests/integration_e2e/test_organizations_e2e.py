@@ -44,23 +44,6 @@ class TestOrganizationsE2E:
         # Should be 403 Forbidden - org users can't list all organizations
         assert response.status_code == 403
 
-    @pytest.mark.skip(reason="Local dev mode treats anonymous as admin (production has SWA auth layer)")
-    def test_list_organizations_anonymous_unauthorized(self, base_url, anonymous_headers):
-        """
-        Anonymous users should be rejected in production.
-
-        NOTE: This test is skipped in local dev because request_context.py lines 113-126
-        treat anonymous requests as local-dev admin users. In production, Azure Static Web Apps
-        authentication layer rejects unauthenticated requests before they reach Functions.
-        """
-        response = requests.get(
-            f"{base_url}/organizations",
-            headers=anonymous_headers
-        )
-
-        # Should be 401 Unauthorized (only in production with SWA auth)
-        assert response.status_code == 401
-
     def test_create_organization_as_platform_admin(self, base_url, platform_admin_headers):
         """Platform admin can create organizations"""
         response = requests.post(

@@ -11,6 +11,7 @@ from typing import List
 import azure.functions as func
 
 from shared.decorators import with_request_context, require_platform_admin
+from shared.middleware import with_org_context
 from shared.authorization import (
     can_user_view_form,
     can_user_execute_form,
@@ -525,7 +526,8 @@ async def delete_form(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name("forms_submit_form")
 @bp.route(route="forms/{formId}/submit", methods=["POST"])
-@with_request_context
+@with_request_context  # For authorization - sets req.context
+@with_org_context      # For workflow execution - sets req.org_context
 async def submit_form(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/forms/{formId}/submit
@@ -543,18 +545,24 @@ async def submit_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Requires: User must have access to execute the form (public or role-assigned)
     """
-    import requests
-    from functions.workflows import get_workflows_engine_config
+    from shared.registry import get_registry
+    from shared.execution_logger import get_execution_logger
+    from shared.models import ExecutionStatus
+    import uuid
 
-    context = req.context
+    # Both decorators are applied:
+    # - req.context = RequestContext (for authorization)
+    # - req.org_context = OrganizationContext (for workflow execution)
+    request_context = req.context
+    workflow_context = req.org_context
     form_id = req.route_params.get("formId")
 
-    logger.info(f"User {context.user_id} submitting form {form_id}")
+    logger.info(f"User {request_context.user_id} submitting form {form_id}")
 
     try:
         # Check if user has permission to execute this form
-        if not can_user_execute_form(context, form_id):
-            logger.warning(f"User {context.user_id} denied access to execute form {form_id}")
+        if not can_user_execute_form(request_context, form_id):
+            logger.warning(f"User {request_context.user_id} denied access to execute form {form_id}")
             error = ErrorResponse(
                 error="Forbidden",
                 message="You don't have permission to execute this form"
@@ -566,12 +574,12 @@ async def submit_form(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Get form from Entities table
-        entities_service = get_table_service("Entities", context)
+        entities_service = get_table_service("Entities", request_context)
 
         # Try context scope first, then GLOBAL
-        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
+        form_entity = entities_service.get_entity(request_context.scope, f"form:{form_id}")
 
-        if not form_entity and context.scope != "GLOBAL":
+        if not form_entity and request_context.scope != "GLOBAL":
             # Try GLOBAL partition
             form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
 
@@ -620,52 +628,115 @@ async def submit_form(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"Executing workflow {linked_workflow} with form data: {form_data}")
 
-        # Get workflows engine config
-        workflow_engine_url, function_key = get_workflows_engine_config()
+        # Hot-reload: Re-discover workspace modules before execution
+        # This allows adding/modifying workflows without restarting
+        from function_app import discover_workspace_modules
+        discover_workspace_modules()
 
-        # Use flat JSON format (parameters at root level, metadata prefixed with _)
-        workflow_payload = {
-            **form_data,
-            "_formId": form_id
-        }
+        # Get workflow from registry
+        registry = get_registry()
+        workflow_metadata = registry.get_workflow(linked_workflow)
 
-        headers = {
-            "Content-Type": "application/json",
-            "X-User-Id": context.user_id
-        }
-
-        # Add org header if present
-        if context.org_id:
-            headers["X-Organization-Id"] = context.org_id
-
-        # Execute workflow - only add code parameter if function key is configured (not needed locally)
-        workflow_url = f"{workflow_engine_url}/api/workflows/{linked_workflow}"
-        if function_key:
-            workflow_url += f"?code={function_key}"
-            logger.info(f"Executing workflow via form with function key")
-        else:
-            logger.info(f"Executing workflow via form without function key (local mode)")
-
-        response = requests.post(workflow_url, json=workflow_payload, headers=headers, timeout=60)
-
-        if response.status_code != 200:
-            logger.error(f"Workflow execution failed: {response.status_code} - {response.text}")
+        if not workflow_metadata:
+            logger.error(f"Workflow '{linked_workflow}' not found in registry")
             error = ErrorResponse(
-                error="WorkflowExecutionFailed",
-                message=f"Failed to execute workflow: {response.text}"
+                error="NotFound",
+                message=f"Workflow '{linked_workflow}' not found"
             )
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
-                status_code=500,
+                status_code=404,
                 mimetype="application/json"
             )
 
-        # Return workflow execution result
-        execution_result = response.json()
-        logger.info(f"Workflow execution completed: {execution_result.get('executionId')}")
+        # Get workflow function
+        workflow_func = workflow_metadata.function
+
+        # Use execution_id from OrganizationContext (already set by @with_org_context)
+        execution_id = workflow_context.execution_id
+
+        exec_logger = get_execution_logger()
+        start_time = datetime.utcnow()
+
+        # Create execution record (status=RUNNING)
+        await exec_logger.create_execution(
+            execution_id=execution_id,
+            org_id=request_context.org_id,
+            user_id=request_context.user_id,
+            workflow_name=linked_workflow,
+            input_data=form_data,
+            form_id=form_id
+        )
+
+        logger.info(
+            f"Starting workflow execution: {linked_workflow}",
+            extra={
+                "execution_id": execution_id,
+                "org_id": request_context.org_id,
+                "user_id": request_context.user_id,
+                "workflow_name": linked_workflow
+            }
+        )
+
+        # Separate workflow parameters from extra data
+        defined_params = {param.name for param in workflow_metadata.parameters}
+        workflow_params = {}
+        extra_variables = {}
+
+        for key, value in form_data.items():
+            if key in defined_params:
+                workflow_params[key] = value
+            else:
+                extra_variables[key] = value
+
+        # Inject extra variables into workflow context
+        for key, value in extra_variables.items():
+            workflow_context.set_variable(key, value)
+
+        # Execute workflow directly with OrganizationContext
+        result = await workflow_func(workflow_context, **workflow_params)
+
+        # Calculate duration
+        end_time = datetime.utcnow()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        # Determine execution status
+        execution_status = ExecutionStatus.SUCCESS
+        error_message = None
+
+        if isinstance(result, dict) and result.get('success') is False:
+            execution_status = ExecutionStatus.COMPLETED_WITH_ERRORS
+            error_message = result.get('error', 'Workflow completed with errors')
+
+        # Update execution record
+        await exec_logger.update_execution(
+            execution_id=execution_id,
+            org_id=request_context.org_id,
+            user_id=request_context.user_id,
+            status=execution_status,
+            result=result,
+            error_message=error_message,
+            duration_ms=duration_ms,
+            state_snapshots=workflow_context._state_snapshots,
+            integration_calls=workflow_context._integration_calls,
+            logs=workflow_context._logs,
+            variables=workflow_context._variables
+        )
+
+        logger.info(f"Workflow execution completed: {execution_id}")
+
+        # Build response matching WorkflowExecutionResponse format
+        execution_result = {
+            "executionId": execution_id,
+            "status": execution_status.value,
+            "result": result,
+            "durationMs": duration_ms,
+            "startedAt": start_time.isoformat(),
+            "completedAt": end_time.isoformat()
+        }
 
         return func.HttpResponse(
-            json.dumps(execution_result),
+            json.dumps(execution_result, default=str),
             status_code=200,
             mimetype="application/json"
         )

@@ -17,11 +17,36 @@ if os.getenv('ENABLE_DEBUGGING') == 'true':
 # T006: Install import restrictions BEFORE importing workspace code
 from shared.import_restrictor import install_import_restrictions
 
-# Calculate workspace path from environment variable or default to Azure Files mount
-WORKSPACE_PATH = os.environ.get('WORKSPACE_PATH', '/workspace')
+# Calculate workspace paths - support both system and user workspaces
+# System workspace: /workspace (Azure Files mount in production)
+# User workspace: ./workspace (local development)
+def get_workspace_paths():
+    """
+    Dynamically determine workspace paths.
+
+    Returns list of existing workspace directories:
+    - System workspace: /workspace (Azure Files mount in production)
+    - User workspace: ./workspace (local development)
+
+    This is a function (not a constant) to support hot-reload scenarios
+    where workspace directories might be created after startup.
+    """
+    paths = []
+
+    system_path = Path('/workspace')
+    if system_path.exists():
+        paths.append(str(system_path))
+
+    # Use absolute path like original workflows/function_app.py did
+    user_path = Path(os.path.dirname(os.path.abspath(__file__))) / 'workspace'
+    if user_path.exists():
+        paths.append(str(user_path))
+
+    return paths
 
 # Install import restrictions to prevent workspace code from importing engine internals
-install_import_restrictions([WORKSPACE_PATH])
+# Initial setup - gets paths at startup time
+install_import_restrictions(get_workspace_paths())
 
 # ==================== TABLE INITIALIZATION ====================
 # T007: Initialize Azure Table Storage tables at startup
@@ -47,48 +72,69 @@ def discover_workspace_modules():
     """
     Dynamically discover and import all Python files in workspace/ subdirectories.
 
-    This function recursively scans workspace/ for .py files and imports them
-    to trigger @workflow and @data_provider decorator registration.
+    This function scans BOTH system and user workspace paths:
+    - System workspace: /workspace (Azure Files mount in production)
+    - User workspace: ./workspace (local development)
+
+    This allows developers to add workflows without restarting the app,
+    and supports both production (mounted volumes) and development (local files).
 
     No __init__.py files are required - this allows workspace/ to be purely
     user code without any framework dependencies.
     """
-    workspace_root = Path(WORKSPACE_PATH)
     discovered_count = 0
 
-    logging.info(f"Starting dynamic workspace discovery in {workspace_root}")
+    # Get workspace paths dynamically (supports hot-reload)
+    workspace_paths = get_workspace_paths()
 
-    if not workspace_root.exists():
-        logging.warning(f"Workspace path {workspace_root} does not exist - skipping discovery")
+    print(f"[WORKSPACE DISCOVERY] Found {len(workspace_paths)} workspace paths: {workspace_paths}")
+
+    if not workspace_paths:
+        print("[WORKSPACE DISCOVERY] No workspace paths exist - skipping discovery")
+        logging.warning("No workspace paths exist - skipping discovery")
         return
 
-    # Recursively find all .py files in workspace subdirectories
-    for py_file in workspace_root.rglob("*.py"):
-        # Skip __init__.py and private files
-        if py_file.name.startswith("_"):
-            continue
+    print(f"[WORKSPACE DISCOVERY] Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
+    logging.info(f"Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
 
-        # Calculate module path relative to workspace root
-        relative_path = py_file.relative_to(workspace_root)
-        module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
-        module_name = f"workspace.{'.'.join(module_parts)}"
+    # Scan each workspace path
+    for workspace_root in workspace_paths:
+        workspace_path = Path(workspace_root)
 
-        try:
-            # Import the module using importlib (this triggers decorators)
-            spec = importlib.util.spec_from_file_location(module_name, py_file)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = module
-                spec.loader.exec_module(module)
+        logging.info(f"Scanning workspace: {workspace_path}")
 
-                logging.info(f"✓ Discovered: {module_name}")
-                discovered_count += 1
+        # Recursively find all .py files in workspace subdirectories
+        for py_file in workspace_path.rglob("*.py"):
+            # Skip __init__.py and private files
+            if py_file.name.startswith("_"):
+                continue
 
-        except Exception as e:
-            logging.error(
-                f"✗ Failed to import {module_name}: {e}",
-                exc_info=True
-            )
+            # Calculate module path relative to workspace root
+            relative_path = py_file.relative_to(workspace_path)
+            module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
+            module_name = f"workspace.{'.'.join(module_parts)}"
+
+            # Skip if already imported (prevents duplicate imports from multiple workspace paths)
+            if module_name in sys.modules:
+                logging.debug(f"⊘ Already imported: {module_name}")
+                continue
+
+            try:
+                # Import the module using importlib (this triggers decorators)
+                spec = importlib.util.spec_from_file_location(module_name, py_file)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+
+                    logging.info(f"✓ Discovered: {module_name} (from {workspace_path})")
+                    discovered_count += 1
+
+            except Exception as e:
+                logging.error(
+                    f"✗ Failed to import {module_name}: {e}",
+                    exc_info=True
+                )
 
     logging.info(f"Workspace discovery complete: {discovered_count} modules imported")
 

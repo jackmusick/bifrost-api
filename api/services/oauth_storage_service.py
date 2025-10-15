@@ -512,6 +512,9 @@ class OAuthStorageService:
         updated_at = entity.get("updated_at")
         if isinstance(updated_at, str):
             updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        elif updated_at is None:
+            # Default to created_at if updated_at is missing
+            updated_at = created_at if created_at else datetime.utcnow()
 
         expires_at = entity.get("expires_at")
         if expires_at and isinstance(expires_at, str):

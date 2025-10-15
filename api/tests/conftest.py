@@ -737,3 +737,25 @@ def test_platform_admin_user(users_service):
         "user_type": "PLATFORM",
         "is_platform_admin": True
     }
+
+
+@pytest.fixture(scope="function")
+def load_seed_data(azurite_tables):
+    """
+    Load seed data for E2E tests that explicitly need it
+    This creates the test users (jack@gocovi.com, jack@gocovi.dev) and sample data
+
+    NOTE: Not autouse - tests must explicitly request this fixture if they need seed data
+    """
+    # Import seed data function
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+    try:
+        from seed_data import seed_all_data
+        seed_all_data("UseDevelopmentStorage=true")
+    except Exception as e:
+        # If seed data fails, tests will fail with clearer errors
+        print(f"Warning: Failed to load seed data: {e}")
+        pass

@@ -102,4 +102,16 @@ def setup_test_environment(ensure_services_running):
     """
     Automatically runs before all tests to ensure services are ready
     """
-    pass
+    # Load seed data for E2E tests
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    
+    try:
+        from seed_data import seed_all_data
+        seed_all_data("UseDevelopmentStorage=true")
+        print("✓ Seed data loaded successfully")
+    except Exception as e:
+        print(f"Warning: Failed to load seed data: {e}")
+        # Continue without seed data - some tests may fail
+        pass

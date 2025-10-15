@@ -74,47 +74,36 @@ class TestWorkflowExecutionResponse:
         response = WorkflowExecutionResponse(
             executionId="exec-123",
             status=ExecutionStatus.SUCCESS,
-            result={"user_id": "user-456", "success": True},
-            durationMs=2500,
-            startedAt=datetime.utcnow(),
-            completedAt=datetime.utcnow()
+            message="Workflow executed successfully"
         )
 
         assert response.executionId == "exec-123"
         assert response.status == ExecutionStatus.SUCCESS
-        assert response.result["user_id"] == "user-456"
-        assert response.error is None
-        assert response.durationMs == 2500
+        assert response.message == "Workflow executed successfully"
 
     def test_failed_response(self):
         """Test failed execution response"""
         response = WorkflowExecutionResponse(
             executionId="exec-789",
             status=ExecutionStatus.FAILED,
-            error="Validation failed",
-            errorType="ValidationError",
-            details={"field": "email"}
+            message="Validation failed"
         )
 
         assert response.executionId == "exec-789"
         assert response.status == ExecutionStatus.FAILED
-        assert response.error == "Validation failed"
-        assert response.errorType == "ValidationError"
-        assert response.details["field"] == "email"
-        assert response.result is None
+        assert response.message == "Validation failed"
 
     def test_running_response(self):
         """Test running/pending response"""
         response = WorkflowExecutionResponse(
             executionId="exec-999",
             status=ExecutionStatus.RUNNING,
-            startedAt=datetime.utcnow()
+            message="Workflow is running"
         )
 
         assert response.executionId == "exec-999"
         assert response.status == ExecutionStatus.RUNNING
-        assert response.result is None
-        assert response.completedAt is None
+        assert response.message == "Workflow is running"
 
     def test_response_required_fields(self):
         """Test that executionId and status are required"""
@@ -178,7 +167,8 @@ class TestExecutionStatus:
         """Test using ExecutionStatus in response"""
         response = WorkflowExecutionResponse(
             executionId="exec-123",
-            status=ExecutionStatus.SUCCESS
+            status=ExecutionStatus.SUCCESS,
+            message="Success"
         )
 
         assert response.status == "Success"

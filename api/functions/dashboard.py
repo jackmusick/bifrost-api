@@ -34,8 +34,7 @@ async def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
     - Recent failures
     - Success rate
     """
-    from functions.workflows import get_workflows_engine_config
-    import requests
+    from shared.registry import get_registry
 
     context = req.context
     logger.info(f"User {context.user_id} retrieving dashboard metrics")
@@ -43,26 +42,12 @@ async def get_dashboard_metrics(req: func.HttpRequest) -> func.HttpResponse:
     try:
         metrics = {}
 
-        # 1. Get workflow count from workflow engine
+        # 1. Get workflow count from registry
         try:
-            url, function_key = get_workflows_engine_config()
-            headers = {}
-            if function_key:
-                headers["x-functions-key"] = function_key
-
-            response = requests.get(
-                f"{url}/api/registry/metadata",
-                headers=headers,
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                metadata = response.json()
-                metrics["workflowCount"] = len(metadata.get("workflows", []))
-                metrics["dataProviderCount"] = len(metadata.get("data_providers", []))
-            else:
-                metrics["workflowCount"] = 0
-                metrics["dataProviderCount"] = 0
+            registry = get_registry()
+            summary = registry.get_summary()
+            metrics["workflowCount"] = summary['workflows_count']
+            metrics["dataProviderCount"] = summary['data_providers_count']
         except Exception as e:
             logger.warning(f"Failed to fetch workflow metadata: {e}")
             metrics["workflowCount"] = 0
