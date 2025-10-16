@@ -4,7 +4,7 @@ Simple Greeting Workflow
 A basic workflow for testing form submission and execution.
 """
 
-from bifrost import workflow, param, OrganizationContext
+from bifrost import OrganizationContext, param, workflow
 
 
 @workflow(

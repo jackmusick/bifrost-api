@@ -7,13 +7,13 @@ Unified authentication system supporting:
 - Organization context derivation and validation
 """
 
-import os
-import logging
 import base64
 import json
-from typing import Optional, Union, List, Tuple
-from functools import wraps
+import logging
+import os
 from dataclasses import dataclass, field
+from functools import wraps
+
 import azure.functions as func
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class UserPrincipal:
     user_id: str
     email: str
     name: str = ""
-    roles: List[str] = field(default_factory=list)
+    roles: list[str] = field(default_factory=list)
     identity_provider: str = "aad"
 
     @property
@@ -99,7 +99,7 @@ class AuthenticationService:
     3. Local dev bypass (only if not in production)
     """
 
-    async def authenticate(self, req: func.HttpRequest) -> Union[FunctionKeyPrincipal, UserPrincipal]:
+    async def authenticate(self, req: func.HttpRequest) -> FunctionKeyPrincipal | UserPrincipal:
         """
         Authenticate request using tiered priority system.
 
@@ -127,7 +127,7 @@ class AuthenticationService:
             "or X-MS-CLIENT-PRINCIPAL header from Azure Easy Auth."
         )
 
-    async def _try_function_key(self, req: func.HttpRequest) -> Optional[FunctionKeyPrincipal]:
+    async def _try_function_key(self, req: func.HttpRequest) -> FunctionKeyPrincipal | None:
         """Try to authenticate with function key"""
         # Check header first
         key = req.headers.get('x-functions-key')
@@ -147,7 +147,7 @@ class AuthenticationService:
 
         return None
 
-    async def _try_easy_auth(self, req: func.HttpRequest) -> Optional[UserPrincipal]:
+    async def _try_easy_auth(self, req: func.HttpRequest) -> UserPrincipal | None:
         """Try to authenticate with Azure Easy Auth"""
         header = req.headers.get('X-MS-CLIENT-PRINCIPAL')
         if not header:
@@ -173,7 +173,7 @@ class AuthenticationService:
             return principal
 
         except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}")
+            raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}") from e
 
     async def _audit_key_usage(self, req: func.HttpRequest, principal: FunctionKeyPrincipal) -> None:
         """Audit function key usage (fire and forget)"""
@@ -223,7 +223,7 @@ def is_platform_admin(user_id: str) -> bool:
         return False
 
 
-def get_user_org_id(user_id: str) -> Optional[str]:
+def get_user_org_id(user_id: str) -> str | None:
     """
     Get user's organization ID from database.
 
@@ -254,7 +254,7 @@ def get_user_org_id(user_id: str) -> Optional[str]:
 
 # ==================== ORGANIZATION CONTEXT ====================
 
-def get_org_context(req: func.HttpRequest) -> Tuple[Optional[str], str, Optional[func.HttpResponse]]:
+def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpResponse | None]:
     """
     Get organization context with security enforcement.
 
@@ -356,7 +356,7 @@ def require_auth(handler):
 
 # ==================== HELPERS ====================
 
-def get_principal(req: func.HttpRequest) -> Optional[Union[FunctionKeyPrincipal, UserPrincipal]]:
+def get_principal(req: func.HttpRequest) -> FunctionKeyPrincipal | UserPrincipal | None:
     """Get authenticated principal from request"""
     return getattr(req, 'principal', None)
 

@@ -3,13 +3,15 @@ Discovery API
 Returns metadata for all registered workflows and data providers
 """
 
-import logging
 import json
+import logging
+
 import azure.functions as func
 
+from shared.decorators import with_request_context
+from shared.models import MetadataResponse
 from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
-from shared.models import MetadataResponse
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-@bp.route(route="discovery", methods=["GET"], auth_level=func.AuthLevel.ADMIN)
+@bp.route(route="discovery", methods=["GET"])
 @openapi_endpoint(
     path="/discovery",
     method="GET",
@@ -26,12 +28,13 @@ bp = func.Blueprint()
     tags=["Discovery"],
     response_model=MetadataResponse
 )
+@with_request_context
 async def get_discovery_metadata(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/discovery
     Return metadata for all registered workflows and data providers
 
-    Requires function key (Management API can call this)
+    Requires authentication (uses request context from SWA/EasyAuth)
 
     Returns:
         200: MetadataResponse with workflows and dataProviders arrays

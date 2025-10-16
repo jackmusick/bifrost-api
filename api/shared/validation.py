@@ -4,12 +4,13 @@ Reduces code duplication across endpoint files
 """
 
 import json
+
 import azure.functions as func
-from typing import Optional, Tuple
+
 from shared.models import ErrorResponse
 
 
-def validate_scope_parameter(scope: str, org_id: Optional[str]) -> Tuple[bool, Optional[func.HttpResponse]]:
+def validate_scope_parameter(scope: str, org_id: str | None) -> tuple[bool, func.HttpResponse | None]:
     """
     Validate scope parameter and orgId requirement.
 
@@ -56,7 +57,7 @@ def create_error_response(
     error_type: str,
     message: str,
     status_code: int = 400,
-    details: Optional[dict] = None
+    details: dict | None = None
 ) -> func.HttpResponse:
     """
     Create a standardized error response.
@@ -82,7 +83,7 @@ def create_error_response(
     )
 
 
-def check_key_vault_available(kv_manager) -> Tuple[bool, Optional[func.HttpResponse]]:
+def check_key_vault_available(kv_manager) -> tuple[bool, func.HttpResponse | None]:
     """
     Check if Key Vault manager is available.
 

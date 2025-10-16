@@ -10,14 +10,13 @@ services:
       - azurite-data:/data
 
   keyvault:
-    image: jamesgould/azure-keyvault-emulator:latest
+    image: jamesgoulddev/azure-keyvault-emulator:latest-arm # Change to latest when using amd64
     ports:
-      - "8200:8200" # Key Vault API
+      - "4997:4997" # Key Vault API
     environment:
-      - VAULT_DEV_ROOT_TOKEN_ID=myroot
-      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - Persist=true
     volumes:
-      - keyvault-data:/vault/file
+      - ./keyvault-certs:/certs
 
   functions:
     build:
@@ -32,16 +31,31 @@ services:
       - ENABLE_DEBUGGING=${ENABLE_DEBUGGING:-true}
       - AZURE_FUNCTIONS_ENVIRONMENT=Development
       - WEBSITE_AUTH_ENCRYPTION_KEY=C0sm0Rk3y567890123456789012345678901234567890123456789012345
-      - KEY_VAULT_URL=http://keyvault:8200
-      - VAULT_TOKEN=myroot
+      - AZURE_KEY_VAULT_URL=https://keyvault:4997
+      - REQUESTS_CA_BUNDLE=/certs/emulator.crt
+      - SSL_CERT_FILE=/certs/emulator.crt
     volumes:
       - ./api:/home/site/wwwroot # Live code reload
       - ./api/workspace:/workspace # Workspace directory (local dev)
       - ./api/tmp:/tmp # Temporary storage (local dev)
+      - ./keyvault-certs:/certs:ro # Share Key Vault certs
     depends_on:
       - azurite
       - keyvault
 
+  swa:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "4280:4280" # SWA CLI
+    environment:
+      - API_URL=http://functions:80
+    volumes:
+      - ./client:/app # Live code reload
+      - /app/node_modules # Prevent overwriting node_modules
+    depends_on:
+      - functions
+
 volumes:
   azurite-data:
-  keyvault-data:

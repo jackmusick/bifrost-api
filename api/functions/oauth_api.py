@@ -3,28 +3,31 @@ OAuth API endpoints
 Manage OAuth connections for workflows and integrations
 """
 
-import logging
 import json
+import logging
 import uuid
 from datetime import datetime
 from urllib.parse import urlencode
+
 import azure.functions as func
 from pydantic import ValidationError
-from shared.custom_types import get_context, get_route_param
-from shared.decorators import with_request_context, require_platform_admin
-from shared.openapi_decorators import openapi_endpoint
-from shared.keyvault import KeyVaultClient
-from shared.storage import TableStorageService
-from services.oauth_storage_service import OAuthStorageService
-from services.oauth_provider import OAuthProviderClient
-from services.oauth_test_service import OAuthTestService
+
 from models.oauth_connection import (
     CreateOAuthConnectionRequest,
-    UpdateOAuthConnectionRequest,
+    OAuthConnectionDetail,
     OAuthCredentials,
-    OAuthCredentialsResponse
+    OAuthCredentialsResponse,
+    UpdateOAuthConnectionRequest,
 )
-from shared.models import ErrorResponse
+from services.oauth_provider import OAuthProviderClient
+from services.oauth_storage_service import OAuthStorageService
+from services.oauth_test_service import OAuthTestService
+from shared.custom_types import get_context, get_route_param
+from shared.decorators import require_platform_admin, with_request_context
+from shared.keyvault import KeyVaultClient
+from shared.models import ErrorResponse, OAuthCallbackRequest, OAuthCallbackResponse
+from shared.openapi_decorators import openapi_endpoint
+from shared.storage import TableStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +201,7 @@ async def list_oauth_connections(req: func.HttpRequest) -> func.HttpResponse:
     summary="Get OAuth connection",
     description="Get OAuth connection details (Platform admin only)",
     tags=["OAuth"],
+    response_model=OAuthConnectionDetail,
     path_params={
         "connection_name": {
             "description": "Connection name",
@@ -786,7 +790,7 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
         if not refresh_token:
             error = ErrorResponse(
                 error="BadRequest",
-                message="Connection has no refresh token - reconnect required"
+                message="No refresh token available - please reconnect the OAuth connection to obtain new credentials"
             )
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
@@ -910,7 +914,9 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
             "schema": {"type": "string"},
             "required": True
         }
-    }
+    },
+    request_model=OAuthCallbackRequest,
+    response_model=OAuthCallbackResponse
 )
 async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -932,7 +938,6 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
     try:
         request_body = req.get_json()
         code = request_body.get("code")
-        state = request_body.get("state")
     except ValueError:
         logger.error("Invalid JSON in callback request body")
         return func.HttpResponse(
@@ -1082,13 +1087,24 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"OAuth connection completed: {connection_name} (status={final_status})")
 
+        # Check if refresh token was provided
+        refresh_token_warning = None
+        if not result.get("refresh_token"):
+            refresh_token_warning = (
+                "OAuth provider did not return a refresh token. "
+                "Automatic token refresh will not be available. "
+                "You will need to reconnect when the access token expires."
+            )
+            logger.warning(f"No refresh token returned for {connection_name}")
+
         # Return JSON success response
         return func.HttpResponse(
             json.dumps({
                 "success": True,
                 "message": "OAuth connection completed successfully",
                 "status": final_status,
-                "connection_name": connection_name
+                "connection_name": connection_name,
+                "warning": refresh_token_warning
             }),
             status_code=200,
             mimetype="application/json"
@@ -1105,7 +1121,7 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
                 status="failed",
                 status_message=f"Callback processing error: {str(e)}"
             )
-        except:
+        except Exception:
             pass
 
         error = ErrorResponse(
@@ -1209,7 +1225,7 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
             logger.error(f"OAuth response config not found: {oauth_response_key}")
             error = ErrorResponse(
                 error="InternalServerError",
-                message=f"OAuth credentials not properly configured"
+                message="OAuth credentials not properly configured"
             )
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
@@ -1221,10 +1237,10 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
         keyvault_secret_name = oauth_response_config.get("Value")
 
         if not keyvault_secret_name:
-            logger.error(f"OAuth response config missing Key Vault secret name")
+            logger.error("OAuth response config missing Key Vault secret name")
             error = ErrorResponse(
                 error="InternalServerError",
-                message=f"OAuth credentials not properly configured"
+                message="OAuth credentials not properly configured"
             )
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
@@ -1246,7 +1262,7 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
             )
             error = ErrorResponse(
                 error="InternalServerError",
-                message=f"Failed to retrieve OAuth credentials"
+                message="Failed to retrieve OAuth credentials"
             )
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
@@ -1261,10 +1277,10 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
         expires_at_str = oauth_response.get("expires_at")
 
         if not access_token:
-            logger.error(f"OAuth response missing access_token")
+            logger.error("OAuth response missing access_token")
             error = ErrorResponse(
                 error="InternalServerError",
-                message=f"OAuth credentials incomplete"
+                message="OAuth credentials incomplete"
             )
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
@@ -1368,7 +1384,7 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
         if job_status.get("Errors"):
             try:
                 errors = json.loads(job_status.get("Errors"))
-            except:
+            except Exception:
                 errors = []
 
         response = {

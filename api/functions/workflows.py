@@ -3,30 +3,19 @@ Workflow Execution API
 Handles execution of registered workflows with org context
 """
 
-import azure.functions as func
 import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
 
+import azure.functions as func
+
+from shared.error_handling import ValidationError, WorkflowError
+from shared.execution_logger import get_execution_logger
 from shared.middleware import with_org_context
+from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionRequest, WorkflowExecutionResponse
 from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
-from shared.execution_logger import get_execution_logger
-from shared.models import (
-    WorkflowExecutionRequest,
-    WorkflowExecutionResponse,
-    ExecutionStatus,
-    ErrorResponse
-)
-from shared.error_handling import (
-    WorkflowException,
-    ValidationError,
-    IntegrationError,
-    TimeoutError
-)
-from pydantic import ValidationError as PydanticValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +23,7 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-@bp.route(route="workflows/{workflowName}/execute", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@bp.route(route="workflows/{workflowName}/execute", methods=["POST"])
 @openapi_endpoint(
     path="/workflows/{workflowName}/execute",
     method="POST",
@@ -69,20 +58,25 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
         X-MS-CLIENT-PRINCIPAL: Easy Auth principal (optional, set by Azure)
         X-User-Id: DEPRECATED - User info now extracted from authentication principal
 
-    Body (optional - flat JSON with workflow parameters):
+    Body (WorkflowExecutionRequest):
         {
-            "param1": "value1",
-            "param2": "value2",
-            "_formId": "optional-form-id"  // Optional: use _ prefix for metadata
+            "inputData": {
+                "param1": "value1",
+                "param2": "value2"
+            },
+            "formId": "optional-form-id"  // Optional: reference to form that triggered execution
         }
 
-        If workflow has no parameters, body can be omitted entirely.
+        If workflow has no parameters, body can be omitted or inputData can be empty dict.
 
-    Response:
+    Response (WorkflowExecutionResponse):
         200: {
             "executionId": "uuid",
-            "status": "Success" | "Running" | "Failed",
-            "result": { ... },
+            "status": "Success" | "Failed",
+            "result": { ... },           // Present on success
+            "error": "error message",     // Present on failure
+            "errorType": "ErrorType",     // Present on failure
+            "details": { ... },           // Present on failure with details
             "durationMs": 1234,
             "startedAt": "ISO8601",
             "completedAt": "ISO8601"
@@ -104,7 +98,7 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
     from function_app import discover_workspace_modules
     discover_workspace_modules()
 
-    # Parse request body (flat JSON) - optional, defaults to empty dict
+    # Parse request body (WorkflowExecutionRequest) - optional, defaults to empty inputData
     try:
         body = req.get_json()
 
@@ -115,11 +109,13 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
         if not isinstance(body, dict):
             raise ValueError("Request body must be a JSON object")
 
-        # Extract metadata fields (prefixed with _)
-        form_id = body.pop('_formId', None)
+        # Extract form_id and inputData from request body
+        form_id = body.get('formId')
+        input_data = body.get('inputData', {})
 
-        # Remaining fields are workflow parameters
-        input_data = body
+        # If input_data is not provided, treat empty body as empty parameters
+        if not input_data and not form_id:
+            input_data = {}
     except ValueError as e:
         logger.error(f"Failed to parse request body: {str(e)}")
         error = ErrorResponse(
@@ -238,7 +234,8 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
 
         if isinstance(result, dict) and result.get('success') is False:
             execution_status = ExecutionStatus.COMPLETED_WITH_ERRORS
-            error_message = result.get('error', 'Workflow completed with errors')
+            error_message = result.get(
+                'error', 'Workflow completed with errors')
             logger.warning(
                 f"Workflow completed with errors: {workflow_name} - {error_message}",
                 extra={
@@ -286,7 +283,7 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json"
         )
 
-    except WorkflowException as e:
+    except WorkflowError as e:
         # Handle known workflow errors
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)

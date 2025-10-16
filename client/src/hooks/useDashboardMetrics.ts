@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/services/api'
+import { apiClient } from '@/lib/api-client'
 
 export interface DashboardMetrics {
   workflowCount: number
@@ -27,15 +27,9 @@ export function useDashboardMetrics() {
     queryKey: ['dashboard-metrics'],
     queryFn: async () => {
       try {
-        const response = await api.get<DashboardMetrics>('/dashboard/metrics')
-        console.log('Dashboard metrics response:', response)
-
-        // api.get already returns the parsed JSON, not wrapped in .data
-        if (!response) {
-          throw new Error('No data returned from dashboard metrics API')
-        }
-
-        return response
+        const { data, error } = await apiClient.GET('/metrics')
+        if (error) throw new Error(`Failed to fetch dashboard metrics: ${error}`)
+        return data as DashboardMetrics
       } catch (error) {
         console.error('Error fetching dashboard metrics:', error)
         throw error

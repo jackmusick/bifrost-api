@@ -19,19 +19,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2 } from 'lucide-react'
-import type { Form, FormField, FormSubmission } from '@/types/form'
+import type { components } from '@/lib/v1'
+
+type Form = components['schemas']['Form']
+type FormField = components['schemas']['FormField']
 import { useSubmitForm } from '@/hooks/useForms'
-import { useUser } from '@/contexts/UserContext'
+
 import { dataProvidersService, type DataProviderOption } from '@/services/dataProviders'
 
 interface FormRendererProps {
   form: Form
-  onSuccess?: (executionResult: any) => void
+  onSuccess?: (executionResult: unknown) => void
 }
 
 export function FormRenderer({ form, onSuccess }: FormRendererProps) {
   const submitForm = useSubmitForm()
-  const { orgId } = useUser()
+
 
   // State for data provider options
   const [dataProviderOptions, setDataProviderOptions] = useState<Record<string, DataProviderOption[]>>({})
@@ -67,7 +70,7 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
     }
 
     loadDataProviders()
-  }, [form.formSchema.fields])
+  }, [form.formSchema.fields, dataProviderOptions, loadingProviders])
 
   // Build Zod schema dynamically from form fields
   const buildSchema = () => {
@@ -241,7 +244,7 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
           </div>
         )
 
-      case 'select':
+      case 'select': {
         const providerName = typeof field.dataProvider === 'string' ? field.dataProvider : undefined
         const options = providerName ? dataProviderOptions[providerName] : []
         const isLoadingOptions = providerName ? loadingProviders[providerName] : false
@@ -290,6 +293,7 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
             )}
           </div>
         )
+      }
 
       default:
         return (

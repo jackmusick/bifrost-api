@@ -3,11 +3,11 @@ OAuth Provider Client
 Handles HTTP communication with OAuth providers for token exchange and refresh
 """
 
-import aiohttp
 import asyncio
 import logging
-from typing import Dict, Tuple, Optional
 from datetime import datetime, timedelta
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,9 @@ class OAuthProviderClient:
         token_url: str,
         code: str,
         client_id: str,
-        client_secret: Optional[str],
+        client_secret: str | None,
         redirect_uri: str
-    ) -> Tuple[bool, Dict]:
+    ) -> tuple[bool, dict]:
         """
         Exchange authorization code for access token (authorization code flow)
 
@@ -80,8 +80,8 @@ class OAuthProviderClient:
         token_url: str,
         refresh_token: str,
         client_id: str,
-        client_secret: Optional[str]
-    ) -> Tuple[bool, Dict]:
+        client_secret: str | None
+    ) -> tuple[bool, dict]:
         """
         Refresh access token using refresh token
 
@@ -115,7 +115,7 @@ class OAuthProviderClient:
         client_id: str,
         client_secret: str,
         scopes: str = ""
-    ) -> Tuple[bool, Dict]:
+    ) -> tuple[bool, dict]:
         """
         Get token using client credentials flow (service-to-service)
 
@@ -145,8 +145,8 @@ class OAuthProviderClient:
     async def _make_token_request(
         self,
         token_url: str,
-        payload: Dict
-    ) -> Tuple[bool, Dict]:
+        payload: dict
+    ) -> tuple[bool, dict]:
         """
         Make token request with retry logic
 
@@ -209,7 +209,7 @@ class OAuthProviderClient:
                     await asyncio.sleep(wait_time)
                     continue
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(f"Token request timed out (attempt {attempt + 1}/{self.max_retries})")
                 last_error = "Request timed out"
 
@@ -232,7 +232,7 @@ class OAuthProviderClient:
             "error_description": f"Failed after {self.max_retries} attempts: {last_error}"
         })
 
-    def _parse_token_response(self, response_data: Dict) -> Dict:
+    def _parse_token_response(self, response_data: dict) -> dict:
         """
         Parse OAuth token response and calculate expiration
 
@@ -260,9 +260,9 @@ class OAuthProviderClient:
 
         # Log refresh token presence at INFO level for debugging
         if result['refresh_token'] is not None:
-            logger.info(f"✓ Token response includes refresh_token")
+            logger.info("✓ Token response includes refresh_token")
         else:
-            logger.info(f"✗ Token response does NOT include refresh_token (will use fallback if available)")
+            logger.info("✗ Token response does NOT include refresh_token (will use fallback if available)")
 
         logger.debug(f"Parsed token response: expires_at={result['expires_at']}, has_refresh={result['refresh_token'] is not None}")
 

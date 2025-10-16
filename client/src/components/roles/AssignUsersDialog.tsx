@@ -13,7 +13,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { useUsers } from '@/hooks/useUsers'
 import { useAssignUsersToRole } from '@/hooks/useRoles'
-import type { Role } from '@/types/role'
+import type { components } from '@/lib/v1'
+type Role = components['schemas']['Role']
+type User = components['schemas']['User']
 
 interface AssignUsersDialogProps {
   role?: Role | undefined
@@ -74,7 +76,7 @@ export function AssignUsersDialog({ role, open, onClose }: AssignUsersDialogProp
             </div>
           ) : users && users.length > 0 ? (
             <div className="space-y-2">
-              {users.map((user) => {
+              {users.map((user: User) => {
                 const isSelected = selectedUserIds.includes(user.id)
                 return (
                   <button

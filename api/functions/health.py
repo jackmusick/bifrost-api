@@ -5,19 +5,16 @@ Provides REST API for checking the health status of Azure Key Vault
 integration and other system dependencies.
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
+
 import azure.functions as func
-from shared.models import (
-    HealthCheck,
-    GeneralHealthResponse,
-    KeyVaultHealthResponse,
-    ErrorResponse
-)
-from shared.openapi_decorators import openapi_endpoint
+
+from shared.auth import is_platform_admin, require_auth
 from shared.keyvault import KeyVaultClient
-from shared.auth import require_auth, is_platform_admin
+from shared.models import ErrorResponse, GeneralHealthResponse, HealthCheck, KeyVaultHealthResponse
+from shared.openapi_decorators import openapi_endpoint
 
 logger = logging.getLogger(__name__)
 

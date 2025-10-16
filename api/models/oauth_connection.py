@@ -4,9 +4,9 @@ Request/response validation and serialization for OAuth helper feature
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, Literal
-from pydantic import BaseModel, Field
+from typing import Literal
 
+from pydantic import BaseModel, Field
 
 # ==================== PUBLIC API ====================
 
@@ -49,7 +49,7 @@ class CreateOAuthConnectionRequest(BaseModel):
         max_length=100,
         description="Unique connection identifier (alphanumeric, underscores, hyphens)"
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         None,
         max_length=500,
         description="Optional description of this OAuth connection"
@@ -63,7 +63,7 @@ class CreateOAuthConnectionRequest(BaseModel):
         min_length=1,
         description="OAuth client ID (not sensitive)"
     )
-    client_secret: Optional[str] = Field(
+    client_secret: str | None = Field(
         None,
         description="OAuth client secret (optional for PKCE flow, will be stored securely in Key Vault)"
     )
@@ -96,11 +96,11 @@ class UpdateOAuthConnectionRequest(BaseModel):
     Request model for updating an OAuth connection
     PUT /api/oauth/connections/{connection_name}
     """
-    client_id: Optional[str] = Field(None, min_length=1)
-    client_secret: Optional[str] = Field(None, min_length=1)
-    authorization_url: Optional[str] = Field(None, pattern=r"^https://")
-    token_url: Optional[str] = Field(None, pattern=r"^https://")
-    scopes: Optional[str] = None
+    client_id: str | None = Field(None, min_length=1)
+    client_secret: str | None = Field(None, min_length=1)
+    authorization_url: str | None = Field(None, pattern=r"^https://")
+    token_url: str | None = Field(None, pattern=r"^https://")
+    scopes: str | None = None
 
 
 # ==================== RESPONSE MODELS ====================
@@ -113,15 +113,15 @@ class OAuthConnectionSummary(BaseModel):
     Does not include sensitive fields or detailed configuration
     """
     connection_name: str
-    description: Optional[str] = None
+    description: str | None = None
     oauth_flow_type: OAuthFlowType
     status: OAuthStatus
-    status_message: Optional[str] = None
-    expires_at: Optional[datetime] = Field(
+    status_message: str | None = None
+    expires_at: datetime | None = Field(
         None,
         description="When the current access token expires"
     )
-    last_refresh_at: Optional[datetime] = Field(
+    last_refresh_at: datetime | None = Field(
         None,
         description="Last successful token refresh"
     )
@@ -139,7 +139,7 @@ class OAuthConnectionDetail(BaseModel):
     Includes configuration details but masks sensitive fields
     """
     connection_name: str
-    description: Optional[str] = None
+    description: str | None = None
     oauth_flow_type: OAuthFlowType
     client_id: str = Field(
         ...,
@@ -155,10 +155,10 @@ class OAuthConnectionDetail(BaseModel):
 
     # Status information
     status: OAuthStatus
-    status_message: Optional[str] = None
-    expires_at: Optional[datetime] = None
-    last_refresh_at: Optional[datetime] = None
-    last_test_at: Optional[datetime] = None
+    status_message: str | None = None
+    expires_at: datetime | None = None
+    last_refresh_at: datetime | None = None
+    last_test_at: datetime | None = None
 
     # Metadata
     created_at: datetime
@@ -191,7 +191,7 @@ class OAuthConnection(BaseModel):
     )
 
     # OAuth Configuration
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     oauth_flow_type: OAuthFlowType
     client_id: str
     client_secret_ref: str = Field(
@@ -212,16 +212,16 @@ class OAuthConnection(BaseModel):
 
     # Token metadata (not the actual tokens - those are in Config/KeyVault)
     token_type: str = "Bearer"
-    expires_at: Optional[datetime] = Field(
+    expires_at: datetime | None = Field(
         None,
         description="When the current access token expires (copied from secret for quick checks)"
     )
 
     # Status tracking
     status: OAuthStatus
-    status_message: Optional[str] = None
-    last_refresh_at: Optional[datetime] = None
-    last_test_at: Optional[datetime] = None
+    status_message: str | None = None
+    last_refresh_at: datetime | None = None
+    last_test_at: datetime | None = None
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -322,7 +322,7 @@ class OAuthCredentials(BaseModel):
         ...,
         description="ISO 8601 timestamp when token expires"
     )
-    refresh_token: Optional[str] = Field(
+    refresh_token: str | None = Field(
         None,
         description="Refresh token if available"
     )
@@ -341,7 +341,7 @@ class OAuthCredentialsResponse(BaseModel):
     Includes connection status and metadata
     """
     connection_name: str
-    credentials: Optional[OAuthCredentials] = Field(
+    credentials: OAuthCredentials | None = Field(
         None,
         description="Credentials if connection is active, None if not connected"
     )
@@ -349,7 +349,7 @@ class OAuthCredentialsResponse(BaseModel):
         ...,
         description="Current connection status"
     )
-    expires_at: Optional[str] = Field(
+    expires_at: str | None = Field(
         None,
         description="ISO 8601 timestamp when token expires"
     )

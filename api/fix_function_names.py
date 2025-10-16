@@ -8,10 +8,10 @@ To valid syntax:
   @bp.route(route="...", methods=["..."])
 """
 import re
-import sys
+
 
 def fix_function_names(filepath):
-    with open(filepath, 'r') as f:
+    with open(filepath) as f:
         content = f.read()
 
     # Pattern to match: @bp.route(route="...", methods=[...], function_name="name")

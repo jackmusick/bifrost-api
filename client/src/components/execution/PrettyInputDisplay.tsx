@@ -7,7 +7,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { toast } from 'sonner'
 
 interface PrettyInputDisplayProps {
-  inputData: Record<string, any>
+  inputData: Record<string, unknown>
   showToggle?: boolean
   defaultView?: 'pretty' | 'json'
 }
@@ -37,7 +37,7 @@ function snakeCaseToTitleCase(str: string): string {
 /**
  * Format value for display
  */
-function formatValue(value: any): { display: string; badge?: string } {
+function formatValue(value: unknown): { display: string; badge?: string } {
   if (value === null) {
     return { display: 'null', badge: 'null' }
   }
@@ -106,7 +106,7 @@ export function PrettyInputDisplay({
       setCopied(true)
       toast.success('Copied to clipboard')
       setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
+    } catch {
       toast.error('Failed to copy to clipboard')
     }
   }

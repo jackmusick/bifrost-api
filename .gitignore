@@ -10,6 +10,9 @@ logs/
 # Local development mounts (simulate Azure Files in production)
 tmp/
 
+# Key Vault emulator certificates (generated locally)
+keyvault-certs/
+
 # Node
 node_modules/
 

@@ -14,6 +14,9 @@ COPY . /home/site/wwwroot
 RUN mkdir -p /azure-functions-host/Secrets/
 RUN echo '{"masterKey":{"name":"master","value":"test","encrypted":false},"functionKeys":[]}' > /azure-functions-host/Secrets/host.json
 
+# Expose Azure Functions runtime port
+EXPOSE 80
+
 # Expose debugpy port (only used when ENABLE_DEBUGGING=true)
 EXPOSE 5678
 

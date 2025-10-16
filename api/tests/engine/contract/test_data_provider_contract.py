@@ -3,16 +3,17 @@ Contract Tests for Data Provider API
 Tests data provider response format and validation
 """
 
+from typing import Any
+
 import pytest
 from pydantic import BaseModel, ValidationError, field_validator
-from typing import List, Dict, Any, Optional
 
 
 class DataProviderOption(BaseModel):
     """Single option returned by data provider"""
     label: str
     value: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     @field_validator('label')
     @classmethod
@@ -34,9 +35,9 @@ class DataProviderOption(BaseModel):
 class DataProviderResponse(BaseModel):
     """Response from data provider endpoint"""
     provider: str
-    options: List[DataProviderOption]
+    options: list[DataProviderOption]
     cached: bool = False
-    cache_expires_at: Optional[str] = None
+    cache_expires_at: str | None = None
 
 
 class TestDataProviderOption:

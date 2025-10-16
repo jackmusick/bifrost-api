@@ -48,13 +48,4 @@ export const secretsService = {
     if (error) throw new Error(`Failed to delete secret: ${error}`)
     return data
   },
-
-  /**
-   * Check Key Vault health status
-   */
-  async getHealthStatus() {
-    const { data, error } = await apiClient.GET('/health/keyvault')
-    if (error) throw new Error(`Failed to check Key Vault health: ${error}`)
-    return data
-  },
 }

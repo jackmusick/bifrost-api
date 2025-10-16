@@ -5,19 +5,54 @@ This module provides comprehensive secret management capabilities including
 create, read, update, delete, and list operations for the client API.
 """
 
-import os
 import logging
-from typing import List, Optional, Dict
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient, KeyVaultSecret
+import os
+from datetime import datetime, timedelta
+
+from azure.core.credentials import AccessToken
 from azure.core.exceptions import (
-    ResourceNotFoundError,
     ClientAuthenticationError,
     HttpResponseError,
-    ServiceRequestError
+    ResourceNotFoundError,
+    ServiceRequestError,
 )
+from azure.core.pipeline.transport import RequestsTransport
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 logger = logging.getLogger(__name__)
+
+
+class EmulatorCredential:
+    """
+    Dummy credential for Azure Key Vault emulator that returns a minimal JWT token.
+    The james-gould emulator requires a valid JWT structure.
+    """
+
+    def get_token(self, *scopes, **kwargs):
+        """Return a minimal JWT access token for the emulator."""
+        import base64
+        import json
+
+        # Create minimal JWT header and payload
+        header = {"alg": "none", "typ": "JWT"}
+        payload = {
+            "aud": "https://vault.azure.net",
+            "iss": "https://sts.windows.net/emulator/",
+            "exp": int((datetime.now() + timedelta(hours=1)).timestamp()),
+            "nbf": int(datetime.now().timestamp()),
+            "iat": int(datetime.now().timestamp())
+        }
+
+        # Base64 encode (without padding for simplicity)
+        header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
+        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+
+        # Create unsigned JWT (alg: none)
+        token = f"{header_b64}.{payload_b64}."
+
+        expires_on = int((datetime.now() + timedelta(hours=1)).timestamp())
+        return AccessToken(token, expires_on)
 
 
 class KeyVaultClient:
@@ -32,7 +67,7 @@ class KeyVaultClient:
     - Health check capabilities
     """
 
-    def __init__(self, vault_url: Optional[str] = None):
+    def __init__(self, vault_url: str | None = None):
         """
         Initialize the Key Vault manager.
 
@@ -41,25 +76,48 @@ class KeyVaultClient:
                       If None, attempts to read from AZURE_KEY_VAULT_URL env var
         """
         self.vault_url = vault_url or os.environ.get("AZURE_KEY_VAULT_URL")
-        self._client: Optional[SecretClient] = None
+        self._client: SecretClient | None = None
         self._credential = None
 
         # Initialize client if vault URL is provided
         if self.vault_url:
             try:
-                self._credential = DefaultAzureCredential()
+                # For local Key Vault emulator, disable challenge resource verification
+                # The emulator uses 'keyvault:4997' which doesn't match Azure's domain pattern
+                is_local_emulator = "keyvault:" in self.vault_url or "localhost:" in self.vault_url
+
+                # Use EmulatorCredential for emulator, DefaultAzureCredential for production
+                if is_local_emulator:
+                    self._credential = EmulatorCredential()
+                    logger.info("Using EmulatorCredential for Key Vault emulator")
+                else:
+                    self._credential = DefaultAzureCredential()
+                    logger.info("Using DefaultAzureCredential for Key Vault")
+
+                # Configure custom transport for SSL certificate verification with emulator
+                transport = None
+                if is_local_emulator:
+                    cert_path = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
+                    if cert_path and os.path.exists(cert_path):
+                        transport = RequestsTransport(verify=cert_path)
+                        logger.info(f"Using custom CA bundle for Key Vault: {cert_path}")
+                    else:
+                        logger.warning("Certificate path not found, SSL verification may fail")
+
                 self._client = SecretClient(
                     vault_url=self.vault_url,
-                    credential=self._credential
+                    credential=self._credential,
+                    verify_challenge_resource=not is_local_emulator,
+                    transport=transport
                 )
-                logger.info(f"Key Vault manager initialized for {self.vault_url}")
+                logger.info(f"Key Vault manager initialized for {self.vault_url} (local emulator: {is_local_emulator})")
             except Exception as e:
                 logger.error(f"Failed to initialize Key Vault client: {e}")
                 raise
         else:
             raise ValueError("AZURE_KEY_VAULT_URL environment variable is required")
 
-    def create_secret(self, org_id: str, secret_key: str, value: str) -> Dict[str, str]:
+    def create_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
         """
         Create a new secret in Key Vault.
 
@@ -94,11 +152,11 @@ class KeyVaultClient:
         except HttpResponseError as e:
             if e.status_code == 403:
                 raise HttpResponseError(
-                    f"Permission denied: Insufficient permissions to create secrets in Key Vault"
-                )
+                    "Permission denied: Insufficient permissions to create secrets in Key Vault"
+                ) from e
             raise
 
-    def update_secret(self, org_id: str, secret_key: str, value: str) -> Dict[str, str]:
+    def update_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
         """
         Update an existing secret in Key Vault.
 
@@ -127,11 +185,11 @@ class KeyVaultClient:
         except HttpResponseError as e:
             if e.status_code == 403:
                 raise HttpResponseError(
-                    f"Permission denied: Insufficient permissions to update secrets in Key Vault"
-                )
+                    "Permission denied: Insufficient permissions to update secrets in Key Vault"
+                ) from e
             raise
 
-    def delete_secret(self, org_id: str, secret_key: str) -> Dict[str, str]:
+    def delete_secret(self, org_id: str, secret_key: str) -> dict[str, str]:
         """
         Delete a secret from Key Vault.
 
@@ -159,12 +217,12 @@ class KeyVaultClient:
                 "message": "Secret deleted successfully (soft-delete, recoverable for 90 days)"
             }
         except ResourceNotFoundError:
-            raise ResourceNotFoundError(f"Secret not found: {secret_name}")
+            raise ResourceNotFoundError(f"Secret not found: {secret_name}") from None
         except HttpResponseError as e:
             if e.status_code == 403:
                 raise HttpResponseError(
-                    f"Permission denied: Insufficient permissions to delete secrets in Key Vault"
-                )
+                    "Permission denied: Insufficient permissions to delete secrets in Key Vault"
+                ) from e
             raise
 
     def get_secret(self, org_id: str, secret_key: str) -> str:
@@ -188,9 +246,9 @@ class KeyVaultClient:
             logger.info(f"Retrieved secret: {secret_name}")
             return secret.value
         except ResourceNotFoundError:
-            raise ResourceNotFoundError(f"Secret not found: {secret_name}")
+            raise ResourceNotFoundError(f"Secret not found: {secret_name}") from None
 
-    def list_secrets(self, org_id: Optional[str] = None) -> List[str]:
+    def list_secrets(self, org_id: str | None = None) -> list[str]:
         """
         List all secrets in Key Vault, optionally filtered by organization.
 
@@ -227,7 +285,7 @@ class KeyVaultClient:
                 return []
             raise
 
-    def health_check(self) -> Dict:
+    def health_check(self) -> dict:
         """
         Perform a comprehensive health check on Key Vault connectivity and permissions.
 

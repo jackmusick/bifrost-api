@@ -4,7 +4,7 @@ Abstract base class for all integration clients
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from shared.context import OrganizationContext

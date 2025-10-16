@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Eye, Settings2, Globe, Building2 } from 'lucide-react'
+import { ArrowLeft, Save, Eye, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -9,14 +9,17 @@ import { FormInfoDialog } from '@/components/forms/FormInfoDialog'
 import { FieldsPanelDnD } from '@/components/forms/FieldsPanelDnD'
 import { FormPreview } from '@/components/forms/FormPreview'
 import { useOrgScope } from '@/contexts/OrgScopeContext'
-import type { FormField, CreateFormRequest } from '@/types/form'
+import type { components } from '@/lib/v1'
+type FormField = components['schemas']['FormField']
+type CreateFormRequest = components['schemas']['CreateFormRequest']
+type UpdateFormRequest = components['schemas']['UpdateFormRequest']
 import { toast } from 'sonner'
 
 export function FormBuilder() {
   const navigate = useNavigate()
   const { formId } = useParams()
   const isEditing = !!formId
-  const { scope, isGlobalScope } = useOrgScope()
+  const { isGlobalScope } = useOrgScope()
 
   const { data: existingForm } = useFormQuery(formId)
   const createForm = useCreateForm()
@@ -57,35 +60,42 @@ export function FormBuilder() {
 
   const handleSave = async () => {
     try {
-      const request: CreateFormRequest = {
-        name: formName,
-        description: formDescription || null,
-        linkedWorkflow,
-        formSchema: { fields },
-        isGlobal,
-        isPublic: false,
-      }
-
       if (isEditing && formId) {
-        await updateForm.mutateAsync({ formId, request })
+        const updateRequest: UpdateFormRequest = {
+          name: formName,
+          description: formDescription || null,
+          linkedWorkflow,
+          formSchema: { fields },
+          isActive: true,
+        }
+        await updateForm.mutateAsync({ formId, request: updateRequest })
         toast.success('Form updated successfully')
       } else {
-        await createForm.mutateAsync(request)
+        const createRequest: CreateFormRequest = {
+          name: formName,
+          description: formDescription || null,
+          linkedWorkflow,
+          formSchema: { fields },
+          isGlobal,
+          isPublic: false,
+        }
+        await createForm.mutateAsync(createRequest)
         toast.success('Form created successfully')
       }
 
       navigate('/forms')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to save form:', error)
 
       // Extract error message from response
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to save form'
-      const errorDetails = error?.response?.data?.details
+      const errorResponse = error as { response?: { data?: { message?: string; details?: { errors?: { loc: string[], msg: string }[] } } } } & Error
+      const errorMessage = errorResponse?.response?.data?.message || errorResponse?.message || 'Failed to save form'
+      const errorDetails = errorResponse?.response?.data?.details
 
       if (errorDetails?.errors) {
         // Show validation errors
         const validationErrors = errorDetails.errors
-          .map((err: any) => `${err.loc.join('.')}: ${err.msg}`)
+          .map((err: { loc: string[], msg: string }) => `${err.loc.join('.')}: ${err.msg}`)
           .join('\n')
         toast.error(`Validation Error\n${validationErrors}`)
       } else {

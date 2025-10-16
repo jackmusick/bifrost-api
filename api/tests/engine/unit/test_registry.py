@@ -4,13 +4,8 @@ Tests singleton pattern, registration, and retrieval
 """
 
 import pytest
-from shared.registry import (
-    WorkflowRegistry,
-    WorkflowMetadata,
-    WorkflowParameter,
-    DataProviderMetadata,
-    get_registry
-)
+
+from shared.registry import DataProviderMetadata, WorkflowMetadata, WorkflowParameter, WorkflowRegistry, get_registry
 
 
 @pytest.fixture

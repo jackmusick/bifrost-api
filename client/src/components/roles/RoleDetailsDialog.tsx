@@ -20,7 +20,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useRoleUsers, useRoleForms, useRemoveUserFromRole, useRemoveFormFromRole } from '@/hooks/useRoles'
 import { AssignUsersDialog } from './AssignUsersDialog'
 import { AssignFormsDialog } from './AssignFormsDialog'
-import type { Role } from '@/types/role'
+import type { components } from '@/lib/v1'
+type Role = components['schemas']['Role']
 
 interface RoleDetailsDialogProps {
   role?: Role | undefined
@@ -100,23 +101,23 @@ export function RoleDetailsDialog({ role, open, onClose }: RoleDetailsDialogProp
                       <Skeleton key={i} className="h-10 w-full" />
                     ))}
                   </div>
-                ) : users && users.length > 0 ? (
+                ) : users && users.userIds && users.userIds.length > 0 ? (
                   <div className="space-y-2">
-                    {users.map((userRole) => (
+                    {users.userIds.map((userId: string) => (
                       <div
-                        key={userRole.userId}
+                        key={userId}
                         className="flex items-center justify-between rounded-lg border p-3"
                       >
                         <div>
-                          <p className="font-medium">{userRole.userId}</p>
+                          <p className="font-medium">{userId}</p>
                           <p className="text-sm text-muted-foreground">
-                            Assigned {new Date(userRole.assignedAt).toLocaleDateString()}
+                            User ID: {userId}
                           </p>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleRemoveUser(userRole.userId)}
+                          onClick={() => handleRemoveUser(userId)}
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -162,23 +163,23 @@ export function RoleDetailsDialog({ role, open, onClose }: RoleDetailsDialogProp
                       <Skeleton key={i} className="h-10 w-full" />
                     ))}
                   </div>
-                ) : forms && forms.length > 0 ? (
+                ) : forms && forms.formIds && forms.formIds.length > 0 ? (
                   <div className="space-y-2">
-                    {forms.map((formRole) => (
+                    {forms.formIds.map((formId: string) => (
                       <div
-                        key={formRole.formId}
+                        key={formId}
                         className="flex items-center justify-between rounded-lg border p-3"
                       >
                         <div>
-                          <p className="font-medium">{formRole.formId}</p>
+                          <p className="font-medium">{formId}</p>
                           <p className="text-sm text-muted-foreground">
-                            Assigned {new Date(formRole.assignedAt).toLocaleDateString()}
+                            Form ID: {formId}
                           </p>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleRemoveForm(formRole.formId)}
+                          onClick={() => handleRemoveForm(formId)}
                         >
                           <X className="h-4 w-4" />
                         </Button>

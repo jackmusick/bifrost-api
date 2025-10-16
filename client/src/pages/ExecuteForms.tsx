@@ -15,8 +15,8 @@ import { useUser } from '@/contexts/UserContext'
 
 export function ExecuteForms() {
   const navigate = useNavigate()
-  const { orgId, isLoading: userLoading } = useUser()
-  const { data: forms, isLoading } = useForms(orgId ?? undefined)
+  const { isLoading: userLoading } = useUser()
+  const { data: forms, isLoading } = useForms()
 
   // Filter only active forms
   const activeForms = forms?.filter((form) => form.isActive) || []

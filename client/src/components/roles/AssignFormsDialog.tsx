@@ -13,7 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { useForms } from '@/hooks/useForms'
 import { useAssignFormsToRole } from '@/hooks/useRoles'
-import type { Role } from '@/types/role'
+import type { components } from '@/lib/v1'
+type Role = components['schemas']['Role']
 
 interface AssignFormsDialogProps {
   role?: Role | undefined

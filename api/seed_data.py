@@ -5,13 +5,13 @@ Populates Azurite with realistic sample data for testing
 Run this script after initializing tables with init_tables.py
 """
 
-import os
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta
+
 from azure.data.tables import TableClient
-from azure.core.exceptions import ResourceExistsError
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ FORM_ONBOARDING_ID = str(uuid.uuid4())
 ROLE_IT_MANAGERS_ID = str(uuid.uuid4())
 ROLE_HELP_DESK_ID = str(uuid.uuid4())
 
-logger.info(f"Generated UUIDs for seed data:")
+logger.info("Generated UUIDs for seed data:")
 logger.info(f"  Org ACME: {ORG_ACME_ID}")
 logger.info(f"  Org Contoso: {ORG_CONTOSO_ID}")
 logger.info(f"  Form Greeting: {FORM_GREETING_ID}")
@@ -234,7 +234,7 @@ def generate_sample_executions():
                 "license": "Microsoft 365 Business Premium",
             }),
             "Result": json.dumps({"success": True, "user_id": f"new-user-{i+1}"}) if status == "Success" else None,
-            "ErrorMessage": f"Sample error message for testing" if status == "Failed" else None,
+            "ErrorMessage": "Sample error message for testing" if status == "Failed" else None,
             "DurationMs": 2000 + (i * 100),
             "StartedAt": execution_time.isoformat(),
             "CompletedAt": (execution_time + timedelta(seconds=2 + i * 0.1)).isoformat(),
@@ -361,14 +361,14 @@ def seed_table(connection_string: str, table_name: str, entities: list):
     for entity in entities:
         try:
             # Try to get entity first
-            existing = table_client.get_entity(
+            table_client.get_entity(
                 partition_key=entity["PartitionKey"],
                 row_key=entity["RowKey"]
             )
             logger.info(
                 f"  ⊘ Skipped {table_name}: {entity['RowKey'][:50]}... (already exists)")
             skipped += 1
-        except:
+        except Exception:
             # Entity doesn't exist, insert it
             table_client.create_entity(entity)
             logger.info(f"  ✓ Inserted {table_name}: {entity['RowKey'][:50]}...")

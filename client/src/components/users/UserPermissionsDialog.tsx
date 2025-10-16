@@ -20,7 +20,15 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { useOrganizations } from '@/hooks/useOrganizations'
 import { useOrgPermissions, useGrantPermissions, useRevokePermissions } from '@/hooks/useUsers'
-import type { User, PermissionsData } from '@/types/user'
+import type { components } from '@/lib/v1'
+type User = components['schemas']['User']
+
+interface PermissionsData {
+  canExecuteWorkflows: boolean
+  canManageConfig: boolean
+  canManageForms: boolean
+  canViewHistory: boolean
+}
 
 interface UserPermissionsDialogProps {
   user?: User | undefined
@@ -29,7 +37,8 @@ interface UserPermissionsDialogProps {
 }
 
 export function UserPermissionsDialog({ user, open, onClose }: UserPermissionsDialogProps) {
-  const { data: organizations, isLoading: orgsLoading } = useOrganizations()
+  const { data: organization, isLoading: orgsLoading } = useOrganizations()
+  const organizations = organization ? [organization] : []
   const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>()
   const [permissions, setPermissions] = useState<PermissionsData>({
     canExecuteWorkflows: false,
@@ -39,6 +48,8 @@ export function UserPermissionsDialog({ user, open, onClose }: UserPermissionsDi
   })
 
   const { data: orgPermissions, isLoading: permsLoading } = useOrgPermissions(selectedOrgId)
+  
+  const orgPermissionsArray = (orgPermissions as { userId: string; orgId: string }[]) || []
   const grantMutation = useGrantPermissions()
   const revokeMutation = useRevokePermissions()
 
@@ -57,25 +68,16 @@ export function UserPermissionsDialog({ user, open, onClose }: UserPermissionsDi
 
   // Find user's current permissions for selected org
   useEffect(() => {
-    if (orgPermissions && user) {
-      const userPerm = orgPermissions.find((p) => p.userId === user.id)
-      if (userPerm) {
-        setPermissions({
-          canExecuteWorkflows: userPerm.canExecuteWorkflows,
-          canManageConfig: userPerm.canManageConfig,
-          canManageForms: userPerm.canManageForms,
-          canViewHistory: userPerm.canViewHistory,
-        })
-      } else {
-        setPermissions({
-          canExecuteWorkflows: false,
-          canManageConfig: false,
-          canManageForms: false,
-          canViewHistory: false,
-        })
-      }
+    // Permissions system is deprecated, always set to false
+    if (user) {
+      setPermissions({
+        canExecuteWorkflows: false,
+        canManageConfig: false,
+        canManageForms: false,
+        canViewHistory: false,
+      })
     }
-  }, [orgPermissions, user])
+  }, [user])
 
   if (!user) return null
 
@@ -150,7 +152,7 @@ export function UserPermissionsDialog({ user, open, onClose }: UserPermissionsDi
               ) : organizations && organizations.length > 0 ? (
                 <div className="space-y-2">
                   {organizations.map((org) => {
-                    const hasAccess = orgPermissions?.some((p) => p.userId === user.id && p.orgId === org.id)
+                    const hasAccess = orgPermissionsArray.some((p) => p.userId === user.id && p.orgId === org.id)
                     return (
                       <button
                         key={org.id}

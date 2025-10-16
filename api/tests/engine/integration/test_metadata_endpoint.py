@@ -3,15 +3,14 @@ Integration tests for /admin/metadata endpoint
 Tests that the metadata endpoint returns correct workflow and data provider information
 """
 
-import pytest
-import json
 import asyncio
-from unittest.mock import Mock
+import importlib.util
+import json
 
 # Import workspace modules to trigger auto-discovery
 import sys
-import importlib.util
 from pathlib import Path
+from unittest.mock import Mock
 
 # Manually trigger workspace discovery for tests
 workspace_path = Path("/Users/jack/GitHub/bifrost-integrations/workflows/workspace")
@@ -33,8 +32,9 @@ if workspace_path.exists():
         except Exception:
             pass
 
-from functions.discovery import get_discovery_metadata
 import azure.functions as func
+
+from functions.discovery import get_discovery_metadata
 
 
 class TestMetadataEndpoint:

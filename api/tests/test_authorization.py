@@ -3,20 +3,20 @@ Unit tests for authorization helpers
 Tests permission checking, form access control, and data visibility filtering
 """
 
+import uuid
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+
 from shared.authorization import (
-    can_user_view_form,
-    can_user_execute_form,
-    get_user_visible_forms,
     can_user_view_execution,
-    get_user_executions,
+    can_user_view_form,
+    get_form_role_ids,
     get_user_role_ids,
-    get_form_role_ids
+    get_user_visible_forms,
 )
 from shared.request_context import RequestContext
 from shared.storage import TableStorageService
-import uuid
 
 
 class TestCanUserViewForm:

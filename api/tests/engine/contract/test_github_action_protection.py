@@ -7,9 +7,10 @@ modifications to the /engine directory from unauthorized commits.
 These tests verify the contract defined in /specs/002-i-want-to/contracts/README.md
 """
 
-import yaml
-import pytest
 from pathlib import Path
+
+import pytest
+import yaml
 
 
 class TestGitHubActionContract:
@@ -28,7 +29,7 @@ class TestGitHubActionContract:
         else:
             # Fallback: go up 4 levels from api/tests/engine/contract/
             repo_root = Path(__file__).parent.parent.parent.parent
-        
+
         return repo_root / ".github" / "workflows" / "protect-engine.yml"
 
     @pytest.fixture
@@ -37,7 +38,7 @@ class TestGitHubActionContract:
         if not workflow_file_path.exists():
             pytest.skip("GitHub Actions workflow file not yet created")
 
-        with open(workflow_file_path, 'r') as f:
+        with open(workflow_file_path) as f:
             return yaml.safe_load(f)
 
     def test_workflow_file_exists(self, workflow_file_path):

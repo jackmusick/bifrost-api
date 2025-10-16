@@ -33,6 +33,9 @@ export default defineConfig({
         ],
     },
     server: {
+        host: "0.0.0.0", // Bind to all interfaces for Docker
+        port: 5173,
+        strictPort: true, // Fail if port is already in use
         fs: {
             // Allow serving files from one level up to the project root
             allow: [".."],

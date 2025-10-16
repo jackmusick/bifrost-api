@@ -29,7 +29,7 @@ const syncSessionStorage = (scope: OrgScope) => {
 
 export const useScopeStore = create<ScopeState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       scope: { type: 'global', orgId: null, orgName: null },
       isGlobalScope: true,
       _hasHydrated: false,

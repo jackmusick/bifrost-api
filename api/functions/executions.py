@@ -6,15 +6,14 @@ Provides access to workflow execution history with filtering capabilities.
 
 import json
 import logging
-import azure.functions as func
-from typing import Optional, List
-from datetime import datetime
 
-from shared.decorators import with_request_context
-from shared.openapi_decorators import openapi_endpoint
+import azure.functions as func
+
 from shared.authorization import can_user_view_execution, get_user_executions
+from shared.decorators import with_request_context
+from shared.models import ExecutionsListResponse, WorkflowExecution
+from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
-from shared.models import WorkflowExecution, ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ bp = func.Blueprint()
     summary="List workflow executions",
     description="List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.",
     tags=["Executions"],
-    response_model=WorkflowExecution,
+    response_model=ExecutionsListResponse,
     query_params={
         "workflowName": {
             "description": "Filter by workflow name",

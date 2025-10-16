@@ -2,12 +2,12 @@
 Pytest fixtures for end-to-end integration tests
 """
 
-import pytest
-import requests
 import base64
 import json
 import time
 
+import pytest
+import requests
 
 # Base URL for Azure Functions
 BASE_URL = "http://localhost:7071/api"
@@ -30,7 +30,7 @@ def ensure_services_running():
                 return True
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
             if i == 0:
-                print(f"\n⏳ Waiting for Azure Functions to start...")
+                print("\n⏳ Waiting for Azure Functions to start...")
             time.sleep(retry_delay)
 
     raise RuntimeError(
@@ -103,8 +103,8 @@ def setup_test_environment(ensure_services_running):
     Automatically runs before all tests to ensure services are ready
     """
     # Load seed data for E2E tests
-    import sys
     import os
+    import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
     try:

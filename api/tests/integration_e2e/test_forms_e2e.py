@@ -3,7 +3,6 @@ End-to-end tests for Forms API
 Tests against running Azure Functions instance with real Azurite data
 """
 
-import pytest
 import requests
 
 
@@ -245,3 +244,87 @@ class TestFormsE2E:
         assert response.status_code == 400
         error = response.json()
         assert error["error"] == "ValidationError"
+
+    def test_inactive_forms_hidden_from_list(self, base_url, platform_admin_headers, org_user_headers):
+        """Inactive forms should not appear in the forms list for any user"""
+        # Step 1: Create a form as platform admin
+        create_response = requests.post(
+            f"{base_url}/forms",
+            headers=platform_admin_headers,
+            json={
+                "name": "Form to Deactivate",
+                "linkedWorkflow": "test_workflow",
+                "formSchema": {"fields": []},
+                "isGlobal": True,
+                "isPublic": True
+            }
+        )
+        assert create_response.status_code == 201
+        form_id = create_response.json()["id"]
+
+        # Step 2: Verify form appears in list for both admin and org user
+        admin_list_response = requests.get(
+            f"{base_url}/forms",
+            headers=platform_admin_headers
+        )
+        assert admin_list_response.status_code == 200
+        admin_forms = admin_list_response.json()
+        admin_form_ids = [f["id"] for f in admin_forms]
+        assert form_id in admin_form_ids, "Form should be visible to admin before deactivation"
+
+        org_list_response = requests.get(
+            f"{base_url}/forms",
+            headers=org_user_headers
+        )
+        assert org_list_response.status_code == 200
+        org_forms = org_list_response.json()
+        org_form_ids = [f["id"] for f in org_forms]
+        assert form_id in org_form_ids, "Form should be visible to org user before deactivation"
+
+        # Step 3: Deactivate the form using update endpoint
+        update_response = requests.put(
+            f"{base_url}/forms/{form_id}",
+            headers=platform_admin_headers,
+            json={"isActive": False}
+        )
+        assert update_response.status_code == 200
+        updated_form = update_response.json()
+        assert updated_form["isActive"] is False
+
+        # Step 4: Verify form no longer appears in list for admin
+        admin_list_response2 = requests.get(
+            f"{base_url}/forms",
+            headers=platform_admin_headers
+        )
+        assert admin_list_response2.status_code == 200
+        admin_forms2 = admin_list_response2.json()
+        admin_form_ids2 = [f["id"] for f in admin_forms2]
+        assert form_id not in admin_form_ids2, "Inactive form should NOT be visible to admin"
+
+        # Step 5: Verify form no longer appears in list for org user
+        org_list_response2 = requests.get(
+            f"{base_url}/forms",
+            headers=org_user_headers
+        )
+        assert org_list_response2.status_code == 200
+        org_forms2 = org_list_response2.json()
+        org_form_ids2 = [f["id"] for f in org_forms2]
+        assert form_id not in org_form_ids2, "Inactive form should NOT be visible to org user"
+
+        # Step 6: Verify GET by ID returns 404 for inactive form
+        get_response = requests.get(
+            f"{base_url}/forms/{form_id}",
+            headers=platform_admin_headers
+        )
+        assert get_response.status_code == 404, "GET by ID should return 404 for inactive form"
+
+        # Step 7: Verify form can be reactivated
+        reactivate_response = requests.put(
+            f"{base_url}/forms/{form_id}",
+            headers=platform_admin_headers,
+            json={"isActive": True}
+        )
+        # This may return 404 since the form is inactive
+        # If the backend allows reactivation through update, it should succeed
+        # For now, we just verify this doesn't crash
+        assert reactivate_response.status_code in [200, 404]

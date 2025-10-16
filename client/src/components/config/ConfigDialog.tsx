@@ -46,13 +46,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useSetConfig } from '@/hooks/useConfig'
 import { useSecrets } from '@/hooks/useSecrets'
-import type { Config, ConfigScope } from '@/types/config'
+import type { components } from '@/lib/v1'
+
+type Config = components['schemas']['Config']
 
 const formSchema = z.object({
   key: z.string().min(1, 'Key is required').regex(/^[a-zA-Z0-9_]+$/, 'Key must be alphanumeric with underscores'),
   value: z.string().min(1, 'Value is required'),
   type: z.enum(['string', 'int', 'bool', 'json', 'secret_ref']),
-  scope: z.enum(['GLOBAL', 'org']),
   description: z.string().optional(),
 })
 
@@ -62,11 +63,9 @@ interface ConfigDialogProps {
   config?: Config | undefined
   open: boolean
   onClose: () => void
-  defaultScope?: ConfigScope | undefined
-  orgId?: string | undefined
 }
 
-export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL', orgId }: ConfigDialogProps) {
+export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
   const setConfig = useSetConfig()
   const isEditing = !!config
   const [comboboxOpen, setComboboxOpen] = useState(false)
@@ -77,14 +76,13 @@ export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL', o
       key: '',
       value: '',
       type: 'string',
-      scope: defaultScope,
       description: '',
     },
   })
 
   // Watch the type field to conditionally render secret selector
   const selectedType = form.watch('type')
-  const selectedScope = form.watch('scope')
+
 
   // Fetch all secrets for the dropdown
   const { data: secretsData, isLoading: secretsLoading } = useSecrets()
@@ -95,7 +93,6 @@ export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL', o
         key: config.key,
         value: config.value,
         type: config.type,
-        scope: config.scope,
         description: config.description || '',
       })
     } else {
@@ -103,18 +100,16 @@ export function ConfigDialog({ config, open, onClose, defaultScope = 'GLOBAL', o
         key: '',
         value: '',
         type: 'string',
-        scope: defaultScope,
         description: '',
       })
     }
-  }, [config, defaultScope, form])
+  }, [config, form])
 
   const onSubmit = async (values: FormValues) => {
     await setConfig.mutateAsync({
       key: values.key,
       value: values.value,
       type: values.type,
-      scope: values.scope,
       description: values.description ?? null,
     })
     onClose()

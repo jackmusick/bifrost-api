@@ -11,11 +11,10 @@ Tests that simulate the full developer workflow:
 These tests validate the end-to-end developer experience.
 """
 
-import pytest
 import subprocess
-import tempfile
-import shutil
 from pathlib import Path
+
+import pytest
 
 
 class TestDeveloperWorkflow:

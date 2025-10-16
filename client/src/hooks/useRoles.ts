@@ -4,7 +4,11 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { rolesService } from '@/services/roles'
-import type { CreateRoleRequest, UpdateRoleRequest, AssignUsersToRoleRequest, AssignFormsToRoleRequest } from '@/types/role'
+import type { components } from '@/lib/v1'
+type CreateRoleRequest = components['schemas']['CreateRoleRequest']
+type UpdateRoleRequest = components['schemas']['UpdateRoleRequest']
+type AssignUsersToRoleRequest = components['schemas']['AssignUsersToRoleRequest']
+type AssignFormsToRoleRequest = components['schemas']['AssignFormsToRoleRequest']
 import { toast } from 'sonner'
 
 export function useRoles() {

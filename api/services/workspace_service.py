@@ -7,9 +7,9 @@ Works with mounted directories (/workspace) - no Azure SDK needed.
 
 import logging
 import os
-from typing import List, Dict, Any, Optional
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class WorkspaceService:
     No Azure SDK needed - just standard filesystem operations.
     """
 
-    def __init__(self, workspace_path: Optional[str] = None):
+    def __init__(self, workspace_path: str | None = None):
         """
         Initialize workspace service.
 
@@ -39,7 +39,7 @@ class WorkspaceService:
 
         logger.info(f"Initialized workspace service at: {self.workspace_path}")
 
-    def list_files(self, relative_path: str = '') -> List[Dict[str, Any]]:
+    def list_files(self, relative_path: str = '') -> list[dict[str, Any]]:
         """
         Recursively list all files and directories in workspace.
 
@@ -99,7 +99,7 @@ class WorkspaceService:
 
         return content
 
-    def write_file(self, file_path: str, content: bytes) -> Dict[str, Any]:
+    def write_file(self, file_path: str, content: bytes) -> dict[str, Any]:
         """
         Write file content to workspace.
         Creates parent directories if needed.
@@ -214,7 +214,7 @@ class WorkspaceService:
 
 
 # Singleton instance
-_workspace_service: Optional[WorkspaceService] = None
+_workspace_service: WorkspaceService | None = None
 
 
 def get_workspace_service() -> WorkspaceService:

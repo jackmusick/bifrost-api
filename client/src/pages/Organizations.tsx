@@ -44,11 +44,12 @@ import {
   useUpdateOrganization,
   useDeleteOrganization,
 } from '@/hooks/useOrganizations'
-import type { Organization } from '@/types/organization'
+import type { components } from '@/lib/v1'
+type Organization = components['schemas']['Organization']
 
 interface OrganizationFormData {
   name: string
-  tenantId: string
+  domain: string
 }
 
 export function Organizations() {
@@ -58,10 +59,11 @@ export function Organizations() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | undefined>()
   const [formData, setFormData] = useState<OrganizationFormData>({
     name: '',
-    tenantId: '',
+    domain: '',
   })
 
-  const { data: organizations, isLoading, error, refetch } = useOrganizations()
+  const { data, isLoading, error, refetch } = useOrganizations()
+  const organizations: Organization[] = Array.isArray(data) ? data : []
 
   console.log('Organizations component rendered:', { organizations, isLoading, error })
   const createMutation = useCreateOrganization()
@@ -69,7 +71,7 @@ export function Organizations() {
   const deleteMutation = useDeleteOrganization()
 
   const handleCreate = () => {
-    setFormData({ name: '', tenantId: '' })
+    setFormData({ name: '', domain: '' })
     setIsCreateDialogOpen(true)
   }
 
@@ -77,7 +79,7 @@ export function Organizations() {
     setSelectedOrg(org)
     setFormData({
       name: org.name,
-      tenantId: org.tenantId || '',
+      domain: org.domain || '',
     })
     setIsEditDialogOpen(true)
   }
@@ -91,10 +93,10 @@ export function Organizations() {
     e.preventDefault()
     await createMutation.mutateAsync({
       name: formData.name,
-      tenantId: formData.tenantId || null,
+      domain: formData.domain || null,
     })
     setIsCreateDialogOpen(false)
-    setFormData({ name: '', tenantId: '' })
+    setFormData({ name: '', domain: '' })
   }
 
   const handleSubmitEdit = async (e: React.FormEvent) => {
@@ -105,13 +107,14 @@ export function Organizations() {
       orgId: selectedOrg.id,
       data: {
         name: formData.name || null,
-        tenantId: formData.tenantId || null,
+        domain: formData.domain || null,
+        tenantId: null,
         isActive: null,
       },
     })
     setIsEditDialogOpen(false)
     setSelectedOrg(undefined)
-    setFormData({ name: '', tenantId: '' })
+    setFormData({ name: '', domain: '' })
   }
 
   const handleConfirmDelete = async () => {
@@ -126,7 +129,7 @@ export function Organizations() {
     if (!open) {
       setIsCreateDialogOpen(false)
       setIsEditDialogOpen(false)
-      setFormData({ name: '', tenantId: '' })
+      setFormData({ name: '', domain: '' })
       setSelectedOrg(undefined)
     }
   }
@@ -176,6 +179,7 @@ export function Organizations() {
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
                       <TableHead>Name</TableHead>
+                      <TableHead>Domain</TableHead>
                       <TableHead>Tenant ID</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Created</TableHead>
@@ -186,7 +190,10 @@ export function Organizations() {
                     {organizations.map((org) => (
                       <TableRow key={org.id} className="hover:bg-muted/50">
                         <TableCell className="font-medium">{org.name}</TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground">
+                        <TableCell className="text-sm text-muted-foreground">
+                          {org.domain || '-'}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
                           {org.tenantId || '-'}
                         </TableCell>
                         <TableCell>
@@ -261,15 +268,15 @@ export function Organizations() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="tenantId">Tenant ID</Label>
+                <Label htmlFor="domain">Email Domain</Label>
                 <Input
-                  id="tenantId"
-                  value={formData.tenantId}
-                  onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                  placeholder="acme-corp-tenant"
+                  id="domain"
+                  value={formData.domain}
+                  onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                  placeholder="acme.com"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional: Unique identifier for external integrations
+                  Users with this email domain will be auto-provisioned to this organization
                 </p>
               </div>
             </div>
@@ -311,15 +318,15 @@ export function Organizations() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-tenantId">Tenant ID</Label>
+                <Label htmlFor="edit-domain">Email Domain</Label>
                 <Input
-                  id="edit-tenantId"
-                  value={formData.tenantId}
-                  onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                  placeholder="acme-corp-tenant"
+                  id="edit-domain"
+                  value={formData.domain}
+                  onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                  placeholder="acme.com"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional: Unique identifier for external integrations
+                  Users with this email domain will be auto-provisioned to this organization
                 </p>
               </div>
             </div>

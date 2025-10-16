@@ -23,7 +23,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateRole, useUpdateRole } from '@/hooks/useRoles'
-import type { Role } from '@/types/role'
+import type { components } from '@/lib/v1'
+type Role = components['schemas']['Role']
 
 const formSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),

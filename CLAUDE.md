@@ -32,4 +32,40 @@ Python 3.11 (Azure Functions v2 programming model): Follow standard conventions
 -   002-i-want-to: Added Python 3.11 (Azure Functions v2 programming model) + azure-functions, azure-data-tables, Pydantic for models, GitHub Actions for CI/CD
 
 <!-- MANUAL ADDITIONS START -->
+
+## Rules
+
+-   ALWAYS generate Pydantic models in api/shared/models.py.
+-   When defining new routes in api/:
+    -   ALWAYS create a new function per beginning path (/discovery -> discovery.py). Sub routes and functions can go inside of this file.
+    -   ALWAYS decorate HTTP functions with /api/shared/openapi_decorators.py
+    -   ALWAYS use a Response and Request model when applicable
+-   ALWAYS create and update unit and integration tests in /api/tests. Work is NOT complete until this is done and passing 100%.
+-   ALWAYS run `npm run generate:types`in client/ after updating type definitions in the API.
+    -   This should always be ran with the function running
+    -   Types NEVER need to be manually generated in the API or Client -- our api/functions/openapi.py does this dynamically from models.py
+-   ALWAYS make sure we're passing `npm run tsc` in the Client. DO NOT LEAVE ERRORS OR WARNINGS HERE.
+-   ALWAYS run `npm run lint` in both the Client and the API and clean up issues before completing work.
+-   ALWAYS create services files in the client/services for in interacting with new endpoints. Example:
+-   When updating models.py, don't forget to update our seed file.
+-   ALWAYS use the date formatting utilities from `@/lib/utils` for displaying dates/times in the client:
+    -   `formatDate()` - Full date and time in user's local timezone
+    -   `formatDateShort()` - Date only (no time)
+    -   `formatTime()` - Time only
+    -   `formatRelativeTime()` - Relative time (e.g., "2 hours ago")
+    -   These utilities automatically handle UTC timestamps from the backend and convert to user's local timezone
+    -   NEVER use `toLocaleString()`, `toLocaleDateString()`, or `toLocaleTimeString()` directly
+
+```
+import { apiClient } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
+
+// Re-export types for convenience
+export type DataProviderOption = components["schemas"]["DataProviderOption"];
+export type DataProviderResponse =
+    components["schemas"]["DataProviderResponse"];
+
+export type DataProvider = components["schemas"]["DataProviderMetadata"];
+```
+
 <!-- MANUAL ADDITIONS END -->

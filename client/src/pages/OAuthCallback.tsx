@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { oauthService } from '@/services/oauth'
 
 export function OAuthCallback() {
@@ -11,6 +12,7 @@ export function OAuthCallback() {
   const [searchParams] = useSearchParams()
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing')
   const [message, setMessage] = useState('Processing OAuth callback...')
+  const [warning, setWarning] = useState<string | null>(null)
   const hasProcessed = useRef(false)
 
   useEffect(() => {
@@ -48,10 +50,15 @@ export function OAuthCallback() {
 
       try {
         // Send the authorization code to the API for token exchange
-        await oauthService.handleCallback(connectionName, code, state)
+        const response = await oauthService.handleCallback(connectionName, code, state)
 
         setStatus('success')
         setMessage('OAuth connection completed successfully!')
+
+        // Check for warning (e.g., missing refresh token)
+        if (response && typeof response === 'object' && 'warning' in response && response.warning) {
+          setWarning(response.warning as string)
+        }
 
         // Notify parent window to refresh connections IMMEDIATELY
         if (window.opener) {
@@ -61,17 +68,18 @@ export function OAuthCallback() {
           }, window.location.origin)
         }
 
-        // Brief delay to show success message, then close
+        // Brief delay to show success message (longer if there's a warning), then close
+        const delay = warning ? 5000 : 1500
         setTimeout(() => {
           window.close()
           // Fallback: If window.close() fails (not a popup), navigate to oauth page
           setTimeout(() => {
             navigate('/oauth')
           }, 100)
-        }, 1000)
-      } catch (err: any) {
+        }, delay)
+      } catch (err: unknown) {
         setStatus('error')
-        const errorMsg = err.message || 'Failed to complete OAuth connection'
+        const errorMsg = (err as Error).message || 'Failed to complete OAuth connection'
 
         // Provide helpful message for common errors
         if (errorMsg.includes('already been redeemed') || errorMsg.includes('already been used')) {
@@ -87,7 +95,7 @@ export function OAuthCallback() {
     }
 
     handleCallback()
-  }, [connectionName, searchParams, navigate])
+  }, [connectionName, searchParams, navigate, warning])
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
@@ -109,6 +117,15 @@ export function OAuthCallback() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-4">{message}</p>
+
+          {status === 'success' && warning && (
+            <Alert className="mb-4 border-yellow-500 bg-yellow-50">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-sm text-yellow-800">
+                {warning}
+              </AlertDescription>
+            </Alert>
+          )}
 
           {status === 'success' && (
             <p className="text-xs text-muted-foreground">

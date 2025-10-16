@@ -6,16 +6,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { oauthService } from '@/services/oauth'
-import type {
-  CreateOAuthConnectionRequest,
-  UpdateOAuthConnectionRequest,
-} from '@/types/oauth'
+import type { components } from '@/lib/v1'
+import { useScopeStore } from '@/stores/scopeStore'
+type CreateOAuthConnectionRequest = components['schemas']['CreateOAuthConnectionRequest']
+type UpdateOAuthConnectionRequest = components['schemas']['UpdateOAuthConnectionRequest']
 
 // Query keys
 export const oauthKeys = {
   all: ['oauth'] as const,
-  lists: () => [...oauthKeys.all, 'list'] as const,
-  list: () => [...oauthKeys.lists()] as const,
+  lists: (orgId?: string | null) => [...oauthKeys.all, 'list', orgId] as const,
+  list: (orgId?: string | null) => [...oauthKeys.lists(orgId)] as const,
   details: () => [...oauthKeys.all, 'detail'] as const,
   detail: (name: string) => [...oauthKeys.details(), name] as const,
 }
@@ -26,9 +26,19 @@ export const oauthKeys = {
  * Always includes GLOBAL connections as fallback
  */
 export function useOAuthConnections() {
-  return useQuery({
-    queryKey: oauthKeys.list(),
-    queryFn: () => oauthService.listConnections(),
+  const orgId = useScopeStore((state) => state.scope.orgId)
+  const hasHydrated = useScopeStore((state) => state._hasHydrated)
+
+  return useQuery<components['schemas']['OAuthConnection'][]>({
+    queryKey: oauthKeys.list(orgId),
+    queryFn: async () => {
+      const result = await oauthService.listConnections()
+      return result as unknown as components['schemas']['OAuthConnection'][]
+    },
+    // Wait for Zustand to rehydrate from localStorage before making API calls
+    enabled: hasHydrated,
+    // Don't use cached data from previous scope
+    staleTime: 0,
   })
 }
 
@@ -54,10 +64,11 @@ export function useCreateOAuthConnection() {
   return useMutation({
     mutationFn: (data: CreateOAuthConnectionRequest) => oauthService.createConnection(data),
     onSuccess: (_, data) => {
-      queryClient.invalidateQueries({ queryKey: oauthKeys.lists() })
+      // Invalidate all OAuth list queries (for all scopes)
+      queryClient.invalidateQueries({ queryKey: ['oauth', 'list'] })
       toast.success(`Connection "${data.connection_name}" created successfully`)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to create OAuth connection')
     },
   })
@@ -79,13 +90,14 @@ export function useUpdateOAuthConnection() {
       data: UpdateOAuthConnectionRequest
     }) => oauthService.updateConnection(connectionName, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: oauthKeys.lists() })
+      // Invalidate all OAuth list queries (for all scopes)
+      queryClient.invalidateQueries({ queryKey: ['oauth', 'list'] })
       queryClient.invalidateQueries({
         queryKey: oauthKeys.detail(variables.connectionName),
       })
       toast.success(`Connection "${variables.connectionName}" updated successfully`)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update OAuth connection')
     },
   })
@@ -101,10 +113,11 @@ export function useDeleteOAuthConnection() {
   return useMutation({
     mutationFn: (connectionName: string) => oauthService.deleteConnection(connectionName),
     onSuccess: (_, connectionName) => {
-      queryClient.invalidateQueries({ queryKey: oauthKeys.lists() })
+      // Invalidate all OAuth list queries (for all scopes)
+      queryClient.invalidateQueries({ queryKey: ['oauth', 'list'] })
       toast.success(`Connection "${connectionName}" deleted successfully`)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete OAuth connection')
     },
   })
@@ -121,7 +134,8 @@ export function useAuthorizeOAuthConnection() {
     mutationFn: (connectionName: string) => oauthService.authorize(connectionName),
     onSuccess: (response, connectionName) => {
       // Invalidate to show updated status
-      queryClient.invalidateQueries({ queryKey: oauthKeys.lists() })
+      // Invalidate all OAuth list queries (for all scopes)
+      queryClient.invalidateQueries({ queryKey: ['oauth', 'list'] })
       queryClient.invalidateQueries({
         queryKey: oauthKeys.detail(connectionName),
       })
@@ -134,7 +148,7 @@ export function useAuthorizeOAuthConnection() {
 
       toast.success('Authorization started - complete it in the popup window')
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to start authorization')
     },
   })
@@ -150,13 +164,14 @@ export function useCancelOAuthAuthorization() {
   return useMutation({
     mutationFn: (connectionName: string) => oauthService.cancelAuthorization(connectionName),
     onSuccess: (_, connectionName) => {
-      queryClient.invalidateQueries({ queryKey: oauthKeys.lists() })
+      // Invalidate all OAuth list queries (for all scopes)
+      queryClient.invalidateQueries({ queryKey: ['oauth', 'list'] })
       queryClient.invalidateQueries({
         queryKey: oauthKeys.detail(connectionName),
       })
       toast.success('Authorization canceled')
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to cancel authorization')
     },
   })
@@ -172,13 +187,14 @@ export function useRefreshOAuthToken() {
   return useMutation({
     mutationFn: (connectionName: string) => oauthService.refreshToken(connectionName),
     onSuccess: (_, connectionName) => {
-      queryClient.invalidateQueries({ queryKey: oauthKeys.lists() })
+      // Invalidate all OAuth list queries (for all scopes)
+      queryClient.invalidateQueries({ queryKey: ['oauth', 'list'] })
       queryClient.invalidateQueries({
         queryKey: oauthKeys.detail(connectionName),
       })
       toast.success('OAuth token refreshed successfully')
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to refresh OAuth token')
     },
   })

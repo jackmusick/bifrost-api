@@ -7,15 +7,12 @@ These helpers simulate the actual HTTP requests that endpoints receive in produc
 
 import json
 import uuid
-import azure.functions as func
-from typing import Dict, Any, Optional, Union
+from typing import Any
 from unittest.mock import MagicMock
-from .mock_auth import (
-    create_platform_admin_headers,
-    create_org_user_headers,
-    create_function_key_headers,
-    TestUsers
-)
+
+import azure.functions as func
+
+from .mock_auth import TestUsers, create_function_key_headers, create_org_user_headers, create_platform_admin_headers
 
 
 class MockRequestHelper:
@@ -25,11 +22,11 @@ class MockRequestHelper:
     def create_mock_request(
         method: str,
         url: str,
-        body: Optional[Union[Dict[str, Any], str]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, str]] = None,
+        body: dict[str, Any] | str | None = None,
+        headers: dict[str, str] | None = None,
+        params: dict[str, str] | None = None,
         user_type: str = "admin",
-        org_id: Optional[str] = None
+        org_id: str | None = None
     ) -> func.HttpRequest:
         """
         Create a mock Azure Functions HTTP request with authentication.
@@ -48,7 +45,7 @@ class MockRequestHelper:
         """
         # Start with base headers
         request_headers = {"Content-Type": "application/json"}
-        
+
         # Add authentication headers based on user type
         if user_type == "admin":
             auth_headers = create_platform_admin_headers(org_id)
@@ -62,11 +59,11 @@ class MockRequestHelper:
         elif user_type == "anonymous":
             auth_headers = {"Content-Type": "application/json"}
             request_headers.update(auth_headers)
-        
+
         # Add additional headers
         if headers:
             request_headers.update(headers)
-        
+
         # Prepare body
         if body is not None:
             if isinstance(body, dict):
@@ -75,32 +72,32 @@ class MockRequestHelper:
                 body_str = str(body)
         else:
             body_str = ""
-        
+
         # Create mock request
         mock_req = MagicMock(spec=func.HttpRequest)
         mock_req.method = method
         mock_req.url = url
         mock_req.headers = request_headers
         mock_req.params = params or {}
-        
+
         # Mock get_json method for POST/PUT requests
         if method.upper() in ["POST", "PUT", "PATCH"] and body:
             mock_req.get_json = MagicMock(return_value=body if isinstance(body, dict) else json.loads(body_str))
         else:
             mock_req.get_json = MagicMock(return_value={})
-        
+
         # Mock get_body method
         mock_req.get_body = MagicMock(return_value=body_str.encode('utf-8'))
-        
+
         return mock_req
 
     @staticmethod
     def create_platform_admin_request(
         method: str,
         url: str,
-        body: Optional[Dict[str, Any]] = None,
-        org_id: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None
+        body: dict[str, Any] | None = None,
+        org_id: str | None = None,
+        headers: dict[str, str] | None = None
     ) -> func.HttpRequest:
         """
         Create a mock request from a platform admin.
@@ -128,9 +125,9 @@ class MockRequestHelper:
     def create_org_user_request(
         method: str,
         url: str,
-        body: Optional[Dict[str, Any]] = None,
-        org_id: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None
+        body: dict[str, Any] | None = None,
+        org_id: str | None = None,
+        headers: dict[str, str] | None = None
     ) -> func.HttpRequest:
         """
         Create a mock request from an organization user.
@@ -147,7 +144,7 @@ class MockRequestHelper:
         """
         if org_id is None:
             org_id = TestUsers.ORG_USER["org_id"]
-            
+
         return MockRequestHelper.create_mock_request(
             method=method,
             url=url,
@@ -161,9 +158,9 @@ class MockRequestHelper:
     def create_function_key_request(
         method: str,
         url: str,
-        body: Optional[Dict[str, Any]] = None,
-        org_id: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None
+        body: dict[str, Any] | None = None,
+        org_id: str | None = None,
+        headers: dict[str, str] | None = None
     ) -> func.HttpRequest:
         """
         Create a mock request with function key authentication.
@@ -191,8 +188,8 @@ class MockRequestHelper:
     def create_anonymous_request(
         method: str,
         url: str,
-        body: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None
+        body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None
     ) -> func.HttpRequest:
         """
         Create a mock anonymous request (no authentication).
@@ -216,7 +213,7 @@ class MockRequestHelper:
 
 
 # Convenience functions for common request patterns
-def create_get_request(url: str, user_type: str = "admin", org_id: Optional[str] = None) -> func.HttpRequest:
+def create_get_request(url: str, user_type: str = "admin", org_id: str | None = None) -> func.HttpRequest:
     """Create a GET request with specified user type"""
     return MockRequestHelper.create_mock_request(
         method="GET",
@@ -226,7 +223,7 @@ def create_get_request(url: str, user_type: str = "admin", org_id: Optional[str]
     )
 
 
-def create_post_request(url: str, body: Dict[str, Any], user_type: str = "admin", org_id: Optional[str] = None) -> func.HttpRequest:
+def create_post_request(url: str, body: dict[str, Any], user_type: str = "admin", org_id: str | None = None) -> func.HttpRequest:
     """Create a POST request with body and specified user type"""
     return MockRequestHelper.create_mock_request(
         method="POST",
@@ -237,7 +234,7 @@ def create_post_request(url: str, body: Dict[str, Any], user_type: str = "admin"
     )
 
 
-def create_put_request(url: str, body: Dict[str, Any], user_type: str = "admin", org_id: Optional[str] = None) -> func.HttpRequest:
+def create_put_request(url: str, body: dict[str, Any], user_type: str = "admin", org_id: str | None = None) -> func.HttpRequest:
     """Create a PUT request with body and specified user type"""
     return MockRequestHelper.create_mock_request(
         method="PUT",
@@ -248,7 +245,7 @@ def create_put_request(url: str, body: Dict[str, Any], user_type: str = "admin",
     )
 
 
-def create_delete_request(url: str, user_type: str = "admin", org_id: Optional[str] = None) -> func.HttpRequest:
+def create_delete_request(url: str, user_type: str = "admin", org_id: str | None = None) -> func.HttpRequest:
     """Create a DELETE request with specified user type"""
     return MockRequestHelper.create_mock_request(
         method="DELETE",
@@ -265,12 +262,12 @@ class TestDataHelper:
     @staticmethod
     def create_organization_request_data(
         name: str = "Test Organization",
-        tenant_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None
+    ) -> dict[str, Any]:
         """Create organization creation request data"""
         if tenant_id is None:
             tenant_id = str(uuid.uuid4())
-            
+
         return {
             "name": name,
             "tenantId": tenant_id
@@ -283,7 +280,7 @@ class TestDataHelper:
         linked_workflow: str = "test_workflow",
         is_global: bool = False,
         is_public: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create form creation request data"""
         return {
             "name": name,
@@ -312,7 +309,7 @@ class TestDataHelper:
         token_url: str = "https://test.com/token",
         scopes: str = "User.Read",
         redirect_uri: str = "/oauth/callback/TestConnection"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create OAuth connection creation request data"""
         return {
             "connection_name": connection_name,
@@ -331,7 +328,7 @@ class TestDataHelper:
         config_type: str = "string",
         scope: str = "GLOBAL",
         description: str = "Test configuration"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create config setting request data"""
         return {
             "key": key,
@@ -345,7 +342,7 @@ class TestDataHelper:
     def create_role_request_data(
         name: str = "Test Role",
         description: str = "Test role description"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create role creation request data"""
         return {
             "name": name,
@@ -355,13 +352,13 @@ class TestDataHelper:
     @staticmethod
     def create_workflow_execution_request_data(
         workflow_name: str = "test_workflow",
-        form_id: Optional[str] = None,
-        input_data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        form_id: str | None = None,
+        input_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Create workflow execution request data"""
         if input_data is None:
             input_data = {"test_param": "test_value"}
-            
+
         return {
             "workflowName": workflow_name,
             "formId": form_id,

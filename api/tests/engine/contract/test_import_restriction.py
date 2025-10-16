@@ -7,10 +7,11 @@ from importing engine internals while allowing whitelisted shared modules.
 These tests verify the contract defined in /specs/002-i-want-to/contracts/README.md
 """
 
-import pytest
-import sys
 import importlib
+import sys
 from pathlib import Path
+
+import pytest
 
 
 class TestImportRestrictionContract:
@@ -72,8 +73,9 @@ class TestImportRestrictionContract:
 
     def test_install_function_signature(self):
         """Contract: install_import_restrictions must accept workspace_paths list"""
-        from shared.import_restrictor import install_import_restrictions
         import inspect
+
+        from shared.import_restrictor import install_import_restrictions
 
         sig = inspect.signature(install_import_restrictions)
         params = list(sig.parameters.keys())
@@ -87,8 +89,9 @@ class TestImportRestrictionContract:
 
     def test_workspace_cannot_import_engine_storage(self):
         """Contract: Workspace code must not import shared.storage"""
-        from shared.import_restrictor import install_import_restrictions
         import tempfile
+
+        from shared.import_restrictor import install_import_restrictions
 
         # Clear module cache to ensure restrictor can intercept the import
         if 'shared.storage' in sys.modules:
@@ -121,8 +124,9 @@ class TestImportRestrictionContract:
 
     def test_workspace_can_import_allowed_decorators(self):
         """Contract: Workspace code must be able to import shared.decorators"""
-        from shared.import_restrictor import install_import_restrictions
         import tempfile
+
+        from shared.import_restrictor import install_import_restrictions
 
         # Create temporary workspace directory
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,8 +141,9 @@ class TestImportRestrictionContract:
 
     def test_error_message_provides_guidance(self):
         """Contract: ImportError must provide clear guidance to developers"""
-        from shared.import_restrictor import install_import_restrictions
         import tempfile
+
+        from shared.import_restrictor import install_import_restrictions
 
         # Clear module cache
         if 'shared.registry' in sys.modules:
@@ -185,8 +190,9 @@ class TestImportRestrictionBehavior:
 
     def test_restrictor_installed_on_meta_path(self):
         """Contract: Restrictor must be added to sys.meta_path"""
-        from shared.import_restrictor import install_import_restrictions
         import tempfile
+
+        from shared.import_restrictor import install_import_restrictions
 
         initial_count = len(sys.meta_path)
 
@@ -207,8 +213,9 @@ class TestImportRestrictionBehavior:
 
     def test_engine_code_can_import_freely(self):
         """Contract: Engine code is not restricted (only workspace is restricted)"""
-        from shared.import_restrictor import install_import_restrictions
         import tempfile
+
+        from shared.import_restrictor import install_import_restrictions
 
         with tempfile.TemporaryDirectory() as tmpdir:
             install_import_restrictions([tmpdir])
@@ -224,16 +231,16 @@ class TestImportRestrictionBehavior:
 
     def test_multiple_workspace_paths_supported(self):
         """Contract: install_import_restrictions must support multiple workspace paths"""
-        from shared.import_restrictor import install_import_restrictions
         import tempfile
 
-        with tempfile.TemporaryDirectory() as tmpdir1:
-            with tempfile.TemporaryDirectory() as tmpdir2:
-                # Should not raise
-                try:
-                    install_import_restrictions([tmpdir1, tmpdir2])
-                except Exception as e:
-                    pytest.fail(f"Multiple workspace paths not supported: {e}")
+        from shared.import_restrictor import install_import_restrictions
+
+        with tempfile.TemporaryDirectory() as tmpdir1, tempfile.TemporaryDirectory() as tmpdir2:
+            # Should not raise
+            try:
+                install_import_restrictions([tmpdir1, tmpdir2])
+            except Exception as e:
+                pytest.fail(f"Multiple workspace paths not supported: {e}")
 
 
 class TestStackInspection:
@@ -250,8 +257,9 @@ class TestStackInspection:
 
     def test_stack_inspection_detects_workspace_caller(self):
         """Contract: find_spec must inspect call stack to detect workspace imports"""
-        from shared.import_restrictor import WorkspaceImportRestrictor
         import tempfile
+
+        from shared.import_restrictor import WorkspaceImportRestrictor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             restrictor = WorkspaceImportRestrictor([tmpdir])

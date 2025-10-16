@@ -4,21 +4,27 @@
 
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { workflowsService } from '@/services/workflows'
-import type { WorkflowExecutionRequest } from '@/types/workflow'
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useWorkflowsMetadata() {
+  const orgId = useScopeStore((state) => state.scope.orgId)
+  const hasHydrated = useScopeStore((state) => state._hasHydrated)
+
   return useQuery({
-    queryKey: ['workflows', 'metadata'],
+    queryKey: ['workflows', 'metadata', orgId],
     queryFn: () => workflowsService.getMetadata(),
-    staleTime: 5 * 60 * 1000, // 5 minutes - workflows don't change often
+    // Wait for Zustand to rehydrate from localStorage before making API calls
+    enabled: hasHydrated,
+    // Don't use cached data from previous scope
+    staleTime: 0,
   })
 }
 
 export function useExecuteWorkflow() {
   return useMutation({
-    mutationFn: (request: WorkflowExecutionRequest) =>
-      workflowsService.executeWorkflow(request),
+    mutationFn: ({ workflowName, inputData }: { workflowName: string; inputData?: Record<string, unknown> }) =>
+      workflowsService.executeWorkflow(workflowName, inputData || {}),
     onSuccess: (data) => {
       toast.success('Workflow execution started', {
         description: `Execution ID: ${data.executionId}`,

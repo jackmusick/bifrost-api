@@ -5,9 +5,10 @@ Tests that validate workspace code executes correctly with import restrictions
 and organization context isolation enforced.
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 
 class TestWorkspaceIsolation:
@@ -44,7 +45,7 @@ class TestWorkspaceIsolation:
         """Integration: Workspace code can access whitelisted shared modules"""
         # Workspace workflows should be able to import decorators
         try:
-            from shared.decorators import workflow, param
+            from shared.decorators import param, workflow
             assert workflow is not None
             assert param is not None
         except ImportError as e:
@@ -127,7 +128,7 @@ class TestWorkspacePublicAPI:
     def test_decorators_module_accessible(self):
         """Integration: @workflow and @param decorators are accessible"""
         try:
-            from shared.decorators import workflow, param, data_provider
+            from shared.decorators import data_provider, param, workflow
             assert callable(workflow)
             assert callable(param)
             assert callable(data_provider)
@@ -146,13 +147,9 @@ class TestWorkspacePublicAPI:
     def test_error_handling_module_accessible(self):
         """Integration: Error classes are accessible"""
         try:
-            from shared.error_handling import (
-                WorkflowException,
-                ValidationError,
-                IntegrationError
-            )
+            from shared.error_handling import IntegrationError, ValidationError, WorkflowError
             assert all(isinstance(cls, type) for cls in [
-                WorkflowException,
+                WorkflowError,
                 ValidationError,
                 IntegrationError
             ])
@@ -162,10 +159,7 @@ class TestWorkspacePublicAPI:
     def test_models_module_accessible(self):
         """Integration: Pydantic models are accessible"""
         try:
-            from shared.models import (
-                WorkflowExecutionResponse,
-                ExecutionStatus
-            )
+            from shared.models import ExecutionStatus, WorkflowExecutionResponse
             # These should be importable
             assert WorkflowExecutionResponse is not None
             assert ExecutionStatus is not None

@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Clock, CheckCircle2, XCircle, AlertCircle, FileText } from 'lucide-react'
+import { Clock, CheckCircle2, XCircle, FileText } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 interface RefreshJobStatusProps {
@@ -179,7 +179,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
                       Errors ({jobStatus.errors.length})
                     </h4>
                     <div className="space-y-3">
-                      {jobStatus.errors.map((error: any, index: number) => (
+                      {jobStatus.errors.map((error: { message: string; details?: string; connection_name?: string; org_id?: string; error?: string }, index: number) => (
                         <div
                           key={index}
                           className="border border-destructive/20 bg-destructive/5 rounded-lg p-3"

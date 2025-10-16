@@ -10,7 +10,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FieldConfigDialog } from './FieldConfigDialog'
-import type { FormField } from '@/types/form'
+import type { components } from '@/lib/v1'
+type FormField = components['schemas']['FormField']
 
 interface FieldsPanelProps {
   fields: FormField[]

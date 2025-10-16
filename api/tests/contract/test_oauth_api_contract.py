@@ -3,17 +3,17 @@ Contract tests for OAuth API models
 Tests Pydantic validation rules for OAuth connection request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
 # Import OAuth models for testing
 from models.oauth_connection import (
-    OAuthConnection,
     CreateOAuthConnectionRequest,
-    UpdateOAuthConnectionRequest,
+    OAuthConnection,
+    OAuthConnectionDetail,
     OAuthConnectionSummary,
-    OAuthConnectionDetail
 )
 
 

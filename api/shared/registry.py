@@ -3,10 +3,10 @@ Workflow and Data Provider Registry
 Singleton registry for storing workflow and data provider metadata
 """
 
-import threading
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
 import logging
+import threading
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +16,12 @@ class WorkflowParameter:
     """Workflow parameter metadata"""
     name: str
     type: str  # string, int, bool, float, json, list
-    label: Optional[str] = None
+    label: str | None = None
     required: bool = False
-    validation: Optional[Dict[str, Any]] = None
-    data_provider: Optional[str] = None
-    default_value: Optional[Any] = None
-    help_text: Optional[str] = None
+    validation: dict[str, Any] | None = None
+    data_provider: str | None = None
+    default_value: Any | None = None
+    help_text: str | None = None
 
 
 @dataclass
@@ -31,7 +31,7 @@ class WorkflowMetadata:
     name: str
     description: str
     category: str = "General"
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
     # Execution
     execution_mode: str = "sync"  # "sync" | "async" | "scheduled"
@@ -39,10 +39,10 @@ class WorkflowMetadata:
     max_duration_seconds: int = 300
 
     # Retry
-    retry_policy: Optional[Dict[str, Any]] = None
+    retry_policy: dict[str, Any] | None = None
 
     # Scheduling
-    schedule: Optional[str] = None  # Cron expression
+    schedule: str | None = None  # Cron expression
 
     # Access Control
     requires_org: bool = True
@@ -51,7 +51,7 @@ class WorkflowMetadata:
     required_permission: str = "canExecuteWorkflows"
 
     # Parameters and function
-    parameters: List[WorkflowParameter] = field(default_factory=list)
+    parameters: list[WorkflowParameter] = field(default_factory=list)
     function: Any = None  # The actual Python function
 
 
@@ -88,8 +88,8 @@ class WorkflowRegistry:
         if self._initialized:
             return
 
-        self._workflows: Dict[str, WorkflowMetadata] = {}
-        self._data_providers: Dict[str, DataProviderMetadata] = {}
+        self._workflows: dict[str, WorkflowMetadata] = {}
+        self._data_providers: dict[str, DataProviderMetadata] = {}
         self._initialized = True
         logger.info("WorkflowRegistry initialized")
 
@@ -112,7 +112,7 @@ class WorkflowRegistry:
                 f"({len(metadata.parameters)} parameters, requires_org={metadata.requires_org})"
             )
 
-    def get_workflow(self, name: str) -> Optional[WorkflowMetadata]:
+    def get_workflow(self, name: str) -> WorkflowMetadata | None:
         """
         Retrieve workflow metadata by name
 
@@ -124,7 +124,7 @@ class WorkflowRegistry:
         """
         return self._workflows.get(name)
 
-    def get_all_workflows(self) -> List[WorkflowMetadata]:
+    def get_all_workflows(self) -> list[WorkflowMetadata]:
         """
         Get all registered workflows
 
@@ -160,7 +160,7 @@ class WorkflowRegistry:
                 f"(cache_ttl={metadata.cache_ttl_seconds}s)"
             )
 
-    def get_data_provider(self, name: str) -> Optional[DataProviderMetadata]:
+    def get_data_provider(self, name: str) -> DataProviderMetadata | None:
         """
         Retrieve data provider metadata by name
 
@@ -172,7 +172,7 @@ class WorkflowRegistry:
         """
         return self._data_providers.get(name)
 
-    def get_all_data_providers(self) -> List[DataProviderMetadata]:
+    def get_all_data_providers(self) -> list[DataProviderMetadata]:
         """
         Get all registered data providers
 
@@ -198,7 +198,7 @@ class WorkflowRegistry:
             self._data_providers.clear()
             logger.info("Registry cleared")
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get summary of registry contents"""
         return {
             "workflows_count": self.get_workflow_count(),

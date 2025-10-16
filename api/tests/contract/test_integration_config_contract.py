@@ -3,16 +3,12 @@ Contract tests for IntegrationConfig API models
 Tests Pydantic validation rules for request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
-from shared.models import (
-    IntegrationConfig,
-    SetIntegrationConfigRequest,
-    IntegrationType,
-    ErrorResponse
-)
+from shared.models import IntegrationConfig, IntegrationType, SetIntegrationConfigRequest
 
 
 class TestSetIntegrationConfigRequest:

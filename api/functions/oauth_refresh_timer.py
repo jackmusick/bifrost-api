@@ -3,13 +3,14 @@ OAuth Token Refresh Timer
 Scheduled job that automatically refreshes expiring OAuth tokens
 """
 
-import logging
 import json
-import uuid
+import logging
 from datetime import datetime, timedelta
+
 import azure.functions as func
-from services.oauth_storage_service import OAuthStorageService
+
 from services.oauth_provider import OAuthProviderClient
+from services.oauth_storage_service import OAuthStorageService
 from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 
@@ -119,13 +120,15 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
                     oauth_response_json = secret.value
                     oauth_response = json.loads(oauth_response_json)
                 except Exception as e:
-                    raise Exception(f"Failed to retrieve OAuth tokens from Key Vault: {e}")
+                    raise Exception(f"Failed to retrieve OAuth tokens from Key Vault: {e}") from e
 
                 # Get refresh token
                 refresh_token = oauth_response.get("refresh_token")
 
                 if not refresh_token:
-                    raise Exception("Connection has no refresh token")
+                    raise Exception(
+                        "No refresh token available - reconnection required to obtain new credentials"
+                    )
 
                 # Get client secret if exists (for non-PKCE flows)
                 client_secret = None
@@ -262,5 +265,5 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
         try:
             system_config_table = TableStorageService("SystemConfig")
             system_config_table.upsert_entity(job_status_entity)
-        except:
+        except Exception:
             pass

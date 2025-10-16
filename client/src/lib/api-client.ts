@@ -15,7 +15,7 @@ export const apiClient = createClient<paths>({
 apiClient.use({
     async onRequest({ request }) {
         // Get organization ID from session storage (set by org switcher)
-        const orgId = sessionStorage.getItem("selectedOrgId");
+        const orgId = sessionStorage.getItem("current_org_id");
         if (orgId) {
             request.headers.set("X-Organization-Id", orgId);
         }
@@ -64,7 +64,7 @@ export function withUserContext(userId: string) {
 
     client.use({
         async onRequest({ request }) {
-            const orgId = sessionStorage.getItem("selectedOrgId");
+            const orgId = sessionStorage.getItem("current_org_id");
             if (orgId) {
                 request.headers.set("X-Organization-Id", orgId);
             }

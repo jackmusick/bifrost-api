@@ -5,23 +5,18 @@ Provides REST API for listing secrets from Azure Key Vault
 to support secret dropdown selection in configuration UI.
 """
 
-import logging
 import json
-from typing import Optional
+import logging
+
 import azure.functions as func
 from pydantic import ValidationError
-from shared.models import (
-    SecretListResponse,
-    SecretCreateRequest,
-    SecretUpdateRequest,
-    SecretResponse,
-    ErrorResponse
-)
+
+from shared.decorators import require_platform_admin, with_request_context
 from shared.keyvault import KeyVaultClient
+from shared.models import ErrorResponse, SecretCreateRequest, SecretListResponse, SecretResponse, SecretUpdateRequest
 from shared.openapi_decorators import openapi_endpoint
-from shared.decorators import with_request_context, require_platform_admin
 from shared.storage import get_table_service
-from shared.validation import check_key_vault_available, create_error_response
+from shared.validation import check_key_vault_available
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +208,7 @@ async def create_secret(req: func.HttpRequest) -> func.HttpResponse:
             logger.warning(f"Could not check for existing secret: {e}")
 
         # Create the secret
-        result = kv_manager.create_secret(
+        kv_manager.create_secret(
             org_id=create_request.orgId,
             secret_key=create_request.secretKey,
             value=create_request.value
@@ -352,7 +347,7 @@ async def update_secret(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Update the secret
-        result = kv_manager.update_secret(
+        kv_manager.update_secret(
             org_id=org_id,
             secret_key=secret_key,
             value=update_request.value
@@ -549,7 +544,7 @@ async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Delete the secret
-        result = kv_manager.delete_secret(
+        kv_manager.delete_secret(
             org_id=org_id,
             secret_key=secret_key
         )

@@ -3,18 +3,18 @@ Contract tests for Forms API models
 Tests Pydantic validation rules for request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
 from shared.models import (
-    Form,
     CreateFormRequest,
-    UpdateFormRequest,
-    FormSchema,
+    Form,
     FormField,
     FormFieldType,
-    ErrorResponse
+    FormSchema,
+    UpdateFormRequest,
 )
 
 
@@ -114,10 +114,12 @@ class TestUpdateFormRequest:
                         required=True
                     )
                 ]
-            )
+            ),
+            isActive=False
         )
         assert request.name == "Updated Form"
         assert request.description == "Updated description"
+        assert request.isActive is False
 
     def test_update_form_request_partial(self):
         """Test update with only some fields"""
@@ -136,6 +138,17 @@ class TestUpdateFormRequest:
         assert request.description is None
         assert request.linkedWorkflow is None
         assert request.formSchema is None
+        assert request.isActive is None
+
+    def test_update_form_request_activate(self):
+        """Test activating a form via update"""
+        request = UpdateFormRequest(isActive=True)
+        assert request.isActive is True
+
+    def test_update_form_request_deactivate(self):
+        """Test deactivating a form via update"""
+        request = UpdateFormRequest(isActive=False)
+        assert request.isActive is False
 
 
 class TestFormSchema:

@@ -4,10 +4,10 @@ Request/response validation and serialization
 """
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, field_validator, UUID4
 from enum import Enum
+from typing import Any, Literal
 
+from pydantic import BaseModel, Field, field_validator
 
 # ==================== PUBLIC API ====================
 # All models exported for OpenAPI spec generation
@@ -40,6 +40,8 @@ __all__ = [
     'UpdateRoleRequest',
     'UserRole',
     'FormRole',
+    'RoleUsersResponse',
+    'RoleFormsResponse',
     'AssignUsersToRoleRequest',
     'AssignFormsToRoleRequest',
 
@@ -47,6 +49,8 @@ __all__ = [
     'UserPermission',
     'PermissionsData',
     'GrantPermissionsRequest',
+    'UserRolesResponse',
+    'UserFormsResponse',
 
     # Forms
     'FormFieldValidation',
@@ -61,6 +65,7 @@ __all__ = [
     'WorkflowExecution',
     'WorkflowExecutionRequest',
     'WorkflowExecutionResponse',
+    'ExecutionsListResponse',
 
     # Metadata
     'WorkflowParameter',
@@ -90,6 +95,8 @@ __all__ = [
 
     # OAuth (not a BaseModel, but exported for workflows)
     'OAuthCredentials',
+    'OAuthCallbackRequest',
+    'OAuthCallbackResponse',
 
     # Common
     'ErrorResponse',
@@ -150,8 +157,10 @@ class Organization(BaseModel):
     """Organization entity (response model)"""
     id: str = Field(..., description="Organization ID (GUID)")
     name: str = Field(..., min_length=1, max_length=200)
-    tenantId: Optional[str] = Field(
-        None, description="Microsoft 365 GDAP tenant ID")
+    tenantId: str | None = Field(
+        None, description="Microsoft 365 GDAP tenant ID (auto-generated if not provided)")
+    domain: str | None = Field(
+        None, description="Email domain for auto-provisioning users (e.g., 'acme.com')")
     isActive: bool = Field(default=True)
     createdAt: datetime
     createdBy: str
@@ -164,14 +173,40 @@ class Organization(BaseModel):
 class CreateOrganizationRequest(BaseModel):
     """Request model for creating an organization"""
     name: str = Field(..., min_length=1, max_length=200)
-    tenantId: Optional[str] = None
+    domain: str | None = Field(
+        None, description="Email domain for auto-provisioning users (e.g., 'acme.com')")
+
+    @field_validator('domain')
+    @classmethod
+    def validate_domain(cls, v):
+        """Validate domain format (no @ symbol, just the domain)"""
+        if v is not None:
+            v = v.strip().lower()
+            if '@' in v:
+                raise ValueError("Domain should not include '@' symbol (e.g., use 'acme.com' not '@acme.com')")
+            if not v or '.' not in v:
+                raise ValueError("Domain must be a valid format (e.g., 'acme.com')")
+        return v
 
 
 class UpdateOrganizationRequest(BaseModel):
     """Request model for updating an organization"""
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    tenantId: Optional[str] = None
-    isActive: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    tenantId: str | None = None
+    domain: str | None = Field(None, description="Email domain for auto-provisioning users")
+    isActive: bool | None = None
+
+    @field_validator('domain')
+    @classmethod
+    def validate_domain(cls, v):
+        """Validate domain format (no @ symbol, just the domain)"""
+        if v is not None:
+            v = v.strip().lower()
+            if '@' in v:
+                raise ValueError("Domain should not include '@' symbol (e.g., use 'acme.com' not '@acme.com')")
+            if not v or '.' not in v:
+                raise ValueError("Domain must be a valid format (e.g., 'acme.com')")
+        return v
 
 
 # ==================== CONFIG MODELS ====================
@@ -183,9 +218,9 @@ class Config(BaseModel):
     type: ConfigType
     scope: Literal["GLOBAL", "org"] = Field(
         ..., description="GLOBAL for MSP-wide or 'org' for org-specific")
-    orgId: Optional[str] = Field(
+    orgId: str | None = Field(
         None, description="Organization ID (only for org-specific config)")
-    description: Optional[str] = None
+    description: str | None = None
     updatedAt: datetime
     updatedBy: str
 
@@ -195,9 +230,7 @@ class SetConfigRequest(BaseModel):
     key: str = Field(..., pattern=r"^[a-zA-Z0-9_]+$")
     value: str
     type: ConfigType
-    scope: Literal["GLOBAL", "org"] = Field(
-        default="GLOBAL", description="GLOBAL or org")
-    description: Optional[str] = None
+    description: str | None = None
 
 
 # ==================== INTEGRATION CONFIG MODELS ====================
@@ -206,7 +239,7 @@ class IntegrationConfig(BaseModel):
     """Integration configuration entity"""
     type: IntegrationType
     enabled: bool = Field(default=True)
-    settings: Dict[str, Any] = Field(...,
+    settings: dict[str, Any] = Field(...,
                                      description="Integration-specific settings")
     updatedAt: datetime
     updatedBy: str
@@ -216,7 +249,7 @@ class SetIntegrationConfigRequest(BaseModel):
     """Request model for setting integration config"""
     type: IntegrationType
     enabled: bool = Field(default=True)
-    settings: Dict[str, Any]
+    settings: dict[str, Any]
 
     @field_validator('settings')
     @classmethod
@@ -251,7 +284,7 @@ class User(BaseModel):
     isPlatformAdmin: bool = Field(
         default=False, description="Whether user is platform admin")
     isActive: bool = Field(default=True)
-    lastLogin: Optional[datetime] = None
+    lastLogin: datetime | None = None
     createdAt: datetime
 
     @field_validator('isPlatformAdmin')
@@ -270,7 +303,7 @@ class Role(BaseModel):
     """Role entity for organization users"""
     id: str = Field(..., description="Role ID (GUID)")
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
+    description: str | None = None
     isActive: bool = Field(default=True)
     createdBy: str
     createdAt: datetime
@@ -280,13 +313,13 @@ class Role(BaseModel):
 class CreateRoleRequest(BaseModel):
     """Request model for creating a role"""
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class UpdateRoleRequest(BaseModel):
     """Request model for updating a role"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
 
 
 class UserRole(BaseModel):
@@ -307,14 +340,24 @@ class FormRole(BaseModel):
 
 class AssignUsersToRoleRequest(BaseModel):
     """Request model for assigning users to a role"""
-    userIds: List[str] = Field(..., min_length=1,
+    userIds: list[str] = Field(..., min_length=1,
                                description="List of user IDs to assign")
 
 
 class AssignFormsToRoleRequest(BaseModel):
     """Request model for assigning forms to a role"""
-    formIds: List[str] = Field(..., min_length=1,
+    formIds: list[str] = Field(..., min_length=1,
                                description="List of form IDs to assign")
+
+
+class RoleUsersResponse(BaseModel):
+    """Response model for getting users assigned to a role"""
+    userIds: list[str] = Field(..., description="List of user IDs assigned to the role")
+
+
+class RoleFormsResponse(BaseModel):
+    """Response model for getting forms assigned to a role"""
+    formIds: list[str] = Field(..., description="List of form IDs assigned to the role")
 
 
 # ==================== PERMISSION MODELS ====================
@@ -346,14 +389,26 @@ class GrantPermissionsRequest(BaseModel):
     permissions: PermissionsData
 
 
+class UserRolesResponse(BaseModel):
+    """Response model for getting roles assigned to a user"""
+    roleIds: list[str] = Field(..., description="List of role IDs assigned to the user")
+
+
+class UserFormsResponse(BaseModel):
+    """Response model for getting forms accessible to a user"""
+    userType: UserType = Field(..., description="User type (PLATFORM or ORG)")
+    hasAccessToAllForms: bool = Field(..., description="Whether user has access to all forms")
+    formIds: list[str] = Field(default_factory=list, description="List of form IDs user can access (empty if hasAccessToAllForms=true)")
+
+
 # ==================== FORM MODELS ====================
 
 class FormFieldValidation(BaseModel):
     """Form field validation rules"""
-    pattern: Optional[str] = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    message: Optional[str] = None
+    pattern: str | None = None
+    min: float | None = None
+    max: float | None = None
+    message: str | None = None
 
 
 class FormField(BaseModel):
@@ -362,17 +417,17 @@ class FormField(BaseModel):
     label: str = Field(..., description="Display label")
     type: FormFieldType
     required: bool = Field(default=False)
-    validation: Optional[Dict[str, Any]] = None
-    dataProvider: Optional[str] = Field(
+    validation: dict[str, Any] | None = None
+    dataProvider: str | None = Field(
         None, description="Data provider name for dynamic options")
-    defaultValue: Optional[Any] = None
-    placeholder: Optional[str] = None
-    helpText: Optional[str] = None
+    defaultValue: Any | None = None
+    placeholder: str | None = None
+    helpText: str | None = None
 
 
 class FormSchema(BaseModel):
     """Form schema with field definitions"""
-    fields: List[FormField] = Field(..., max_length=50,
+    fields: list[FormField] = Field(..., max_length=50,
                                     description="Max 50 fields per form")
 
     @field_validator('fields')
@@ -390,7 +445,7 @@ class Form(BaseModel):
     id: str
     orgId: str = Field(..., description="Organization ID or 'GLOBAL'")
     name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
+    description: str | None = None
     linkedWorkflow: str = Field(..., description="Workflow name to execute")
     formSchema: FormSchema
     isActive: bool = Field(default=True)
@@ -405,7 +460,7 @@ class Form(BaseModel):
 class CreateFormRequest(BaseModel):
     """Request model for creating a form"""
     name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
+    description: str | None = None
     linkedWorkflow: str
     formSchema: FormSchema
     isGlobal: bool = Field(default=False)
@@ -415,15 +470,16 @@ class CreateFormRequest(BaseModel):
 
 class UpdateFormRequest(BaseModel):
     """Request model for updating a form"""
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = None
-    linkedWorkflow: Optional[str] = None
-    formSchema: Optional[FormSchema] = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    linkedWorkflow: str | None = None
+    formSchema: FormSchema | None = None
+    isActive: bool | None = None
 
 
 class FormExecuteRequest(BaseModel):
     """Request model for executing a form"""
-    form_data: Dict[str, Any] = Field(..., description="Form field values")
+    form_data: dict[str, Any] = Field(..., description="Form field values")
 
 
 # ==================== WORKFLOW EXECUTION MODELS ====================
@@ -432,29 +488,39 @@ class WorkflowExecution(BaseModel):
     """Workflow execution entity"""
     executionId: str
     workflowName: str
-    formId: Optional[str] = None
+    formId: str | None = None
     executedBy: str
     status: ExecutionStatus
-    inputData: Dict[str, Any]
-    result: Optional[Dict[str, Any]] = None
-    errorMessage: Optional[str] = None
-    durationMs: Optional[int] = None
+    inputData: dict[str, Any]
+    result: dict[str, Any] | None = None
+    errorMessage: str | None = None
+    durationMs: int | None = None
     startedAt: datetime
-    completedAt: Optional[datetime] = None
+    completedAt: datetime | None = None
 
 
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow"""
-    workflowName: str
-    formId: Optional[str] = None
-    inputData: Dict[str, Any]
+    inputData: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
+    formId: str | None = Field(None, description="Optional form ID that triggered this execution")
 
 
 class WorkflowExecutionResponse(BaseModel):
-    """Response model for workflow execution initiation"""
+    """Response model for workflow execution"""
     executionId: str
     status: ExecutionStatus
-    message: str
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    errorType: str | None = None
+    details: dict[str, Any] | None = None
+    durationMs: int | None = None
+    startedAt: datetime | None = None
+    completedAt: datetime | None = None
+
+
+class ExecutionsListResponse(BaseModel):
+    """Response model for listing workflow executions"""
+    executions: list[WorkflowExecution] = Field(..., description="List of workflow executions")
 
 
 # ==================== METADATA MODELS ====================
@@ -464,8 +530,8 @@ class WorkflowParameter(BaseModel):
     name: str
     type: str  # string, int, bool, etc.
     required: bool
-    dataProvider: Optional[str] = None
-    description: Optional[str] = None
+    dataProvider: str | None = None
+    description: str | None = None
 
 
 class WorkflowMetadata(BaseModel):
@@ -473,7 +539,7 @@ class WorkflowMetadata(BaseModel):
     name: str
     description: str
     category: str = Field(default="General")
-    parameters: List[WorkflowParameter] = Field(default_factory=list)
+    parameters: list[WorkflowParameter] = Field(default_factory=list)
     requiresOrg: bool = Field(
         default=True, description="Whether workflow requires org context")
 
@@ -486,8 +552,8 @@ class DataProviderMetadata(BaseModel):
 
 class MetadataResponse(BaseModel):
     """Response model for /admin/workflow endpoint"""
-    workflows: List[WorkflowMetadata] = Field(default_factory=list)
-    optionGenerators: List[DataProviderMetadata] = Field(
+    workflows: list[WorkflowMetadata] = Field(default_factory=list)
+    optionGenerators: list[DataProviderMetadata] = Field(
         default_factory=list, alias="option_generators")
 
     class Config:
@@ -500,13 +566,13 @@ class DataProviderOption(BaseModel):
     """Data provider option item"""
     label: str
     value: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class DataProviderResponse(BaseModel):
     """Response model for data provider endpoint"""
     provider: str = Field(..., description="Name of the data provider")
-    options: List[DataProviderOption] = Field(..., description="List of options returned by the provider")
+    options: list[DataProviderOption] = Field(..., description="List of options returned by the provider")
     cached: bool = Field(..., description="Whether this result was served from cache")
     cacheExpiresAt: str = Field(..., alias="cache_expires_at", description="Cache expiration timestamp")
 
@@ -518,9 +584,9 @@ class DataProviderResponse(BaseModel):
 
 class SecretListResponse(BaseModel):
     """Response model for listing secrets"""
-    secrets: List[str] = Field(...,
+    secrets: list[str] = Field(...,
                                description="List of secret names available in Key Vault")
-    orgId: Optional[str] = Field(
+    orgId: str | None = Field(
         None, description="Organization ID filter (if applied)")
     count: int = Field(..., description="Total number of secrets returned")
 
@@ -553,7 +619,7 @@ class SecretResponse(BaseModel):
                       description="Full secret name in Key Vault (e.g., org-123--api-key)")
     orgId: str = Field(..., description="Organization ID or 'GLOBAL'")
     secretKey: str = Field(..., description="Secret key portion")
-    value: Optional[str] = Field(
+    value: str | None = Field(
         None, description="Secret value (only shown immediately after create/update)")
     message: str = Field(..., description="Operation result message")
 
@@ -565,7 +631,7 @@ class HealthCheck(BaseModel):
     service: str = Field(..., description="Display name of the service (e.g., 'API', 'Key Vault')")
     healthy: bool = Field(..., description="Whether the service is healthy")
     message: str = Field(..., description="Health check message")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional service-specific metadata")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional service-specific metadata")
 
 
 class GeneralHealthResponse(BaseModel):
@@ -573,7 +639,7 @@ class GeneralHealthResponse(BaseModel):
     status: Literal["healthy", "degraded", "unhealthy"] = Field(..., description="Overall system health status")
     service: str = Field(default="Bifrost Integrations API", description="Service name")
     timestamp: datetime = Field(..., description="Health check timestamp")
-    checks: List[HealthCheck] = Field(..., description="Individual service health checks")
+    checks: list[HealthCheck] = Field(..., description="Individual service health checks")
 
 
 class KeyVaultHealthResponse(BaseModel):
@@ -581,7 +647,7 @@ class KeyVaultHealthResponse(BaseModel):
     status: Literal["healthy", "degraded",
                     "unhealthy"] = Field(..., description="Health status")
     message: str = Field(..., description="Health status message")
-    vaultUrl: Optional[str] = Field(
+    vaultUrl: str | None = Field(
         None, description="Key Vault URL being monitored")
     canConnect: bool = Field(...,
                              description="Whether connection to Key Vault succeeded")
@@ -589,12 +655,27 @@ class KeyVaultHealthResponse(BaseModel):
                                  description="Whether listing secrets is permitted")
     canGetSecrets: bool = Field(...,
                                 description="Whether reading secrets is permitted")
-    secretCount: Optional[int] = Field(
+    secretCount: int | None = Field(
         None, description="Number of secrets in Key Vault (if accessible)")
     lastChecked: datetime = Field(..., description="Timestamp of health check")
 
 
-# ==================== OAUTH CREDENTIALS ====================
+# ==================== OAUTH MODELS ====================
+
+class OAuthCallbackRequest(BaseModel):
+    """Request model for OAuth callback endpoint"""
+    code: str = Field(..., description="Authorization code from OAuth provider")
+    state: str | None = Field(None, description="State parameter for CSRF protection")
+
+
+class OAuthCallbackResponse(BaseModel):
+    """Response model for OAuth callback endpoint"""
+    success: bool = Field(..., description="Whether the OAuth connection was successful")
+    message: str = Field(..., description="Status message")
+    status: str = Field(..., description="Connection status")
+    connection_name: str = Field(..., description="Name of the OAuth connection")
+    warning: str | None = Field(None, description="Warning message (e.g., missing refresh token)")
+
 
 class OAuthCredentials:
     """
@@ -610,7 +691,7 @@ class OAuthCredentials:
         access_token: str,
         token_type: str,
         expires_at: datetime,
-        refresh_token: Optional[str] = None,
+        refresh_token: str | None = None,
         scopes: str = ""
     ):
         self.connection_name = connection_name
@@ -649,8 +730,8 @@ class RecentFailure(BaseModel):
     """Recent failed execution info"""
     executionId: str
     workflowName: str
-    errorMessage: Optional[str]
-    startedAt: Optional[str]
+    errorMessage: str | None
+    startedAt: str | None
 
 
 class DashboardMetricsResponse(BaseModel):
@@ -659,7 +740,7 @@ class DashboardMetricsResponse(BaseModel):
     dataProviderCount: int
     formCount: int
     executionStats: ExecutionStats
-    recentFailures: List[RecentFailure]
+    recentFailures: list[RecentFailure]
 
 
 # ==================== ERROR MODEL ====================
@@ -668,13 +749,12 @@ class ErrorResponse(BaseModel):
     """API error response"""
     error: str = Field(..., description="Error code or type")
     message: str = Field(..., description="Human-readable error message")
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 
 # ==================== HELPER FUNCTIONS ====================
 
 import uuid
-from typing import Tuple, List
 
 
 def generate_entity_id() -> str:
@@ -687,7 +767,7 @@ def generate_entity_id() -> str:
     return str(uuid.uuid4())
 
 
-def parse_row_key(row_key: str) -> Tuple[str, str]:
+def parse_row_key(row_key: str) -> tuple[str, str]:
     """
     Parse 'type:id' row keys.
 
@@ -706,7 +786,7 @@ def parse_row_key(row_key: str) -> Tuple[str, str]:
     return parts[0], parts[1] if len(parts) > 1 else ""
 
 
-def parse_composite_row_key(row_key: str, expected_parts: int) -> List[str]:
+def parse_composite_row_key(row_key: str, expected_parts: int) -> list[str]:
     """
     Parse multi-part row keys like 'assignedrole:role_uuid:user_id'.
 
@@ -772,7 +852,7 @@ def model_to_entity(
     model: BaseModel,
     partition_key: str,
     row_key: str,
-    entity_type: Optional[str] = None,
+    entity_type: str | None = None,
     generate_id: bool = False
 ) -> dict:
     """

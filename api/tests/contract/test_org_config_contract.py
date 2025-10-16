@@ -3,16 +3,12 @@ Contract tests for OrgConfig API models
 Tests Pydantic validation rules for request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
-from shared.models import (
-    Config,
-    SetConfigRequest,
-    ConfigType,
-    ErrorResponse
-)
+from shared.models import Config, ConfigType, SetConfigRequest
 
 
 class TestSetConfigRequest:

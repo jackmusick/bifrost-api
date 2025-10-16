@@ -5,17 +5,23 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { configService } from '@/services/config'
-import type { SetConfigRequest, ConfigScope } from '@/types/config'
+import type { components } from '@/lib/v1'
+import type { ConfigScope } from '@/lib/client-types'
+type SetConfigRequest = components['schemas']['SetConfigRequest']
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
-export function useConfigs(scope: ConfigScope = 'GLOBAL', orgId?: string | undefined) {
+export function useConfigs(scope: ConfigScope = 'GLOBAL') {
+  const currentOrgId = useScopeStore((state) => state.scope.orgId)
+  const hasHydrated = useScopeStore((state) => state._hasHydrated)
+
   return useQuery({
-    queryKey: ['configs', scope, orgId],
-    queryFn: () => configService.getConfigs({
-      scope: scope === 'GLOBAL' ? 'global' : scope,
-      // Note: orgId is NOT passed as a query param - it's sent via X-Organization-Id header
-      // by the api client automatically
-    }),
+    queryKey: ['configs', scope, currentOrgId],
+    queryFn: () => configService.getConfigs(),
+    // Wait for Zustand to rehydrate from localStorage before making API calls
+    enabled: hasHydrated,
+    // Don't use cached data from previous scope
+    staleTime: 0,
   })
 }
 
@@ -42,11 +48,8 @@ export function useDeleteConfig() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ key, scope, orgId }: { key: string; scope?: ConfigScope | undefined; orgId?: string | null }) =>
-      configService.deleteConfig(key, {
-        scope: scope === 'GLOBAL' ? 'global' : scope,
-        // Note: orgId is NOT passed as a query param - it's sent via X-Organization-Id header
-      }),
+    mutationFn: ({ key }: { key: string }) =>
+      configService.deleteConfig(key),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['configs'] })
       toast.success('Configuration deleted', {

@@ -4,7 +4,7 @@ Standardized error types and exception handling for workflows
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any
 
 
 @dataclass
@@ -12,9 +12,9 @@ class WorkflowError:
     """Standardized error structure for workflow failures."""
     error_type: str  # "ValidationError", "IntegrationError", "TimeoutError", etc.
     message: str  # User-friendly error message
-    details: Optional[Dict[str, Any]] = None  # Additional context
+    details: dict[str, Any] | None = None  # Additional context
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         return {
             "error": self.error_type,
@@ -23,10 +23,10 @@ class WorkflowError:
         }
 
 
-class WorkflowException(Exception):
+class WorkflowError(Exception):
     """Base exception for workflow errors."""
 
-    def __init__(self, error_type: str, message: str, details: Dict[str, Any] = None):
+    def __init__(self, error_type: str, message: str, details: dict[str, Any] = None):
         self.error_type = error_type
         self.message = message
         self.details = details or {}
@@ -37,7 +37,7 @@ class WorkflowException(Exception):
         return WorkflowError(self.error_type, self.message, self.details)
 
 
-class ValidationError(WorkflowException):
+class ValidationError(WorkflowError):
     """Raised when input validation fails."""
 
     def __init__(self, message: str, field: str = None):
@@ -48,7 +48,7 @@ class ValidationError(WorkflowException):
         )
 
 
-class IntegrationError(WorkflowException):
+class IntegrationError(WorkflowError):
     """Raised when external API call fails."""
 
     def __init__(self, integration: str, message: str, status_code: int = None):
@@ -59,7 +59,7 @@ class IntegrationError(WorkflowException):
         )
 
 
-class TimeoutError(WorkflowException):
+class TimeoutError(WorkflowError):
     """Raised when workflow exceeds timeout."""
 
     def __init__(self, timeout_seconds: int):
@@ -70,7 +70,7 @@ class TimeoutError(WorkflowException):
         )
 
 
-class ConfigurationError(WorkflowException):
+class ConfigurationError(WorkflowError):
     """Raised when organization configuration is missing or invalid."""
 
     def __init__(self, message: str, config_key: str = None):
@@ -81,7 +81,7 @@ class ConfigurationError(WorkflowException):
         )
 
 
-class PermissionError(WorkflowException):
+class PermissionError(WorkflowError):
     """Raised when user lacks required permissions."""
 
     def __init__(self, message: str, required_permission: str = None):

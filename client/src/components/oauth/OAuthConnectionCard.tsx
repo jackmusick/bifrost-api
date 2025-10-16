@@ -12,8 +12,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import type { OAuthConnectionSummary } from '@/types/oauth'
-import { getStatusColor, getStatusLabel, isExpired, expiresSoon } from '@/types/oauth'
+import type { components } from '@/lib/v1'
+import { getStatusColor, getStatusLabel, isExpired, expiresSoon } from '@/lib/client-types'
+type OAuthConnectionSummary = components['schemas']['OAuthConnection']
 
 interface OAuthConnectionCardProps {
   connection: OAuthConnectionSummary
@@ -69,7 +70,7 @@ export function OAuthConnectionCard({
     }
   }
 
-  const getStatusBadgeVariant = (): "default" | "destructive" | "secondary" | "outline" | "success" => {
+  const getStatusBadgeVariant = (): "default" | "destructive" | "secondary" | "outline" => {
     const color = getStatusColor(connection.status)
     switch (color) {
       case 'green':

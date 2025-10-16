@@ -10,9 +10,11 @@ This function is invoked by SWA's rolesSource configuration:
 }
 """
 
-import logging
 import json
+import logging
+
 import azure.functions as func
+
 from shared.storage import TableStorageService
 
 logger = logging.getLogger(__name__)

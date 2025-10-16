@@ -9,11 +9,11 @@ This quickstart provides step-by-step instructions for implementing and testing 
 
 ## Prerequisites
 
-- Python 3.11 installed
-- Azure Functions Core Tools v4
-- Azurite running locally for Table Storage
-- Azure Key Vault access (or local emulator)
-- Postman or similar API testing tool
+-   Python 3.11 installed
+-   Azure Functions Core Tools v4
+-   Azurite running locally for Table Storage
+-   Azure Key Vault access (or local emulator)
+-   Postman or similar API testing tool
 
 ## Development Setup
 
@@ -35,7 +35,7 @@ azurite --silent --location ./azurite --debug ./azurite/debug.log
 
 # Set environment variables
 export AZURE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true"
-export KEY_VAULT_URL="https://your-keyvault.vault.azure.net/"
+export AZURE_KEY_VAULT_URL="https://your-keyvault.vault.azure.net/"
 ```
 
 ### 3. Generate Encryption Key
@@ -419,6 +419,7 @@ pytest tests/integration/test_oauth_authorization_flow.py -v
 ### 3. Manual Testing with Postman
 
 **Create connection**:
+
 ```bash
 POST http://localhost:7071/api/oauth/connections
 Headers:
@@ -436,6 +437,7 @@ Body:
 ```
 
 **Initiate authorization** (for authorization_code flow):
+
 ```bash
 POST http://localhost:7071/api/oauth/connections/azure_csp_oauth/authorize
 Headers:
@@ -443,6 +445,7 @@ Headers:
 ```
 
 **Get credentials**:
+
 ```bash
 GET http://localhost:7071/api/oauth/credentials/azure_csp_oauth
 Headers:
@@ -488,21 +491,25 @@ await register_oauth_dependency(
 ### Common Issues
 
 **1. Token encryption errors**
-- Verify encryption key is valid Base64 Fernet key
-- Check key is stored in Key Vault: `oauth-token-encryption-key`
+
+-   Verify encryption key is valid Base64 Fernet key
+-   Check key is stored in Key Vault: `oauth-token-encryption-key`
 
 **2. Table Storage connection fails**
-- Ensure Azurite is running: `azurite --version`
-- Check connection string in environment
+
+-   Ensure Azurite is running: `azurite --version`
+-   Check connection string in environment
 
 **3. OAuth callback not received**
-- Verify redirect URI registered with OAuth provider matches: `/api/oauth/callback/{connection_name}`
-- Check callback endpoint is publicly accessible
+
+-   Verify redirect URI registered with OAuth provider matches: `/api/oauth/callback/{connection_name}`
+-   Check callback endpoint is publicly accessible
 
 **4. Token refresh not working**
-- Verify refresh token was received from OAuth provider
-- Check token URL is correct
-- Ensure scheduled job is running every 30 minutes
+
+-   Verify refresh token was received from OAuth provider
+-   Check token URL is correct
+-   Ensure scheduled job is running every 30 minutes
 
 ## Next Steps
 
@@ -516,8 +523,8 @@ After completing the quickstart:
 
 ## Reference
 
-- **Spec**: [spec.md](./spec.md)
-- **Data Model**: [data-model.md](./data-model.md)
-- **API Contracts**: [contracts/oauth-api.openapi.yaml](./contracts/oauth-api.openapi.yaml)
-- **Research**: [research.md](./research.md)
-- **Plan**: [plan.md](./plan.md)
+-   **Spec**: [spec.md](./spec.md)
+-   **Data Model**: [data-model.md](./data-model.md)
+-   **API Contracts**: [contracts/oauth-api.openapi.yaml](./contracts/oauth-api.openapi.yaml)
+-   **Research**: [research.md](./research.md)
+-   **Plan**: [plan.md](./plan.md)

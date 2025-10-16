@@ -3,17 +3,20 @@ Pytest fixtures for Bifrost Integrations tests
 Provides reusable test infrastructure for all test files
 """
 
-from shared.init_tables import init_tables, REQUIRED_TABLES
-from shared.storage import TableStorageService
 import os
-import pytest
-import uuid
-from datetime import datetime
-from typing import Dict, Any
-from azure.data.tables import TableServiceClient
 
 # Add parent directory to path for imports
 import sys
+import uuid
+from datetime import datetime
+from typing import Any
+
+import pytest
+from azure.data.tables import TableServiceClient
+
+from shared.init_tables import REQUIRED_TABLES, init_tables
+from shared.storage import TableStorageService
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
@@ -57,7 +60,7 @@ def azurite_tables():
                     partition_key=entity['PartitionKey'],
                     row_key=entity['RowKey']
                 )
-        except Exception as e:
+        except Exception:
             # Table might not exist or be empty - that's OK
             pass
 
@@ -89,7 +92,7 @@ def relationships_service(azurite_tables):
 # ==================== ENTITY FIXTURES ====================
 
 @pytest.fixture
-def test_org(entities_service) -> Dict[str, Any]:
+def test_org(entities_service) -> dict[str, Any]:
     """
     Creates a test organization in the new 4-table structure
     Table: Entities
@@ -121,7 +124,7 @@ def test_org(entities_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_org_2(entities_service) -> Dict[str, Any]:
+def test_org_2(entities_service) -> dict[str, Any]:
     """
     Creates a second test organization for multi-org tests
     Table: Entities
@@ -152,7 +155,7 @@ def test_org_2(entities_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_user(users_service) -> Dict[str, Any]:
+def test_user(users_service) -> dict[str, Any]:
     """
     Creates a test user
     Table: Users
@@ -182,7 +185,7 @@ def test_user(users_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_user_2(users_service) -> Dict[str, Any]:
+def test_user_2(users_service) -> dict[str, Any]:
     """
     Creates a second test user for permission tests
     Table: Users
@@ -213,7 +216,7 @@ def test_user_2(users_service) -> Dict[str, Any]:
 # ==================== PERMISSION FIXTURES ====================
 
 @pytest.fixture
-def test_user_with_full_permissions(test_org, test_user, relationships_service) -> Dict[str, Any]:
+def test_user_with_full_permissions(test_org, test_user, relationships_service) -> dict[str, Any]:
     """
     Creates a user with full permissions via role assignment in new 4-table structure
     Table: Relationships
@@ -274,7 +277,7 @@ def test_user_with_full_permissions(test_org, test_user, relationships_service) 
 
 
 @pytest.fixture
-def test_user_with_no_permissions(test_org, test_user) -> Dict[str, Any]:
+def test_user_with_no_permissions(test_org, test_user) -> dict[str, Any]:
     """
     Creates user with no role assignments (no permissions)
     No entities created in Relationships table - user has no roles
@@ -292,7 +295,7 @@ def test_user_with_no_permissions(test_org, test_user) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_user_with_limited_permissions(test_org, test_user, relationships_service) -> Dict[str, Any]:
+def test_user_with_limited_permissions(test_org, test_user, relationships_service) -> dict[str, Any]:
     """
     Creates user with limited permissions via "viewer" role assignment
     Table: Relationships
@@ -350,7 +353,7 @@ def test_user_with_limited_permissions(test_org, test_user, relationships_servic
 # ==================== CONFIG FIXTURES ====================
 
 @pytest.fixture
-def test_org_with_config(test_org, config_service) -> Dict[str, Any]:
+def test_org_with_config(test_org, config_service) -> dict[str, Any]:
     """
     Creates org with sample configs in new 4-table structure
     Table: Config
@@ -393,7 +396,7 @@ def test_org_with_config(test_org, config_service) -> Dict[str, Any]:
 # ==================== FORM FIXTURES ====================
 
 @pytest.fixture
-def test_form(test_org, entities_service) -> Dict[str, Any]:
+def test_form(test_org, entities_service) -> dict[str, Any]:
     """
     Creates a sample form linked to user_onboarding workflow in new 4-table structure
     Table: Entities
@@ -453,7 +456,7 @@ def test_form(test_org, entities_service) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_global_form(entities_service) -> Dict[str, Any]:
+def test_global_form(entities_service) -> dict[str, Any]:
     """
     Creates a global form (available to all organizations) in new 4-table structure
     Table: Entities
@@ -527,8 +530,9 @@ def mock_jwt_token(test_user):
     """
     Returns a mock JWT token string for testing auth middleware
     """
-    import jwt
     from datetime import timedelta
+
+    import jwt
 
     payload = {
         "oid": test_user["user_id"],
@@ -575,7 +579,7 @@ def platform_admin_context():
     Used for testing admin-only endpoints and GLOBAL scope operations
     """
     from shared.request_context import RequestContext
-    
+
     return RequestContext(
         user_id="admin-user-12345",
         email="admin@test.com",
@@ -593,7 +597,7 @@ def org_user_context(test_org):
     Used for testing org-scoped operations
     """
     from shared.request_context import RequestContext
-    
+
     return RequestContext(
         user_id="org-user-67890",
         email="user@test.com",
@@ -611,7 +615,7 @@ def function_key_context():
     Used for testing system-to-system operations
     """
     from shared.request_context import RequestContext
-    
+
     return RequestContext(
         user_id="system",
         email="system@local",
@@ -629,7 +633,7 @@ def mock_admin_request():
     Used for testing admin endpoints
     """
     from tests.helpers.mock_requests import MockRequestHelper
-    
+
     return MockRequestHelper.create_platform_admin_request(
         method="GET",
         url="/api/test"
@@ -643,7 +647,7 @@ def mock_org_user_request(test_org):
     Used for testing org user endpoints
     """
     from tests.helpers.mock_requests import MockRequestHelper
-    
+
     return MockRequestHelper.create_org_user_request(
         method="GET",
         url="/api/test",
@@ -658,7 +662,7 @@ def mock_function_key_request():
     Used for testing system endpoints
     """
     from tests.helpers.mock_requests import MockRequestHelper
-    
+
     return MockRequestHelper.create_function_key_request(
         method="GET",
         url="/api/test"
@@ -672,7 +676,7 @@ def mock_anonymous_request():
     Used for testing anonymous endpoints
     """
     from tests.helpers.mock_requests import MockRequestHelper
-    
+
     return MockRequestHelper.create_anonymous_request(
         method="GET",
         url="/api/test"
@@ -697,9 +701,9 @@ def test_org_with_user(test_org, test_user, users_service):
         "CreatedAt": datetime.utcnow().isoformat(),
         "LastLogin": datetime.utcnow().isoformat(),
     }
-    
+
     users_service.upsert_entity(user_entity)
-    
+
     return {
         **test_org,
         **test_user,
@@ -715,7 +719,7 @@ def test_platform_admin_user(users_service):
     Returns dict with user info
     """
     user_id = str(uuid.uuid4())
-    
+
     user_entity = {
         "PartitionKey": "USER",
         "RowKey": user_id,
@@ -727,9 +731,9 @@ def test_platform_admin_user(users_service):
         "CreatedAt": datetime.utcnow().isoformat(),
         "LastLogin": datetime.utcnow().isoformat(),
     }
-    
+
     users_service.upsert_entity(user_entity)
-    
+
     return {
         "user_id": user_id,
         "email": "admin@test.com",
@@ -748,8 +752,8 @@ def load_seed_data(azurite_tables):
     NOTE: Not autouse - tests must explicitly request this fixture if they need seed data
     """
     # Import seed data function
-    import sys
     import os
+    import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
     try:

@@ -5,8 +5,9 @@ Tests that validate organization isolation and cross-org access controls,
 including PlatformAdmin privilege escalation and audit logging.
 """
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 
 
 class TestCrossOrgIsolation:

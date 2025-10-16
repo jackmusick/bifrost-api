@@ -4,25 +4,23 @@ Config and IntegrationConfig API endpoints
 - Manage integration configurations (Microsoft Graph, HaloPSA)
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import List, Optional
-import azure.functions as func
 
-from shared.decorators import with_request_context, require_platform_admin
-from shared.openapi_decorators import openapi_endpoint
-from shared.storage import get_table_service
+import azure.functions as func
+from pydantic import ValidationError
+
+from shared.decorators import require_platform_admin, with_request_context
 from shared.models import (
     Config,
-    SetConfigRequest,
+    ErrorResponse,
     IntegrationConfig,
+    SetConfigRequest,
     SetIntegrationConfigRequest,
-    IntegrationType,
-    ErrorResponse
 )
-from shared.validation import validate_scope_parameter
-from pydantic import ValidationError
+from shared.openapi_decorators import openapi_endpoint
+from shared.storage import get_table_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +28,7 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optional[dict]:
+def get_config_value(context, key: str, org_id: str | None = None) -> dict | None:
     """
     Get config value with fallback pattern: org-specific → GLOBAL → None
 
@@ -42,7 +40,6 @@ def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optiona
     Returns:
         Config entity dict or None if not found
     """
-    from shared.request_context import RequestContext
 
     row_key = f"config:{key}"
 
@@ -54,7 +51,7 @@ def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optiona
             if org_config:
                 logger.debug(f"Found org-specific config for key '{key}' in org {org_id}")
                 return org_config
-        except:
+        except Exception:
             pass  # Not found in org, will try GLOBAL
 
     # Fallback to GLOBAL
@@ -64,7 +61,7 @@ def get_config_value(context, key: str, org_id: Optional[str] = None) -> Optiona
         if global_config:
             logger.debug(f"Found GLOBAL config for key '{key}'")
             return global_config
-    except:
+    except Exception:
         pass  # Not found
 
     logger.debug(f"Config key '{key}' not found (checked: {'org + GLOBAL' if org_id else 'GLOBAL only'})")
@@ -97,50 +94,30 @@ def mask_sensitive_value(key: str, value: str, value_type: str) -> str:
     path="/config",
     method="GET",
     summary="Get configuration values",
-    description="Get configuration values with scope filtering (Platform admin only)",
+    description="Get configuration values for current scope. Platform admins see all configs in their scope (set via X-Organization-Id header). Regular users see configs for their org.",
     tags=["Configuration"],
-    response_model=Config,
-    query_params={
-        "scope": {
-            "description": "Configuration scope: 'global' for global config or 'org' for organization-specific",
-            "schema": {"type": "string", "enum": ["global", "org"]},
-            "required": True
-        },
-        "orgId": {
-            "description": "Organization ID (required when scope=org)",
-            "schema": {"type": "string", "format": "uuid"},
-            "required": False
-        }
-    }
+    response_model=list[Config]
 )
 @with_request_context
 @require_platform_admin
 async def get_config(req: func.HttpRequest) -> func.HttpResponse:
     """
-    GET /api/config?scope=global|org&orgId={id}
-    Get configuration with scope filtering
+    GET /api/config
+    Get configuration for current scope
 
-    Query params:
-        scope: 'global' for GLOBAL configs only, 'org' for org-specific (requires orgId)
-        orgId: Organization ID (required when scope=org)
+    Scope is determined by context.scope (from X-Organization-Id header or user's org):
+    - Platform admins: context.scope set by X-Organization-Id header (or GLOBAL if not set)
+    - Regular users: context.scope is their org_id
 
     Platform admin only endpoint
     """
     context = req.context
-    scope = req.params.get("scope", "global").lower()
-    org_id = req.params.get("orgId")
 
-    logger.info(f"User {context.user_id} retrieving config with scope={scope}, orgId={org_id}")
+    logger.info(f"User {context.user_id} retrieving config for scope={context.scope}")
 
     try:
-        # Validate scope parameter
-        is_valid, error_response = validate_scope_parameter(scope, org_id)
-        if not is_valid:
-            return error_response
-
-        # Query Config table based on scope
-        # Determine partition key for the query
-        partition_key = "GLOBAL" if scope == "global" else org_id
+        # Query Config table for current scope
+        partition_key = context.scope
 
         config_service = get_table_service("Config", context)
         config_entities = list(config_service.query_entities(
@@ -156,22 +133,22 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
             # Mask sensitive values (but not secret_ref types)
             value = mask_sensitive_value(key, entity["Value"], entity["Type"])
 
-            # Convert scope to uppercase for Pydantic model validation
-            pydantic_scope = "GLOBAL" if scope == "global" else "org"
+            # Determine scope type for response
+            pydantic_scope = "GLOBAL" if partition_key == "GLOBAL" else "org"
 
             config = Config(
                 key=key,
                 value=value,
                 type=entity["Type"],
                 scope=pydantic_scope,
-                orgId=org_id if scope == "org" else None,
+                orgId=context.org_id if pydantic_scope == "org" else None,
                 description=entity.get("Description"),
                 updatedAt=entity["UpdatedAt"],
                 updatedBy=entity["UpdatedBy"]
             )
             configs.append(config.model_dump(mode="json"))
 
-        logger.info(f"Returning {len(configs)} config entries (scope={scope})")
+        logger.info(f"Returning {len(configs)} config entries for scope={context.scope}")
 
         return func.HttpResponse(
             json.dumps(configs),
@@ -180,10 +157,10 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
-        logger.error(f"Error retrieving org config: {str(e)}", exc_info=True)
+        logger.error(f"Error retrieving config: {str(e)}", exc_info=True)
         error = ErrorResponse(
             error="InternalServerError",
-            message="Failed to retrieve organization configuration"
+            message="Failed to retrieve configuration"
         )
         return func.HttpResponse(
             json.dumps(error.model_dump()),
@@ -198,7 +175,7 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
     path="/config",
     method="POST",
     summary="Set configuration value",
-    description="Set a configuration value (Platform admin only)",
+    description="Set a configuration value in the current scope (Platform admin only)",
     tags=["Configuration"],
     request_model=SetConfigRequest,
     response_model=Config
@@ -208,39 +185,29 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
 async def set_config(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/config
-    Set a configuration key-value pair (global or org-specific)
+    Set a configuration key-value pair for current scope
 
     Request body includes 'scope' field to determine GLOBAL vs org-specific
-    If scope=org, orgId query parameter is required
+    Scope is determined by:
+    - If scope='GLOBAL' in request body: Save to GLOBAL partition
+    - If scope='org' in request body: Save to context.scope (from X-Organization-Id header)
 
     Platform admin only endpoint
     """
     context = req.context
-    org_id = req.params.get("orgId")
 
-    logger.info(f"User {context.user_id} setting config (orgId={org_id})")
+    logger.info(f"User {context.user_id} setting config for scope={context.scope}")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         set_request = SetConfigRequest(**request_body)
 
-        # Determine partition key based on scope
-        if set_request.scope == "org":
-            if not org_id:
-                error = ErrorResponse(
-                    error="BadRequest",
-                    message="orgId parameter is required when scope=org"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=400,
-                    mimetype="application/json"
-                )
-
-            partition_key = org_id
-        else:
-            partition_key = "GLOBAL"
+        # Use context.scope as partition key
+        # - Platform admin with no X-Organization-Id header → GLOBAL
+        # - Platform admin with X-Organization-Id: org-123 → org-123
+        # - Regular user → their org_id from database
+        partition_key = context.scope
 
         # Check if this is a new config or update
         config_service = get_table_service("Config", context)
@@ -249,7 +216,7 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
         existing_config = None
         try:
             existing_config = config_service.get_entity(partition_key, row_key)
-        except:
+        except Exception:
             pass  # Config doesn't exist, will create new
 
         # Create entity for Table Storage
@@ -269,12 +236,12 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
             # Update existing config
             config_service.update_entity(entity)
             status_code = 200
-            logger.info(f"Updated config key '{set_request.key}' (scope={set_request.scope})")
+            logger.info(f"Updated config key '{set_request.key}' in partition={partition_key}")
         else:
             # Create new config
             config_service.insert_entity(entity)
             status_code = 201
-            logger.info(f"Created config key '{set_request.key}' (scope={set_request.scope})")
+            logger.info(f"Created config key '{set_request.key}' in partition={partition_key}")
 
         # Create response model with masked sensitive values
         masked_value = mask_sensitive_value(
@@ -282,12 +249,16 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
             set_request.value,
             set_request.type.value
         )
+
+        # Determine scope for response based on partition key
+        pydantic_scope = "GLOBAL" if partition_key == "GLOBAL" else "org"
+
         config = Config(
             key=set_request.key,
             value=masked_value,
             type=set_request.type,
-            scope=set_request.scope,
-            orgId=org_id if set_request.scope == "org" else None,
+            scope=pydantic_scope,
+            orgId=context.org_id if pydantic_scope == "org" else None,
             description=set_request.description,
             updatedAt=now,
             updatedBy=context.user_id
@@ -343,7 +314,7 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
     path="/config/{key}",
     method="DELETE",
     summary="Delete configuration value",
-    description="Delete a configuration value by key (Platform admin only)",
+    description="Delete a configuration value by key from current scope (Platform admin only)",
     tags=["Configuration"],
     path_params={
         "key": {
@@ -356,12 +327,10 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
 @require_platform_admin
 async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
     """
-    DELETE /api/config/{key}?scope=global|org&orgId={id}
-    Delete a configuration key
+    DELETE /api/config/{key}
+    Delete a configuration key from current scope
 
-    Query params:
-        scope: 'global' or 'org'
-        orgId: Required when scope=org
+    Scope is determined by context.scope (from X-Organization-Id header or user's org)
 
     Platform admin only endpoint
 
@@ -369,33 +338,12 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
     """
     context = req.context
     key = req.route_params.get("key")
-    scope = req.params.get("scope", "global").lower()
-    org_id = req.params.get("orgId")
 
-    logger.info(f"User {context.user_id} deleting config key '{key}' (scope={scope}, orgId={org_id})")
+    logger.info(f"User {context.user_id} deleting config key '{key}' from scope={context.scope}")
 
     try:
-        # Validate scope
-        is_valid, error_response = validate_scope_parameter(scope, org_id)
-        if not is_valid:
-            return error_response
-
-        # Determine partition key and check permissions
-        if scope == "org":
-            if not org_id:
-                error = ErrorResponse(
-                    error="BadRequest",
-                    message="orgId parameter is required when scope=org"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=400,
-                    mimetype="application/json"
-                )
-
-            partition_key = org_id
-        else:
-            partition_key = "GLOBAL"
+        # Use context.scope as partition key
+        partition_key = context.scope
 
         # Check if config is referenced by OAuth connections
         # OAuth connection configs follow patterns:
@@ -446,10 +394,10 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
 
         try:
             config_service.delete_entity(partition_key, row_key)
-            logger.info(f"Deleted config key '{key}' (scope={scope})")
-        except Exception as e:
+            logger.info(f"Deleted config key '{key}' (scope={partition_key})")
+        except Exception:
             # Even if entity doesn't exist, return 204 (idempotent delete)
-            logger.debug(f"Config key '{key}' not found (scope={scope}), but returning 204")
+            logger.debug(f"Config key '{key}' not found (scope={partition_key}), but returning 204")
 
         return func.HttpResponse(
             status_code=204  # No Content
@@ -587,7 +535,7 @@ async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
         existing_integration = None
         try:
             existing_integration = config_service.get_entity(org_id, row_key)
-        except:
+        except Exception:
             pass  # Integration doesn't exist, will create new
 
         # Create entity for Table Storage
@@ -717,7 +665,7 @@ async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
         try:
             config_service.delete_entity(org_id, row_key)
             logger.info(f"Deleted {integration_type} integration for org {org_id}")
-        except Exception as e:
+        except Exception:
             # Even if entity doesn't exist, return 204 (idempotent delete)
             logger.debug(f"{integration_type} integration not found for org {org_id}, but returning 204")
 

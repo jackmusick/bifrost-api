@@ -5,29 +5,27 @@ Roles API endpoints
 - Assign forms to roles (FormRoles)
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import List
-import azure.functions as func
 
-from shared.decorators import with_request_context, require_platform_admin
+import azure.functions as func
+from pydantic import ValidationError
+
+from shared.decorators import require_platform_admin, with_request_context
+from shared.models import (
+    AssignFormsToRoleRequest,
+    AssignUsersToRoleRequest,
+    CreateRoleRequest,
+    ErrorResponse,
+    Role,
+    RoleFormsResponse,
+    RoleUsersResponse,
+    UpdateRoleRequest,
+    generate_entity_id,
+)
 from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
-from shared.models import (
-    Role,
-    CreateRoleRequest,
-    UpdateRoleRequest,
-    UserRole,
-    FormRole,
-    AssignUsersToRoleRequest,
-    AssignFormsToRoleRequest,
-    User,
-    UserType,
-    ErrorResponse,
-    generate_entity_id
-)
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +41,7 @@ bp = func.Blueprint()
     summary="List all roles",
     description="Get all roles (Platform admin only)",
     tags=["Roles"],
-    response_model=Role
+    response_model=list[Role]
 )
 @with_request_context
 @require_platform_admin
@@ -385,6 +383,7 @@ async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
     summary="Get role users",
     description="Get all users assigned to a role (Platform admin only)",
     tags=["Roles"],
+    response_model=RoleUsersResponse,
     path_params={
         "roleId": {
             "description": "Role ID (UUID)",
@@ -529,12 +528,12 @@ async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
             # Upsert both indexes
             try:
                 relationships_service.insert_entity(entity1)
-            except:
+            except Exception:
                 relationships_service.update_entity(entity1)
 
             try:
                 relationships_service.insert_entity(entity2)
-            except:
+            except Exception:
                 relationships_service.update_entity(entity2)
 
         logger.info(f"Assigned {len(assign_request.userIds)} users to role {role_id}")
@@ -612,13 +611,13 @@ async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
         # Delete primary index: assignedrole:role_uuid:user_id
         try:
             relationships_service.delete_entity("GLOBAL", f"assignedrole:{role_id}:{user_id}")
-        except:
+        except Exception:
             pass  # Idempotent
 
         # Delete dual index: userrole:user_id:role_uuid
         try:
             relationships_service.delete_entity("GLOBAL", f"userrole:{user_id}:{role_id}")
-        except:
+        except Exception:
             pass  # Idempotent
 
         logger.info(f"Removed user {user_id} from role {role_id}")
@@ -646,6 +645,7 @@ async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
     summary="Get role forms",
     description="Get all forms assigned to a role (Platform admin only)",
     tags=["Roles"],
+    response_model=RoleFormsResponse,
     path_params={
         "roleId": {
             "description": "Role ID (UUID)",
@@ -775,12 +775,12 @@ async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
             # Upsert both indexes
             try:
                 relationships_service.insert_entity(entity1)
-            except:
+            except Exception:
                 relationships_service.update_entity(entity1)
 
             try:
                 relationships_service.insert_entity(entity2)
-            except:
+            except Exception:
                 relationships_service.update_entity(entity2)
 
         logger.info(f"Assigned {len(assign_request.formIds)} forms to role {role_id}")
@@ -858,13 +858,13 @@ async def remove_form_from_role(req: func.HttpRequest) -> func.HttpResponse:
         # Delete primary index: formrole:form_uuid:role_uuid
         try:
             relationships_service.delete_entity("GLOBAL", f"formrole:{form_id}:{role_id}")
-        except:
+        except Exception:
             pass  # Idempotent
 
         # Delete dual index: roleform:role_uuid:form_uuid
         try:
             relationships_service.delete_entity("GLOBAL", f"roleform:{role_id}:{form_id}")
-        except:
+        except Exception:
             pass  # Idempotent
 
         logger.info(f"Removed form {form_id} from role {role_id}")

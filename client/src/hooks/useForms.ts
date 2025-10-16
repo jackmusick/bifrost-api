@@ -5,13 +5,24 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formsService } from '@/services/forms'
-import type { CreateFormRequest, UpdateFormRequest, FormSubmission } from '@/types/form'
+import type { components } from '@/lib/v1'
+import type { FormSubmission } from '@/lib/client-types'
+type CreateFormRequest = components['schemas']['CreateFormRequest']
+type UpdateFormRequest = components['schemas']['UpdateFormRequest']
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useForms() {
+  const orgId = useScopeStore((state) => state.scope.orgId)
+  const hasHydrated = useScopeStore((state) => state._hasHydrated)
+
   return useQuery({
-    queryKey: ['forms'],
+    queryKey: ['forms', orgId],
     queryFn: () => formsService.getForms(),
+    // Wait for Zustand to rehydrate from localStorage before making API calls
+    enabled: hasHydrated,
+    // Don't use cached data from previous scope
+    staleTime: 0,
   })
 }
 
@@ -71,49 +82,11 @@ export function useDeleteForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['forms'] })
       toast.success('Form deleted', {
-        description: 'The form has been removed',
+        description: 'The form has been deactivated',
       })
     },
     onError: (error: Error) => {
       toast.error('Failed to delete form', {
-        description: error.message,
-      })
-    },
-  })
-}
-
-export function useActivateForm() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (formId: string) => formsService.activateForm(formId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['forms'] })
-      toast.success('Form activated', {
-        description: 'The form is now active and available',
-      })
-    },
-    onError: (error: Error) => {
-      toast.error('Failed to activate form', {
-        description: error.message,
-      })
-    },
-  })
-}
-
-export function useDeactivateForm() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (formId: string) => formsService.deactivateForm(formId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['forms'] })
-      toast.success('Form deactivated', {
-        description: 'The form is now inactive',
-      })
-    },
-    onError: (error: Error) => {
-      toast.error('Failed to deactivate form', {
         description: error.message,
       })
     },

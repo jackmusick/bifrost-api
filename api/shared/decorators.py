@@ -4,16 +4,11 @@ Decorators for registering workflows and data providers with metadata
 """
 
 import functools
-import inspect
-from typing import Callable, Any, List, Optional, Dict
 import logging
+from collections.abc import Callable
+from typing import Any
 
-from .registry import (
-    get_registry,
-    WorkflowMetadata,
-    WorkflowParameter,
-    DataProviderMetadata
-)
+from .registry import DataProviderMetadata, WorkflowMetadata, WorkflowParameter, get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +21,7 @@ def workflow(
     name: str,
     description: str,
     category: str = "General",
-    tags: Optional[List[str]] = None,
+    tags: list[str] | None = None,
 
     # Execution
     execution_mode: str = "sync",  # "sync" | "async" | "scheduled"
@@ -34,10 +29,10 @@ def workflow(
     max_duration_seconds: int = 300,
 
     # Retry
-    retry_policy: Optional[Dict[str, Any]] = None,
+    retry_policy: dict[str, Any] | None = None,
 
     # Scheduling
-    schedule: Optional[str] = None,  # Cron expression
+    schedule: str | None = None,  # Cron expression
 
     # Access Control
     requires_org: bool = True,
@@ -87,8 +82,6 @@ def workflow(
 
     def decorator(func: Callable) -> Callable:
         # Extract function signature
-        sig = inspect.signature(func)
-        func_params = list(sig.parameters.keys())
 
         # Collect parameters from @param decorators (if any)
         # Decorators are applied bottom-up, so parameters are in reverse order
@@ -138,12 +131,12 @@ def workflow(
 def param(
     name: str,
     type: str,
-    label: Optional[str] = None,
+    label: str | None = None,
     required: bool = False,
-    validation: Optional[Dict[str, Any]] = None,
-    data_provider: Optional[str] = None,
-    default_value: Optional[Any] = None,
-    help_text: Optional[str] = None
+    validation: dict[str, Any] | None = None,
+    data_provider: str | None = None,
+    default_value: Any | None = None,
+    help_text: str | None = None
 ):
     """
     Decorator for defining workflow parameters with metadata
@@ -300,6 +293,7 @@ def with_request_context(handler):
         Wrapped handler with context injection
     """
     import azure.functions as func
+
     from shared.request_context import get_request_context
 
     @functools.wraps(handler)

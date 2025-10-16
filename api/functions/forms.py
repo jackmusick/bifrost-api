@@ -4,30 +4,26 @@ Forms API endpoints
 - Support for org-specific and global forms
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import List
-import azure.functions as func
 
-from shared.decorators import with_request_context, require_platform_admin
-from shared.openapi_decorators import openapi_endpoint
-from shared.middleware import with_org_context
-from shared.authorization import (
-    can_user_view_form,
-    can_user_execute_form,
-    get_user_visible_forms
-)
-from shared.storage import get_table_service
-from shared.models import (
-    Form,
-    CreateFormRequest,
-    UpdateFormRequest,
-    FormExecuteRequest,
-    ErrorResponse,
-    generate_entity_id
-)
+import azure.functions as func
 from pydantic import ValidationError
+
+from shared.authorization import can_user_execute_form, can_user_view_form, get_user_visible_forms
+from shared.decorators import require_platform_admin, with_request_context
+from shared.middleware import with_org_context
+from shared.models import (
+    CreateFormRequest,
+    ErrorResponse,
+    Form,
+    FormExecuteRequest,
+    UpdateFormRequest,
+    generate_entity_id,
+)
+from shared.openapi_decorators import openapi_endpoint
+from shared.storage import get_table_service
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +39,7 @@ bp = func.Blueprint()
     summary="List forms",
     description="List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).",
     tags=["Forms"],
-    response_model=Form
+    response_model=list[Form]
 )
 @with_request_context
 async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
@@ -439,6 +435,8 @@ async def update_form(req: func.HttpRequest) -> func.HttpResponse:
             form_entity["LinkedWorkflow"] = update_request.linkedWorkflow
         if update_request.formSchema is not None:
             form_entity["FormSchema"] = json.dumps(update_request.formSchema.model_dump())
+        if update_request.isActive is not None:
+            form_entity["IsActive"] = update_request.isActive
 
         form_entity["UpdatedAt"] = now.isoformat()
 
@@ -620,10 +618,10 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Requires: User must have access to execute the form (public or role-assigned)
     """
-    from shared.registry import get_registry
+
     from shared.execution_logger import get_execution_logger
     from shared.models import ExecutionStatus
-    import uuid
+    from shared.registry import get_registry
 
     # Both decorators are applied:
     # - req.context = RequestContext (for authorization)

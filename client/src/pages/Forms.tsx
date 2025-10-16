@@ -19,7 +19,8 @@ export function Forms() {
   const navigate = useNavigate()
   const { scope, isGlobalScope } = useOrgScope()
   const { data: forms, isLoading, refetch } = useForms()
-  const { data: organizations } = useOrganizations()
+  const { data: organization } = useOrganizations()
+  const organizations = organization ? [organization] : []
   const deleteForm = useDeleteForm()
   const { isPlatformAdmin } = useAuth()
 

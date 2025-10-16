@@ -6,10 +6,11 @@ Request middleware for authentication, context loading, and permissions
 import functools
 import json
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
+
 import azure.functions as func
 
-from .context import OrganizationContext, Organization, Caller
+from .context import Caller, Organization, OrganizationContext
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def with_org_context(handler: Callable) -> Callable:
 
 
 async def load_organization_context(
-    org_id: Optional[str],
+    org_id: str | None,
     req: func.HttpRequest
 ) -> OrganizationContext:
     """
@@ -118,7 +119,7 @@ async def load_organization_context(
         OrganizationNotFoundError: If org_id provided but org doesn't exist or is inactive
         AuthenticationError: If authentication fails
     """
-    from .storage import get_organization, get_org_config
+    from .storage import get_org_config, get_organization
 
     org = None
     config = {}

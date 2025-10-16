@@ -8,7 +8,8 @@ Per research.md Decision 8: Generate ZIP in memory using BytesIO buffer.
 import logging
 import zipfile
 from io import BytesIO
-from typing import List, Dict, Any
+from typing import Any
+
 from services.workspace_service import get_workspace_service
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ def create_workspace_zip(directory_path: str = '') -> BytesIO:
         raise
 
 
-def create_selective_zip(file_paths: List[str]) -> BytesIO:
+def create_selective_zip(file_paths: list[str]) -> BytesIO:
     """
     Create in-memory ZIP archive of specific files.
 
@@ -119,7 +120,7 @@ def create_selective_zip(file_paths: List[str]) -> BytesIO:
         raise
 
 
-def estimate_workspace_size(items: List[Dict[str, Any]]) -> int:
+def estimate_workspace_size(items: list[dict[str, Any]]) -> int:
     """
     Estimate total size of workspace files.
 

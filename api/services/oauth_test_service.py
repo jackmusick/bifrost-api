@@ -3,9 +3,9 @@ OAuth Test Service
 Tests OAuth connections by calling provider-specific test endpoints
 """
 
-import aiohttp
 import logging
-from typing import Tuple, Optional
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class OAuthTestService:
         access_token: str,
         authorization_url: str,
         token_url: str
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Test OAuth connection by making authenticated request to provider
 

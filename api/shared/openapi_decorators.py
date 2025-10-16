@@ -6,11 +6,11 @@ specifications from function metadata. Each endpoint decorated with @openapi_end
 will be automatically included in the generated spec.
 """
 
-from typing import Optional, List, Dict, Any, Callable, Type, Union
-from pydantic import BaseModel
+from collections.abc import Callable
 from functools import wraps
-import inspect
+from typing import Any
 
+from pydantic import BaseModel
 
 # ==================== REGISTRY ====================
 
@@ -22,14 +22,14 @@ class OpenAPIEndpoint:
         path: str,
         method: str,
         summary: str,
-        description: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        request_model: Optional[Type[BaseModel]] = None,
-        response_model: Optional[Type[BaseModel]] = None,
-        path_params: Optional[Dict[str, Dict[str, Any]]] = None,
-        query_params: Optional[Dict[str, Dict[str, Any]]] = None,
-        responses: Optional[Dict[int, Dict[str, Any]]] = None,
-        function_name: Optional[str] = None
+        description: str | None = None,
+        tags: list[str] | None = None,
+        request_model: type[BaseModel] | None = None,
+        response_model: type[BaseModel] | None = None,
+        path_params: dict[str, dict[str, Any]] | None = None,
+        query_params: dict[str, dict[str, Any]] | None = None,
+        responses: dict[int, dict[str, Any]] | None = None,
+        function_name: str | None = None
     ):
         self.path = path
         self.method = method.upper()
@@ -48,13 +48,13 @@ class OpenAPIRegistry:
     """Registry for OpenAPI endpoints"""
 
     def __init__(self):
-        self._endpoints: List[OpenAPIEndpoint] = []
+        self._endpoints: list[OpenAPIEndpoint] = []
 
     def register(self, endpoint: OpenAPIEndpoint):
         """Register an endpoint"""
         self._endpoints.append(endpoint)
 
-    def get_endpoints(self) -> List[OpenAPIEndpoint]:
+    def get_endpoints(self) -> list[OpenAPIEndpoint]:
         """Get all registered endpoints"""
         return self._endpoints
 
@@ -79,13 +79,13 @@ def openapi_endpoint(
     method: str,
     summary: str,
     *,
-    description: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    request_model: Optional[Type[BaseModel]] = None,
-    response_model: Optional[Type[BaseModel]] = None,
-    path_params: Optional[Dict[str, Dict[str, Any]]] = None,
-    query_params: Optional[Dict[str, Dict[str, Any]]] = None,
-    responses: Optional[Dict[int, Dict[str, Any]]] = None
+    description: str | None = None,
+    tags: list[str] | None = None,
+    request_model: type[BaseModel] | None = None,
+    response_model: type[BaseModel] | None = None,
+    path_params: dict[str, dict[str, Any]] | None = None,
+    query_params: dict[str, dict[str, Any]] | None = None,
+    responses: dict[int, dict[str, Any]] | None = None
 ) -> Callable:
     """
     Decorator to mark an Azure Function endpoint for OpenAPI documentation.
@@ -152,9 +152,9 @@ def build_openapi_spec(
     title: str,
     version: str,
     description: str,
-    servers: List[Dict[str, Any]],
-    models: List[Type[BaseModel]]
-) -> Dict[str, Any]:
+    servers: list[dict[str, Any]],
+    models: list[type[BaseModel]]
+) -> dict[str, Any]:
     """
     Build complete OpenAPI specification from registry and models.
 
@@ -284,8 +284,10 @@ def build_openapi_spec(
     return spec
 
 
-def _build_responses(endpoint: OpenAPIEndpoint, schemas: Dict[str, Any]) -> Dict[str, Any]:
+def _build_responses(endpoint: OpenAPIEndpoint, schemas: dict[str, Any]) -> dict[str, Any]:
     """Build responses section for an endpoint"""
+    import typing
+
     responses = {}
 
     # Default success response based on method
@@ -306,7 +308,23 @@ def _build_responses(endpoint: OpenAPIEndpoint, schemas: Dict[str, Any]) -> Dict
         }
     elif endpoint.response_model:
         # Check if response_model is a List type
-        response_schema = {'$ref': f'#/components/schemas/{endpoint.response_model.__name__}'}
+        origin = typing.get_origin(endpoint.response_model)
+
+        if origin is list or origin is list:
+            # Handle List[Model] - extract the inner type
+            args = typing.get_args(endpoint.response_model)
+            if args:
+                inner_model = args[0]
+                response_schema = {
+                    'type': 'array',
+                    'items': {'$ref': f'#/components/schemas/{inner_model.__name__}'}
+                }
+            else:
+                # List without type parameter
+                response_schema = {'type': 'array', 'items': {}}
+        else:
+            # Single model response
+            response_schema = {'$ref': f'#/components/schemas/{endpoint.response_model.__name__}'}
 
         responses[str(status_code)] = {
             'description': description,
@@ -335,7 +353,7 @@ def _build_responses(endpoint: OpenAPIEndpoint, schemas: Dict[str, Any]) -> Dict
     return responses
 
 
-def _build_common_responses() -> Dict[str, Any]:
+def _build_common_responses() -> dict[str, Any]:
     """Build common error responses"""
     return {
         'BadRequestError': {

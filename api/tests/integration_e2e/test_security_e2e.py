@@ -34,7 +34,7 @@ class TestCrossOrgIsolation:
             if form.get("orgId") != "GLOBAL":
                 user_org_id = form.get("orgId")
                 break
-        
+
         # Verify no forms from other orgs are returned
         for form in forms:
             org_id = form.get("orgId")
@@ -115,7 +115,7 @@ class TestCrossOrgIsolation:
             if execution.get("orgId") and execution.get("orgId") != "GLOBAL":
                 user_org_id = execution.get("orgId")
                 break
-        
+
         # Verify all executions belong to user's org
         for execution in executions:
             exec_org_id = execution.get("orgId")

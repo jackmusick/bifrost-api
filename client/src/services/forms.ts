@@ -51,7 +51,7 @@ export const formsService = {
   },
 
   /**
-   * Delete a form
+   * Delete a form (soft delete - sets isActive=false)
    */
   async deleteForm(formId: string) {
     const { data, error } = await apiClient.DELETE('/forms/{formId}', {
@@ -61,30 +61,6 @@ export const formsService = {
     return data
   },
 
-  // TODO: These endpoints don't exist in the OpenAPI spec yet
-  // Uncomment when backend endpoints are implemented
-  // /**
-  //  * Activate a form
-  //  */
-  // async activateForm(formId: string) {
-  //   const { data, error } = await apiClient.POST('/forms/{formId}/activate', {
-  //     params: { path: { formId } },
-  //   })
-  //   if (error) throw new Error(`Failed to activate form: ${error}`)
-  //   return data
-  // },
-
-  // /**
-  //  * Deactivate a form
-  //  */
-  // async deactivateForm(formId: string) {
-  //   const { data, error } = await apiClient.POST('/forms/{formId}/deactivate', {
-  //     params: { path: { formId } },
-  //   })
-  //   if (error) throw new Error(`Failed to deactivate form: ${error}`)
-  //   return data
-  // },
-
   /**
    * Execute a form to run workflow
    */
@@ -93,7 +69,7 @@ export const formsService = {
       params: { path: { formId: submission.formId } },
       body: { form_data: submission.formData },
     })
-    if (error) throw new Error(`Failed to submit form: ${error}`)
+    if (error || !data) throw new Error(`Failed to submit form: ${error}`)
     return data as FormExecutionResponse
   },
 }

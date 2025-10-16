@@ -22,7 +22,8 @@ import { useUsers } from '@/hooks/useUsers'
 import { UserDetailsDialog } from '@/components/users/UserDetailsDialog'
 import { UserPermissionsDialog } from '@/components/users/UserPermissionsDialog'
 import { UserRolesDialog } from '@/components/users/UserRolesDialog'
-import type { User } from '@/types/user'
+import type { components } from '@/lib/v1'
+type User = components['schemas']['User']
 
 export function Users() {
   const [selectedUser, setSelectedUser] = useState<User | undefined>()

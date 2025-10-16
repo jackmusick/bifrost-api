@@ -4,7 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { executionsService } from '@/services/executions'
-import type { ExecutionFilters } from '@/types/execution'
+import type { ExecutionFilters } from '@/lib/client-types'
 import { useScopeStore } from '@/stores/scopeStore'
 
 export function useExecutions(filters?: ExecutionFilters) {
@@ -24,8 +24,6 @@ export function useExecutions(filters?: ExecutionFilters) {
     },
     // Wait for Zustand to rehydrate from localStorage before making API calls
     enabled: hasHydrated,
-    // Show loading state immediately when scope changes (don't show stale data)
-    placeholderData: undefined,
     // Don't use cached data from previous scope
     staleTime: 0,
   })

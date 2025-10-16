@@ -13,9 +13,9 @@ export function RunForm() {
   const navigate = useNavigate()
   const { isLoading: userLoading } = useUser()
   const { data: form, isLoading, error } = useForm(formId)
-  const [executionResult, setExecutionResult] = useState<any | undefined>()
+  const [executionResult, setExecutionResult] = useState<unknown | undefined>()
 
-  const handleSuccess = (result: any) => {
+  const handleSuccess = (result: unknown) => {
     setExecutionResult(result)
   }
 

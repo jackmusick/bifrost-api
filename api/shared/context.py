@@ -3,10 +3,11 @@ Organization Context
 Context object passed to all workflows with org data, config, secrets, and integrations
 """
 
-from dataclasses import dataclass
-from typing import Dict, Any, Optional
-from datetime import datetime
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
 from .config_resolver import ConfigResolver
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ class Organization:
     """Organization entity."""
     org_id: str
     name: str
-    tenant_id: Optional[str]
+    tenant_id: str | None
     is_active: bool
 
 
@@ -44,8 +45,8 @@ class OrganizationContext:
 
     def __init__(
         self,
-        org: Optional[Organization],
-        config: Dict[str, Any],
+        org: Organization | None,
+        config: dict[str, Any],
         caller: Caller,
         execution_id: str
     ):
@@ -69,17 +70,17 @@ class OrganizationContext:
     # ==================== ORG PROPERTIES ====================
 
     @property
-    def org_id(self) -> Optional[str]:
+    def org_id(self) -> str | None:
         """Organization ID (None for platform admins in global context)."""
         return self.org.org_id if self.org else None
 
     @property
-    def org_name(self) -> Optional[str]:
+    def org_name(self) -> str | None:
         """Organization display name (None for platform admins in global context)."""
         return self.org.name if self.org else None
 
     @property
-    def tenant_id(self) -> Optional[str]:
+    def tenant_id(self) -> str | None:
         """Microsoft 365 tenant ID (if linked)."""
         return self.org.tenant_id if self.org else None
 
@@ -173,9 +174,10 @@ class OrganizationContext:
             KeyError: If credentials cannot be resolved from Key Vault
         """
         import json
+
+        from .keyvault import KeyVaultClient
         from .models import OAuthCredentials
         from .storage import TableStorageService
-        from .keyvault import KeyVaultClient
 
         # Determine scope for OAuth connection lookup
         # For GLOBAL context (org_id=None), use "GLOBAL" as the scope
@@ -245,7 +247,7 @@ class OrganizationContext:
 
         if not keyvault_secret_name:
             raise ValueError(
-                f"OAuth response config missing Key Vault secret name"
+                "OAuth response config missing Key Vault secret name"
             )
 
         # Retrieve actual OAuth tokens from Key Vault
@@ -262,7 +264,7 @@ class OrganizationContext:
             )
             raise KeyError(
                 f"Failed to retrieve OAuth tokens for '{connection_name}' from Key Vault: {e}"
-            )
+            ) from e
 
         # Parse OAuth response
         access_token = oauth_response.get("access_token")
@@ -388,7 +390,7 @@ class OrganizationContext:
 
     # ==================== STATE TRACKING ====================
 
-    def save_checkpoint(self, name: str, data: Dict[str, Any]) -> None:
+    def save_checkpoint(self, name: str, data: dict[str, Any]) -> None:
         """
         Save a state checkpoint during workflow execution.
 
@@ -427,7 +429,7 @@ class OrganizationContext:
         """Get a workflow variable."""
         return self._variables.get(key, default)
 
-    def _log(self, level: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def _log(self, level: str, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Internal logging method used by info(), warning(), error(), debug().
 
@@ -451,7 +453,7 @@ class OrganizationContext:
             extra={"execution_id": self.execution_id, **log_entry.get("data", {})}
         )
 
-    def info(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def info(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log an info-level message.
 
@@ -465,7 +467,7 @@ class OrganizationContext:
         """
         self._log("info", message, data)
 
-    def warning(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def warning(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log a warning-level message.
 
@@ -479,7 +481,7 @@ class OrganizationContext:
         """
         self._log("warning", message, data)
 
-    def error(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def error(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log an error-level message.
 
@@ -493,7 +495,7 @@ class OrganizationContext:
         """
         self._log("error", message, data)
 
-    def debug(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def debug(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log a debug-level message.
 
@@ -561,7 +563,7 @@ class OrganizationContext:
         else:
             return data
 
-    async def finalize_execution(self) -> Dict[str, Any]:
+    async def finalize_execution(self) -> dict[str, Any]:
         """
         Get final execution state for persistence.
 

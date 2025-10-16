@@ -7,14 +7,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useUserRoles } from '@/hooks/useUsers'
 import { useRoles, useAssignUsersToRole, useRemoveUserFromRole } from '@/hooks/useRoles'
-import type { User } from '@/types/user'
+import type { components } from '@/lib/v1'
+type User = components['schemas']['User']
 import { toast } from 'sonner'
 
 interface UserRolesDialogProps {
@@ -33,8 +33,8 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
 
   // Initialize selected roles when data loads
   useEffect(() => {
-    if (userRoles) {
-      setSelectedRoles(new Set(userRoles.roleIds || []))
+    if (userRoles && 'roleIds' in userRoles) {
+      setSelectedRoles(new Set(userRoles.roleIds))
     }
   }, [userRoles])
 
@@ -58,7 +58,7 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
           return next
         })
       }
-    } catch (error) {
+    } catch {
       toast.error(`Failed to ${checked ? 'assign' : 'remove'} role`)
     }
   }
@@ -106,11 +106,6 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                       >
                         {role.name}
-                        {role.scope === 'GLOBAL' && (
-                          <Badge variant="outline" className="ml-2">
-                            Global
-                          </Badge>
-                        )}
                       </Label>
                       {role.description && (
                         <p className="text-sm text-muted-foreground">{role.description}</p>

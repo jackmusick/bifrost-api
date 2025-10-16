@@ -3,18 +3,19 @@ Data Provider API Endpoint
 Handles calling data providers and returning options for forms
 """
 
-import azure.functions as func
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Any
 
+import azure.functions as func
 from pydantic import BaseModel
+
+from shared.custom_types import get_org_context
 from shared.middleware import with_org_context
+from shared.models import DataProviderMetadata, DataProviderResponse, ErrorResponse
 from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
-from shared.models import ErrorResponse, DataProviderResponse, DataProviderMetadata
-from shared.custom_types import get_org_context
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +24,10 @@ bp = func.Blueprint()
 
 # Simple in-memory cache for data provider results
 # In production, this would use Redis or Azure Cache
-_cache: Dict[str, Dict[str, Any]] = {}
+_cache: dict[str, dict[str, Any]] = {}
 
 
-@bp.route(route="data-providers/{providerName}", methods=["GET"], auth_level=func.AuthLevel.ADMIN)
+@bp.route(route="data-providers/{providerName}", methods=["GET"])
 @openapi_endpoint(
     path="/data-providers/{providerName}",
     method="GET",
@@ -153,7 +154,8 @@ async def get_data_provider_options(req: func.HttpRequest) -> func.HttpResponse:
 
             # Validate options format (basic check)
             if not isinstance(options, list):
-                raise ValueError(f"Data provider must return a list, got {type(options).__name__}")
+                raise ValueError(
+                    f"Data provider must return a list, got {type(options).__name__}")
 
             # Cache the result
             expires_at = datetime.utcnow() + timedelta(seconds=cache_ttl)
@@ -225,7 +227,7 @@ async def get_data_provider_options(req: func.HttpRequest) -> func.HttpResponse:
 
 class DataProviderListResponse(BaseModel):
     """Response model for listing data providers"""
-    providers: List[DataProviderMetadata]
+    providers: list[DataProviderMetadata]
 
 
 @bp.route(route="data-providers", methods=["GET"])

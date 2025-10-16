@@ -5,7 +5,7 @@ A simple test workflow for validating the workflow system.
 This workflow demonstrates basic parameter handling and execution.
 """
 
-from bifrost import workflow, param, OrganizationContext
+from bifrost import OrganizationContext, param, workflow
 
 
 @workflow(

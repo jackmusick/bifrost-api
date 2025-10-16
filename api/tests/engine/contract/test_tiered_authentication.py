@@ -9,11 +9,12 @@ Tests the authentication priority order contract:
 Verifies the authentication service implements correct priority logic.
 """
 
-import pytest
-import json
 import base64
-from unittest.mock import Mock, patch
+import json
+from unittest.mock import patch
+
 import azure.functions as func
+import pytest
 
 
 class TestTieredAuthenticationContract:
@@ -131,8 +132,9 @@ class TestTieredAuthenticationContract:
         When neither function key nor Easy Auth present, must raise
         AuthenticationError (to be converted to 403 by middleware).
         """
-        from shared.auth import AuthenticationService, AuthenticationError
         import os
+
+        from shared.auth import AuthenticationError, AuthenticationService
 
         # Create request with NO authentication
         req = self.create_request_with_auth()
@@ -199,7 +201,7 @@ class TestTieredAuthenticationContract:
         - key_name: str (friendly name, default "default")
         - is_function_key: bool = True
         """
-        from shared.auth import AuthenticationService, FunctionKeyPrincipal
+        from shared.auth import AuthenticationService
 
         req = self.create_request_with_auth(function_key_header="test_key")
 
@@ -229,7 +231,7 @@ class TestTieredAuthenticationContract:
         - identity_provider: str
         - is_function_key: bool = False
         """
-        from shared.auth import AuthenticationService, UserPrincipal
+        from shared.auth import AuthenticationService
 
         easy_auth = {
             "userId": "user123",
@@ -269,8 +271,9 @@ class TestTieredAuthenticationContract:
 
         Authentication failures must raise AuthenticationError (not generic Exception).
         """
-        from shared.auth import AuthenticationService, AuthenticationError
         import os
+
+        from shared.auth import AuthenticationError, AuthenticationService
 
         req = self.create_request_with_auth()  # No auth
 

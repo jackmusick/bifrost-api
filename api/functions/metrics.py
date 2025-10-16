@@ -4,16 +4,16 @@ Provides aggregated statistics and metrics
 """
 
 import json
-import azure.functions as func
 import logging
-from typing import Dict, Any, List
-from datetime import datetime, timedelta
 from collections import defaultdict
+from datetime import datetime, timedelta
+
+import azure.functions as func
 
 from shared.decorators import with_request_context
+from shared.models import DashboardMetricsResponse, ErrorResponse
 from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
-from shared.models import ErrorResponse, DashboardMetricsResponse
 
 logger = logging.getLogger(__name__)
 

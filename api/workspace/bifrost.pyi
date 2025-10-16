@@ -18,10 +18,11 @@ Example:
         return {"success": True}
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Optional, Dict, List
 from enum import Enum
+from typing import Any
 
 # ==================== CONTEXT ====================
 
@@ -30,7 +31,7 @@ class Organization:
     """Organization entity."""
     org_id: str
     name: str
-    tenant_id: Optional[str]
+    tenant_id: str | None
     is_active: bool
 
 @dataclass
@@ -52,31 +53,31 @@ class OrganizationContext:
     - State tracking (checkpoints, logs, variables)
     """
 
-    org: Optional[Organization]
+    org: Organization | None
     caller: Caller
     execution_id: str
 
     def __init__(
         self,
-        org: Optional[Organization],
-        config: Dict[str, Any],
+        org: Organization | None,
+        config: dict[str, Any],
         caller: Caller,
         execution_id: str
     ) -> None: ...
 
     # Organization properties
     @property
-    def org_id(self) -> Optional[str]:
+    def org_id(self) -> str | None:
         """Organization ID (None for platform admins in global context)."""
         ...
 
     @property
-    def org_name(self) -> Optional[str]:
+    def org_name(self) -> str | None:
         """Organization display name (None for platform admins)."""
         ...
 
     @property
-    def tenant_id(self) -> Optional[str]:
+    def tenant_id(self) -> str | None:
         """Microsoft 365 tenant ID (if linked)."""
         ...
 
@@ -149,7 +150,7 @@ class OrganizationContext:
         ...
 
     # State tracking
-    def save_checkpoint(self, name: str, data: Dict[str, Any]) -> None:
+    def save_checkpoint(self, name: str, data: dict[str, Any]) -> None:
         """
         Save a state checkpoint during workflow execution.
 
@@ -175,7 +176,7 @@ class OrganizationContext:
         """Get a workflow variable."""
         ...
 
-    def info(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def info(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log an info-level message.
 
@@ -189,7 +190,7 @@ class OrganizationContext:
         """
         ...
 
-    def warning(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def warning(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log a warning-level message.
 
@@ -203,7 +204,7 @@ class OrganizationContext:
         """
         ...
 
-    def error(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def error(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log an error-level message.
 
@@ -217,7 +218,7 @@ class OrganizationContext:
         """
         ...
 
-    def debug(self, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def debug(self, message: str, data: dict[str, Any] | None = None) -> None:
         """
         Log a debug-level message.
 
@@ -230,7 +231,7 @@ class OrganizationContext:
         """
         ...
 
-    async def finalize_execution(self) -> Dict[str, Any]:
+    async def finalize_execution(self) -> dict[str, Any]:
         """Get final execution state for persistence."""
         ...
 
@@ -240,12 +241,12 @@ def workflow(
     name: str,
     description: str,
     category: str = "General",
-    tags: Optional[List[str]] = None,
+    tags: list[str] | None = None,
     execution_mode: str = "sync",
     timeout_seconds: int = 300,
     max_duration_seconds: int = 300,
-    retry_policy: Optional[Dict[str, Any]] = None,
-    schedule: Optional[str] = None,
+    retry_policy: dict[str, Any] | None = None,
+    schedule: str | None = None,
     requires_org: bool = True,
     expose_in_forms: bool = True,
     requires_approval: bool = False,
@@ -283,12 +284,12 @@ def workflow(
 def param(
     name: str,
     type: str,
-    label: Optional[str] = None,
+    label: str | None = None,
     required: bool = False,
-    validation: Optional[Dict[str, Any]] = None,
-    data_provider: Optional[str] = None,
+    validation: dict[str, Any] | None = None,
+    data_provider: str | None = None,
     default_value: Any = None,
-    help_text: Optional[str] = None
+    help_text: str | None = None
 ) -> Callable:
     """
     Decorator to define a workflow parameter.
@@ -375,7 +376,7 @@ class OAuthCredentials:
     access_token: str
     token_type: str
     expires_at: datetime
-    refresh_token: Optional[str]
+    refresh_token: str | None
     scopes: str
 
     def __init__(
@@ -384,7 +385,7 @@ class OAuthCredentials:
         access_token: str,
         token_type: str,
         expires_at: datetime,
-        refresh_token: Optional[str] = None,
+        refresh_token: str | None = None,
         scopes: str = ""
     ) -> None: ...
 

@@ -7,11 +7,9 @@ Works with mounted /tmp directory.
 
 import logging
 import os
-import tempfile
 import uuid
-from typing import Optional
+from datetime import datetime
 from pathlib import Path
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +23,7 @@ class TempFileService:
     - Mounted Azure Files /tmp (prod)
     """
 
-    def __init__(self, tmp_path: Optional[str] = None):
+    def __init__(self, tmp_path: str | None = None):
         """
         Initialize temp file service.
 
@@ -164,7 +162,7 @@ class TempFileService:
 
 
 # Singleton instance
-_temp_file_service: Optional[TempFileService] = None
+_temp_file_service: TempFileService | None = None
 
 
 def get_temp_file_service() -> TempFileService:

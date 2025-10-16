@@ -6,9 +6,9 @@
     "author": "Jack Musick <jack@gocovi.com>",
     "private": true,
     "scripts": {
-        "dev": "swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://localhost:7071 2>&1 |grep -v -E \"(node_modules|/src/)\"",
-        "dev:vite": "vite",
+        "dev": "swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://functions:80",
         "build": "tsc -b && vite build",
+        "tsc": "tsc -b",
         "preview": "swa start dist",
         "lint": "eslint .",
         "deploy": "swa deploy",

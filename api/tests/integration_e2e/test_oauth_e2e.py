@@ -3,7 +3,6 @@ End-to-end tests for OAuth API
 Tests OAuth connection CRUD operations with encrypted credentials
 """
 
-import pytest
 import requests
 
 

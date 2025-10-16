@@ -3,7 +3,6 @@ End-to-end tests for Config API
 Tests configuration management with Table Storage and Key Vault integration
 """
 
-import pytest
 import requests
 
 
@@ -22,7 +21,6 @@ class TestConfigE2E:
         assert isinstance(configs, list)
 
         # Should include seed data configs
-        config_keys = [c["key"] for c in configs]
         # Check for system configs from seed data
         if len(configs) > 0:
             # Verify structure
@@ -39,7 +37,6 @@ class TestConfigE2E:
                 "key": "test_global_config",
                 "value": "test_value",
                 "type": "string",
-                "scope": "GLOBAL",
                 "description": "Test global configuration"
             }
         )
@@ -70,8 +67,7 @@ class TestConfigE2E:
             json={
                 "key": "test_update_config",
                 "value": "original_value",
-                "type": "string",
-                "scope": "GLOBAL"
+                "type": "string"
             }
         )
         assert create_response.status_code in [200, 201]
@@ -83,8 +79,7 @@ class TestConfigE2E:
             json={
                 "key": "test_update_config",
                 "value": "updated_value",
-                "type": "string",
-                "scope": "GLOBAL"
+                "type": "string"
             }
         )
 
@@ -101,14 +96,13 @@ class TestConfigE2E:
             json={
                 "key": "test_delete_config",
                 "value": "to_be_deleted",
-                "type": "string",
-                "scope": "GLOBAL"
+                "type": "string"
             }
         )
 
-        # Delete it
+        # Delete it (scope determined by absence of X-Organization-Id header)
         delete_response = requests.delete(
-            f"{base_url}/config/test_delete_config?scope=global",
+            f"{base_url}/config/test_delete_config",
             headers=platform_admin_headers
         )
 
@@ -128,14 +122,16 @@ class TestConfigE2E:
         # Use the Covi Development org from seed data
         org_id = "546478ea-fc38-4bf7-a524-35f522f90b0e"
 
+        # Add X-Organization-Id header to specify org scope
+        org_headers = {**platform_admin_headers, "X-Organization-Id": org_id}
+
         response = requests.post(
-            f"{base_url}/config?orgId={org_id}",
-            headers=platform_admin_headers,
+            f"{base_url}/config",
+            headers=org_headers,
             json={
                 "key": "test_org_config",
                 "value": "org_value",
                 "type": "string",
-                "scope": "org",
                 "description": "Test org configuration"
             }
         )
@@ -151,9 +147,12 @@ class TestConfigE2E:
         """Platform admin can retrieve org-specific configuration"""
         org_id = "546478ea-fc38-4bf7-a524-35f522f90b0e"
 
+        # Add X-Organization-Id header to specify org scope
+        org_headers = {**platform_admin_headers, "X-Organization-Id": org_id}
+
         response = requests.get(
-            f"{base_url}/config?scope=org&orgId={org_id}",
-            headers=platform_admin_headers
+            f"{base_url}/config",
+            headers=org_headers
         )
 
         assert response.status_code == 200
@@ -181,7 +180,6 @@ class TestConfigE2E:
                 "key": "test_secret_reference",
                 "value": "my-keyvault-secret-name",  # This is the Key Vault secret name
                 "type": "secret_ref",
-                "scope": "GLOBAL",
                 "description": "Reference to Key Vault secret"
             }
         )
@@ -204,8 +202,7 @@ class TestConfigE2E:
             json={
                 "key": "api_secret_key",  # Contains 'secret' keyword
                 "value": "my-very-secret-value-12345",
-                "type": "string",  # NOT secret_ref
-                "scope": "GLOBAL"
+                "type": "string"  # NOT secret_ref
             }
         )
 

@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, XCircle, Loader2, Clock, PlayCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, Loader2, Clock, PlayCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -14,7 +14,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useExecution } from '@/hooks/useExecutions'
 import { useAuth } from '@/hooks/useAuth'
 import { PrettyInputDisplay } from '@/components/execution/PrettyInputDisplay'
-import type { ExecutionStatus } from '@/types/execution'
+import { formatDate } from '@/lib/utils'
+import type { components } from '@/lib/v1'
+type ExecutionStatus = components['schemas']['ExecutionStatus']
 
 export function ExecutionDetails() {
   const { executionId } = useParams()
@@ -29,13 +31,6 @@ export function ExecutionDetails() {
           <Badge variant="default" className="bg-green-500">
             <CheckCircle className="mr-1 h-3 w-3" />
             Completed
-          </Badge>
-        )
-      case 'CompletedWithErrors':
-        return (
-          <Badge variant="default" className="bg-yellow-500">
-            <AlertTriangle className="mr-1 h-3 w-3" />
-            Completed with Errors
           </Badge>
         )
       case 'Failed':
@@ -66,8 +61,6 @@ export function ExecutionDetails() {
     switch (status) {
       case 'Success':
         return <CheckCircle className="h-12 w-12 text-green-500" />
-      case 'CompletedWithErrors':
-        return <AlertTriangle className="h-12 w-12 text-yellow-500" />
       case 'Failed':
         return <XCircle className="h-12 w-12 text-red-500" />
       case 'Running':
@@ -149,14 +142,14 @@ export function ExecutionDetails() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Started At</p>
               <p className="text-sm mt-1">
-                {new Date(execution.startedAt).toLocaleString()}
+                {formatDate(execution.startedAt)}
               </p>
             </div>
             {execution.completedAt && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Completed At</p>
                 <p className="text-sm mt-1">
-                  {new Date(execution.completedAt).toLocaleString()}
+                  {formatDate(execution.completedAt)}
                 </p>
               </div>
             )}
@@ -178,7 +171,7 @@ export function ExecutionDetails() {
         </CardContent>
       </Card>
 
-      {(execution.status === 'Success' || execution.status === 'CompletedWithErrors') && execution.result !== null && (
+      {(execution.status === 'Success' || execution.status === 'Failed') && execution.result !== null && (
         <Card>
           <CardHeader>
             <CardTitle>Result</CardTitle>
@@ -194,19 +187,6 @@ export function ExecutionDetails() {
         </Card>
       )}
 
-      {execution.status === 'CompletedWithErrors' && execution.errorMessage && (
-        <Alert variant="default" className="border-yellow-500 bg-yellow-50">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
-          <AlertTitle className="text-yellow-800">Non-Terminating Error</AlertTitle>
-          <AlertDescription className="text-yellow-700">
-            <p className="mt-2 text-sm">
-              The workflow completed but encountered an error during execution:
-            </p>
-            <pre className="mt-2 text-sm">{execution.errorMessage}</pre>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {execution.status === 'Failed' && execution.errorMessage && (
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
@@ -217,7 +197,8 @@ export function ExecutionDetails() {
         </Alert>
       )}
 
-      {execution.logs && execution.logs.length > 0 && (
+      {/* Logs section temporarily disabled - logs property not available in Execution schema */}
+      {/* {execution.logs && execution.logs.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Execution Logs</CardTitle>
@@ -256,7 +237,7 @@ export function ExecutionDetails() {
             </div>
           </CardContent>
         </Card>
-      )}
+      )} */}
     </div>
   )
 }

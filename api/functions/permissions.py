@@ -4,24 +4,22 @@ Permissions API endpoints
 - List users and their access rights
 """
 
-import logging
 import json
-from datetime import datetime
-from typing import List
+import logging
+
 import azure.functions as func
 
-from shared.decorators import with_request_context, require_platform_admin
+from shared.custom_types import get_context, get_route_param
+from shared.decorators import require_platform_admin, with_request_context
+from shared.models import (
+    ErrorResponse,
+    GrantPermissionsRequest,
+    User,
+    UserFormsResponse,
+    UserRolesResponse,
+)
 from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
-from shared.custom_types import get_context, get_route_param
-from shared.models import (
-    User,
-    UserType,
-    UserPermission,
-    GrantPermissionsRequest,
-    ErrorResponse
-)
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ bp = func.Blueprint()
     summary="List users",
     description="List all users with optional filtering by type and organization (Platform admin only)",
     tags=["Users", "Permissions"],
-    response_model=User,
+    response_model=list[User],
     query_params={
         "type": {
             "description": "Filter by user type: 'platform' or 'org'",
@@ -386,6 +384,7 @@ async def revoke_permissions(req: func.HttpRequest) -> func.HttpResponse:
     summary="Get user roles",
     description="Get all roles assigned to a user (Platform admin only)",
     tags=["Users", "Roles"],
+    response_model=UserRolesResponse,
     path_params={
         "userId": {
             "description": "User ID",
@@ -453,6 +452,7 @@ async def get_user_roles(req: func.HttpRequest) -> func.HttpResponse:
     summary="Get user forms",
     description="Get all forms a user can access based on their roles (Platform admin only)",
     tags=["Users", "Forms"],
+    response_model=UserFormsResponse,
     path_params={
         "userId": {
             "description": "User ID",

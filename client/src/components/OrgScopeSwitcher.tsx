@@ -12,7 +12,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import type { OrgScope } from '@/contexts/OrgScopeContext'
-import type { Organization } from '@/types/organization'
+import type { components } from '@/lib/v1'
+type Organization = components['schemas']['Organization']
 
 interface OrgScopeSwitcherProps {
   scope: OrgScope

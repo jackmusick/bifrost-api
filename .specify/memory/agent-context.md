@@ -648,7 +648,7 @@ class CreateUserRequest(BaseModel):
 ```
 AzureWebJobsStorage={connection_string}
 BLOB_STORAGE_CONNECTION_STRING={connection_string}
-KEY_VAULT_URL=https://{keyvault}.vault.azure.net/
+AZURE_KEY_VAULT_URL=https://{keyvault}.vault.azure.net/
 AZURE_CLIENT_ID={app_registration_id}
 AZURE_TENANT_ID={tenant_id}
 ```

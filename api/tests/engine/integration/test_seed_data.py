@@ -9,12 +9,12 @@ Tests the seed_azurite.py script that populates local Azurite storage with:
 Verifies idempotent upsert pattern and <5s execution time.
 """
 
-import pytest
 import os
 import time
-from datetime import datetime, timezone
-from azure.data.tables import TableServiceClient
+
+import pytest
 from azure.core.exceptions import ResourceNotFoundError
+from azure.data.tables import TableServiceClient
 
 
 @pytest.mark.integration

@@ -10,7 +10,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FieldConfigDialog } from './FieldConfigDialog'
-import type { FormField } from '@/types/form'
+import type { components } from '@/lib/v1'
+type FormField = components['schemas']['FormField']
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
 import { reorder } from '@atlaskit/pragmatic-drag-and-drop/reorder'
@@ -210,7 +211,7 @@ interface WorkflowInputItemProps {
     label?: string
     helpText?: string
     defaultValue?: unknown
-    dataProvider?: string
+    dataProvider?: string | null
   }
 }
 
@@ -287,7 +288,7 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | undefined>()
   const [newFieldType, setNewFieldType] = useState<string | undefined>()
-  const [workflowInputData, setWorkflowInputData] = useState<any>()
+  const [workflowInputData, setWorkflowInputData] = useState<Record<string, unknown>>()
   const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>()
   const [isDraggingNew, setIsDraggingNew] = useState(false)
   const [isWorkflowInput, setIsWorkflowInput] = useState(false)
@@ -538,7 +539,7 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
           setIsWorkflowInput(false)
         }}
         onSave={handleSaveField}
-        defaultType={newFieldType ?? undefined}
+        {...(newFieldType && { defaultType: newFieldType })}
         workflowInputData={workflowInputData ?? undefined}
         isWorkflowInput={isWorkflowInput ?? undefined}
       />

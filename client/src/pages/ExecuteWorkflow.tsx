@@ -9,19 +9,18 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowsMetadata, useExecuteWorkflow } from '@/hooks/useWorkflows'
-import { useOrgScope } from '@/contexts/OrgScopeContext'
 import { PrettyInputDisplay } from '@/components/execution/PrettyInputDisplay'
-import type { WorkflowParameter } from '@/types/workflow'
+import type { components } from '@/lib/v1'
+type WorkflowParameter = components['schemas']['WorkflowParameter']
 
 export function ExecuteWorkflow() {
   const { workflowName } = useParams()
   const navigate = useNavigate()
-  const { scope } = useOrgScope()
   const { data, isLoading } = useWorkflowsMetadata()
   const executeWorkflow = useExecuteWorkflow()
 
-  const [parameters, setParameters] = useState<Record<string, any>>({})
-  const [executionResult, setExecutionResult] = useState<any | undefined>()
+  const [parameters, setParameters] = useState<Record<string, unknown>>({})
+  const [executionResult, setExecutionResult] = useState<unknown | undefined>()
 
   const workflow = data?.workflows?.find((w) => w.name === workflowName)
 
@@ -30,24 +29,15 @@ export function ExecuteWorkflow() {
 
     if (!workflow) return
 
-    const request: any = {
+    // Execute workflow with workflowName and inputData
+    const result = await executeWorkflow.mutateAsync({
       workflowName: workflow.name ?? '',
-      parameters,
-    }
-
-    // Use OrgScopeContext to determine orgId
-    // If global scope, don't set orgId (backend will use require_org=False for admins)
-    // If org scope, set the specific orgId
-    if (scope.type === 'organization' && scope.orgId) {
-      request.orgId = scope.orgId
-    }
-    // When scope is 'global', don't set request.orgId - backend will handle it
-
-    const result = await executeWorkflow.mutateAsync(request)
+      inputData: parameters,
+    })
     setExecutionResult(result)
   }
 
-  const handleParameterChange = (paramName: string, value: any) => {
+  const handleParameterChange = (paramName: string, value: unknown) => {
     setParameters((prev) => ({
       ...prev,
       [paramName]: value,
@@ -55,7 +45,7 @@ export function ExecuteWorkflow() {
   }
 
   const renderParameterInput = (param: WorkflowParameter) => {
-    const value = parameters[param.name ?? ''] ?? param.defaultValue ?? ''
+    const value = parameters[param.name ?? ''] ?? ''
 
     switch (param.type) {
       case 'bool':
@@ -67,10 +57,10 @@ export function ExecuteWorkflow() {
               onCheckedChange={(checked) => handleParameterChange(param.name ?? '', checked)}
             />
             <Label htmlFor={param.name ?? 'checkbox'} className="text-sm font-normal">
-              {param.label ?? ''}
-              {param.helpText && (
+              {param.name}
+              {param.description && (
                 <span className="block text-xs text-muted-foreground mt-1">
-                  {param.helpText}
+                  {param.description}
                 </span>
               )}
             </Label>
@@ -82,13 +72,13 @@ export function ExecuteWorkflow() {
         return (
           <div className="space-y-2">
             <Label htmlFor={param.name ?? 'number'}>
-              {param.label ?? ''}
+              {param.name}
               {param.required && <span className="text-destructive">*</span>}
             </Label>
             <Input
               id={param.name ?? 'number'}
               type="number"
-              step={param.type === 'float' ? 'any' : '1'}
+              step={param.type === 'float' ? '0.1' : '1'}
               value={value}
               onChange={(e) =>
                 handleParameterChange(
@@ -98,8 +88,8 @@ export function ExecuteWorkflow() {
               }
               required={param.required}
             />
-            {param.helpText && (
-              <p className="text-xs text-muted-foreground">{param.helpText}</p>
+            {param.description && (
+              <p className="text-xs text-muted-foreground">{param.description}</p>
             )}
           </div>
         )
@@ -108,7 +98,7 @@ export function ExecuteWorkflow() {
         return (
           <div className="space-y-2">
             <Label htmlFor={param.name ?? 'list'}>
-              {param.label ?? ''}
+              {param.name ?? ''}
               {param.required && <span className="text-destructive">*</span>}
             </Label>
             <Input
@@ -124,8 +114,8 @@ export function ExecuteWorkflow() {
               placeholder="Comma-separated values"
               required={param.required}
             />
-            {param.helpText && (
-              <p className="text-xs text-muted-foreground">{param.helpText}</p>
+            {param.description && (
+              <p className="text-xs text-muted-foreground">{param.description}</p>
             )}
           </div>
         )
@@ -135,7 +125,7 @@ export function ExecuteWorkflow() {
         return (
           <div className="space-y-2">
             <Label htmlFor={param.name ?? 'text'}>
-              {param.label ?? ''}
+              {param.name ?? ''}
               {param.required && <span className="text-destructive">*</span>}
             </Label>
             <Input
@@ -145,8 +135,8 @@ export function ExecuteWorkflow() {
               onChange={(e) => handleParameterChange(param.name ?? '', e.target.value)}
               required={param.required}
             />
-            {param.helpText && (
-              <p className="text-xs text-muted-foreground">{param.helpText}</p>
+            {param.description && (
+              <p className="text-xs text-muted-foreground">{param.description}</p>
             )}
           </div>
         )

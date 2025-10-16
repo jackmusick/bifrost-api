@@ -17,7 +17,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useUserRoles, useUserForms } from '@/hooks/useUsers'
-import type { User } from '@/types/user'
+import { formatDate, formatDateShort } from '@/lib/utils'
+import type { components } from '@/lib/v1'
+type User = components['schemas']['User']
 
 interface UserDetailsDialogProps {
   user?: User | undefined
@@ -83,14 +85,14 @@ export function UserDetailsDialog({ user, open, onClose }: UserDetailsDialogProp
                 <span className="text-sm flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   {user.lastLogin
-                    ? new Date(user.lastLogin).toLocaleString()
+                    ? formatDate(user.lastLogin)
                     : 'Never logged in'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Created</span>
-                <span className="text-sm">{new Date(user.createdAt).toLocaleDateString()}</span>
+                <span className="text-sm">{formatDateShort(user.createdAt)}</span>
               </div>
             </CardContent>
           </Card>
@@ -124,17 +126,17 @@ export function UserDetailsDialog({ user, open, onClose }: UserDetailsDialogProp
                           <Skeleton key={i} className="h-10 w-full" />
                         ))}
                       </div>
-                    ) : roles && roles.length > 0 ? (
+                    ) : roles && 'roleIds' in roles && roles.roleIds.length > 0 ? (
                       <div className="space-y-2">
-                        {roles.map((userRole) => (
+                        {roles.roleIds.map((roleId) => (
                           <div
-                            key={userRole.roleId}
+                            key={roleId}
                             className="flex items-center justify-between rounded-lg border p-3"
                           >
                             <div>
-                              <p className="font-medium">{userRole.roleId}</p>
+                              <p className="font-medium">{roleId}</p>
                               <p className="text-sm text-muted-foreground">
-                                Assigned {new Date(userRole.assignedAt).toLocaleDateString()}
+                                Role ID: {roleId}
                               </p>
                             </div>
                           </div>
@@ -167,7 +169,7 @@ export function UserDetailsDialog({ user, open, onClose }: UserDetailsDialogProp
                           <Skeleton key={i} className="h-10 w-full" />
                         ))}
                       </div>
-                    ) : formsAccess ? (
+                    ) : formsAccess && 'hasAccessToAllForms' in formsAccess ? (
                       formsAccess.hasAccessToAllForms ? (
                         <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950">
                           <p className="text-sm font-medium text-green-900 dark:text-green-100">
@@ -177,7 +179,7 @@ export function UserDetailsDialog({ user, open, onClose }: UserDetailsDialogProp
                             This user has access to all forms
                           </p>
                         </div>
-                      ) : formsAccess.formIds.length > 0 ? (
+                      ) : formsAccess.formIds && formsAccess.formIds.length > 0 ? (
                         <div className="space-y-2">
                           {formsAccess.formIds.map((formId) => (
                             <div

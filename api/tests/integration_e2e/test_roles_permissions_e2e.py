@@ -3,7 +3,6 @@ End-to-end tests for Roles and Permissions API
 Tests role-based form access control
 """
 
-import pytest
 import requests
 
 

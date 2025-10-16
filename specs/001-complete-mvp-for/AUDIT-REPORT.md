@@ -361,7 +361,7 @@ Example for T002:
             "FUNCTIONS_WORKER_RUNTIME": "python",
             "AzureWebJobsStorage": "UseDevelopmentStorage=true",
             "BLOB_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
-            "KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
+            "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
             "AZURE_CLIENT_ID": "your-app-registration-client-id",
             "AZURE_TENANT_ID": "your-azure-ad-tenant-id",
             "ALLOWED_ORIGINS": "http://localhost:3000"

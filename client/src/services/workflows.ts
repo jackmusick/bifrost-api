@@ -34,7 +34,6 @@ export const workflowsService = {
     const { data, error } = await client.POST('/workflows/{workflowName}/execute', {
       params: { path: { workflowName } },
       body: {
-        workflowName,
         inputData: parameters,
       } as components['schemas']['WorkflowExecutionRequest'],
     })

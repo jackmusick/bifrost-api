@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkflowEngineGuard } from "@/components/WorkflowEngineGuard";
@@ -20,7 +20,7 @@ import { OAuthConnections } from "@/pages/OAuthConnections";
 import { OAuthCallback } from "@/pages/OAuthCallback";
 import { Docs } from "@/pages/Docs";
 import { Dashboard } from "@/pages/Dashboard";
-import { useAuth } from "@/hooks/useAuth";
+
 import { OrgScopeProvider } from "@/contexts/OrgScopeContext";
 
 function Settings() {

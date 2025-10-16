@@ -3,16 +3,12 @@ Contract tests for Organizations API models
 Tests Pydantic validation rules for request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
-from shared.models import (
-    Organization,
-    CreateOrganizationRequest,
-    UpdateOrganizationRequest,
-    ErrorResponse
-)
+from shared.models import CreateOrganizationRequest, ErrorResponse, Organization, UpdateOrganizationRequest
 
 
 class TestCreateOrganizationRequest:

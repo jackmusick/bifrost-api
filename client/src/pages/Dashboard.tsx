@@ -2,28 +2,24 @@ import { useNavigate } from 'react-router-dom'
 import {
   Workflow,
   FileText,
-  Activity,
   TrendingUp,
   AlertCircle,
   CheckCircle2,
-  Clock,
   Zap
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useDashboardMetrics } from '@/hooks/useDashboardMetrics'
 import { useAuth } from '@/hooks/useAuth'
-import { KeyVaultHealthCard } from '@/components/KeyVaultHealthCard'
-import { useWorkflowEngineHealth } from '@/hooks/useWorkflowEngineHealth'
 
 export function Dashboard() {
   const navigate = useNavigate()
   const { isPlatformAdmin, isOrgUser } = useAuth()
   const { data: metrics, isLoading, error } = useDashboardMetrics()
-  const { data: engineHealth } = useWorkflowEngineHealth()
+
 
   // Redirect OrgUsers to /forms (their only accessible page)
   if (isOrgUser && !isPlatformAdmin) {

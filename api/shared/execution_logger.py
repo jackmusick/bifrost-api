@@ -5,10 +5,11 @@ Logs workflow execution details to Table Storage with dual-indexing
 
 import json
 import logging
-from typing import Dict, Any, Optional
 from datetime import datetime
-from shared.storage import get_table_storage_service
+from typing import Any
+
 from shared.models import ExecutionStatus
+from shared.storage import get_table_storage_service
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,12 @@ class ExecutionLogger:
     async def create_execution(
         self,
         execution_id: str,
-        org_id: Optional[str],
+        org_id: str | None,
         user_id: str,
         workflow_name: str,
-        input_data: Dict[str, Any],
-        form_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any],
+        form_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Create execution record in Entities and user index in Relationships.
 
@@ -117,19 +118,19 @@ class ExecutionLogger:
     async def update_execution(
         self,
         execution_id: str,
-        org_id: Optional[str],
+        org_id: str | None,
         user_id: str,
         status: ExecutionStatus,
-        result: Optional[Dict[str, Any]] = None,
-        error_message: Optional[str] = None,
-        error_type: Optional[str] = None,
-        error_details: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[int] = None,
-        state_snapshots: Optional[list] = None,
-        integration_calls: Optional[list] = None,
-        logs: Optional[list] = None,
-        variables: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        result: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        error_type: str | None = None,
+        error_details: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+        state_snapshots: list | None = None,
+        integration_calls: list | None = None,
+        logs: list | None = None,
+        variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Update execution record with results.
 
@@ -221,7 +222,7 @@ class ExecutionLogger:
             )
             raise
 
-    async def _get_execution(self, org_id: Optional[str], execution_id: str) -> Optional[Dict[str, Any]]:
+    async def _get_execution(self, org_id: str | None, execution_id: str) -> dict[str, Any] | None:
         """
         Get execution entity by org_id and execution_id.
 

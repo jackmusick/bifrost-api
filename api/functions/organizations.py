@@ -3,23 +3,23 @@ Organizations API endpoints
 CRUD operations for client organizations
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import List
-import azure.functions as func
 
-from shared.decorators import with_request_context, require_platform_admin
+import azure.functions as func
+from pydantic import ValidationError
+
+from shared.decorators import require_platform_admin, with_request_context
+from shared.models import (
+    CreateOrganizationRequest,
+    ErrorResponse,
+    Organization,
+    UpdateOrganizationRequest,
+    generate_entity_id,
+)
 from shared.openapi_decorators import openapi_endpoint
 from shared.storage import get_table_service
-from shared.models import (
-    Organization,
-    CreateOrganizationRequest,
-    UpdateOrganizationRequest,
-    ErrorResponse,
-    generate_entity_id
-)
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,7 @@ async def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
                 id=org_id,
                 name=org_entity["Name"],
                 tenantId=org_entity.get("TenantId"),
+                domain=org_entity.get("Domain"),
                 isActive=org_entity.get("IsActive", True),
                 createdAt=org_entity["CreatedAt"],
                 createdBy=org_entity["CreatedBy"],
@@ -129,13 +130,17 @@ async def create_organization(req: func.HttpRequest) -> func.HttpResponse:
         org_id = generate_entity_id()
         now = datetime.utcnow()
 
+        # Auto-generate tenant ID if not provided
+        tenant_id = generate_entity_id()
+
         # Create entity for Table Storage
         # Organizations go in GLOBAL partition with RowKey "org:uuid"
         entity = {
             "PartitionKey": "GLOBAL",
             "RowKey": f"org:{org_id}",
             "Name": create_request.name,
-            "TenantId": create_request.tenantId,
+            "TenantId": tenant_id,
+            "Domain": create_request.domain,
             "IsActive": True,
             "CreatedAt": now.isoformat(),
             "CreatedBy": context.user_id,
@@ -152,7 +157,8 @@ async def create_organization(req: func.HttpRequest) -> func.HttpResponse:
         org = Organization(
             id=org_id,
             name=create_request.name,
-            tenantId=create_request.tenantId,
+            tenantId=tenant_id,
+            domain=create_request.domain,
             isActive=True,
             createdAt=now,
             createdBy=context.user_id,
@@ -255,6 +261,7 @@ async def get_organization(req: func.HttpRequest) -> func.HttpResponse:
             id=org_id,
             name=org_entity["Name"],
             tenantId=org_entity.get("TenantId"),
+            domain=org_entity.get("Domain"),
             isActive=org_entity.get("IsActive", True),
             createdAt=org_entity["CreatedAt"],
             createdBy=org_entity["CreatedBy"],
@@ -338,6 +345,9 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
         if update_request.tenantId is not None:
             org_entity["TenantId"] = update_request.tenantId
 
+        if update_request.domain is not None:
+            org_entity["Domain"] = update_request.domain
+
         if update_request.isActive is not None:
             org_entity["IsActive"] = update_request.isActive
 
@@ -353,6 +363,7 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
             id=org_id,
             name=org_entity["Name"],
             tenantId=org_entity.get("TenantId"),
+            domain=org_entity.get("Domain"),
             isActive=org_entity.get("IsActive", True),
             createdAt=org_entity["CreatedAt"],
             createdBy=org_entity["CreatedBy"],

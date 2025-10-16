@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, AlertTriangle, Info, Globe, Building2 } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, Info, Globe, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -18,20 +18,23 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useExecutions } from '@/hooks/useExecutions'
 import { useScopeStore } from '@/stores/scopeStore'
-import { useOrganizations } from '@/hooks/useOrganizations'
-import type { ExecutionStatus } from '@/types/execution'
+import { formatDate } from '@/lib/utils'
+// import { useOrganizations } from '@/hooks/useOrganizations'
+import type { components } from '@/lib/v1'
+type ExecutionStatus = components['schemas']['ExecutionStatus']
 
 export function ExecutionHistory() {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<ExecutionStatus | 'all'>('all')
   const isGlobalScope = useScopeStore((state) => state.isGlobalScope)
   const scope = useScopeStore((state) => state.scope)
-  const { data: organizations } = useOrganizations()
+  // const { data: organization } = useOrganizations()
+  // const organizations = organization ? [organization] : []
 
   const { data: executions, isFetching, refetch } = useExecutions(
     statusFilter !== 'all' ? { status: statusFilter } : undefined
@@ -40,12 +43,12 @@ export function ExecutionHistory() {
   // Debug: log when scope changes
   console.log('ExecutionHistory - scope.orgId:', scope.orgId)
 
-  // Helper to get organization name from orgId
-  const getOrgName = (orgId?: string) => {
-    if (!orgId || orgId === 'GLOBAL') return 'Global'
-    const org = organizations?.find(o => o.id === orgId)
-    return org?.name || orgId
-  }
+  // Helper to get organization name from orgId (currently unused since orgId not available in Execution schema)
+  // const getOrgName = (orgId?: string) => {
+  //   if (!orgId || orgId === 'GLOBAL') return 'Global'
+  //   const org = organizations?.find(o => o.id === orgId)
+  //   return org?.name || orgId
+  // }
 
   const getStatusBadge = (status: ExecutionStatus) => {
     switch (status) {
@@ -54,13 +57,6 @@ export function ExecutionHistory() {
           <Badge variant="default" className="bg-green-500">
             <CheckCircle className="mr-1 h-3 w-3" />
             Completed
-          </Badge>
-        )
-      case 'CompletedWithErrors':
-        return (
-          <Badge variant="default" className="bg-yellow-500">
-            <AlertTriangle className="mr-1 h-3 w-3" />
-            With Errors
           </Badge>
         )
       case 'Failed':
@@ -169,8 +165,8 @@ export function ExecutionHistory() {
                               )
                             : null
 
-                          const executionOrgId = execution.orgId || 'GLOBAL'
-                          const isGlobalExecution = executionOrgId === 'GLOBAL'
+                          // For now, treat all executions as global since orgId is not available in Execution schema
+                          const isGlobalExecution = true
 
                           return (
                             <TableRow key={execution.executionId} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewDetails(execution.executionId)}>
@@ -185,7 +181,7 @@ export function ExecutionHistory() {
                                     ) : (
                                       <>
                                         <Building2 className="mr-1 h-3 w-3" />
-                                        {getOrgName(executionOrgId)}
+                                        Global
                                       </>
                                     )}
                                   </Badge>
@@ -197,7 +193,7 @@ export function ExecutionHistory() {
                               <TableCell>{getStatusBadge(execution.status)}</TableCell>
                               <TableCell>{execution.executedBy}</TableCell>
                               <TableCell className="text-sm">
-                                {new Date(execution.startedAt).toLocaleString()}
+                                {formatDate(execution.startedAt)}
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">
                                 {duration !== null ? `${duration}s` : '-'}

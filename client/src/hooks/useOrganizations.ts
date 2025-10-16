@@ -4,7 +4,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { organizationsService } from '@/services/organizations'
-import type { CreateOrganizationRequest, UpdateOrganizationRequest } from '@/types/organization'
+import type { components } from '@/lib/v1'
+type CreateOrganizationRequest = components['schemas']['CreateOrganizationRequest']
+type UpdateOrganizationRequest = components['schemas']['UpdateOrganizationRequest']
 import { toast } from 'sonner'
 
 export function useOrganizations() {

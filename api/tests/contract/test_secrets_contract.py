@@ -3,17 +3,17 @@ Contract tests for Secrets API models
 Tests Pydantic validation rules for request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
 from shared.models import (
-    SecretListResponse,
-    SecretCreateRequest,
-    SecretUpdateRequest,
-    SecretResponse,
     KeyVaultHealthResponse,
-    ErrorResponse
+    SecretCreateRequest,
+    SecretListResponse,
+    SecretResponse,
+    SecretUpdateRequest,
 )
 
 

@@ -4,18 +4,17 @@ Contract Tests: Type Stub Accuracy
 Tests that validate bifrost.pyi stub file matches the actual implementation.
 """
 
-import pytest
-import inspect
 import ast
+import inspect
 from pathlib import Path
-from typing import Set
 
-from shared.context import OrganizationContext
-from shared.decorators import workflow, param, data_provider
-from shared.models import ExecutionStatus, OAuthCredentials
+import pytest
 
 # Import the actual bifrost module to check its exports
 import bifrost
+from shared.context import OrganizationContext
+from shared.decorators import data_provider, param, workflow
+from shared.models import ExecutionStatus, OAuthCredentials
 
 
 class TestTypeStubAccuracy:
@@ -76,7 +75,7 @@ class TestTypeStubAccuracy:
         if error_messages:
             pytest.fail("\n\n".join(error_messages))
 
-    def _parse_pyi_exports(self, stub_content: str) -> Set[str]:
+    def _parse_pyi_exports(self, stub_content: str) -> set[str]:
         """
         Parse a .pyi file and extract all top-level class/function definitions.
 
@@ -93,9 +92,7 @@ class TestTypeStubAccuracy:
             # Only look at top-level definitions (Module -> definitions)
             if isinstance(node, ast.Module):
                 for item in node.body:
-                    if isinstance(item, ast.ClassDef):
-                        exports.add(item.name)
-                    elif isinstance(item, ast.FunctionDef):
+                    if isinstance(item, ast.ClassDef) or isinstance(item, ast.FunctionDef):
                         exports.add(item.name)
                     elif isinstance(item, ast.Assign):
                         # Handle class attributes or module-level assignments

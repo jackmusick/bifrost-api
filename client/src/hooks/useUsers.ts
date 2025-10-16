@@ -4,7 +4,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usersService } from '@/services/users'
-import type { GrantPermissionsRequest } from '@/types/user'
+import type { components } from '@/lib/v1'
+type GrantPermissionsRequest = components['schemas']['GrantPermissionsRequest']
 import { toast } from 'sonner'
 
 export function useUsers(type?: 'msp' | 'org' | undefined, orgId?: string | undefined) {
@@ -28,7 +29,7 @@ export function useUser(userId: string | undefined) {
 export function useUserPermissions(userId: string | undefined, orgId: string | undefined) {
   return useQuery({
     queryKey: ['users', userId, 'permissions', orgId],
-    queryFn: () => usersService.getUserPermissions(userId!, orgId!),
+    queryFn: () => usersService.getUserPermissions(userId!),
     enabled: !!userId && !!orgId,
   })
 }

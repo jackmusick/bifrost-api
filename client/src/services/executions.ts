@@ -4,7 +4,7 @@
 
 import { apiClient } from '@/lib/api-client'
 import type { components } from '@/lib/v1'
-import type { ExecutionFilters, ExecutionListResponse } from '@/lib/client-types'
+import type { ExecutionFilters } from '@/lib/client-types'
 
 export const executionsService = {
   /**
@@ -22,18 +22,11 @@ export const executionsService = {
 
     if (error) throw new Error(`Failed to fetch executions: ${error}`)
 
-    // OpenAPI spec says single object, but API likely returns array or wrapped object
-    // Handle both cases for robustness
-    if (Array.isArray(data)) {
-      return data as components['schemas']['WorkflowExecution'][]
+    // API returns ExecutionsListResponse with executions array
+    if (data && 'executions' in data) {
+      return data.executions
     }
-    // @ts-expect-error - API may return {executions: [...]} despite spec saying otherwise
-    if (data && typeof data === 'object' && 'executions' in data) {
-      // @ts-expect-error - See above
-      return data.executions || []
-    }
-    // If it's a single execution object, wrap in array
-    return data ? [data as components['schemas']['WorkflowExecution']] : []
+    return []
   },
 
   /**

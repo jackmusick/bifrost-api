@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/organizations": {
+    "/data-providers/{providerName}": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,8 +12,58 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all organizations
-         * @description Get all organizations (Platform admin only)
+         * Get data provider options
+         * @description Call a data provider and return options
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Set to 'true' to bypass cache */
+                    no_cache?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description Name of the data provider */
+                    providerName: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DataProviderResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List data providers
+         * @description List all available data providers
          */
         get: {
             parameters: {
@@ -30,7 +80,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Organization"];
+                        "application/json": components["schemas"]["DataProviderListResponse"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -41,20 +91,39 @@ export interface paths {
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflowName}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         /**
-         * Create a new organization
-         * @description Create a new client organization (Platform admin only)
+         * Execute a workflow
+         * @description Execute a workflow with the provided parameters
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    /** @description Name of the workflow to execute */
+                    workflowName: string;
+                };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["CreateOrganizationRequest"];
+                    "application/json": components["schemas"]["WorkflowExecutionRequest"];
                 };
             };
             responses: {
@@ -64,7 +133,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Organization"];
+                        "application/json": components["schemas"]["WorkflowExecutionResponse"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -80,7 +149,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{orgId}": {
+    "/discovery": {
         parameters: {
             query?: never;
             header?: never;
@@ -88,17 +157,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get organization by ID
-         * @description Get a specific organization by ID (Platform admin only)
+         * Discover available workflows and data providers
+         * @description Returns metadata for all registered workflows and data providers
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Organization ID (UUID) */
-                    orgId: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -109,7 +175,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Organization"];
+                        "application/json": components["schemas"]["MetadataResponse"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -121,17 +187,169 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         /**
-         * Delete an organization
-         * @description Soft delete an organization (sets IsActive=False, Platform admin only)
+         * List OAuth connections
+         * @description List all OAuth connections (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        /**
+         * Create OAuth connection
+         * @description Create a new OAuth connection for integrations (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateOAuthConnectionRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/connections/{connection_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get OAuth connection
+         * @description Get OAuth connection details (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OAuthConnectionDetail"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        /**
+         * Update OAuth connection
+         * @description Update an OAuth connection (Platform admin only)
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateOAuthConnectionRequest"];
+                };
+            };
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        post?: never;
+        /**
+         * Delete OAuth connection
+         * @description Delete an OAuth connection (Platform admin only)
          */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Organization ID (UUID) */
-                    orgId: string;
+                    /** @description Connection name */
+                    connection_name: string;
                 };
                 cookie?: never;
             };
@@ -153,77 +371,40 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /**
-         * Update an organization
-         * @description Update an existing organization (Platform admin only)
-         */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Organization ID (UUID) */
-                    orgId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateOrganizationRequest"];
-                };
-            };
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Organization"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
+        patch?: never;
         trace?: never;
     };
-    "/config": {
+    "/oauth/connections/{connection_name}/authorize": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
-         * Get configuration values
-         * @description Get configuration values with scope filtering (Platform admin only)
+         * Authorize OAuth connection
+         * @description Initiate OAuth authorization flow (Platform admin only)
          */
-        get: {
+        post: {
             parameters: {
-                query: {
-                    /** @description Configuration scope: 'global' for global config or 'org' for organization-specific */
-                    scope: "global" | "org";
-                    /** @description Organization ID (required when scope=org) */
-                    orgId?: string;
-                };
+                query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Successful operation */
-                200: {
+                /** @description Resource created */
+                201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["Config"];
-                    };
+                    content?: never;
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -232,21 +413,128 @@ export interface paths {
                 500: components["responses"]["InternalError"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/connections/{connection_name}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
         /**
-         * Set configuration value
-         * @description Set a configuration value (Platform admin only)
+         * Cancel OAuth authorization
+         * @description Cancel OAuth authorization (Platform admin only)
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/connections/{connection_name}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh OAuth token
+         * @description Manually refresh OAuth access token using refresh token (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/callback/{connection_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * OAuth callback
+         * @description OAuth callback endpoint - exchanges authorization code for tokens
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["SetConfigRequest"];
+                    "application/json": components["schemas"]["OAuthCallbackRequest"];
                 };
             };
             responses: {
@@ -256,7 +544,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Config"];
+                        "application/json": components["schemas"]["OAuthCallbackResponse"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -272,7 +560,721 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/config/{key}": {
+    "/oauth/credentials/{connection_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get OAuth credentials
+         * @description Get OAuth credentials for workflow consumption
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Connection name */
+                    connection_name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OAuthCredentialsResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/refresh_job_status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get OAuth refresh job status
+         * @description Get status of the last OAuth token refresh job (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get system metrics
+         * @description Get aggregated system statistics including workflow count, form count, execution statistics (30 days), recent failures, and success rate
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DashboardMetricsResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * General health check
+         * @description Check the overall health status of the API and its dependencies
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GeneralHealthResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/keyvault": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Key Vault health
+         * @description Check the health status of Azure Key Vault integration (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KeyVaultHealthResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List secrets
+         * @description List available secrets from Key Vault, optionally filtered by organization (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Filter secrets by organization ID (returns org-scoped + GLOBAL secrets) */
+                    org_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecretListResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        /**
+         * Create a secret
+         * @description Create a new secret in Azure Key Vault (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SecretCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecretResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a secret
+         * @description Update an existing secret in Azure Key Vault (Platform admin only)
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Full secret name (e.g., 'org-123--api-key' or 'GLOBAL--smtp-password') */
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SecretUpdateRequest"];
+                };
+            };
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecretResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        post?: never;
+        /**
+         * Delete a secret
+         * @description Delete a secret from Azure Key Vault. WARNING: This will delete the secret permanently. (Platform admin only)
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Full secret name (e.g., 'org-123--api-key' or 'GLOBAL--smtp-password') */
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List workflow executions
+         * @description List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Filter by workflow name */
+                    workflowName?: string;
+                    /** @description Filter by execution status */
+                    status?: "Pending" | "Running" | "Success" | "Failed" | "CompletedWithErrors";
+                    /** @description Maximum number of results (default: 50, max: 1000) */
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionsListResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/executions/{executionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get execution details
+         * @description Get detailed information about a specific execution. Platform admins can view any execution in their scope. Regular users can only view their own executions.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Execution ID (UUID) */
+                    executionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowExecution"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all roles
+         * @description Get all roles (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Role"][];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        /**
+         * Create a role
+         * @description Create a new role (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateRoleRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Role"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{roleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a role
+         * @description Update a role (Platform admin only)
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Role ID (UUID) */
+                    roleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateRoleRequest"];
+                };
+            };
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Role"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        post?: never;
+        /**
+         * Delete a role
+         * @description Soft delete a role (set IsActive=False) (Platform admin only)
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Role ID (UUID) */
+                    roleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{roleId}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get role users
+         * @description Get all users assigned to a role (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Role ID (UUID) */
+                    roleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoleUsersResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        /**
+         * Assign users to role
+         * @description Assign users to a role (batch operation) (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Role ID (UUID) */
+                    roleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AssignUsersToRoleRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{roleId}/users/{userId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -283,16 +1285,18 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete configuration value
-         * @description Delete a configuration value by key (Platform admin only)
+         * Remove user from role
+         * @description Remove a user from a role (Platform admin only)
          */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Configuration key to delete */
-                    key: string;
+                    /** @description Role ID (UUID) */
+                    roleId: string;
+                    /** @description User ID */
+                    userId: string;
                 };
                 cookie?: never;
             };
@@ -317,7 +1321,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{orgId}/integrations": {
+    "/roles/{roleId}/forms": {
         parameters: {
             query?: never;
             header?: never;
@@ -325,16 +1329,16 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get organization integrations
-         * @description Get all integration configurations for an organization (Platform admin only)
+         * Get role forms
+         * @description Get all forms assigned to a role (Platform admin only)
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Organization ID (UUID) */
-                    orgId: string;
+                    /** @description Role ID (UUID) */
+                    roleId: string;
                 };
                 cookie?: never;
             };
@@ -346,7 +1350,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["IntegrationConfig"];
+                        "application/json": components["schemas"]["RoleFormsResponse"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -358,22 +1362,143 @@ export interface paths {
         };
         put?: never;
         /**
-         * Set organization integration
-         * @description Set or update an integration configuration for an organization (Platform admin only)
+         * Assign forms to role
+         * @description Assign forms to a role (batch operation) (Platform admin only)
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Organization ID (UUID) */
-                    orgId: string;
+                    /** @description Role ID (UUID) */
+                    roleId: string;
                 };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["SetIntegrationConfigRequest"];
+                    "application/json": components["schemas"]["AssignFormsToRoleRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{roleId}/forms/{formId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove form from role
+         * @description Remove a form from a role (Platform admin only)
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Role ID (UUID) */
+                    roleId: string;
+                    /** @description Form ID (UUID) */
+                    formId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List forms
+         * @description List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Form"][];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        /**
+         * Create a new form
+         * @description Create a new form (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateFormRequest"];
                 };
             };
             responses: {
@@ -383,7 +1508,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["IntegrationConfig"];
+                        "application/json": components["schemas"]["Form"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -399,29 +1524,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{orgId}/integrations/{type}": {
+    "/forms/{formId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
+        /**
+         * Get form by ID
+         * @description Get a specific form by ID. User must have access to the form (public or role-assigned).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Form ID (UUID) */
+                    formId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Form"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        /**
+         * Update a form
+         * @description Update an existing form (Platform admin only)
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Form ID (UUID) */
+                    formId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateFormRequest"];
+                };
+            };
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Form"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
         post?: never;
         /**
-         * Delete organization integration
-         * @description Delete an integration configuration for an organization (Platform admin only)
+         * Delete a form
+         * @description Soft delete a form by setting IsActive=False (Platform admin only)
          */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Organization ID (UUID) */
-                    orgId: string;
-                    /** @description Integration type */
-                    type: "msgraph" | "halopsa";
+                    /** @description Form ID (UUID) */
+                    formId: string;
                 };
                 cookie?: never;
             };
@@ -441,6 +1630,55 @@ export interface paths {
                 500: components["responses"]["InternalError"];
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forms/{formId}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a form
+         * @description Execute a form and run the linked workflow. User must have access to execute the form (public or role-assigned).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Form ID (UUID) */
+                    formId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FormExecuteRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -477,7 +1715,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["User"];
+                        "application/json": components["schemas"]["User"][];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -739,7 +1977,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["UserRolesResponse"];
+                    };
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -784,7 +2024,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["UserFormsResponse"];
+                    };
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -801,7 +2043,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/forms": {
+    "/config": {
         parameters: {
             query?: never;
             header?: never;
@@ -809,8 +2051,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List forms
-         * @description List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).
+         * Get configuration values
+         * @description Get configuration values for current scope. Platform admins see all configs in their scope (set via X-Organization-Id header). Regular users see configs for their org.
          */
         get: {
             parameters: {
@@ -827,7 +2069,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Form"];
+                        "application/json": components["schemas"]["Config"][];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -839,8 +2081,8 @@ export interface paths {
         };
         put?: never;
         /**
-         * Create a new form
-         * @description Create a new form (Platform admin only)
+         * Set configuration value
+         * @description Set a configuration value in the current scope (Platform admin only)
          */
         post: {
             parameters: {
@@ -851,7 +2093,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["CreateFormRequest"];
+                    "application/json": components["schemas"]["SetConfigRequest"];
                 };
             };
             responses: {
@@ -861,7 +2103,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Form"];
+                        "application/json": components["schemas"]["Config"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -877,93 +2119,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/forms/{formId}": {
+    "/config/{key}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get form by ID
-         * @description Get a specific form by ID. User must have access to the form (public or role-assigned).
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Form ID (UUID) */
-                    formId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Form"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        /**
-         * Update a form
-         * @description Update an existing form (Platform admin only)
-         */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Form ID (UUID) */
-                    formId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateFormRequest"];
-                };
-            };
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Form"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
+        get?: never;
+        put?: never;
         post?: never;
         /**
-         * Delete a form
-         * @description Soft delete a form by setting IsActive=False (Platform admin only)
+         * Delete configuration value
+         * @description Delete a configuration value by key from current scope (Platform admin only)
          */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Form ID (UUID) */
-                    formId: string;
+                    /** @description Configuration key to delete */
+                    key: string;
                 };
                 cookie?: never;
             };
@@ -988,56 +2164,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/forms/{formId}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute a form
-         * @description Execute a form and run the linked workflow. User must have access to execute the form (public or role-assigned).
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Form ID (UUID) */
-                    formId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["FormExecuteRequest"];
-                };
-            };
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/roles": {
+    "/organizations/{orgId}/integrations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1045,14 +2172,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all roles
-         * @description Get all roles (Platform admin only)
+         * Get organization integrations
+         * @description Get all integration configurations for an organization (Platform admin only)
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    /** @description Organization ID (UUID) */
+                    orgId: string;
+                };
                 cookie?: never;
             };
             requestBody?: never;
@@ -1063,7 +2193,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Role"];
+                        "application/json": components["schemas"]["IntegrationConfig"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -1075,19 +2205,22 @@ export interface paths {
         };
         put?: never;
         /**
-         * Create a role
-         * @description Create a new role (Platform admin only)
+         * Set organization integration
+         * @description Set or update an integration configuration for an organization (Platform admin only)
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    /** @description Organization ID (UUID) */
+                    orgId: string;
+                };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["CreateRoleRequest"];
+                    "application/json": components["schemas"]["SetIntegrationConfigRequest"];
                 };
             };
             responses: {
@@ -1097,7 +2230,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Role"];
+                        "application/json": components["schemas"]["IntegrationConfig"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -1113,7 +2246,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{roleId}": {
+    "/organizations/{orgId}/integrations/{type}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1121,54 +2254,21 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Update a role
-         * @description Update a role (Platform admin only)
-         */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateRoleRequest"];
-                };
-            };
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Role"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
+        put?: never;
         post?: never;
         /**
-         * Delete a role
-         * @description Soft delete a role (set IsActive=False) (Platform admin only)
+         * Delete organization integration
+         * @description Delete an integration configuration for an organization (Platform admin only)
          */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
+                    /** @description Organization ID (UUID) */
+                    orgId: string;
+                    /** @description Integration type */
+                    type: "msgraph" | "halopsa";
                 };
                 cookie?: never;
             };
@@ -1193,7 +2293,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{roleId}/users": {
+    "/organizations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1201,17 +2301,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get role users
-         * @description Get all users assigned to a role (Platform admin only)
+         * List all organizations
+         * @description Get all organizations (Platform admin only)
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -1221,7 +2318,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Organization"];
+                    };
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -1232,22 +2331,19 @@ export interface paths {
         };
         put?: never;
         /**
-         * Assign users to role
-         * @description Assign users to a role (batch operation) (Platform admin only)
+         * Create a new organization
+         * @description Create a new client organization (Platform admin only)
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AssignUsersToRoleRequest"];
+                    "application/json": components["schemas"]["CreateOrganizationRequest"];
                 };
             };
             responses: {
@@ -1256,7 +2352,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Organization"];
+                    };
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -1271,29 +2369,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{roleId}/users/{userId}": {
+    "/organizations/{orgId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get organization by ID
+         * @description Get a specific organization by ID (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Organization ID (UUID) */
+                    orgId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Organization"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
         put?: never;
         post?: never;
         /**
-         * Remove user from role
-         * @description Remove a user from a role (Platform admin only)
+         * Delete an organization
+         * @description Soft delete an organization (sets IsActive=False, Platform admin only)
          */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
-                    /** @description User ID */
-                    userId: string;
+                    /** @description Organization ID (UUID) */
+                    orgId: string;
                 };
                 cookie?: never;
             };
@@ -1315,430 +2442,23 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/roles/{roleId}/forms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /**
-         * Get role forms
-         * @description Get all forms assigned to a role (Platform admin only)
+         * Update an organization
+         * @description Update an existing organization (Platform admin only)
          */
-        get: {
+        patch: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        /**
-         * Assign forms to role
-         * @description Assign forms to a role (batch operation) (Platform admin only)
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
+                    /** @description Organization ID (UUID) */
+                    orgId: string;
                 };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AssignFormsToRoleRequest"];
-                };
-            };
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/roles/{roleId}/forms/{formId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove form from role
-         * @description Remove a form from a role (Platform admin only)
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Role ID (UUID) */
-                    roleId: string;
-                    /** @description Form ID (UUID) */
-                    formId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/executions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List workflow executions
-         * @description List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description Filter by workflow name */
-                    workflowName?: string;
-                    /** @description Filter by execution status */
-                    status?: "Pending" | "Running" | "Success" | "Failed" | "CompletedWithErrors";
-                    /** @description Maximum number of results (default: 50, max: 1000) */
-                    limit?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["WorkflowExecution"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/executions/{executionId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution details
-         * @description Get detailed information about a specific execution. Platform admins can view any execution in their scope. Regular users can only view their own executions.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Execution ID (UUID) */
-                    executionId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["WorkflowExecution"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/data-providers/{providerName}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get data provider options
-         * @description Call a data provider and return options
-         */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description Set to 'true' to bypass cache */
-                    no_cache?: string;
-                };
-                header?: never;
-                path: {
-                    /** @description Name of the data provider */
-                    providerName: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["DataProviderResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/data-providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List data providers
-         * @description List all available data providers
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["DataProviderListResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/secrets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List secrets
-         * @description List available secrets from Key Vault, optionally filtered by organization (Platform admin only)
-         */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description Filter secrets by organization ID (returns org-scoped + GLOBAL secrets) */
-                    org_id?: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["SecretListResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        /**
-         * Create a secret
-         * @description Create a new secret in Azure Key Vault (Platform admin only)
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SecretCreateRequest"];
-                };
-            };
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["SecretResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/secrets/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Update a secret
-         * @description Update an existing secret in Azure Key Vault (Platform admin only)
-         */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Full secret name (e.g., 'org-123--api-key' or 'GLOBAL--smtp-password') */
-                    name: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SecretUpdateRequest"];
+                    "application/json": components["schemas"]["UpdateOrganizationRequest"];
                 };
             };
             responses: {
@@ -1748,7 +2468,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SecretResponse"];
+                        "application/json": components["schemas"]["Organization"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -1758,715 +2478,6 @@ export interface paths {
                 500: components["responses"]["InternalError"];
             };
         };
-        post?: never;
-        /**
-         * Delete a secret
-         * @description Delete a secret from Azure Key Vault. WARNING: This will delete the secret permanently. (Platform admin only)
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Full secret name (e.g., 'org-123--api-key' or 'GLOBAL--smtp-password') */
-                    name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * General health check
-         * @description Check the overall health status of the API and its dependencies
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["GeneralHealthResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/keyvault": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check Key Vault health
-         * @description Check the health status of Azure Key Vault integration (Platform admin only)
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["KeyVaultHealthResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/metrics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get system metrics
-         * @description Get aggregated system statistics including workflow count, form count, execution statistics (30 days), recent failures, and success rate
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["DashboardMetricsResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/connections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List OAuth connections
-         * @description List all OAuth connections (Platform admin only)
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        /**
-         * Create OAuth connection
-         * @description Create a new OAuth connection for integrations (Platform admin only)
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateOAuthConnectionRequest"];
-                };
-            };
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/connections/{connection_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth connection
-         * @description Get OAuth connection details (Platform admin only)
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        /**
-         * Update OAuth connection
-         * @description Update an OAuth connection (Platform admin only)
-         */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpdateOAuthConnectionRequest"];
-                };
-            };
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        post?: never;
-        /**
-         * Delete OAuth connection
-         * @description Delete an OAuth connection (Platform admin only)
-         */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/connections/{connection_name}/authorize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Authorize OAuth connection
-         * @description Initiate OAuth authorization flow (Platform admin only)
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/connections/{connection_name}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel OAuth authorization
-         * @description Cancel OAuth authorization (Platform admin only)
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/connections/{connection_name}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh OAuth token
-         * @description Manually refresh OAuth access token using refresh token (Platform admin only)
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/callback/{connection_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * OAuth callback
-         * @description OAuth callback endpoint - exchanges authorization code for tokens
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/credentials/{connection_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth credentials
-         * @description Get OAuth credentials for workflow consumption
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OAuthCredentialsResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/oauth/refresh_job_status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth refresh job status
-         * @description Get status of the last OAuth token refresh job (Platform admin only)
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/discovery": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Discover available workflows and data providers
-         * @description Returns metadata for all registered workflows and data providers
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["MetadataResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workflows/{workflowName}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute a workflow
-         * @description Execute a workflow with the provided parameters
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Name of the workflow to execute */
-                    workflowName: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["WorkflowExecutionRequest"];
-                };
-            };
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["WorkflowExecutionResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
 }
@@ -2487,10 +2498,16 @@ export interface components {
             name: string;
             /**
              * Tenantid
-             * @description Microsoft 365 GDAP tenant ID
+             * @description Microsoft 365 GDAP tenant ID (auto-generated if not provided)
              * @default null
              */
             tenantId: string | null;
+            /**
+             * Domain
+             * @description Email domain for auto-provisioning users (e.g., 'acme.com')
+             * @default null
+             */
+            domain: string | null;
             /**
              * Isactive
              * @default true
@@ -2517,10 +2534,11 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Tenantid
+             * Domain
+             * @description Email domain for auto-provisioning users (e.g., 'acme.com')
              * @default null
              */
-            tenantId: string | null;
+            domain: string | null;
         };
         /**
          * UpdateOrganizationRequest
@@ -2537,6 +2555,12 @@ export interface components {
              * @default null
              */
             tenantId: string | null;
+            /**
+             * Domain
+             * @description Email domain for auto-provisioning users
+             * @default null
+             */
+            domain: string | null;
             /**
              * Isactive
              * @default null
@@ -2594,13 +2618,6 @@ export interface components {
             /** Value */
             value: string;
             type: components["schemas"]["ConfigType"];
-            /**
-             * Scope
-             * @description GLOBAL or org
-             * @default GLOBAL
-             * @enum {string}
-             */
-            scope: "GLOBAL" | "org";
             /**
              * Description
              * @default null
@@ -2801,6 +2818,28 @@ export interface components {
             assignedAt: string;
         };
         /**
+         * RoleUsersResponse
+         * @description Response model for getting users assigned to a role
+         */
+        RoleUsersResponse: {
+            /**
+             * Userids
+             * @description List of user IDs assigned to the role
+             */
+            userIds: string[];
+        };
+        /**
+         * RoleFormsResponse
+         * @description Response model for getting forms assigned to a role
+         */
+        RoleFormsResponse: {
+            /**
+             * Formids
+             * @description List of form IDs assigned to the role
+             */
+            formIds: string[];
+        };
+        /**
          * AssignUsersToRoleRequest
          * @description Request model for assigning users to a role
          */
@@ -2883,6 +2922,35 @@ export interface components {
             /** Orgid */
             orgId: string;
             permissions: components["schemas"]["PermissionsData"];
+        };
+        /**
+         * UserRolesResponse
+         * @description Response model for getting roles assigned to a user
+         */
+        UserRolesResponse: {
+            /**
+             * Roleids
+             * @description List of role IDs assigned to the user
+             */
+            roleIds: string[];
+        };
+        /**
+         * UserFormsResponse
+         * @description Response model for getting forms accessible to a user
+         */
+        UserFormsResponse: {
+            /** @description User type (PLATFORM or ORG) */
+            userType: components["schemas"]["UserType"];
+            /**
+             * Hasaccesstoallforms
+             * @description Whether user has access to all forms
+             */
+            hasAccessToAllForms: boolean;
+            /**
+             * Formids
+             * @description List of form IDs user can access (empty if hasAccessToAllForms=true)
+             */
+            formIds?: string[];
         };
         /**
          * FormFieldValidation
@@ -3080,6 +3148,11 @@ export interface components {
             linkedWorkflow: string | null;
             /** @default null */
             formSchema: components["schemas"]["FormSchema"] | null;
+            /**
+             * Isactive
+             * @default null
+             */
+            isActive: boolean | null;
         };
         /**
          * FormExecuteRequest
@@ -3154,28 +3227,78 @@ export interface components {
          * @description Request model for executing a workflow
          */
         WorkflowExecutionRequest: {
-            /** Workflowname */
-            workflowName: string;
+            /**
+             * Inputdata
+             * @description Workflow input parameters
+             */
+            inputData?: {
+                [key: string]: unknown;
+            };
             /**
              * Formid
+             * @description Optional form ID that triggered this execution
              * @default null
              */
             formId: string | null;
-            /** Inputdata */
-            inputData: {
-                [key: string]: unknown;
-            };
         };
         /**
          * WorkflowExecutionResponse
-         * @description Response model for workflow execution initiation
+         * @description Response model for workflow execution
          */
         WorkflowExecutionResponse: {
             /** Executionid */
             executionId: string;
             status: components["schemas"]["ExecutionStatus"];
-            /** Message */
-            message: string;
+            /**
+             * Result
+             * @default null
+             */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Error
+             * @default null
+             */
+            error: string | null;
+            /**
+             * Errortype
+             * @default null
+             */
+            errorType: string | null;
+            /**
+             * Details
+             * @default null
+             */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Durationms
+             * @default null
+             */
+            durationMs: number | null;
+            /**
+             * Startedat
+             * @default null
+             */
+            startedAt: string | null;
+            /**
+             * Completedat
+             * @default null
+             */
+            completedAt: string | null;
+        };
+        /**
+         * ExecutionsListResponse
+         * @description Response model for listing workflow executions
+         */
+        ExecutionsListResponse: {
+            /**
+             * Executions
+             * @description List of workflow executions
+             */
+            executions: components["schemas"]["WorkflowExecution"][];
         };
         /**
          * WorkflowParameter
@@ -3526,6 +3649,55 @@ export interface components {
             executionStats: components["schemas"]["ExecutionStats"];
             /** Recentfailures */
             recentFailures: components["schemas"]["RecentFailure"][];
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
+            code: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             * @default null
+             */
+            state: string | null;
+        };
+        /**
+         * OAuthCallbackResponse
+         * @description Response model for OAuth callback endpoint
+         */
+        OAuthCallbackResponse: {
+            /**
+             * Success
+             * @description Whether the OAuth connection was successful
+             */
+            success: boolean;
+            /**
+             * Message
+             * @description Status message
+             */
+            message: string;
+            /**
+             * Status
+             * @description Connection status
+             */
+            status: string;
+            /**
+             * Connection Name
+             * @description Name of the OAuth connection
+             */
+            connection_name: string;
+            /**
+             * Warning
+             * @description Warning message (e.g., missing refresh token)
+             * @default null
+             */
+            warning: string | null;
         };
         /**
          * ErrorResponse

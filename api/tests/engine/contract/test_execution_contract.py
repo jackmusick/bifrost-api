@@ -3,16 +3,11 @@ Contract Tests for Workflow Execution API
 Tests request/response models for workflow execution endpoint
 """
 
+
 import pytest
 from pydantic import ValidationError
-from datetime import datetime
 
-from shared.models import (
-    WorkflowExecutionRequest,
-    WorkflowExecutionResponse,
-    ExecutionStatus,
-    ErrorResponse
-)
+from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionRequest, WorkflowExecutionResponse
 
 
 class TestWorkflowExecutionRequest:

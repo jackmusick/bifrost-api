@@ -4,20 +4,80 @@ Serves the auto-generated OpenAPI spec at /api/openapi.json and /api/openapi.yam
 Also provides Swagger UI at /api/docs
 """
 
-from generate_openapi import generate_openapi_spec
-import azure.functions as func
 import json
-import yaml
-from typing import Type
-from pydantic import BaseModel
-from enum import Enum
 
-# Import the generator logic
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import azure.functions as func
+import yaml
+from pydantic import BaseModel
+
+import models.oauth_connection as oauth_models
+import shared.models as models_module
+from shared.openapi_decorators import build_openapi_spec
 
 bp = func.Blueprint()
+
+
+def generate_openapi_spec() -> dict:
+    """
+    Generate OpenAPI 3.0 spec using decorator registry + Pydantic models.
+
+    Returns:
+        dict: OpenAPI specification
+    """
+
+    # Import all endpoint modules to ensure decorators are executed
+    # This triggers the @openapi_endpoint decorators and populates the registry
+    # Import engine endpoints (now unified in functions/)
+
+    # Import data provider models
+    from functions.data_providers import DataProviderListResponse
+
+    # Auto-collect all models from shared.models.__all__
+    # This ensures we never forget to add new models to the spec!
+    models: list[type[BaseModel]] = []
+
+    # Add all models from shared.models (auto-discovered from __all__)
+    for name in models_module.__all__:
+        obj = getattr(models_module, name)
+        # Only include BaseModel subclasses (skip regular classes, enums, and functions)
+        if isinstance(obj, type) and issubclass(obj, BaseModel):
+            models.append(obj)
+
+    # Add OAuth models (auto-discovered from __all__)
+    for name in oauth_models.__all__:
+        obj = getattr(oauth_models, name)
+        # Only include BaseModel subclasses
+        if isinstance(obj, type) and issubclass(obj, BaseModel):
+            models.append(obj)
+
+    # Add Data Provider models
+    models.append(DataProviderListResponse)
+
+    # Build spec using decorator system
+    spec = build_openapi_spec(
+        title='Bifrost Integrations - Management API',
+        version='1.0.0',
+        description='API for managing forms, organizations, permissions, and users. Auto-generated from decorators and Pydantic models.',
+        servers=[
+            {
+                'url': 'http://localhost:7071',
+                'description': 'Local development server'
+            },
+            {
+                'url': 'https://{environment}.azurewebsites.net',
+                'description': 'Azure deployment',
+                'variables': {
+                    'environment': {
+                        'default': 'msp-automation-api-dev',
+                        'enum': ['msp-automation-api-dev', 'msp-automation-api-prod']
+                    }
+                }
+            }
+        ],
+        models=models
+    )
+
+    return spec
 
 
 @bp.route(route="openapi.json", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -72,7 +132,7 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 
     Usage: GET /api/docs
     """
-    html = f"""
+    html = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -86,8 +146,8 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
         <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
         <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
         <script>
-            window.onload = function() {{
-                SwaggerUIBundle({{
+            window.onload = function() {
+                SwaggerUIBundle({
                     url: "/api/openapi.json",
                     dom_id: '#swagger-ui',
                     deepLinking: true,
@@ -99,8 +159,8 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
                         SwaggerUIBundle.plugins.DownloadUrl
                     ],
                     layout: "StandaloneLayout"
-                }})
-            }}
+                })
+            }
         </script>
     </body>
     </html>

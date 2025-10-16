@@ -11,11 +11,11 @@ This replaces the scattered authentication/authorization logic across
 auth.py, auth_headers.py, and middleware.py.
 """
 
-import logging
 import base64
 import json
-from typing import Optional, Tuple
+import logging
 from dataclasses import dataclass
+
 import azure.functions as func
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class RequestContext:
     user_id: str
     email: str
     name: str
-    org_id: Optional[str]
+    org_id: str | None
     is_platform_admin: bool
     is_function_key: bool
 
@@ -133,18 +133,20 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         user_id = principal_data.get('userId')
         email = principal_data.get('userDetails', '')
         name = email.split('@')[0] if email else user_id
+        user_roles = principal_data.get('userRoles', [])
 
         if not user_id:
             raise ValueError("X-MS-CLIENT-PRINCIPAL missing userId")
 
-        logger.info(f"Easy Auth user: {email}")
+        logger.info(f"Easy Auth user: {email}, roles: {user_roles}")
 
     except Exception as e:
         logger.error(f"Failed to parse Easy Auth principal: {e}")
         raise ValueError(f"Invalid authentication: {e}")
 
-    # Check if user is platform admin
-    is_admin = _is_platform_admin(user_id)
+    # Check if user is platform admin (auto-create if they have PlatformAdmin role)
+    has_platform_admin_role = 'PlatformAdmin' in user_roles
+    is_admin = _is_platform_admin(email, name, has_platform_admin_role)
 
     # Determine org_id based on user role and headers
     provided_org_id = req.headers.get('X-Organization-Id')
@@ -174,10 +176,15 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         raise PermissionError("Only platform administrators can override organization context")
 
     # Look up user's org in database
-    org_id = _get_user_org_id(user_id)
+    org_id = _get_user_org_id(email)
 
     if not org_id:
-        raise ValueError(f"User {user_id} has no organization assignment. Contact administrator.")
+        # User not found - try auto-provisioning by email domain
+        logger.info(f"User {email} has no org assignment, attempting domain-based auto-provisioning")
+        org_id = _auto_provision_user_by_domain(email, name)
+
+        if not org_id:
+            raise ValueError(f"User {email} has no organization assignment. Contact administrator.")
 
     logger.info(f"User {email} in org scope: {org_id}")
 
@@ -191,28 +198,64 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
     )
 
 
-def _is_platform_admin(user_id: str) -> bool:
-    """Check if user is a platform admin (cached for performance)"""
+def _is_platform_admin(email: str, display_name: str, has_platform_admin_role: bool) -> bool:
+    """
+    Check if user is a platform admin, auto-creating if they have PlatformAdmin role.
+
+    Args:
+        email: User's email address
+        display_name: User's display name
+        has_platform_admin_role: Whether user has 'PlatformAdmin' in their EasyAuth roles
+
+    Returns:
+        True if user is a platform admin, False otherwise
+    """
+    from datetime import datetime
+
     from shared.storage import TableStorageService
 
     try:
         users_service = TableStorageService("Users")
         # Users table structure: PK=email, RK="user"
-        user_entity = users_service.get_entity(user_id, "user")
 
-        if user_entity:
-            return (
-                user_entity.get("IsPlatformAdmin", False) and
-                user_entity.get("UserType") == "PLATFORM"
-            )
+        try:
+            user_entity = users_service.get_entity(email, "user")
+            is_admin = user_entity.get("IsPlatformAdmin", False)
+            user_type = user_entity.get("UserType")
+            logger.info(f"User lookup for {email}: IsPlatformAdmin={is_admin}, UserType={user_type}")
+            return is_admin and user_type == "PLATFORM"
 
-        return False
+        except Exception:
+            # User doesn't exist - check if they should be auto-created as PlatformAdmin
+            if has_platform_admin_role:
+                logger.info(f"Auto-creating PlatformAdmin user for {email}")
+
+                # Create new PlatformAdmin user
+                new_user = {
+                    "PartitionKey": email,
+                    "RowKey": "user",
+                    "Email": email,
+                    "DisplayName": display_name or email.split('@')[0],
+                    "UserType": "PLATFORM",
+                    "IsPlatformAdmin": True,
+                    "IsActive": True,
+                    "CreatedAt": datetime.utcnow().isoformat(),
+                    "LastLogin": datetime.utcnow().isoformat()
+                }
+
+                users_service.insert_entity(new_user)
+                logger.info(f"Successfully created PlatformAdmin user: {email}")
+                return True
+            else:
+                logger.warning(f"User {email} not found and doesn't have PlatformAdmin role")
+                return False
+
     except Exception as e:
-        logger.warning(f"Failed to check platform admin status for {user_id}: {e}")
+        logger.error(f"Failed to check/create platform admin status for {email}: {e}")
         return False
 
 
-def _get_user_org_id(user_id: str) -> Optional[str]:
+def _get_user_org_id(email: str) -> str | None:
     """
     Look up user's organization ID from database.
 
@@ -225,26 +268,113 @@ def _get_user_org_id(user_id: str) -> Optional[str]:
         relationships_table = TableStorageService("Relationships")
         # Query for user permissions
         # Use string comparison: 'userperm:email:' to 'userperm:email~' (~ is after : in ASCII)
-        query_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'userperm:{user_id}:' and RowKey lt 'userperm:{user_id}~'"
+        query_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'userperm:{email}:' and RowKey lt 'userperm:{email}~'"
         entities = list(relationships_table.query_entities(query_filter))
 
         if not entities:
-            logger.warning(f"User {user_id} has no org assignments")
+            logger.warning(f"User {email} has no org assignments")
             return None
 
         if len(entities) > 1:
-            logger.warning(f"Multiple org assignments for {user_id}, using first")
+            logger.warning(f"Multiple org assignments for {email}, using first")
 
-        # Extract org_id from RowKey "userperm:{user_id}:{org_id}"
+        # Extract org_id from RowKey "userperm:{email}:{org_id}"
         row_key = entities[0].get("RowKey")
         parts = row_key.split(":", 2)
         if len(parts) >= 3:
             org_id = parts[2]
-            logger.debug(f"User {user_id} belongs to org: {org_id}")
+            logger.debug(f"User {email} belongs to org: {org_id}")
             return org_id
 
         return None
 
     except Exception as e:
         logger.error(f"Error looking up user org: {e}")
+        return None
+
+
+def _auto_provision_user_by_domain(email: str, display_name: str) -> str | None:
+    """
+    Auto-provision a user by matching their email domain to an organization.
+
+    If a user's email domain (e.g., 'acme.com' from 'user@acme.com') matches
+    an organization's Domain field, auto-create the user as an ORG user and
+    assign them to that organization.
+
+    Args:
+        email: User's email address
+        display_name: User's display name
+
+    Returns:
+        Organization ID if user was auto-provisioned, None otherwise
+    """
+    from datetime import datetime
+
+    from shared.storage import TableStorageService
+
+    try:
+        # Extract domain from email (e.g., 'acme.com' from 'user@acme.com')
+        if '@' not in email:
+            logger.warning(f"Invalid email format for auto-provisioning: {email}")
+            return None
+
+        user_domain = email.split('@')[1].lower()
+        logger.info(f"Attempting to auto-provision user with domain: {user_domain}")
+
+        # Query all active organizations with matching domain
+        entities_service = TableStorageService("Entities")
+        query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'org:' and RowKey lt 'org;' and IsActive eq true"
+        org_entities = list(entities_service.query_entities(query_filter))
+
+        # Find organization with matching domain
+        matched_org = None
+        for org_entity in org_entities:
+            org_domain = org_entity.get("Domain")
+            if org_domain and org_domain.lower() == user_domain:
+                matched_org = org_entity
+                logger.info(f"Found matching organization: {org_entity['Name']} with domain {org_domain}")
+                break
+
+        if not matched_org:
+            logger.info(f"No organization found with domain: {user_domain}")
+            return None
+
+        # Extract org_id from RowKey "org:uuid"
+        org_id = matched_org["RowKey"].split(":", 1)[1]
+
+        # Create new ORG user
+        users_service = TableStorageService("Users")
+        new_user = {
+            "PartitionKey": email,
+            "RowKey": "user",
+            "Email": email,
+            "DisplayName": display_name or email.split('@')[0],
+            "UserType": "ORG",
+            "IsPlatformAdmin": False,
+            "IsActive": True,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "LastLogin": datetime.utcnow().isoformat()
+        }
+
+        users_service.insert_entity(new_user)
+        logger.info(f"Auto-created ORG user: {email}")
+
+        # Create user-org permission relationship in Relationships table
+        # Structure: PK="GLOBAL", RK="userperm:{email}:{org_id}"
+        relationships_service = TableStorageService("Relationships")
+        permission_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"userperm:{email}:{org_id}",
+            "UserId": email,
+            "OrganizationId": org_id,
+            "CreatedAt": datetime.utcnow().isoformat()
+        }
+
+        relationships_service.insert_entity(permission_entity)
+        logger.info(f"Created org permission for {email} -> {org_id}")
+
+        return org_id
+
+    except Exception as e:
+        logger.error(f"Error auto-provisioning user by domain: {e}", exc_info=True)
         return None

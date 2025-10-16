@@ -1,17 +1,36 @@
-import azure.functions as func
-import json
+import importlib.util
 import logging
 import os
 import sys
-import importlib.util
 from pathlib import Path
+
+import azure.functions as func
+
+from functions.data_providers import bp as data_providers_bp
+from functions.discovery import bp as discovery_bp
+from functions.executions import bp as executions_bp
+from functions.forms import bp as forms_bp
+from functions.health import bp as health_bp
+from functions.metrics import bp as metrics_bp
+from functions.oauth_api import bp as oauth_api_bp
+from functions.oauth_refresh_timer import bp as oauth_refresh_timer_bp
+from functions.openapi import bp as openapi_bp
+from functions.org_config import bp as org_config_bp
+from functions.organizations import bp as organizations_bp
+from functions.permissions import bp as permissions_bp
+from functions.roles import bp as roles_bp
+from functions.roles_source import bp as roles_source_bp
+from functions.secrets import bp as secrets_bp
+from functions.workflows import bp as workflows_bp
+from shared.init_tables import init_tables
 
 # ==================== DEBUGPY INITIALIZATION ====================
 # Enable debugpy for remote debugging if ENABLE_DEBUGGING=true (T016)
 if os.getenv('ENABLE_DEBUGGING') == 'true':
     import debugpy
     debugpy.listen(("0.0.0.0", 5678))
-    logging.info("🐛 Debugpy listening on port 5678 - attach VS Code debugger anytime")
+    logging.info(
+        "🐛 Debugpy listening on port 5678 - attach VS Code debugger anytime")
 
 # ==================== IMPORT RESTRICTIONS ====================
 # T006: Install import restrictions BEFORE importing workspace code
@@ -20,6 +39,8 @@ from shared.import_restrictor import install_import_restrictions
 # Calculate workspace paths - support both system and user workspaces
 # System workspace: /workspace (Azure Files mount in production)
 # User workspace: ./workspace (local development)
+
+
 def get_workspace_paths():
     """
     Dynamically determine workspace paths.
@@ -44,30 +65,35 @@ def get_workspace_paths():
 
     return paths
 
+
 # Install import restrictions to prevent workspace code from importing engine internals
 # Initial setup - gets paths at startup time
 install_import_restrictions(get_workspace_paths())
 
 # ==================== TABLE INITIALIZATION ====================
 # T007: Initialize Azure Table Storage tables at startup
-from shared.init_tables import init_tables
 
 try:
     logging.info("Initializing Azure Table Storage tables...")
     results = init_tables()
 
     if results["created"]:
-        logging.info(f"Created {len(results['created'])} tables: {', '.join(results['created'])}")
+        logging.info(
+            f"Created {len(results['created'])} tables: {', '.join(results['created'])}")
     if results["already_exists"]:
         logging.info(f"{len(results['already_exists'])} tables already exist")
     if results["failed"]:
-        logging.warning(f"Failed to create {len(results['failed'])} tables - some features may not work")
+        logging.warning(
+            f"Failed to create {len(results['failed'])} tables - some features may not work")
 
 except Exception as e:
-    logging.warning(f"Table initialization failed: {e} - continuing without table initialization")
+    logging.warning(
+        f"Table initialization failed: {e} - continuing without table initialization")
 
 # ==================== WORKSPACE DISCOVERY ====================
 # T005: Discover workspace modules to register workflows and data providers
+
+
 def discover_workspace_modules():
     """
     Dynamically discover and import all Python files in workspace/ subdirectories.
@@ -87,15 +113,18 @@ def discover_workspace_modules():
     # Get workspace paths dynamically (supports hot-reload)
     workspace_paths = get_workspace_paths()
 
-    print(f"[WORKSPACE DISCOVERY] Found {len(workspace_paths)} workspace paths: {workspace_paths}")
+    print(
+        f"[WORKSPACE DISCOVERY] Found {len(workspace_paths)} workspace paths: {workspace_paths}")
 
     if not workspace_paths:
         print("[WORKSPACE DISCOVERY] No workspace paths exist - skipping discovery")
         logging.warning("No workspace paths exist - skipping discovery")
         return
 
-    print(f"[WORKSPACE DISCOVERY] Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
-    logging.info(f"Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
+    print(
+        f"[WORKSPACE DISCOVERY] Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
+    logging.info(
+        f"Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
 
     # Scan each workspace path
     for workspace_root in workspace_paths:
@@ -121,13 +150,15 @@ def discover_workspace_modules():
 
             try:
                 # Import the module using importlib (this triggers decorators)
-                spec = importlib.util.spec_from_file_location(module_name, py_file)
+                spec = importlib.util.spec_from_file_location(
+                    module_name, py_file)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
                     sys.modules[module_name] = module
                     spec.loader.exec_module(module)
 
-                    logging.info(f"✓ Discovered: {module_name} (from {workspace_path})")
+                    logging.info(
+                        f"✓ Discovered: {module_name} (from {workspace_path})")
                     discovered_count += 1
 
             except Exception as e:
@@ -136,7 +167,8 @@ def discover_workspace_modules():
                     exc_info=True
                 )
 
-    logging.info(f"Workspace discovery complete: {discovered_count} modules imported")
+    logging.info(
+        f"Workspace discovery complete: {discovered_count} modules imported")
 
     # Log registry summary
     from shared.registry import get_registry
@@ -159,24 +191,8 @@ discover_workspace_modules()
 
 # ==================== BLUEPRINT IMPORTS ====================
 # API Management Blueprints
-from functions.organizations import bp as organizations_bp
-from functions.org_config import bp as org_config_bp
-from functions.permissions import bp as permissions_bp
-from functions.forms import bp as forms_bp
-from functions.roles import bp as roles_bp
-from functions.executions import bp as executions_bp
-from functions.roles_source import bp as roles_source_bp
-from functions.openapi import bp as openapi_bp
-from functions.secrets import bp as secrets_bp
-from functions.health import bp as health_bp
-from functions.metrics import bp as metrics_bp
-from functions.oauth_api import bp as oauth_api_bp
-from functions.oauth_refresh_timer import bp as oauth_refresh_timer_bp
 
 # Workflow Engine Blueprints (unified in functions/)
-from functions.discovery import bp as discovery_bp
-from functions.workflows import bp as workflows_bp
-from functions.data_providers import bp as data_providers_bp
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 

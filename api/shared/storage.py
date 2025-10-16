@@ -3,12 +3,14 @@ Table Storage Service for Bifrost Integrations
 Provides reusable wrappers around Azure Table Storage operations with context-aware scoping
 """
 
-import os
 import logging
-from typing import List, Optional, Dict, Any, Iterator, TYPE_CHECKING
+import os
+from collections.abc import Iterator
 from datetime import datetime
-from azure.data.tables import TableClient, TableServiceClient
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from typing import TYPE_CHECKING, Optional
+
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.data.tables import TableClient
 
 if TYPE_CHECKING:
     from shared.request_context import RequestContext
@@ -246,7 +248,7 @@ class TableStorageService:
             logger.error(f"Failed to upsert entity: {str(e)}")
             raise
 
-    def get_entity(self, partition_key: str, row_key: str) -> Optional[dict]:
+    def get_entity(self, partition_key: str, row_key: str) -> dict | None:
         """
         Retrieve a single entity by partition and row key
 
@@ -282,7 +284,7 @@ class TableStorageService:
             raise
 
     def query_entities(
-        self, filter: str = None, select: List[str] = None
+        self, filter: str = None, select: list[str] = None
     ) -> Iterator[dict]:
         """
         Query entities with optional filter and select
@@ -351,7 +353,7 @@ class TableStorageService:
     # Helper methods
 
     def query_by_org(
-        self, org_id: str, row_key_prefix: str = None, select: List[str] = None
+        self, org_id: str, row_key_prefix: str = None, select: list[str] = None
     ) -> Iterator[dict]:
         """
         Query entities for a specific organization
@@ -524,7 +526,7 @@ def get_table_service(table_name: str, context: 'RequestContext') -> TableStorag
     return TableStorageService(table_name, context=context)
 
 
-def get_organization(org_id: str) -> Optional[dict]:
+def get_organization(org_id: str) -> dict | None:
     """
     Get organization by ID
 
@@ -548,7 +550,7 @@ def get_organization(org_id: str) -> Optional[dict]:
     return org_entity
 
 
-def get_org_config(org_id: str) -> List[dict]:
+def get_org_config(org_id: str) -> list[dict]:
     """
     Get all config entries for an organization
 

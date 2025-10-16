@@ -10,12 +10,12 @@ All audit logs are stored in the AuditLog table with date-based partitioning
 for efficient time-range queries and 90-day retention.
 """
 
-import os
-import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
 import json
+import logging
+import os
 import uuid
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class AuditLogger:
     - Additional event-specific fields
     """
 
-    def __init__(self, connection_string: Optional[str] = None):
+    def __init__(self, connection_string: str | None = None):
         """
         Initialize audit logger with Table Storage connection.
 
@@ -86,7 +86,7 @@ class AuditLogger:
         remote_addr: str,
         user_agent: str,
         status_code: int,
-        details: Optional[Dict[str, Any]] = None
+        details: dict[str, Any] | None = None
     ) -> None:
         """
         Log function key authentication usage.
@@ -127,7 +127,7 @@ class AuditLogger:
         method: str,
         remote_addr: str,
         status_code: int,
-        details: Optional[Dict[str, Any]] = None
+        details: dict[str, Any] | None = None
     ) -> None:
         """
         Log PlatformAdmin cross-organization access.
@@ -160,7 +160,7 @@ class AuditLogger:
         self,
         blocked_module: str,
         workspace_file: str,
-        stack_trace: Optional[List[str]] = None
+        stack_trace: list[str] | None = None
     ) -> None:
         """
         Log attempted workspace→engine import violation.
@@ -186,7 +186,7 @@ class AuditLogger:
     async def _log_event(
         self,
         event_type: str,
-        data: Dict[str, Any]
+        data: dict[str, Any]
     ) -> None:
         """
         Internal method to log audit event to Table Storage.
@@ -205,7 +205,7 @@ class AuditLogger:
 
         try:
             # Create entity
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             entity = self._create_entity(event_type, now, data)
 
             # Insert into table (fire and forget - synchronous SDK)
@@ -226,8 +226,8 @@ class AuditLogger:
         self,
         event_type: str,
         timestamp: datetime,
-        data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        data: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Create AuditLog table entity.
 

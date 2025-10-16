@@ -6,7 +6,8 @@ secret references from Azure Key Vault based on config type.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
+
 from .keyvault import KeyVaultClient
 from .models import ConfigType
 
@@ -25,7 +26,7 @@ class ConfigResolver:
     - Audit logging for secret access (without logging values)
     """
 
-    def __init__(self, keyvault_client: Optional[KeyVaultClient] = None):
+    def __init__(self, keyvault_client: KeyVaultClient | None = None):
         """
         Initialize the configuration resolver.
 
@@ -46,7 +47,7 @@ class ConfigResolver:
         self,
         org_id: str,
         key: str,
-        config_data: Dict[str, Any],
+        config_data: dict[str, Any],
         default: Any = ...,  # Sentinel value to distinguish None from "not provided"
     ) -> Any:
         """
@@ -171,7 +172,7 @@ class ConfigResolver:
             })
             raise ValueError(error_msg) from e
 
-    def _parse_value(self, value: str, config_type: Optional[str]) -> Any:
+    def _parse_value(self, value: str, config_type: str | None) -> Any:
         """
         Parse configuration value based on type.
 
@@ -198,4 +199,4 @@ class ConfigResolver:
                 # STRING or unknown type - return as string
                 return value
         except (ValueError, TypeError, json.JSONDecodeError) as e:
-            raise ValueError(f"Could not parse value '{value}' as type '{config_type}': {e}")
+            raise ValueError(f"Could not parse value '{value}' as type '{config_type}': {e}") from e

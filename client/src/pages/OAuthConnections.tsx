@@ -29,7 +29,7 @@ import {
 import { CreateOAuthConnectionDialog } from '@/components/oauth/CreateOAuthConnectionDialog'
 import { OAuthConnectionCard } from '@/components/oauth/OAuthConnectionCard'
 import { RefreshJobStatus } from '@/components/oauth/RefreshJobStatus'
-import { toast } from 'sonner'
+
 
 export function OAuthConnections() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -38,7 +38,7 @@ export function OAuthConnections() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [connectionToDelete, setConnectionToDelete] = useState<string | null>(null)
 
-  const { data: connections, isLoading, refetch } = useOAuthConnections(selectedOrgId)
+  const { data: connections, isLoading, refetch } = useOAuthConnections()
   const deleteMutation = useDeleteOAuthConnection()
   const authorizeMutation = useAuthorizeOAuthConnection()
   const cancelMutation = useCancelOAuthAuthorization()
@@ -80,9 +80,9 @@ export function OAuthConnections() {
 
   const handleRefresh = async (connectionName: string) => {
     try {
-      await refreshMutation.mutateAsync({ connectionName, orgId: selectedOrgId || undefined })
+      await refreshMutation.mutateAsync(connectionName)
       refetch()
-    } catch (error) {
+    } catch {
       // Error is already handled by the mutation's onError
     }
   }
@@ -90,7 +90,7 @@ export function OAuthConnections() {
   const handleAuthorize = async (connectionName: string): Promise<string | void> => {
     return new Promise((resolve) => {
       authorizeMutation.mutate(
-        { connectionName, orgId: selectedOrgId || undefined },
+        connectionName,
         {
           onSuccess: (response) => {
             // Open authorization URL in popup window
@@ -115,9 +115,9 @@ export function OAuthConnections() {
 
   const handleCancel = async (connectionName: string) => {
     try {
-      await cancelMutation.mutateAsync({ connectionName, orgId: selectedOrgId || undefined })
+      await cancelMutation.mutateAsync(connectionName)
       refetch()
-    } catch (error) {
+    } catch {
       // Error is already handled by the mutation's onError
     }
   }
@@ -131,9 +131,9 @@ export function OAuthConnections() {
     if (!connectionToDelete) return
 
     try {
-      await deleteMutation.mutateAsync({ connectionName: connectionToDelete, orgId: selectedOrgId || undefined })
+      await deleteMutation.mutateAsync(connectionToDelete)
       refetch()
-    } catch (error) {
+    } catch {
       // Error is already handled by the mutation's onError
     } finally {
       setDeleteDialogOpen(false)

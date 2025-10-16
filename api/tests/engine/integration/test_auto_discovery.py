@@ -3,14 +3,13 @@ Integration tests for workflow auto-discovery
 Tests that workflows are automatically discovered and registered
 """
 
-import pytest
-from shared.registry import get_registry
-
+import importlib.util
 
 # Import workspace modules to trigger auto-discovery
 import sys
-import importlib.util
 from pathlib import Path
+
+from shared.registry import get_registry
 
 # Manually trigger workspace discovery for tests
 workspace_path = Path(__file__).parent.parent.parent.parent / "workspace"

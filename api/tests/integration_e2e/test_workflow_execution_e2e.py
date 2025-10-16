@@ -3,12 +3,11 @@ End-to-end tests for Workflow Execution via Form Submission
 Tests the complete flow: Form Submit → Workflow Execution → Execution History
 """
 
+import time
+from pathlib import Path
+
 import pytest
 import requests
-import time
-import tempfile
-import shutil
-from pathlib import Path
 
 
 class TestWorkflowExecutionE2E:

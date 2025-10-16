@@ -3,17 +3,12 @@ Contract tests for Permissions API models
 Tests Pydantic validation rules for request/response models
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
-from shared.models import (
-    User,
-    UserPermission,
-    PermissionsData,
-    GrantPermissionsRequest,
-    ErrorResponse
-)
+from shared.models import GrantPermissionsRequest, PermissionsData, User, UserPermission
 
 
 class TestGrantPermissionsRequest:

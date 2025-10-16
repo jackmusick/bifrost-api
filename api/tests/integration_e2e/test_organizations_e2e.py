@@ -3,7 +3,6 @@ End-to-end tests for Organizations API
 Tests against running Azure Functions instance with real Azurite data
 """
 
-import pytest
 import requests
 
 

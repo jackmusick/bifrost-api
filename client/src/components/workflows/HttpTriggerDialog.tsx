@@ -10,7 +10,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import type { Workflow } from '@/types/workflow'
+import type { components } from '@/lib/v1'
+type Workflow = components['schemas']['WorkflowMetadata']
 
 interface HttpTriggerDialogProps {
   workflow: Workflow
@@ -44,20 +45,20 @@ export function HttpTriggerDialog({
   // Example parameters
   const exampleParams = workflow.parameters?.reduce((acc, param) => ({
     ...acc,
-    [param.name ?? 'param']: param.defaultValue || (param.type === 'string' ? '<string>' : param.type === 'int' ? 0 : param.type === 'bool' ? false : null),
-  }), {} as Record<string, any>) ?? {}
+    [param.name ?? 'param']: (param.type === 'string' ? '<string>' : param.type === 'int' ? 0 : param.type === 'bool' ? false : null),
+  }), {} as Record<string, unknown>) ?? {}
 
   // cURL example
   const curlExample = `curl -X POST "${directUrl}" \\
   -H "Content-Type: application/json" \\
   -H "x-functions-key: YOUR_FUNCTION_KEY" \\
-  ${false ? `-H "X-Organization-Id: YOUR_ORG_ID" \\\n  ` : ''}-d '${JSON.stringify(exampleParams, null, 2)}'`
+  -d '${JSON.stringify(exampleParams, null, 2)}'`
 
   // PowerShell example
   const powerShellExample = `$headers = @{
     "Content-Type" = "application/json"
-    "x-functions-key" = "YOUR_FUNCTION_KEY"${false ? '\n    "X-Organization-Id" = "YOUR_ORG_ID"' : ''}
-}
+    "x-functions-key" = "YOUR_FUNCTION_KEY"
+  }
 
 $body = @${JSON.stringify(exampleParams, null, 4).replace(/{/g, '{').replace(/}/g, '}')}
 
@@ -85,7 +86,6 @@ Invoke-RestMethod -Uri "${directUrl}" \`
             <Info className="h-4 w-4" />
             <AlertDescription className="text-sm">
               This workflow can be called from external systems using an Azure Function key for authentication.
-              {false && ' Organization ID is required for this workflow.'}
             </AlertDescription>
           </Alert>
 
@@ -145,12 +145,6 @@ Invoke-RestMethod -Uri "${directUrl}" \`
                 <Badge variant="outline">x-functions-key</Badge>
                 <span className="text-muted-foreground">Your Azure Function key</span>
               </div>
-              {false && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">X-Organization-Id</Badge>
-                  <span className="text-muted-foreground">Your organization UUID</span>
-                </div>
-              )}
             </div>
           </div>
 

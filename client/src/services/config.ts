@@ -7,12 +7,12 @@ import type { components } from "@/lib/v1";
 
 export const configService = {
     /**
-     * Get all configs (global or org-specific)
+     * Get all configs for current scope
+     * Scope is determined by X-Organization-Id header (set automatically by apiClient)
      */
-    async getConfigs(params?: { scope?: "global" | "org" }) {
-        const { data, error } = await apiClient.GET("/config", {
-            params: { query: params as Record<string, string> },
-        });
+    async getConfigs() {
+        // Scope is determined by X-Organization-Id header
+        const { data, error } = await apiClient.GET("/config");
         if (error) throw new Error(`Failed to fetch configs: ${error}`);
         return data;
     },
@@ -31,11 +31,10 @@ export const configService = {
     /**
      * Delete a config
      */
-    async deleteConfig(key: string, params?: { scope?: "global" | "org" }) {
+    async deleteConfig(key: string) {
         const { data, error } = await apiClient.DELETE("/config/{key}", {
             params: {
                 path: { key },
-                query: params as Record<string, string>,
             },
         });
         if (error) throw new Error(`Failed to delete config: ${error}`);

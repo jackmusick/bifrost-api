@@ -3,20 +3,13 @@ Integration Tests for Workflow Execution
 End-to-end tests for the workflow execution endpoint
 """
 
-import pytest
-import json
-import uuid
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from shared.models import (
-    ExecutionStatus,
-    WorkflowExecutionRequest,
-    WorkflowExecutionResponse
-)
+import pytest
+
+from shared.context import Caller, Organization, OrganizationContext
+from shared.models import ExecutionStatus
 from shared.registry import WorkflowRegistry
-from shared.storage import TableStorageService
-from shared.context import OrganizationContext, Organization, Caller
 
 
 @pytest.fixture
@@ -103,8 +96,8 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_with_validation_error(self, registry, mock_context):
         """Test workflow that raises ValidationError"""
 
-        from shared.error_handling import ValidationError
         from shared.decorators import workflow
+        from shared.error_handling import ValidationError
 
         @workflow(
             name="validation_workflow",

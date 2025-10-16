@@ -18,13 +18,13 @@ Usage:
     # Now workspace code imports are restricted
 """
 
-import sys
-import os
 import inspect
 import logging
+import os
+import sys
 from importlib.abc import MetaPathFinder
 from importlib.machinery import ModuleSpec
-from typing import List, Set, Optional, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class WorkspaceImportRestrictor(MetaPathFinder):
     BLOCKED_PREFIXES: tuple[str, ...] = ('engine.', 'shared.')
 
     # T029: Define whitelisted shared exports (public API)
-    ALLOWED_SHARED_EXPORTS: Set[str] = {
+    ALLOWED_SHARED_EXPORTS: set[str] = {
         'engine.shared.decorators',
         'engine.shared.context',
         'engine.shared.error_handling',
@@ -56,7 +56,7 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         'shared.models',  # Required by bifrost (internal dependency)
     }
 
-    def __init__(self, workspace_paths: List[str]) -> None:
+    def __init__(self, workspace_paths: list[str]) -> None:
         """
         Initialize restrictor with workspace paths.
 
@@ -83,9 +83,9 @@ class WorkspaceImportRestrictor(MetaPathFinder):
     def find_spec(
         self,
         fullname: str,
-        path: Optional[Any] = None,
-        target: Optional[Any] = None
-    ) -> Optional[ModuleSpec]:
+        path: Any | None = None,
+        target: Any | None = None
+    ) -> ModuleSpec | None:
         """
         Check if import should be blocked.
 
@@ -242,7 +242,7 @@ class WorkspaceImportRestrictor(MetaPathFinder):
 
 
 # T032: Install function for convenience
-def install_import_restrictions(workspace_paths: List[str]) -> None:
+def install_import_restrictions(workspace_paths: list[str]) -> None:
     """
     Install import restrictions before workspace code discovery.
 
@@ -288,7 +288,7 @@ def remove_import_restrictions() -> None:
     logger.info("Import restrictions removed")
 
 
-def get_active_restrictors() -> List[WorkspaceImportRestrictor]:
+def get_active_restrictors() -> list[WorkspaceImportRestrictor]:
     """
     Get list of active import restrictors.
 

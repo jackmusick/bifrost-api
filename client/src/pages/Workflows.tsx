@@ -13,7 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowsMetadata } from '@/hooks/useWorkflows'
 import { HttpTriggerDialog } from '@/components/workflows/HttpTriggerDialog'
-import type { Workflow } from '@/types/workflow'
+import type { components } from '@/lib/v1'
+type Workflow = components['schemas']['WorkflowMetadata']
 
 export function Workflows() {
   const navigate = useNavigate()
@@ -89,7 +90,8 @@ export function Workflows() {
                       {workflow.parameters?.length !== 1 ? 's' : ''}
                     </p>
                   </div>
-                  {workflow.tags && workflow.tags.length > 0 && (
+                  {/* Tags section temporarily disabled - tags property not available in WorkflowMetadata schema */}
+                  {/* {workflow.tags && workflow.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {workflow.tags.map((tag) => (
                         <Badge key={tag} variant="outline" className="text-xs">
@@ -97,7 +99,7 @@ export function Workflows() {
                         </Badge>
                       ))}
                     </div>
-                  )}
+                  )} */}
                 </div>
                 <Button
                   className="w-full mt-auto"

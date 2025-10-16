@@ -2,12 +2,13 @@
 Type definitions for Azure Functions with custom extensions
 """
 
-from typing import Protocol, Optional, Union, cast, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, Union, cast
+
 import azure.functions as func
 
 if TYPE_CHECKING:
+    from shared.auth import FunctionKeyPrincipal, UserPrincipal
     from shared.request_context import RequestContext
-    from shared.auth import UserPrincipal, FunctionKeyPrincipal
 
 
 class HttpRequestWithContext(Protocol):

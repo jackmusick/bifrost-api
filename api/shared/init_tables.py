@@ -5,10 +5,11 @@ Creates all required Azure Table Storage tables for both local (Azurite) and pro
 Run this script once during initial setup or after resetting Azurite
 """
 
-import os
 import logging
-from azure.data.tables import TableServiceClient
+import os
+
 from azure.core.exceptions import ResourceExistsError
+from azure.data.tables import TableServiceClient
 
 # Table names (consolidated from 14 → 4 tables)
 REQUIRED_TABLES = [

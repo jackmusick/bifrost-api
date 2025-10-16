@@ -22,8 +22,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Info, Sparkles, Copy, Check } from 'lucide-react'
 import { useCreateOAuthConnection, useUpdateOAuthConnection, useOAuthConnection } from '@/hooks/useOAuth'
-import type { CreateOAuthConnectionRequest, OAuthFlowType } from '@/types/oauth'
-import { OAUTH_PROVIDER_PRESETS } from '@/types/oauth'
+import type { components } from '@/lib/v1'
+import { OAuthProviderPreset, OAUTH_PROVIDER_PRESETS } from '@/lib/client-types'
+type CreateOAuthConnectionRequest = components['schemas']['CreateOAuthConnectionRequest']
+type OAuthConnectionDetail = components['schemas']['OAuthConnectionDetail']
+type OAuthFlowType = OAuthProviderPreset['oauth_flow_type']
 import { toast } from 'sonner'
 import { useEffect } from 'react'
 
@@ -37,7 +40,6 @@ interface CreateOAuthConnectionDialogProps {
 export function CreateOAuthConnectionDialog({
   open,
   onOpenChange,
-  orgId,
   editConnectionName,
 }: CreateOAuthConnectionDialogProps) {
   const [step, setStep] = useState<1 | 2>(1)
@@ -58,7 +60,7 @@ export function CreateOAuthConnectionDialog({
   const isEditMode = !!editConnectionName
   const createMutation = useCreateOAuthConnection()
   const updateMutation = useUpdateOAuthConnection()
-  const { data: existingConnection } = useOAuthConnection(editConnectionName || '', orgId)
+  const { data: existingConnection } = useOAuthConnection(editConnectionName || '') as { data?: OAuthConnectionDetail | undefined }
 
   // Load existing connection data when in edit mode
   useEffect(() => {
@@ -129,7 +131,7 @@ export function CreateOAuthConnectionDialog({
 
     if (isEditMode) {
       // Update existing connection
-      const updateData: any = {
+      const updateData: Record<string, string | null> = {
         client_id: formData.client_id,
         authorization_url: formData.authorization_url,
         token_url: formData.token_url,
@@ -138,20 +140,16 @@ export function CreateOAuthConnectionDialog({
 
       // Only include client_secret if provided
       if (formData.client_secret) {
-        updateData.client_secret = formData.client_secret
+        (updateData as Record<string, string | null>)['client_secret'] = formData.client_secret
       }
 
       await updateMutation.mutateAsync({
         connectionName: formData.connection_name,
-        data: updateData,
-        orgId: orgId || undefined,
+        data: updateData as Record<string, string | null>,
       })
     } else {
       // Create new connection
-      await createMutation.mutateAsync({
-        data: formData,
-        orgId: orgId || undefined,
-      })
+      await createMutation.mutateAsync(formData)
     }
 
     // Reset form and close
@@ -225,7 +223,7 @@ export function CreateOAuthConnectionDialog({
                 <Label htmlFor="description">Description (Optional)</Label>
                 <Textarea
                   id="description"
-                  value={formData.description}
+                  value={formData.description || ''}
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
@@ -372,7 +370,7 @@ export function CreateOAuthConnectionDialog({
                     <Input
                       id="client_secret"
                       type="password"
-                      value={formData.client_secret}
+                      value={formData.client_secret || ''}
                       onChange={(e) =>
                         setFormData({ ...formData, client_secret: e.target.value })
                       }

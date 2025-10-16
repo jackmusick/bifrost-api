@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Key, Plus, Pencil, Trash2, RefreshCw, Eye, EyeOff, AlertCircle, Info, Circle, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Key, Plus, Pencil, Trash2, RefreshCw, Info, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -34,27 +34,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   useSecrets,
   useCreateSecret,
   useUpdateSecret,
   useDeleteSecret,
-  useKeyVaultHealth,
 } from '@/hooks/useSecrets'
-import { useOrganizations } from '@/hooks/useOrganizations'
-import { useOrgScope } from '@/contexts/OrgScopeContext'
 
 interface SecretFormData {
   secretKey: string
@@ -71,20 +61,13 @@ export function Secrets() {
     value: '',
   })
   const [updateValue, setUpdateValue] = useState('')
-  const { scope } = useOrgScope()
+
 
   const { data: secretsData, isFetching, refetch } = useSecrets()
-  const { data: healthData } = useKeyVaultHealth()
 
   const createMutation = useCreateSecret()
   const updateMutation = useUpdateSecret()
   const deleteMutation = useDeleteSecret()
-
-  // Refetch secrets when scope changes (even though secrets aren't scoped,
-  // this ensures consistent UX with other pages showing loading state)
-  useEffect(() => {
-    refetch()
-  }, [scope.orgId, refetch])
 
   const handleCreate = () => {
     setFormData({ secretKey: '', value: '' })
@@ -105,6 +88,7 @@ export function Secrets() {
   const handleSubmitCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     await createMutation.mutateAsync({
+      orgId: 'GLOBAL',
       secretKey: formData.secretKey,
       value: formData.value,
     })
@@ -133,38 +117,6 @@ export function Secrets() {
     setSelectedSecretName(undefined)
   }
 
-  const getHealthStatus = () => {
-    if (!healthData) {
-      return {
-        color: 'text-yellow-500',
-        label: 'Checking...'
-      }
-    }
-
-    switch (healthData.status) {
-      case 'healthy':
-        return {
-          color: 'text-green-500',
-          label: 'Key Vault'
-        }
-      case 'degraded':
-        return {
-          color: 'text-yellow-500',
-          label: 'Key Vault'
-        }
-      case 'unhealthy':
-        return {
-          color: 'text-red-500',
-          label: 'Key Vault'
-        }
-      default:
-        return {
-          color: 'text-gray-500',
-          label: 'Key Vault'
-        }
-    }
-  }
-
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
       <div className="flex-shrink-0">
@@ -178,27 +130,12 @@ export function Secrets() {
               These secrets can be referenced in Config entries using type <code className="px-1.5 py-0.5 bg-muted rounded text-xs">secret_ref</code>
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 mr-2">
-              <Circle className={`h-4 w-4 fill-current ${getHealthStatus().color}`} />
-              <span className="text-sm text-muted-foreground">{getHealthStatus().label}</span>
-            </div>
-            <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Secret
-            </Button>
-          </div>
+          <Button onClick={handleCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Secret
+          </Button>
         </div>
       </div>
-
-      {healthData?.status === 'unhealthy' && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {healthData.message} - Secrets may not be accessible.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <Alert>
         <Info className="h-4 w-4" />

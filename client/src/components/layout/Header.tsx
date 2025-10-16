@@ -28,6 +28,8 @@ import { useScopeStore } from "@/stores/scopeStore";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { OrgScopeSwitcher } from "@/components/OrgScopeSwitcher";
 import { useWorkflowEngineHealth } from "@/hooks/useWorkflowEngineHealth";
+import type { components } from "@/lib/v1";
+type Organization = components["schemas"]["Organization"];
 
 export function Header() {
     const navigate = useNavigate();
@@ -35,7 +37,8 @@ export function Header() {
     const scope = useScopeStore((state) => state.scope);
     const setScope = useScopeStore((state) => state.setScope);
     const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
-    const { data: organizations, isLoading: orgsLoading } = useOrganizations();
+    const { data: organizationData, isLoading: orgsLoading } = useOrganizations();
+    const organizations: Organization[] = Array.isArray(organizationData) ? organizationData : [];
     const {
         data: engineHealth,
         isLoading: healthLoading,

@@ -5,7 +5,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { secretsService } from '@/services/secrets'
-import type { SecretCreateRequest, SecretUpdateRequest } from '@/types/secret'
+import type { components } from '@/lib/v1'
+type SecretCreateRequest = components['schemas']['SecretCreateRequest']
+type SecretUpdateRequest = components['schemas']['SecretUpdateRequest']
 import { toast } from 'sonner'
 
 export function useSecrets() {
@@ -76,21 +78,6 @@ export function useDeleteSecret() {
       toast.error('Failed to delete secret', {
         description: error.message,
       })
-    },
-  })
-}
-
-export function useKeyVaultHealth() {
-  return useQuery({
-    queryKey: ['health', 'keyvault'],
-    queryFn: () => secretsService.getHealthStatus(),
-    refetchInterval: 60000, // Refetch every minute
-    meta: {
-      onError: (error: Error) => {
-        toast.error('Failed to check Key Vault health', {
-          description: error.message,
-        })
-      },
     },
   })
 }

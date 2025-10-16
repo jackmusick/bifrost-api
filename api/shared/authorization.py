@@ -4,7 +4,7 @@ Provides permission checking and form access control
 """
 
 import logging
-from typing import List, Optional
+
 from shared.request_context import RequestContext
 from shared.storage import TableStorageService
 
@@ -31,13 +31,13 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
         return True
 
     # Get form - regular users need to check BOTH GLOBAL and their org
-    from shared.request_context import RequestContext as RC
+    from shared.request_context import RequestContext
 
     form_entity = None
 
     # Try GLOBAL first
     try:
-        global_context = RC(
+        global_context = RequestContext(
             user_id=context.user_id,
             email=context.email,
             name=context.name,
@@ -105,7 +105,7 @@ def can_user_execute_form(context: RequestContext, form_id: str) -> bool:
     return can_user_view_form(context, form_id)
 
 
-def get_user_visible_forms(context: RequestContext) -> List[dict]:
+def get_user_visible_forms(context: RequestContext) -> list[dict]:
     """
     Get all forms visible to the user (filtered by permissions).
 
@@ -121,7 +121,7 @@ def get_user_visible_forms(context: RequestContext) -> List[dict]:
     Returns:
         List of form entities user can view
     """
-    from shared.request_context import RequestContext as RC
+    from shared.request_context import RequestContext
 
     # Platform admin sees all forms in their current scope (set by X-Organization-Id)
     if context.is_platform_admin:
@@ -129,13 +129,14 @@ def get_user_visible_forms(context: RequestContext) -> List[dict]:
         all_forms = list(entities_service.query_entities(
             f"PartitionKey eq '{context.scope}' and RowKey ge 'form:' and RowKey lt 'form;'"
         ))
-        return all_forms
+        # Filter out inactive forms
+        return [form for form in all_forms if form.get("IsActive", True)]
 
     # Regular user: Query BOTH GLOBAL and their org's forms
     all_forms = []
 
     # Query GLOBAL forms
-    global_context = RC(
+    global_context = RequestContext(
         user_id=context.user_id,
         email=context.email,
         name=context.name,
@@ -145,7 +146,7 @@ def get_user_visible_forms(context: RequestContext) -> List[dict]:
     )
     global_entities_service = TableStorageService("Entities", context=global_context)
     global_forms = list(global_entities_service.query_entities(
-        f"PartitionKey eq 'GLOBAL' and RowKey ge 'form:' and RowKey lt 'form;'"
+        "PartitionKey eq 'GLOBAL' and RowKey ge 'form:' and RowKey lt 'form;'"
     ))
     all_forms.extend(global_forms)
 
@@ -176,6 +177,10 @@ def get_user_visible_forms(context: RequestContext) -> List[dict]:
 
         # Skip if we've already added this form
         if form_id in seen_form_ids:
+            continue
+
+        # Skip inactive forms
+        if not form_entity.get("IsActive", True):
             continue
 
         # Public forms always visible
@@ -224,7 +229,7 @@ def can_user_view_execution(context: RequestContext, execution_entity: dict) -> 
     return executed_by == context.user_id
 
 
-def get_user_executions(context: RequestContext, limit: Optional[int] = None) -> List[dict]:
+def get_user_executions(context: RequestContext, limit: int | None = None) -> list[dict]:
     """
     Get executions visible to the user.
 
@@ -272,7 +277,7 @@ def get_user_executions(context: RequestContext, limit: Optional[int] = None) ->
     return executions
 
 
-def get_user_role_ids(user_id: str, relationships_service: TableStorageService) -> List[str]:
+def get_user_role_ids(user_id: str, relationships_service: TableStorageService) -> list[str]:
     """
     Get all role IDs (UUIDs) assigned to a user.
 
@@ -292,7 +297,7 @@ def get_user_role_ids(user_id: str, relationships_service: TableStorageService) 
     return role_ids
 
 
-def get_form_role_ids(form_id: str, relationships_service: TableStorageService) -> List[str]:
+def get_form_role_ids(form_id: str, relationships_service: TableStorageService) -> list[str]:
     """
     Get all role IDs (UUIDs) that can access a form.
 

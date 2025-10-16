@@ -6,16 +6,12 @@ Handles CRUD operations for OAuth connections with Config table integration
 import json
 import logging
 from datetime import datetime
-from typing import List, Optional
+
 from azure.core.exceptions import ResourceNotFoundError
 
-from shared.storage import TableStorageService
+from models.oauth_connection import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
 from shared.keyvault import KeyVaultClient
-from models.oauth_connection import (
-    OAuthConnection,
-    CreateOAuthConnectionRequest,
-    UpdateOAuthConnectionRequest
-)
+from shared.storage import TableStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +174,7 @@ class OAuthStorageService:
         self,
         org_id: str,
         connection_name: str
-    ) -> Optional[OAuthConnection]:
+    ) -> OAuthConnection | None:
         """
         Get OAuth connection with org→GLOBAL fallback
 
@@ -210,7 +206,7 @@ class OAuthStorageService:
         self,
         org_id: str,
         include_global: bool = True
-    ) -> List[OAuthConnection]:
+    ) -> list[OAuthConnection]:
         """
         List OAuth connections for an organization
 
@@ -238,7 +234,7 @@ class OAuthStorageService:
         except ResourceNotFoundError:
             # Table doesn't exist yet - return empty list
             # Table will be created when first connection is added
-            logger.info(f"OAuthConnections table does not exist yet - returning empty list")
+            logger.info("OAuthConnections table does not exist yet - returning empty list")
 
         return connections
 
@@ -248,7 +244,7 @@ class OAuthStorageService:
         connection_name: str,
         request: UpdateOAuthConnectionRequest,
         updated_by: str
-    ) -> Optional[OAuthConnection]:
+    ) -> OAuthConnection | None:
         """
         Update an existing OAuth connection
 
@@ -355,7 +351,7 @@ class OAuthStorageService:
         org_id: str,
         connection_name: str,
         access_token: str,
-        refresh_token: Optional[str],
+        refresh_token: str | None,
         expires_at: datetime,
         token_type: str = "Bearer",
         updated_by: str = "system"
@@ -425,9 +421,9 @@ class OAuthStorageService:
         org_id: str,
         connection_name: str,
         status: str,
-        status_message: Optional[str] = None,
-        expires_at: Optional[datetime] = None,
-        last_refresh_at: Optional[datetime] = None
+        status_message: str | None = None,
+        expires_at: datetime | None = None,
+        last_refresh_at: datetime | None = None
     ) -> bool:
         """
         Update OAuth connection status
@@ -533,8 +529,8 @@ class OAuthStorageService:
             connection_name=entity["RowKey"],
             oauth_flow_type=entity["oauth_flow_type"],
             client_id=entity["client_id"],
-            client_secret_ref=entity["client_secret_ref"],
-            oauth_response_ref=entity["oauth_response_ref"],
+            client_secret_ref=entity.get("client_secret_ref"),
+            oauth_response_ref=entity.get("oauth_response_ref"),
             authorization_url=entity["authorization_url"],
             token_url=entity["token_url"],
             scopes=entity.get("scopes", ""),

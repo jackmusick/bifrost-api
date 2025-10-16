@@ -9,11 +9,12 @@ Tests the tiered authentication system:
 Verifies priority order and org context loading with each auth method.
 """
 
-import pytest
-import json
 import base64
-from unittest.mock import Mock, patch, AsyncMock
+import json
+from unittest.mock import patch
+
 import azure.functions as func
+import pytest
 
 
 @pytest.mark.asyncio
@@ -165,8 +166,9 @@ class TestAuthenticationFlow:
 
         Should raise AuthenticationError (to be converted to 403 by middleware).
         """
-        from shared.auth import AuthenticationService, AuthenticationError
         import os
+
+        from shared.auth import AuthenticationError, AuthenticationService
 
         # Create request with NO authentication
         req = func.HttpRequest(
@@ -217,7 +219,7 @@ class TestAuthenticationFlow:
 
         When both present, header should win.
         """
-        from shared.auth import AuthenticationService, FunctionKeyPrincipal
+        from shared.auth import AuthenticationService
 
         # Create request with function key in BOTH header and query
         req = func.HttpRequest(
@@ -246,8 +248,8 @@ class TestAuthenticationFlow:
 
         Even with function key (bypassing user auth), org validation should occur.
         """
-        from shared.middleware import load_organization_context
         from shared.context import OrganizationContext
+        from shared.middleware import load_organization_context
 
         # Create request with function key
         req = self.create_mock_request(function_key="test_key")
@@ -271,7 +273,7 @@ class TestAuthenticationFlow:
 
         Should raise AuthenticationError if header is not valid Base64 JSON.
         """
-        from shared.auth import AuthenticationService, AuthenticationError
+        from shared.auth import AuthenticationError, AuthenticationService
 
         # Create request with invalid Base64
         req = func.HttpRequest(
