@@ -45,11 +45,12 @@ jobs:
             - name: Start Azure Functions in background
               uses: JarvusInnovations/background-action@v1
               with:
-                  run: cd api && func start --port 7071 --worker-runtime python
+                  run: func start --port 7071
                   wait-on: http://localhost:7071/api/health
                   wait-for: 2m
                   log-output-if: failure
                   log-output: true
+                  working-directory: api
               env:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
                   FUNCTIONS_WORKER_RUNTIME: python
