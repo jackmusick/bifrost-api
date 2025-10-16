@@ -36,17 +36,17 @@ jobs:
                   pip install pytest pytest-cov pytest-asyncio
 
             - name: Start Azurite in background
-              uses: JarvusInnovations/background-action@v1
+              uses: JarvusInnovations/background-action@v1.0.7
               with:
                   run: npx -y azurite
                   wait-on: tcp:127.0.0.1:10002
                   wait-for: 60s
 
             - name: Start Azure Functions in background
-              uses: JarvusInnovations/background-action@v1
+              uses: JarvusInnovations/background-action@v1.0.7
               with:
                   run: func start --port 7071
-                  wait-on: http://localhost:7071/api/health
+                  wait-on: http-get://localhost:7071/api/health
                   wait-for: 2m
                   log-output-if: failure
                   log-output: true
