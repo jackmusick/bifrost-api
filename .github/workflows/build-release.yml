@@ -9,6 +9,9 @@ on:
 # Only run in upstream repo to prevent forks from creating releases
 # Forks should use their own deployment workflows
 
+permissions:
+    contents: write  # Required to create releases
+
 jobs:
     build-api:
         runs-on: ubuntu-latest

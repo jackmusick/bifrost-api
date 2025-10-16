@@ -3,8 +3,14 @@ name: Tests and Coverage
 on:
     push:
         branches: [main]
+        paths:
+            - 'api/**'
+            - '.github/workflows/test-and-coverage.yml'
     pull_request:
         branches: [main]
+        paths:
+            - 'api/**'
+            - '.github/workflows/test-and-coverage.yml'
     workflow_dispatch:
 jobs:
     test-api:
