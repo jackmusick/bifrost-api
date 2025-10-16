@@ -221,8 +221,8 @@
                             "value": "Production"
                         },
                         {
-                            "name": "KEY_VAULT_NAME",
-                            "value": "[variables('keyVaultName')]"
+                            "name": "AZURE_KEY_VAULT_URL",
+                            "value": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]"
                         },
                         {
                             "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
@@ -321,6 +321,10 @@
         "keyVaultName": {
             "type": "string",
             "value": "[variables('keyVaultName')]"
+        },
+        "keyVaultUrl": {
+            "type": "string",
+            "value": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]"
         },
         "resourceGroupName": {
             "type": "string",

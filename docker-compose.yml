@@ -9,15 +9,6 @@ services:
     volumes:
       - azurite-data:/data
 
-  keyvault:
-    image: jamesgoulddev/azure-keyvault-emulator:latest-arm # Change to latest when using amd64
-    ports:
-      - "4997:4997" # Key Vault API
-    environment:
-      - Persist=true
-    volumes:
-      - ./keyvault-certs:/certs
-
   functions:
     build:
       context: ./api
@@ -31,17 +22,15 @@ services:
       - ENABLE_DEBUGGING=${ENABLE_DEBUGGING:-true}
       - AZURE_FUNCTIONS_ENVIRONMENT=Development
       - WEBSITE_AUTH_ENCRYPTION_KEY=C0sm0Rk3y567890123456789012345678901234567890123456789012345
-      - AZURE_KEY_VAULT_URL=https://keyvault:4997
-      - REQUESTS_CA_BUNDLE=/certs/emulator.crt
-      - SSL_CERT_FILE=/certs/emulator.crt
+      - AZURE_KEY_VAULT_URL=${AZURE_KEY_VAULT_URL}
+      - AZURE_CONFIG_DIR=/root/.azure # This allows the Functions container to use the Azure CLI credentials from the host
     volumes:
+      - ~/.azure:/root/.azure # Mount Azure CLI credentials
       - ./api:/home/site/wwwroot # Live code reload
       - ./api/workspace:/workspace # Workspace directory (local dev)
       - ./api/tmp:/tmp # Temporary storage (local dev)
-      - ./keyvault-certs:/certs:ro # Share Key Vault certs
     depends_on:
       - azurite
-      - keyvault
 
   swa:
     build:

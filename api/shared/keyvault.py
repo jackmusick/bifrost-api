@@ -7,52 +7,17 @@ create, read, update, delete, and list operations for the client API.
 
 import logging
 import os
-from datetime import datetime, timedelta
 
-from azure.core.credentials import AccessToken
 from azure.core.exceptions import (
     ClientAuthenticationError,
     HttpResponseError,
     ResourceNotFoundError,
     ServiceRequestError,
 )
-from azure.core.pipeline.transport import RequestsTransport
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
 logger = logging.getLogger(__name__)
-
-
-class EmulatorCredential:
-    """
-    Dummy credential for Azure Key Vault emulator that returns a minimal JWT token.
-    The james-gould emulator requires a valid JWT structure.
-    """
-
-    def get_token(self, *scopes, **kwargs):
-        """Return a minimal JWT access token for the emulator."""
-        import base64
-        import json
-
-        # Create minimal JWT header and payload
-        header = {"alg": "none", "typ": "JWT"}
-        payload = {
-            "aud": "https://vault.azure.net",
-            "iss": "https://sts.windows.net/emulator/",
-            "exp": int((datetime.now() + timedelta(hours=1)).timestamp()),
-            "nbf": int(datetime.now().timestamp()),
-            "iat": int(datetime.now().timestamp())
-        }
-
-        # Base64 encode (without padding for simplicity)
-        header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
-        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
-
-        # Create unsigned JWT (alg: none)
-        token = f"{header_b64}.{payload_b64}."
-
-        expires_on = int((datetime.now() + timedelta(hours=1)).timestamp())
-        return AccessToken(token, expires_on)
 
 
 class KeyVaultClient:
@@ -82,35 +47,14 @@ class KeyVaultClient:
         # Initialize client if vault URL is provided
         if self.vault_url:
             try:
-                # For local Key Vault emulator, disable challenge resource verification
-                # The emulator uses 'keyvault:4997' which doesn't match Azure's domain pattern
-                is_local_emulator = "keyvault:" in self.vault_url or "localhost:" in self.vault_url
-
-                # Use EmulatorCredential for emulator, DefaultAzureCredential for production
-                if is_local_emulator:
-                    self._credential = EmulatorCredential()
-                    logger.info("Using EmulatorCredential for Key Vault emulator")
-                else:
-                    self._credential = DefaultAzureCredential()
-                    logger.info("Using DefaultAzureCredential for Key Vault")
-
-                # Configure custom transport for SSL certificate verification with emulator
-                transport = None
-                if is_local_emulator:
-                    cert_path = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-                    if cert_path and os.path.exists(cert_path):
-                        transport = RequestsTransport(verify=cert_path)
-                        logger.info(f"Using custom CA bundle for Key Vault: {cert_path}")
-                    else:
-                        logger.warning("Certificate path not found, SSL verification may fail")
+                self._credential = DefaultAzureCredential()
+                logger.info("Using DefaultAzureCredential for Key Vault")
 
                 self._client = SecretClient(
                     vault_url=self.vault_url,
-                    credential=self._credential,
-                    verify_challenge_resource=not is_local_emulator,
-                    transport=transport
+                    credential=self._credential
                 )
-                logger.info(f"Key Vault manager initialized for {self.vault_url} (local emulator: {is_local_emulator})")
+                logger.info(f"Key Vault manager initialized for {self.vault_url}")
             except Exception as e:
                 logger.error(f"Failed to initialize Key Vault client: {e}")
                 raise

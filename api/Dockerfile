@@ -5,6 +5,13 @@ FROM mcr.microsoft.com/azure-functions/python:4.0-python3.11
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
+# Install Azure CLI for DefaultAzureCredential support
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /
 RUN pip install -r /requirements.txt
 
