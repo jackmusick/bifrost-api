@@ -30,11 +30,11 @@ jobs:
             - name: Build API package
               run: |
                   cd api
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+                  python -m pip install -q --upgrade pip
+                  pip install -q -r requirements.txt --target=".python_packages/lib/site-packages"
 
                   # Create zip excluding unnecessary files
-                  zip -r ../api.zip . \
+                  zip -q -r ../api.zip . \
                     -x "*.pyc" \
                     -x "*__pycache__*" \
                     -x "tests/*" \
