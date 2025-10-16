@@ -36,12 +36,13 @@ jobs:
                   pip install pytest pytest-cov pytest-asyncio
 
             - name: Start Azurite
-              run: npx -y azurite
+              run: npx -y azurite &
 
             - name: Start Azure Functions in background
               run: |
                   cd api
-                  func start --port 7071 --worker-runtime python
+                  func start --port 7071 --worker-runtime python > /tmp/func.log 2>&1 &
+                  echo $! > /tmp/func.pid
               env:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
                   AzureWebJobsSecretStorageType: files
