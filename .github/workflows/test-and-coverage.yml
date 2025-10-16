@@ -46,11 +46,10 @@ jobs:
               env:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
                   FUNCTIONS_WORKER_RUNTIME: python
-                  AZURE_FUNCTIONS_ENVIRONMENT: Development
+                  AZURE_FUNCTIONS_ENVIRONMENT: Testing
             - name: Wait for Azure Functions to be ready
               run: |
                   timeout 30 bash -c 'until curl -sf http://localhost:7071/api/health > /dev/null; do sleep 2; done'
-
             - name: Run tests with coverage
               working-directory: ./api
               run: |

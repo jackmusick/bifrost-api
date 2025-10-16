@@ -209,7 +209,9 @@ app.register_functions(secrets_bp)  # Secret management endpoints
 app.register_functions(health_bp)  # Health monitoring endpoints
 app.register_functions(metrics_bp)  # System metrics endpoints
 app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
-app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer
+
+if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
+    app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer
 
 # Register blueprints - Workflow Engine (unified in functions/)
 app.register_functions(discovery_bp)  # Workflow and data provider discovery
