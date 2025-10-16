@@ -189,7 +189,7 @@ def keyvault_health(req: func.HttpRequest) -> func.HttpResponse:
             "lastChecked": "2025-10-12T12:34:56.789Z"
         }
     """
-    user = req.user
+    user = req.user  # type: ignore[attr-defined]
     logger.info(f"User {user.email} checking Key Vault health")
 
     try:

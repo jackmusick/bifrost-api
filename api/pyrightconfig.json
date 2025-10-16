@@ -3,8 +3,7 @@
         "functions/**/*.py",
         "shared/**/*.py",
         "services/**/*.py",
-        "models/**/*.py",
-        "engine/**/*.py"
+        "models/**/*.py"
     ],
     "exclude": [
         "**/__pycache__",

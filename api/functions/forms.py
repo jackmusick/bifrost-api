@@ -39,7 +39,7 @@ bp = func.Blueprint()
     summary="List forms",
     description="List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).",
     tags=["Forms"],
-    response_model=list[Form]
+    response_model=None  # Returns list[Form] but openapi_endpoint expects BaseModel
 )
 @with_request_context
 async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
@@ -51,7 +51,7 @@ async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
     - Platform admins: All forms in their org scope (or all if no org)
     - Regular users: Only forms they can access (public forms + forms assigned to their roles)
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} listing forms (org: {context.org_id or 'GLOBAL'})")
 
     try:
@@ -127,7 +127,7 @@ async def create_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} creating form for org {context.org_id or 'GLOBAL'}")
 
     try:
@@ -257,8 +257,10 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Requires: User must have access to the form (public or role-assigned)
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     form_id = req.route_params.get("formId")
+    # Type narrowing for Pyright - formId comes from route so should always exist
+    assert form_id is not None
 
     logger.info(f"User {context.user_id} retrieving form {form_id}")
 
@@ -379,8 +381,9 @@ async def update_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     form_id = req.route_params.get("formId")
+    assert form_id is not None, "formId is required"
 
     logger.info(f"User {context.user_id} updating form {form_id}")
 
@@ -540,8 +543,10 @@ async def delete_form(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     form_id = req.route_params.get("formId")
+
+    assert form_id is not None, "formId is required"
 
     logger.info(f"User {context.user_id} deleting form {form_id}")
 
@@ -626,9 +631,11 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
     # Both decorators are applied:
     # - req.context = RequestContext (for authorization)
     # - req.org_context = OrganizationContext (for workflow execution)
-    request_context = req.context
-    workflow_context = req.org_context
+    request_context = req.context  # type: ignore[attr-defined]
+    workflow_context = req.org_context  # type: ignore[attr-defined]
     form_id = req.route_params.get("formId")
+    # Type narrowing for Pyright - formId comes from route so should always exist
+    assert form_id is not None
 
     logger.info(f"User {request_context.user_id} submitting form {form_id}")
 

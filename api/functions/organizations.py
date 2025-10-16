@@ -47,7 +47,7 @@ async def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
     - Platform Admins: See all organizations
     - Organization Users: Access denied (403)
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} listing organizations")
 
     try:
@@ -118,7 +118,7 @@ async def create_organization(req: func.HttpRequest) -> func.HttpResponse:
     POST /api/organizations
     Create a new client organization
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} creating organization")
 
     try:
@@ -234,8 +234,10 @@ async def get_organization(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
+
+    assert org_id is not None, "orgId is required"
 
     logger.info(f"User {context.user_id} retrieving organization {org_id}")
 
@@ -313,8 +315,10 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
+
+    assert org_id is not None, "orgId is required"
 
     logger.info(f"User {context.user_id} updating organization {org_id}")
 
@@ -351,7 +355,8 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
         if update_request.isActive is not None:
             org_entity["IsActive"] = update_request.isActive
 
-        org_entity["UpdatedAt"] = datetime.utcnow().isoformat()
+        updated_at = datetime.utcnow()
+        org_entity["UpdatedAt"] = updated_at.isoformat()
 
         # Update in table storage
         entities_service.update_entity(org_entity)
@@ -367,7 +372,7 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
             isActive=org_entity.get("IsActive", True),
             createdAt=org_entity["CreatedAt"],
             createdBy=org_entity["CreatedBy"],
-            updatedAt=org_entity["UpdatedAt"]
+            updatedAt=updated_at
         )
 
         return func.HttpResponse(
@@ -426,8 +431,10 @@ async def delete_organization(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
+
+    assert org_id is not None, "orgId is required"
 
     logger.info(f"User {context.user_id} deleting organization {org_id}")
 

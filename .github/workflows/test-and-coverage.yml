@@ -21,12 +21,23 @@ jobs:
               with:
                   python-version: "3.11"
 
-            - name: Install Azure Functions Core Tools
+            - name: Start Azurite
               run: |
-                  wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
-                  sudo dpkg -i packages-microsoft-prod.deb
-                  sudo apt-get update
-                  sudo apt-get install -y azure-functions-core-tools-4
+                  npx --yes azurite --silent --inMemoryPersistence &
+                  # Wait for Azurite to be ready by checking table service
+                  for i in {1..30}; do
+                    if curl -s http://127.0.0.1:10002/devstoreaccount1?comp=properties > /dev/null 2>&1; then
+                      echo "Azurite is ready!"
+                      break
+                    fi
+                    if [ $i -eq 30 ]; then
+                      echo "Timeout waiting for Azurite"
+                      exit 1
+                    fi
+                    echo "Waiting for Azurite to start... ($i/30)"
+                    sleep 1
+                  done
+              shell: bash
 
             - name: Install dependencies
               run: |
@@ -35,31 +46,18 @@ jobs:
                   pip install -r requirements.txt
                   pip install pytest pytest-cov pytest-asyncio
 
-            - name: Start Azurite in background
-              uses: JarvusInnovations/background-action@v1.0.7
-              with:
-                  run: npx -y azurite
-                  wait-on: tcp:127.0.0.1:10002
-                  wait-for: 60s
-
-            - name: Start Azure Functions in background
-              uses: JarvusInnovations/background-action@v1.0.7
-              with:
-                  run: func start --port 7071
-                  wait-on: http-get://localhost:7071/api/health
-                  wait-for: 2m
-                  log-output-if: failure
-                  log-output: true
-                  working-directory: api
+            - name: Seed Azurite with test data
+              working-directory: ./api
+              run: |
+                  export PYTHONPATH=.
+                  python seed_data.py
               env:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
-                  FUNCTIONS_WORKER_RUNTIME: python
-                  AZURE_FUNCTIONS_ENVIRONMENT: Testing
-                  AZURE_KEY_VAULT_URL: https://mock-keyvault.vault.azure.net/
+
             - name: Run tests with coverage
               working-directory: ./api
               run: |
-                  pytest tests/ --cov=. --cov-report=xml --cov-report=term -v
+                  npm run test:ci
               env:
                   PYTHONPATH: .
                   AzureWebJobsStorage: UseDevelopmentStorage=true
@@ -73,4 +71,4 @@ jobs:
                   files: ./api/coverage.xml
                   flags: api
                   name: api-coverage
-                  fail_ci_if_error: false
+                  token: ${{ secrets.CODECOV_TOKEN }}

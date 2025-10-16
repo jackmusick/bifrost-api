@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
-from azure.data.tables import TableClient
+from azure.data.tables import TableClient, UpdateMode
 
 if TYPE_CHECKING:
     from shared.request_context import RequestContext
@@ -29,7 +29,7 @@ class TableStorageService:
     Provides org-scoped query helpers and common CRUD operations
     """
 
-    def __init__(self, table_name: str, connection_string: str = None, context: Optional['RequestContext'] = None):
+    def __init__(self, table_name: str, connection_string: str | None = None, context: Optional['RequestContext'] = None):
         """
         Initialize Table Storage client
 
@@ -188,9 +188,9 @@ class TableStorageService:
 
             # Update entity
             if mode == "replace":
-                self.table_client.update_entity(entity, mode="replace")
+                self.table_client.update_entity(entity, mode=UpdateMode.REPLACE)
             else:
-                self.table_client.update_entity(entity, mode="merge")
+                self.table_client.update_entity(entity, mode=UpdateMode.MERGE)
 
             logger.info(
                 f"Updated entity ({mode}): {self.table_name} "
@@ -233,9 +233,9 @@ class TableStorageService:
 
             # Upsert entity
             if mode == "replace":
-                self.table_client.upsert_entity(entity, mode="replace")
+                self.table_client.upsert_entity(entity, mode=UpdateMode.REPLACE)
             else:
-                self.table_client.upsert_entity(entity, mode="merge")
+                self.table_client.upsert_entity(entity, mode=UpdateMode.MERGE)
 
             logger.info(
                 f"Upserted entity ({mode}): {self.table_name} "
@@ -284,7 +284,7 @@ class TableStorageService:
             raise
 
     def query_entities(
-        self, filter: str = None, select: list[str] = None
+        self, filter: str | None = None, select: list[str] | None = None
     ) -> Iterator[dict]:
         """
         Query entities with optional filter and select
@@ -353,7 +353,7 @@ class TableStorageService:
     # Helper methods
 
     def query_by_org(
-        self, org_id: str, row_key_prefix: str = None, select: list[str] = None
+        self, org_id: str, row_key_prefix: str | None = None, select: list[str] | None = None
     ) -> Iterator[dict]:
         """
         Query entities for a specific organization

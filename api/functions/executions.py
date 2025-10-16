@@ -63,7 +63,7 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
     - Regular users: Only THEIR executions
     """
     try:
-        context = req.context
+        context = req.context  # type: ignore[attr-defined]
 
         # Get query parameters
         workflow_name = req.params.get('workflowName')
@@ -117,7 +117,7 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
                 'executionId': execution_id,
                 'workflowName': entity.get('WorkflowName'),
                 'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
-                'status': _map_status_to_frontend(entity.get('Status')),
+                'status': _map_status_to_frontend(entity.get('Status') or ''),
                 'errorMessage': entity.get('ErrorMessage'),
                 'executedBy': entity.get('ExecutedBy'),
                 'startedAt': to_iso(entity.get('StartedAt')),
@@ -178,7 +178,7 @@ async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
     - Regular users: Can only view THEIR executions
     """
     try:
-        context = req.context
+        context = req.context  # type: ignore[attr-defined]
 
         # Get execution ID from route
         execution_id = req.route_params.get('executionId')
@@ -227,16 +227,16 @@ async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
             'executionId': entity.get('ExecutionId'),
             'workflowName': entity.get('WorkflowName'),
             'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
-            'status': _map_status_to_frontend(entity.get('Status')),
-            'inputData': json.loads(entity.get('InputData', '{}')),
-            'result': json.loads(entity.get('Result')) if entity.get('Result') else None,
+            'status': _map_status_to_frontend(entity.get('Status') or ''),
+            'inputData': json.loads(entity.get('InputData') or '{}'),
+            'result': json.loads(entity.get('Result') or 'null') if entity.get('Result') else None,
             'errorMessage': entity.get('ErrorMessage'),
             'executedBy': entity.get('ExecutedBy'),
             'startedAt': to_iso(entity.get('StartedAt')),
             'completedAt': to_iso(entity.get('CompletedAt')),
             'formId': entity.get('FormId'),
             'durationMs': entity.get('DurationMs'),
-            'logs': json.loads(entity.get('Logs')) if entity.get('Logs') else []
+            'logs': json.loads(entity.get('Logs') or '[]') if entity.get('Logs') else []
         }
 
         return func.HttpResponse(

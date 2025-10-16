@@ -45,7 +45,7 @@ async def get_metrics(req: func.HttpRequest) -> func.HttpResponse:
     """
     from shared.registry import get_registry
 
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} retrieving dashboard metrics")
 
     try:
@@ -103,11 +103,12 @@ async def get_metrics(req: func.HttpRequest) -> func.HttpResponse:
 
             # Collect recent failures (limit to 10)
             if status == "Failed" and len(recent_failures) < 10:
+                started_at = entity.get("StartedAt")
                 recent_failures.append({
                     "executionId": entity.get("ExecutionId"),
                     "workflowName": entity.get("WorkflowName"),
                     "errorMessage": entity.get("ErrorMessage"),
-                    "startedAt": entity.get("StartedAt").isoformat() if entity.get("StartedAt") else None
+                    "startedAt": started_at.isoformat() if started_at else None
                 })
 
         # Calculate success rate

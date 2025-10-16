@@ -8,7 +8,12 @@
         "lint": "ruff check .",
         "lint:fix": "ruff check --fix .",
         "format": "ruff format .",
-        "test": "pytest",
+        "test": "pytest tests/integration -v",
+        "test:unit": "pytest tests/unit -v",
+        "test:integration": "pytest tests/integration -v",
+        "test:e2e": "pytest tests/e2e -v",
+        "test:all": "pytest tests/ -v",
+        "test:ci": "pytest tests/unit --cov --cov-branch --cov-report=xml && pytest tests/integration --cov --cov-branch --cov-report=xml --cov-append --cov-report=xml",
         "test:watch": "pytest-watch",
         "check": "npm run lint && npm run typecheck && npm run test"
     },

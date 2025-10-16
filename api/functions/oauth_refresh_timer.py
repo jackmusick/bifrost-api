@@ -116,8 +116,10 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
 
                 # Retrieve OAuth tokens from Key Vault
                 try:
+                    assert keyvault._client is not None, "Key Vault client not initialized"
                     secret = keyvault._client.get_secret(keyvault_secret_name)
                     oauth_response_json = secret.value
+                    assert oauth_response_json is not None, "OAuth response is None"
                     oauth_response = json.loads(oauth_response_json)
                 except Exception as e:
                     raise Exception(f"Failed to retrieve OAuth tokens from Key Vault: {e}") from e
@@ -143,6 +145,7 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
                         if client_secret_config:
                             keyvault_secret_name = client_secret_config.get("Value")
                             if keyvault_secret_name:
+                                assert keyvault._client is not None, "Key Vault client not initialized"
                                 secret = keyvault._client.get_secret(keyvault_secret_name)
                                 client_secret = secret.value
                     except Exception as e:

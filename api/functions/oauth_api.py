@@ -778,8 +778,10 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
         # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-response-HaloPSA")
         # so we use the _client directly instead of get_secret() which expects org_id and secret_key
         try:
+            assert keyvault._client is not None, "Key Vault client not initialized"
             secret = keyvault._client.get_secret(keyvault_secret_name)
             oauth_response_json = secret.value
+            assert oauth_response_json is not None, "OAuth response is None"
             oauth_response = json.loads(oauth_response_json)
         except Exception as e:
             logger.error(
@@ -825,6 +827,7 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
                 if client_secret_config:
                     keyvault_secret_name = client_secret_config.get("Value")
                     if keyvault_secret_name:
+                        assert keyvault._client is not None, "Key Vault client not initialized"
                         secret = keyvault._client.get_secret(keyvault_secret_name)
                         client_secret = secret.value
                         logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
@@ -1035,6 +1038,7 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
                     if keyvault_secret_name:
                         try:
                             keyvault = KeyVaultClient()
+                            assert keyvault._client is not None, "Key Vault client not initialized"
                             secret = keyvault._client.get_secret(keyvault_secret_name)
                             client_secret = secret.value
                             logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
@@ -1286,8 +1290,10 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
         # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-response-HaloPSA")
         # so we use the _client directly instead of get_secret() which expects org_id and secret_key
         try:
+            assert keyvault._client is not None, "Key Vault client not initialized"
             secret = keyvault._client.get_secret(keyvault_secret_name)
             oauth_response_json = secret.value
+            assert oauth_response_json is not None, "OAuth response is None"
             oauth_response = json.loads(oauth_response_json)
         except Exception as e:
             logger.error(
@@ -1415,9 +1421,11 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
 
         # Parse errors if present
         errors = []
-        if job_status.get("Errors"):
+        errors_str = job_status.get("Errors")
+        if errors_str:
             try:
-                errors = json.loads(job_status.get("Errors"))
+                assert errors_str is not None, "Errors field is None"
+                errors = json.loads(errors_str)
             except Exception:
                 errors = []
 

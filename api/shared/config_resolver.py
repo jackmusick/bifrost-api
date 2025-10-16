@@ -95,10 +95,12 @@ class ConfigResolver:
 
             # If type is secret_ref, resolve from Key Vault
             if config_type == ConfigType.SECRET_REF.value or config_type == "secret_ref":
+                assert config_value is not None, f"secret_ref value is None for key '{key}'"
                 return self._resolve_secret_ref(org_id, key, config_value)
 
             # Otherwise return plain value
             logger.debug(f"Retrieved plain config value: {key} (type: {config_type})")
+            assert config_value is not None, f"config value is None for key '{key}'"
             return self._parse_value(config_value, config_type)
 
         # Fallback: return value as-is

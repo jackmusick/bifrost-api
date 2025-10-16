@@ -220,6 +220,7 @@ def _is_platform_admin(email: str, display_name: str, has_platform_admin_role: b
 
         try:
             user_entity = users_service.get_entity(email, "user")
+            assert user_entity is not None, "User entity not found"
             is_admin = user_entity.get("IsPlatformAdmin", False)
             user_type = user_entity.get("UserType")
             logger.info(f"User lookup for {email}: IsPlatformAdmin={is_admin}, UserType={user_type}")
@@ -280,6 +281,7 @@ def _get_user_org_id(email: str) -> str | None:
 
         # Extract org_id from RowKey "userperm:{email}:{org_id}"
         row_key = entities[0].get("RowKey")
+        assert row_key is not None, "RowKey is None"
         parts = row_key.split(":", 2)
         if len(parts) >= 3:
             org_id = parts[2]

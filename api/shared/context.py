@@ -235,6 +235,7 @@ class OrganizationContext:
 
         # Get OAuth response config entry from the same scope as the connection
         oauth_response_key = f"config:{oauth_response_ref}"
+        assert connection_scope is not None, "connection_scope is None"
         oauth_response_config = config_table.get_entity(connection_scope, oauth_response_key)
 
         if not oauth_response_config:
@@ -254,8 +255,10 @@ class OrganizationContext:
         # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-HaloPSA-response")
         # so we use the _client directly instead of get_secret() which expects org_id and secret_key
         try:
+            assert keyvault._client is not None, "KeyVault client is None"
             secret = keyvault._client.get_secret(keyvault_secret_name)
             oauth_response_json = secret.value
+            assert oauth_response_json is not None, "OAuth response JSON is None"
             oauth_response = json.loads(oauth_response_json)
         except Exception as e:
             logger.error(
@@ -515,7 +518,7 @@ class OrganizationContext:
         endpoint: str,
         status_code: int,
         duration_ms: int,
-        error: str = None
+        error: str | None = None
     ) -> None:
         """
         Track external integration call.

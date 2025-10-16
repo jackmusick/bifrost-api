@@ -11,7 +11,7 @@ import os
 import uuid
 from datetime import datetime, timedelta
 
-from azure.data.tables import TableClient
+from azure.data.tables import TableClient, TableServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -352,6 +352,52 @@ SAMPLE_USERS = [
 ]
 
 
+def is_development_storage(connection_string: str) -> bool:
+    """Check if using development storage (Azurite)"""
+    return "UseDevelopmentStorage=true" in connection_string or "devstoreaccount1" in connection_string
+
+
+def delete_all_tables(connection_string: str, table_names: list[str]):
+    """Delete all tables (only for development storage)"""
+    if not is_development_storage(connection_string):
+        logger.warning("⚠️  Refusing to delete tables - not using development storage")
+        return
+
+    logger.info("Deleting all tables (development storage only)...")
+    service_client = TableServiceClient.from_connection_string(connection_string)
+
+    for table_name in table_names:
+        try:
+            service_client.delete_table(table_name)
+            logger.info(f"  ✓ Deleted table: {table_name}")
+        except Exception as e:
+            if "TableNotFound" in str(e) or "ResourceNotFound" in str(e):
+                logger.info(f"  ⊘ Table doesn't exist: {table_name}")
+            else:
+                logger.warning(f"  ⚠️  Error deleting {table_name}: {e}")
+
+
+def create_all_tables(connection_string: str, table_names: list[str]):
+    """Create all tables (only for development storage)"""
+    if not is_development_storage(connection_string):
+        logger.warning("⚠️  Refusing to create tables - not using development storage")
+        return
+
+    logger.info("Creating all tables (development storage only)...")
+    service_client = TableServiceClient.from_connection_string(connection_string)
+
+    for table_name in table_names:
+        try:
+            service_client.create_table(table_name)
+            logger.info(f"  ✓ Created table: {table_name}")
+        except Exception as e:
+            if "TableAlreadyExists" in str(e) or "already exists" in str(e).lower():
+                logger.info(f"  ⊘ Table already exists: {table_name}")
+            else:
+                logger.error(f"  ✗ Error creating {table_name}: {e}")
+                raise
+
+
 def seed_table(connection_string: str, table_name: str, entities: list):
     """Seed a table with sample data (idempotent)"""
     table_client = TableClient.from_connection_string(
@@ -390,6 +436,19 @@ def seed_all_data(connection_string: str = None):
 
     logger.info("Seeding sample data for local development (4-table structure)...")
     logger.info("="*60)
+
+    # Define all table names
+    table_names = ["Config", "Entities", "Relationships", "Users"]
+
+    # For development storage only: delete and recreate all tables
+    if is_development_storage(connection_string):
+        logger.info("\n🔄 Development storage detected - resetting tables...")
+        delete_all_tables(connection_string, table_names)
+        create_all_tables(connection_string, table_names)
+        logger.info("✓ Tables reset complete\n")
+    else:
+        logger.info("\n⚠️  Production storage detected - tables will not be reset")
+        logger.info("    Only missing entities will be inserted\n")
 
     results = {}
 

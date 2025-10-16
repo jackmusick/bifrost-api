@@ -96,7 +96,7 @@ def mask_sensitive_value(key: str, value: str, value_type: str) -> str:
     summary="Get configuration values",
     description="Get configuration values for current scope. Platform admins see all configs in their scope (set via X-Organization-Id header). Regular users see configs for their org.",
     tags=["Configuration"],
-    response_model=list[Config]
+    response_model=None  # Returns list[Config] but openapi_endpoint expects BaseModel
 )
 @with_request_context
 @require_platform_admin
@@ -111,7 +111,7 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
 
     logger.info(f"User {context.user_id} retrieving config for scope={context.scope}")
 
@@ -194,7 +194,7 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
 
     logger.info(f"User {context.user_id} setting config for scope={context.scope}")
 
@@ -336,8 +336,9 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
 
     Note: Prevents deletion if config is referenced by OAuth connections
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     key = req.route_params.get("key")
+    assert key is not None, "key is required"
 
     logger.info(f"User {context.user_id} deleting config key '{key}' from scope={context.scope}")
 
@@ -444,8 +445,10 @@ async def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
+
+    assert org_id is not None, "orgId is required"
 
     logger.info(f"User {context.user_id} retrieving integrations for org {org_id}")
 
@@ -518,8 +521,10 @@ async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
+
+    assert org_id is not None, "orgId is required"
 
     logger.info(f"User {context.user_id} setting integration for org {org_id}")
 
@@ -651,8 +656,9 @@ async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
     Platform admin only endpoint
     Note: This only deletes the config reference, NOT the Key Vault secrets
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
+    assert org_id is not None, "orgId is required"
     integration_type = req.route_params.get("type")
 
     logger.info(f"User {context.user_id} deleting {integration_type} integration for org {org_id}")

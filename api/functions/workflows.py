@@ -86,9 +86,10 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
         500: Execution error
     """
     # Get context from request (injected by @with_org_context decorator)
-    context = req.org_context
+    context = req.org_context  # type: ignore[attr-defined]
 
     workflow_name = req.route_params.get('workflowName')
+    assert workflow_name is not None, "workflowName is required"
 
     # T057: Extract user_id from context.caller (set by authentication service)
     user_id = context.caller.user_id  # Now comes from authenticated principal

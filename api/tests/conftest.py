@@ -40,6 +40,7 @@ def mock_keyvault(monkeypatch):
     Only active in test environment (AZURE_FUNCTIONS_ENVIRONMENT != Testing with real vault).
     """
     from unittest.mock import MagicMock
+
     from azure.core.exceptions import ResourceNotFoundError
 
     # Only mock if we're not using a real vault (check if running in CI or without Azure auth)

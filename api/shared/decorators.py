@@ -303,7 +303,7 @@ def with_request_context(handler):
             context = get_request_context(req)
 
             # Inject into request
-            req.context = context
+            req.context = context  # type: ignore[attr-defined]
 
             logger.debug(
                 f"Request context injected: user={context.user_id}, "

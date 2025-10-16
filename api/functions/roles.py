@@ -41,7 +41,7 @@ bp = func.Blueprint()
     summary="List all roles",
     description="Get all roles (Platform admin only)",
     tags=["Roles"],
-    response_model=list[Role]
+    response_model=None  # Returns list[Role] but openapi_endpoint expects BaseModel
 )
 @with_request_context
 @require_platform_admin
@@ -52,7 +52,7 @@ async def list_roles(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} listing all roles")
 
     try:
@@ -120,7 +120,7 @@ async def create_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} creating new role")
 
     try:
@@ -231,8 +231,10 @@ async def update_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
+
+    assert role_id is not None, "roleId is required"
 
     logger.info(f"User {context.user_id} updating role {role_id}")
 
@@ -337,8 +339,10 @@ async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
+
+    assert role_id is not None, "roleId is required"
 
     logger.info(f"User {context.user_id} deleting role {role_id}")
 
@@ -400,8 +404,10 @@ async def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
+
+    assert role_id is not None, "roleId is required"
 
     logger.info(f"User {context.user_id} getting users for role {role_id}")
 
@@ -461,8 +467,10 @@ async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
+
+    assert role_id is not None, "roleId is required"
 
     logger.info(f"User {context.user_id} assigning users to role {role_id}")
 
@@ -598,9 +606,11 @@ async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
     user_id = req.route_params.get("userId")
+
+    assert user_id is not None, "userId is required"
 
     logger.info(f"User {context.user_id} removing user {user_id} from role {role_id}")
 
@@ -662,8 +672,10 @@ async def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
+
+    assert role_id is not None, "roleId is required"
 
     logger.info(f"User {context.user_id} getting forms for role {role_id}")
 
@@ -723,8 +735,10 @@ async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
+
+    assert role_id is not None, "roleId is required"
 
     logger.info(f"User {context.user_id} assigning forms to role {role_id}")
 
@@ -845,9 +859,11 @@ async def remove_form_from_role(req: func.HttpRequest) -> func.HttpResponse:
 
     Platform admin only endpoint
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     role_id = req.route_params.get("roleId")
     form_id = req.route_params.get("formId")
+
+    assert form_id is not None, "formId is required"
 
     logger.info(f"User {context.user_id} removing form {form_id} from role {role_id}")
 

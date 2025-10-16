@@ -46,6 +46,7 @@ Python 3.11 (Azure Functions v2 programming model): Follow standard conventions
     -   Types NEVER need to be manually generated in the API or Client -- our api/functions/openapi.py does this dynamically from models.py
 -   ALWAYS make sure we're passing `npm run tsc` in the Client. DO NOT LEAVE ERRORS OR WARNINGS HERE.
 -   ALWAYS run `npm run lint` in both the Client and the API and clean up issues before completing work.
+-   ALWAYS make sure we're passing `npm run typecheck` in the API. DO NOT LEAVE ERRORS OR WARNING HERE.
 -   ALWAYS create services files in the client/services for in interacting with new endpoints. Example:
 -   When updating models.py, don't forget to update our seed file.
 -   ALWAYS use the date formatting utilities from `@/lib/utils` for displaying dates/times in the client:

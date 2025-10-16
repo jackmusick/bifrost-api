@@ -35,7 +35,7 @@ bp = func.Blueprint()
     summary="List users",
     description="List all users with optional filtering by type and organization (Platform admin only)",
     tags=["Users", "Permissions"],
-    response_model=list[User],
+    response_model=None,  # Returns list[User] but openapi_endpoint expects BaseModel
     query_params={
         "type": {
             "description": "Filter by user type: 'platform' or 'org'",

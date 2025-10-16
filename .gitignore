@@ -189,3 +189,9 @@ Desktop.ini
 
 # Linux
 *~
+
+# ==================== OTHERS ====================
+
+AzuriteConfig
+.ruff_cache/
+.secrets

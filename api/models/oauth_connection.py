@@ -6,7 +6,7 @@ Request/response validation and serialization for OAuth helper feature
 from datetime import datetime, timedelta
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ==================== PUBLIC API ====================
 
@@ -127,8 +127,7 @@ class OAuthConnectionSummary(BaseModel):
     )
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OAuthConnectionDetail(BaseModel):
@@ -168,8 +167,7 @@ class OAuthConnectionDetail(BaseModel):
     # NOTE: client_secret, access_token, refresh_token are NOT included
     # These are stored securely and never exposed in API responses
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==================== INTERNAL/STORAGE MODEL ====================
@@ -290,8 +288,7 @@ class OAuthConnection(BaseModel):
             updated_at=self.updated_at
         )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==================== CREDENTIALS MODELS (USER STORY 3) ====================
@@ -331,8 +328,7 @@ class OAuthCredentials(BaseModel):
         description="Space-separated list of granted scopes"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OAuthCredentialsResponse(BaseModel):
@@ -354,5 +350,4 @@ class OAuthCredentialsResponse(BaseModel):
         description="ISO 8601 timestamp when token expires"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

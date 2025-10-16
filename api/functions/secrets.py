@@ -69,14 +69,16 @@ async def list_secrets(req: func.HttpRequest) -> func.HttpResponse:
         GET /api/secrets?org_id=org-123
         Response: {"secrets": ["org-123--api-key", "GLOBAL--smtp-password"], "orgId": "org-123", "count": 2}
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} listing secrets")
 
     try:
         # Check if Key Vault is available
         is_available, error_response = check_key_vault_available(kv_manager)
         if not is_available:
+            assert error_response is not None, "error_response must be set when not available"
             return error_response
+        assert kv_manager is not None, "kv_manager must be set when available"
 
         # Get org_id filter from query params
         org_id = req.params.get('org_id')
@@ -154,14 +156,16 @@ async def create_secret(req: func.HttpRequest) -> func.HttpResponse:
         Body: {"orgId": "org-123", "secretKey": "api-key", "value": "my-secret"}
         Response: {"name": "org-123--api-key", "orgId": "org-123", "secretKey": "api-key", "value": "my-secret", "message": "Secret created successfully"}
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     logger.info(f"User {context.user_id} creating secret")
 
     try:
         # Check if Key Vault is available
         is_available, error_response = check_key_vault_available(kv_manager)
         if not is_available:
+            assert error_response is not None, "error_response must be set when not available"
             return error_response
+        assert kv_manager is not None, "kv_manager must be set when available"
 
         # Parse request body
         try:
@@ -293,7 +297,7 @@ async def update_secret(req: func.HttpRequest) -> func.HttpResponse:
         Body: {"value": "updated-secret"}
         Response: {"name": "org-123--api-key", "orgId": "org-123", "secretKey": "api-key", "value": "updated-secret", "message": "Secret updated successfully"}
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     secret_name = req.route_params.get('name')
     logger.info(f"User {context.user_id} updating secret {secret_name}")
 
@@ -301,7 +305,9 @@ async def update_secret(req: func.HttpRequest) -> func.HttpResponse:
         # Check if Key Vault is available
         is_available, error_response = check_key_vault_available(kv_manager)
         if not is_available:
+            assert error_response is not None, "error_response must be set when not available"
             return error_response
+        assert kv_manager is not None, "kv_manager must be set when available"
 
         # Validate secret name format
         if not secret_name or '--' not in secret_name:
@@ -441,7 +447,7 @@ async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
         DELETE /api/secrets/org-123--api-key
         Response: {"name": "org-123--api-key", "orgId": "org-123", "secretKey": "api-key", "message": "Secret deleted successfully"}
     """
-    context = req.context
+    context = req.context  # type: ignore[attr-defined]
     secret_name = req.route_params.get('name')
     logger.info(f"User {context.user_id} deleting secret {secret_name}")
 
@@ -449,7 +455,9 @@ async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
         # Check if Key Vault is available
         is_available, error_response = check_key_vault_available(kv_manager)
         if not is_available:
+            assert error_response is not None, "error_response must be set when not available"
             return error_response
+        assert kv_manager is not None, "kv_manager must be set when available"
 
         # Validate secret name format
         if not secret_name or '--' not in secret_name:
@@ -481,8 +489,11 @@ async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
             try:
                 global_context = RequestContext(
                     user_id=context.user_id,
-                    user_type=context.user_type,
-                    org_scope="GLOBAL"
+                    email=context.email,
+                    name=context.name,
+                    org_id="GLOBAL",
+                    is_platform_admin=context.is_platform_admin,
+                    is_function_key=context.is_function_key
                 )
                 config_service = get_table_service("Config", global_context)
                 global_configs = list(config_service.query_entities(
@@ -504,8 +515,11 @@ async def delete_secret(req: func.HttpRequest) -> func.HttpResponse:
                 try:
                     org_context = RequestContext(
                         user_id=context.user_id,
-                        user_type=context.user_type,
-                        org_scope=org_id
+                        email=context.email,
+                        name=context.name,
+                        org_id=org_id,
+                        is_platform_admin=context.is_platform_admin,
+                        is_function_key=context.is_function_key
                     )
                     config_service = get_table_service("Config", org_context)
                     org_configs = list(config_service.query_entities(

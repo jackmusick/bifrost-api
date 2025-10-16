@@ -172,7 +172,10 @@ class AuthenticationService:
             logger.info(f"Authenticated user: {principal.email}")
             return principal
 
-        except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}") from e
+        except Exception as e:
+            # Catch base64 decoding errors
             raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}") from e
 
     async def _audit_key_usage(self, req: func.HttpRequest, principal: FunctionKeyPrincipal) -> None:
@@ -276,7 +279,7 @@ def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpRe
     # Get authenticated principal from request
     principal = getattr(req, 'principal', None)
     if not principal:
-        return None, None, _error_response(401, "Unauthorized", "Authentication required")
+        return None, "", _error_response(401, "Unauthorized", "Authentication required")
 
     # Function keys operate in global scope
     if isinstance(principal, FunctionKeyPrincipal):
@@ -300,7 +303,7 @@ def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpRe
     if provided_org_id:
         # Non-admin cannot override org context
         logger.warning(f"Non-admin {principal.email} attempted to set X-Organization-Id")
-        return None, None, _error_response(
+        return None, "", _error_response(
             403, "Forbidden",
             "Only platform administrators can override organization context"
         )
@@ -308,7 +311,7 @@ def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpRe
     # Derive org from database
     org_id = get_user_org_id(user_id)
     if not org_id:
-        return None, None, _error_response(
+        return None, "", _error_response(
             404, "NotFound",
             "User organization not found. Contact administrator."
         )
@@ -338,7 +341,7 @@ def require_auth(handler):
             principal = await auth_service.authenticate(req)
 
             # Inject principal into request
-            req.principal = principal
+            req.principal = principal  # type: ignore[attr-defined]
 
             # Call handler
             return await handler(req)

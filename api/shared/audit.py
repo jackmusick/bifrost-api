@@ -65,6 +65,7 @@ class AuditLogger:
             try:
                 from azure.data.tables import TableServiceClient
 
+                assert self.connection_string is not None, "Connection string is None"
                 service_client = TableServiceClient.from_connection_string(
                     self.connection_string
                 )

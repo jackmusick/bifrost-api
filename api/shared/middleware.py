@@ -61,7 +61,7 @@ def with_org_context(handler: Callable) -> Callable:
             # Inject context into request object
             # Use req.org_context instead of req.context to allow coexistence
             # with @with_request_context decorator
-            req.org_context = context
+            req.org_context = context  # type: ignore[attr-defined]
 
             # Call handler
             return await handler(req)
@@ -156,6 +156,7 @@ async def load_organization_context(
             # Parse JSON if type is json
             if entity.get('Type') == 'json':
                 try:
+                    assert value is not None, "Value cannot be None for JSON parsing"
                     value = json.loads(value)
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to parse JSON config: {key}")
@@ -174,6 +175,7 @@ async def load_organization_context(
             # Parse JSON if type is json
             if entity.get('Type') == 'json':
                 try:
+                    assert value is not None, "Value cannot be None for JSON parsing"
                     value = json.loads(value)
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to parse JSON config: {key}")

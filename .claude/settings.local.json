@@ -33,7 +33,18 @@
       "Bash(python3:*)",
       "Bash(docker exec bifrost-integrations-functions-1 python -c '\nfrom azure.data.tables import TableClient\nconn_str = \"\"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://azurite:10002/devstoreaccount1;\"\"\ntable = TableClient.from_connection_string(conn_str, \"\"Relationships\"\")\nemail = \"\"jack@gocovi.dev\"\"\nquery = f\"\"PartitionKey eq '\"''GLOBAL''\"' and RowKey ge '\"''userperm:{email}:''\"' and RowKey lt '\"''userperm:{email}~''\"'\"\"\nentities = list(table.query_entities(query))\nprint(f\"\"Found {len(entities)} entities from Docker container\"\")\n')",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(lsof:*)",
+      "Bash(AzureWebJobsStorage=\"UseDevelopmentStorage=true\" python seed_data.py)",
+      "Bash(npx pyright:*)",
+      "Bash(for:*)",
+      "Bash(do)",
+      "Bash(echo \"Fixed: $file\")",
+      "Bash(done)",
+      "Bash(npm run test:unit:*)",
+      "Bash(npm run test:integration:*)",
+      "WebSearch",
+      "Bash(npm run test:ci:*)"
     ],
     "deny": [],
     "ask": []

@@ -28,15 +28,15 @@ class OAuthStorageService:
     - Implement org→GLOBAL fallback pattern
     """
 
-    def __init__(self, connection_string: str = None):
+    def __init__(self, connection_string: str | None = None):
         """
         Initialize OAuth storage service
 
         Args:
             connection_string: Optional Azure Storage connection string override
         """
-        self.oauth_table = TableStorageService("OAuthConnections", connection_string)
-        self.config_table = TableStorageService("Config", connection_string)
+        self.oauth_table = TableStorageService("OAuthConnections", connection_string or None)
+        self.config_table = TableStorageService("Config", connection_string or None)
 
         # Ensure OAuthConnections table exists
         self._ensure_table_exists()
@@ -100,7 +100,8 @@ class OAuthStorageService:
             status="not_connected",
             created_by=created_by,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            expires_at=None
         )
 
         # Convert to Table Storage entity
@@ -124,6 +125,7 @@ class OAuthStorageService:
         if request.client_secret:
             try:
                 keyvault = KeyVaultClient()
+                assert keyvault._client is not None, "KeyVault client is None"
                 keyvault_secret_name = f"{org_id}--oauth-{request.connection_name}-client-secret"
 
                 keyvault._client.set_secret(keyvault_secret_name, request.client_secret)
@@ -321,6 +323,7 @@ class OAuthStorageService:
         # Delete secrets from Key Vault
         try:
             keyvault = KeyVaultClient()
+            assert keyvault._client is not None, "KeyVault client is None"
             keyvault_secret_names = [
                 f"{org_id}--oauth-{connection_name}-client-secret",
                 f"{org_id}--oauth-{connection_name}-response"
@@ -391,6 +394,7 @@ class OAuthStorageService:
         # Store OAuth response JSON in Key Vault
         try:
             keyvault = KeyVaultClient()
+            assert keyvault._client is not None, "KeyVault client is None"
             keyvault_secret_name = f"{org_id}--oauth-{connection_name}-response"
 
             keyvault._client.set_secret(keyvault_secret_name, json.dumps(oauth_response))
@@ -537,13 +541,21 @@ class OAuthStorageService:
         if last_test_at and isinstance(last_test_at, str):
             last_test_at = datetime.fromisoformat(last_test_at.replace("Z", "+00:00"))
 
+        # Parse required fields with assertions for type safety
+        client_secret_ref = entity.get("client_secret_ref")
+        assert client_secret_ref is not None, "client_secret_ref is required"
+        oauth_response_ref = entity.get("oauth_response_ref")
+        assert oauth_response_ref is not None, "oauth_response_ref is required"
+        assert created_at is not None, "created_at is required"
+
         return OAuthConnection(
             org_id=entity["PartitionKey"],
             connection_name=entity["RowKey"],
+            description=entity.get("description"),
             oauth_flow_type=entity["oauth_flow_type"],
             client_id=entity["client_id"],
-            client_secret_ref=entity.get("client_secret_ref"),
-            oauth_response_ref=entity.get("oauth_response_ref"),
+            client_secret_ref=client_secret_ref,
+            oauth_response_ref=oauth_response_ref,
             authorization_url=entity["authorization_url"],
             token_url=entity["token_url"],
             scopes=entity.get("scopes", ""),

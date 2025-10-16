@@ -33,7 +33,7 @@ REQUIRED_TABLES = [
 logger = logging.getLogger(__name__)
 
 
-def init_tables(connection_string: str = None) -> dict:
+def init_tables(connection_string: str | None = None) -> dict:
     """
     Initialize all required Azure Table Storage tables
 
@@ -54,6 +54,7 @@ def init_tables(connection_string: str = None) -> dict:
     logger.info("Initializing Azure Table Storage tables...")
     logger.info(f"Connection: {_mask_connection_string(connection_string)}")
 
+    assert connection_string is not None, "connection_string is None"
     service_client = TableServiceClient.from_connection_string(
         connection_string)
 
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     )
 
     # Allow override via command line argument
-    conn_str = sys.argv[1] if len(sys.argv) > 1 else None
+    conn_str: str | None = sys.argv[1] if len(sys.argv) > 1 else None
 
     try:
         results = init_tables(conn_str)

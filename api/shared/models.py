@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ==================== PUBLIC API ====================
 # All models exported for OpenAPI spec generation
@@ -128,6 +128,7 @@ class ExecutionStatus(str, Enum):
     RUNNING = "Running"
     SUCCESS = "Success"
     FAILED = "Failed"
+    COMPLETED_WITH_ERRORS = "CompletedWithErrors"
 
 
 class FormFieldType(str, Enum):
@@ -167,8 +168,7 @@ class Organization(BaseModel):
     createdBy: str
     updatedAt: datetime
 
-    class Config:
-        from_attributes = True  # Pydantic v2 - replaces orm_mode
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CreateOrganizationRequest(BaseModel):
@@ -557,8 +557,7 @@ class MetadataResponse(BaseModel):
     optionGenerators: list[DataProviderMetadata] = Field(
         default_factory=list, alias="option_generators")
 
-    class Config:
-        populate_by_name = True  # Pydantic v2 - allows using alias
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== DATA PROVIDER RESPONSE MODELS ====================
@@ -577,8 +576,7 @@ class DataProviderResponse(BaseModel):
     cached: bool = Field(..., description="Whether this result was served from cache")
     cacheExpiresAt: str = Field(..., alias="cache_expires_at", description="Cache expiration timestamp")
 
-    class Config:
-        populate_by_name = True  # Pydantic v2 - allows using alias
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ==================== SECRET MODELS ====================

@@ -87,6 +87,7 @@ class KeyVaultClient:
             )
 
         try:
+            assert self._client is not None, "Key Vault client not initialized"
             self._client.set_secret(secret_name, value)
             logger.info(f"Created secret: {secret_name}")
             return {
@@ -120,6 +121,7 @@ class KeyVaultClient:
         secret_name = self._build_secret_name(org_id, secret_key)
 
         try:
+            assert self._client is not None, "Key Vault client not initialized"
             self._client.set_secret(secret_name, value)
             logger.info(f"Updated secret: {secret_name}")
             return {
@@ -153,6 +155,7 @@ class KeyVaultClient:
         secret_name = self._build_secret_name(org_id, secret_key)
 
         try:
+            assert self._client is not None, "Key Vault client not initialized"
             deleted_secret = self._client.begin_delete_secret(secret_name)
             deleted_secret.wait()  # Wait for deletion to complete
             logger.info(f"Deleted secret: {secret_name}")
@@ -186,8 +189,10 @@ class KeyVaultClient:
         secret_name = self._build_secret_name(org_id, secret_key)
 
         try:
+            assert self._client is not None, "Key Vault client not initialized"
             secret = self._client.get_secret(secret_name)
             logger.info(f"Retrieved secret: {secret_name}")
+            assert secret.value is not None, "Secret value is None"
             return secret.value
         except ResourceNotFoundError:
             raise ResourceNotFoundError(f"Secret not found: {secret_name}") from None
@@ -208,8 +213,9 @@ class KeyVaultClient:
             HttpResponseError: If permission denied (list permission required)
         """
         try:
+            assert self._client is not None, "Key Vault client not initialized"
             secret_properties = self._client.list_properties_of_secrets()
-            secret_names = [prop.name for prop in secret_properties]
+            secret_names = [prop.name for prop in secret_properties if prop.name is not None]
 
             # Filter by org if specified
             if org_id:
@@ -258,6 +264,7 @@ class KeyVaultClient:
 
         # Test 1: Connection + List secrets
         try:
+            assert self._client is not None, "Key Vault client not initialized"
             secrets_list = list(self._client.list_properties_of_secrets())
             result["can_connect"] = True
             result["can_list_secrets"] = True
@@ -269,6 +276,8 @@ class KeyVaultClient:
                 try:
                     # Try to get the first secret to test get permission
                     first_secret_name = secrets_list[0].name
+                    assert first_secret_name is not None, "Secret name is None"
+                    assert self._client is not None, "Key Vault client not initialized"
                     self._client.get_secret(first_secret_name)
                     result["can_get_secrets"] = True
                     logger.info("Key Vault get secret permission verified")
