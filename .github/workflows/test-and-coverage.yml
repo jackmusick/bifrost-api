@@ -36,14 +36,14 @@ jobs:
                   pip install pytest pytest-cov pytest-asyncio
 
             - name: Start Azurite
-              run: npx -y azurite &
+              run: npx -y azurite
 
             - name: Start Azure Functions in background
               run: |
                   cd api
-                  func start --port 7071
+                  func start --port 7071 --worker-runtime python
               env:
-                  AzureWebJobsStorage: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;
+                  AzureWebJobsStorage: UseDevelopmentStorage=true
                   AzureWebJobsSecretStorageType: files
                   AZURE_FUNCTIONS_ENVIRONMENT: Development
                   WEBSITE_AUTH_ENCRYPTION_KEY: C0sm0Rk3y567890123456789012345678901234567890123456789012345
