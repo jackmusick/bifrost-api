@@ -19,14 +19,6 @@ jobs:
               uses: actions/setup-python@v4
               with:
                   python-version: "3.11"
-
-            - name: Install Azure Functions Core Tools
-              run: |
-                  wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
-                  sudo dpkg -i packages-microsoft-prod.deb
-                  sudo apt-get update
-                  sudo apt-get install -y azure-functions-core-tools-4
-
             - name: Install dependencies
               run: |
                   cd api
@@ -44,9 +36,9 @@ jobs:
             - name: Start Azure Functions in background
               uses: JarvusInnovations/background-action@v1
               with:
-                  run: cd api && func start --port 7071 --worker-runtime python
-                  wait-on: http://localhost:7071/api/health
-                  wait-for: 60s
+                  run: cd api && npx -y func start --port 7071
+                  wait-on: tcp:127.0.0.1:7071
+                  wait-for: 2m
                   log-output-if: failure
                   log-output: true
               env:
