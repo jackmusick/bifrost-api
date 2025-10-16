@@ -10,7 +10,7 @@ on:
 # Forks should use their own deployment workflows
 
 permissions:
-    contents: write  # Required to create releases
+    contents: write # Required to create releases
 
 jobs:
     build-api:
@@ -51,7 +51,7 @@ jobs:
     create-release:
         needs: [build-api]
         runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
         steps:
             - name: Download API artifact
