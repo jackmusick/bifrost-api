@@ -24,19 +24,7 @@ jobs:
             - name: Start Azurite
               run: |
                   npx --yes azurite --silent --inMemoryPersistence &
-                  # Wait for Azurite to be ready by checking table service
-                  for i in {1..30}; do
-                    if curl -s http://127.0.0.1:10002/devstoreaccount1?comp=properties > /dev/null 2>&1; then
-                      echo "Azurite is ready!"
-                      break
-                    fi
-                    if [ $i -eq 30 ]; then
-                      echo "Timeout waiting for Azurite"
-                      exit 1
-                    fi
-                    echo "Waiting for Azurite to start... ($i/30)"
-                    sleep 1
-                  done
+                  sleep 10
               shell: bash
 
             - name: Install dependencies
