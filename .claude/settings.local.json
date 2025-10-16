@@ -27,7 +27,11 @@
       "Bash(python -m pytest api/tests/integration_e2e/test_config_e2e.py::TestConfigE2E -v --tb=short)",
       "Bash(python -m pytest api/tests/ -v --tb=short -k \"oauth\")",
       "Bash(npm run lint)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(docker exec bifrost-integrations-functions-1 python -c '\nfrom azure.data.tables import TableClient\nconn_str = \"\"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://azurite:10002/devstoreaccount1;\"\"\ntable = TableClient.from_connection_string(conn_str, \"\"Relationships\"\")\nemail = \"\"jack@gocovi.dev\"\"\nquery = f\"\"PartitionKey eq '\"''GLOBAL''\"' and RowKey ge '\"''userperm:{email}:''\"' and RowKey lt '\"''userperm:{email}~''\"'\"\"\nentities = list(table.query_entities(query))\nprint(f\"\"Found {len(entities)} entities from Docker container\"\")\n')"
     ],
     "deny": [],
     "ask": []

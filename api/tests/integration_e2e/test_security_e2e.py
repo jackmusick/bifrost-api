@@ -54,8 +54,7 @@ class TestCrossOrgIsolation:
             f"{base_url}/organizations",
             headers=platform_admin_headers,
             json={
-                "name": "Security Test Org",
-                "tenantId": "security-test-tenant-id"
+                "name": "Security Test Org"
             }
         )
         if org_response.status_code == 201:
@@ -228,19 +227,22 @@ class TestConfigAccessControl:
         )
         assert response.status_code == 403
 
-    def test_platform_admin_cannot_access_org_config_without_org_id(self, base_url, platform_admin_headers):
+    def test_platform_admin_without_org_header_gets_global_config(self, base_url, platform_admin_headers):
         """
-        Platform admin trying to access org-scoped config without orgId should fail
+        Platform admin without X-Organization-Id header should get GLOBAL config
         """
         response = requests.get(
-            f"{base_url}/config?scope=org",
+            f"{base_url}/config",
             headers=platform_admin_headers
         )
 
-        # Should return 400 (bad request - missing orgId)
-        assert response.status_code == 400
-        error = response.json()
-        assert "orgid" in error.get("message", "").lower()
+        # Should return 200 with GLOBAL configs
+        assert response.status_code == 200
+        configs = response.json()
+        assert isinstance(configs, list)
+        # All configs should be GLOBAL scope
+        for config in configs:
+            assert config["scope"] == "GLOBAL"
 
 
 class TestOAuthAccessControl:

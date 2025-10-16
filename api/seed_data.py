@@ -15,13 +15,13 @@ from azure.data.tables import TableClient
 
 logger = logging.getLogger(__name__)
 
-# Generate UUIDs for all entities
-ORG_ACME_ID = str(uuid.uuid4())
-ORG_CONTOSO_ID = str(uuid.uuid4())
-FORM_GREETING_ID = str(uuid.uuid4())
-FORM_ONBOARDING_ID = str(uuid.uuid4())
-ROLE_IT_MANAGERS_ID = str(uuid.uuid4())
-ROLE_HELP_DESK_ID = str(uuid.uuid4())
+# Use stable UUIDs for development (consistent across seed runs)
+ORG_ACME_ID = "acme-org-1111-1111-1111-111111111111"
+ORG_CONTOSO_ID = "contoso-2222-2222-2222-222222222222"
+FORM_GREETING_ID = "greeting-form-3333-3333-333333333333"
+FORM_ONBOARDING_ID = "onboarding-form-4444-444444444444"
+ROLE_IT_MANAGERS_ID = "it-managers-role-5555-555555555555"
+ROLE_HELP_DESK_ID = "helpdesk-role-6666-6666-666666666666"
 
 logger.info("Generated UUIDs for seed data:")
 logger.info(f"  Org ACME: {ORG_ACME_ID}")
@@ -104,6 +104,7 @@ SAMPLE_ENTITIES = [
         "PartitionKey": "GLOBAL",
         "RowKey": f"org:{ORG_ACME_ID}",
         "Name": "Covi Development",
+        "Domain": "gocovi.dev",
         "TenantId": "12345678-1234-1234-1234-123456789012",
         "IsActive": True,
         "CreatedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
@@ -114,6 +115,7 @@ SAMPLE_ENTITIES = [
         "PartitionKey": "GLOBAL",
         "RowKey": f"org:{ORG_CONTOSO_ID}",
         "Name": "Contoso Ltd",
+        "Domain": "contoso.com",
         "TenantId": "87654321-4321-4321-4321-210987654321",
         "IsActive": True,
         "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),

@@ -14,29 +14,29 @@ from shared.models import CreateOrganizationRequest, ErrorResponse, Organization
 class TestCreateOrganizationRequest:
     """Test validation for CreateOrganizationRequest model"""
 
-    def test_valid_request_with_tenant_id(self):
-        """Test valid request with all fields"""
-        request = CreateOrganizationRequest(
-            name="Test Organization",
-            tenantId="12345678-1234-1234-1234-123456789012"
-        )
-        assert request.name == "Test Organization"
-        assert request.tenantId == "12345678-1234-1234-1234-123456789012"
-
-    def test_valid_request_without_tenant_id(self):
-        """Test valid request with optional tenantId omitted"""
+    def test_valid_request_with_name_only(self):
+        """Test valid request with required name field"""
         request = CreateOrganizationRequest(name="Test Organization")
         assert request.name == "Test Organization"
-        assert request.tenantId is None
+        assert request.domain is None
 
-    def test_valid_request_with_null_tenant_id(self):
-        """Test valid request with explicit null tenantId"""
+    def test_valid_request_with_domain(self):
+        """Test valid request with optional domain"""
         request = CreateOrganizationRequest(
             name="Test Organization",
-            tenantId=None
+            domain="acme.com"
         )
         assert request.name == "Test Organization"
-        assert request.tenantId is None
+        assert request.domain == "acme.com"
+
+    def test_valid_request_with_null_domain(self):
+        """Test valid request with explicit null domain"""
+        request = CreateOrganizationRequest(
+            name="Test Organization",
+            domain=None
+        )
+        assert request.name == "Test Organization"
+        assert request.domain is None
 
     def test_invalid_empty_name(self):
         """Test that empty name is rejected"""

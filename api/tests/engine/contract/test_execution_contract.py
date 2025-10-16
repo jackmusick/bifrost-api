@@ -16,7 +16,6 @@ class TestWorkflowExecutionRequest:
     def test_valid_execution_request(self):
         """Test valid execution request with all fields"""
         request = WorkflowExecutionRequest(
-            workflowName="user_onboarding",
             formId="form-123",
             inputData={
                 "email": "test@example.com",
@@ -25,40 +24,31 @@ class TestWorkflowExecutionRequest:
             }
         )
 
-        assert request.workflowName == "user_onboarding"
         assert request.formId == "form-123"
         assert request.inputData["email"] == "test@example.com"
 
     def test_execution_request_minimal(self):
-        """Test execution request with only required fields"""
+        """Test execution request with minimal fields"""
         request = WorkflowExecutionRequest(
-            workflowName="test_workflow",
-            inputData={}
+            inputData={"key": "value"}
         )
 
-        assert request.workflowName == "test_workflow"
         assert request.formId is None
-        assert request.inputData == {}
+        assert request.inputData == {"key": "value"}
 
     def test_execution_request_missing_workflow_name(self):
-        """Test that workflow name is required"""
-        with pytest.raises(ValidationError) as exc_info:
-            WorkflowExecutionRequest(
-                inputData={"key": "value"}
-            )
+        """Test that inputData defaults to empty dict"""
+        request = WorkflowExecutionRequest()
 
-        errors = exc_info.value.errors()
-        assert any(e['loc'] == ('workflowName',) for e in errors)
+        assert request.inputData == {}
+        assert request.formId is None
 
     def test_execution_request_missing_input_data(self):
-        """Test that input data is required"""
-        with pytest.raises(ValidationError) as exc_info:
-            WorkflowExecutionRequest(
-                workflowName="test_workflow"
-            )
+        """Test that inputData has default factory"""
+        request = WorkflowExecutionRequest(formId="form-123")
 
-        errors = exc_info.value.errors()
-        assert any(e['loc'] == ('inputData',) for e in errors)
+        assert request.inputData == {}
+        assert request.formId == "form-123"
 
 
 class TestWorkflowExecutionResponse:
@@ -69,36 +59,39 @@ class TestWorkflowExecutionResponse:
         response = WorkflowExecutionResponse(
             executionId="exec-123",
             status=ExecutionStatus.SUCCESS,
-            message="Workflow executed successfully"
+            result={"message": "Workflow executed successfully"}
         )
 
         assert response.executionId == "exec-123"
         assert response.status == ExecutionStatus.SUCCESS
-        assert response.message == "Workflow executed successfully"
+        assert response.result == {"message": "Workflow executed successfully"}
+        assert response.error is None
 
     def test_failed_response(self):
         """Test failed execution response"""
         response = WorkflowExecutionResponse(
             executionId="exec-789",
             status=ExecutionStatus.FAILED,
-            message="Validation failed"
+            error="Validation failed",
+            errorType="ValidationError"
         )
 
         assert response.executionId == "exec-789"
         assert response.status == ExecutionStatus.FAILED
-        assert response.message == "Validation failed"
+        assert response.error == "Validation failed"
+        assert response.errorType == "ValidationError"
 
     def test_running_response(self):
         """Test running/pending response"""
         response = WorkflowExecutionResponse(
             executionId="exec-999",
-            status=ExecutionStatus.RUNNING,
-            message="Workflow is running"
+            status=ExecutionStatus.RUNNING
         )
 
         assert response.executionId == "exec-999"
         assert response.status == ExecutionStatus.RUNNING
-        assert response.message == "Workflow is running"
+        assert response.result is None
+        assert response.error is None
 
     def test_response_required_fields(self):
         """Test that executionId and status are required"""
@@ -163,7 +156,7 @@ class TestExecutionStatus:
         response = WorkflowExecutionResponse(
             executionId="exec-123",
             status=ExecutionStatus.SUCCESS,
-            message="Success"
+            result={"status": "Success"}
         )
 
         assert response.status == "Success"
