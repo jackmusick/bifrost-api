@@ -31,19 +31,18 @@ jobs:
                   pip install -r requirements.txt --target=".python_packages/lib/site-packages"
 
                   # Create zip excluding unnecessary files
-                  zip -r ../api-latest.zip . \
+                  zip -r ../api.zip . \
                     -x "*.pyc" \
                     -x "*__pycache__*" \
                     -x "tests/*" \
                     -x ".git/*" \
-                    -x ".venv/*" \
-                    -x "*.md"
+                    -x ".venv/*"
 
             - name: Upload API artifact
               uses: actions/upload-artifact@v4
               with:
                   name: api-package
-                  path: api-latest.zip
+                  path: api.zip
                   retention-days: 90
 
     create-release:
@@ -61,7 +60,7 @@ jobs:
               uses: softprops/action-gh-release@v1
               with:
                   files: |
-                      api-latest.zip
+                      api.zip
                   body: |
                       ## Bifrost Integrations Release
 
@@ -73,7 +72,7 @@ jobs:
                       az functionapp deployment source config-zip \
                         --resource-group <rg-name> \
                         --name <api-app-name> \
-                        --src api-latest.zip
+                        --src api.zip
                       ```
 
                       **GitHub Actions (Recommended):**

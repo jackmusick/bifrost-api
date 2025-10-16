@@ -30,9 +30,9 @@ jobs:
             - name: Install dependencies
               run: |
                   cd api
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt
-                  pip install pytest pytest-cov pytest-asyncio
+                  python -m pip install -q --upgrade pip
+                  pip install -q -r requirements.txt
+                  pip install -q pytest pytest-cov pytest-asyncio
 
             - name: Seed Azurite with test data
               working-directory: ./api
