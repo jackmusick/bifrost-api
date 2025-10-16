@@ -110,7 +110,7 @@ class TestGitHubActionContract:
 
     def test_workflow_has_bot_detection(self, workflow_config):
         """Contract: Workflow must allow upstream-sync and github-actions bots"""
-        jobs = workflow_config.get('jobs', {})
+        workflow_config.get('jobs', {})
 
         # Check for bot detection in workflow
         workflow_str = yaml.dump(workflow_config)

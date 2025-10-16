@@ -3,9 +3,10 @@ Pytest fixtures for Engine tests
 Extends parent conftest and adds engine-specific fixtures
 """
 
-# Import all fixtures from parent conftest
 import os
 import sys
+
+import pytest
 
 # Ensure api directory is on path
 api_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
@@ -13,8 +14,6 @@ if api_dir not in sys.path:
     sys.path.insert(0, api_dir)
 
 # Now we can import from both shared and engine.shared
-import pytest
-
 from shared.registry import get_registry
 from shared.storage import TableStorageService as EngineTableStorage
 

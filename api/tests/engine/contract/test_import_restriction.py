@@ -223,7 +223,7 @@ class TestImportRestrictionBehavior:
             # Engine code should be able to import anything
             # This import is from engine code (this test file is not in workspace)
             try:
-                from shared.storage import get_table_service_client
+                import shared.storage  # noqa: F401
                 # Should not raise
             except ImportError:
                 # It's OK if the module doesn't exist yet, we're testing restriction logic

@@ -24,6 +24,8 @@ ignore = [
     "B008",  # do not perform function calls in argument defaults
     "N805",  # first argument of method should be named self (Azure Functions use 'req')
     "N816",  # variable name should be lowercase (Azure env vars use PascalCase)
+    "N815",  # mixedCase in class scope (API uses camelCase for JSON consistency with frontend)
+    "E402",  # module level import not at top (necessary for conftest.py path setup)
 ]
 
 [tool.ruff.lint.per-file-ignores]

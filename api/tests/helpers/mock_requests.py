@@ -30,7 +30,7 @@ class MockRequestHelper:
     ) -> func.HttpRequest:
         """
         Create a mock Azure Functions HTTP request with authentication.
-        
+
         Args:
             method: HTTP method (GET, POST, PUT, DELETE, etc.)
             url: Request URL
@@ -39,7 +39,7 @@ class MockRequestHelper:
             params: Query parameters
             user_type: Type of user ("admin", "org_user", "function_key", "anonymous")
             org_id: Organization ID for scoping (for admin and function_key)
-            
+
         Returns:
             Mock func.HttpRequest object
         """
@@ -101,14 +101,14 @@ class MockRequestHelper:
     ) -> func.HttpRequest:
         """
         Create a mock request from a platform admin.
-        
+
         Args:
             method: HTTP method
             url: Request URL
             body: Request body (dict)
             org_id: Organization ID for scoping (None = GLOBAL scope)
             headers: Additional headers
-            
+
         Returns:
             Mock func.HttpRequest for platform admin
         """
@@ -131,14 +131,14 @@ class MockRequestHelper:
     ) -> func.HttpRequest:
         """
         Create a mock request from an organization user.
-        
+
         Args:
             method: HTTP method
             url: Request URL
             body: Request body (dict)
             org_id: Organization ID (defaults to test org)
             headers: Additional headers
-            
+
         Returns:
             Mock func.HttpRequest for org user
         """
@@ -164,14 +164,14 @@ class MockRequestHelper:
     ) -> func.HttpRequest:
         """
         Create a mock request with function key authentication.
-        
+
         Args:
             method: HTTP method
             url: Request URL
             body: Request body (dict)
             org_id: Organization ID for scoping (None = GLOBAL scope)
             headers: Additional headers
-            
+
         Returns:
             Mock func.HttpRequest with function key auth
         """
@@ -193,13 +193,13 @@ class MockRequestHelper:
     ) -> func.HttpRequest:
         """
         Create a mock anonymous request (no authentication).
-        
+
         Args:
             method: HTTP method
             url: Request URL
             body: Request body (dict)
             headers: Additional headers
-            
+
         Returns:
             Mock func.HttpRequest without authentication
         """

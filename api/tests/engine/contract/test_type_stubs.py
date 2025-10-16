@@ -178,7 +178,6 @@ class TestTypeStubAccuracy:
         # Public attributes (set in __init__)
         # These can't be checked on the class, only on instances
         # So we just document them here for reference
-        required_attributes = ['execution_id', 'org', 'caller']
 
     def test_decorators_exist(self):
         """Contract: All documented decorators must exist"""

@@ -25,17 +25,17 @@ class MockAuthHelper:
     ) -> str:
         """
         Create a base64-encoded X-MS-CLIENT-PRINCIPAL header for a platform admin.
-        
+
         Platform admins have:
         - UserType: "PLATFORM"
         - IsPlatformAdmin: True
         - Can access GLOBAL scope and any org scope
-        
+
         Args:
             user_id: Optional user ID (generates UUID if not provided)
             email: User email
             name: User display name
-            
+
         Returns:
             Base64-encoded principal data for X-MS-CLIENT-PRINCIPAL header
         """
@@ -60,19 +60,19 @@ class MockAuthHelper:
     ) -> str:
         """
         Create a base64-encoded X-MS-CLIENT-PRINCIPAL header for an organization user.
-        
+
         Org users have:
         - UserType: "ORG"
         - IsPlatformAdmin: False
         - Fixed org_id (cannot override via headers)
         - Can only access their assigned org
-        
+
         Args:
             org_id: Organization ID the user belongs to
             user_id: Optional user ID (generates UUID if not provided)
             email: User email
             name: User display name
-            
+
         Returns:
             Base64-encoded principal data for X-MS-CLIENT-PRINCIPAL header
         """
@@ -95,17 +95,17 @@ class MockAuthHelper:
     ) -> dict[str, str]:
         """
         Create headers for function key authentication.
-        
+
         Function keys have:
         - is_function_key: True
         - user_id: "system"
         - Can set org_id via X-Organization-Id header (optional)
         - Admin privileges within specified scope
-        
+
         Args:
             org_id: Optional organization ID for scoping
             key_name: Name of the function key
-            
+
         Returns:
             Dictionary of headers for function key authentication
         """
@@ -123,7 +123,7 @@ class MockAuthHelper:
     def create_anonymous_headers() -> dict[str, str]:
         """
         Create headers for anonymous access (no authentication).
-        
+
         Returns:
             Dictionary of headers for anonymous requests
         """
@@ -141,14 +141,14 @@ class MockAuthHelper:
     ) -> str:
         """
         Create a base64-encoded X-MS-CLIENT-PRINCIPAL header for a user with specific roles.
-        
+
         Args:
             org_id: Organization ID the user belongs to
             roles: List of role names the user has
             user_id: Optional user ID (generates UUID if not provided)
             email: User email
             name: User display name
-            
+
         Returns:
             Base64-encoded principal data for X-MS-CLIENT-PRINCIPAL header
         """

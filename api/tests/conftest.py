@@ -43,7 +43,7 @@ def azurite_tables():
     connection_string = "UseDevelopmentStorage=true"
 
     # Initialize tables
-    results = init_tables(connection_string)
+    init_tables(connection_string)
 
     yield connection_string
 
@@ -559,7 +559,6 @@ def generate_test_uuid() -> str:
 
 def clear_table(table_name: str):
     """Clear all entities from a table"""
-    connection_string = "UseDevelopmentStorage=true"
     service = TableStorageService(table_name)
 
     entities = list(service.query_entities())

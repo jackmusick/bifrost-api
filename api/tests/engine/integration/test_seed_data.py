@@ -265,7 +265,7 @@ class TestAzuriteSeedData:
         entities_table = table_service_client.get_table_client("Entities")
         all_entities = list(entities_table.list_entities())
         orgs = [e for e in all_entities if e['PartitionKey'] == 'GLOBAL' and e['RowKey'].startswith('org:')]
-        org_ids = {org['RowKey'] for org in orgs}
+        {org['RowKey'] for org in orgs}
 
         # Get all users
         users_table = table_service_client.get_table_client("Users")

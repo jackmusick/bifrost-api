@@ -3,6 +3,7 @@ Pydantic models for Bifrost Integrations
 Request/response validation and serialization
 """
 
+import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
@@ -753,8 +754,6 @@ class ErrorResponse(BaseModel):
 
 
 # ==================== HELPER FUNCTIONS ====================
-
-import uuid
 
 
 def generate_entity_id() -> str:

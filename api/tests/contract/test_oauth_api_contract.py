@@ -321,7 +321,7 @@ class TestOAuthConnection:
             expires_at=datetime.utcnow() - timedelta(hours=1)
         )
 
-        assert expired_connection.is_expired() == True
+        assert expired_connection.is_expired()
 
     def test_expires_soon_method(self):
         """Test expires_soon() method with custom hours threshold"""
@@ -344,7 +344,7 @@ class TestOAuthConnection:
         )
 
         # With 4 hour threshold, should return True (expires within 4 hours)
-        assert connection.expires_soon(hours=4) == True
+        assert connection.expires_soon(hours=4)
 
         # With 2 hour threshold, should return False (does not expire within 2 hours)
-        assert connection.expires_soon(hours=2) == False
+        assert not connection.expires_soon(hours=2)

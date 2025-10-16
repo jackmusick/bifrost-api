@@ -35,7 +35,7 @@ class TestWorkspaceIsolation:
 
         # Import workspace examples module (actual structure)
         try:
-            import workspace.examples.test_workflow
+            import workspace.examples.test_workflow  # noqa: F401
             # If this succeeds, workspace code is accessible
             assert True
         except ImportError as e:

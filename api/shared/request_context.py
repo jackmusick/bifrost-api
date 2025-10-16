@@ -142,7 +142,7 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
 
     except Exception as e:
         logger.error(f"Failed to parse Easy Auth principal: {e}")
-        raise ValueError(f"Invalid authentication: {e}")
+        raise ValueError(f"Invalid authentication: {e}") from e
 
     # Check if user is platform admin (auto-create if they have PlatformAdmin role)
     has_platform_admin_role = 'PlatformAdmin' in user_roles
