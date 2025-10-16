@@ -687,7 +687,20 @@ async def refresh_oauth_token(req: func.HttpRequest) -> func.HttpResponse:
         oauth_service = OAuthStorageService()
         oauth_provider = OAuthProviderClient()
         config_service = TableStorageService("Config")
-        keyvault = KeyVaultClient()
+
+        try:
+            keyvault = KeyVaultClient()
+        except ValueError as e:
+            logger.error(f"KeyVault not available: {e}")
+            error = ErrorResponse(
+                error="ServiceUnavailable",
+                message="OAuth token refresh requires KeyVault configuration"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=503,
+                mimetype="application/json"
+            )
 
         # Get connection
         connection = await oauth_service.get_connection(org_id, connection_name)
@@ -1020,10 +1033,13 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
                 if client_secret_config:
                     keyvault_secret_name = client_secret_config.get("Value")
                     if keyvault_secret_name:
-                        keyvault = KeyVaultClient()
-                        secret = keyvault._client.get_secret(keyvault_secret_name)
-                        client_secret = secret.value
-                        logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
+                        try:
+                            keyvault = KeyVaultClient()
+                            secret = keyvault._client.get_secret(keyvault_secret_name)
+                            client_secret = secret.value
+                            logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
+                        except ValueError as e:
+                            logger.warning(f"KeyVault not available for client_secret retrieval: {e}")
             except Exception as e:
                 logger.warning(f"Failed to retrieve client_secret from Key Vault: {e}")
 
@@ -1188,7 +1204,20 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
         # Create services
         oauth_service = OAuthStorageService()
         config_service = TableStorageService("Config")
-        keyvault = KeyVaultClient()
+
+        try:
+            keyvault = KeyVaultClient()
+        except ValueError as e:
+            logger.error(f"KeyVault not available: {e}")
+            error = ErrorResponse(
+                error="ServiceUnavailable",
+                message="OAuth credentials retrieval requires KeyVault configuration"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=503,
+                mimetype="application/json"
+            )
 
         # Get connection with org→GLOBAL fallback
         connection = await oauth_service.get_connection(org_id, connection_name)

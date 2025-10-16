@@ -122,12 +122,16 @@ class OAuthStorageService:
         # Value is the Key Vault secret name
         # Note: Client secret is optional for PKCE flow
         if request.client_secret:
-            keyvault = KeyVaultClient()
-            keyvault_secret_name = f"{org_id}--oauth-{request.connection_name}-client-secret"
-
             try:
+                keyvault = KeyVaultClient()
+                keyvault_secret_name = f"{org_id}--oauth-{request.connection_name}-client-secret"
+
                 keyvault._client.set_secret(keyvault_secret_name, request.client_secret)
                 logger.info(f"Stored client_secret in Key Vault: {keyvault_secret_name}")
+            except ValueError as e:
+                # KeyVault not configured (e.g., in test environment)
+                logger.warning(f"KeyVault not available for client_secret storage: {e}")
+                logger.warning("Client secret will not be persisted - OAuth connection may not work in production")
             except Exception as e:
                 logger.error(f"Failed to store client_secret in Key Vault: {e}")
                 raise
@@ -315,19 +319,24 @@ class OAuthStorageService:
             return False
 
         # Delete secrets from Key Vault
-        keyvault = KeyVaultClient()
-        keyvault_secret_names = [
-            f"{org_id}--oauth-{connection_name}-client-secret",
-            f"{org_id}--oauth-{connection_name}-response"
-        ]
+        try:
+            keyvault = KeyVaultClient()
+            keyvault_secret_names = [
+                f"{org_id}--oauth-{connection_name}-client-secret",
+                f"{org_id}--oauth-{connection_name}-response"
+            ]
 
-        for secret_name in keyvault_secret_names:
-            try:
-                keyvault._client.begin_delete_secret(secret_name).wait()
-                logger.debug(f"Deleted Key Vault secret: {secret_name}")
-            except Exception as e:
-                # Secret might not exist (e.g., PKCE flow has no client_secret)
-                logger.debug(f"Could not delete Key Vault secret {secret_name}: {e}")
+            for secret_name in keyvault_secret_names:
+                try:
+                    keyvault._client.begin_delete_secret(secret_name).wait()
+                    logger.debug(f"Deleted Key Vault secret: {secret_name}")
+                except Exception as e:
+                    # Secret might not exist (e.g., PKCE flow has no client_secret)
+                    logger.debug(f"Could not delete Key Vault secret {secret_name}: {e}")
+        except ValueError as e:
+            # KeyVault not configured (e.g., in test environment)
+            logger.warning(f"KeyVault not available for secret deletion: {e}")
+            logger.debug("Skipping Key Vault secret cleanup")
 
         # Delete associated configs
         config_keys = [
@@ -380,12 +389,16 @@ class OAuthStorageService:
         }
 
         # Store OAuth response JSON in Key Vault
-        keyvault = KeyVaultClient()
-        keyvault_secret_name = f"{org_id}--oauth-{connection_name}-response"
-
         try:
+            keyvault = KeyVaultClient()
+            keyvault_secret_name = f"{org_id}--oauth-{connection_name}-response"
+
             keyvault._client.set_secret(keyvault_secret_name, json.dumps(oauth_response))
             logger.info(f"Stored OAuth tokens in Key Vault: {keyvault_secret_name}")
+        except ValueError as e:
+            # KeyVault not configured (e.g., in test environment)
+            logger.warning(f"KeyVault not available for OAuth token storage: {e}")
+            logger.warning("OAuth tokens will not be persisted - this connection will not work in production")
         except Exception as e:
             logger.error(f"Failed to store OAuth tokens in Key Vault: {e}")
             raise

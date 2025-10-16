@@ -27,9 +27,46 @@ def setup_test_environment():
     """Set up test environment variables"""
     os.environ["AzureWebJobsStorage"] = "UseDevelopmentStorage=true"
     os.environ["KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
+    os.environ["AZURE_KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
     os.environ["AZURE_TENANT_ID"] = "test-tenant-id"
     os.environ["AZURE_CLIENT_ID"] = "test-client-id"
     yield
+
+
+@pytest.fixture(scope="function", autouse=True)
+def mock_keyvault(monkeypatch):
+    """
+    Mock KeyVault client for tests to avoid requiring real Azure credentials.
+    Only active in test environment (AZURE_FUNCTIONS_ENVIRONMENT != Testing with real vault).
+    """
+    from unittest.mock import MagicMock
+    from azure.core.exceptions import ResourceNotFoundError
+
+    # Only mock if we're not using a real vault (check if running in CI or without Azure auth)
+    if os.environ.get("AZURE_FUNCTIONS_ENVIRONMENT") == "Testing":
+        return  # Skip mocking in integration tests that use real KeyVault
+
+    # Create a mock KeyVault client
+    mock_client = MagicMock()
+
+    # Mock delete_secret to return success
+    mock_poller = MagicMock()
+    mock_poller.wait = MagicMock()
+    mock_client.begin_delete_secret = MagicMock(return_value=mock_poller)
+
+    # Mock get_secret to raise not found (simulating no secrets in test vault)
+    def mock_get_secret(name):
+        raise ResourceNotFoundError(f"Secret not found: {name}")
+    mock_client.get_secret = MagicMock(side_effect=mock_get_secret)
+
+    # Mock set_secret to return success
+    mock_client.set_secret = MagicMock()
+
+    # Patch the SecretClient constructor to return our mock
+    def mock_secret_client_init(vault_url, credential):
+        return mock_client
+
+    monkeypatch.setattr("shared.keyvault.SecretClient", lambda **kwargs: mock_client)
 
 
 # ==================== INFRASTRUCTURE FIXTURES ====================

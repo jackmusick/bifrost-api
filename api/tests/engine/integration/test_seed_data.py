@@ -285,11 +285,15 @@ class TestAzuriteSeedData:
         """
         import subprocess
         import sys
+        from pathlib import Path
+
+        # Get the api directory dynamically
+        api_dir = Path(__file__).parent.parent.parent.parent
 
         # Run seed script as subprocess
         result = subprocess.run(
             [sys.executable, "seed_data.py"],
-            cwd="/Users/jack/GitHub/bifrost-integrations/api",
+            cwd=str(api_dir),
             capture_output=True,
             text=True,
             timeout=10

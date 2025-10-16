@@ -51,6 +51,7 @@ jobs:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
                   FUNCTIONS_WORKER_RUNTIME: python
                   AZURE_FUNCTIONS_ENVIRONMENT: Testing
+                  AZURE_KEY_VAULT_URL: https://mock-keyvault.vault.azure.net/
             - name: Wait for Azure Functions to be ready
               run: |
                   timeout 30 bash -c 'until curl -sf http://localhost:7071/api/health > /dev/null; do sleep 2; done'
@@ -63,6 +64,7 @@ jobs:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
                   FUNCTIONS_WORKER_RUNTIME: python
                   AZURE_FUNCTIONS_ENVIRONMENT: Testing
+                  AZURE_KEY_VAULT_URL: https://mock-keyvault.vault.azure.net/
 
             - name: Show function logs on failure
               if: failure()

@@ -28,7 +28,10 @@ class TestWorkflowExecutionE2E:
         5. Clean up the test workflow file
         """
         # Step 1: Create a new workflow file dynamically
-        workspace_path = Path("/Users/jack/GitHub/bifrost-integrations/api/workspace/examples")
+        # Get workspace path dynamically relative to test file
+        api_dir = Path(__file__).parent.parent.parent
+        workspace_path = api_dir / "workspace" / "examples"
+        workspace_path.mkdir(parents=True, exist_ok=True)
         test_workflow_path = workspace_path / "hot_reload_test_workflow.py"
 
         workflow_code = '''"""
