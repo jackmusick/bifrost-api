@@ -37,11 +37,6 @@ jobs:
 
             - name: Start Azurite
               run: npx -y azurite &
-
-            - name: Wait for Azurite to be ready
-              run: |
-                  timeout 30 bash -c 'until nc -z 127.0.0.1 10002; do sleep 2; done'
-
             - name: Start Azure Functions in background
               run: |
                   cd api
