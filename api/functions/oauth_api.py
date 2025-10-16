@@ -1046,13 +1046,17 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
                 status_message=f"Token exchange failed: {error_msg}"
             )
 
-            error = ErrorResponse(
-                error="TokenExchangeFailed",
-                message=error_msg
-            )
+            # Return structured response instead of generic error
             return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=400,
+                json.dumps({
+                    "success": False,
+                    "message": "OAuth token exchange failed",
+                    "status": "failed",
+                    "connection_name": connection_name,
+                    "warning_message": None,
+                    "error_message": error_msg
+                }),
+                status_code=200,
                 mimetype="application/json"
             )
 
@@ -1088,12 +1092,12 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"OAuth connection completed: {connection_name} (status={final_status})")
 
         # Check if refresh token was provided
-        refresh_token_warning = None
+        warning_message = None
         if not result.get("refresh_token"):
-            refresh_token_warning = (
-                "OAuth provider did not return a refresh token. "
-                "Automatic token refresh will not be available. "
-                "You will need to reconnect when the access token expires."
+            warning_message = (
+                "The OAuth provider did not return a refresh token. "
+                "This connection will not be able to automatically refresh when the access token expires. "
+                "If this was unintentional, review your OAuth application settings with the provider."
             )
             logger.warning(f"No refresh token returned for {connection_name}")
 
@@ -1104,7 +1108,8 @@ async def oauth_callback(req: func.HttpRequest) -> func.HttpResponse:
                 "message": "OAuth connection completed successfully",
                 "status": final_status,
                 "connection_name": connection_name,
-                "warning": refresh_token_warning
+                "warning_message": warning_message,
+                "error_message": None
             }),
             status_code=200,
             mimetype="application/json"

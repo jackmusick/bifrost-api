@@ -55,6 +55,7 @@ Python 3.11 (Azure Functions v2 programming model): Follow standard conventions
     -   `formatRelativeTime()` - Relative time (e.g., "2 hours ago")
     -   These utilities automatically handle UTC timestamps from the backend and convert to user's local timezone
     -   NEVER use `toLocaleString()`, `toLocaleDateString()`, or `toLocaleTimeString()` directly
+-   DON'T ignore preexisting errors in typechecks or lint.
 
 ```
 import { apiClient } from "@/lib/api-client";

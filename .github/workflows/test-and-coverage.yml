@@ -2,48 +2,97 @@ name: Tests and Coverage
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 # Prevent this workflow from running in forks
 # Only runs if CODECOV_TOKEN secret exists (which forks won't have)
 env:
-  IS_UPSTREAM: ${{ github.repository == 'YOUR_USERNAME/bifrost-integrations' }}
+  IS_UPSTREAM: ${{ github.repository == 'jackmusick/bifrost-integrations' }}
 
 jobs:
   test-api:
     runs-on: ubuntu-latest
     name: API Tests
     # Only run in upstream repo, not forks
-    if: github.repository == 'YOUR_USERNAME/bifrost-integrations'
+    if: github.repository == 'jackmusick/bifrost-integrations'
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-    - name: Install dependencies
-      run: |
-        cd api
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-asyncio
+      - name: Install Azure Functions Core Tools
+        run: |
+          wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y azure-functions-core-tools-4
 
-    - name: Run tests with coverage
-      run: |
-        cd api
-        pytest tests/ --cov=. --cov-report=xml --cov-report=term -v
-      continue-on-error: true
+      - name: Install dependencies
+        run: |
+          cd api
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        files: ./api/coverage.xml
-        flags: api
-        name: api-coverage
-        fail_ci_if_error: false
+      - name: Start Azurite (Azure Storage Emulator)
+        run: |
+          docker run -d -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+            mcr.microsoft.com/azure-storage/azurite:latest \
+            azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose
+
+      - name: Wait for Azurite to be ready
+        run: |
+          timeout 30 bash -c 'until curl -sf http://127.0.0.1:10002/devstoreaccount1 > /dev/null; do sleep 1; done'
+
+      - name: Start Azure Functions in background
+        run: |
+          cd api
+          func start --port 7071 > /tmp/func.log 2>&1 &
+          echo $! > /tmp/func.pid
+        env:
+          AzureWebJobsStorage: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;
+          AzureWebJobsSecretStorageType: files
+          AZURE_FUNCTIONS_ENVIRONMENT: Development
+          WEBSITE_AUTH_ENCRYPTION_KEY: C0sm0Rk3y567890123456789012345678901234567890123456789012345
+
+      - name: Wait for Azure Functions to be ready
+        run: |
+          timeout 60 bash -c 'until curl -sf http://localhost:7071/api/health > /dev/null; do sleep 2; done'
+
+      - name: Run tests with coverage
+        working-directory: ./api
+        run: |
+          pytest tests/ --cov=. --cov-report=xml --cov-report=term -v
+        env:
+          PYTHONPATH: .
+
+      - name: Show function logs on failure
+        if: failure()
+        run: |
+          echo "=== Azure Functions Logs ==="
+          cat /tmp/func.log || echo "No function logs found"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Stop Azure Functions
+          if [ -f /tmp/func.pid ]; then
+            kill $(cat /tmp/func.pid) || true
+          fi
+          # Stop Azurite container
+          docker ps -q --filter ancestor=mcr.microsoft.com/azure-storage/azurite:latest | xargs -r docker stop
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./api/coverage.xml
+          flags: api
+          name: api-coverage
+          fail_ci_if_error: false

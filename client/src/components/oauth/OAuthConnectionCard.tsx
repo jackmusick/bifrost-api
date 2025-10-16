@@ -1,4 +1,4 @@
-import { Trash2, ExternalLink, Clock, CheckCircle2, XCircle, Loader2, AlertCircle, Copy, Check, Pencil, RefreshCw } from 'lucide-react'
+import { Trash2, ExternalLink, Clock, CheckCircle2, XCircle, Loader2, AlertCircle, Copy, Check, Pencil, RefreshCw, MoreVertical } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +11,12 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import type { components } from '@/lib/v1'
 import { getStatusColor, getStatusLabel, isExpired, expiresSoon } from '@/lib/client-types'
@@ -150,22 +156,77 @@ export function OAuthConnectionCard({
     })
   }
 
+  // Compact format for badges
+  const formatDateTimeCompact = (dateStr?: string) => {
+    if (!dateStr) return 'Never'
+
+    const utcDateStr = dateStr.endsWith('Z') ? dateStr : `${dateStr}Z`
+    const date = new Date(utcDateStr)
+    const now = new Date()
+    const diffMs = date.getTime() - now.getTime()
+    const diffMins = Math.floor(Math.abs(diffMs) / 60000)
+    const diffHours = Math.floor(Math.abs(diffMs) / 3600000)
+    const diffDays = Math.floor(Math.abs(diffMs) / 86400000)
+
+    // For dates within 7 days, show compact relative time
+    if (diffDays < 7) {
+      if (diffMs < 0) {
+        // Past
+        if (diffMins < 60) return `${diffMins}m ago`
+        if (diffHours < 24) return `${diffHours}h ago`
+        return `${diffDays}d ago`
+      }
+
+      // Future
+      if (diffMins < 60) return `${diffMins}m`
+      if (diffHours < 24) return `${diffHours}h`
+      return `${diffDays}d`
+    }
+
+    // Absolute dates
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric'
+    })
+  }
+
   return (
     <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-2">
+      <CardHeader className="pb-3 !grid-cols-1 !grid-rows-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
             {getStatusIcon()}
-            <div>
-              <CardTitle className="text-lg">{connection.connection_name}</CardTitle>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-lg truncate">{connection.connection_name}</CardTitle>
               <CardDescription className="text-xs mt-1">
                 {connection.oauth_flow_type.replace('_', ' ')}
               </CardDescription>
             </div>
           </div>
-          <Badge variant={getStatusBadgeVariant()} className={getStatusBadgeClassName()}>
-            {getStatusLabel(connection.status)}
-          </Badge>
+          <div className="flex items-center gap-2 shrink-0">
+            {connection.expires_at && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={`flex items-center gap-1 text-xs cursor-help whitespace-nowrap ${isTokenExpired ? 'text-red-600' : expirationWarning ? 'text-yellow-600' : 'text-muted-foreground'}`}>
+                      {isTokenExpired ? (
+                        <XCircle className="h-3 w-3" />
+                      ) : (
+                        <CheckCircle2 className="h-3 w-3" />
+                      )}
+                      <span>{formatDateTimeCompact(connection.expires_at)}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{isTokenExpired ? 'Expired' : 'Expires'} {formatDateTime(connection.expires_at)}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            <Badge variant={getStatusBadgeVariant()} className={getStatusBadgeClassName()}>
+              {getStatusLabel(connection.status)}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
 
@@ -218,40 +279,6 @@ export function OAuthConnectionCard({
             <span>Token expires soon</span>
           </div>
         )}
-
-        {/* Metadata Badges */}
-        <div className="grid grid-cols-2 gap-2">
-          <Badge variant="outline" className="text-xs justify-center w-full">
-            <Clock className="mr-1 h-3 w-3" />
-            Created {formatDateTime(connection.created_at)}
-          </Badge>
-
-          {connection.expires_at && (
-            <Badge
-              variant={isTokenExpired ? "destructive" : expirationWarning ? "secondary" : "default"}
-              className="text-xs justify-center w-full"
-            >
-              {isTokenExpired ? (
-                <>
-                  <XCircle className="mr-1 h-3 w-3" />
-                  Expired {formatDateTime(connection.expires_at)}
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Expires {formatDateTime(connection.expires_at)}
-                </>
-              )}
-            </Badge>
-          )}
-
-          {connection.last_refresh_at && (
-            <Badge variant="outline" className="text-xs justify-center w-full col-span-2">
-              <RefreshCw className="mr-1 h-3 w-3" />
-              Refreshed {formatDateTime(connection.last_refresh_at)}
-            </Badge>
-          )}
-        </div>
       </CardContent>
 
       <CardFooter className="flex flex-col gap-2">
@@ -323,58 +350,36 @@ export function OAuthConnectionCard({
             </Button>
           )}
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {connection.status === 'completed' && connection.expires_at && (
+                <DropdownMenuItem
                   onClick={() => onRefresh(connection.connection_name)}
-                  disabled={isRefreshing || connection.status !== 'completed' || !connection.expires_at}
+                  disabled={isRefreshing}
                 >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Refresh access token</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => onEdit(connection.connection_name)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Edit connection</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => onDelete(connection.connection_name)}
-                  disabled={isDeleting}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Delete connection</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {isRefreshing ? 'Refreshing...' : 'Refresh token'}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => onEdit(connection.connection_name)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onDelete(connection.connection_name)}
+                disabled={isDeleting}
+                className="text-red-600 focus:text-red-600"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardFooter>
     </Card>

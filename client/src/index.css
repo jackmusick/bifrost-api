@@ -179,12 +179,6 @@
         animation: fadeIn 0.3s ease-out;
     }
 
-    /* Card hover effects */
-    [class*="card"]:hover {
-        transform: translateY(-2px);
-        transition: transform 0.2s ease-out;
-    }
-
     /* Button press effect */
     button:active:not(:disabled) {
         transform: scale(0.98);

@@ -233,7 +233,7 @@ export function OAuthConnections() {
             </div>
           ) : connections && connections.length > 0 ? (
             <div className="overflow-auto max-h-full">
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 pb-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pb-4">
                 {connections.map((connection) => (
                   <OAuthConnectionCard
                     key={connection.connection_name}

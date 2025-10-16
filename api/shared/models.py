@@ -675,7 +675,8 @@ class OAuthCallbackResponse(BaseModel):
     message: str = Field(..., description="Status message")
     status: str = Field(..., description="Connection status")
     connection_name: str = Field(..., description="Name of the OAuth connection")
-    warning: str | None = Field(None, description="Warning message (e.g., missing refresh token)")
+    warning_message: str | None = Field(None, description="Warning message displayed to user (e.g., missing refresh token)")
+    error_message: str | None = Field(None, description="Error message displayed to user")
 
 
 class OAuthCredentials:

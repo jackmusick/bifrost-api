@@ -1,17 +1,20 @@
 name: Deploy API Function App
 
 on:
-  push:
+  # Only deploy after tests pass on main branch
+  workflow_run:
+    workflows: ["Tests and Coverage"]
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - 'api/**'
-      - '.github/workflows/deploy-api.yml'
   workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # Only deploy if tests passed
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v4
@@ -20,15 +23,6 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-
-    - name: 'Run API Tests'
-      shell: bash
-      run: |
-        cd api
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-asyncio
-        pytest tests/ -v
 
     - name: 'Resolve Project Dependencies Using Pip'
       shell: bash

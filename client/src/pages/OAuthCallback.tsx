@@ -3,14 +3,14 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { oauthService } from '@/services/oauth'
 
 export function OAuthCallback() {
   const navigate = useNavigate()
   const { connectionName } = useParams<{ connectionName: string }>()
   const [searchParams] = useSearchParams()
-  const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing')
+  const [status, setStatus] = useState<'processing' | 'success' | 'error' | 'warning'>('processing')
   const [message, setMessage] = useState('Processing OAuth callback...')
   const [warning, setWarning] = useState<string | null>(null)
   const hasProcessed = useRef(false)
@@ -52,15 +52,37 @@ export function OAuthCallback() {
         // Send the authorization code to the API for token exchange
         const response = await oauthService.handleCallback(connectionName, code, state)
 
+        // Check for error_message
+        if (response && typeof response === 'object' && 'error_message' in response && response.error_message) {
+          setStatus('error')
+          setMessage(response.error_message as string)
+          // DO NOT auto-close - user must manually close after reading error
+          return
+        }
+
+        // Check for warning_message (e.g., no refresh token)
+        if (response && typeof response === 'object' && 'warning_message' in response && response.warning_message) {
+          setWarning(response.warning_message as string)
+          setStatus('warning')
+          setMessage('Connection established with limitations')
+
+          // Notify parent window to refresh connections (even with warning)
+          if (window.opener) {
+            window.opener.postMessage({
+              type: 'oauth_success',
+              connectionName
+            }, window.location.origin)
+          }
+
+          // DO NOT auto-close - user must manually close after reading warning
+          return
+        }
+
+        // No warning or error - proceed with normal success flow
         setStatus('success')
         setMessage('OAuth connection completed successfully!')
 
-        // Check for warning (e.g., missing refresh token)
-        if (response && typeof response === 'object' && 'warning' in response && response.warning) {
-          setWarning(response.warning as string)
-        }
-
-        // Notify parent window to refresh connections IMMEDIATELY
+        // Notify parent window to refresh connections
         if (window.opener) {
           window.opener.postMessage({
             type: 'oauth_success',
@@ -68,15 +90,13 @@ export function OAuthCallback() {
           }, window.location.origin)
         }
 
-        // Brief delay to show success message (longer if there's a warning), then close
-        const delay = warning ? 5000 : 1500
+        // Auto-close on success (no warning)
         setTimeout(() => {
           window.close()
-          // Fallback: If window.close() fails (not a popup), navigate to oauth page
           setTimeout(() => {
             navigate('/oauth')
           }, 100)
-        }, delay)
+        }, 1500)
       } catch (err: unknown) {
         setStatus('error')
         const errorMsg = (err as Error).message || 'Failed to complete OAuth connection'
@@ -95,19 +115,21 @@ export function OAuthCallback() {
     }
 
     handleCallback()
-  }, [connectionName, searchParams, navigate, warning])
+  }, [connectionName, searchParams, navigate])
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
-      <Card className="max-w-md w-full">
+      <Card className="max-w-md w-full hover:!transform-none">
         <CardHeader>
           <div className="flex items-center gap-2">
             {status === 'processing' && <Loader2 className="h-6 w-6 animate-spin text-blue-500" />}
             {status === 'success' && <CheckCircle2 className="h-6 w-6 text-green-500" />}
+            {status === 'warning' && <AlertTriangle className="h-6 w-6 text-yellow-600" />}
             {status === 'error' && <XCircle className="h-6 w-6 text-red-500" />}
             <CardTitle>
               {status === 'processing' && 'Processing OAuth Callback'}
               {status === 'success' && 'Authorization Successful'}
+              {status === 'warning' && 'Warning'}
               {status === 'error' && 'Authorization Failed'}
             </CardTitle>
           </div>
@@ -118,25 +140,36 @@ export function OAuthCallback() {
         <CardContent>
           <p className="text-sm text-muted-foreground mb-4">{message}</p>
 
-          {status === 'success' && warning && (
-            <Alert className="mb-4 border-yellow-500 bg-yellow-50">
-              <AlertTriangle className="h-4 w-4 text-yellow-600" />
-              <AlertDescription className="text-sm text-yellow-800">
-                {warning}
-              </AlertDescription>
-            </Alert>
+          {/* Warning state */}
+          {status === 'warning' && warning && (
+            <>
+              <p className="text-sm mb-4">{warning}</p>
+              <div className="flex justify-center">
+                <Button
+                  onClick={() => window.close()}
+                  variant="default"
+                  className="w-48"
+                >
+                  Close
+                </Button>
+              </div>
+            </>
           )}
 
+          {/* Success state - auto-closes */}
           {status === 'success' && (
             <p className="text-xs text-muted-foreground">
               This window will close automatically...
             </p>
           )}
 
+          {/* Error state - manual close */}
           {status === 'error' && (
-            <Button onClick={() => window.close()} variant="outline" className="w-full">
-              Close
-            </Button>
+            <div className="flex justify-center">
+              <Button onClick={() => window.close()} variant="outline" className="w-48">
+                Close
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
