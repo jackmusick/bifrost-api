@@ -36,7 +36,7 @@ jobs:
             - name: Start Azure Functions in background
               uses: JarvusInnovations/background-action@v1
               with:
-                  run: cd api && npx -y func start --port 7071
+                  run: cd api && npx -y azure-functions-core-tools start --port 7071
                   wait-on: tcp:127.0.0.1:7071
                   wait-for: 2m
                   log-output-if: failure
