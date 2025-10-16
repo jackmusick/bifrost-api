@@ -15,7 +15,6 @@ jobs:
 
         steps:
             - uses: actions/checkout@v4
-
             - name: Set up Python 3.11
               uses: actions/setup-python@v4
               with:
@@ -35,21 +34,26 @@ jobs:
                   pip install -r requirements.txt
                   pip install pytest pytest-cov pytest-asyncio
 
-            - name: Start Azurite
-              run: npx -y azurite &
+            - name: Start Azurite in background
+              uses: JarvusInnovations/background-action@v1
+              with:
+                  run: npx -y azurite
+                  wait-on: tcp:127.0.0.1:10002
+                  wait-for: 60s
+
             - name: Start Azure Functions in background
-              run: |
-                  cd api
-                  func start --port 7071 --worker-runtime python > /tmp/func.log 2>&1 &
-                  echo $! > /tmp/func.pid
+              uses: JarvusInnovations/background-action@v1
+              with:
+                  run: cd api && func start --port 7071 --worker-runtime python
+                  wait-on: http://localhost:7071/api/health
+                  wait-for: 60s
+                  log-output-if: failure
+                  log-output: true
               env:
                   AzureWebJobsStorage: UseDevelopmentStorage=true
                   FUNCTIONS_WORKER_RUNTIME: python
                   AZURE_FUNCTIONS_ENVIRONMENT: Testing
                   AZURE_KEY_VAULT_URL: https://mock-keyvault.vault.azure.net/
-            - name: Wait for Azure Functions to be ready
-              run: |
-                  timeout 30 bash -c 'until curl -sf http://localhost:7071/api/health > /dev/null; do sleep 2; done'
             - name: Run tests with coverage
               working-directory: ./api
               run: |
@@ -60,20 +64,6 @@ jobs:
                   FUNCTIONS_WORKER_RUNTIME: python
                   AZURE_FUNCTIONS_ENVIRONMENT: Testing
                   AZURE_KEY_VAULT_URL: https://mock-keyvault.vault.azure.net/
-
-            - name: Show function logs on failure
-              if: failure()
-              run: |
-                  echo "=== Azure Functions Logs ==="
-                  cat /tmp/func.log || echo "No function logs found"
-
-            - name: Cleanup
-              if: always()
-              run: |
-                  # Stop Azure Functions
-                  if [ -f /tmp/func.pid ]; then
-                    kill $(cat /tmp/func.pid) || true
-                  fi
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v4
