@@ -1,119 +1,83 @@
 """
 Execution Logger
-Logs workflow execution details to Table Storage with dual-indexing
+Logs workflow execution details using ExecutionRepository
+Large data (logs, results, snapshots) stored in Blob Storage to avoid size limits
 """
 
 import json
 import logging
-from datetime import datetime
 from typing import Any
 
+from shared.blob_storage import get_blob_service
 from shared.models import ExecutionStatus
-from shared.storage import get_table_storage_service
+from shared.repositories.executions import ExecutionRepository
 
 logger = logging.getLogger(__name__)
+
+# Size threshold for storing data in blob vs table (1KB)
+BLOB_THRESHOLD_BYTES = 1024
 
 
 class ExecutionLogger:
     """
     Logger for workflow executions.
 
-    Uses consolidated table structure:
-    - Entities table: Stores full execution records (partitioned by org_id or GLOBAL)
-    - Relationships table: Stores user→execution index for fast lookup
+    Uses ExecutionRepository for all database operations with automatic index management.
     """
 
     def __init__(self):
-        self.entities = get_table_storage_service("Entities")
-        self.relationships = get_table_storage_service("Relationships")
+        self.repository = ExecutionRepository()
+        self.blob_service = get_blob_service()
 
     async def create_execution(
         self,
         execution_id: str,
         org_id: str | None,
         user_id: str,
+        user_name: str,
         workflow_name: str,
         input_data: dict[str, Any],
         form_id: str | None = None
     ) -> dict[str, Any]:
         """
-        Create execution record in Entities and user index in Relationships.
+        Create execution record with automatic index management.
+
+        Repository handles:
+        - Primary record in Entities table
+        - User index for "my executions" queries
+        - Workflow index for "executions by workflow" queries
+        - Form index for "executions from form" queries
 
         Args:
             execution_id: Unique execution ID (UUID)
             org_id: Organization ID (None for GLOBAL scope)
             user_id: User ID who executed
+            user_name: Display name of user who executed
             workflow_name: Name of workflow
             input_data: Input parameters
             form_id: Optional form ID if triggered by form
 
         Returns:
-            Created execution entity
+            Created execution entity (as dict for compatibility)
         """
-        started_at = datetime.utcnow()
-        reverse_ts = self._get_reverse_timestamp(started_at)
+        # Delegate to repository (handles all indexes automatically!)
+        execution_model = self.repository.create_execution(
+            execution_id=execution_id,
+            org_id=org_id,
+            user_id=user_id,
+            user_name=user_name,
+            workflow_name=workflow_name,
+            input_data=input_data,
+            form_id=form_id
+        )
 
-        # Use "GLOBAL" partition for None org_id (platform admin in global scope)
-        partition_key = org_id or "GLOBAL"
+        logger.info(
+            f"Created execution {execution_id} via repository with all indexes",
+            extra={"execution_id": execution_id, "org_id": org_id, "workflow": workflow_name}
+        )
 
-        # Create entity for Entities table (full execution record)
-        execution_entity = {
-            "PartitionKey": partition_key,
-            "RowKey": f"execution:{reverse_ts}_{execution_id}",
-            "ExecutionId": execution_id,
-            "WorkflowName": workflow_name,
-            "FormId": form_id,
-            "ExecutedBy": user_id,
-            "Status": ExecutionStatus.RUNNING.value,
-            "InputData": json.dumps(input_data),
-            "Result": None,
-            "ErrorMessage": None,
-            "ErrorType": None,
-            "ErrorDetails": None,
-            "DurationMs": None,
-            "StartedAt": started_at.isoformat(),
-            "CompletedAt": None,
-            "StateSnapshots": None,
-            "IntegrationCalls": None,
-            "Logs": None,
-            "Variables": None
-        }
-
-        # Create dual index in Relationships table (user→execution lookup)
-        user_exec_relationship = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"userexec:{user_id}:{execution_id}",
-            "ExecutionId": execution_id,
-            "UserId": user_id,
-            "OrgId": org_id or "GLOBAL",
-            "WorkflowName": workflow_name,
-            "Status": ExecutionStatus.RUNNING.value,
-            "StartedAt": started_at.isoformat()
-        }
-
-        # Insert into both tables (dual-indexing)
-        try:
-            self.entities.insert_entity(execution_entity)
-            logger.info(
-                f"Created execution record in Entities: {execution_id}",
-                extra={"execution_id": execution_id, "org_id": org_id}
-            )
-
-            self.relationships.insert_entity(user_exec_relationship)
-            logger.info(
-                f"Created execution index in Relationships: {execution_id}",
-                extra={"execution_id": execution_id, "user_id": user_id}
-            )
-
-            return execution_entity
-
-        except Exception as e:
-            logger.error(
-                f"Failed to create execution record: {str(e)}",
-                extra={"execution_id": execution_id},
-                exc_info=True
-            )
-            raise
+        # Return as dict for compatibility with existing code
+        return execution_model.model_dump()
 
     async def update_execution(
         self,
@@ -121,7 +85,7 @@ class ExecutionLogger:
         org_id: str | None,
         user_id: str,
         status: ExecutionStatus,
-        result: dict[str, Any] | None = None,
+        result: dict[str, Any] | str | None = None,
         error_message: str | None = None,
         error_type: str | None = None,
         error_details: dict[str, Any] | None = None,
@@ -132,14 +96,17 @@ class ExecutionLogger:
         variables: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """
-        Update execution record with results.
+        Update execution record with results and automatic index updates.
+
+        Large data (logs, results, snapshots) automatically stored in blob storage.
+        Repository updates ALL indexes (user, workflow, form) with display fields.
 
         Args:
             execution_id: Execution ID
             org_id: Organization ID (None for GLOBAL scope)
             user_id: User ID
             status: Execution status
-            result: Workflow result (if success)
+            result: Workflow result (dict or str - if success)
             error_message: Error message (if failed)
             error_type: Error type (if failed)
             error_details: Error details (if failed)
@@ -150,109 +117,58 @@ class ExecutionLogger:
             variables: Workflow variables
 
         Returns:
-            Updated execution entity
+            Updated execution entity (as dict)
         """
-        completed_at = datetime.utcnow()
-
-        # Use "GLOBAL" partition for None org_id
-        partition_key = org_id or "GLOBAL"
-
-        # Get existing entity to get RowKey (need reverse timestamp)
-        existing = await self._get_execution(org_id, execution_id)
-        if not existing:
-            raise ValueError(f"Execution {execution_id} not found")
-
-        row_key = existing['RowKey']
-
-        # Update Entities table (full execution record)
-        execution_update = {
-            "PartitionKey": partition_key,
-            "RowKey": row_key,
-            "Status": status.value,
-            "CompletedAt": completed_at.isoformat(),
-            "DurationMs": duration_ms
-        }
-
+        # Handle result storage (blob for large, table for small)
+        result_in_blob = False
         if result is not None:
-            execution_update["Result"] = json.dumps(result)
+            result_json = json.dumps(result) if isinstance(result, dict) else result
+            result_size = len(result_json.encode('utf-8'))
 
-        if error_message:
-            execution_update["ErrorMessage"] = error_message
-            execution_update["ErrorType"] = error_type
-            if error_details:
-                execution_update["ErrorDetails"] = json.dumps(error_details)
+            if result_size > BLOB_THRESHOLD_BYTES:
+                # Store in blob storage
+                self.blob_service.upload_result(execution_id, result)
+                result_in_blob = True
+                result = None  # Don't store inline
+                logger.info(
+                    f"Stored large result in blob storage ({result_size} bytes)",
+                    extra={"execution_id": execution_id}
+                )
 
-        # Add state tracking data
-        if state_snapshots:
-            execution_update["StateSnapshots"] = json.dumps(state_snapshots)
-        if integration_calls:
-            execution_update["IntegrationCalls"] = json.dumps(integration_calls)
+        # Store large data in blob storage
         if logs:
-            execution_update["Logs"] = json.dumps(logs)
-        if variables:
-            execution_update["Variables"] = json.dumps(variables)
-
-        # Update Relationships table (user index)
-        user_exec_update = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"userexec:{user_id}:{execution_id}",
-            "Status": status.value
-        }
-
-        try:
-            self.entities.update_entity(execution_update, mode="merge")
+            self.blob_service.upload_logs(execution_id, logs)
             logger.info(
-                f"Updated execution in Entities: {execution_id} (status={status.value})",
-                extra={"execution_id": execution_id, "status": status.value}
+                f"Stored logs in blob storage ({len(logs)} entries)",
+                extra={"execution_id": execution_id}
             )
 
-            self.relationships.update_entity(user_exec_update, mode="merge")
+        if state_snapshots:
+            self.blob_service.upload_snapshot(execution_id, state_snapshots)
             logger.info(
-                f"Updated execution index in Relationships: {execution_id} (status={status.value})",
-                extra={"execution_id": execution_id, "status": status.value}
+                "Stored snapshots in blob storage",
+                extra={"execution_id": execution_id}
             )
 
-            return execution_update
+        # Delegate to repository (handles primary record + ALL indexes!)
+        execution_model = self.repository.update_execution(
+            execution_id=execution_id,
+            org_id=org_id,
+            user_id=user_id,
+            status=status,
+            result=result,
+            error_message=error_message,
+            duration_ms=duration_ms,
+            result_in_blob=result_in_blob
+        )
 
-        except Exception as e:
-            logger.error(
-                f"Failed to update execution record: {str(e)}",
-                extra={"execution_id": execution_id},
-                exc_info=True
-            )
-            raise
+        logger.info(
+            f"Updated execution {execution_id} via repository (status={status.value}, all indexes updated)",
+            extra={"execution_id": execution_id, "status": status.value}
+        )
 
-    async def _get_execution(self, org_id: str | None, execution_id: str) -> dict[str, Any] | None:
-        """
-        Get execution entity by org_id and execution_id.
-
-        Note: We need to query because RowKey includes reverse timestamp.
-
-        Args:
-            org_id: Organization ID (None for GLOBAL scope)
-            execution_id: Execution ID
-        """
-        # Use "GLOBAL" partition for None org_id
-        partition_key = org_id or "GLOBAL"
-
-        # Query Entities for this execution
-        filter_str = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
-        results = list(self.entities.query_entities(filter=filter_str))
-
-        if results:
-            return results[0]
-        return None
-
-    def _get_reverse_timestamp(self, dt: datetime) -> int:
-        """
-        Calculate reverse timestamp for descending order in Table Storage.
-
-        Formula: 9999999999999 - timestamp_in_milliseconds
-
-        This ensures newest records appear first when querying by partition key.
-        """
-        timestamp_ms = int(dt.timestamp() * 1000)
-        return 9999999999999 - timestamp_ms
+        # Return as dict for compatibility
+        return execution_model.model_dump()
 
 
 # Singleton instance

@@ -34,16 +34,7 @@ class TestCanUserViewForm:
 
     def test_platform_admin_can_view_any_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Platform admins can view all forms regardless of scope"""
-        # Mock table services
-        def mock_get_table_service(table_name, context=None):
-            if table_name == "Entities":
-                return mock_entities_table
-            elif table_name == "Relationships":
-                return mock_relationships_table
-            return Mock()
-
-        monkeypatch.setattr("shared.authorization.TableStorageService", lambda table_name, context=None: mock_get_table_service(table_name, context))
-
+        # Platform admins bypass form checks, so no mocking needed
         context = RequestContext(
             user_id="admin@example.com",
             email="admin@example.com",
@@ -56,26 +47,36 @@ class TestCanUserViewForm:
         form_id = str(uuid.uuid4())
         result = can_user_view_form(context, form_id)
 
+        # Platform admin always returns True without checking repository
         assert result is True
 
-    def test_regular_user_can_view_public_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users can view public forms"""
+    def test_regular_user_can_view_global_active_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users can view active global forms"""
+        from shared.models import Form, FormSchema
+        from datetime import datetime
+
         form_id = str(uuid.uuid4())
 
-        # Mock form entity (public)
-        mock_entities_table.get_entity.return_value = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"form:{form_id}",
-            "Name": "Public Form",
-            "IsPublic": True
-        }
+        # Mock FormRepository to return an active global form
+        mock_form = Form(
+            id=form_id,
+            orgId="GLOBAL",
+            name="Global Form",
+            description=None,
+            linkedWorkflow="test_workflow",
+            formSchema=FormSchema(fields=[]),
+            isActive=True,
+            isGlobal=True,
+            isPublic=True,
+            createdBy="system",
+            createdAt=datetime.utcnow(),
+            updatedAt=datetime.utcnow()
+        )
 
-        def mock_table_storage_service(table_name, context=None):
-            if "Entities" in table_name or table_name == "Entities":
-                return mock_entities_table
-            return Mock()
+        mock_form_repo = Mock()
+        mock_form_repo.get_form.return_value = mock_form
 
-        monkeypatch.setattr("shared.authorization.TableStorageService", mock_table_storage_service)
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -90,41 +91,33 @@ class TestCanUserViewForm:
 
         assert result is True
 
-    def test_regular_user_can_view_form_with_assigned_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users can view private forms if they have an assigned role"""
+    def test_regular_user_can_view_org_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users can view active forms in their org"""
+        from shared.models import Form, FormSchema
+        from datetime import datetime
+
         form_id = str(uuid.uuid4())
-        role_id = str(uuid.uuid4())
 
-        # Mock form entity (private)
-        mock_entities_table.get_entity.return_value = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"form:{form_id}",
-            "Name": "Private Form",
-            "IsPublic": False
-        }
+        # Mock FormRepository to return an active org form
+        mock_form = Form(
+            id=form_id,
+            orgId="org-123",
+            name="Org Form",
+            description=None,
+            linkedWorkflow="test_workflow",
+            formSchema=FormSchema(fields=[]),
+            isActive=True,
+            isGlobal=False,
+            isPublic=False,
+            createdBy="system",
+            createdAt=datetime.utcnow(),
+            updatedAt=datetime.utcnow()
+        )
 
-        # Mock user roles
-        mock_relationships_table.query_entities.side_effect = [
-            # First call: get user's roles
-            iter([{
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"userrole:user@example.com:{role_id}"
-            }]),
-            # Second call: get form's roles
-            iter([{
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"formrole:{form_id}:{role_id}"
-            }])
-        ]
+        mock_form_repo = Mock()
+        mock_form_repo.get_form.return_value = mock_form
 
-        def mock_table_storage_service(table_name, context=None):
-            if "Entities" in table_name or table_name == "Entities":
-                return mock_entities_table
-            elif "Relationships" in table_name or table_name == "Relationships":
-                return mock_relationships_table
-            return Mock()
-
-        monkeypatch.setattr("shared.authorization.TableStorageService", mock_table_storage_service)
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -139,38 +132,57 @@ class TestCanUserViewForm:
 
         assert result is True
 
-    def test_regular_user_cannot_view_form_without_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users cannot view private forms without assigned role"""
+    def test_regular_user_cannot_view_inactive_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users cannot view inactive forms"""
+        from shared.models import Form, FormSchema
+        from datetime import datetime
+
         form_id = str(uuid.uuid4())
-        role_id = str(uuid.uuid4())
 
-        # Mock form entity (private)
-        mock_entities_table.get_entity.return_value = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"form:{form_id}",
-            "Name": "Private Form",
-            "IsPublic": False
-        }
+        # Mock FormRepository to return an INACTIVE form
+        mock_form = Form(
+            id=form_id,
+            orgId="GLOBAL",
+            name="Inactive Form",
+            description=None,
+            linkedWorkflow="test_workflow",
+            formSchema=FormSchema(fields=[]),
+            isActive=False,  # INACTIVE
+            isGlobal=True,
+            isPublic=True,
+            createdBy="system",
+            createdAt=datetime.utcnow(),
+            updatedAt=datetime.utcnow()
+        )
 
-        # Mock user roles (different role than form requires)
-        mock_relationships_table.query_entities.side_effect = [
-            # First call: get user's roles
-            iter([{
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"userrole:user@example.com:{role_id}"
-            }]),
-            # Second call: check for form role match (no match)
-            iter([])
-        ]
+        mock_form_repo = Mock()
+        mock_form_repo.get_form.return_value = mock_form
 
-        def mock_table_storage_service(table_name, context=None):
-            if "Entities" in table_name or table_name == "Entities":
-                return mock_entities_table
-            elif "Relationships" in table_name or table_name == "Relationships":
-                return mock_relationships_table
-            return Mock()
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
 
-        monkeypatch.setattr("shared.authorization.TableStorageService", mock_table_storage_service)
+        context = RequestContext(
+            user_id="user@example.com",
+            email="user@example.com",
+            name="User",
+            org_id="org-123",
+            is_platform_admin=False,
+            is_function_key=False
+        )
+
+        result = can_user_view_form(context, form_id)
+
+        assert result is False
+
+    def test_regular_user_cannot_view_other_org_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users cannot view forms from other organizations"""
+        form_id = str(uuid.uuid4())
+
+        # Mock FormRepository to return None (form not found in user's scope)
+        # This simulates the repository's fallback logic not finding the form
+        mock_form_repo = Mock()
+        mock_form_repo.get_form.return_value = None
+
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -198,32 +210,49 @@ class TestGetUserVisibleForms:
         return Mock(spec=TableStorageService)
 
     def test_platform_admin_sees_forms_in_selected_scope(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Platform admins see all forms in their selected scope"""
+        """Platform admins see all forms in their selected scope (including inactive)"""
+        from shared.models import Form, FormSchema
+        from datetime import datetime
+
         form1_id = str(uuid.uuid4())
         form2_id = str(uuid.uuid4())
 
-        # Mock forms in org-123
-        mock_entities_table.query_entities.return_value = iter([
-            {
-                "PartitionKey": "org-123",
-                "RowKey": f"form:{form1_id}",
-                "Name": "Form 1",
-                "IsPublic": True
-            },
-            {
-                "PartitionKey": "org-123",
-                "RowKey": f"form:{form2_id}",
-                "Name": "Form 2",
-                "IsPublic": False
-            }
-        ])
+        # Mock FormRepository to return both active and inactive forms
+        mock_forms = [
+            Form(
+                id=form1_id,
+                orgId="org-123",
+                name="Form 1",
+                description=None,
+                linkedWorkflow="workflow1",
+                formSchema=FormSchema(fields=[]),
+                isActive=True,
+                isGlobal=False,
+                isPublic=False,
+                createdBy="admin",
+                createdAt=datetime.utcnow(),
+                updatedAt=datetime.utcnow()
+            ),
+            Form(
+                id=form2_id,
+                orgId="org-123",
+                name="Form 2",
+                description=None,
+                linkedWorkflow="workflow2",
+                formSchema=FormSchema(fields=[]),
+                isActive=False,  # INACTIVE but admin can still see it
+                isGlobal=False,
+                isPublic=False,
+                createdBy="admin",
+                createdAt=datetime.utcnow(),
+                updatedAt=datetime.utcnow()
+            )
+        ]
 
-        def mock_table_storage_service(table_name, context=None):
-            if table_name == "Entities":
-                return mock_entities_table
-            return Mock()
+        mock_form_repo = Mock()
+        mock_form_repo.list_forms.return_value = mock_forms
 
-        monkeypatch.setattr("shared.authorization.TableStorageService", mock_table_storage_service)
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="admin@example.com",
@@ -237,53 +266,53 @@ class TestGetUserVisibleForms:
         forms = get_user_visible_forms(context)
 
         assert len(forms) == 2
-        assert forms[0]["Name"] == "Form 1"
-        assert forms[1]["Name"] == "Form 2"
+        assert forms[0]["name"] == "Form 1"
+        assert forms[1]["name"] == "Form 2"
 
     def test_regular_user_sees_global_and_org_forms(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users see forms from BOTH GLOBAL and their org (filtered by roles)"""
+        """Regular users see active forms from BOTH GLOBAL and their org"""
+        from shared.models import Form, FormSchema
+        from datetime import datetime
+
         global_form_id = str(uuid.uuid4())
         org_form_id = str(uuid.uuid4())
-        role_id = str(uuid.uuid4())
 
-        # Mock will be called twice: once for GLOBAL, once for org
-        query_results = [
-            # GLOBAL forms
-            iter([{
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"form:{global_form_id}",
-                "Name": "Global Form",
-                "IsPublic": True
-            }]),
-            # Org forms
-            iter([{
-                "PartitionKey": "org-123",
-                "RowKey": f"form:{org_form_id}",
-                "Name": "Org Form",
-                "IsPublic": True
-            }])
+        # Mock FormRepository to return both global and org forms (active only)
+        mock_forms = [
+            Form(
+                id=global_form_id,
+                orgId="GLOBAL",
+                name="Global Form",
+                description=None,
+                linkedWorkflow="workflow1",
+                formSchema=FormSchema(fields=[]),
+                isActive=True,
+                isGlobal=True,
+                isPublic=True,
+                createdBy="system",
+                createdAt=datetime.utcnow(),
+                updatedAt=datetime.utcnow()
+            ),
+            Form(
+                id=org_form_id,
+                orgId="org-123",
+                name="Org Form",
+                description=None,
+                linkedWorkflow="workflow2",
+                formSchema=FormSchema(fields=[]),
+                isActive=True,
+                isGlobal=False,
+                isPublic=False,
+                createdBy="admin",
+                createdAt=datetime.utcnow(),
+                updatedAt=datetime.utcnow()
+            )
         ]
-        mock_entities_table.query_entities.side_effect = query_results
 
-        # Mock user roles
-        mock_relationships_table.query_entities.return_value = iter([{
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"userrole:user@example.com:{role_id}"
-        }])
+        mock_form_repo = Mock()
+        mock_form_repo.list_forms.return_value = mock_forms
 
-        call_count = [0]
-
-        def mock_table_storage_service(table_name, context=None):
-            if table_name == "Entities":
-                call_count[0] += 1
-                return mock_entities_table
-            elif table_name == "Relationships":
-                return mock_relationships_table
-            return Mock()
-
-        monkeypatch.setattr("shared.authorization.TableStorageService", mock_table_storage_service)
-
-        # RequestContext is imported directly in the module, no need to patch
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -296,7 +325,7 @@ class TestGetUserVisibleForms:
 
         forms = get_user_visible_forms(context)
 
-        # Should see both GLOBAL and org forms (both public in this test)
+        # Should see both GLOBAL and org forms (both active in this test)
         assert len(forms) == 2
 
 
@@ -360,16 +389,14 @@ class TestHelperFunctions:
 
     def test_get_user_role_ids(self, monkeypatch):
         """Test get_user_role_ids() extracts role UUIDs correctly"""
-        mock_relationships = Mock(spec=TableStorageService)
         role1_id = str(uuid.uuid4())
         role2_id = str(uuid.uuid4())
 
-        mock_relationships.query_entities.return_value = iter([
-            {"RowKey": f"userrole:user@example.com:{role1_id}"},
-            {"RowKey": f"userrole:user@example.com:{role2_id}"}
-        ])
+        # Mock RoleRepository
+        mock_role_repo = Mock()
+        mock_role_repo.get_user_role_ids.return_value = [role1_id, role2_id]
 
-        role_ids = get_user_role_ids("user@example.com", mock_relationships)
+        role_ids = get_user_role_ids("user@example.com", mock_role_repo)
 
         assert len(role_ids) == 2
         assert role1_id in role_ids
@@ -377,17 +404,15 @@ class TestHelperFunctions:
 
     def test_get_form_role_ids(self, monkeypatch):
         """Test get_form_role_ids() extracts role UUIDs correctly"""
-        mock_relationships = Mock(spec=TableStorageService)
         form_id = str(uuid.uuid4())
         role1_id = str(uuid.uuid4())
         role2_id = str(uuid.uuid4())
 
-        mock_relationships.query_entities.return_value = iter([
-            {"RowKey": f"formrole:{form_id}:{role1_id}"},
-            {"RowKey": f"formrole:{form_id}:{role2_id}"}
-        ])
+        # Mock RoleRepository
+        mock_role_repo = Mock()
+        mock_role_repo.get_form_role_ids.return_value = [role1_id, role2_id]
 
-        role_ids = get_form_role_ids(form_id, mock_relationships)
+        role_ids = get_form_role_ids(form_id, mock_role_repo)
 
         assert len(role_ids) == 2
         assert role1_id in role_ids

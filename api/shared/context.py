@@ -18,7 +18,6 @@ class Organization:
     """Organization entity."""
     org_id: str
     name: str
-    tenant_id: str | None
     is_active: bool
 
 
@@ -35,7 +34,7 @@ class OrganizationContext:
     Context object passed to all workflows.
 
     Provides access to:
-    - Organization information (id, name, tenant_id)
+    - Organization information (id, name)
     - Execution metadata (execution_id, caller)
     - Configuration (key-value pairs)
     - Secrets (from Key Vault)
@@ -78,11 +77,6 @@ class OrganizationContext:
     def org_name(self) -> str | None:
         """Organization display name (None for platform admins in global context)."""
         return self.org.name if self.org else None
-
-    @property
-    def tenant_id(self) -> str | None:
-        """Microsoft 365 tenant ID (if linked)."""
-        return self.org.tenant_id if self.org else None
 
     # ==================== EXECUTION METADATA ====================
 
@@ -188,54 +182,40 @@ class OrganizationContext:
             extra={"execution_id": self.execution_id, "lookup_scope": lookup_org_id}
         )
 
-        # Get storage services
-        oauth_table = TableStorageService("OAuthConnections")
-        config_table = TableStorageService("Config")
+        # Use OAuthStorageService to get connection metadata
+        from services.oauth_storage_service import OAuthStorageService
+
+        oauth_service = OAuthStorageService()
         keyvault = KeyVaultClient()
+        config_table = TableStorageService("Config")
 
-        # Try org-specific connection first (if we have an org), then GLOBAL fallback
-        connection_entity = None
-        connection_scope = None
+        # Get connection with org→GLOBAL fallback
+        connection = await oauth_service.get_connection(lookup_org_id, connection_name)
 
-        if self.org_id:
-            connection_entity = oauth_table.get_entity(self.org_id, connection_name)
-            if connection_entity:
-                connection_scope = self.org_id
-                logger.info(f"Using org-specific OAuth connection: {connection_name}")
-
-        # If not found in org scope (or no org), try GLOBAL
-        if not connection_entity:
-            connection_entity = oauth_table.get_entity("GLOBAL", connection_name)
-            if connection_entity:
-                connection_scope = "GLOBAL"
-                logger.info(f"Using GLOBAL OAuth connection: {connection_name}")
-
-        if not connection_entity:
+        if not connection:
             raise ValueError(
                 f"OAuth connection '{connection_name}' not found for scope '{lookup_org_id}' or GLOBAL. "
                 f"Create connection using the OAuth Connections page in the admin UI"
             )
 
         # Check connection status
-        status = connection_entity.get("status", "not_connected")
-
-        if status != "completed":
+        if connection.status != "completed":
             raise ValueError(
-                f"OAuth connection '{connection_name}' is not authorized (status: {status}). "
+                f"OAuth connection '{connection_name}' is not authorized (status: {connection.status}). "
                 f"Complete OAuth authorization flow using the 'Connect' button in the admin UI"
             )
 
-        # Get OAuth response reference from connection
-        oauth_response_ref = connection_entity.get("oauth_response_ref")
+        # Get OAuth response reference
+        oauth_response_ref = connection.oauth_response_ref
 
         if not oauth_response_ref:
             raise ValueError(
                 f"OAuth connection '{connection_name}' missing oauth_response_ref"
             )
 
-        # Get OAuth response config entry from the same scope as the connection
+        # Get OAuth response config entry from the connection's org scope
         oauth_response_key = f"config:{oauth_response_ref}"
-        assert connection_scope is not None, "connection_scope is None"
+        connection_scope = connection.org_id
         oauth_response_config = config_table.get_entity(connection_scope, oauth_response_key)
 
         if not oauth_response_config:
@@ -290,8 +270,8 @@ class OrganizationContext:
             # Default to current time (will be marked as expired)
             expires_at = datetime.utcnow()
 
-        # Get scopes from connection entity
-        scopes = connection_entity.get("scopes", "")
+        # Get scopes from connection object
+        scopes = connection.scopes or ""
 
         # Create credentials object
         credentials = OAuthCredentials(

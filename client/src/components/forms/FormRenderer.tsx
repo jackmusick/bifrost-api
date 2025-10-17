@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -29,10 +30,10 @@ import { dataProvidersService, type DataProviderOption } from '@/services/dataPr
 
 interface FormRendererProps {
   form: Form
-  onSuccess?: (executionResult: unknown) => void
 }
 
-export function FormRenderer({ form, onSuccess }: FormRendererProps) {
+export function FormRenderer({ form }: FormRendererProps) {
+  const navigate = useNavigate()
   const submitForm = useSubmitForm()
 
 
@@ -43,9 +44,9 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
   // Load data provider options for fields with data providers
   useEffect(() => {
     const loadDataProviders = async () => {
-      const selectFields = form.formSchema.fields.filter(
+      const selectFields = form.formSchema?.fields?.filter(
         (field) => field.dataProvider
-      )
+      ) || []
 
       for (const field of selectFields) {
         if (!field.dataProvider || typeof field.dataProvider !== 'string') continue
@@ -70,13 +71,13 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
     }
 
     loadDataProviders()
-  }, [form.formSchema.fields, dataProviderOptions, loadingProviders])
+  }, [form.formSchema?.fields, dataProviderOptions, loadingProviders])
 
   // Build Zod schema dynamically from form fields
   const buildSchema = () => {
     const schemaFields: Record<string, z.ZodTypeAny> = {}
 
-    form.formSchema.fields.forEach((field) => {
+    form.formSchema?.fields?.forEach((field) => {
       let fieldSchema: z.ZodTypeAny
 
       switch (field.type) {
@@ -123,13 +124,13 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
     setValue,
   } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: form.formSchema.fields.reduce(
+    defaultValues: form.formSchema?.fields?.reduce(
       (acc, field) => {
         acc[field.name] = field.defaultValue || (field.type === 'checkbox' ? false : '')
         return acc
       },
       {} as Record<string, unknown>
-    ),
+    ) || {},
   })
 
   const onSubmit = async (data: Record<string, unknown>) => {
@@ -140,9 +141,7 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
     }
 
     const result = await submitForm.mutateAsync(submission)
-    if (onSuccess) {
-      onSuccess(result)
-    }
+    navigate(`/history/${result.executionId}`)
   }
 
   const renderField = (field: FormField) => {
@@ -324,9 +323,9 @@ export function FormRenderer({ form, onSuccess }: FormRendererProps) {
       <Card className="w-full max-w-2xl">
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {form.formSchema.fields.map((field, index) => (
+            {form.formSchema?.fields?.map((field, index) => (
               <div key={index}>{renderField(field)}</div>
-            ))}
+            )) || []}
             <div className="pt-4">
               <Button type="submit" disabled={submitForm.isPending}>
                 {submitForm.isPending ? 'Submitting...' : 'Submit'}

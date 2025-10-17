@@ -86,7 +86,6 @@ class TestAzuriteSeedData:
         # Assert required fields present
         for org in orgs:
             assert 'Name' in org
-            assert 'TenantId' in org
             assert 'IsActive' in org
             assert org['PartitionKey'] == 'GLOBAL'
             assert org['RowKey'].startswith('org:')
@@ -106,8 +105,9 @@ class TestAzuriteSeedData:
         seed_data.seed_all_data()
 
         # Verify users created
-        users_table = table_service_client.get_table_client("Users")
-        users = list(users_table.query_entities("RowKey eq 'user'"))
+        entities_table = table_service_client.get_table_client("Entities")
+        all_entities = list(entities_table.list_entities())
+        users = [e for e in all_entities if e['PartitionKey'] == 'GLOBAL' and e['RowKey'].startswith('user:')]
 
         # Assert 2 users created (as per seed data)
         assert len(users) == 2
@@ -125,7 +125,7 @@ class TestAzuriteSeedData:
             assert 'DisplayName' in user
             assert 'UserType' in user
             assert 'IsPlatformAdmin' in user
-            assert user['RowKey'] == 'user'
+            assert user['RowKey'].startswith('user:')
 
     @pytest.mark.asyncio
     async def test_seed_script_creates_configuration(
@@ -240,7 +240,6 @@ class TestAzuriteSeedData:
             # Assert required fields and types
             assert isinstance(org['Name'], str)
             assert len(org['Name']) > 0
-            assert isinstance(org['TenantId'], str)
             assert isinstance(org['IsActive'], bool)
 
             # Assert timestamps
@@ -267,9 +266,8 @@ class TestAzuriteSeedData:
         orgs = [e for e in all_entities if e['PartitionKey'] == 'GLOBAL' and e['RowKey'].startswith('org:')]
         {org['RowKey'] for org in orgs}
 
-        # Get all users
-        users_table = table_service_client.get_table_client("Users")
-        users = list(users_table.query_entities("PartitionKey eq 'user' or RowKey eq 'user'"))
+        # Get all users from Entities table
+        users = [e for e in all_entities if e['PartitionKey'] == 'GLOBAL' and e['RowKey'].startswith('user:')]
 
         # In current structure, users are separate from orgs
         # Just verify we have both users and orgs

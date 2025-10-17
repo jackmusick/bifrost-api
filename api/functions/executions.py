@@ -10,10 +10,11 @@ import logging
 import azure.functions as func
 
 from shared.authorization import can_user_view_execution, get_user_executions
+from shared.blob_storage import get_blob_service
 from shared.decorators import with_request_context
-from shared.models import ExecutionsListResponse, WorkflowExecution
+from shared.models import WorkflowExecution
 from shared.openapi_decorators import openapi_endpoint
-from shared.storage import get_table_service
+from shared.repositories.executions import ExecutionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ bp = func.Blueprint()
     summary="List workflow executions",
     description="List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.",
     tags=["Executions"],
-    response_model=ExecutionsListResponse,
+    response_model=list[WorkflowExecution],
     query_params={
         "workflowName": {
             "description": "Filter by workflow name",
@@ -77,8 +78,9 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
         executions_list = get_user_executions(context, limit=limit)
 
         # Apply additional filters if specified
+        # Note: executions_list contains WorkflowExecution model dicts (camelCase fields)
         if workflow_name:
-            executions_list = [e for e in executions_list if e.get('WorkflowName') == workflow_name]
+            executions_list = [e for e in executions_list if e.get('workflowName') == workflow_name]
 
         if status:
             # Map frontend status to backend status
@@ -90,14 +92,15 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
                 'failed': 'Failed'
             }
             backend_status = status_map.get(status.lower(), status)
-            executions_list = [e for e in executions_list if e.get('Status') == backend_status]
+            executions_list = [e for e in executions_list if e.get('status') == backend_status]
 
         # Apply limit
         executions_list = executions_list[:limit]
 
         # Convert to response format (match WorkflowExecution Pydantic model)
+        # Note: executions_list contains WorkflowExecution model dicts from get_user_executions()
         executions = []
-        for entity in executions_list:
+        for model_dict in executions_list:
             # Helper to convert datetime field to ISO string
             def to_iso(value):
                 if value is None:
@@ -106,36 +109,26 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
                     return value  # Already a string
                 return value.isoformat()  # Convert datetime to string
 
-            # Extract execution ID from RowKey "execution:reverse_ts_uuid"
-            row_key_parts = entity['RowKey'].split(':', 1)
-            if len(row_key_parts) > 1:
-                execution_id = entity.get('ExecutionId', row_key_parts[1])
-            else:
-                execution_id = entity.get('ExecutionId')
-
+            # Use model fields directly (model_dump output)
             execution = {
-                'executionId': execution_id,
-                'workflowName': entity.get('WorkflowName'),
-                'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
-                'status': _map_status_to_frontend(entity.get('Status') or ''),
-                'errorMessage': entity.get('ErrorMessage'),
-                'executedBy': entity.get('ExecutedBy'),
-                'startedAt': to_iso(entity.get('StartedAt')),
-                'completedAt': to_iso(entity.get('CompletedAt')),
-                'formId': entity.get('FormId'),
-                'durationMs': entity.get('DurationMs')
+                'executionId': model_dict.get('executionId'),
+                'workflowName': model_dict.get('workflowName'),
+                'orgId': model_dict.get('orgId'),  # Already included in model
+                'status': _map_status_to_frontend(model_dict.get('status') or ''),
+                'errorMessage': model_dict.get('errorMessage'),
+                'executedBy': model_dict.get('executedBy'),
+                'executedByName': model_dict.get('executedByName', model_dict.get('executedBy')),  # Fallback to ID if name not set
+                'startedAt': to_iso(model_dict.get('startedAt')),
+                'completedAt': to_iso(model_dict.get('completedAt')),
+                'formId': model_dict.get('formId'),
+                'durationMs': model_dict.get('durationMs')
             }
             executions.append(execution)
 
         logger.info(f"Returning {len(executions)} executions for user {context.user_id}")
 
-        # Build response
-        response_data = {
-            'executions': executions
-        }
-
         return func.HttpResponse(
-            json.dumps(response_data),
+            json.dumps(executions),
             status_code=200,
             mimetype='application/json'
         )
@@ -183,14 +176,22 @@ async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
         # Get execution ID from route
         execution_id = req.route_params.get('executionId')
 
-        # Query Entities table for execution
-        entities_service = get_table_service('Entities', context)
+        # Validate execution_id is not None
+        if not execution_id:
+            return func.HttpResponse(
+                json.dumps({
+                    'error': 'BadRequest',
+                    'message': 'Execution ID is required'
+                }),
+                status_code=400,
+                mimetype='application/json'
+            )
 
-        # Find the execution by ExecutionId field (stored in entity)
-        filter_query = f"ExecutionId eq '{execution_id}'"
-        entities = list(entities_service.query_entities(filter_query))
+        # Get execution using repository
+        exec_repo = ExecutionRepository(context)
+        execution_model = exec_repo.get_execution(execution_id)
 
-        if not entities:
+        if not execution_model:
             return func.HttpResponse(
                 json.dumps({
                     'error': 'NotFound',
@@ -200,7 +201,8 @@ async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype='application/json'
             )
 
-        entity = entities[0]
+        # Convert to entity dict for authorization check (for backward compatibility)
+        entity = execution_model.model_dump()
 
         # Check if user has permission to view this execution
         if not can_user_view_execution(context, entity):
@@ -214,30 +216,33 @@ async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype='application/json'
             )
 
-        # Helper to convert datetime field to ISO string
-        def to_iso(value):
-            if value is None:
-                return None
-            if isinstance(value, str):
-                return value  # Already a string
-            return value.isoformat()  # Convert datetime to string
+        # Fetch logs from blob storage
+        blob_service = get_blob_service()
+        execution_id_str = execution_id if execution_id else ""
+        logs = blob_service.get_logs(execution_id_str)
 
-        # Convert to response format (match WorkflowExecution Pydantic model + logs)
-        execution = {
-            'executionId': entity.get('ExecutionId'),
-            'workflowName': entity.get('WorkflowName'),
-            'orgId': entity.get('PartitionKey'),  # Include org scope for UI display
-            'status': _map_status_to_frontend(entity.get('Status') or ''),
-            'inputData': json.loads(entity.get('InputData') or '{}'),
-            'result': json.loads(entity.get('Result') or 'null') if entity.get('Result') else None,
-            'errorMessage': entity.get('ErrorMessage'),
-            'executedBy': entity.get('ExecutedBy'),
-            'startedAt': to_iso(entity.get('StartedAt')),
-            'completedAt': to_iso(entity.get('CompletedAt')),
-            'formId': entity.get('FormId'),
-            'durationMs': entity.get('DurationMs'),
-            'logs': json.loads(entity.get('Logs') or '[]') if entity.get('Logs') else []
-        }
+        # Fetch result (from blob if no inline result, otherwise use inline)
+        result = None
+        result_type = None
+
+        if execution_model.result:
+            # Result is inline
+            result = execution_model.result
+            result_type = _determine_result_type(result)
+        else:
+            # Try to fetch from blob storage (result may be there if it was large)
+            # This handles both the ResultInBlob flag and cases where result is just missing
+            blob_result = blob_service.get_result(execution_id_str)
+            if blob_result is not None:
+                result = blob_result
+                result_type = _determine_result_type(result)
+
+        # Build response from model (with additional blob data)
+        # Use mode='json' to serialize datetime objects to ISO strings
+        execution = execution_model.model_dump(mode='json')
+        execution['logs'] = logs
+        execution['result'] = result
+        execution['resultType'] = result_type
 
         return func.HttpResponse(
             json.dumps(execution),
@@ -262,3 +267,30 @@ def _map_status_to_frontend(backend_status: str) -> str:
     # Return as-is since Pydantic models use capitalized values
     # No mapping needed - keep backend format
     return backend_status
+
+
+def _determine_result_type(result) -> str | None:
+    """
+    Determine result type for frontend rendering
+
+    Args:
+        result: Result data (dict or str)
+
+    Returns:
+        'json', 'html', 'text', or None
+    """
+    if result is None:
+        return None
+
+    if isinstance(result, dict):
+        return 'json'
+
+    if isinstance(result, str):
+        # Check if it looks like HTML
+        trimmed = result.strip()
+        if trimmed.startswith('<') and '>' in trimmed:
+            return 'html'
+        return 'text'
+
+    # Default to json for other types
+    return 'json'

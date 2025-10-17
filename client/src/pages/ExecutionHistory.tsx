@@ -80,6 +80,12 @@ export function ExecutionHistory() {
             Pending
           </Badge>
         )
+      default:
+        return (
+          <Badge variant="outline">
+            Unknown
+          </Badge>
+        )
     }
   }
 
@@ -191,7 +197,7 @@ export function ExecutionHistory() {
                                 {execution.workflowName}
                               </TableCell>
                               <TableCell>{getStatusBadge(execution.status)}</TableCell>
-                              <TableCell>{execution.executedBy}</TableCell>
+                              <TableCell>{execution.executedByName}</TableCell>
                               <TableCell className="text-sm">
                                 {formatDate(execution.startedAt)}
                               </TableCell>

@@ -145,12 +145,12 @@ class TestRolesIntegration:
         assert status == 204
 
     @pytest.mark.asyncio
-    async def test_create_role_org_user_forbidden(self):
+    async def test_create_role_org_user_forbidden(self, test_org_with_user):
         """Org users cannot create roles (platform admin only)"""
         req = create_mock_request(
             method="POST",
             url="/api/roles",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             body={
                 "name": "Should Fail",
                 "isActive": True
@@ -345,13 +345,13 @@ class TestRoleUserAssignmentIntegration:
     """Test role-user assignment for form access control"""
 
     @pytest.mark.asyncio
-    async def test_assign_user_to_role(self):
+    async def test_assign_user_to_role(self, test_platform_admin_user, test_org_with_user):
         """Platform admin can assign users to roles"""
         # Create role
         role_req = create_mock_request(
             method="POST",
             url="/api/roles",
-            headers=create_platform_admin_headers(),
+            headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
             body={
                 "name": "Integration User Assignment Role",
                 "isActive": True
@@ -362,14 +362,14 @@ class TestRoleUserAssignmentIntegration:
         assert role_status == 201
         role_id = role_body["id"]
 
-        # Assign user to role (using test user)
+        # Assign user to role (using test org user)
         assign_req = create_mock_request(
             method="POST",
             url=f"/api/roles/{role_id}/users",
-            headers=create_platform_admin_headers(),
+            headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
             route_params={"roleId": role_id},
             body={
-                "userIds": ["jack@gocovi.dev"]
+                "userIds": [test_org_with_user["email"]]
             }
         )
 
@@ -383,7 +383,7 @@ class TestRoleUserAssignmentIntegration:
         list_req = create_mock_request(
             method="GET",
             url=f"/api/roles/{role_id}/users",
-            headers=create_platform_admin_headers(),
+            headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
             route_params={"roleId": role_id}
         )
 
@@ -393,7 +393,7 @@ class TestRoleUserAssignmentIntegration:
         assert list_status == 200
         assert "userIds" in list_body
         assert isinstance(list_body["userIds"], list)
-        assert "jack@gocovi.dev" in list_body["userIds"]
+        assert test_org_with_user["email"] in list_body["userIds"]
 
     @pytest.mark.asyncio
     async def test_remove_user_from_role(self):
@@ -571,14 +571,14 @@ class TestPermissionsIntegration:
         assert isinstance(body["roleIds"], list)
 
     @pytest.mark.asyncio
-    async def test_permissions_org_user_forbidden(self):
+    async def test_permissions_org_user_forbidden(self, test_org_with_user):
         """Org users cannot manage permissions (platform admin only)"""
         from functions.permissions import grant_permissions
 
         req = create_mock_request(
             method="POST",
             url="/api/permissions",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             body={
                 "roleId": "test-role",
                 "resource": "forms",

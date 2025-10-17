@@ -22,11 +22,8 @@ export const executionsService = {
 
     if (error) throw new Error(`Failed to fetch executions: ${error}`)
 
-    // API returns ExecutionsListResponse with executions array
-    if (data && 'executions' in data) {
-      return data.executions
-    }
-    return []
+    // API returns bare array of executions
+    return data || []
   },
 
   /**

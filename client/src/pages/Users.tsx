@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Shield, Users as UsersIcon, RefreshCw, UserCog, Eye, Key, Edit } from 'lucide-react'
+import { Shield, Users as UsersIcon, RefreshCw, UserCog, Eye, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -20,7 +20,6 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useUsers } from '@/hooks/useUsers'
 import { UserDetailsDialog } from '@/components/users/UserDetailsDialog'
-import { UserPermissionsDialog } from '@/components/users/UserPermissionsDialog'
 import { UserRolesDialog } from '@/components/users/UserRolesDialog'
 import type { components } from '@/lib/v1'
 type User = components['schemas']['User']
@@ -28,7 +27,6 @@ type User = components['schemas']['User']
 export function Users() {
   const [selectedUser, setSelectedUser] = useState<User | undefined>()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-  const [isPermissionsOpen, setIsPermissionsOpen] = useState(false)
   const [isRolesOpen, setIsRolesOpen] = useState(false)
 
   // Get ALL users (no type filter) to avoid duplication
@@ -39,11 +37,6 @@ export function Users() {
     setIsDetailsOpen(true)
   }
 
-  const handleViewPermissions = (user: User) => {
-    setSelectedUser(user)
-    setIsPermissionsOpen(true)
-  }
-
   const handleEditRoles = (user: User) => {
     setSelectedUser(user)
     setIsRolesOpen(true)
@@ -51,11 +44,6 @@ export function Users() {
 
   const handleDetailsClose = () => {
     setIsDetailsOpen(false)
-    setSelectedUser(undefined)
-  }
-
-  const handlePermissionsClose = () => {
-    setIsPermissionsOpen(false)
     setSelectedUser(undefined)
   }
 
@@ -156,14 +144,7 @@ export function Users() {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleViewPermissions(user)}
-                          title="Manage permissions"
-                        >
-                          <Key className="h-4 w-4" />
-                        </Button>
+                        {/* Permissions button removed */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -196,11 +177,7 @@ export function Users() {
         onClose={handleDetailsClose}
       />
 
-      <UserPermissionsDialog
-        user={selectedUser}
-        open={isPermissionsOpen}
-        onClose={handlePermissionsClose}
-      />
+      {/* UserPermissionsDialog removed */}
 
       <UserRolesDialog
         user={selectedUser}

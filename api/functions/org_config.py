@@ -6,7 +6,6 @@ Config and IntegrationConfig API endpoints
 
 import json
 import logging
-from datetime import datetime
 
 import azure.functions as func
 from pydantic import ValidationError
@@ -20,7 +19,7 @@ from shared.models import (
     SetIntegrationConfigRequest,
 )
 from shared.openapi_decorators import openapi_endpoint
-from shared.storage import get_table_service
+from shared.repositories.config import ConfigRepository
 
 logger = logging.getLogger(__name__)
 
@@ -39,30 +38,23 @@ def get_config_value(context, key: str, org_id: str | None = None) -> dict | Non
 
     Returns:
         Config entity dict or None if not found
+
+    Note: This is a legacy helper function. New code should use ConfigRepository directly.
     """
+    config_repo = ConfigRepository(context)
+    config = config_repo.get_config(key, fallback_to_global=(org_id is not None or context.scope != "GLOBAL"))
 
-    row_key = f"config:{key}"
-
-    # Try org-specific first (if org_id provided)
-    if org_id:
-        try:
-            config_service = get_table_service("Config", context)
-            org_config = config_service.get_entity(org_id, row_key)
-            if org_config:
-                logger.debug(f"Found org-specific config for key '{key}' in org {org_id}")
-                return org_config
-        except Exception:
-            pass  # Not found in org, will try GLOBAL
-
-    # Fallback to GLOBAL
-    try:
-        config_service = get_table_service("Config", context)
-        global_config = config_service.get_entity("GLOBAL", row_key)
-        if global_config:
-            logger.debug(f"Found GLOBAL config for key '{key}'")
-            return global_config
-    except Exception:
-        pass  # Not found
+    if config:
+        # Convert back to entity dict for backward compatibility
+        return {
+            "PartitionKey": config.orgId if config.scope == "org" else "GLOBAL",
+            "RowKey": f"config:{key}",
+            "Value": config.value,
+            "Type": config.type.value,
+            "Description": config.description,
+            "UpdatedAt": config.updatedAt,
+            "UpdatedBy": config.updatedBy
+        }
 
     logger.debug(f"Config key '{key}' not found (checked: {'org + GLOBAL' if org_id else 'GLOBAL only'})")
     return None
@@ -96,7 +88,7 @@ def mask_sensitive_value(key: str, value: str, value_type: str) -> str:
     summary="Get configuration values",
     description="Get configuration values for current scope. Platform admins see all configs in their scope (set via X-Organization-Id header). Regular users see configs for their org.",
     tags=["Configuration"],
-    response_model=None  # Returns list[Config] but openapi_endpoint expects BaseModel
+    response_model=list[Config]  # Now returning bare array of Configs
 )
 @with_request_context
 @require_platform_admin
@@ -116,42 +108,22 @@ async def get_config(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving config for scope={context.scope}")
 
     try:
-        # Query Config table for current scope
-        partition_key = context.scope
+        # Get configs using repository
+        config_repo = ConfigRepository(context)
+        configs = config_repo.list_config(include_global=False)  # Only get configs for current scope
 
-        config_service = get_table_service("Config", context)
-        config_entities = list(config_service.query_entities(
-            filter=f"PartitionKey eq '{partition_key}' and RowKey ge 'config:' and RowKey lt 'config;'"
-        ))
+        # Mask sensitive values
+        for config in configs:
+            config.value = mask_sensitive_value(config.key, config.value, config.type.value)
 
-        # Convert to response models
-        configs = []
-        for entity in config_entities:
-            # Extract key from RowKey (remove "config:" prefix)
-            key = entity["RowKey"].replace("config:", "", 1)
-
-            # Mask sensitive values (but not secret_ref types)
-            value = mask_sensitive_value(key, entity["Value"], entity["Type"])
-
-            # Determine scope type for response
-            pydantic_scope = "GLOBAL" if partition_key == "GLOBAL" else "org"
-
-            config = Config(
-                key=key,
-                value=value,
-                type=entity["Type"],
-                scope=pydantic_scope,
-                orgId=context.org_id if pydantic_scope == "org" else None,
-                description=entity.get("Description"),
-                updatedAt=entity["UpdatedAt"],
-                updatedBy=entity["UpdatedBy"]
-            )
-            configs.append(config.model_dump(mode="json"))
+        # Sort configs by updatedAt descending (most recent first)
+        configs.sort(key=lambda c: c.updatedAt, reverse=True)
 
         logger.info(f"Returning {len(configs)} config entries for scope={context.scope}")
 
+        # Return bare array of configs
         return func.HttpResponse(
-            json.dumps(configs),
+            json.dumps([c.model_dump(mode="json") for c in configs]),
             status_code=200,
             mimetype="application/json"
         )
@@ -203,65 +175,30 @@ async def set_config(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         set_request = SetConfigRequest(**request_body)
 
-        # Use context.scope as partition key
-        # - Platform admin with no X-Organization-Id header → GLOBAL
-        # - Platform admin with X-Organization-Id: org-123 → org-123
-        # - Regular user → their org_id from database
-        partition_key = context.scope
+        # Check if config exists (for status code determination)
+        config_repo = ConfigRepository(context)
+        existing_config = config_repo.get_config(set_request.key, fallback_to_global=False)
+        status_code = 200 if existing_config else 201
 
-        # Check if this is a new config or update
-        config_service = get_table_service("Config", context)
-        row_key = f"config:{set_request.key}"
+        # Set config using repository
+        config = config_repo.set_config(
+            key=set_request.key,
+            value=set_request.value,
+            config_type=set_request.type,
+            description=set_request.description,
+            updated_by=context.user_id
+        )
 
-        existing_config = None
-        try:
-            existing_config = config_service.get_entity(partition_key, row_key)
-        except Exception:
-            pass  # Config doesn't exist, will create new
-
-        # Create entity for Table Storage
-        now = datetime.utcnow()
-        entity = {
-            "PartitionKey": partition_key,
-            "RowKey": row_key,
-            "Value": set_request.value,
-            "Type": set_request.type.value,
-            "Description": set_request.description,
-            "UpdatedAt": now.isoformat(),
-            "UpdatedBy": context.user_id
-        }
-
-        # Insert or update
-        if existing_config:
-            # Update existing config
-            config_service.update_entity(entity)
-            status_code = 200
-            logger.info(f"Updated config key '{set_request.key}' in partition={partition_key}")
-        else:
-            # Create new config
-            config_service.insert_entity(entity)
-            status_code = 201
-            logger.info(f"Created config key '{set_request.key}' in partition={partition_key}")
-
-        # Create response model with masked sensitive values
-        masked_value = mask_sensitive_value(
+        # Mask sensitive values in response
+        config.value = mask_sensitive_value(
             set_request.key,
             set_request.value,
             set_request.type.value
         )
 
-        # Determine scope for response based on partition key
-        pydantic_scope = "GLOBAL" if partition_key == "GLOBAL" else "org"
-
-        config = Config(
-            key=set_request.key,
-            value=masked_value,
-            type=set_request.type,
-            scope=pydantic_scope,
-            orgId=context.org_id if pydantic_scope == "org" else None,
-            description=set_request.description,
-            updatedAt=now,
-            updatedBy=context.user_id
+        logger.info(
+            f"{'Updated' if existing_config else 'Created'} config key '{set_request.key}' "
+            f"in scope={context.scope}"
         )
 
         return func.HttpResponse(
@@ -343,9 +280,6 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} deleting config key '{key}' from scope={context.scope}")
 
     try:
-        # Use context.scope as partition key
-        partition_key = context.scope
-
         # Check if config is referenced by OAuth connections
         # OAuth connection configs follow patterns:
         # - oauth_{connection_name}_client_secret
@@ -357,23 +291,22 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
             parts = key.split("_")
             if len(parts) >= 3:
                 # Check if there's an OAuth entity using this config
-                entities_service = get_table_service("Entities", context)
+                from shared.repositories.oauth import OAuthRepository
+                oauth_repo = OAuthRepository(context)
+
                 try:
-                    # Query all OAuth connections for this org (stored as oauth:{name} in Entities table)
-                    connections = list(entities_service.query_entities(
-                        filter="RowKey ge 'oauth:' and RowKey lt 'oauth;'"
-                    ))
+                    # Get all OAuth connections for this org
+                    connections = await oauth_repo.list_connections(context.scope)
 
                     # Find any connection that references this config key
                     referenced_by = []
                     for conn in connections:
-                        client_secret_ref = conn.get("ClientSecretRef", "")
-                        oauth_response_ref = conn.get("OAuthResponseRef", "")
-
-                        # Check if this config is referenced by the connection
+                        client_secret_ref = getattr(conn, 'clientSecretRef', None)
+                        oauth_response_ref = getattr(conn, 'oauthResponseRef', None)
+                        conn_name = getattr(conn, 'name', None)
                         if client_secret_ref == key or oauth_response_ref == key or key.endswith("_metadata"):
-                            oauth_name = conn.get("RowKey", "").replace("oauth:", "", 1)
-                            referenced_by.append(oauth_name)
+                            if conn_name:
+                                referenced_by.append(conn_name)
 
                     if referenced_by:
                         error = ErrorResponse(
@@ -389,16 +322,10 @@ async def delete_config(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception as e:
                     logger.warning(f"Could not check OAuth references for config '{key}': {e}")
 
-        # Delete config (idempotent - no error if key doesn't exist)
-        config_service = get_table_service("Config", context)
-        row_key = f"config:{key}"
-
-        try:
-            config_service.delete_entity(partition_key, row_key)
-            logger.info(f"Deleted config key '{key}' (scope={partition_key})")
-        except Exception:
-            # Even if entity doesn't exist, return 204 (idempotent delete)
-            logger.debug(f"Config key '{key}' not found (scope={partition_key}), but returning 204")
+        # Delete config using repository (idempotent - no error if key doesn't exist)
+        config_repo = ConfigRepository(context)
+        config_repo.delete_config(key)
+        logger.info(f"Deleted config key '{key}' (scope={context.scope})")
 
         return func.HttpResponse(
             status_code=204  # No Content
@@ -453,31 +380,17 @@ async def get_integrations(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving integrations for org {org_id}")
 
     try:
-        # Query Config table for integration configs (stored with "integration:" prefix)
-        config_service = get_table_service("Config", context)
-        integration_entities = list(config_service.query_entities(
-            filter=f"PartitionKey eq '{org_id}' and RowKey ge 'integration:' and RowKey lt 'integration;'"
-        ))
+        # Get integrations using repository
+        config_repo = ConfigRepository(context)
+        integrations = config_repo.list_integrations()
 
-        # Convert to response models
-        integrations = []
-        for entity in integration_entities:
-            # Extract type from RowKey (remove "integration:" prefix)
-            integration_type = entity["RowKey"].replace("integration:", "", 1)
-
-            integration = IntegrationConfig(
-                type=integration_type,
-                enabled=entity.get("Enabled", True),
-                settings=json.loads(entity["Settings"]) if isinstance(entity["Settings"], str) else entity["Settings"],
-                updatedAt=entity["UpdatedAt"],
-                updatedBy=entity["UpdatedBy"]
-            )
-            integrations.append(integration.model_dump(mode="json"))
+        # Convert to JSON response
+        integrations_json = [i.model_dump(mode="json") for i in integrations]
 
         logger.info(f"Returning {len(integrations)} integrations for org {org_id}")
 
         return func.HttpResponse(
-            json.dumps(integrations),
+            json.dumps(integrations_json),
             status_code=200,
             mimetype="application/json"
         )
@@ -533,46 +446,19 @@ async def set_integration(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         set_request = SetIntegrationConfigRequest(**request_body)
 
-        # Check if this is a new integration or update
-        config_service = get_table_service("Config", context)
-        row_key = f"integration:{set_request.type.value}"
+        # Check if integration exists (for status code determination)
+        config_repo = ConfigRepository(context)
+        existing_integration = config_repo.get_integration_config(set_request.type, fallback_to_global=False)
+        status_code = 200 if existing_integration else 201
 
-        existing_integration = None
-        try:
-            existing_integration = config_service.get_entity(org_id, row_key)
-        except Exception:
-            pass  # Integration doesn't exist, will create new
+        # Set integration using repository
+        integration = config_repo.set_integration_config(
+            request=set_request,
+            updated_by=context.user_id
+        )
 
-        # Create entity for Table Storage
-        now = datetime.utcnow()
-        entity = {
-            "PartitionKey": org_id,
-            "RowKey": row_key,
-            "Enabled": set_request.enabled,
-            "Settings": json.dumps(set_request.settings),  # Store as JSON string
-            "UpdatedAt": now.isoformat(),
-            "UpdatedBy": context.user_id
-        }
-
-        # Insert or update
-        if existing_integration:
-            # Update existing integration
-            config_service.update_entity(entity)
-            status_code = 200
-            logger.info(f"Updated {set_request.type.value} integration for org {org_id}")
-        else:
-            # Create new integration
-            config_service.insert_entity(entity)
-            status_code = 201
-            logger.info(f"Created {set_request.type.value} integration for org {org_id}")
-
-        # Create response model
-        integration = IntegrationConfig(
-            type=set_request.type,
-            enabled=set_request.enabled,
-            settings=set_request.settings,
-            updatedAt=now,
-            updatedBy=context.user_id
+        logger.info(
+            f"{'Updated' if existing_integration else 'Created'} {set_request.type.value} integration for org {org_id}"
         )
 
         return func.HttpResponse(
@@ -664,16 +550,11 @@ async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} deleting {integration_type} integration for org {org_id}")
 
     try:
-        # Delete integration (idempotent - no error if doesn't exist)
-        config_service = get_table_service("Config", context)
-        row_key = f"integration:{integration_type}"
-
-        try:
-            config_service.delete_entity(org_id, row_key)
-            logger.info(f"Deleted {integration_type} integration for org {org_id}")
-        except Exception:
-            # Even if entity doesn't exist, return 204 (idempotent delete)
-            logger.debug(f"{integration_type} integration not found for org {org_id}, but returning 204")
+        # Delete integration using repository (idempotent - no error if doesn't exist)
+        from shared.models import IntegrationType
+        config_repo = ConfigRepository(context)
+        config_repo.delete_integration(IntegrationType(integration_type))
+        logger.info(f"Deleted {integration_type} integration for org {org_id}")
 
         return func.HttpResponse(
             status_code=204  # No Content

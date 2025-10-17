@@ -208,17 +208,14 @@ def is_platform_admin(user_id: str) -> bool:
     Returns:
         True if platform admin, False otherwise
     """
-    from shared.storage import TableStorageService
+    from shared.repositories.users import UserRepository
 
     try:
-        users_service = TableStorageService("Users")
-        user_entity = users_service.get_entity("USER", user_id)
+        user_repo = UserRepository()
+        user = user_repo.get_user(user_id)
 
-        if user_entity:
-            return (
-                user_entity.get("IsPlatformAdmin", False) and
-                user_entity.get("UserType") == "PLATFORM"
-            )
+        if user:
+            return user.isPlatformAdmin and user.userType.value == "PLATFORM"
 
         return False
     except Exception as e:
@@ -233,21 +230,17 @@ def get_user_org_id(user_id: str) -> str | None:
     Returns:
         Organization ID or None if not found
     """
-    from shared.storage import TableStorageService
+    from shared.repositories.users import UserRepository
 
     try:
-        users_table = TableStorageService("Users")
-        entities = list(users_table.query_entities(f"RowKey eq '{user_id}'"))
+        user_repo = UserRepository()
+        org_id = user_repo.get_user_org_id(user_id)
 
-        if not entities:
-            logger.warning(f"User {user_id} not found in database")
-            return None
+        if org_id:
+            logger.debug(f"User {user_id} belongs to org: {org_id}")
+        else:
+            logger.warning(f"User {user_id} has no org assignments")
 
-        if len(entities) > 1:
-            logger.warning(f"Multiple users found for {user_id}, using first")
-
-        org_id = entities[0].get("PartitionKey")
-        logger.debug(f"User {user_id} belongs to org: {org_id}")
         return org_id
 
     except Exception as e:

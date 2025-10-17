@@ -25,7 +25,7 @@ class OpenAPIEndpoint:
         description: str | None = None,
         tags: list[str] | None = None,
         request_model: type[BaseModel] | None = None,
-        response_model: type[BaseModel] | None = None,
+        response_model: type[BaseModel] | type[list[Any]] | None = None,
         path_params: dict[str, dict[str, Any]] | None = None,
         query_params: dict[str, dict[str, Any]] | None = None,
         responses: dict[int, dict[str, Any]] | None = None,
@@ -82,7 +82,7 @@ def openapi_endpoint(
     description: str | None = None,
     tags: list[str] | None = None,
     request_model: type[BaseModel] | None = None,
-    response_model: type[BaseModel] | None = None,
+    response_model: type[BaseModel] | type[list[Any]] | None = None,
     path_params: dict[str, dict[str, Any]] | None = None,
     query_params: dict[str, dict[str, Any]] | None = None,
     responses: dict[int, dict[str, Any]] | None = None

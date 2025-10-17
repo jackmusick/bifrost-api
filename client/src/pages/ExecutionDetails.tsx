@@ -54,6 +54,13 @@ export function ExecutionDetails() {
             Pending
           </Badge>
         )
+      case 'CompletedWithErrors':
+        return (
+          <Badge variant="secondary" className="bg-yellow-500">
+            <XCircle className="mr-1 h-3 w-3" />
+            Completed with Errors
+          </Badge>
+        )
     }
   }
 
@@ -67,6 +74,8 @@ export function ExecutionDetails() {
         return <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />
       case 'Pending':
         return <Clock className="h-12 w-12 text-gray-500" />
+      case 'CompletedWithErrors':
+        return <XCircle className="h-12 w-12 text-yellow-500" />
     }
   }
 
@@ -137,7 +146,7 @@ export function ExecutionDetails() {
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Executed By</p>
-              <p className="text-sm mt-1">{execution.executedBy}</p>
+              <p className="text-sm mt-1">{execution.executedByName}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Started At</p>
@@ -178,11 +187,31 @@ export function ExecutionDetails() {
             <CardDescription>Workflow execution result</CardDescription>
           </CardHeader>
           <CardContent>
-            <PrettyInputDisplay
-              inputData={execution.result}
-              showToggle={isPlatformAdmin}
-              defaultView={isPlatformAdmin ? 'json' : 'pretty'}
-            />
+            {execution.resultType === 'json' && typeof execution.result === 'object' && (
+              <PrettyInputDisplay
+                inputData={execution.result as Record<string, unknown>}
+                showToggle={isPlatformAdmin}
+                defaultView={isPlatformAdmin ? 'json' : 'pretty'}
+              />
+            )}
+            {execution.resultType === 'html' && typeof execution.result === 'string' && (
+              <div
+                className="prose max-w-none dark:prose-invert"
+                dangerouslySetInnerHTML={{ __html: execution.result }}
+              />
+            )}
+            {execution.resultType === 'text' && typeof execution.result === 'string' && (
+              <pre className="whitespace-pre-wrap font-mono text-sm bg-muted p-4 rounded">
+                {execution.result}
+              </pre>
+            )}
+            {!execution.resultType && typeof execution.result === 'object' && execution.result !== null && (
+              <PrettyInputDisplay
+                inputData={execution.result as Record<string, unknown>}
+                showToggle={isPlatformAdmin}
+                defaultView={isPlatformAdmin ? 'json' : 'pretty'}
+              />
+            )}
           </CardContent>
         </Card>
       )}
@@ -197,8 +226,7 @@ export function ExecutionDetails() {
         </Alert>
       )}
 
-      {/* Logs section temporarily disabled - logs property not available in Execution schema */}
-      {/* {execution.logs && execution.logs.length > 0 && (
+      {execution.logs && execution.logs.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Execution Logs</CardTitle>
@@ -237,7 +265,7 @@ export function ExecutionDetails() {
             </div>
           </CardContent>
         </Card>
-      )} */}
+      )}
     </div>
   )
 }

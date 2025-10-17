@@ -14,7 +14,7 @@ export const configService = {
         // Scope is determined by X-Organization-Id header
         const { data, error } = await apiClient.GET("/config");
         if (error) throw new Error(`Failed to fetch configs: ${error}`);
-        return data;
+        return data || [];
     },
 
     /**

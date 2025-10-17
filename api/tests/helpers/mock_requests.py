@@ -6,7 +6,6 @@ These helpers simulate the actual HTTP requests that endpoints receive in produc
 """
 
 import json
-import uuid
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -262,16 +261,13 @@ class TestDataHelper:
     @staticmethod
     def create_organization_request_data(
         name: str = "Test Organization",
-        tenant_id: str | None = None
+        domain: str | None = None
     ) -> dict[str, Any]:
         """Create organization creation request data"""
-        if tenant_id is None:
-            tenant_id = str(uuid.uuid4())
-
-        return {
-            "name": name,
-            "tenantId": tenant_id
-        }
+        data = {"name": name}
+        if domain is not None:
+            data["domain"] = domain
+        return data
 
     @staticmethod
     def create_form_request_data(

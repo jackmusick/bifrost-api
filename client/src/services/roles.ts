@@ -12,7 +12,7 @@ export const rolesService = {
   async getRoles() {
     const { data, error } = await apiClient.GET('/roles')
     if (error) throw new Error(`Failed to fetch roles: ${error}`)
-    return data
+    return data || []
   },
 
   /**

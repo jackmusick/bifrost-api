@@ -43,15 +43,7 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
     oauth_provider = OAuthProviderClient()
     config_service = TableStorageService("Config")
     keyvault = KeyVaultClient()
-    system_config_table = TableStorageService("SystemConfig")
-
-    # Ensure SystemConfig table exists
-    try:
-        system_config_table.table_client.create_table()
-        logger.info("Created SystemConfig table")
-    except Exception:
-        # Table already exists
-        pass
+    # Removed system_config_table as this is now using config_service
 
     # Track results
     results = {
@@ -218,10 +210,10 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
         end_time = datetime.utcnow()
         duration_seconds = (end_time - start_time).total_seconds()
 
-        # Store job status in SystemConfig table
+        # Store job status in Config table with SYSTEM partition
         job_status_entity = {
-            "PartitionKey": "OAuthJobStatus",
-            "RowKey": "TokenRefreshJob",
+            "PartitionKey": "SYSTEM",
+            "RowKey": "jobstatus:TokenRefreshJob",
             "StartTime": start_time.isoformat(),
             "EndTime": end_time.isoformat(),
             "DurationSeconds": duration_seconds,
@@ -232,7 +224,7 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
             "RefreshFailed": results["refresh_failed"],
             "Errors": json.dumps(results["errors"]) if results["errors"] else None
         }
-        system_config_table.upsert_entity(job_status_entity)
+        config_service.upsert_entity(job_status_entity)
 
         # Log summary
         logger.info(
@@ -251,8 +243,8 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
         duration_seconds = (end_time - start_time).total_seconds()
 
         job_status_entity = {
-            "PartitionKey": "OAuthJobStatus",
-            "RowKey": "TokenRefreshJob",
+            "PartitionKey": "SYSTEM",
+            "RowKey": "jobstatus:TokenRefreshJob",
             "StartTime": start_time.isoformat(),
             "EndTime": end_time.isoformat(),
             "DurationSeconds": duration_seconds,
@@ -266,7 +258,6 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
         }
 
         try:
-            system_config_table = TableStorageService("SystemConfig")
-            system_config_table.upsert_entity(job_status_entity)
+            config_service.upsert_entity(job_status_entity)
         except Exception:
             pass

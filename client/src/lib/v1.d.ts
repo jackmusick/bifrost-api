@@ -175,7 +175,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ExecutionsListResponse"];
+                        "application/json": components["schemas"]["WorkflowExecution"][];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -1340,7 +1340,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Organization"];
+                        "application/json": components["schemas"]["Organization"][];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -2497,12 +2497,6 @@ export interface components {
             /** Name */
             name: string;
             /**
-             * Tenantid
-             * @description Microsoft 365 GDAP tenant ID (auto-generated if not provided)
-             * @default null
-             */
-            tenantId: string | null;
-            /**
              * Domain
              * @description Email domain for auto-provisioning users (e.g., 'acme.com')
              * @default null
@@ -2550,11 +2544,6 @@ export interface components {
              * @default null
              */
             name: string | null;
-            /**
-             * Tenantid
-             * @default null
-             */
-            tenantId: string | null;
             /**
              * Domain
              * @description Email domain for auto-provisioning users
@@ -3168,11 +3157,30 @@ export interface components {
             };
         };
         /**
+         * ExecutionLog
+         * @description Single log entry from workflow execution
+         */
+        ExecutionLog: {
+            /** Timestamp */
+            timestamp: string;
+            /** Level */
+            level: string;
+            /** Message */
+            message: string;
+            /**
+             * Data
+             * @default null
+             */
+            data: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * ExecutionStatus
          * @description Workflow execution status
          * @enum {string}
          */
-        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed";
+        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "CompletedWithErrors";
         /**
          * WorkflowExecution
          * @description Workflow execution entity
@@ -3183,12 +3191,19 @@ export interface components {
             /** Workflowname */
             workflowName: string;
             /**
+             * Orgid
+             * @default null
+             */
+            orgId: string | null;
+            /**
              * Formid
              * @default null
              */
             formId: string | null;
             /** Executedby */
             executedBy: string;
+            /** Executedbyname */
+            executedByName: string;
             status: components["schemas"]["ExecutionStatus"];
             /** Inputdata */
             inputData: {
@@ -3200,7 +3215,12 @@ export interface components {
              */
             result: {
                 [key: string]: unknown;
-            } | null;
+            } | string | null;
+            /**
+             * Resulttype
+             * @default null
+             */
+            resultType: ("json" | "html" | "text") | null;
             /**
              * Errormessage
              * @default null
@@ -3221,6 +3241,11 @@ export interface components {
              * @default null
              */
             completedAt: string | null;
+            /**
+             * Logs
+             * @default null
+             */
+            logs: components["schemas"]["ExecutionLog"][] | null;
         };
         /**
          * WorkflowExecutionRequest
@@ -3255,7 +3280,7 @@ export interface components {
              */
             result: {
                 [key: string]: unknown;
-            } | null;
+            } | string | null;
             /**
              * Error
              * @default null

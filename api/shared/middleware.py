@@ -141,7 +141,6 @@ async def load_organization_context(
         org = Organization(
             org_id=org_uuid,
             name=org_entity['Name'],
-            tenant_id=org_entity.get('TenantId'),
             is_active=org_entity['IsActive']
         )
 
@@ -217,6 +216,62 @@ async def load_organization_context(
                 email=principal.email,
                 name=principal.name or principal.email
             )
+
+            # If org_id not provided and user is not platform admin, look up user's org
+            if not org_id and 'PlatformAdmin' not in principal.roles:
+                logger.info(f"No org_id provided for non-admin user {principal.email}, looking up from database")
+
+                # Import here to avoid circular dependency
+                from shared.request_context import _get_user_org_id
+
+                user_org_id = _get_user_org_id(principal.email)
+
+                if user_org_id:
+                    org_id = user_org_id
+                    logger.info(f"Found org {org_id} for user {principal.email}")
+
+                    # Re-load organization and config now that we have org_id
+                    # T037: Validate organization exists and is active
+                    org_entity = get_organization(org_id)
+
+                    if not org_entity:
+                        raise OrganizationNotFoundError(f"Organization {org_id} not found")
+
+                    if not org_entity.get('IsActive', False):
+                        raise OrganizationNotFoundError(f"Organization {org_id} is inactive")
+
+                    # Create Organization object
+                    # RowKey is in format "org:{uuid}", extract the UUID
+                    org_uuid = org_entity['RowKey'].split(':', 1)[1]
+                    org = Organization(
+                        org_id=org_uuid,
+                        name=org_entity['Name'],
+                        is_active=org_entity['IsActive']
+                    )
+
+                    # Load organization config (all config for this org)
+                    config_entities = get_org_config(org_id)
+
+                    for entity in config_entities:
+                        # RowKey format: "config:{key}"
+                        key = entity['RowKey'].replace('config:', '', 1)
+                        value = entity.get('Value')
+
+                        # Parse JSON if type is json
+                        if entity.get('Type') == 'json':
+                            try:
+                                assert value is not None, "Value cannot be None for JSON parsing"
+                                value = json.loads(value)
+                            except json.JSONDecodeError:
+                                logger.warning(f"Failed to parse JSON config: {key}")
+
+                        config[key] = value
+                else:
+                    # User has no org assignment
+                    raise OrganizationNotFoundError(
+                        f"User {principal.email} has no organization assignment. "
+                        "Contact your administrator to assign you to an organization."
+                    )
         else:
             # Fallback (should not happen)
             caller = Caller(

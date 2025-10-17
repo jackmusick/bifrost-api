@@ -12,7 +12,7 @@ export const organizationsService = {
   async getOrganizations() {
     const { data, error } = await apiClient.GET('/organizations')
     if (error) throw new Error(`Failed to fetch organizations: ${error}`)
-    return data
+    return data || []
   },
 
   /**

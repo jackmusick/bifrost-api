@@ -25,12 +25,12 @@ class TestOAuthConnectionsIntegration:
     """Test OAuth connection CRUD operations"""
 
     @pytest.mark.asyncio
-    async def test_list_oauth_connections_as_org_user(self):
+    async def test_list_oauth_connections_as_org_user(self, test_org_with_user):
         """Org user cannot list OAuth connections (platform admin only)"""
         req = create_mock_request(
             method="GET",
             url="/api/oauth/connections",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
         )
 
         response = await list_oauth_connections(req)
@@ -74,7 +74,7 @@ class TestOAuthConnectionsIntegration:
             assert "client_secret_value" not in body
 
     @pytest.mark.asyncio
-    async def test_get_oauth_connection_by_name_as_org_user(self):
+    async def test_get_oauth_connection_by_name_as_org_user(self, test_org_with_user):
         """Org user cannot get OAuth connection by name (platform admin only)"""
         # First create a connection to ensure we have one to test with
         create_req = create_mock_request(
@@ -104,7 +104,7 @@ class TestOAuthConnectionsIntegration:
         get_req = create_mock_request(
             method="GET",
             url="/api/oauth/connections/test_get_by_name_connection",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_get_by_name_connection"},
         )
 

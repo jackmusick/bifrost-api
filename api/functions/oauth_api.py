@@ -1395,12 +1395,12 @@ async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpRespon
     logger.info(f"User {context.email} retrieving OAuth refresh job status")
 
     try:
-        # Get job status from SystemConfig table
-        system_config_table = TableStorageService("SystemConfig")
+        # Get job status from Config table
+        config_service = TableStorageService("Config")
 
         try:
             # Single point query - very efficient!
-            job_status = system_config_table.get_entity("OAuthJobStatus", "TokenRefreshJob")
+            job_status = config_service.get_entity("SYSTEM", "jobstatus:TokenRefreshJob")
         except Exception as e:
             # Table doesn't exist yet or no job has run
             if "TableNotFound" in str(e) or "ResourceNotFound" in str(e):

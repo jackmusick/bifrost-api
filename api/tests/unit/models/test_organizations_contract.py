@@ -73,7 +73,6 @@ class TestOrganizationResponse:
         org = Organization(
             id="org-123",
             name="Test Organization",
-            tenantId="12345678-1234-1234-1234-123456789012",
             isActive=True,
             createdAt=datetime.utcnow(),
             createdBy="user-123",
@@ -81,21 +80,7 @@ class TestOrganizationResponse:
         )
         assert org.id == "org-123"
         assert org.name == "Test Organization"
-        assert org.tenantId is not None
         assert org.isActive is True
-
-    def test_organization_with_null_tenant_id(self):
-        """Test organization with null tenantId"""
-        org = Organization(
-            id="org-123",
-            name="Test Organization",
-            tenantId=None,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            createdBy="user-123",
-            updatedAt=datetime.utcnow()
-        )
-        assert org.tenantId is None
 
     def test_organization_missing_required_fields(self):
         """Test that all required fields must be present"""
@@ -116,7 +101,6 @@ class TestOrganizationResponse:
         org = Organization(
             id="org-123",
             name="Test Organization",
-            tenantId="12345678-1234-1234-1234-123456789012",
             isActive=True,
             createdAt=datetime.utcnow(),
             createdBy="user-123",
@@ -126,7 +110,6 @@ class TestOrganizationResponse:
         org_dict = org.model_dump()
         assert "id" in org_dict
         assert "name" in org_dict
-        assert "tenantId" in org_dict
         assert "isActive" in org_dict
         assert "createdAt" in org_dict
         assert "createdBy" in org_dict
@@ -140,41 +123,27 @@ class TestUpdateOrganizationRequest:
         """Test updating only the name"""
         request = UpdateOrganizationRequest(name="Updated Name")
         assert request.name == "Updated Name"
-        assert request.tenantId is None
-        assert request.isActive is None
-
-    def test_valid_update_tenant_id_only(self):
-        """Test updating only the tenantId"""
-        request = UpdateOrganizationRequest(
-            tenantId="12345678-1234-1234-1234-123456789012"
-        )
-        assert request.name is None
-        assert request.tenantId == "12345678-1234-1234-1234-123456789012"
         assert request.isActive is None
 
     def test_valid_update_is_active_only(self):
         """Test updating only the isActive flag"""
         request = UpdateOrganizationRequest(isActive=False)
         assert request.name is None
-        assert request.tenantId is None
         assert request.isActive is False
 
     def test_valid_update_all_fields(self):
         """Test updating all fields at once"""
         request = UpdateOrganizationRequest(
             name="Updated Name",
-            tenantId="12345678-1234-1234-1234-123456789012",
             isActive=False
         )
         assert request.name == "Updated Name"
-        assert request.tenantId is not None
         assert request.isActive is False
 
     def test_valid_update_with_no_fields(self):
         """Test that update request with no fields is valid (no-op)"""
         request = UpdateOrganizationRequest()
         assert request.name is None
-        assert request.tenantId is None
         assert request.isActive is None
 
     def test_invalid_empty_name(self):

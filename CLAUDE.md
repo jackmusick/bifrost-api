@@ -1,78 +1,91 @@
-# msp-automation-platform Development Guidelines
+# Bifrost Integrations Platform
 
-Auto-generated from all feature plans. Last updated: 2025-10-12
+MSP automation platform built with Azure Functions and TypeScript.
 
-## Active Technologies
+## Technologies
 
--   Python 3.11 (Azure Functions v2 programming model) + azure-functions, azure-data-tables, Pydantic for models, GitHub Actions for CI/CD (002-i-want-to)
--   Python 3.11 (Azure Functions v2 programming model) + azure-functions, azure-data-tables, aiohttp (for OAuth HTTP calls), pydantic (for models), cryptography (for token encryption) (004-oauth-helper-for)
--   Azure Table Storage (OAuth configs, credentials, status), Azure Key Vault (encryption keys for credentials at rest) (004-oauth-helper-for)
--   Python 3.11 (Azure Functions v2 programming model), TypeScript 4.9+ (frontend), Bicep/ARM (infrastructure) (005-migrate-to-azure)
--   Azure Table Storage (existing data), Azure Files (Hot tier for `/workspace` and `/tmp` mounts), Azure Blob Storage (logs), Azure Key Vault (secrets) (005-migrate-to-azure)
+-   **Backend**: Python 3.11 (Azure Functions v2), azure-functions, azure-data-tables, Pydantic, cryptography
+-   **Frontend**: TypeScript 4.9+, React, Vite
+-   **Storage**: Azure Table Storage, Azure Blob Storage, Azure Key Vault
+-   **Infrastructure**: Bicep/ARM templates, GitHub Actions for CI/CD
 
 ## Project Structure
 
 ```
-src/
-tests/
+api/
+├── functions/        # HTTP endpoint handlers (thin layer)
+├── shared/          # Business logic, models, utilities
+│   ├── models.py    # Pydantic models (source of truth)
+│   └── ...
+└── tests/           # Unit and integration tests
+
+client/
+├── src/
+│   ├── services/    # API client wrappers
+│   └── lib/
+│       └── v1.d.ts  # Auto-generated TypeScript types
+└── ...
 ```
 
-## Commands
+## Project-Specific Rules
 
-cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+### Backend (Python/Azure Functions)
 
-## Code Style
+-   **Models**: All Pydantic models MUST be defined in `api/shared/models.py`
+-   **Routing**: Create one function file per base route (e.g., `/discovery` → `discovery.py`)
+    -   Sub-routes and related functions live in the same file
+-   **Decorators**: Always use `@api/shared/openapi_decorators.py` on HTTP functions
+-   **Request/Response**: Always use Pydantic Request and Response models
+-   **Business Logic**: MUST live in `api/shared/`, NOT in `api/functions/`
+    -   Functions are thin HTTP handlers only
+    -   Complex logic, algorithms, business rules go in shared modules
+    -   Example: User provisioning logic lives in `shared/user_provisioning.py`
 
-Python 3.11 (Azure Functions v2 programming model): Follow standard conventions
+### Frontend (TypeScript/React)
 
-## Recent Changes
+-   **Type Generation**: Run `npm run generate:types` in `client/` after API changes
+    -   Must run while function app is running
+    -   Types are auto-generated from `api/functions/openapi.py` based on `models.py`
+    -   Never manually write TypeScript types for API endpoints
+-   **API Services**: Create service files in `client/src/services/` for new endpoints
 
--   005-migrate-to-azure: Added Python 3.11 (Azure Functions v2 programming model), TypeScript 4.9+ (frontend), Bicep/ARM (infrastructure)
--   004-oauth-helper-for: Added Python 3.11 (Azure Functions v2 programming model) + azure-functions, azure-data-tables, aiohttp (for OAuth HTTP calls), pydantic (for models), cryptography (for token encryption)
--   002-i-want-to: Added Python 3.11 (Azure Functions v2 programming model) + azure-functions, azure-data-tables, Pydantic for models, GitHub Actions for CI/CD
-
-<!-- MANUAL ADDITIONS START -->
-
-## Rules
-
--   ALWAYS generate Pydantic models in api/shared/models.py.
--   When defining new routes in api/:
-    -   ALWAYS create a new function per beginning path (/discovery -> discovery.py). Sub routes and functions can go inside of this file.
-    -   ALWAYS decorate HTTP functions with /api/shared/openapi_decorators.py
-    -   ALWAYS use a Response and Request model when applicable
--   Business logic MUST live in api/shared/, NOT in api/functions/:
-    -   Functions are thin HTTP handlers that call shared modules
-    -   Keep functions focused on HTTP concerns (parsing requests, returning responses)
-    -   Move complex logic, algorithms, and business rules to shared modules
-    -   Example: User provisioning logic lives in shared/user_provisioning.py, not in roles_source.py
--   ALWAYS create and update unit and integration tests in /api/tests. Work is NOT complete until this is done and passing 100%.
--   ALWAYS run `npm run generate:types`in client/ after updating type definitions in the API.
-    -   This should always be ran with the function running
-    -   Types NEVER need to be manually generated in the API or Client -- our api/functions/openapi.py does this dynamically from models.py
--   ALWAYS make sure we're passing `npm run tsc` in the Client. DO NOT LEAVE ERRORS OR WARNINGS HERE.
--   ALWAYS run `npm run lint` in both the Client and the API and clean up issues before completing work.
--   ALWAYS make sure we're passing `npm run typecheck` in the API. DO NOT LEAVE ERRORS OR WARNING HERE.
--   ALWAYS create services files in the client/services for in interacting with new endpoints. Example:
--   When updating models.py, don't forget to update our seed file.
--   ALWAYS use the date formatting utilities from `@/lib/utils` for displaying dates/times in the client:
-    -   `formatDate()` - Full date and time in user's local timezone
-    -   `formatDateShort()` - Date only (no time)
-    -   `formatTime()` - Time only
-    -   `formatRelativeTime()` - Relative time (e.g., "2 hours ago")
-    -   These utilities automatically handle UTC timestamps from the backend and convert to user's local timezone
-    -   NEVER use `toLocaleString()`, `toLocaleDateString()`, or `toLocaleTimeString()` directly
--   DON'T ignore preexisting errors in typechecks or lint.
-
-```
+Example service pattern:
+```typescript
 import { apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
 // Re-export types for convenience
-export type DataProviderOption = components["schemas"]["DataProviderOption"];
-export type DataProviderResponse =
-    components["schemas"]["DataProviderResponse"];
-
 export type DataProvider = components["schemas"]["DataProviderMetadata"];
+export type DataProviderResponse = components["schemas"]["DataProviderResponse"];
+
+export async function getDataProviders() {
+  return apiClient.get<DataProviderResponse>("/api/data-providers");
+}
 ```
 
-<!-- MANUAL ADDITIONS END -->
+### Testing & Quality
+
+-   **Tests**: All work requires unit and integration tests in `api/tests/`
+-   **Type Checking**: Must pass `npm run typecheck` (API) and `npm run tsc` (client)
+-   **Linting**: Must pass `npm run lint` in both API and client
+-   **Seed Data**: Update `api/seed_data.py` when models change
+
+### Commands
+
+```bash
+# Backend
+cd api
+python -m pytest tests/ -v           # Run tests
+ruff check .                          # Lint Python
+npx pyright                           # Type check Python
+
+# Frontend
+cd client
+npm run generate:types                # Generate types from API
+npm run tsc                           # Type check
+npm run lint                          # Lint and format
+npm run dev                           # Dev server
+
+# Local development
+docker compose up                     # Start Azurite + dependencies
+```

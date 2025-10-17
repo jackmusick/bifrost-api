@@ -1,0 +1,187 @@
+"""
+Base Repository
+Provides common CRUD operations for all repositories
+"""
+
+import logging
+from collections.abc import Iterator
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from shared.storage import TableStorageService
+
+if TYPE_CHECKING:
+    from shared.request_context import RequestContext
+
+logger = logging.getLogger(__name__)
+
+
+class BaseRepository:
+    """
+    Base repository with common CRUD patterns
+
+    Provides low-level database operations that can be used by
+    all entity-specific repositories.
+
+    This class abstracts TableStorageService to make future
+    database swaps easier (e.g., Table Storage → Cosmos DB)
+    """
+
+    def __init__(self, table_name: str, context: 'RequestContext | None' = None):
+        """
+        Initialize repository
+
+        Args:
+            table_name: Name of the Azure Table to work with
+            context: Optional RequestContext for automatic scoping
+        """
+        self.table_name = table_name
+        self.context = context
+        self._service = TableStorageService(table_name, context=context)
+
+        logger.debug(f"Initialized {self.__class__.__name__} for table: {table_name}")
+
+    def get_by_id(self, partition_key: str, row_key: str) -> dict | None:
+        """
+        Get a single entity by partition and row key
+
+        Args:
+            partition_key: Partition key
+            row_key: Row key
+
+        Returns:
+            Entity dictionary or None if not found
+        """
+        return self._service.get_entity(partition_key, row_key)
+
+    def query(self, filter_query: str, select: list[str] | None = None) -> Iterator[dict]:
+        """
+        Query entities with optional filter and column selection
+
+        Args:
+            filter_query: OData filter string
+            select: List of properties to select (None = all properties)
+
+        Returns:
+            Iterator of entity dictionaries
+        """
+        return self._service.query_entities(filter=filter_query, select=select)
+
+    def insert(self, entity: dict) -> dict:
+        """
+        Insert a new entity
+
+        Args:
+            entity: Entity dictionary with PartitionKey and RowKey
+
+        Returns:
+            The inserted entity
+
+        Raises:
+            ResourceExistsError: If entity already exists
+            ValueError: If PartitionKey or RowKey missing
+        """
+        return self._service.insert_entity(entity)
+
+    def update(self, entity: dict, mode: str = "merge") -> dict:
+        """
+        Update an existing entity
+
+        Args:
+            entity: Entity dictionary with PartitionKey and RowKey
+            mode: Update mode - "merge" (default) or "replace"
+
+        Returns:
+            The updated entity
+
+        Raises:
+            ResourceNotFoundError: If entity doesn't exist
+        """
+        return self._service.update_entity(entity, mode=mode)
+
+    def upsert(self, entity: dict, mode: str = "merge") -> dict:
+        """
+        Insert or update an entity (creates if doesn't exist)
+
+        Args:
+            entity: Entity dictionary with PartitionKey and RowKey
+            mode: Update mode - "merge" (default) or "replace"
+
+        Returns:
+            The upserted entity
+        """
+        return self._service.upsert_entity(entity, mode=mode)
+
+    def delete(self, partition_key: str, row_key: str) -> bool:
+        """
+        Delete an entity
+
+        Args:
+            partition_key: Partition key
+            row_key: Row key
+
+        Returns:
+            True if deleted, False if not found
+        """
+        return self._service.delete_entity(partition_key, row_key)
+
+    def _get_partition_key_for_scope(self, scope: str | None = None) -> str:
+        """
+        Get partition key from scope
+
+        Args:
+            scope: Explicit scope (org_id or "GLOBAL"), or None to use context
+
+        Returns:
+            Partition key to use for queries
+        """
+        if scope is not None:
+            return scope
+
+        if self.context:
+            return self.context.scope
+
+        return "GLOBAL"
+
+    @staticmethod
+    def _parse_datetime(value: str | datetime | None, default: datetime | None = None) -> datetime | None:
+        """
+        Safely parse datetime from entity field
+
+        Azure Table Storage may return datetime fields as:
+        1. datetime objects (automatic deserialization)
+        2. ISO format strings (manual insertion or older SDKs)
+        3. None (missing field)
+
+        Args:
+            value: Value from entity.get() - could be datetime, str, or None
+            default: Default value if value is None (defaults to None)
+
+        Returns:
+            Parsed datetime object, default, or None
+
+        Examples:
+            # From test fixtures (string)
+            dt = _parse_datetime("2024-01-15T10:30:00")
+
+            # From Azure SDK (already datetime)
+            dt = _parse_datetime(datetime(2024, 1, 15, 10, 30))
+
+            # Missing field
+            dt = _parse_datetime(None, datetime.utcnow())
+        """
+        if value is None:
+            return default
+
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse datetime from string '{value}': {e}")
+                return default
+
+        logger.warning(f"Unexpected datetime type: {type(value)} for value {value}")
+        return default

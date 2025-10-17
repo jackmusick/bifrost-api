@@ -108,7 +108,6 @@ export function Organizations() {
       data: {
         name: formData.name || null,
         domain: formData.domain || null,
-        tenantId: null,
         isActive: null,
       },
     })
@@ -180,7 +179,7 @@ export function Organizations() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Domain</TableHead>
-                      <TableHead>Tenant ID</TableHead>
+                      <TableHead>Organization ID</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -194,7 +193,7 @@ export function Organizations() {
                           {org.domain || '-'}
                         </TableCell>
                         <TableCell className="font-mono text-xs text-muted-foreground">
-                          {org.tenantId || '-'}
+                          {org.id}
                         </TableCell>
                         <TableCell>
                           <Badge variant={org.isActive ? 'default' : 'secondary'}>

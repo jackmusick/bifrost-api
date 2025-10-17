@@ -18,9 +18,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Table scoping metadata - defines how PartitionKey is determined
-SCOPED_TABLES = ["Config", "Entities"]  # PartitionKey = org_id (UUID) or "GLOBAL"
+SCOPED_TABLES = ["Config", "Entities"]  # PartitionKey = org_id (UUID), "GLOBAL", or "SYSTEM"
 GLOBAL_TABLES = ["Relationships"]       # PartitionKey = "GLOBAL" (all data in one partition)
-CUSTOM_TABLES = {"Users": "user_id"}    # Custom partitioning schemes
+CUSTOM_TABLES = {}                      # No custom partitioning
+EXPLICIT_PARTITION_TABLES = []          # No explicit partition tables
 
 
 class TableStorageService:
@@ -58,10 +59,11 @@ class TableStorageService:
         self.is_scoped = table_name in SCOPED_TABLES
         self.is_global = table_name in GLOBAL_TABLES
         self.custom_partition = CUSTOM_TABLES.get(table_name)
+        self.is_explicit = table_name in EXPLICIT_PARTITION_TABLES
 
         logger.debug(
             f"TableStorageService initialized for table: {table_name} "
-            f"(scoped={self.is_scoped}, global={self.is_global}, context={context is not None})"
+            f"(scoped={self.is_scoped}, global={self.is_global}, explicit={self.is_explicit}, context={context is not None})"
         )
 
     def insert_entity(self, entity: dict) -> dict:
@@ -147,6 +149,13 @@ class TableStorageService:
         if self.is_global:
             entity["PartitionKey"] = "GLOBAL"
             return entity
+
+        # Explicit partition tables (SystemConfig) - require explicit key, but provide helpful error
+        if self.is_explicit:
+            raise ValueError(
+                f"Table '{self.table_name}' requires explicit PartitionKey. "
+                f"This table does not support automatic partition key assignment."
+            )
 
         # Custom tables (Users)
         if self.custom_partition:

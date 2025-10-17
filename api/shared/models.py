@@ -63,6 +63,7 @@ __all__ = [
     'FormExecuteRequest',
 
     # Workflow Execution
+    'ExecutionLog',
     'WorkflowExecution',
     'WorkflowExecutionRequest',
     'WorkflowExecutionResponse',
@@ -159,8 +160,6 @@ class Organization(BaseModel):
     """Organization entity (response model)"""
     id: str = Field(..., description="Organization ID (GUID)")
     name: str = Field(..., min_length=1, max_length=200)
-    tenantId: str | None = Field(
-        None, description="Microsoft 365 GDAP tenant ID (auto-generated if not provided)")
     domain: str | None = Field(
         None, description="Email domain for auto-provisioning users (e.g., 'acme.com')")
     isActive: bool = Field(default=True)
@@ -193,7 +192,6 @@ class CreateOrganizationRequest(BaseModel):
 class UpdateOrganizationRequest(BaseModel):
     """Request model for updating an organization"""
     name: str | None = Field(None, min_length=1, max_length=200)
-    tenantId: str | None = None
     domain: str | None = Field(None, description="Email domain for auto-provisioning users")
     isActive: bool | None = None
 
@@ -485,19 +483,31 @@ class FormExecuteRequest(BaseModel):
 
 # ==================== WORKFLOW EXECUTION MODELS ====================
 
+class ExecutionLog(BaseModel):
+    """Single log entry from workflow execution"""
+    timestamp: str
+    level: str  # debug, info, warning, error
+    message: str
+    data: dict[str, Any] | None = None
+
+
 class WorkflowExecution(BaseModel):
     """Workflow execution entity"""
     executionId: str
     workflowName: str
+    orgId: str | None = None  # Organization ID for display/filtering
     formId: str | None = None
     executedBy: str
+    executedByName: str  # Display name of user who executed
     status: ExecutionStatus
     inputData: dict[str, Any]
-    result: dict[str, Any] | None = None
+    result: dict[str, Any] | str | None = None  # Can be dict (JSON) or str (HTML/text)
+    resultType: Literal['json', 'html', 'text'] | None = None  # How to render result
     errorMessage: str | None = None
     durationMs: int | None = None
     startedAt: datetime
     completedAt: datetime | None = None
+    logs: list[ExecutionLog] | None = None  # Execution logs (fetched from blob storage)
 
 
 class WorkflowExecutionRequest(BaseModel):
@@ -510,7 +520,7 @@ class WorkflowExecutionResponse(BaseModel):
     """Response model for workflow execution"""
     executionId: str
     status: ExecutionStatus
-    result: dict[str, Any] | None = None
+    result: dict[str, Any] | str | None = None  # Can be dict (JSON) or str (HTML/text)
     error: str | None = None
     errorType: str | None = None
     details: dict[str, Any] | None = None
@@ -741,6 +751,11 @@ class DashboardMetricsResponse(BaseModel):
     formCount: int
     executionStats: ExecutionStats
     recentFailures: list[RecentFailure]
+
+
+# ==================== LIST RESPONSE MODELS ====================
+
+# List Response Models removed - Deprecated in favor of returning bare arrays
 
 
 # ==================== ERROR MODEL ====================

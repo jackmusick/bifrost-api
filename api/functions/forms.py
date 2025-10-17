@@ -20,10 +20,9 @@ from shared.models import (
     Form,
     FormExecuteRequest,
     UpdateFormRequest,
-    generate_entity_id,
 )
 from shared.openapi_decorators import openapi_endpoint
-from shared.storage import get_table_service
+from shared.repositories.forms import FormRepository
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ bp = func.Blueprint()
     summary="List forms",
     description="List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).",
     tags=["Forms"],
-    response_model=None  # Returns list[Form] but openapi_endpoint expects BaseModel
+    response_model=list[Form]
 )
 @with_request_context
 async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
@@ -55,33 +54,8 @@ async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} listing forms (org: {context.org_id or 'GLOBAL'})")
 
     try:
-        # Use authorization helper to get visible forms
-        form_entities = get_user_visible_forms(context)
-
-        # Convert to response models
-        forms = []
-        for entity in form_entities:
-            # Extract form UUID from RowKey "form:uuid"
-            form_id = entity["RowKey"].split(":", 1)[1]
-
-            # Parse formSchema from JSON string
-            form_schema = json.loads(entity["FormSchema"]) if isinstance(entity["FormSchema"], str) else entity["FormSchema"]
-
-            form = Form(
-                id=form_id,
-                orgId=entity["PartitionKey"],
-                name=entity["Name"],
-                description=entity.get("Description"),
-                linkedWorkflow=entity["LinkedWorkflow"],
-                formSchema=form_schema,
-                isActive=entity.get("IsActive", True),
-                isGlobal=entity["PartitionKey"] == "GLOBAL",
-                isPublic=entity.get("IsPublic", False),
-                createdBy=entity["CreatedBy"],
-                createdAt=entity["CreatedAt"],
-                updatedAt=entity["UpdatedAt"]
-            )
-            forms.append(form.model_dump(mode="json"))
+        # Use authorization helper to get visible forms (returns Form model dicts)
+        forms = get_user_visible_forms(context)
 
         # Sort by name
         forms.sort(key=lambda f: f["name"])
@@ -135,54 +109,17 @@ async def create_form(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         create_request = CreateFormRequest(**request_body)
 
-        # Generate form UUID
-        form_id = generate_entity_id()
-        now = datetime.utcnow()
-
-        # Determine partition key based on isGlobal flag
-        # If isGlobal is True, store in GLOBAL partition
-        # Otherwise, store in org's partition (from context.scope)
-        partition_key = "GLOBAL" if create_request.isGlobal else context.scope
-
-        # Create form entity for Entities table
-        form_entity = {
-            "PartitionKey": partition_key,
-            "RowKey": f"form:{form_id}",
-            "Name": create_request.name,
-            "Description": create_request.description,
-            "LinkedWorkflow": create_request.linkedWorkflow,
-            "FormSchema": json.dumps(create_request.formSchema.model_dump()),
-            "IsActive": True,
-            "IsPublic": create_request.isPublic,
-            "CreatedBy": context.user_id,
-            "CreatedAt": now.isoformat(),
-            "UpdatedAt": now.isoformat()
-        }
-
-        # Insert entity into Entities table
-        entities_service = get_table_service("Entities", context)
-        entities_service.insert_entity(form_entity)
-
-        logger.info(f"Created form {form_id} in partition {partition_key}")
-
-        # Create response model
-        form_response = Form(
-            id=form_id,
-            orgId=partition_key,
-            name=create_request.name,
-            description=create_request.description,
-            linkedWorkflow=create_request.linkedWorkflow,
-            formSchema=create_request.formSchema,
-            isActive=True,
-            isGlobal=create_request.isGlobal,
-            isPublic=create_request.isPublic,
-            createdBy=context.user_id,
-            createdAt=now,
-            updatedAt=now
+        # Create form using repository
+        form_repo = FormRepository(context)
+        form = form_repo.create_form(
+            form_request=create_request,
+            created_by=context.user_id
         )
 
+        logger.info(f"Created form {form.id} in partition {form.orgId}")
+
         return func.HttpResponse(
-            json.dumps(form_response.model_dump(mode="json")),
+            json.dumps(form.model_dump(mode="json")),
             status_code=201,
             mimetype="application/json"
         )
@@ -278,19 +215,11 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Get form from Entities table
-        # Try context.scope first, then GLOBAL
-        entities_service = get_table_service("Entities", context)
-        form_entity = None
+        # Get form using repository (handles GLOBAL fallback)
+        form_repo = FormRepository(context)
+        form = form_repo.get_form(form_id)
 
-        # Try to get from context scope
-        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
-
-        if not form_entity and context.scope != "GLOBAL":
-            # Try GLOBAL partition
-            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
-
-        if not form_entity:
+        if not form:
             logger.warning(f"Form {form_id} not found")
             error = ErrorResponse(
                 error="NotFound",
@@ -302,8 +231,8 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Check if form is active
-        if not form_entity.get("IsActive", True):
+        # Check if form is active (skip for platform admins who can manage inactive forms)
+        if not context.is_platform_admin and not form.isActive:
             logger.warning(f"Form {form_id} is not active")
             error = ErrorResponse(
                 error="NotFound",
@@ -314,25 +243,6 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404,
                 mimetype="application/json"
             )
-
-        # Parse formSchema from JSON string
-        form_schema = json.loads(form_entity["FormSchema"]) if isinstance(form_entity["FormSchema"], str) else form_entity["FormSchema"]
-
-        # Convert to response model
-        form = Form(
-            id=form_id,
-            orgId=form_entity["PartitionKey"],
-            name=form_entity["Name"],
-            description=form_entity.get("Description"),
-            linkedWorkflow=form_entity["LinkedWorkflow"],
-            formSchema=form_schema,
-            isActive=form_entity.get("IsActive", True),
-            isGlobal=form_entity["PartitionKey"] == "GLOBAL",
-            isPublic=form_entity.get("IsPublic", False),
-            createdBy=form_entity["CreatedBy"],
-            createdAt=form_entity["CreatedAt"],
-            updatedAt=form_entity["UpdatedAt"]
-        )
 
         logger.info(f"Returning form {form_id}")
 
@@ -392,17 +302,11 @@ async def update_form(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         update_request = UpdateFormRequest(**request_body)
 
-        # Get existing form from Entities table
-        entities_service = get_table_service("Entities", context)
+        # Update form using repository
+        form_repo = FormRepository(context)
+        form = form_repo.update_form(form_id, update_request)
 
-        # Try context scope first, then GLOBAL
-        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
-
-        if not form_entity and context.scope != "GLOBAL":
-            # Try GLOBAL partition
-            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
-
-        if not form_entity:
+        if not form:
             logger.warning(f"Form {form_id} not found")
             error = ErrorResponse(
                 error="NotFound",
@@ -414,61 +318,10 @@ async def update_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Check if form is active
-        if not form_entity.get("IsActive", True):
-            logger.warning(f"Form {form_id} is not active")
-            error = ErrorResponse(
-                error="NotFound",
-                message="Form not found"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=404,
-                mimetype="application/json"
-            )
-
-        # Update entity fields
-        now = datetime.utcnow()
-
-        if update_request.name is not None:
-            form_entity["Name"] = update_request.name
-        if update_request.description is not None:
-            form_entity["Description"] = update_request.description
-        if update_request.linkedWorkflow is not None:
-            form_entity["LinkedWorkflow"] = update_request.linkedWorkflow
-        if update_request.formSchema is not None:
-            form_entity["FormSchema"] = json.dumps(update_request.formSchema.model_dump())
-        if update_request.isActive is not None:
-            form_entity["IsActive"] = update_request.isActive
-
-        form_entity["UpdatedAt"] = now.isoformat()
-
-        # Update entity
-        entities_service.update_entity(form_entity)
-
         logger.info(f"Updated form {form_id}")
 
-        # Parse formSchema for response
-        form_schema = json.loads(form_entity["FormSchema"]) if isinstance(form_entity["FormSchema"], str) else form_entity["FormSchema"]
-
-        # Create response model
-        form_response = Form(
-            id=form_id,
-            orgId=form_entity["PartitionKey"],
-            name=form_entity["Name"],
-            description=form_entity.get("Description"),
-            linkedWorkflow=form_entity["LinkedWorkflow"],
-            formSchema=form_schema,
-            isActive=form_entity.get("IsActive", True),
-            isGlobal=form_entity["PartitionKey"] == "GLOBAL",
-            isPublic=form_entity.get("IsPublic", False),
-            createdBy=form_entity["CreatedBy"],
-            createdAt=form_entity["CreatedAt"],
-            updatedAt=now
-        )
-
         return func.HttpResponse(
-            json.dumps(form_response.model_dump(mode="json")),
+            json.dumps(form.model_dump(mode="json")),
             status_code=200,
             mimetype="application/json"
         )
@@ -551,27 +404,15 @@ async def delete_form(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} deleting form {form_id}")
 
     try:
-        # Get existing form from Entities table
-        entities_service = get_table_service("Entities", context)
+        # Soft delete form using repository
+        form_repo = FormRepository(context)
+        success = form_repo.delete_form(form_id)
 
-        # Try context scope first, then GLOBAL
-        form_entity = entities_service.get_entity(context.scope, f"form:{form_id}")
-
-        if not form_entity and context.scope != "GLOBAL":
-            # Try GLOBAL partition
-            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
-
-        if not form_entity:
+        if success:
+            logger.info(f"Soft deleted form {form_id}")
+        else:
             # Idempotent - return 204 even if not found
             logger.debug(f"Form {form_id} not found, returning 204")
-            return func.HttpResponse(status_code=204)
-
-        # Soft delete by setting IsActive=False
-        form_entity["IsActive"] = False
-        form_entity["UpdatedAt"] = datetime.utcnow().isoformat()
-        entities_service.update_entity(form_entity)
-
-        logger.info(f"Soft deleted form {form_id}")
 
         return func.HttpResponse(status_code=204)  # No Content
 
@@ -653,17 +494,11 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Get form from Entities table
-        entities_service = get_table_service("Entities", request_context)
+        # Get form using repository
+        form_repo = FormRepository(request_context)
+        form = form_repo.get_form(form_id)
 
-        # Try context scope first, then GLOBAL
-        form_entity = entities_service.get_entity(request_context.scope, f"form:{form_id}")
-
-        if not form_entity and request_context.scope != "GLOBAL":
-            # Try GLOBAL partition
-            form_entity = entities_service.get_entity("GLOBAL", f"form:{form_id}")
-
-        if not form_entity:
+        if not form:
             logger.warning(f"Form {form_id} not found")
             error = ErrorResponse(
                 error="NotFound",
@@ -676,7 +511,7 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Check if form is active
-        if not form_entity.get("IsActive", True):
+        if not form.isActive:
             logger.warning(f"Form {form_id} is not active")
             error = ErrorResponse(
                 error="NotFound",
@@ -689,7 +524,7 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Get linked workflow
-        linked_workflow = form_entity.get("LinkedWorkflow")
+        linked_workflow = form.linkedWorkflow
         if not linked_workflow:
             logger.error(f"Form {form_id} has no linked workflow")
             error = ErrorResponse(
@@ -743,6 +578,7 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
             execution_id=execution_id,
             org_id=request_context.org_id,
             user_id=request_context.user_id,
+            user_name=request_context.name,
             workflow_name=linked_workflow,
             input_data=form_data,
             form_id=form_id

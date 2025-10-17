@@ -5,8 +5,10 @@ Provides permission checking and form access control
 
 import logging
 
+from shared.repositories.executions import ExecutionRepository
+from shared.repositories.forms import FormRepository
+from shared.repositories.roles import RoleRepository
 from shared.request_context import RequestContext
-from shared.storage import TableStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -14,97 +16,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Private Helper Functions
 # ============================================================================
-
-
-def _get_entity_from_global_or_org(
-    context: RequestContext,
-    entity_type: str,
-    entity_id: str
-) -> dict | None:
-    """
-    Get an entity by trying GLOBAL partition first, then user's org partition.
-
-    Args:
-        context: RequestContext
-        entity_type: Entity type prefix (e.g., "form", "workflow")
-        entity_id: Entity ID (UUID)
-
-    Returns:
-        Entity dict if found, None otherwise
-    """
-    row_key = f"{entity_type}:{entity_id}"
-
-    # Try GLOBAL first
-    try:
-        from shared.request_context import RequestContext
-        global_context = RequestContext(
-            user_id=context.user_id,
-            email=context.email,
-            name=context.name,
-            org_id=None,  # GLOBAL
-            is_platform_admin=False,
-            is_function_key=False
-        )
-        global_entities_service = TableStorageService("Entities", context=global_context)
-        entity = global_entities_service.get_entity("GLOBAL", row_key)
-        return entity
-    except Exception:
-        pass
-
-    # Try user's org (if they have one)
-    if context.org_id:
-        try:
-            org_entities_service = TableStorageService("Entities", context=context)
-            entity = org_entities_service.get_entity(context.org_id, row_key)
-            return entity
-        except Exception as e:
-            logger.error(f"Error fetching {entity_type} {entity_id}: {e}")
-
-    return None
-
-
-def _query_entities_from_global_and_org(
-    context: RequestContext,
-    entity_type: str
-) -> list[dict]:
-    """
-    Query entities from both GLOBAL and user's org partitions.
-
-    Args:
-        context: RequestContext
-        entity_type: Entity type prefix (e.g., "form", "workflow")
-
-    Returns:
-        List of entities from both partitions
-    """
-    from shared.request_context import RequestContext
-
-    entities = []
-
-    # Query GLOBAL partition
-    global_context = RequestContext(
-        user_id=context.user_id,
-        email=context.email,
-        name=context.name,
-        org_id=None,  # GLOBAL
-        is_platform_admin=False,
-        is_function_key=False
-    )
-    global_entities_service = TableStorageService("Entities", context=global_context)
-    global_entities = list(global_entities_service.query_entities(
-        f"PartitionKey eq 'GLOBAL' and RowKey ge '{entity_type}:' and RowKey lt '{entity_type};'"
-    ))
-    entities.extend(global_entities)
-
-    # Query user's org partition (if they have an org)
-    if context.org_id:
-        org_entities_service = TableStorageService("Entities", context=context)
-        org_entities = list(org_entities_service.query_entities(
-            f"PartitionKey eq '{context.org_id}' and RowKey ge '{entity_type}:' and RowKey lt '{entity_type};'"
-        ))
-        entities.extend(org_entities)
-
-    return entities
+# Note: Most helper functions removed - repositories now handle fallback logic
 
 
 # ============================================================================
@@ -118,7 +30,7 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
 
     Rules:
     - Platform admins: can view all forms
-    - Regular users: can view public forms OR forms assigned to their role
+    - Regular users: can view all active forms (global forms + their org's forms)
 
     Args:
         context: RequestContext
@@ -131,23 +43,19 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     if context.is_platform_admin:
         return True
 
-    # Get form - regular users need to check BOTH GLOBAL and their org
-    form_entity = _get_entity_from_global_or_org(context, "form", form_id)
+    # Get form using repository (handles GLOBAL fallback automatically)
+    form_repo = FormRepository(context)
+    form = form_repo.get_form(form_id)
 
-    if not form_entity:
+    if not form:
         return False
 
-    # Public forms - anyone can view
-    if form_entity.get("IsPublic"):
-        return True
+    # Check if form is active
+    if not form.isActive:
+        return False
 
-    # Check if user has a role that grants access
-    relationships_service = TableStorageService("Relationships")
-    user_role_ids = get_user_role_ids(context.user_id, relationships_service)
-    form_role_ids = get_form_role_ids(form_id, relationships_service)
-
-    # If user has any role that grants access to this form
-    return bool(set(user_role_ids) & set(form_role_ids))
+    # If we got the form, user can view it (repository handles scope checking)
+    return True
 
 
 def can_user_execute_form(context: RequestContext, form_id: str) -> bool:
@@ -172,63 +80,28 @@ def get_user_visible_forms(context: RequestContext) -> list[dict]:
 
     Rules:
     - Platform admins: see all forms in context.scope (controlled by X-Organization-Id header)
-    - Regular users: see GLOBAL forms + their org's forms (based on role assignments)
-      - Public forms are always visible
-      - Private forms require role assignment
+    - Regular users: see all active GLOBAL forms + all active forms in their org
 
     Args:
         context: RequestContext
 
     Returns:
-        List of form entities user can view
+        List of form entities (as dicts for backward compatibility)
     """
+    form_repo = FormRepository(context)
+
     # Platform admin sees all forms in their current scope (set by X-Organization-Id)
     if context.is_platform_admin:
-        entities_service = TableStorageService("Entities", context=context)
-        all_forms = list(entities_service.query_entities(
-            f"PartitionKey eq '{context.scope}' and RowKey ge 'form:' and RowKey lt 'form;'"
-        ))
-        # Filter out inactive forms
-        return [form for form in all_forms if form.get("IsActive", True)]
+        # Admin can see all forms (including inactive) in their scope
+        forms = form_repo.list_forms(include_global=False, active_only=False)
+        # Convert Form models to dicts for backward compatibility (JSON-serializable)
+        return [form.model_dump(mode="json") for form in forms]
 
-    # Regular user: Query BOTH GLOBAL and their org's forms
-    all_forms = _query_entities_from_global_and_org(context, "form")
+    # Regular user: Get forms with GLOBAL fallback and filter to active only
+    forms = form_repo.list_forms(include_global=True, active_only=True)
 
-    # Get user's roles
-    relationships_service = TableStorageService("Relationships")
-    user_role_ids = set(get_user_role_ids(context.user_id, relationships_service))
-
-    # Filter forms by permissions (track form IDs to avoid duplicates)
-    visible_forms = []
-    seen_form_ids = set()
-
-    for form_entity in all_forms:
-        # Extract form UUID from row key "form:uuid"
-        form_id = form_entity['RowKey'].split(':', 1)[1]
-
-        # Skip if we've already added this form
-        if form_id in seen_form_ids:
-            continue
-
-        # Skip inactive forms
-        if not form_entity.get("IsActive", True):
-            continue
-
-        # Public forms always visible
-        if form_entity.get("IsPublic"):
-            visible_forms.append(form_entity)
-            seen_form_ids.add(form_id)
-            continue
-
-        # Check if user has assigned role for this form
-        form_role_ids = set(get_form_role_ids(form_id, relationships_service))
-
-        # If user has any role that grants access, include form
-        if user_role_ids & form_role_ids:  # Set intersection
-            visible_forms.append(form_entity)
-            seen_form_ids.add(form_id)
-
-    return visible_forms
+    # Convert Form models to dicts for backward compatibility (JSON-serializable)
+    return [form.model_dump(mode="json") for form in forms]
 
 
 def can_user_view_execution(context: RequestContext, execution_entity: dict) -> bool:
@@ -251,6 +124,7 @@ def can_user_view_execution(context: RequestContext, execution_entity: dict) -> 
         return True
 
     # Regular users can only view their own executions
+    # ExecutedBy stores user_id (not email)
     executed_by = execution_entity.get("ExecutedBy")
     return executed_by == context.user_id
 
@@ -268,76 +142,53 @@ def get_user_executions(context: RequestContext, limit: int | None = None) -> li
         limit: Optional limit on number of executions to return
 
     Returns:
-        List of execution entities
+        List of execution entities (as dicts for backward compatibility)
     """
+    exec_repo = ExecutionRepository(context)
+
     if context.is_platform_admin:
         # Platform admin sees all executions in scope
-        entities_service = TableStorageService("Entities", context=context)
-        executions = list(entities_service.query_entities(
-            f"PartitionKey eq '{context.scope}' and RowKey ge 'execution:' and RowKey lt 'execution;'"
-        ))
+        executions = exec_repo.list_executions(limit=limit or 1000)
     else:
-        # Regular user sees only their executions (from dual index)
-        relationships_service = TableStorageService("Relationships")
-        user_exec_entities = list(relationships_service.query_entities(
-            f"PartitionKey eq 'GLOBAL' and RowKey ge 'userexec:{context.user_id}:' and RowKey lt 'userexec:{context.user_id};'"
-        ))
+        # Regular user sees only their executions (using optimized user index)
+        executions = exec_repo.list_executions_by_user(
+            user_id=context.user_id,
+            limit=limit or 50
+        )
 
-        # Extract execution IDs and fetch full entities
-        exec_ids = [entity.get("ExecutionId") for entity in user_exec_entities]
-
-        entities_service = TableStorageService("Entities", context=context)
-        executions = []
-        for exec_id in exec_ids:
-            # Query by ExecutionId field (within user's org partition or GLOBAL)
-            exec_entities = list(entities_service.query_entities(
-                f"PartitionKey eq '{context.scope}' and ExecutionId eq '{exec_id}'"
-            ))
-            if exec_entities:
-                executions.append(exec_entities[0])
-
-    # Apply limit if specified
-    if limit:
-        executions = executions[:limit]
-
-    return executions
+    # Convert WorkflowExecution models to dicts for backward compatibility
+    return [execution.model_dump() for execution in executions]
 
 
-def get_user_role_ids(user_id: str, relationships_service: TableStorageService) -> list[str]:
+def get_user_role_ids(user_id: str, role_repository: RoleRepository | None = None) -> list[str]:
     """
     Get all role IDs (UUIDs) assigned to a user.
 
     Args:
         user_id: User ID
-        relationships_service: TableStorageService for Relationships table
+        role_repository: Optional RoleRepository instance (for backward compatibility)
 
     Returns:
         List of role UUIDs
     """
-    user_role_entities = list(relationships_service.query_entities(
-        f"PartitionKey eq 'GLOBAL' and RowKey ge 'userrole:{user_id}:' and RowKey lt 'userrole:{user_id};'"
-    ))
+    if role_repository is None:
+        role_repository = RoleRepository()
 
-    # Extract role UUIDs from row keys: "userrole:user_id:role_uuid"
-    role_ids = [entity['RowKey'].split(':', 2)[2] for entity in user_role_entities]
-    return role_ids
+    return role_repository.get_user_role_ids(user_id)
 
 
-def get_form_role_ids(form_id: str, relationships_service: TableStorageService) -> list[str]:
+def get_form_role_ids(form_id: str, role_repository: RoleRepository | None = None) -> list[str]:
     """
     Get all role IDs (UUIDs) that can access a form.
 
     Args:
         form_id: Form ID (UUID)
-        relationships_service: TableStorageService for Relationships table
+        role_repository: Optional RoleRepository instance (for backward compatibility)
 
     Returns:
         List of role UUIDs
     """
-    form_role_entities = list(relationships_service.query_entities(
-        f"PartitionKey eq 'GLOBAL' and RowKey ge 'formrole:{form_id}:' and RowKey lt 'formrole:{form_id};'"
-    ))
+    if role_repository is None:
+        role_repository = RoleRepository()
 
-    # Extract role UUIDs from row keys: "formrole:form_uuid:role_uuid"
-    role_ids = [entity['RowKey'].split(':', 2)[2] for entity in form_role_entities]
-    return role_ids
+    return role_repository.get_form_role_ids(form_id)

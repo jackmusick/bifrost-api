@@ -18,7 +18,6 @@ def mock_org():
     return Organization(
         org_id="test-org-123",
         name="Test Organization",
-        tenant_id="test-tenant-456",
         is_active=True
     )
 
@@ -159,91 +158,70 @@ class TestExecutionLogger:
 
     @pytest.mark.asyncio
     async def test_create_execution_dual_indexing(self, mock_table_storage):
-        """Test that create_execution writes to both tables"""
+        """Test that create_execution uses ExecutionRepository"""
         from shared.execution_logger import ExecutionLogger
 
-        # Mock table storage services
-        entities_storage = MagicMock()
-        relationships_storage = MagicMock()
+        # Mock ExecutionRepository
+        mock_exec_repo = MagicMock()
 
-        with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
-            def get_storage(table_name):
-                if table_name == "Entities":
-                    return entities_storage
-                elif table_name == "Relationships":
-                    return relationships_storage
+        with patch('shared.execution_logger.ExecutionRepository') as mock_repo_class:
+            with patch('shared.execution_logger.get_blob_service') as mock_blob:
+                mock_repo_class.return_value = mock_exec_repo
+                mock_blob.return_value = MagicMock()
 
-            mock_get_storage.side_effect = get_storage
+                logger = ExecutionLogger()
 
-            logger = ExecutionLogger()
+                await logger.create_execution(
+                    execution_id="test-exec-123",
+                    org_id="org-456",
+                    user_id="user-789",
+                    user_name="Test User",
+                    workflow_name="test_workflow",
+                    input_data={"key": "value"},
+                    form_id="form-abc"
+                )
 
-            await logger.create_execution(
-                execution_id="test-exec-123",
-                org_id="org-456",
-                user_id="user-789",
-                workflow_name="test_workflow",
-                input_data={"key": "value"},
-                form_id="form-abc"
-            )
+                # Verify repository was called
+                mock_exec_repo.create_execution.assert_called_once()
 
-            # Verify both tables were written to
-            entities_storage.insert_entity.assert_called_once()
-            relationships_storage.insert_entity.assert_called_once()
-
-            # Verify Entities entity structure
-            entities_entity = entities_storage.insert_entity.call_args[0][0]
-            assert entities_entity['PartitionKey'] == 'org-456'
-            assert entities_entity['ExecutionId'] == 'test-exec-123'
-            assert entities_entity['WorkflowName'] == 'test_workflow'
-            assert entities_entity['FormId'] == 'form-abc'
-
-            # Verify Relationships entity structure
-            relationships_entity = relationships_storage.insert_entity.call_args[0][0]
-            assert relationships_entity['PartitionKey'] == 'GLOBAL'
-            assert relationships_entity['RowKey'] == 'userexec:user-789:test-exec-123'
-            assert relationships_entity['ExecutionId'] == 'test-exec-123'
-            assert relationships_entity['UserId'] == 'user-789'
-            assert relationships_entity['OrgId'] == 'org-456'
+                # Get the call args to verify execution parameters
+                call_args = mock_exec_repo.create_execution.call_args
+                assert call_args[1]['execution_id'] == 'test-exec-123'
+                assert call_args[1]['org_id'] == 'org-456'
+                assert call_args[1]['user_id'] == 'user-789'
+                assert call_args[1]['workflow_name'] == 'test_workflow'
+                assert call_args[1]['form_id'] == 'form-abc'
 
     @pytest.mark.asyncio
     async def test_update_execution_with_result(self):
         """Test updating execution with success result"""
         from shared.execution_logger import ExecutionLogger
 
-        entities_storage = MagicMock()
-        relationships_storage = MagicMock()
+        # Mock ExecutionRepository
+        mock_exec_repo = MagicMock()
 
-        # Mock existing entity
-        entities_storage.query_entities.return_value = [
-            {'RowKey': '9999999999999_test-exec-123'}
-        ]
+        with patch('shared.execution_logger.ExecutionRepository') as mock_repo_class:
+            with patch('shared.execution_logger.get_blob_service') as mock_blob:
+                mock_repo_class.return_value = mock_exec_repo
+                mock_blob.return_value = MagicMock()
 
-        with patch('shared.execution_logger.get_table_storage_service') as mock_get_storage:
-            def get_storage(table_name):
-                if table_name == "Entities":
-                    return entities_storage
-                elif table_name == "Relationships":
-                    return relationships_storage
+                logger = ExecutionLogger()
 
-            mock_get_storage.side_effect = get_storage
+                await logger.update_execution(
+                    execution_id="test-exec-123",
+                    org_id="org-456",
+                    user_id="user-789",
+                    status=ExecutionStatus.SUCCESS,
+                    result={"user_id": "new-user-123"},
+                    duration_ms=1500
+                )
 
-            logger = ExecutionLogger()
+                # Verify repository was called
+                mock_exec_repo.update_execution.assert_called_once()
 
-            await logger.update_execution(
-                execution_id="test-exec-123",
-                org_id="org-456",
-                user_id="user-789",
-                status=ExecutionStatus.SUCCESS,
-                result={"user_id": "new-user-123"},
-                duration_ms=1500
-            )
-
-            # Verify both tables were updated
-            entities_storage.update_entity.assert_called_once()
-            relationships_storage.update_entity.assert_called_once()
-
-            # Verify update included result
-            entities_update = entities_storage.update_entity.call_args[0][0]
-            assert entities_update['Status'] == 'Success'
-            assert 'Result' in entities_update
-            assert entities_update['DurationMs'] == 1500
+                # Get the call args to verify update parameters
+                call_args = mock_exec_repo.update_execution.call_args
+                assert call_args[1]['execution_id'] == 'test-exec-123'
+                assert call_args[1]['org_id'] == 'org-456'
+                assert call_args[1]['status'] == ExecutionStatus.SUCCESS
+                assert call_args[1]['duration_ms'] == 1500

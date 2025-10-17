@@ -6,6 +6,7 @@ Permissions API endpoints
 
 import json
 import logging
+from datetime import datetime
 
 import azure.functions as func
 
@@ -35,7 +36,7 @@ bp = func.Blueprint()
     summary="List users",
     description="List all users with optional filtering by type and organization (Platform admin only)",
     tags=["Users", "Permissions"],
-    response_model=None,  # Returns list[User] but openapi_endpoint expects BaseModel
+    response_model=list[User],
     query_params={
         "type": {
             "description": "Filter by user type: 'platform' or 'org'",
@@ -69,18 +70,18 @@ async def list_users(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} listing users (type={user_type_filter}, orgId={org_id_filter})")
 
     try:
-        # Query Users table (no context needed - uses custom partitioning)
-        users_service = get_table_service("Users", context)
+        # Query Entities table for users
+        entities_service = get_table_service("Entities", context)
 
         # Build filter based on type
         if user_type_filter == "platform":
-            filter_query = "PartitionKey eq 'USER' and UserType eq 'PLATFORM'"
+            filter_query = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;' and UserType eq 'PLATFORM'"
         elif user_type_filter == "org":
-            filter_query = "PartitionKey eq 'USER' and UserType eq 'ORG'"
+            filter_query = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;' and UserType eq 'ORG'"
         else:
-            filter_query = "PartitionKey eq 'USER'"
+            filter_query = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;'"
 
-        user_entities = list(users_service.query_entities(filter=filter_query))
+        user_entities = list(entities_service.query_entities(filter=filter_query))
 
         # Convert to response models
         users = []
@@ -91,24 +92,24 @@ async def list_users(req: func.HttpRequest) -> func.HttpResponse:
             # TODO: Filter by UserPermissions table for org-specific users
 
             user_model = User(
-                id=entity["RowKey"],
+                id=entity["RowKey"].split(":", 1)[1],  # Extract email from "user:email"
                 email=entity["Email"],
                 displayName=entity["DisplayName"],
                 userType=entity.get("UserType", "PLATFORM"),
                 isPlatformAdmin=entity.get("IsPlatformAdmin", False),
                 isActive=entity.get("IsActive", True),
-                lastLogin=entity.get("LastLoginAt"),
+                lastLogin=entity.get("LastLogin"),  # Use LastLogin instead of LastLoginAt
                 createdAt=entity["CreatedAt"]
             )
-            users.append(user_model.model_dump(mode="json"))
+            users.append(user_model)
 
         # Sort by lastLogin descending (most recent first), handle None values
-        users.sort(key=lambda u: u.get("lastLogin") or "", reverse=True)
+        users.sort(key=lambda u: u.lastLogin or datetime.min, reverse=True)
 
         logger.info(f"Returning {len(users)} users")
 
         return func.HttpResponse(
-            json.dumps(users),
+            json.dumps([u.model_dump(mode="json") for u in users]),
             status_code=200,
             mimetype="application/json"
         )
@@ -162,10 +163,10 @@ async def get_user(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving details for user {user_id}")
 
     try:
-        # Get user from Users table (no context needed - uses custom partitioning)
-        users_service = get_table_service("Users", context)
+        # Get user from Entities table
+        entities_service = get_table_service("Entities", context)
         try:
-            user_entity = users_service.get_entity("USER", user_id)
+            user_entity = entities_service.get_entity("GLOBAL", f"user:{user_id}")
         except Exception:
             user_entity = None
 
@@ -183,7 +184,7 @@ async def get_user(req: func.HttpRequest) -> func.HttpResponse:
 
         # Convert to response model
         user_model = User(
-            id=user_entity["RowKey"],
+            id=user_id,  # Using user_id directly instead of RowKey
             email=user_entity["Email"],
             displayName=user_entity["DisplayName"],
             userType=user_entity.get("UserType", "PLATFORM"),
@@ -481,9 +482,9 @@ async def get_user_forms(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # Get user entity to check type
-        users_service = get_table_service("Users", context)
+        entities_service = get_table_service("Entities", context)
         try:
-            user_entity = users_service.get_entity("USER", user_id)
+            user_entity = entities_service.get_entity("GLOBAL", f"user:{user_id}")
         except Exception:
             user_entity = None
 

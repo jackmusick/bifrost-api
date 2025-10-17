@@ -25,7 +25,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Set up test environment variables"""
-    os.environ["AzureWebJobsStorage"] = "UseDevelopmentStorage=true"
+    # Full Azurite connection string (required for blob storage SDK)
+    os.environ["AzureWebJobsStorage"] = (
+        "DefaultEndpointsProtocol=http;"
+        "AccountName=devstoreaccount1;"
+        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+        "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+        "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+        "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+    )
     os.environ["KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
     os.environ["AZURE_KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
     os.environ["AZURE_TENANT_ID"] = "test-tenant-id"
@@ -78,7 +86,15 @@ def azurite_tables():
     Initialize all 9 tables in Azurite and clean up after test
     Scope: function - ensures test isolation
     """
-    connection_string = "UseDevelopmentStorage=true"
+    # Use full Azurite connection string
+    connection_string = (
+        "DefaultEndpointsProtocol=http;"
+        "AccountName=devstoreaccount1;"
+        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+        "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+        "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+        "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+    )
 
     # Initialize tables
     init_tables(connection_string)
@@ -117,8 +133,8 @@ def config_service(azurite_tables):
 
 @pytest.fixture
 def users_service(azurite_tables):
-    """Returns TableStorageService instance for Users table"""
-    return TableStorageService("Users")
+    """Returns TableStorageService instance for Entities table (users now stored here)"""
+    return TableStorageService("Entities")
 
 
 @pytest.fixture
@@ -136,16 +152,15 @@ def test_org(entities_service) -> dict[str, Any]:
     Table: Entities
     PartitionKey: GLOBAL
     RowKey: org:{uuid}
-    Returns dict with org_id, name, tenant_id
+    Returns dict with org_id, name
     """
     org_id = str(uuid.uuid4())
-    tenant_id = str(uuid.uuid4())
 
     entity = {
         "PartitionKey": "GLOBAL",
         "RowKey": f"org:{org_id}",
         "Name": "Test Organization",
-        "TenantId": tenant_id,
+        "Domain": "example.com",  # Added domain for user provisioning
         "IsActive": True,
         "CreatedAt": datetime.utcnow().isoformat(),
         "CreatedBy": "test-system",
@@ -157,7 +172,7 @@ def test_org(entities_service) -> dict[str, Any]:
     return {
         "org_id": org_id,
         "name": "Test Organization",
-        "tenant_id": tenant_id
+        "domain": "example.com"
     }
 
 
@@ -170,13 +185,12 @@ def test_org_2(entities_service) -> dict[str, Any]:
     RowKey: org:{uuid}
     """
     org_id = str(uuid.uuid4())
-    tenant_id = str(uuid.uuid4())
 
     entity = {
         "PartitionKey": "GLOBAL",
         "RowKey": f"org:{org_id}",
         "Name": "Test Organization 2",
-        "TenantId": tenant_id,
+        "Domain": "company.com",  # Added different domain for provisioning
         "IsActive": True,
         "CreatedAt": datetime.utcnow().isoformat(),
         "CreatedBy": "test-system",
@@ -188,7 +202,7 @@ def test_org_2(entities_service) -> dict[str, Any]:
     return {
         "org_id": org_id,
         "name": "Test Organization 2",
-        "tenant_id": tenant_id
+        "domain": "company.com"
     }
 
 
@@ -196,18 +210,20 @@ def test_org_2(entities_service) -> dict[str, Any]:
 def test_user(users_service) -> dict[str, Any]:
     """
     Creates a test user
-    Table: Users
-    PartitionKey: {user_id}
-    RowKey: "user"
+    Table: Entities
+    PartitionKey: GLOBAL
+    RowKey: user:{email}
     Returns dict with user_id, email
     """
-    user_id = str(uuid.uuid4())
+    email = "test@example.com"
 
     entity = {
-        "PartitionKey": user_id,
-        "RowKey": "user",
-        "Email": "test@example.com",
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{email}",
+        "Email": email,
         "DisplayName": "Test User",
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
         "IsActive": True,
         "CreatedAt": datetime.utcnow().isoformat(),
         "LastLogin": datetime.utcnow().isoformat(),
@@ -216,8 +232,8 @@ def test_user(users_service) -> dict[str, Any]:
     users_service.insert_entity(entity)
 
     return {
-        "user_id": user_id,
-        "email": "test@example.com",
+        "user_id": email,  # user_id is now the email
+        "email": email,
         "display_name": "Test User"
     }
 
@@ -226,17 +242,19 @@ def test_user(users_service) -> dict[str, Any]:
 def test_user_2(users_service) -> dict[str, Any]:
     """
     Creates a second test user for permission tests
-    Table: Users
-    PartitionKey: {user_id}
-    RowKey: "user"
+    Table: Entities
+    PartitionKey: GLOBAL
+    RowKey: user:{email}
     """
-    user_id = str(uuid.uuid4())
+    email = "test2@company.com"
 
     entity = {
-        "PartitionKey": user_id,
-        "RowKey": "user",
-        "Email": "test2@example.com",
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{email}",
+        "Email": email,
         "DisplayName": "Test User 2",
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
         "IsActive": True,
         "CreatedAt": datetime.utcnow().isoformat(),
         "LastLogin": datetime.utcnow().isoformat(),
@@ -245,8 +263,8 @@ def test_user_2(users_service) -> dict[str, Any]:
     users_service.insert_entity(entity)
 
     return {
-        "user_id": user_id,
-        "email": "test2@example.com",
+        "user_id": email,  # user_id is now the email
+        "email": email,
         "display_name": "Test User 2"
     }
 
@@ -553,7 +571,6 @@ def mock_context(test_org):
     context = MagicMock()
     context.org_id = test_org["org_id"]
     context.org_name = test_org["name"]
-    context.tenant_id = test_org["tenant_id"]
 
     # Mock methods
     context.get_config = MagicMock(return_value="mock-value")
@@ -721,25 +738,22 @@ def mock_anonymous_request():
 
 
 @pytest.fixture
-def test_org_with_user(test_org, test_user, users_service):
+def test_org_with_user(test_org, test_user, relationships_service):
     """
-    Creates a test organization with an assigned user
+    Creates a test organization with an assigned user via user permission relationship
     Returns combined dict with org and user info
     """
-    # Update user entity to include org assignment
-    user_entity = {
-        "PartitionKey": test_org["org_id"],
-        "RowKey": test_user["user_id"],
-        "Email": test_user["email"],
-        "DisplayName": test_user["display_name"],
-        "IsActive": True,
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
+    # Create user-org permission relationship in Relationships table
+    permission_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userperm:{test_user['email']}:{test_org['org_id']}",
+        "UserId": test_user["email"],
+        "OrganizationId": test_org["org_id"],
+        "GrantedBy": "test-system",
+        "GrantedAt": datetime.utcnow().isoformat(),
     }
 
-    users_service.upsert_entity(user_entity)
+    relationships_service.insert_entity(permission_entity)
 
     return {
         **test_org,
@@ -750,17 +764,22 @@ def test_org_with_user(test_org, test_user, users_service):
 
 
 @pytest.fixture
-def test_platform_admin_user(users_service):
+def test_platform_admin_user(users_service, relationships_service, test_org=None):
     """
     Creates a platform admin user for testing
+    Table: Entities
+    PartitionKey: GLOBAL
+    RowKey: user:{email}
     Returns dict with user info
+
+    Optional test_org allows assigning the admin to an organization
     """
-    user_id = str(uuid.uuid4())
+    email = "admin@test.com"
 
     user_entity = {
-        "PartitionKey": "USER",
-        "RowKey": user_id,
-        "Email": "admin@test.com",
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{email}",
+        "Email": email,
         "DisplayName": "Test Platform Admin",
         "IsActive": True,
         "UserType": "PLATFORM",
@@ -771,12 +790,25 @@ def test_platform_admin_user(users_service):
 
     users_service.upsert_entity(user_entity)
 
+    # Optional org relationship for the platform admin
+    if test_org:
+        permission_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"userperm:{email}:{test_org['org_id']}",
+            "UserId": email,
+            "OrganizationId": test_org['org_id'],
+            "GrantedBy": "test-system",
+            "GrantedAt": datetime.utcnow().isoformat(),
+        }
+        relationships_service.insert_entity(permission_entity)
+
     return {
-        "user_id": user_id,
-        "email": "admin@test.com",
+        "user_id": email,  # user_id is now the email
+        "email": email,
         "display_name": "Test Platform Admin",
         "user_type": "PLATFORM",
-        "is_platform_admin": True
+        "is_platform_admin": True,
+        "org_id": test_org["org_id"] if test_org else None
     }
 
 
@@ -795,8 +827,143 @@ def load_seed_data(azurite_tables):
 
     try:
         from seed_data import seed_all_data
-        seed_all_data("UseDevelopmentStorage=true")
+        # Use full Azurite connection string
+        connection_string = (
+            "DefaultEndpointsProtocol=http;"
+            "AccountName=devstoreaccount1;"
+            "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+            "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+            "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+            "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+        )
+        seed_all_data(connection_string)
     except Exception as e:
         # If seed data fails, tests will fail with clearer errors
         print(f"Warning: Failed to load seed data: {e}")
         pass
+
+
+@pytest.fixture
+def mock_auth_users(users_service, relationships_service, test_org):
+    """
+    Ensures that mock authentication users actually exist in the database with proper org relationships.
+    This fixture creates the test users referenced in mock_auth.py (TestUsers)
+    and establishes their org relationships so integration tests don't get 401 errors.
+
+    Creates:
+    - Platform admin user (admin@test.com)
+    - Org user (user@test.com) with relationship to test_org
+    - Org user 2 (user2@test.com) with relationship to test_org
+    - Other org user (other@test.com) with relationship to other-org
+    """
+    from tests.helpers.mock_auth import TestUsers
+
+    # Create platform admin user entity
+    admin_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{TestUsers.PLATFORM_ADMIN['email']}",
+        "Email": TestUsers.PLATFORM_ADMIN["email"],
+        "DisplayName": TestUsers.PLATFORM_ADMIN["name"],
+        "UserType": "PLATFORM",
+        "IsPlatformAdmin": True,
+        "IsActive": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+    users_service.upsert_entity(admin_entity)
+
+    # Create org user entity
+    org_user_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{TestUsers.ORG_USER['email']}",
+        "Email": TestUsers.ORG_USER["email"],
+        "DisplayName": TestUsers.ORG_USER["name"],
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
+        "IsActive": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+    users_service.upsert_entity(org_user_entity)
+
+    # Create org user 2 entity
+    org_user_2_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{TestUsers.ORG_USER_2['email']}",
+        "Email": TestUsers.ORG_USER_2["email"],
+        "DisplayName": TestUsers.ORG_USER_2["name"],
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
+        "IsActive": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+    users_service.upsert_entity(org_user_2_entity)
+
+    # Create other org user entity
+    other_user_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{TestUsers.OTHER_ORG_USER['email']}",
+        "Email": TestUsers.OTHER_ORG_USER["email"],
+        "DisplayName": TestUsers.OTHER_ORG_USER["name"],
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
+        "IsActive": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+    users_service.upsert_entity(other_user_entity)
+
+    # Create user-org relationships for org users
+    # Org user -> test_org
+    userperm_entity_1 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userperm:{TestUsers.ORG_USER['email']}:{test_org['org_id']}",
+        "UserId": TestUsers.ORG_USER["email"],
+        "OrganizationId": test_org["org_id"],
+        "GrantedBy": "test-system",
+        "GrantedAt": datetime.utcnow().isoformat(),
+    }
+    relationships_service.upsert_entity(userperm_entity_1)
+
+    # Org user 2 -> test_org
+    userperm_entity_2 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userperm:{TestUsers.ORG_USER_2['email']}:{test_org['org_id']}",
+        "UserId": TestUsers.ORG_USER_2["email"],
+        "OrganizationId": test_org["org_id"],
+        "GrantedBy": "test-system",
+        "GrantedAt": datetime.utcnow().isoformat(),
+    }
+    relationships_service.upsert_entity(userperm_entity_2)
+
+    # Create "other-org" for OTHER_ORG_USER
+    other_org_id = TestUsers.OTHER_ORG_USER["org_id"]
+    other_org_entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"org:{other_org_id}",
+        "Name": "Other Test Organization",
+        "IsActive": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "CreatedBy": "test-system",
+        "UpdatedAt": datetime.utcnow().isoformat(),
+    }
+    users_service.upsert_entity(other_org_entity)
+
+    # Other user -> other-org
+    userperm_entity_3 = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"userperm:{TestUsers.OTHER_ORG_USER['email']}:{other_org_id}",
+        "UserId": TestUsers.OTHER_ORG_USER["email"],
+        "OrganizationId": other_org_id,
+        "GrantedBy": "test-system",
+        "GrantedAt": datetime.utcnow().isoformat(),
+    }
+    relationships_service.upsert_entity(userperm_entity_3)
+
+    return {
+        "platform_admin": TestUsers.PLATFORM_ADMIN,
+        "org_user": TestUsers.ORG_USER,
+        "org_user_2": TestUsers.ORG_USER_2,
+        "other_org_user": TestUsers.OTHER_ORG_USER,
+    }

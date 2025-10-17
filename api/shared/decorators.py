@@ -302,6 +302,14 @@ def with_request_context(handler):
             # Get request context
             context = get_request_context(req)
 
+            # Safety check: ensure context is not None
+            if context is None:
+                logger.error("get_request_context returned None - this should not happen")
+                return func.HttpResponse(
+                    "Authentication error: Unable to establish request context",
+                    status_code=401
+                )
+
             # Inject into request
             req.context = context  # type: ignore[attr-defined]
 

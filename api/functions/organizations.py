@@ -5,7 +5,6 @@ CRUD operations for client organizations
 
 import json
 import logging
-from datetime import datetime
 
 import azure.functions as func
 from pydantic import ValidationError
@@ -16,10 +15,9 @@ from shared.models import (
     ErrorResponse,
     Organization,
     UpdateOrganizationRequest,
-    generate_entity_id,
 )
 from shared.openapi_decorators import openapi_endpoint
-from shared.storage import get_table_service
+from shared.repositories.organizations import OrganizationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,7 @@ bp = func.Blueprint()
     summary="List all organizations",
     description="Get all organizations (Platform admin only)",
     tags=["Organizations"],
-    response_model=Organization
+    response_model=list[Organization]
 )
 @with_request_context
 @require_platform_admin
@@ -51,30 +49,12 @@ async def list_organizations(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} listing organizations")
 
     try:
-        # Platform admin - get ALL organizations from Entities table
-        entities_service = get_table_service("Entities", context)
+        # Platform admin - get ALL organizations using repository
+        org_repo = OrganizationRepository()
+        orgs = org_repo.list_organizations(active_only=True)
 
-        # Query for all org entities in GLOBAL partition
-        org_entities = list(entities_service.query_entities(
-            filter="PartitionKey eq 'GLOBAL' and RowKey ge 'org:' and RowKey lt 'org;' and IsActive eq true"
-        ))
-
-        organizations = []
-        for org_entity in org_entities:
-            # Extract UUID from RowKey "org:uuid"
-            org_id = org_entity["RowKey"].split(":", 1)[1]
-
-            org = Organization(
-                id=org_id,
-                name=org_entity["Name"],
-                tenantId=org_entity.get("TenantId"),
-                domain=org_entity.get("Domain"),
-                isActive=org_entity.get("IsActive", True),
-                createdAt=org_entity["CreatedAt"],
-                createdBy=org_entity["CreatedBy"],
-                updatedAt=org_entity["UpdatedAt"]
-            )
-            organizations.append(org.model_dump(mode="json"))
+        # Convert to JSON
+        organizations = [org.model_dump(mode="json") for org in orgs]
 
         # Sort by name
         organizations.sort(key=lambda o: o["name"])
@@ -126,44 +106,14 @@ async def create_organization(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         create_request = CreateOrganizationRequest(**request_body)
 
-        # Generate new organization UUID
-        org_id = generate_entity_id()
-        now = datetime.utcnow()
-
-        # Auto-generate tenant ID if not provided
-        tenant_id = generate_entity_id()
-
-        # Create entity for Table Storage
-        # Organizations go in GLOBAL partition with RowKey "org:uuid"
-        entity = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"org:{org_id}",
-            "Name": create_request.name,
-            "TenantId": tenant_id,
-            "Domain": create_request.domain,
-            "IsActive": True,
-            "CreatedAt": now.isoformat(),
-            "CreatedBy": context.user_id,
-            "UpdatedAt": now.isoformat()
-        }
-
-        # Insert into Entities table
-        entities_service = get_table_service("Entities", context)
-        entities_service.insert_entity(entity)
-
-        logger.info(f"Created organization {org_id}: {create_request.name}")
-
-        # Create response model
-        org = Organization(
-            id=org_id,
-            name=create_request.name,
-            tenantId=tenant_id,
-            domain=create_request.domain,
-            isActive=True,
-            createdAt=now,
-            createdBy=context.user_id,
-            updatedAt=now
+        # Create organization using repository
+        org_repo = OrganizationRepository()
+        org = org_repo.create_organization(
+            org_request=create_request,
+            created_by=context.user_id
         )
+
+        logger.info(f"Created organization {org.id}: {org.name}")
 
         return func.HttpResponse(
             json.dumps(org.model_dump(mode="json")),
@@ -242,11 +192,11 @@ async def get_organization(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving organization {org_id}")
 
     try:
-        # Get organization from Entities table
-        entities_service = get_table_service("Entities", context)
-        org_entity = entities_service.get_entity("GLOBAL", f"org:{org_id}")
+        # Get organization using repository
+        org_repo = OrganizationRepository()
+        org = org_repo.get_organization(org_id)
 
-        if not org_entity:
+        if not org:
             logger.warning(f"Organization {org_id} not found")
             error = ErrorResponse(
                 error="NotFound",
@@ -257,18 +207,6 @@ async def get_organization(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404,
                 mimetype="application/json"
             )
-
-        # Create response model
-        org = Organization(
-            id=org_id,
-            name=org_entity["Name"],
-            tenantId=org_entity.get("TenantId"),
-            domain=org_entity.get("Domain"),
-            isActive=org_entity.get("IsActive", True),
-            createdAt=org_entity["CreatedAt"],
-            createdBy=org_entity["CreatedBy"],
-            updatedAt=org_entity["UpdatedAt"]
-        )
 
         return func.HttpResponse(
             json.dumps(org.model_dump(mode="json")),
@@ -323,11 +261,15 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} updating organization {org_id}")
 
     try:
-        # Get existing organization from Entities table
-        entities_service = get_table_service("Entities", context)
-        org_entity = entities_service.get_entity("GLOBAL", f"org:{org_id}")
+        # Parse and validate update request
+        request_body = req.get_json()
+        update_request = UpdateOrganizationRequest(**request_body)
 
-        if not org_entity:
+        # Update organization using repository
+        org_repo = OrganizationRepository()
+        org = org_repo.update_organization(org_id, update_request)
+
+        if not org:
             error = ErrorResponse(
                 error="NotFound",
                 message="Organization not found"
@@ -338,42 +280,7 @@ async def update_organization(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Parse and validate update request
-        request_body = req.get_json()
-        update_request = UpdateOrganizationRequest(**request_body)
-
-        # Update fields if provided
-        if update_request.name is not None:
-            org_entity["Name"] = update_request.name
-
-        if update_request.tenantId is not None:
-            org_entity["TenantId"] = update_request.tenantId
-
-        if update_request.domain is not None:
-            org_entity["Domain"] = update_request.domain
-
-        if update_request.isActive is not None:
-            org_entity["IsActive"] = update_request.isActive
-
-        updated_at = datetime.utcnow()
-        org_entity["UpdatedAt"] = updated_at.isoformat()
-
-        # Update in table storage
-        entities_service.update_entity(org_entity)
-
         logger.info(f"Updated organization {org_id}")
-
-        # Create response model
-        org = Organization(
-            id=org_id,
-            name=org_entity["Name"],
-            tenantId=org_entity.get("TenantId"),
-            domain=org_entity.get("Domain"),
-            isActive=org_entity.get("IsActive", True),
-            createdAt=org_entity["CreatedAt"],
-            createdBy=org_entity["CreatedBy"],
-            updatedAt=updated_at
-        )
 
         return func.HttpResponse(
             json.dumps(org.model_dump(mode="json")),
@@ -439,11 +346,11 @@ async def delete_organization(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} deleting organization {org_id}")
 
     try:
-        # Get existing organization from Entities table
-        entities_service = get_table_service("Entities", context)
-        org_entity = entities_service.get_entity("GLOBAL", f"org:{org_id}")
+        # Soft delete organization using repository
+        org_repo = OrganizationRepository()
+        success = org_repo.delete_organization(org_id)
 
-        if not org_entity:
+        if not success:
             error = ErrorResponse(
                 error="NotFound",
                 message="Organization not found"
@@ -453,12 +360,6 @@ async def delete_organization(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404,
                 mimetype="application/json"
             )
-
-        # Soft delete - set IsActive to False
-        org_entity["IsActive"] = False
-        org_entity["UpdatedAt"] = datetime.utcnow().isoformat()
-
-        entities_service.update_entity(org_entity)
 
         logger.info(f"Soft deleted organization {org_id}")
 

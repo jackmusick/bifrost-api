@@ -14,10 +14,11 @@ Key Features:
 """
 
 import logging
-from datetime import datetime
 from typing import Literal
 
-from shared.storage import TableStorageService
+from shared.models import UserType
+from shared.repositories.organizations import OrganizationRepository
+from shared.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -72,27 +73,28 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
     if not user_email or "@" not in user_email:
         raise ValueError(f"Invalid email format: {user_email}")
 
-    users_service = TableStorageService("Users")
+    logger.info(f"Processing user provisioning for {user_email}")
+
+    user_repo = UserRepository()
 
     # Check if user already exists
-    user_entity = users_service.get_entity(user_email, "user")
+    user = user_repo.get_user(user_email)
 
-    if user_entity:
+    if user:
         # User exists - return current status
-        user_type = user_entity.get("UserType", "ORG")
-        is_platform_admin = user_entity.get("IsPlatformAdmin", False)
+        logger.info(f"Existing user: type={user.userType.value}, is_platform_admin={user.isPlatformAdmin}")
 
         # Update last login
         try:
-            user_entity["LastLogin"] = datetime.utcnow().isoformat()
-            users_service.update_entity(user_entity)
+            user_repo.update_last_login(user_email)
         except Exception as e:
             logger.warning(f"Failed to update last login for {user_email}: {e}")
 
         # Get org_id if ORG user
         org_id = None
-        if user_type == "ORG":
-            org_id = _get_user_org_id(user_email)
+        if user.userType == UserType.ORG:
+            org_id = user_repo.get_user_org_id(user_email)
+            logger.info(f"Retrieved org_id for {user_email}: {org_id}")
 
             # If ORG user has no org assignment, try to auto-provision by domain
             if not org_id:
@@ -109,11 +111,11 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
                     # Re-raise so caller knows provisioning failed
                     raise
 
-        logger.debug(f"User {user_email} already exists: type={user_type}, org={org_id}")
+        logger.debug(f"User {user_email} already exists: type={user.userType.value}, org={org_id}")
 
         return UserProvisioningResult(
-            user_type=user_type,
-            is_platform_admin=is_platform_admin,
+            user_type=user.userType.value,
+            is_platform_admin=user.isPlatformAdmin,
             org_id=org_id,
             was_created=False,
         )
@@ -121,12 +123,9 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
     # User doesn't exist - check if first user
     logger.info(f"User {user_email} not found, checking provisioning rules")
 
-    # Efficiently check if ANY users exist (limit to 1 result)
-    query_result = users_service.query_entities(
-        "PartitionKey ne ''", select=["PartitionKey"]
-    )
-    first_user = next(iter(query_result), None)
-    is_first_user = first_user is None
+    # Check if ANY users exist using repository
+    has_users = user_repo.has_any_users()
+    is_first_user = not has_users
 
     if is_first_user:
         # First user in system - create as PlatformAdmin
@@ -140,21 +139,15 @@ def _create_first_platform_admin(user_email: str) -> UserProvisioningResult:
     """Create the first user as a PlatformAdmin"""
     logger.info(f"First user login detected! Auto-promoting {user_email} to PlatformAdmin")
 
-    users_service = TableStorageService("Users")
+    user_repo = UserRepository()
 
-    new_user = {
-        "PartitionKey": user_email,
-        "RowKey": "user",
-        "Email": user_email,
-        "DisplayName": user_email.split("@")[0],
-        "UserType": "PLATFORM",
-        "IsPlatformAdmin": True,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
+    _ = user_repo.create_user(
+        email=user_email,
+        display_name=user_email.split("@")[0],
+        user_type=UserType.PLATFORM,
+        is_platform_admin=True
+    )
 
-    users_service.insert_entity(new_user)
     logger.info(f"Successfully created first user as PlatformAdmin: {user_email}")
 
     return UserProvisioningResult(
@@ -174,26 +167,9 @@ def _provision_user_by_domain(user_email: str) -> UserProvisioningResult:
     user_domain = user_email.split("@")[1].lower()
     logger.info(f"Looking for organization with domain: {user_domain}")
 
-    # Query organizations with matching domain
-    # This is efficient - we filter on IsActive and Domain in the query
-    entities_service = TableStorageService("Entities")
-    query_filter = (
-        "PartitionKey eq 'GLOBAL' and "
-        "RowKey ge 'org:' and RowKey lt 'org;' and "
-        "IsActive eq true"
-    )
-    org_entities = list(entities_service.query_entities(query_filter))
-
-    # Find matching domain (case-insensitive)
-    matched_org = None
-    for org_entity in org_entities:
-        org_domain = org_entity.get("Domain")
-        if org_domain and org_domain.lower() == user_domain:
-            matched_org = org_entity
-            logger.info(
-                f"Found matching organization: {org_entity['Name']} with domain {org_domain}"
-            )
-            break
+    # Query organizations with matching domain using repository
+    org_repo = OrganizationRepository()
+    matched_org = org_repo.get_organization_by_domain(user_domain)
 
     if not matched_org:
         logger.warning(f"No organization found with domain: {user_domain}")
@@ -202,41 +178,30 @@ def _provision_user_by_domain(user_email: str) -> UserProvisioningResult:
             f"Contact your administrator to be added manually."
         )
 
-    # Extract org_id from RowKey "org:uuid"
-    org_id = matched_org["RowKey"].split(":", 1)[1]
+    logger.info(f"Found matching organization: {matched_org.name} with domain {matched_org.domain}")
 
     # Create new ORG user
-    users_service = TableStorageService("Users")
-    new_user = {
-        "PartitionKey": user_email,
-        "RowKey": "user",
-        "Email": user_email,
-        "DisplayName": user_email.split("@")[0],
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
+    user_repo = UserRepository()
+    _ = user_repo.create_user(
+        email=user_email,
+        display_name=user_email.split("@")[0],
+        user_type=UserType.ORG,
+        is_platform_admin=False
+    )
 
-    users_service.insert_entity(new_user)
     logger.info(f"Auto-created ORG user: {user_email}")
 
-    # Create user-org permission relationship in Relationships table
-    relationships_service = TableStorageService("Relationships")
-    permission_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{user_email}:{org_id}",
-        "UserId": user_email,
-        "OrganizationId": org_id,
-        "CreatedAt": datetime.utcnow().isoformat(),
-    }
+    # Create user-org permission relationship (dual-index pattern)
+    user_repo.assign_user_to_org(
+        email=user_email,
+        org_id=matched_org.id,
+        assigned_by="system"
+    )
 
-    relationships_service.insert_entity(permission_entity)
-    logger.info(f"Created org permission for {user_email} -> {org_id}")
+    logger.info(f"Created org permission for {user_email} -> {matched_org.id}")
 
     return UserProvisioningResult(
-        user_type="ORG", is_platform_admin=False, org_id=org_id, was_created=True
+        user_type="ORG", is_platform_admin=False, org_id=matched_org.id, was_created=True
     )
 
 
@@ -255,29 +220,22 @@ def _provision_org_relationship_by_domain(user_email: str) -> str:
     Raises:
         ValueError: If no matching organization found
     """
-    # Extract domain from email
+    # Extract domain
     user_domain = user_email.split("@")[1].lower()
     logger.info(f"Looking for organization with domain: {user_domain}")
 
-    # Query organizations with matching domain
-    entities_service = TableStorageService("Entities")
-    query_filter = (
-        "PartitionKey eq 'GLOBAL' and "
-        "RowKey ge 'org:' and RowKey lt 'org;' and "
-        "IsActive eq true"
-    )
-    org_entities = list(entities_service.query_entities(query_filter))
+    user_repo = UserRepository()
 
-    # Find matching domain (case-insensitive)
-    matched_org = None
-    for org_entity in org_entities:
-        org_domain = org_entity.get("Domain")
-        if org_domain and org_domain.lower() == user_domain:
-            matched_org = org_entity
-            logger.info(
-                f"Found matching organization: {org_entity['Name']} with domain {org_domain}"
-            )
-            break
+    # Check if a relationship already exists (even if not found in previous query)
+    existing_org_id = user_repo.get_user_org_id(user_email)
+
+    if existing_org_id:
+        logger.info(f"Found existing relationship for {user_email}: {existing_org_id}")
+        return existing_org_id
+
+    # Query organizations with matching domain using repository
+    org_repo = OrganizationRepository()
+    matched_org = org_repo.get_organization_by_domain(user_domain)
 
     if not matched_org:
         logger.warning(f"No organization found with domain: {user_domain}")
@@ -286,23 +244,18 @@ def _provision_org_relationship_by_domain(user_email: str) -> str:
             f"Contact your administrator to be added manually."
         )
 
-    # Extract org_id from RowKey "org:uuid"
-    org_id = matched_org["RowKey"].split(":", 1)[1]
+    logger.info(f"Found matching organization: {matched_org.name} with domain {matched_org.domain}")
 
-    # Create user-org permission relationship in Relationships table
-    relationships_service = TableStorageService("Relationships")
-    permission_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{user_email}:{org_id}",
-        "UserId": user_email,
-        "OrganizationId": org_id,
-        "CreatedAt": datetime.utcnow().isoformat(),
-    }
+    # Create user-org permission relationship (dual-index pattern handled by repository)
+    user_repo.assign_user_to_org(
+        email=user_email,
+        org_id=matched_org.id,
+        assigned_by="system"
+    )
 
-    relationships_service.insert_entity(permission_entity)
-    logger.info(f"Created org permission for existing user {user_email} -> {org_id}")
+    logger.info(f"Created org permission for {user_email} -> {matched_org.id}")
 
-    return org_id
+    return matched_org.id
 
 
 def _get_user_org_id(email: str) -> str | None:
@@ -312,28 +265,8 @@ def _get_user_org_id(email: str) -> str | None:
     This is a lightweight query that only returns the first org assignment.
     """
     try:
-        relationships_table = TableStorageService("Relationships")
-
-        # Query for user permissions
-        query_filter = (
-            f"PartitionKey eq 'GLOBAL' and "
-            f"RowKey ge 'userperm:{email}:' and "
-            f"RowKey lt 'userperm:{email}~'"
-        )
-        entities = list(relationships_table.query_entities(query_filter))
-
-        if not entities:
-            return None
-
-        # Extract org_id from RowKey "userperm:{email}:{org_id}"
-        row_key = entities[0].get("RowKey")
-        if row_key:
-            parts = row_key.split(":", 2)
-            if len(parts) >= 3:
-                return parts[2]
-
-        return None
-
+        user_repo = UserRepository()
+        return user_repo.get_user_org_id(email)
     except Exception as e:
         logger.error(f"Error looking up user org: {e}")
         return None

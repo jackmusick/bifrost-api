@@ -1,0 +1,632 @@
+"""
+Execution Repository
+Manages workflow executions with display-optimized indexes
+
+Indexes maintained:
+1. Primary: execution:{reverse_ts}_{uuid} (Entities table)
+2. User index: userexec:{user_id}:{execution_id} (Relationships table) - with display fields
+3. Workflow index: workflowexec:{workflow_name}:{org_id}:{execution_id} (Relationships table) - with display fields
+4. Form index: formexec:{form_id}:{execution_id} (Relationships table) - with display fields
+"""
+
+import json
+import logging
+from datetime import datetime
+from typing import TYPE_CHECKING, cast
+
+from shared.models import ExecutionStatus, WorkflowExecution
+from shared.storage import TableStorageService
+
+from .base import BaseRepository
+
+if TYPE_CHECKING:
+    from shared.request_context import RequestContext
+
+logger = logging.getLogger(__name__)
+
+
+class ExecutionRepository(BaseRepository):
+    """
+    Repository for workflow executions
+
+    Manages execution records with automatic index maintenance for:
+    - User-based queries ("my executions")
+    - Workflow-based queries ("all executions of WorkflowX")
+    - Form-based queries ("all submissions of FormY")
+
+    All indexes include display fields (WorkflowName, Status, StartedAt, etc.)
+    to avoid secondary fetches when rendering tables.
+    """
+
+    def __init__(self, context: 'RequestContext | None' = None):
+        super().__init__("Entities", context)
+        self.relationships_service = TableStorageService("Relationships")
+
+    def create_execution(
+        self,
+        execution_id: str,
+        org_id: str | None,
+        user_id: str,
+        user_name: str,
+        workflow_name: str,
+        input_data: dict,
+        form_id: str | None = None
+    ) -> WorkflowExecution:
+        """
+        Create execution with ALL indexes atomically
+
+        Writes to:
+        1. Entities table (primary record with full data)
+        2. Relationships table (user index with display fields)
+        3. Relationships table (workflow index with display fields)
+        4. Relationships table (form index with display fields, if form_id provided)
+
+        Args:
+            execution_id: Unique execution ID (UUID)
+            org_id: Organization ID or None for GLOBAL
+            user_id: User ID who executed the workflow
+            user_name: Display name of user
+            workflow_name: Name of workflow being executed
+            input_data: Input parameters dict
+            form_id: Optional form ID if triggered from form
+
+        Returns:
+            WorkflowExecution model
+
+        Raises:
+            Exception: If any index creation fails
+        """
+        now = datetime.utcnow()
+        reverse_ts = self._reverse_timestamp(now)
+        partition_key = org_id or "GLOBAL"
+
+        # 1. Primary execution record (Entities table) - FULL data
+        execution_entity = {
+            "PartitionKey": partition_key,
+            "RowKey": f"execution:{reverse_ts}_{execution_id}",
+            "ExecutionId": execution_id,
+            "WorkflowName": workflow_name,
+            "FormId": form_id,
+            "ExecutedBy": user_id,
+            "ExecutedByName": user_name,
+            "Status": ExecutionStatus.RUNNING.value,
+            "InputData": json.dumps(input_data),
+            "StartedAt": now.isoformat(),
+            "CompletedAt": None,
+            "DurationMs": None,
+            "Result": None,
+            "ResultInBlob": False,
+            "ErrorMessage": None,
+        }
+
+        # 2. User index - with DISPLAY fields for table view
+        user_index_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"userexec:{user_id}:{execution_id}",
+            "ExecutionId": execution_id,
+            "OrganizationId": org_id,
+            # Display fields (avoid second fetch for table view)
+            "WorkflowName": workflow_name,
+            "FormId": form_id,
+            "Status": ExecutionStatus.RUNNING.value,
+            "StartedAt": now.isoformat(),
+            "CompletedAt": None,
+            "DurationMs": None,
+            "ErrorMessage": None,
+            "ExecutedByName": user_name,
+        }
+
+        # 3. Workflow index - with DISPLAY fields
+        workflow_index_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"workflowexec:{workflow_name}:{partition_key}:{execution_id}",
+            "ExecutionId": execution_id,
+            "OrganizationId": org_id,
+            # Display fields
+            "ExecutedBy": user_id,
+            "ExecutedByName": user_name,
+            "FormId": form_id,
+            "Status": ExecutionStatus.RUNNING.value,
+            "StartedAt": now.isoformat(),
+            "CompletedAt": None,
+            "DurationMs": None,
+            "ErrorMessage": None,
+        }
+
+        # 4. Form index - with DISPLAY fields (only if form_id provided)
+        form_index_entity = None
+        if form_id:
+            form_index_entity = {
+                "PartitionKey": "GLOBAL",
+                "RowKey": f"formexec:{form_id}:{execution_id}",
+                "ExecutionId": execution_id,
+                "OrganizationId": org_id,
+                # Display fields
+                "WorkflowName": workflow_name,
+                "ExecutedBy": user_id,
+                "ExecutedByName": user_name,
+                "Status": ExecutionStatus.RUNNING.value,
+                "StartedAt": now.isoformat(),
+                "CompletedAt": None,
+                "DurationMs": None,
+                "ErrorMessage": None,
+            }
+
+        # Write all atomically (best effort)
+        try:
+            # Primary record
+            self.insert(execution_entity)
+
+            # Indexes (in order of importance)
+            self.relationships_service.insert_entity(user_index_entity)
+            self.relationships_service.insert_entity(workflow_index_entity)
+
+            if form_index_entity:
+                self.relationships_service.insert_entity(form_index_entity)
+
+            index_count = 3 if form_id else 2
+            logger.info(
+                f"Created execution {execution_id} with {index_count} indexes "
+                f"(workflow={workflow_name}, user={user_id}, form={form_id})"
+            )
+
+            return self._entity_to_model(execution_entity)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create execution {execution_id} with indexes: {e}",
+                exc_info=True
+            )
+            # TODO: Add cleanup/rollback logic
+            raise
+
+    def update_execution(
+        self,
+        execution_id: str,
+        org_id: str | None,
+        user_id: str,
+        status: ExecutionStatus,
+        result: dict | str | None = None,
+        error_message: str | None = None,
+        duration_ms: int | None = None,
+        result_in_blob: bool = False
+    ) -> WorkflowExecution:
+        """
+        Update execution and ALL indexes with completion data
+
+        Updates display fields in indexes so table views show current status
+        without secondary fetches.
+
+        Args:
+            execution_id: Execution ID
+            org_id: Organization ID
+            user_id: User ID (for index lookup)
+            status: New execution status
+            result: Execution result (dict or string)
+            error_message: Error message if failed
+            duration_ms: Duration in milliseconds
+            result_in_blob: Whether result is stored in blob storage
+
+        Returns:
+            Updated WorkflowExecution model
+        """
+        now = datetime.utcnow()
+        partition_key = org_id or "GLOBAL"
+
+        # Find primary execution record
+        exec_filter = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
+        results = list(self.query(exec_filter))
+
+        if not results:
+            raise ValueError(f"Execution {execution_id} not found in partition {partition_key}")
+
+        execution_entity = results[0]
+
+        # Extract metadata for index updates
+        workflow_name = execution_entity.get("WorkflowName")
+        form_id = execution_entity.get("FormId")
+
+        # Update primary record
+        execution_entity["Status"] = status.value
+        execution_entity["CompletedAt"] = now.isoformat()
+        execution_entity["DurationMs"] = duration_ms
+        execution_entity["ErrorMessage"] = error_message
+        execution_entity["ResultInBlob"] = result_in_blob
+
+        if result and not result_in_blob:
+            execution_entity["Result"] = json.dumps(result) if isinstance(result, dict) else result
+
+        self.update(execution_entity)
+
+        # Update user index (so "my executions" table shows correct status!)
+        try:
+            user_index = self.relationships_service.get_entity(
+                "GLOBAL",
+                f"userexec:{user_id}:{execution_id}"
+            )
+            if user_index:
+                user_index["Status"] = status.value
+                user_index["CompletedAt"] = now.isoformat()
+                user_index["DurationMs"] = duration_ms
+                user_index["ErrorMessage"] = error_message
+                self.relationships_service.update_entity(user_index)
+        except Exception as e:
+            logger.warning(f"Failed to update user index for {execution_id}: {e}")
+
+        # Update workflow index
+        try:
+            workflow_index = self.relationships_service.get_entity(
+                "GLOBAL",
+                f"workflowexec:{workflow_name}:{partition_key}:{execution_id}"
+            )
+            if workflow_index:
+                workflow_index["Status"] = status.value
+                workflow_index["CompletedAt"] = now.isoformat()
+                workflow_index["DurationMs"] = duration_ms
+                workflow_index["ErrorMessage"] = error_message
+                self.relationships_service.update_entity(workflow_index)
+        except Exception as e:
+            logger.warning(f"Failed to update workflow index for {execution_id}: {e}")
+
+        # Update form index (if exists)
+        if form_id:
+            try:
+                form_index = self.relationships_service.get_entity(
+                    "GLOBAL",
+                    f"formexec:{form_id}:{execution_id}"
+                )
+                if form_index:
+                    form_index["Status"] = status.value
+                    form_index["CompletedAt"] = now.isoformat()
+                    form_index["DurationMs"] = duration_ms
+                    form_index["ErrorMessage"] = error_message
+                    self.relationships_service.update_entity(form_index)
+            except Exception as e:
+                logger.warning(f"Failed to update form index for {execution_id}: {e}")
+
+        logger.info(
+            f"Updated execution {execution_id} to status {status.value} "
+            f"(duration={duration_ms}ms, indexes updated)"
+        )
+
+        return self._entity_to_model(execution_entity)
+
+    def get_execution(self, execution_id: str, org_id: str | None = None) -> WorkflowExecution | None:
+        """
+        Get full execution by ID
+
+        Args:
+            execution_id: Execution ID
+            org_id: Organization ID (optional, will search GLOBAL if not provided)
+
+        Returns:
+            WorkflowExecution model or None if not found
+        """
+        partition_key = org_id or "GLOBAL"
+
+        # Query by ExecutionId field
+        exec_filter = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
+        results = list(self.query(exec_filter))
+
+        if not results:
+            # Try GLOBAL if org_id was provided and failed
+            if org_id:
+                exec_filter = f"PartitionKey eq 'GLOBAL' and ExecutionId eq '{execution_id}'"
+                results = list(self.query(exec_filter))
+
+        if results:
+            return self._entity_to_model(results[0])
+
+        return None
+
+    def list_executions_by_user(
+        self,
+        user_id: str,
+        limit: int = 50
+    ) -> list[WorkflowExecution]:
+        """
+        List executions for a specific user (optimized for table view)
+
+        Uses user index with display fields - NO secondary fetch needed!
+
+        Args:
+            user_id: User ID
+            limit: Maximum number of results
+
+        Returns:
+            List of WorkflowExecution models with display fields populated
+        """
+        filter_query = (
+            f"PartitionKey eq 'GLOBAL' and "
+            f"RowKey ge 'userexec:{user_id}:' and "
+            f"RowKey lt 'userexec:{user_id}~'"
+        )
+
+        index_entities = list(self.relationships_service.query_entities(filter_query))
+
+        executions = []
+        for entity in index_entities[:limit]:
+            # Parse datetime fields
+            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
+
+            # Parse status enum
+            status_str = entity.get("Status", "Pending")
+            status = ExecutionStatus(status_str) if status_str else ExecutionStatus.PENDING
+
+            # Convert index entity directly to model (has display fields!)
+            executions.append(WorkflowExecution(
+                executionId=cast(str, entity.get("ExecutionId", "")),
+                workflowName=cast(str, entity.get("WorkflowName", "")),
+                orgId=entity.get("OrganizationId"),
+                formId=entity.get("FormId"),
+                status=status,
+                executedBy=user_id,
+                executedByName=cast(str, entity.get("ExecutedByName", user_id)),
+                startedAt=started_at,
+                completedAt=completed_at,
+                durationMs=entity.get("DurationMs"),
+                errorMessage=entity.get("ErrorMessage"),
+                # Large fields NOT in index (null for table view)
+                inputData={},
+                result=None,
+                resultType=None,
+                logs=None
+            ))
+
+        logger.info(f"Found {len(executions)} executions for user {user_id}")
+        return executions
+
+    def list_executions_by_workflow(
+        self,
+        workflow_name: str,
+        org_id: str | None = None,
+        limit: int = 100
+    ) -> list[WorkflowExecution]:
+        """
+        List executions for a specific workflow (optimized for table view)
+
+        Uses workflow index with display fields - NO secondary fetch needed!
+
+        Args:
+            workflow_name: Workflow name
+            org_id: Organization ID (None = GLOBAL)
+            limit: Maximum number of results
+
+        Returns:
+            List of WorkflowExecution models with display fields populated
+        """
+        scope = org_id or "GLOBAL"
+
+        filter_query = (
+            f"PartitionKey eq 'GLOBAL' and "
+            f"RowKey ge 'workflowexec:{workflow_name}:{scope}:' and "
+            f"RowKey lt 'workflowexec:{workflow_name}:{scope}~'"
+        )
+
+        index_entities = list(self.relationships_service.query_entities(filter_query))
+
+        executions = []
+        for entity in index_entities[:limit]:
+            # Parse datetime fields
+            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
+
+            # Parse status enum
+            status_str = entity.get("Status", "Pending")
+            status = ExecutionStatus(status_str) if status_str else ExecutionStatus.PENDING
+
+            executions.append(WorkflowExecution(
+                executionId=cast(str, entity.get("ExecutionId", "")),
+                workflowName=workflow_name,
+                orgId=entity.get("OrganizationId"),
+                formId=entity.get("FormId"),
+                status=status,
+                executedBy=cast(str, entity.get("ExecutedBy", "")),
+                executedByName=cast(str, entity.get("ExecutedByName", "")),
+                startedAt=started_at,
+                completedAt=completed_at,
+                durationMs=entity.get("DurationMs"),
+                errorMessage=entity.get("ErrorMessage"),
+                # Large fields NOT in index
+                inputData={},
+                result=None,
+                resultType=None,
+                logs=None
+            ))
+
+        logger.info(f"Found {len(executions)} executions for workflow {workflow_name}")
+        return executions
+
+    def list_executions_by_form(
+        self,
+        form_id: str,
+        limit: int = 100
+    ) -> list[WorkflowExecution]:
+        """
+        List executions for a specific form (optimized for table view)
+
+        Uses form index with display fields - NO secondary fetch needed!
+
+        Args:
+            form_id: Form ID
+            limit: Maximum number of results
+
+        Returns:
+            List of WorkflowExecution models with display fields populated
+        """
+        filter_query = (
+            f"PartitionKey eq 'GLOBAL' and "
+            f"RowKey ge 'formexec:{form_id}:' and "
+            f"RowKey lt 'formexec:{form_id}~'"
+        )
+
+        index_entities = list(self.relationships_service.query_entities(filter_query))
+
+        executions = []
+        for entity in index_entities[:limit]:
+            # Parse datetime fields
+            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
+
+            # Parse status enum
+            status_str = entity.get("Status", "Pending")
+            status = ExecutionStatus(status_str) if status_str else ExecutionStatus.PENDING
+
+            executions.append(WorkflowExecution(
+                executionId=cast(str, entity.get("ExecutionId", "")),
+                workflowName=cast(str, entity.get("WorkflowName", "")),
+                orgId=entity.get("OrganizationId"),
+                formId=form_id,
+                status=status,
+                executedBy=cast(str, entity.get("ExecutedBy", "")),
+                executedByName=cast(str, entity.get("ExecutedByName", "")),
+                startedAt=started_at,
+                completedAt=completed_at,
+                durationMs=entity.get("DurationMs"),
+                errorMessage=entity.get("ErrorMessage"),
+                # Large fields NOT in index
+                inputData={},
+                result=None,
+                resultType=None,
+                logs=None
+            ))
+
+        logger.info(f"Found {len(executions)} executions for form {form_id}")
+        return executions
+
+    def list_executions_for_org(
+        self,
+        org_id: str,
+        limit: int = 100
+    ) -> list[dict]:
+        """
+        List ALL executions for an organization (admin view)
+
+        Returns raw entities for flexibility in filtering/sorting.
+
+        Args:
+            org_id: Organization ID
+            limit: Maximum number of results
+
+        Returns:
+            List of execution entities (raw dicts)
+        """
+        filter_query = (
+            f"PartitionKey eq '{org_id}' and "
+            f"RowKey ge 'execution:' and RowKey lt 'execution;'"
+        )
+
+        entities = list(self.query(filter_query))
+        return entities[:limit]
+
+    def list_executions(self,
+                        org_id: str | None = None,
+                        limit: int = 50
+    ) -> list[WorkflowExecution]:
+        """
+        List workflow executions across entire platform or within an organization.
+
+        Args:
+            org_id: Optional organization ID to scope executions
+            limit: Maximum number of results (default 50)
+
+        Returns:
+            List of WorkflowExecution models
+        """
+        partition_key = org_id or "GLOBAL"
+
+        filter_query = (
+            f"PartitionKey eq '{partition_key}' and "
+            f"RowKey ge 'execution:' and RowKey lt 'execution;'"
+        )
+
+        entities = list(self.query(filter_query))
+        # Sort by timestamp, newest first (reverse timestamp)
+        entities.sort(key=lambda e: e.get('RowKey', ''), reverse=True)
+
+        # Convert to model, return limited results
+        executions = []
+        for entity in entities[:limit]:
+            execution = self._entity_to_model(entity)
+            executions.append(execution)
+
+        return executions
+
+    def _reverse_timestamp(self, dt: datetime) -> str:
+        """
+        Create reverse timestamp for sorting executions newest-first
+
+        Args:
+            dt: Datetime to convert
+
+        Returns:
+            Reverse timestamp string (9999999999999 - timestamp_ms)
+        """
+        timestamp_ms = int(dt.timestamp() * 1000)
+        reverse = 9999999999999 - timestamp_ms
+        return str(reverse)
+
+    def _entity_to_model(self, entity: dict) -> WorkflowExecution:
+        """
+        Convert entity dict to WorkflowExecution model
+
+        Args:
+            entity: Entity dictionary from table storage
+
+        Returns:
+            WorkflowExecution model
+        """
+        # Parse InputData from JSON string
+        input_data = entity.get("InputData")
+        if input_data and isinstance(input_data, str):
+            try:
+                input_data = json.loads(input_data)
+            except json.JSONDecodeError:
+                input_data = {}
+        elif not input_data:
+            input_data = {}
+
+        # Parse Result if inline (not in blob)
+        result = None
+        result_type = None
+        if not entity.get("ResultInBlob") and entity.get("Result"):
+            result_str = entity.get("Result")
+            if isinstance(result_str, str):
+                try:
+                    result = json.loads(result_str)
+                    result_type = "json"
+                except json.JSONDecodeError:
+                    result = result_str
+                    # Check for HTML (trim whitespace before checking)
+                    trimmed = result_str.strip()
+                    result_type = "html" if (trimmed.startswith("<") and ">" in trimmed) else "text"
+            else:
+                result = result_str
+                result_type = "json"
+
+        # Parse datetime fields
+        started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+        completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
+
+        # Parse status enum
+        status_str = entity.get("Status", "Pending")
+        status = ExecutionStatus(status_str) if status_str else ExecutionStatus.PENDING
+
+        return WorkflowExecution(
+            executionId=cast(str, entity.get("ExecutionId", "")),
+            workflowName=cast(str, entity.get("WorkflowName", "")),
+            orgId=entity.get("PartitionKey"),
+            formId=entity.get("FormId"),
+            executedBy=cast(str, entity.get("ExecutedBy", "")),
+            executedByName=cast(str, entity.get("ExecutedByName", "")),
+            status=status,
+            inputData=input_data,
+            result=result,
+            resultType=result_type,
+            errorMessage=entity.get("ErrorMessage"),
+            durationMs=entity.get("DurationMs"),
+            startedAt=started_at,
+            completedAt=completed_at,
+            logs=None  # Logs fetched separately from blob storage
+        )

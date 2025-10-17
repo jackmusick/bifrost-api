@@ -21,7 +21,7 @@ class TestWorkflowExecutionIntegration:
     """Test end-to-end workflow execution flow"""
 
     @pytest.mark.asyncio
-    async def test_hot_reload_workflow_discovery(self):
+    async def test_hot_reload_workflow_discovery(self, test_platform_admin_user, test_org_with_user):
         """
         Test that workflows are discovered at execution time (hot-reload).
 
@@ -77,7 +77,7 @@ async def hot_reload_test(
             create_form_req = create_mock_request(
                 method="POST",
                 url="/api/forms",
-                headers=create_platform_admin_headers(),
+                headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
                 body={
                     "name": "Hot Reload Test Form",
                     "description": "Form for testing hot-reload",
@@ -108,7 +108,7 @@ async def hot_reload_test(
             submit_req = create_mock_request(
                 method="POST",
                 url=f"/api/forms/{form_id}/execute",
-                headers=create_org_user_headers(),
+                headers=create_org_user_headers(user_email=test_org_with_user["email"]),
                 route_params={"formId": form_id},
                 body={
                     "form_data": {
@@ -131,12 +131,14 @@ async def hot_reload_test(
             assert result.get("success") is True
             assert result.get("test_value") == "Hot reload is working!"
             assert result.get("message") == "Hot-reload works!"
+            # Verify org_id is populated (not None)
+            assert result.get("org_id") is not None, "org_id should be populated for org users"
 
             # Step 5: Clean up - delete the form
             delete_form_req = create_mock_request(
                 method="DELETE",
                 url=f"/api/forms/{form_id}",
-                headers=create_platform_admin_headers(),
+                headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
                 route_params={"formId": form_id}
             )
 
@@ -151,7 +153,7 @@ async def hot_reload_test(
                 test_workflow_path.unlink()
 
     @pytest.mark.asyncio
-    async def test_submit_public_form_as_org_user(self):
+    async def test_submit_public_form_as_org_user(self, load_seed_data):
         """
         Org user can submit a public form and execute its workflow.
 
@@ -160,12 +162,17 @@ async def hot_reload_test(
         2. Submit the form with test data
         3. Verify workflow execution completes
         4. Check execution appears in history
+
+        Uses seed data which creates jack@gocovi.dev user with org relationship
         """
+        # Use seed data user (jack@gocovi.dev) - seed data creates this user with org relationships
+        user_email = "jack@gocovi.dev"
+
         # Step 1: Find the public "Simple Greeting" form
         list_req = create_mock_request(
             method="GET",
             url="/api/forms",
-            headers=create_org_user_headers()
+            headers=create_org_user_headers(user_email=user_email)
         )
 
         list_response = await list_forms(list_req)
@@ -184,7 +191,7 @@ async def hot_reload_test(
         submit_req = create_mock_request(
             method="POST",
             url=f"/api/forms/{form_id}/execute",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=user_email),
             route_params={"formId": form_id},
             body={
                 "form_data": {
@@ -212,15 +219,15 @@ async def hot_reload_test(
         history_req = create_mock_request(
             method="GET",
             url="/api/executions",
-            headers=create_org_user_headers()
+            headers=create_org_user_headers(user_email=user_email)
         )
 
         history_response = await list_executions(history_req)
         history_status, response_data = parse_response(history_response)
 
         assert history_status == 200
-        # API returns {"executions": [...]}
-        executions = response_data.get("executions", response_data)
+        # API now returns bare array
+        executions = response_data
         assert isinstance(executions, list)
 
         # Find our execution
@@ -247,20 +254,20 @@ async def hot_reload_test(
         pass  # TODO: This requires setting up role assignments in seed data
 
     @pytest.mark.asyncio
-    async def test_get_execution_by_id(self):
+    async def test_get_execution_by_id(self, test_org_with_user):
         """User can retrieve a specific execution by ID"""
         # First get list of executions
         list_req = create_mock_request(
             method="GET",
             url="/api/executions",
-            headers=create_org_user_headers()
+            headers=create_org_user_headers(user_email=test_org_with_user["email"])
         )
 
         list_response = await list_executions(list_req)
         list_status, response_data = parse_response(list_response)
 
         assert list_status == 200
-        executions = response_data.get("executions", response_data)
+        executions = response_data
 
         if len(executions) == 0:
             pytest.skip("No executions found (requires form submission first)")
@@ -271,7 +278,7 @@ async def hot_reload_test(
         get_req = create_mock_request(
             method="GET",
             url=f"/api/executions/{execution_id}",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"executionId": execution_id}
         )
 
@@ -282,7 +289,7 @@ async def hot_reload_test(
         assert execution.get("executionId") == execution_id or execution.get("id") == execution_id
 
     @pytest.mark.asyncio
-    async def test_list_executions_as_platform_admin(self):
+    async def test_list_executions_as_platform_admin(self, test_platform_admin_user):
         """
         Platform admin can see executions (scope-aware).
 
@@ -292,14 +299,14 @@ async def hot_reload_test(
         req = create_mock_request(
             method="GET",
             url="/api/executions",
-            headers=create_platform_admin_headers()
+            headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"])
         )
 
         response = await list_executions(req)
         status, response_data = parse_response(response)
 
         assert status == 200
-        executions = response_data.get("executions", response_data)
+        executions = response_data
         assert isinstance(executions, list)
 
         # Verify structure if executions exist
@@ -310,13 +317,13 @@ async def hot_reload_test(
             assert "status" in execution
 
     @pytest.mark.asyncio
-    async def test_submit_form_validation_error(self):
+    async def test_submit_form_validation_error(self, test_org_with_user):
         """Submitting a form with invalid data returns validation error"""
         # Find a form
         list_req = create_mock_request(
             method="GET",
             url="/api/forms",
-            headers=create_org_user_headers()
+            headers=create_org_user_headers(user_email=test_org_with_user["email"])
         )
 
         list_response = await list_forms(list_req)
@@ -331,7 +338,7 @@ async def hot_reload_test(
         submit_req = create_mock_request(
             method="POST",
             url=f"/api/forms/{form_id}/execute",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"formId": form_id},
             body={}  # Missing form_data
         )
@@ -343,12 +350,12 @@ async def hot_reload_test(
         assert status in [400, 404, 500]
 
     @pytest.mark.asyncio
-    async def test_submit_nonexistent_form_not_found(self):
+    async def test_submit_nonexistent_form_not_found(self, test_org_with_user):
         """Submitting a nonexistent form returns error status"""
         req = create_mock_request(
             method="POST",
             url="/api/forms/nonexistent-form-id/execute",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"formId": "nonexistent-form-id"},
             body={
                 "form_data": {

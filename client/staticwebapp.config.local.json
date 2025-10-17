@@ -35,22 +35,42 @@
         {
             "route": "/api/data-providers*",
             "methods": ["GET"],
-            "allowedRoles": ["authenticated", "PlatformAdmin"]
+            "allowedRoles": ["authenticated"]
         },
         {
-            "route": "/api/forms*",
+            "route": "/api/forms",
             "methods": ["GET"],
-            "allowedRoles": ["authenticated", "PlatformAdmin"]
+            "allowedRoles": ["authenticated"]
+        },
+        {
+            "route": "/api/forms",
+            "methods": ["POST"],
+            "allowedRoles": ["PlatformAdmin"]
+        },
+        {
+            "route": "/api/forms/*",
+            "methods": ["GET", "POST"],
+            "allowedRoles": ["authenticated"]
+        },
+        {
+            "route": "/api/forms/*",
+            "methods": ["PUT", "DELETE"],
+            "allowedRoles": ["PlatformAdmin"]
         },
         {
             "route": "/api/workflows*",
             "methods": ["POST"],
-            "allowedRoles": ["authenticated", "PlatformAdmin"]
+            "allowedRoles": ["authenticated"]
         },
         {
-            "route": "/api/executions*",
+            "route": "/api/executions",
             "methods": ["GET"],
-            "allowedRoles": ["authenticated", "PlatformAdmin"]
+            "allowedRoles": ["authenticated"]
+        },
+        {
+            "route": "/api/executions/*",
+            "methods": ["GET"],
+            "allowedRoles": ["authenticated"]
         },
         {
             "route": "/api/*",

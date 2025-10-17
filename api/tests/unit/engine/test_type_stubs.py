@@ -161,7 +161,6 @@ class TestTypeStubAccuracy:
         required_properties = [
             'org_id',
             'org_name',
-            'tenant_id',
             'executed_by',
             'executed_by_email',
             'executed_by_name'

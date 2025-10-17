@@ -6,7 +6,7 @@ Tests cross-org isolation and authorization boundaries by calling Azure Function
 import pytest
 
 from functions.executions import list_executions
-from functions.forms import create_form, execute_form, get_form, list_forms
+from functions.forms import create_form, get_form, list_forms
 from functions.oauth_api import (
     authorize_oauth_connection,
     cancel_oauth_authorization,
@@ -20,7 +20,6 @@ from functions.oauth_api import (
 )
 from functions.org_config import get_config, set_config
 from functions.organizations import create_organization
-from functions.roles import assign_forms_to_role, create_role
 from tests.helpers.http_helpers import (
     create_mock_request,
     create_org_user_headers,
@@ -33,19 +32,19 @@ class TestCrossOrgIsolation:
     """Test that users cannot access data from other organizations"""
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_list_other_orgs_forms(self):
+    async def test_org_user_cannot_list_other_orgs_forms(self, test_org_with_user):
         """
-        Org user (jack@gocovi.dev in Covi Development org) should only see:
-        - Forms from their org (Covi Development)
+        Org user should only see:
+        - Forms from their org
         - Public GLOBAL forms
 
         Should NOT see:
-        - Forms from other orgs (e.g., Contoso Ltd)
+        - Forms from other orgs
         """
         req = create_mock_request(
             method="GET",
             url="/api/forms",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
         )
 
         response = await list_forms(req)
@@ -53,23 +52,15 @@ class TestCrossOrgIsolation:
 
         assert status == 200
 
-        # Get the user's org ID by checking which org forms belong to
-        # Find the non-GLOBAL org ID from the returned forms
-        user_org_id = None
-        for form in forms:
-            if form.get("orgId") != "GLOBAL":
-                user_org_id = form.get("orgId")
-                break
-
         # Verify no forms from other orgs are returned
         for form in forms:
             org_id = form.get("orgId")
             # Should only be GLOBAL or user's org
-            assert org_id in ["GLOBAL", user_org_id], \
+            assert org_id in ["GLOBAL", test_org_with_user["org_id"]], \
                 f"Org user seeing form from other org: {org_id}"
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_access_other_org_form_by_id(self):
+    async def test_org_user_cannot_access_other_org_form_by_id(self, test_platform_admin_user, test_org_with_user):
         """
         Org user should get 404 when trying to access a form from another org
         """
@@ -80,7 +71,7 @@ class TestCrossOrgIsolation:
         org_req = create_mock_request(
             method="POST",
             url="/api/organizations",
-            headers=create_platform_admin_headers(),
+            headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
             body={
                 "name": "Security Test Org"
             }
@@ -96,7 +87,7 @@ class TestCrossOrgIsolation:
             other_org_id = contoso_org_id
 
         # Create a form in that other org (as platform admin with X-Organization-Id header)
-        platform_admin_with_org = create_platform_admin_headers()
+        platform_admin_with_org = create_platform_admin_headers(user_email=test_platform_admin_user["email"])
         platform_admin_with_org["X-Organization-Id"] = other_org_id
 
         form_req = create_mock_request(
@@ -124,7 +115,7 @@ class TestCrossOrgIsolation:
         get_req = create_mock_request(
             method="GET",
             url=f"/api/forms/{other_org_form_id}",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"formId": other_org_form_id}
         )
 
@@ -136,21 +127,21 @@ class TestCrossOrgIsolation:
             f"Org user can access another org's form! Status: {get_status}"
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_access_other_org_executions(self):
+    async def test_org_user_cannot_access_other_org_executions(self, test_org_with_user):
         """
         Org user should only see executions from their own org
         """
         req = create_mock_request(
             method="GET",
             url="/api/executions",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
         )
 
         response = await list_executions(req)
         status, response_data = parse_response(response)
 
         assert status == 200
-        executions = response_data.get("executions", response_data)
+        executions = response_data
 
         # Get the user's org ID by checking which org executions belong to
         # Find the non-GLOBAL org ID from the returned executions
@@ -197,7 +188,7 @@ class TestExecutionAccessControl:
     """Test that users can only access executions they have permission for"""
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_access_execution_by_id_from_other_org(self):
+    async def test_org_user_cannot_access_execution_by_id_from_other_org(self, test_org_with_user):
         """
         Verify that org user can only see executions from their own org
         """
@@ -205,26 +196,17 @@ class TestExecutionAccessControl:
         req = create_mock_request(
             method="GET",
             url="/api/executions",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
         )
 
         response = await list_executions(req)
         status, response_data = parse_response(response)
 
         assert status == 200
-        executions = response_data.get("executions", response_data)
+        executions = response_data
 
-        # Get the user's actual org_id from the headers or first execution
-        org_user_headers = create_org_user_headers()
-        user_org_id = org_user_headers.get("X-Organization-Id")
-
-        # If no org_id in headers, infer from executions
-        if not user_org_id and len(executions) > 0:
-            for execution in executions:
-                exec_org_id = execution.get("orgId")
-                if exec_org_id and exec_org_id != "GLOBAL":
-                    user_org_id = exec_org_id
-                    break
+        # Get the user's actual org_id from the test fixture
+        user_org_id = test_org_with_user["org_id"]
 
         # Verify all executions belong to the user's org (or GLOBAL)
         for execution in executions:
@@ -250,7 +232,7 @@ class TestExecutionAccessControl:
         status, response_data = parse_response(response)
 
         assert status == 200
-        executions = response_data.get("executions", response_data)
+        executions = response_data
 
         # Platform admin in GLOBAL scope should see GLOBAL executions
         # (may be empty if no global executions exist)
@@ -261,7 +243,7 @@ class TestConfigAccessControl:
     """Test that config values are properly isolated by org"""
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_access_config_endpoints(self):
+    async def test_org_user_cannot_access_config_endpoints(self, test_org_with_user):
         """
         Org users should not have access to config endpoints at all
         (These are platform admin only)
@@ -270,7 +252,7 @@ class TestConfigAccessControl:
         list_req = create_mock_request(
             method="GET",
             url="/api/config?scope=global",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             query_params={"scope": "global"}
         )
 
@@ -282,7 +264,7 @@ class TestConfigAccessControl:
         create_req = create_mock_request(
             method="POST",
             url="/api/config",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             body={
                 "key": "test",
                 "value": "value",
@@ -307,10 +289,11 @@ class TestConfigAccessControl:
         )
 
         response = await get_config(req)
-        status, configs = parse_response(response)
+        status, body = parse_response(response)
 
         # Should return 200 with GLOBAL configs
         assert status == 200
+        configs = body
         assert isinstance(configs, list)
         # All configs should be GLOBAL scope
         for config in configs:
@@ -321,7 +304,7 @@ class TestOAuthAccessControl:
     """Test OAuth connection access control"""
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_create_oauth_connection(self):
+    async def test_org_user_cannot_create_oauth_connection(self, test_org_with_user):
         """
         Org users should not be able to create OAuth connections
         (Requires canManageConfig permission or platform admin)
@@ -329,7 +312,7 @@ class TestOAuthAccessControl:
         req = create_mock_request(
             method="POST",
             url="/api/oauth/connections",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             body={
                 "connection_name": "unauthorized_connection",
                 "oauth_flow_type": "authorization_code",
@@ -349,7 +332,7 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_delete_oauth_connection(self):
+    async def test_org_user_cannot_delete_oauth_connection(self, test_platform_admin_user, test_org_with_user):
         """
         Org users should not be able to delete OAuth connections
         """
@@ -357,7 +340,7 @@ class TestOAuthAccessControl:
         create_req = create_mock_request(
             method="POST",
             url="/api/oauth/connections",
-            headers=create_platform_admin_headers(),
+            headers=create_platform_admin_headers(user_email=test_platform_admin_user["email"]),
             body={
                 "connection_name": "test_delete_security",
                 "oauth_flow_type": "authorization_code",
@@ -380,7 +363,7 @@ class TestOAuthAccessControl:
         delete_req = create_mock_request(
             method="DELETE",
             url="/api/oauth/connections/test_delete_security",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_delete_security"}
         )
 
@@ -391,7 +374,7 @@ class TestOAuthAccessControl:
         assert delete_status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_list_oauth_connections(self):
+    async def test_org_user_cannot_list_oauth_connections(self, test_org_with_user):
         """
         Org users should not be able to list OAuth connections
         (Platform admin only)
@@ -399,7 +382,7 @@ class TestOAuthAccessControl:
         req = create_mock_request(
             method="GET",
             url="/api/oauth/connections",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
         )
 
         response = await list_oauth_connections(req)
@@ -408,7 +391,7 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_view_oauth_connection(self):
+    async def test_org_user_cannot_view_oauth_connection(self, test_org_with_user):
         """
         Org users should not be able to view OAuth connection details
         (Platform admin only)
@@ -416,7 +399,7 @@ class TestOAuthAccessControl:
         req = create_mock_request(
             method="GET",
             url="/api/oauth/connections/test_connection",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_connection"}
         )
 
@@ -427,14 +410,14 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_update_oauth_connection(self):
+    async def test_org_user_cannot_update_oauth_connection(self, test_org_with_user):
         """
         Org users should not be able to update OAuth connections
         """
         req = create_mock_request(
             method="PUT",
             url="/api/oauth/connections/test_connection",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_connection"},
             body={"description": "Attempted update"}
         )
@@ -445,14 +428,14 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_authorize_oauth(self):
+    async def test_org_user_cannot_authorize_oauth(self, test_org_with_user):
         """
         Org users should not be able to initiate OAuth authorization
         """
         req = create_mock_request(
             method="POST",
             url="/api/oauth/connections/test_connection/authorize",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_connection"}
         )
 
@@ -462,14 +445,14 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_cancel_oauth_authorization(self):
+    async def test_org_user_cannot_cancel_oauth_authorization(self, test_org_with_user):
         """
         Org users should not be able to cancel OAuth authorization
         """
         req = create_mock_request(
             method="POST",
             url="/api/oauth/connections/test_connection/cancel",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_connection"}
         )
 
@@ -479,14 +462,14 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_refresh_oauth_token(self):
+    async def test_org_user_cannot_refresh_oauth_token(self, test_org_with_user):
         """
         Org users should not be able to manually refresh OAuth tokens
         """
         req = create_mock_request(
             method="POST",
             url="/api/oauth/connections/test_connection/refresh",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             route_params={"connection_name": "test_connection"}
         )
 
@@ -496,179 +479,20 @@ class TestOAuthAccessControl:
         assert status == 403
 
     @pytest.mark.asyncio
-    async def test_org_user_cannot_view_refresh_job_status(self):
+    async def test_org_user_cannot_view_refresh_job_status(self, test_org_with_user):
         """
         Org users should not be able to view OAuth refresh job status
         """
         req = create_mock_request(
             method="GET",
             url="/api/oauth/refresh_job_status",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
         )
 
         response = await get_oauth_refresh_job_status(req)
         status, _ = parse_response(response)
 
         assert status == 403
-
-
-class TestRoleBasedFormAccess:
-    """Test that form access is properly controlled by roles"""
-
-    @pytest.mark.asyncio
-    async def test_org_user_cannot_see_role_restricted_form_without_role(self):
-        """
-        Create a non-public form restricted to a specific role
-        Verify that org user without that role cannot see it in the list
-        """
-        # Create a role
-        role_req = create_mock_request(
-            method="POST",
-            url="/api/roles",
-            headers=create_platform_admin_headers(),
-            body={
-                "name": "Security Test Restricted Role",
-                "isActive": True
-            }
-        )
-
-        role_response = await create_role(role_req)
-        role_status, role_body = parse_response(role_response)
-
-        assert role_status in [200, 201], \
-            f"Failed to create role: {role_status} - {role_body}"
-
-        role_id = role_body["id"]
-
-        # Create a non-public form
-        form_req = create_mock_request(
-            method="POST",
-            url="/api/forms",
-            headers=create_platform_admin_headers(),
-            body={
-                "name": "Security Test Restricted Form",
-                "linkedWorkflow": "test",
-                "formSchema": {"fields": []},
-                "isGlobal": False,
-                "isPublic": False  # Not public
-            }
-        )
-
-        form_response = await create_form(form_req)
-        form_status, form_body = parse_response(form_response)
-
-        assert form_status == 201, \
-            f"Failed to create form: {form_status} - {form_body}"
-
-        form_id = form_body["id"]
-
-        # Assign form to role
-        assign_req = create_mock_request(
-            method="POST",
-            url=f"/api/roles/{role_id}/forms",
-            headers=create_platform_admin_headers(),
-            route_params={"roleId": role_id},
-            body={"formIds": [form_id]}  # API expects array
-        )
-
-        assign_response = await assign_forms_to_role(assign_req)
-        assign_status, assign_body = parse_response(assign_response)
-
-        assert assign_status in [200, 201], \
-            f"Failed to assign form to role: {assign_status} - {assign_body}"
-
-        # Now list forms as org user (who is NOT in this role)
-        list_req = create_mock_request(
-            method="GET",
-            url="/api/forms",
-            headers=create_org_user_headers(),
-        )
-
-        list_response = await list_forms(list_req)
-        list_status, forms = parse_response(list_response)
-
-        assert list_status == 200
-        form_ids = [f["id"] for f in forms]
-
-        # User should NOT see this role-restricted form
-        assert form_id not in form_ids, \
-            "Org user can see role-restricted form without having the required role!"
-
-    @pytest.mark.asyncio
-    async def test_org_user_cannot_submit_role_restricted_form_without_role(self):
-        """
-        Verify that org user cannot submit a role-restricted form if they don't have the role
-        """
-        # Create a role
-        role_req = create_mock_request(
-            method="POST",
-            url="/api/roles",
-            headers=create_platform_admin_headers(),
-            body={
-                "name": "Security Test Submit Role",
-                "isActive": True
-            }
-        )
-
-        role_response = await create_role(role_req)
-        role_status, role_body = parse_response(role_response)
-
-        assert role_status in [200, 201], \
-            f"Failed to create role: {role_status} - {role_body}"
-
-        role_id = role_body["id"]
-
-        # Create a non-public form
-        form_req = create_mock_request(
-            method="POST",
-            url="/api/forms",
-            headers=create_platform_admin_headers(),
-            body={
-                "name": "Security Test Form Submission",
-                "linkedWorkflow": "test_workflow",
-                "formSchema": {"fields": []},
-                "isGlobal": False,
-                "isPublic": False  # Not public
-            }
-        )
-
-        form_response = await create_form(form_req)
-        form_status, form_body = parse_response(form_response)
-
-        assert form_status == 201, \
-            f"Failed to create form: {form_status} - {form_body}"
-
-        form_id = form_body["id"]
-
-        # Assign form to role
-        assign_req = create_mock_request(
-            method="POST",
-            url=f"/api/roles/{role_id}/forms",
-            headers=create_platform_admin_headers(),
-            route_params={"roleId": role_id},
-            body={"formIds": [form_id]}  # API expects array
-        )
-
-        assign_response = await assign_forms_to_role(assign_req)
-        assign_status, assign_body = parse_response(assign_response)
-
-        assert assign_status in [200, 201], \
-            f"Failed to assign form to role: {assign_status} - {assign_body}"
-
-        # Try to submit as org user (who doesn't have this role)
-        submit_req = create_mock_request(
-            method="POST",
-            url=f"/api/forms/{form_id}/execute",
-            headers=create_org_user_headers(),
-            route_params={"formId": form_id},
-            body={"form_data": {}}
-        )
-
-        submit_response = await execute_form(submit_req)
-        submit_status, _ = parse_response(submit_response)
-
-        # Should be 403 Forbidden - user doesn't have the required role
-        assert submit_status == 403
 
 
 class TestSensitiveDataMasking:

@@ -35,12 +35,12 @@ export function FormBuilder() {
 
   // Load existing form data
   useEffect(() => {
-    if (existingForm) {
+    if (existingForm && existingForm.formSchema) {
       setFormName(existingForm.name)
       setFormDescription(existingForm.description || '')
       setLinkedWorkflow(existingForm.linkedWorkflow)
       setIsGlobal(existingForm.isGlobal)
-      setFields(existingForm.formSchema.fields)
+      setFields(existingForm.formSchema.fields || [])
     }
   }, [existingForm])
 

@@ -72,17 +72,20 @@ def create_mock_request(
     return req
 
 
-def create_platform_admin_headers() -> dict[str, str]:
+def create_platform_admin_headers(user_email: str = "jack@gocovi.com") -> dict[str, str]:
     """
-    Create headers for platform admin user (jack@gocovi.com).
+    Create headers for platform admin user.
+
+    Args:
+        user_email: User email (default: jack@gocovi.com)
 
     Returns:
         Headers dict with X-MS-Client-Principal for platform admin
     """
     client_principal = {
         "identityProvider": "aad",
-        "userId": "jack@gocovi.com",
-        "userDetails": "jack@gocovi.com",
+        "userId": user_email,
+        "userDetails": user_email,
         "userRoles": ["authenticated", "PlatformAdmin"],
     }
 
@@ -142,6 +145,10 @@ def parse_response(response: func.HttpResponse) -> tuple[int, dict[str, Any] | N
         Tuple of (status_code, body_dict)
         Body dict is None if response has no body or body is not JSON
 
+    Raises:
+        AssertionError: If response has body but JSON parsing fails for status codes
+                       that should return JSON (200, 201, 400, 403, 404, 500)
+
     Example:
         >>> status, body = parse_response(response)
         >>> assert status == 200
@@ -154,8 +161,15 @@ def parse_response(response: func.HttpResponse) -> tuple[int, dict[str, Any] | N
     if response.get_body():
         try:
             body_dict = json.loads(response.get_body().decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            # Body is not JSON or not decodable
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            # For status codes that should return JSON, fail loudly
+            if status_code in [200, 201, 400, 403, 404, 500]:
+                body_preview = response.get_body().decode("utf-8", errors="replace")[:200]
+                raise AssertionError(
+                    f"Expected JSON response for status {status_code}, but parsing failed: {e}\n"
+                    f"Body preview: {body_preview}"
+                )
+            # For other status codes (204, 301, etc.), empty body is acceptable
             pass
 
     return status_code, body_dict

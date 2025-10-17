@@ -31,7 +31,6 @@ class Organization:
     """Organization entity."""
     org_id: str
     name: str
-    tenant_id: str | None
     is_active: bool
 
 @dataclass
@@ -46,7 +45,7 @@ class OrganizationContext:
     Context object passed to all workflows.
 
     Provides access to:
-    - Organization information (id, name, tenant_id)
+    - Organization information (id, name)
     - Execution metadata (execution_id, caller)
     - Configuration (key-value pairs with secret resolution)
     - OAuth connections (pre-authenticated credentials)
@@ -78,7 +77,7 @@ class OrganizationContext:
 
     @property
     def tenant_id(self) -> str | None:
-        """Microsoft 365 tenant ID (if linked)."""
+        """Tenant ID for the organization (None for platform admins)."""
         ...
 
     # Caller properties

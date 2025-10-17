@@ -79,46 +79,60 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4">
-          {rolesLoading || allRolesLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : allRoles && allRoles.length > 0 ? (
-            <div className="space-y-3">
-              {allRoles.map((role) => {
-                const isAssigned = selectedRoles.has(role.id)
-                return (
-                  <div
-                    key={role.id}
-                    className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors"
-                  >
-                    <Checkbox
-                      id={role.id}
-                      checked={isAssigned}
-                      onCheckedChange={(checked) => handleToggleRole(role.id, checked as boolean)}
-                      disabled={assignMutation.isPending || removeMutation.isPending}
-                    />
-                    <div className="flex-1 space-y-1">
-                      <Label
-                        htmlFor={role.id}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {role.name}
-                      </Label>
-                      {role.description && (
-                        <p className="text-sm text-muted-foreground">{role.description}</p>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+          {user.isPlatformAdmin ? (
+            <div className="flex items-center justify-center p-8 rounded-lg border border-yellow-200 bg-yellow-50">
+              <div className="text-center text-yellow-900">
+                <Shield className="h-8 w-8 mx-auto mb-2 text-yellow-600" />
+                <h3 className="font-semibold mb-2">Cannot Modify Platform Admin Roles</h3>
+                <p className="text-sm text-yellow-700">
+                  Platform Administrators have full system access and cannot be assigned additional roles.
+                </p>
+              </div>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No roles available
-            </div>
+            <>
+              {rolesLoading || allRolesLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : allRoles && allRoles.length > 0 ? (
+                <div className="space-y-3">
+                  {allRoles.map((role) => {
+                    const isAssigned = selectedRoles.has(role.id)
+                    return (
+                      <div
+                        key={role.id}
+                        className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors"
+                      >
+                        <Checkbox
+                          id={role.id}
+                          checked={isAssigned}
+                          onCheckedChange={(checked) => handleToggleRole(role.id, checked as boolean)}
+                          disabled={assignMutation.isPending || removeMutation.isPending}
+                        />
+                        <div className="flex-1 space-y-1">
+                          <Label
+                            htmlFor={role.id}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                          >
+                            {role.name}
+                          </Label>
+                          {role.description && (
+                            <p className="text-sm text-muted-foreground">{role.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No roles available
+                </div>
+              )}
+            </>
           )}
         </div>
 

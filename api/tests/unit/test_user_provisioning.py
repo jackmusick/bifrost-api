@@ -20,21 +20,26 @@ from shared.user_provisioning import (
 class TestEnsureUserProvisioned:
     """Test main ensure_user_provisioned function"""
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_existing_platform_admin_user(self, mock_table_service):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_existing_platform_admin_user(self, mock_user_repo_class):
         """Existing PlatformAdmin user returns correct status"""
-        mock_users = Mock()
-        mock_table_service.return_value = mock_users
+        from shared.models import User, UserType
+
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
         # Mock existing platform admin
-        mock_users.get_entity.return_value = {
-            "PartitionKey": "admin@example.com",
-            "RowKey": "user",
-            "Email": "admin@example.com",
-            "UserType": "PLATFORM",
-            "IsPlatformAdmin": True,
-            "LastLogin": datetime.utcnow().isoformat(),
-        }
+        mock_user = User(
+            id="admin@example.com",
+            email="admin@example.com",
+            displayName="admin",
+            userType=UserType.PLATFORM,
+            isPlatformAdmin=True,
+            isActive=True,
+            lastLogin=datetime.utcnow(),
+            createdAt=datetime.utcnow()
+        )
+        mock_user_repo.get_user.return_value = mock_user
 
         result = ensure_user_provisioned("admin@example.com")
 
@@ -46,24 +51,29 @@ class TestEnsureUserProvisioned:
         assert "authenticated" in result.roles
 
         # Verify last login was updated
-        mock_users.update_entity.assert_called_once()
+        mock_user_repo.update_last_login.assert_called_once_with("admin@example.com")
 
-    @patch("shared.user_provisioning.TableStorageService")
-    @patch("shared.user_provisioning._get_user_org_id")
-    def test_existing_org_user(self, mock_get_org_id, mock_table_service):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_existing_org_user(self, mock_user_repo_class):
         """Existing ORG user returns correct status with org_id"""
-        mock_users = Mock()
-        mock_table_service.return_value = mock_users
-        mock_get_org_id.return_value = "org-123"
+        from shared.models import User, UserType
+
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
         # Mock existing org user
-        mock_users.get_entity.return_value = {
-            "PartitionKey": "user@company.com",
-            "RowKey": "user",
-            "Email": "user@company.com",
-            "UserType": "ORG",
-            "IsPlatformAdmin": False,
-        }
+        mock_user = User(
+            id="user@company.com",
+            email="user@company.com",
+            displayName="user",
+            userType=UserType.ORG,
+            isPlatformAdmin=False,
+            isActive=True,
+            lastLogin=None,
+            createdAt=datetime.utcnow()
+        )
+        mock_user_repo.get_user.return_value = mock_user
+        mock_user_repo.get_user_org_id.return_value = "org-123"
 
         result = ensure_user_provisioned("user@company.com")
 
@@ -75,17 +85,17 @@ class TestEnsureUserProvisioned:
         assert "PlatformAdmin" not in result.roles
 
     @patch("shared.user_provisioning._create_first_platform_admin")
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_first_user_creation(self, mock_table_service, mock_create_first):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_first_user_creation(self, mock_user_repo_class, mock_create_first):
         """First user in system is created as PlatformAdmin"""
-        mock_users = Mock()
-        mock_table_service.return_value = mock_users
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
         # Mock user doesn't exist
-        mock_users.get_entity.return_value = None
+        mock_user_repo.get_user.return_value = None
 
-        # Mock no existing users (first user)
-        mock_users.query_entities.return_value = iter([])
+        # Mock has_any_users returns False (no users exist)
+        mock_user_repo.has_any_users.return_value = False
 
         # Mock creation result
         mock_create_first.return_value = UserProvisioningResult(
@@ -103,17 +113,17 @@ class TestEnsureUserProvisioned:
         mock_create_first.assert_called_once_with("first@example.com")
 
     @patch("shared.user_provisioning._provision_user_by_domain")
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_domain_based_provisioning(self, mock_table_service, mock_provision):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_domain_based_provisioning(self, mock_user_repo_class, mock_provision):
         """Non-first user triggers domain-based provisioning"""
-        mock_users = Mock()
-        mock_table_service.return_value = mock_users
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
         # Mock user doesn't exist
-        mock_users.get_entity.return_value = None
+        mock_user_repo.get_user.return_value = None
 
-        # Mock existing users in system (not first user)
-        mock_users.query_entities.return_value = iter([{"PartitionKey": "admin@example.com"}])
+        # Mock has_any_users returns True (users exist)
+        mock_user_repo.has_any_users.return_value = True
 
         # Mock successful domain provisioning
         mock_provision.return_value = UserProvisioningResult(
@@ -136,26 +146,31 @@ class TestEnsureUserProvisioned:
             ensure_user_provisioned("")
 
     @patch("shared.user_provisioning._provision_org_relationship_by_domain")
-    @patch("shared.user_provisioning._get_user_org_id")
-    @patch("shared.user_provisioning.TableStorageService")
+    @patch("shared.user_provisioning.UserRepository")
     def test_existing_org_user_without_relationship(
-        self, mock_table_service, mock_get_org_id, mock_provision_relationship
+        self, mock_user_repo_class, mock_provision_relationship
     ):
         """Existing ORG user without org relationship gets auto-provisioned"""
-        mock_users = Mock()
-        mock_table_service.return_value = mock_users
+        from shared.models import User, UserType
+
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
         # Mock existing ORG user
-        mock_users.get_entity.return_value = {
-            "PartitionKey": "orphan@company.com",
-            "RowKey": "user",
-            "Email": "orphan@company.com",
-            "UserType": "ORG",
-            "IsPlatformAdmin": False,
-        }
+        mock_user = User(
+            id="orphan@company.com",
+            email="orphan@company.com",
+            displayName="orphan",
+            userType=UserType.ORG,
+            isPlatformAdmin=False,
+            isActive=True,
+            lastLogin=None,
+            createdAt=datetime.utcnow()
+        )
+        mock_user_repo.get_user.return_value = mock_user
 
         # Mock no org assignment initially
-        mock_get_org_id.return_value = None
+        mock_user_repo.get_user_org_id.return_value = None
 
         # Mock successful relationship provisioning
         mock_provision_relationship.return_value = "org-999"
@@ -174,11 +189,26 @@ class TestEnsureUserProvisioned:
 class TestCreateFirstPlatformAdmin:
     """Test first user creation logic"""
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_creates_platform_admin_user(self, mock_table_service):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_creates_platform_admin_user(self, mock_user_repo_class):
         """First user is created with PlatformAdmin privileges"""
-        mock_users = Mock()
-        mock_table_service.return_value = mock_users
+        from shared.models import User, UserType
+
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
+
+        # Mock the created user
+        mock_user = User(
+            id="first@example.com",
+            email="first@example.com",
+            displayName="first",
+            userType=UserType.PLATFORM,
+            isPlatformAdmin=True,
+            isActive=True,
+            lastLogin=None,
+            createdAt=datetime.utcnow()
+        )
+        mock_user_repo.create_user.return_value = mock_user
 
         result = _create_first_platform_admin("first@example.com")
 
@@ -187,161 +217,189 @@ class TestCreateFirstPlatformAdmin:
         assert result.org_id is None
         assert result.was_created is True
 
-        # Verify insert was called with correct data
-        mock_users.insert_entity.assert_called_once()
-        created_user = mock_users.insert_entity.call_args[0][0]
-        assert created_user["Email"] == "first@example.com"
-        assert created_user["UserType"] == "PLATFORM"
-        assert created_user["IsPlatformAdmin"] is True
-        assert created_user["IsActive"] is True
+        # Verify create_user was called with correct data
+        mock_user_repo.create_user.assert_called_once_with(
+            email="first@example.com",
+            display_name="first",
+            user_type=UserType.PLATFORM,
+            is_platform_admin=True
+        )
 
 
 class TestProvisionUserByDomain:
     """Test domain-based auto-provisioning"""
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_successful_domain_match(self, mock_table_service):
+    @patch("shared.user_provisioning.OrganizationRepository")
+    @patch("shared.user_provisioning.UserRepository")
+    def test_successful_domain_match(self, mock_user_repo_class, mock_org_repo_class):
         """User with matching domain is auto-provisioned to org"""
-        mock_entities = Mock()
-        mock_users = Mock()
-        mock_relationships = Mock()
+        from shared.models import User, Organization, UserType
 
-        def get_table(table_name):
-            if table_name == "Entities":
-                return mock_entities
-            elif table_name == "Users":
-                return mock_users
-            elif table_name == "Relationships":
-                return mock_relationships
-            return Mock()
+        # Mock OrganizationRepository
+        mock_org_repo = Mock()
+        mock_org_repo_class.return_value = mock_org_repo
 
-        mock_table_service.side_effect = get_table
+        # Mock matched organization
+        mock_org = Organization(
+            id="org-789",
+            name="Company Inc",
+            domain="company.com",
+            isActive=True,
+            createdAt=datetime.utcnow(),
+            createdBy="system",
+            updatedAt=datetime.utcnow()
+        )
+        mock_org_repo.get_organization_by_domain.return_value = mock_org
 
-        # Mock organization with matching domain
-        mock_entities.query_entities.return_value = [
-            {
-                "PartitionKey": "GLOBAL",
-                "RowKey": "org:org-789",
-                "Name": "Company Inc",
-                "Domain": "company.com",
-                "IsActive": True,
-            }
-        ]
+        # Mock UserRepository
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
+        # Mock created user
+        mock_user = User(
+            id="newuser@company.com",
+            email="newuser@company.com",
+            displayName="newuser",
+            userType=UserType.ORG,
+            isPlatformAdmin=False,
+            isActive=True,
+            lastLogin=None,
+            createdAt=datetime.utcnow()
+        )
+        mock_user_repo.create_user.return_value = mock_user
+
+        # Run the function
         result = _provision_user_by_domain("newuser@company.com")
 
+        # Verify the assertions
         assert result.user_type == "ORG"
         assert result.is_platform_admin is False
         assert result.org_id == "org-789"
         assert result.was_created is True
 
-        # Verify user was created
-        mock_users.insert_entity.assert_called_once()
-        created_user = mock_users.insert_entity.call_args[0][0]
-        assert created_user["Email"] == "newuser@company.com"
-        assert created_user["UserType"] == "ORG"
-        assert created_user["IsPlatformAdmin"] is False
+        # Verify organization lookup was called with lowercase domain
+        mock_org_repo.get_organization_by_domain.assert_called_once_with("company.com")
+
+        # Verify user was created with correct details
+        mock_user_repo.create_user.assert_called_once_with(
+            email="newuser@company.com",
+            display_name="newuser",
+            user_type=UserType.ORG,
+            is_platform_admin=False
+        )
 
         # Verify relationship was created
-        mock_relationships.insert_entity.assert_called_once()
-        relationship = mock_relationships.insert_entity.call_args[0][0]
-        assert relationship["RowKey"] == "userperm:newuser@company.com:org-789"
-        assert relationship["UserId"] == "newuser@company.com"
-        assert relationship["OrganizationId"] == "org-789"
+        mock_user_repo.assign_user_to_org.assert_called_once_with(
+            email="newuser@company.com",
+            org_id="org-789",
+            assigned_by="system"
+        )
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_no_matching_domain(self, mock_table_service):
+    @patch("shared.user_provisioning.OrganizationRepository")
+    def test_no_matching_domain(self, mock_org_repo_class):
         """User with no matching domain raises ValueError"""
-        mock_entities = Mock()
-        mock_table_service.return_value = mock_entities
+        mock_org_repo = Mock()
+        mock_org_repo_class.return_value = mock_org_repo
 
-        # Mock organizations with different domains
-        mock_entities.query_entities.return_value = [
-            {
-                "RowKey": "org:org-123",
-                "Name": "Other Company",
-                "Domain": "other.com",
-                "IsActive": True,
-            }
-        ]
+        # Mock no matching organization
+        mock_org_repo.get_organization_by_domain.return_value = None
 
         with pytest.raises(ValueError, match="No organization configured for domain"):
             _provision_user_by_domain("user@nomatch.com")
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_case_insensitive_domain_matching(self, mock_table_service):
+    @patch("shared.user_provisioning.OrganizationRepository")
+    @patch("shared.user_provisioning.UserRepository")
+    def test_case_insensitive_domain_matching(self, mock_user_repo_class, mock_org_repo_class):
         """Domain matching is case-insensitive"""
-        mock_entities = Mock()
-        mock_users = Mock()
-        mock_relationships = Mock()
+        from shared.models import User, Organization, UserType
 
-        def get_table(table_name):
-            if table_name == "Entities":
-                return mock_entities
-            elif table_name == "Users":
-                return mock_users
-            elif table_name == "Relationships":
-                return mock_relationships
+        # Mock OrganizationRepository
+        mock_org_repo = Mock()
+        mock_org_repo_class.return_value = mock_org_repo
 
-        mock_table_service.side_effect = get_table
+        # Mock matched organization with uppercase domain
+        mock_org = Organization(
+            id="org-999",
+            name="Company",
+            domain="COMPANY.COM",
+            isActive=True,
+            createdAt=datetime.utcnow(),
+            createdBy="system",
+            updatedAt=datetime.utcnow()
+        )
+        mock_org_repo.get_organization_by_domain.return_value = mock_org
 
-        # Mock org with uppercase domain
-        mock_entities.query_entities.return_value = [
-            {
-                "RowKey": "org:org-999",
-                "Name": "Company",
-                "Domain": "COMPANY.COM",
-                "IsActive": True,
-            }
-        ]
+        # Mock UserRepository
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
+        # Mock created user
+        mock_user = User(
+            id="user@company.com",
+            email="user@company.com",
+            displayName="user",
+            userType=UserType.ORG,
+            isPlatformAdmin=False,
+            isActive=True,
+            lastLogin=None,
+            createdAt=datetime.utcnow()
+        )
+        mock_user_repo.create_user.return_value = mock_user
+
+        # Run the function
         result = _provision_user_by_domain("user@company.com")
 
+        # Verify the assertions
         assert result.org_id == "org-999"
         assert result.was_created is True
+
+        # Verify organization lookup was called with lowercase domain
+        mock_org_repo.get_organization_by_domain.assert_called_once_with("company.com")
+
+        # Verify user was created with correct details
+        mock_user_repo.create_user.assert_called_once_with(
+            email="user@company.com",
+            display_name="user",
+            user_type=UserType.ORG,
+            is_platform_admin=False
+        )
 
 
 class TestGetUserOrgId:
     """Test user org lookup helper"""
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_returns_org_id_for_user(self, mock_table_service):
-        """Returns org_id from Relationships table"""
-        mock_relationships = Mock()
-        mock_table_service.return_value = mock_relationships
+    @patch("shared.user_provisioning.UserRepository")
+    def test_returns_org_id_for_user(self, mock_user_repo_class):
+        """Returns org_id from UserRepository"""
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
-        mock_relationships.query_entities.return_value = [
-            {
-                "PartitionKey": "GLOBAL",
-                "RowKey": "userperm:user@company.com:org-abc",
-                "UserId": "user@company.com",
-                "OrganizationId": "org-abc",
-            }
-        ]
+        mock_user_repo.get_user_org_id.return_value = "org-abc"
 
         org_id = _get_user_org_id("user@company.com")
 
         assert org_id == "org-abc"
+        mock_user_repo.get_user_org_id.assert_called_once_with("user@company.com")
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_returns_none_for_no_org(self, mock_table_service):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_returns_none_for_no_org(self, mock_user_repo_class):
         """Returns None if user has no org assignments"""
-        mock_relationships = Mock()
-        mock_table_service.return_value = mock_relationships
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
-        mock_relationships.query_entities.return_value = []
+        mock_user_repo.get_user_org_id.return_value = None
 
         org_id = _get_user_org_id("orphan@example.com")
 
         assert org_id is None
 
-    @patch("shared.user_provisioning.TableStorageService")
-    def test_handles_query_error(self, mock_table_service):
+    @patch("shared.user_provisioning.UserRepository")
+    def test_handles_query_error(self, mock_user_repo_class):
         """Returns None on query error"""
-        mock_relationships = Mock()
-        mock_table_service.return_value = mock_relationships
+        mock_user_repo = Mock()
+        mock_user_repo_class.return_value = mock_user_repo
 
-        mock_relationships.query_entities.side_effect = Exception("Database error")
+        mock_user_repo.get_user_org_id.side_effect = Exception("Database error")
 
         org_id = _get_user_org_id("user@example.com")
 

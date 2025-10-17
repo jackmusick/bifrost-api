@@ -28,7 +28,6 @@ class TestAuthenticationFlow:
             'PartitionKey': 'GLOBAL',
             'RowKey': 'org:test-org-123',
             'Name': 'Test Organization',
-            'TenantId': 'tenant-456',
             'IsActive': True
         }
 

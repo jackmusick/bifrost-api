@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useHealthStore } from '@/stores/healthStore'
 
 interface WorkflowEngineGuardProps {
@@ -12,15 +12,20 @@ interface WorkflowEngineGuardProps {
  */
 export function WorkflowEngineGuard({ children }: WorkflowEngineGuardProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const healthStatus = useHealthStore((state) => state.status)
 
   useEffect(() => {
     // Only redirect if the server is marked as unhealthy
     // This happens when we actually get a 500+ error response
     if (healthStatus === 'unhealthy') {
-      navigate('/workflow-engine-error', { replace: true })
+      // Store the current path so we can return to it when the server recovers
+      navigate('/workflow-engine-error', {
+        replace: true,
+        state: { from: location.pathname }
+      })
     }
-  }, [healthStatus, navigate])
+  }, [healthStatus, navigate, location.pathname])
 
   // Show children unless unhealthy
   // The redirect will happen in useEffect if unhealthy

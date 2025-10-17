@@ -45,7 +45,7 @@ class MockAuthHelper:
         principal_data = {
             "userId": user_id,
             "userDetails": email,
-            "userRoles": ["anonymous"],
+            "userRoles": ["authenticated", "PlatformAdmin"],
             "identityProvider": "aad"
         }
 
@@ -226,12 +226,16 @@ class TestUsers:
 
 
 # Convenience functions for common scenarios
-def create_platform_admin_headers(org_id: str | None = None) -> dict[str, str]:
+def create_platform_admin_headers(org_id: str | None = None, user_email: str | None = None) -> dict[str, str]:
     """Create headers for platform admin authentication"""
+    user_info = TestUsers.PLATFORM_ADMIN.copy()
+    if user_email:
+        user_info["email"] = user_email
+
     principal = MockAuthHelper.create_platform_admin_principal(
-        user_id=TestUsers.PLATFORM_ADMIN["user_id"],
-        email=TestUsers.PLATFORM_ADMIN["email"],
-        name=TestUsers.PLATFORM_ADMIN["name"]
+        user_id=user_info["user_id"],
+        email=user_info["email"],
+        name=user_info["name"]
     )
 
     headers = {

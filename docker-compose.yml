@@ -5,9 +5,9 @@ services:
       - "10000:10000" # Blob
       - "10001:10001" # Queue
       - "10002:10002" # Table
-    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose"
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --location /data"
     volumes:
-      - azurite-data:/data
+      - ./azurite:/data
 
   functions:
     build:
@@ -47,6 +47,3 @@ services:
       - /app/node_modules # Prevent overwriting node_modules
     depends_on:
       - functions
-
-volumes:
-  azurite-data:

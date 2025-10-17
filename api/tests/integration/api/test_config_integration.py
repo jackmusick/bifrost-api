@@ -87,6 +87,7 @@ class TestConfigIntegration:
         get_status, get_body = parse_response(get_response)
         assert get_status == 200
         configs = get_body
+        assert isinstance(configs, list)
         test_config = next((c for c in configs if c["key"] == "test_global_config"), None)
         assert test_config is not None
 
@@ -170,6 +171,7 @@ class TestConfigIntegration:
         get_status, get_body = parse_response(get_response)
         assert get_status == 200
         configs = get_body
+        assert isinstance(configs, list)
         deleted_config = next((c for c in configs if c["key"] == "test_delete_config"), None)
         assert deleted_config is None
 
@@ -309,12 +311,12 @@ class TestConfigIntegration:
         assert error["error"] == "ValidationError"
 
     @pytest.mark.asyncio
-    async def test_config_org_user_forbidden(self):
+    async def test_config_org_user_forbidden(self, test_org_with_user):
         """Org users cannot access config endpoints (platform admin only)"""
         req = create_mock_request(
             method="GET",
             url="/api/config?scope=global",
-            headers=create_org_user_headers(),
+            headers=create_org_user_headers(user_email=test_org_with_user["email"]),
             query_params={"scope": "global"},
         )
 
@@ -440,14 +442,14 @@ class TestIntegrationConfigIntegration:
         """Platform admin can delete integration configuration"""
         org_id = "546478ea-fc38-4bf7-a524-35f522f90b0e"
 
-        # First create
+        # First create (using valid IntegrationType)
         create_req = create_mock_request(
             method="POST",
             url=f"/api/organizations/{org_id}/integrations",
             headers=create_platform_admin_headers(),
             route_params={"orgId": org_id},
             body={
-                "type": "to_delete_integration",
+                "type": "msgraph",
                 "enabled": True,
                 "settings": {}
             },
@@ -458,9 +460,9 @@ class TestIntegrationConfigIntegration:
         # Delete
         delete_req = create_mock_request(
             method="DELETE",
-            url=f"/api/organizations/{org_id}/integrations/to_delete_integration",
+            url=f"/api/organizations/{org_id}/integrations/msgraph",
             headers=create_platform_admin_headers(),
-            route_params={"orgId": org_id, "type": "to_delete_integration"},
+            route_params={"orgId": org_id, "type": "msgraph"},
         )
 
         response = await delete_integration(delete_req)
@@ -480,6 +482,7 @@ class TestIntegrationConfigIntegration:
         get_status, get_body = parse_response(get_response)
         assert get_status == 200
         integrations = get_body
+        assert isinstance(integrations, list)
         deleted_integration = next(
             (i for i in integrations if i["type"] == "to_delete_integration"),
             None

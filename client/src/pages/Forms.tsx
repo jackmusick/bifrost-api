@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Plus, RefreshCw, FileCode, Pencil, Trash2, PlayCircle, Globe, Building2 } from 'lucide-react'
+import { Plus, RefreshCw, FileCode, Pencil, Trash2, PlayCircle, Globe, Building2, Power, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useForms, useDeleteForm } from '@/hooks/useForms'
+import { useForms, useDeleteForm, useUpdateForm } from '@/hooks/useForms'
 import { useOrgScope } from '@/contexts/OrgScopeContext'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -19,6 +19,7 @@ export function Forms() {
   const { scope, isGlobalScope } = useOrgScope()
   const { data: forms, isLoading, refetch } = useForms()
   const deleteForm = useDeleteForm()
+  const updateForm = useUpdateForm()
   const { isPlatformAdmin } = useAuth()
 
   // For now, only platform admins can manage forms
@@ -39,21 +40,40 @@ export function Forms() {
     }
   }
 
+  const handleToggleActive = async (formId: string, currentlyActive: boolean) => {
+    await updateForm.mutateAsync({
+      formId,
+      request: {
+        name: null,
+        description: null,
+        linkedWorkflow: null,
+        formSchema: null,
+        isActive: !currentlyActive
+      }
+    })
+  }
+
   const handleLaunch = (formId: string) => {
     navigate(`/execute/${formId}`)
   }
 
-  // Filter forms based on scope
+  // Filter forms based on scope (only for platform admins)
   const filteredForms = forms?.filter(form => {
-    // Platform admins without org: show all forms
-    if (isPlatformAdmin && !scope.orgId) {
+    // Regular users: show all forms returned by backend (backend handles authorization)
+    if (!isPlatformAdmin) {
       return true
     }
-    // Global scope: show only global forms
+
+    // Platform admin filtering based on scope switcher:
+    // - No org selected (global scope): show all forms
+    if (!scope.orgId) {
+      return true
+    }
+    // - Global scope selected: show only global forms
     if (isGlobalScope) {
       return form.isGlobal === true
     }
-    // Org scope: show org-specific forms
+    // - Org scope selected: show org-specific forms
     return form.orgId === scope.orgId
   }) || []
 
@@ -83,17 +103,17 @@ export function Forms() {
             {canManageForms ? 'Launch workflows with guided form interfaces' : 'Launch workflows with guided forms'}
           </p>
         </div>
-        {canManageForms && (
-          <div className="flex gap-2">
-            <Button variant="outline" size="icon" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {canManageForms && (
             <Button onClick={handleCreate}>
               <Plus className="mr-2 h-4 w-4" />
               Create Form
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -114,11 +134,33 @@ export function Forms() {
                       {form.description || <span className="italic">No description</span>}
                     </CardDescription>
                   </div>
-                  {!form.isActive && (
-                    <Badge variant="secondary" className="shrink-0">
-                      Inactive
-                    </Badge>
-                  )}
+                  <div className="flex flex-col gap-2 items-end shrink-0">
+                    {canManageForms && (
+                      <Button
+                        variant={form.isActive ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleToggleActive(form.id, form.isActive)}
+                        className="h-8 gap-1.5"
+                      >
+                        {form.isActive ? (
+                          <>
+                            <Power className="h-3.5 w-3.5" />
+                            <span className="text-xs">Enabled</span>
+                          </>
+                        ) : (
+                          <>
+                            <PowerOff className="h-3.5 w-3.5" />
+                            <span className="text-xs">Disabled</span>
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {!form.isActive && !canManageForms && (
+                      <Badge variant="secondary">
+                        Inactive
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col">
@@ -129,7 +171,7 @@ export function Forms() {
                   </div>
                   <div>
                     <span className="text-muted-foreground">Fields:</span>{' '}
-                    {form.formSchema.fields.length} field{form.formSchema.fields.length !== 1 ? 's' : ''}
+                    {form.formSchema?.fields?.length || 0} field{form.formSchema?.fields?.length !== 1 ? 's' : ''}
                   </div>
                 </div>
 

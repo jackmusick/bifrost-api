@@ -10,20 +10,24 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useAuth } from '@/hooks/useAuth'
 import { useWorkflowEngineHealth } from '@/hooks/useWorkflowEngineHealth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 
 export function WorkflowEngineError() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { isPlatformAdmin } = useAuth()
   const { data: serverHealth, refetch, isRefetching } = useWorkflowEngineHealth()
 
-  // If the server becomes healthy, redirect to workflows page
+  // If the server becomes healthy, redirect back to where the user was
   useEffect(() => {
     if (serverHealth?.status === 'healthy') {
-      navigate('/workflows')
+      // Try to go back to where they were, or fall back to a default page
+      const from = (location.state as { from?: string })?.from
+      const defaultPath = isPlatformAdmin ? '/workflows' : '/forms'
+      navigate(from || defaultPath, { replace: true })
     }
-  }, [serverHealth, navigate])
+  }, [serverHealth, navigate, location.state, isPlatformAdmin])
 
   const handleRetry = async () => {
     await refetch()

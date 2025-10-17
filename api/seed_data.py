@@ -1,8 +1,7 @@
 """
-Seed data script for Bifrost Integrations local development (4-table structure with UUIDs)
+Seed data script for Bifrost Integrations local development
 Populates Azurite with realistic sample data for testing
-
-Run this script after initializing tables with init_tables.py
+All data follows Pydantic models from shared/models.py
 """
 
 import json
@@ -16,30 +15,26 @@ from azure.data.tables import TableClient, TableServiceClient
 logger = logging.getLogger(__name__)
 
 # Use stable UUIDs for development (consistent across seed runs)
-ORG_ACME_ID = "acme-org-1111-1111-1111-111111111111"
-ORG_CONTOSO_ID = "contoso-2222-2222-2222-222222222222"
-FORM_GREETING_ID = "greeting-form-3333-3333-333333333333"
-FORM_ONBOARDING_ID = "onboarding-form-4444-444444444444"
-ROLE_IT_MANAGERS_ID = "it-managers-role-5555-555555555555"
-ROLE_HELP_DESK_ID = "helpdesk-role-6666-6666-666666666666"
+ORG_COVI_DEV_ID = str(uuid.uuid4())
+FORM_GREETING_ID = str(uuid.uuid4())
+FORM_ONBOARDING_ID = str(uuid.uuid4())
 
-logger.info("Generated UUIDs for seed data:")
-logger.info(f"  Org ACME: {ORG_ACME_ID}")
-logger.info(f"  Org Contoso: {ORG_CONTOSO_ID}")
-logger.info(f"  Form Greeting: {FORM_GREETING_ID}")
-logger.info(f"  Form Onboarding: {FORM_ONBOARDING_ID}")
-logger.info(f"  Role IT Managers: {ROLE_IT_MANAGERS_ID}")
-logger.info(f"  Role Help Desk: {ROLE_HELP_DESK_ID}")
+logger.info("Seed data UUIDs:")
+logger.info(f"  Org Covi Development: {ORG_COVI_DEV_ID}")
+logger.info(f"  Form Simple Greeting: {FORM_GREETING_ID}")
+logger.info(f"  Form User Onboarding: {FORM_ONBOARDING_ID}")
 
 # ==================== TABLE 1: CONFIG ====================
 
 SAMPLE_CONFIG_ENTITIES = [
-    # System config (GLOBAL)
+    # System config (GLOBAL partition)
     {
         "PartitionKey": "GLOBAL",
         "RowKey": "system:version",
+        "Key": "version",
         "Value": "1.0.0",
         "Type": "string",
+        "Scope": "GLOBAL",
         "Description": "Platform version",
         "UpdatedAt": datetime.utcnow().isoformat(),
         "UpdatedBy": "system",
@@ -47,65 +42,70 @@ SAMPLE_CONFIG_ENTITIES = [
     {
         "PartitionKey": "GLOBAL",
         "RowKey": "system:maintenance_mode",
+        "Key": "maintenance_mode",
         "Value": "false",
-        "Type": "bool",
+        "Type": "boolean",
+        "Scope": "GLOBAL",
         "Description": "System maintenance mode flag",
         "UpdatedAt": datetime.utcnow().isoformat(),
         "UpdatedBy": "system",
     },
-    # Org-specific config
+    # Org-specific config (matches Config model from models.py)
     {
-        "PartitionKey": ORG_ACME_ID,
+        "PartitionKey": ORG_COVI_DEV_ID,
         "RowKey": "config:default_office_location",
+        "Key": "default_office_location",
         "Value": "New York",
         "Type": "string",
+        "Scope": ORG_COVI_DEV_ID,
         "Description": "Default office location for new users",
         "UpdatedAt": datetime.utcnow().isoformat(),
-        "UpdatedBy": "jack@gocovi.com",
+        "UpdatedBy": "jack@gocovi.dev",
     },
     {
-        "PartitionKey": ORG_ACME_ID,
+        "PartitionKey": ORG_COVI_DEV_ID,
         "RowKey": "config:default_license_tier",
+        "Key": "default_license_tier",
         "Value": "Microsoft 365 Business Standard",
         "Type": "string",
+        "Scope": ORG_COVI_DEV_ID,
         "Description": "Default license for new users",
         "UpdatedAt": datetime.utcnow().isoformat(),
-        "UpdatedBy": "jack@gocovi.com",
+        "UpdatedBy": "jack@gocovi.dev",
     },
-    # Integration config
     {
-        "PartitionKey": ORG_ACME_ID,
-        "RowKey": "integration:msgraph",
-        "Enabled": True,
-        "Settings": json.dumps({
-            "tenant_id": "12345678-1234-1234-1234-123456789012",
-            "client_id": "app-client-id-123",
-            "client_secret_ref": f"{ORG_ACME_ID}--msgraph-secret",
-        }),
+        "PartitionKey": "6c600874-458f-462e-8a8d-3d71f7889beb",  # Contoso Ltd org ID
+        "RowKey": "config:default_license_tier",
+        "Key": "default_license_tier",
+        "Value": "Microsoft 365 Business Premium",
+        "Type": "string",
+        "Scope": "6c600874-458f-462e-8a8d-3d71f7889beb",
+        "Description": "Default license for new users",
         "UpdatedAt": datetime.utcnow().isoformat(),
-        "UpdatedBy": "jack@gocovi.com",
+        "UpdatedBy": "jack@gocovi.dev",
     },
-    # OAuth config (example - would be encrypted in production)
     {
-        "PartitionKey": ORG_ACME_ID,
-        "RowKey": "oauth:microsoft",
-        "AccessToken": "sample_encrypted_access_token",
-        "RefreshToken": "sample_encrypted_refresh_token",
-        "ExpiresAt": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+        "PartitionKey": "6c600874-458f-462e-8a8d-3d71f7889beb",  # Contoso Ltd org ID
+        "RowKey": "config:default_office_location",
+        "Key": "default_office_location",
+        "Value": "Boston",
+        "Type": "string",
+        "Scope": "6c600874-458f-462e-8a8d-3d71f7889beb",
+        "Description": "Default office location for new users",
         "UpdatedAt": datetime.utcnow().isoformat(),
+        "UpdatedBy": "jack@gocovi.dev",
     },
 ]
 
 # ==================== TABLE 2: ENTITIES ====================
 
 SAMPLE_ENTITIES = [
-    # Organizations (GLOBAL partition)
+    # Organizations (matches Organization model from models.py)
     {
         "PartitionKey": "GLOBAL",
-        "RowKey": f"org:{ORG_ACME_ID}",
+        "RowKey": f"org:{ORG_COVI_DEV_ID}",
         "Name": "Covi Development",
-        "Domain": "gocovi.dev",
-        "TenantId": "12345678-1234-1234-1234-123456789012",
+        "Domain": "dev",
         "IsActive": True,
         "CreatedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
         "CreatedBy": "jack@gocovi.com",
@@ -113,16 +113,16 @@ SAMPLE_ENTITIES = [
     },
     {
         "PartitionKey": "GLOBAL",
-        "RowKey": f"org:{ORG_CONTOSO_ID}",
+        "RowKey": f"org:{str(uuid.uuid4())}",
         "Name": "Contoso Ltd",
         "Domain": "contoso.com",
-        "TenantId": "87654321-4321-4321-4321-210987654321",
         "IsActive": True,
         "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
         "CreatedBy": "jack@gocovi.com",
-        "UpdatedAt": (datetime.utcnow() - timedelta(days=20)).isoformat(),
+        "UpdatedAt": (datetime.utcnow() - timedelta(days=15)).isoformat(),
     },
-    # Forms (GLOBAL and org-scoped)
+    # Forms (matches Form model from models.py)
+    # Global public form - anyone can see and execute
     {
         "PartitionKey": "GLOBAL",
         "RowKey": f"form:{FORM_GREETING_ID}",
@@ -155,14 +155,14 @@ SAMPLE_ENTITIES = [
         }),
         "LinkedWorkflow": "simple_greeting",
         "IsActive": True,
-        "IsGlobal": True,
-        "IsPublic": True,  # Public form - anyone can execute
+        "IsPublic": True,
         "CreatedBy": "jack@gocovi.com",
         "CreatedAt": (datetime.utcnow() - timedelta(days=5)).isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     },
+    # Org-scoped form - only visible to users in that org
     {
-        "PartitionKey": ORG_ACME_ID,
+        "PartitionKey": ORG_COVI_DEV_ID,
         "RowKey": f"form:{FORM_ONBOARDING_ID}",
         "Name": "New User Onboarding",
         "Description": "Creates a new Microsoft 365 user with licenses",
@@ -187,17 +187,39 @@ SAMPLE_ENTITIES = [
                     "label": "Email Address",
                     "type": "email",
                     "required": True,
-                    "placeholder": "john.doe@acmecorp.com",
+                    "placeholder": "john.doe@gocovi.dev",
                 },
             ]
         }),
         "LinkedWorkflow": "user_onboarding",
         "IsActive": True,
-        "IsGlobal": False,
-        "IsPublic": False,  # Restricted form - requires role assignment
-        "CreatedBy": "jack@gocovi.com",
+        "IsPublic": False,
+        "CreatedBy": "jack@gocovi.dev",
         "CreatedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
+    },
+    # Users (from SAMPLE_USERS, now integrated into Entities)
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": "user:jack@gocovi.com",
+        "Email": "jack@gocovi.com",
+        "DisplayName": "Jack Musick",
+        "UserType": "PLATFORM",
+        "IsPlatformAdmin": True,
+        "IsActive": True,
+        "LastLogin": datetime.utcnow().isoformat(),
+        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
+    },
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": "user:jack@gocovi.dev",
+        "Email": "jack@gocovi.dev",
+        "DisplayName": "Jack Musick",
+        "UserType": "ORG",
+        "IsPlatformAdmin": False,
+        "IsActive": True,
+        "LastLogin": datetime.utcnow().isoformat(),
+        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
     },
 ]
 
@@ -214,40 +236,47 @@ def generate_sample_executions():
         exec_id = str(uuid.uuid4())
 
         status = "Success" if i % 2 == 0 else "Failed"
-        workflow = "user_onboarding" if i % 2 == 0 else "license_management"
+        workflow = "user_onboarding" if i % 2 == 0 else "simple_greeting"
 
         # Entities table (org-scoped execution)
+        # Matches structure used by ExecutionLogger in shared/execution_logger.py
         execution_entity = {
-            "PartitionKey": ORG_ACME_ID,
+            "PartitionKey": ORG_COVI_DEV_ID,
             "RowKey": f"execution:{reverse_ts}_{exec_id}",
             "ExecutionId": exec_id,
             "WorkflowName": workflow,
             "FormId": FORM_ONBOARDING_ID if workflow == "user_onboarding" else FORM_GREETING_ID,
             "ExecutedBy": "jack@gocovi.dev",
+            "ExecutedByName": "Jack Musick",
             "Status": status,
             "InputData": json.dumps({
                 "first_name": "Test",
                 "last_name": f"User{i+1}",
-                "email": f"test{i+1}@acmecorp.com",
-                "license": "Microsoft 365 Business Standard",
+                "email": f"test{i+1}@gocovi.dev",
             }) if workflow == "user_onboarding" else json.dumps({
-                "user_email": f"existing{i+1}@acmecorp.com",
-                "action": "assign",
-                "license": "Microsoft 365 Business Premium",
+                "name": f"Test User {i+1}",
+                "greeting_type": "Hello",
+                "include_time": True,
             }),
-            "Result": json.dumps({"success": True, "user_id": f"new-user-{i+1}"}) if status == "Success" else None,
-            "ErrorMessage": "Sample error message for testing" if status == "Failed" else None,
+            "Result": json.dumps({"success": True, "message": f"Test result {i+1}"}) if status == "Success" else None,
+            "ResultInBlob": False,
+            "ErrorMessage": "Sample error for testing" if status == "Failed" else None,
+            "ErrorType": "ValidationError" if status == "Failed" else None,
+            "ErrorDetails": None,
             "DurationMs": 2000 + (i * 100),
             "StartedAt": execution_time.isoformat(),
             "CompletedAt": (execution_time + timedelta(seconds=2 + i * 0.1)).isoformat(),
+            "IntegrationCalls": None,
+            "Variables": None,
         }
 
         # Relationships table (user → execution dual index)
         user_exec_entity = {
             "PartitionKey": "GLOBAL",
-            "RowKey": f"userexec:jack@gocovi.dev:{reverse_ts}_{exec_id}",
+            "RowKey": f"userexec:jack@gocovi.dev:{exec_id}",
             "ExecutionId": exec_id,
-            "OrgId": ORG_ACME_ID,
+            "UserId": "jack@gocovi.dev",
+            "OrgId": ORG_COVI_DEV_ID,
             "WorkflowName": workflow,
             "Status": status,
             "StartedAt": execution_time.isoformat(),
@@ -262,94 +291,27 @@ def generate_sample_executions():
 # ==================== TABLE 3: RELATIONSHIPS ====================
 
 SAMPLE_RELATIONSHIPS = [
-    # Roles
-    {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"role:{ROLE_IT_MANAGERS_ID}",
-        "Name": "IT Managers",
-        "Description": "IT department managers with access to user onboarding and system configuration",
-        "IsActive": True,
-        "CreatedBy": "jack@gocovi.com",
-        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    },
-    {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"role:{ROLE_HELP_DESK_ID}",
-        "Name": "Help Desk",
-        "Description": "Help desk staff with limited access to common tasks",
-        "IsActive": True,
-        "CreatedBy": "jack@gocovi.com",
-        "CreatedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    },
-    # User-to-Role assignments (dual indexed)
-    {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"assignedrole:{ROLE_IT_MANAGERS_ID}:jack@gocovi.dev",
-        "AssignedBy": "jack@gocovi.com",
-        "AssignedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
-    },
-    {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userrole:jack@gocovi.dev:{ROLE_IT_MANAGERS_ID}",
-        "AssignedBy": "jack@gocovi.com",
-        "AssignedAt": (datetime.utcnow() - timedelta(days=60)).isoformat(),
-    },
-    # Form-to-Role assignments (dual indexed)
-    {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"formrole:{FORM_ONBOARDING_ID}:{ROLE_IT_MANAGERS_ID}",
-        "AssignedBy": "jack@gocovi.com",
-        "AssignedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
-    },
-    {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"roleform:{ROLE_IT_MANAGERS_ID}:{FORM_ONBOARDING_ID}",
-        "AssignedBy": "jack@gocovi.com",
-        "AssignedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
-    },
     # User-to-Org permissions (dual indexed)
+    # This gives jack@gocovi.dev access to Covi Development org
     {
         "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:jack@gocovi.dev:{ORG_ACME_ID}",
+        "RowKey": f"userperm:jack@gocovi.dev:{ORG_COVI_DEV_ID}",
+        "UserId": "jack@gocovi.dev",
+        "OrganizationId": ORG_COVI_DEV_ID,
         "GrantedBy": "jack@gocovi.com",
         "GrantedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
     },
     {
         "PartitionKey": "GLOBAL",
-        "RowKey": f"orgperm:{ORG_ACME_ID}:jack@gocovi.dev",
+        "RowKey": f"orgperm:{ORG_COVI_DEV_ID}:jack@gocovi.dev",
+        "UserId": "jack@gocovi.dev",
+        "OrganizationId": ORG_COVI_DEV_ID,
         "GrantedBy": "jack@gocovi.com",
         "GrantedAt": (datetime.utcnow() - timedelta(days=90)).isoformat(),
     },
 ]
 
-# ==================== TABLE 4: USERS ====================
-
-SAMPLE_USERS = [
-    {
-        "PartitionKey": "jack@gocovi.com",
-        "RowKey": "user",
-        "Email": "jack@gocovi.com",
-        "DisplayName": "Jack Musick (Admin)",
-        "UserType": "PLATFORM",
-        "IsPlatformAdmin": True,
-        "IsActive": True,
-        "LastLogin": datetime.utcnow().isoformat(),
-        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
-    },
-    {
-        "PartitionKey": "jack@gocovi.dev",
-        "RowKey": "user",
-        "Email": "jack@gocovi.dev",
-        "DisplayName": "Jack Musick (Org User)",
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "LastLogin": datetime.utcnow().isoformat(),
-        "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
-    },
-]
+# Users are now in the Entities table, added to SAMPLE_ENTITIES array
 
 
 def is_development_storage(connection_string: str) -> bool:
@@ -360,11 +322,13 @@ def is_development_storage(connection_string: str) -> bool:
 def delete_all_tables(connection_string: str, table_names: list[str]):
     """Delete all tables (only for development storage)"""
     if not is_development_storage(connection_string):
-        logger.warning("⚠️  Refusing to delete tables - not using development storage")
+        logger.warning(
+            "⚠️  Refusing to delete tables - not using development storage")
         return
 
     logger.info("Deleting all tables (development storage only)...")
-    service_client = TableServiceClient.from_connection_string(connection_string)
+    service_client = TableServiceClient.from_connection_string(
+        connection_string)
 
     for table_name in table_names:
         try:
@@ -380,11 +344,13 @@ def delete_all_tables(connection_string: str, table_names: list[str]):
 def create_all_tables(connection_string: str, table_names: list[str]):
     """Create all tables (only for development storage)"""
     if not is_development_storage(connection_string):
-        logger.warning("⚠️  Refusing to create tables - not using development storage")
+        logger.warning(
+            "⚠️  Refusing to create tables - not using development storage")
         return
 
     logger.info("Creating all tables (development storage only)...")
-    service_client = TableServiceClient.from_connection_string(connection_string)
+    service_client = TableServiceClient.from_connection_string(
+        connection_string)
 
     for table_name in table_names:
         try:
@@ -419,7 +385,8 @@ def seed_table(connection_string: str, table_name: str, entities: list):
         except Exception:
             # Entity doesn't exist, insert it
             table_client.create_entity(entity)
-            logger.info(f"  ✓ Inserted {table_name}: {entity['RowKey'][:50]}...")
+            logger.info(
+                f"  ✓ Inserted {table_name}: {entity['RowKey'][:50]}...")
             inserted += 1
 
     return inserted, skipped
@@ -434,11 +401,12 @@ def seed_all_data(connection_string: str = None):
         raise ValueError(
             "AzureWebJobsStorage environment variable not set")
 
-    logger.info("Seeding sample data for local development (4-table structure)...")
+    logger.info(
+        "Seeding sample data for local development (4-table structure)...")
     logger.info("="*60)
 
     # Define all table names
-    table_names = ["Config", "Entities", "Relationships", "Users"]
+    table_names = ["Config", "Entities", "Relationships"]
 
     # For development storage only: delete and recreate all tables
     if is_development_storage(connection_string):
@@ -447,7 +415,8 @@ def seed_all_data(connection_string: str = None):
         create_all_tables(connection_string, table_names)
         logger.info("✓ Tables reset complete\n")
     else:
-        logger.info("\n⚠️  Production storage detected - tables will not be reset")
+        logger.info(
+            "\n⚠️  Production storage detected - tables will not be reset")
         logger.info("    Only missing entities will be inserted\n")
 
     results = {}
@@ -473,11 +442,6 @@ def seed_all_data(connection_string: str = None):
         connection_string, "Relationships", all_relationships)
     results["Relationships"] = {"inserted": inserted, "skipped": skipped}
 
-    # Seed Users table
-    logger.info("\nSeeding Users table...")
-    inserted, skipped = seed_table(connection_string, "Users", SAMPLE_USERS)
-    results["Users"] = {"inserted": inserted, "skipped": skipped}
-
     # Summary
     logger.info("\n" + "="*60)
     logger.info("Seed Data Summary")
@@ -490,13 +454,10 @@ def seed_all_data(connection_string: str = None):
             f"{table_name}: +{counts['inserted']} new, ⊘{counts['skipped']} existing")
 
     logger.info(f"\nTotal: {total_inserted} inserted, {total_skipped} skipped")
-    logger.info("\nGenerated UUIDs (save these for testing):")
-    logger.info(f"  ORG_ACME_ID = '{ORG_ACME_ID}'")
-    logger.info(f"  ORG_CONTOSO_ID = '{ORG_CONTOSO_ID}'")
+    logger.info("\nSeed data UUIDs (for testing):")
+    logger.info(f"  ORG_COVI_DEV_ID = '{ORG_COVI_DEV_ID}'")
     logger.info(f"  FORM_GREETING_ID = '{FORM_GREETING_ID}'")
     logger.info(f"  FORM_ONBOARDING_ID = '{FORM_ONBOARDING_ID}'")
-    logger.info(f"  ROLE_IT_MANAGERS_ID = '{ROLE_IT_MANAGERS_ID}'")
-    logger.info(f"  ROLE_HELP_DESK_ID = '{ROLE_HELP_DESK_ID}'")
     logger.info("="*60)
 
     return results

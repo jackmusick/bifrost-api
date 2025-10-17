@@ -11,11 +11,11 @@ import os
 from azure.core.exceptions import ResourceExistsError
 from azure.data.tables import TableServiceClient
 
-# Table names (consolidated from 14 → 4 tables)
+# Table names (consolidated from 14 → 3 tables)
 REQUIRED_TABLES = [
-    "Config",        # Consolidated: Config + IntegrationConfig + OAuthConnections + SystemConfig
-                     # PartitionKey: org_id (UUID) or "GLOBAL"
-                     # RowKey: config:{key}, integration:{provider}, oauth:{provider}, system:{key}
+    "Config",        # Consolidated: Config + IntegrationConfig + SystemConfig + OAuth metadata/secrets
+                     # PartitionKey: org_id (UUID) or "GLOBAL" or "SYSTEM"
+                     # RowKey: config:{key}, oauth_{name}_metadata, oauth_{name}_client_secret, oauth_{name}_oauth_response, jobstatus:{JobName}
 
     "Entities",      # Consolidated: Organizations + Forms + WorkflowExecutions + AuditLog
                      # PartitionKey: org_id (UUID) or "GLOBAL"
@@ -24,10 +24,6 @@ REQUIRED_TABLES = [
     "Relationships", # Consolidated: Roles + UserRoles + FormRoles + UserPermissions + OrgPermissions + UserExecutions
                      # PartitionKey: "GLOBAL" (all relationships in one partition)
                      # RowKey: role:{uuid}, assignedrole:{uuid}:{id}, userrole:{id}:{uuid}, formrole:{uuid}:{uuid}, etc.
-
-    "Users",         # Unchanged - cross-org user lookup
-                     # PartitionKey: user_id
-                     # RowKey: "user"
 ]
 
 logger = logging.getLogger(__name__)

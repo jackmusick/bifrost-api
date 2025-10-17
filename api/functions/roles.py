@@ -7,7 +7,6 @@ Roles API endpoints
 
 import json
 import logging
-from datetime import datetime
 
 import azure.functions as func
 from pydantic import ValidationError
@@ -22,10 +21,10 @@ from shared.models import (
     RoleFormsResponse,
     RoleUsersResponse,
     UpdateRoleRequest,
-    generate_entity_id,
 )
 from shared.openapi_decorators import openapi_endpoint
-from shared.storage import get_table_service
+from shared.repositories.roles import RoleRepository
+from shared.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ bp = func.Blueprint()
     summary="List all roles",
     description="Get all roles (Platform admin only)",
     tags=["Roles"],
-    response_model=None  # Returns list[Role] but openapi_endpoint expects BaseModel
+    response_model=list[Role]
 )
 @with_request_context
 @require_platform_admin
@@ -56,33 +55,17 @@ async def list_roles(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} listing all roles")
 
     try:
-        # Query all roles from Relationships table (GLOBAL partition, row key prefix "role:")
-        relationships_service = get_table_service("Relationships", context)
-        role_entities = list(relationships_service.query_entities(
-            filter="PartitionKey eq 'GLOBAL' and RowKey ge 'role:' and RowKey lt 'role;' and IsActive eq true"
-        ))
+        # Get all roles using repository
+        role_repo = RoleRepository()
+        roles = role_repo.list_roles(org_id=context.org_id or "GLOBAL", active_only=True)
 
-        # Convert to response models
-        roles = []
-        for entity in role_entities:
-            # Extract UUID from RowKey "role:uuid"
-            role_id = entity["RowKey"].split(":", 1)[1]
-
-            role = Role(
-                id=role_id,
-                name=entity["Name"],
-                description=entity.get("Description"),
-                isActive=entity.get("IsActive", True),
-                createdBy=entity["CreatedBy"],
-                createdAt=entity["CreatedAt"],
-                updatedAt=entity["UpdatedAt"]
-            )
-            roles.append(role.model_dump(mode="json"))
+        # Sort roles by createdAt descending (most recent first)
+        roles.sort(key=lambda r: r.createdAt, reverse=True)
 
         logger.info(f"Returning {len(roles)} roles")
 
         return func.HttpResponse(
-            json.dumps(roles),
+            json.dumps([r.model_dump(mode="json") for r in roles]),
             status_code=200,
             mimetype="application/json"
         )
@@ -128,38 +111,15 @@ async def create_role(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         create_request = CreateRoleRequest(**request_body)
 
-        # Generate role UUID
-        role_id = generate_entity_id()
-
-        # Create entity for Relationships table
-        now = datetime.utcnow()
-        entity = {
-            "PartitionKey": "GLOBAL",  # All roles in GLOBAL partition
-            "RowKey": f"role:{role_id}",
-            "Name": create_request.name,
-            "Description": create_request.description,
-            "IsActive": True,
-            "CreatedBy": context.user_id,
-            "CreatedAt": now.isoformat(),
-            "UpdatedAt": now.isoformat()
-        }
-
-        # Insert role into Relationships table
-        relationships_service = get_table_service("Relationships", context)
-        relationships_service.insert_entity(entity)
-
-        logger.info(f"Created role '{create_request.name}' with ID {role_id}")
-
-        # Create response model
-        role = Role(
-            id=role_id,
-            name=create_request.name,
-            description=create_request.description,
-            isActive=True,
-            createdBy=context.user_id,
-            createdAt=now,
-            updatedAt=now
+        # Create role using repository
+        role_repo = RoleRepository()
+        role = role_repo.create_role(
+            role_request=create_request,
+            org_id=context.org_id or "GLOBAL",
+            created_by=context.user_id
         )
+
+        logger.info(f"Created role '{role.name}' with ID {role.id}")
 
         return func.HttpResponse(
             json.dumps(role.model_dump(mode="json")),
@@ -243,45 +203,15 @@ async def update_role(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         update_request = UpdateRoleRequest(**request_body)
 
-        # Get existing role from Relationships table
-        relationships_service = get_table_service("Relationships", context)
-        row_key = f"role:{role_id}"
-
-        existing_role = relationships_service.get_entity("GLOBAL", row_key)
-        if not existing_role:
-            error = ErrorResponse(
-                error="NotFound",
-                message=f"Role {role_id} not found"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=404,
-                mimetype="application/json"
-            )
-
-        # Update fields (only if provided)
-        now = datetime.utcnow()
-        if update_request.name is not None:
-            existing_role["Name"] = update_request.name
-        if update_request.description is not None:
-            existing_role["Description"] = update_request.description
-        existing_role["UpdatedAt"] = now.isoformat()
-
-        # Update entity
-        relationships_service.update_entity(existing_role)
+        # Update role using repository
+        role_repo = RoleRepository()
+        role = role_repo.update_role(
+            role_id=role_id,
+            org_id=context.org_id or "GLOBAL",
+            updates=update_request
+        )
 
         logger.info(f"Updated role {role_id}")
-
-        # Create response model
-        role = Role(
-            id=role_id,
-            name=existing_role["Name"],
-            description=existing_role.get("Description"),
-            isActive=existing_role.get("IsActive", True),
-            createdBy=existing_role["CreatedBy"],
-            createdAt=existing_role["CreatedAt"],
-            updatedAt=now
-        )
 
         return func.HttpResponse(
             json.dumps(role.model_dump(mode="json")),
@@ -347,20 +277,9 @@ async def delete_role(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} deleting role {role_id}")
 
     try:
-        # Get existing role from Relationships table
-        relationships_service = get_table_service("Relationships", context)
-        row_key = f"role:{role_id}"
-
-        existing_role = relationships_service.get_entity("GLOBAL", row_key)
-        if not existing_role:
-            # Idempotent delete - return 204 even if not found
-            logger.debug(f"Role {role_id} not found, but returning 204")
-            return func.HttpResponse(status_code=204)
-
-        # Soft delete
-        existing_role["IsActive"] = False
-        existing_role["UpdatedAt"] = datetime.utcnow().isoformat()
-        relationships_service.update_entity(existing_role)
+        # Soft delete using repository (idempotent - returns False if not found)
+        role_repo = RoleRepository()
+        role_repo.delete_role(role_id, context.org_id or "GLOBAL")
 
         logger.info(f"Soft deleted role {role_id}")
 
@@ -412,14 +331,9 @@ async def get_role_users(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} getting users for role {role_id}")
 
     try:
-        # Query Relationships table for assigned roles (assignedrole:role_uuid:user_id pattern)
-        relationships_service = get_table_service("Relationships", context)
-        user_role_entities = list(relationships_service.query_entities(
-            filter=f"PartitionKey eq 'GLOBAL' and RowKey ge 'assignedrole:{role_id}:' and RowKey lt 'assignedrole:{role_id};'"
-        ))
-
-        # Extract user IDs from RowKey "assignedrole:role_uuid:user_id"
-        user_ids = [entity["RowKey"].split(":", 2)[2] for entity in user_role_entities]
+        # Get role users using repository
+        role_repo = RoleRepository()
+        user_ids = role_repo.get_role_user_ids(role_id)
 
         logger.info(f"Role {role_id} has {len(user_ids)} users assigned")
 
@@ -479,10 +393,10 @@ async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         assign_request = AssignUsersToRoleRequest(**request_body)
 
-        # Validate role exists in Relationships table
-        relationships_service = get_table_service("Relationships", context)
-        role_exists = relationships_service.get_entity("GLOBAL", f"role:{role_id}")
-        if not role_exists:
+        # Validate role exists
+        role_repo = RoleRepository()
+        role = role_repo.get_role(role_id, context.org_id or "GLOBAL")
+        if not role:
             error = ErrorResponse(
                 error="NotFound",
                 message=f"Role {role_id} not found"
@@ -493,11 +407,11 @@ async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Validate that all users exist
-        users_service = get_table_service("Users", context)
+        # Validate that all users exist and are not platform admins
+        user_repo = UserRepository()
         for user_id in assign_request.userIds:
-            user_entity = users_service.get_entity(user_id, "user")
-            if not user_entity:
+            user = user_repo.get_user(user_id)
+            if not user:
                 error = ErrorResponse(
                     error="BadRequest",
                     message=f"User {user_id} not found"
@@ -508,41 +422,24 @@ async def assign_users_to_role(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json"
                 )
 
-        # Batch insert user-role assignments with DUAL INDEXING
-        # Pattern: assignedrole:role_uuid:user_id AND userrole:user_id:role_uuid
-        now = datetime.utcnow()
+            # Check if the user is a PlatformAdmin
+            if user.isPlatformAdmin:
+                error = ErrorResponse(
+                    error="BadRequest",
+                    message=f"Cannot assign roles to Platform Administrator: {user_id}"
+                )
+                return func.HttpResponse(
+                    json.dumps(error.model_dump()),
+                    status_code=400,
+                    mimetype="application/json"
+                )
 
-        for user_id in assign_request.userIds:
-            # Primary index: assignedrole:role_uuid:user_id (for querying users by role)
-            entity1 = {
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"assignedrole:{role_id}:{user_id}",
-                "UserId": user_id,
-                "RoleId": role_id,
-                "AssignedBy": context.user_id,
-                "AssignedAt": now.isoformat()
-            }
-
-            # Dual index: userrole:user_id:role_uuid (for querying roles by user)
-            entity2 = {
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"userrole:{user_id}:{role_id}",
-                "UserId": user_id,
-                "RoleId": role_id,
-                "AssignedBy": context.user_id,
-                "AssignedAt": now.isoformat()
-            }
-
-            # Upsert both indexes
-            try:
-                relationships_service.insert_entity(entity1)
-            except Exception:
-                relationships_service.update_entity(entity1)
-
-            try:
-                relationships_service.insert_entity(entity2)
-            except Exception:
-                relationships_service.update_entity(entity2)
+        # Assign users using repository (handles dual indexing automatically)
+        role_repo.assign_users_to_role(
+            role_id=role_id,
+            user_ids=assign_request.userIds,
+            assigned_by=context.user_id
+        )
 
         logger.info(f"Assigned {len(assign_request.userIds)} users to role {role_id}")
 
@@ -610,25 +507,35 @@ async def remove_user_from_role(req: func.HttpRequest) -> func.HttpResponse:
     role_id = req.route_params.get("roleId")
     user_id = req.route_params.get("userId")
 
-    assert user_id is not None, "userId is required"
+    # Validate route parameters
+    if not role_id:
+        error = ErrorResponse(
+            error="BadRequest",
+            message="Role ID is required"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    if not user_id:
+        error = ErrorResponse(
+            error="BadRequest",
+            message="User ID is required"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
 
     logger.info(f"User {context.user_id} removing user {user_id} from role {role_id}")
 
     try:
-        # Delete BOTH dual-indexed entities (idempotent)
-        relationships_service = get_table_service("Relationships", context)
-
-        # Delete primary index: assignedrole:role_uuid:user_id
-        try:
-            relationships_service.delete_entity("GLOBAL", f"assignedrole:{role_id}:{user_id}")
-        except Exception:
-            pass  # Idempotent
-
-        # Delete dual index: userrole:user_id:role_uuid
-        try:
-            relationships_service.delete_entity("GLOBAL", f"userrole:{user_id}:{role_id}")
-        except Exception:
-            pass  # Idempotent
+        # Remove user from role using repository (handles dual indexing automatically, idempotent)
+        role_repo = RoleRepository()
+        role_repo.remove_user_from_role(role_id, user_id)
 
         logger.info(f"Removed user {user_id} from role {role_id}")
 
@@ -680,14 +587,9 @@ async def get_role_forms(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} getting forms for role {role_id}")
 
     try:
-        # Query Relationships table for role-form assignments (roleform:role_uuid:form_uuid pattern)
-        relationships_service = get_table_service("Relationships", context)
-        role_form_entities = list(relationships_service.query_entities(
-            filter=f"PartitionKey eq 'GLOBAL' and RowKey ge 'roleform:{role_id}:' and RowKey lt 'roleform:{role_id};'"
-        ))
-
-        # Extract form UUIDs from RowKey "roleform:role_uuid:form_uuid"
-        form_ids = [entity["RowKey"].split(":", 2)[2] for entity in role_form_entities]
+        # Get role forms using repository
+        role_repo = RoleRepository()
+        form_ids = role_repo.get_role_form_ids(role_id)
 
         logger.info(f"Role {role_id} has access to {len(form_ids)} forms")
 
@@ -747,10 +649,10 @@ async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
         request_body = req.get_json()
         assign_request = AssignFormsToRoleRequest(**request_body)
 
-        # Validate role exists in Relationships table
-        relationships_service = get_table_service("Relationships", context)
-        role_exists = relationships_service.get_entity("GLOBAL", f"role:{role_id}")
-        if not role_exists:
+        # Validate role exists
+        role_repo = RoleRepository()
+        role = role_repo.get_role(role_id, context.org_id or "GLOBAL")
+        if not role:
             error = ErrorResponse(
                 error="NotFound",
                 message=f"Role {role_id} not found"
@@ -761,41 +663,12 @@ async def assign_forms_to_role(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Batch insert form-role assignments with DUAL INDEXING
-        # Pattern: formrole:form_uuid:role_uuid AND roleform:role_uuid:form_uuid
-        now = datetime.utcnow()
-
-        for form_id in assign_request.formIds:
-            # Primary index: formrole:form_uuid:role_uuid (for querying roles by form)
-            entity1 = {
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"formrole:{form_id}:{role_id}",
-                "FormId": form_id,
-                "RoleId": role_id,
-                "AssignedBy": context.user_id,
-                "AssignedAt": now.isoformat()
-            }
-
-            # Dual index: roleform:role_uuid:form_uuid (for querying forms by role)
-            entity2 = {
-                "PartitionKey": "GLOBAL",
-                "RowKey": f"roleform:{role_id}:{form_id}",
-                "FormId": form_id,
-                "RoleId": role_id,
-                "AssignedBy": context.user_id,
-                "AssignedAt": now.isoformat()
-            }
-
-            # Upsert both indexes
-            try:
-                relationships_service.insert_entity(entity1)
-            except Exception:
-                relationships_service.update_entity(entity1)
-
-            try:
-                relationships_service.insert_entity(entity2)
-            except Exception:
-                relationships_service.update_entity(entity2)
+        # Assign forms using repository (handles dual indexing automatically)
+        role_repo.assign_forms_to_role(
+            role_id=role_id,
+            form_ids=assign_request.formIds,
+            assigned_by=context.user_id
+        )
 
         logger.info(f"Assigned {len(assign_request.formIds)} forms to role {role_id}")
 
@@ -863,25 +736,35 @@ async def remove_form_from_role(req: func.HttpRequest) -> func.HttpResponse:
     role_id = req.route_params.get("roleId")
     form_id = req.route_params.get("formId")
 
-    assert form_id is not None, "formId is required"
+    # Validate route parameters
+    if not role_id:
+        error = ErrorResponse(
+            error="BadRequest",
+            message="Role ID is required"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    if not form_id:
+        error = ErrorResponse(
+            error="BadRequest",
+            message="Form ID is required"
+        )
+        return func.HttpResponse(
+            json.dumps(error.model_dump()),
+            status_code=400,
+            mimetype="application/json"
+        )
 
     logger.info(f"User {context.user_id} removing form {form_id} from role {role_id}")
 
     try:
-        # Delete BOTH dual-indexed entities (idempotent)
-        relationships_service = get_table_service("Relationships", context)
-
-        # Delete primary index: formrole:form_uuid:role_uuid
-        try:
-            relationships_service.delete_entity("GLOBAL", f"formrole:{form_id}:{role_id}")
-        except Exception:
-            pass  # Idempotent
-
-        # Delete dual index: roleform:role_uuid:form_uuid
-        try:
-            relationships_service.delete_entity("GLOBAL", f"roleform:{role_id}:{form_id}")
-        except Exception:
-            pass  # Idempotent
+        # Remove form from role using repository (handles dual indexing automatically, idempotent)
+        role_repo = RoleRepository()
+        role_repo.remove_form_from_role(role_id, form_id)
 
         logger.info(f"Removed form {form_id} from role {role_id}")
 
