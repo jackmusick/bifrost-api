@@ -60,15 +60,18 @@ export const useScopeStore = create<ScopeState>()(
                     "error:",
                     error
                 );
+
+                // Always mark as hydrated, even if there's no stored state
+                // This ensures queries aren't blocked for users without stored scope
+                console.log("[scopeStore] Setting _hasHydrated to true");
+                useScopeStore.setState({ _hasHydrated: true });
+
                 if (!error && state) {
                     // Sync sessionStorage immediately when rehydrating
                     console.log(
                         "[scopeStore] About to sync sessionStorage with rehydrated scope"
                     );
                     syncSessionStorage(state.scope);
-                    // Mark as hydrated
-                    console.log("[scopeStore] Setting _hasHydrated to true");
-                    useScopeStore.setState({ _hasHydrated: true });
                 }
             },
         }

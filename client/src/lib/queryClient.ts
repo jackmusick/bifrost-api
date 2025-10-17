@@ -9,8 +9,8 @@ export const queryClient = new QueryClient({
     queries: {
       // Don't refetch on window focus by default
       refetchOnWindowFocus: false,
-      // Retry failed requests 3 times by default
-      retry: 3,
+      // Disable retries for all queries
+      retry: false,
       // Stale time of 5 minutes by default
       staleTime: 5 * 60 * 1000,
     },

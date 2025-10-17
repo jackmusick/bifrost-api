@@ -14,13 +14,10 @@ import { useScopeStore } from '@/stores/scopeStore'
 
 export function useForms() {
   const orgId = useScopeStore((state) => state.scope.orgId)
-  const hasHydrated = useScopeStore((state) => state._hasHydrated)
 
   return useQuery({
     queryKey: ['forms', orgId],
     queryFn: () => formsService.getForms(),
-    // Wait for Zustand to rehydrate from localStorage before making API calls
-    enabled: hasHydrated,
     // Don't use cached data from previous scope
     staleTime: 0,
   })

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useHealthStore } from '@/stores/healthStore'
 
 interface ServerHealthResponse {
   status: 'healthy' | 'unhealthy'
@@ -6,9 +7,12 @@ interface ServerHealthResponse {
 }
 
 export function useWorkflowEngineHealth() {
-  return useQuery({
+  const setHealthStatus = useHealthStore((state) => state.setStatus)
+
+  const query = useQuery({
     queryKey: ['serverHealth'],
     queryFn: async () => {
+      setHealthStatus('checking')
       try {
         // Call the unified API health endpoint
         const response = await fetch('/api/health', {
@@ -20,9 +24,12 @@ export function useWorkflowEngineHealth() {
           throw new Error('Server health check failed')
         }
 
-        return await response.json() as ServerHealthResponse
+        const data = await response.json() as ServerHealthResponse
+        setHealthStatus(data.status === 'healthy' ? 'healthy' : 'unhealthy')
+        return data
       } catch (error) {
         // Return unhealthy status instead of throwing to avoid error boundaries
+        setHealthStatus('unhealthy')
         return {
           status: 'unhealthy' as const,
           service: 'Server',
@@ -30,8 +37,13 @@ export function useWorkflowEngineHealth() {
         }
       }
     },
-    refetchInterval: 30000, // Check every 30 seconds
+    // Only run once on mount - no automatic refetching
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: 1,
-    staleTime: 10000, // Consider data stale after 10 seconds
+    staleTime: Infinity, // Never consider stale - only manual refresh
   })
+
+  return query
 }

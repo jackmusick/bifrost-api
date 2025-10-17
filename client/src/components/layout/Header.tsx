@@ -28,6 +28,7 @@ import { useScopeStore } from "@/stores/scopeStore";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { OrgScopeSwitcher } from "@/components/OrgScopeSwitcher";
 import { useWorkflowEngineHealth } from "@/hooks/useWorkflowEngineHealth";
+import { useHealthStore } from "@/stores/healthStore";
 import type { components } from "@/lib/v1";
 type Organization = components["schemas"]["Organization"];
 
@@ -50,16 +51,13 @@ export function Header() {
     });
     const organizations: Organization[] = Array.isArray(organizationData) ? organizationData : [];
 
-    const {
-        data: engineHealth,
-        isLoading: healthLoading,
-        refetch,
-        isRefetching,
-    } = useWorkflowEngineHealth();
+    // Get health status from store and query
+    const healthStatus = useHealthStore((state) => state.status);
+    const { refetch, isRefetching } = useWorkflowEngineHealth();
 
-    // Determine status color and message
+    // Determine status color and message based on store state
     const getServerStatus = () => {
-        if (healthLoading || isRefetching) {
+        if (healthStatus === "checking" || isRefetching) {
             return {
                 color: "text-yellow-500",
                 status: "checking",
@@ -68,7 +66,7 @@ export function Header() {
             };
         }
 
-        if (engineHealth?.status === "healthy") {
+        if (healthStatus === "healthy") {
             return {
                 color: "text-green-500",
                 status: "healthy",
@@ -77,10 +75,20 @@ export function Header() {
             };
         }
 
+        if (healthStatus === "unhealthy") {
+            return {
+                color: "text-red-500",
+                status: "unhealthy",
+                message: "Server is unavailable",
+                canClick: true,
+            };
+        }
+
+        // Unknown state - hasn't been checked yet
         return {
-            color: "text-red-500",
-            status: "unhealthy",
-            message: "Server is unavailable",
+            color: "text-gray-500",
+            status: "unknown",
+            message: "Server status unknown",
             canClick: true,
         };
     };

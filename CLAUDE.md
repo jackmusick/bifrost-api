@@ -40,6 +40,11 @@ Python 3.11 (Azure Functions v2 programming model): Follow standard conventions
     -   ALWAYS create a new function per beginning path (/discovery -> discovery.py). Sub routes and functions can go inside of this file.
     -   ALWAYS decorate HTTP functions with /api/shared/openapi_decorators.py
     -   ALWAYS use a Response and Request model when applicable
+-   Business logic MUST live in api/shared/, NOT in api/functions/:
+    -   Functions are thin HTTP handlers that call shared modules
+    -   Keep functions focused on HTTP concerns (parsing requests, returning responses)
+    -   Move complex logic, algorithms, and business rules to shared modules
+    -   Example: User provisioning logic lives in shared/user_provisioning.py, not in roles_source.py
 -   ALWAYS create and update unit and integration tests in /api/tests. Work is NOT complete until this is done and passing 100%.
 -   ALWAYS run `npm run generate:types`in client/ after updating type definitions in the API.
     -   This should always be ran with the function running

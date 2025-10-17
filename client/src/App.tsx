@@ -121,11 +121,11 @@ function App() {
                                 }
                             />
 
-                            {/* History - PlatformAdmin only */}
+                            {/* History - PlatformAdmin or OrgUser */}
                             <Route
                                 path="history"
                                 element={
-                                    <ProtectedRoute requirePlatformAdmin>
+                                    <ProtectedRoute requireOrgUser>
                                         <WorkflowEngineGuard>
                                             <ExecutionHistory />
                                         </WorkflowEngineGuard>
@@ -135,7 +135,7 @@ function App() {
                             <Route
                                 path="history/:executionId"
                                 element={
-                                    <ProtectedRoute requirePlatformAdmin>
+                                    <ProtectedRoute requireOrgUser>
                                         <WorkflowEngineGuard>
                                             <ExecutionDetails />
                                         </WorkflowEngineGuard>

@@ -20,6 +20,7 @@ yarn-error.log
 # Azure SWA
 .azure/
 swa-db-connections/
+staticwebapp.config.json
 
 # IDE
 .vscode/

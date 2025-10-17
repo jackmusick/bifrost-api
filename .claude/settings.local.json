@@ -45,7 +45,10 @@
       "Bash(npm run test:integration:*)",
       "WebSearch",
       "Bash(npm run test:ci:*)",
-      "WebFetch(domain:stackoverflow.com)"
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run typecheck)",
+      "Bash(AzureWebJobsStorage=\"UseDevelopmentStorage=true\" python -c \"\nfrom shared.storage import TableStorageService\n\n# Check Relationships table\nrelationships_service = TableStorageService(''Relationships'')\nquery_filter = \"\"PartitionKey eq ''GLOBAL'' and RowKey ge ''userperm:jack@gocovi.dev:'' and RowKey lt ''userperm:jack@gocovi.dev~''\"\"\nperms = list(relationships_service.query_entities(query_filter))\n\nprint(f''Found {len(perms)} org permissions for jack@gocovi.dev:'')\nfor perm in perms:\n    print(f\"\"  - RowKey: {perm.get(''RowKey'')}\"\")\n    print(f\"\"    OrgId: {perm.get(''OrganizationId'')}\"\")\n    print(f\"\"    UserId: {perm.get(''UserId'')}\"\")\n    print(f\"\"    CreatedAt: {perm.get(''CreatedAt'')}\"\")\n\")"
     ],
     "deny": [],
     "ask": []

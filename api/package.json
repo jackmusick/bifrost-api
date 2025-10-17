@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "description": "Azure Functions API for Bifrost Integrations Platform",
     "scripts": {
+        "dev": "func start",
         "typecheck": "npx pyright",
         "typecheck:watch": "npx pyright --watch",
         "lint": "ruff check .",
@@ -15,7 +16,8 @@
         "test:all": "pytest tests/ -v",
         "test:ci": "pytest tests/unit --cov --cov-branch --cov-report=xml && pytest tests/integration --cov --cov-branch --cov-report=xml --cov-append --cov-report=xml",
         "test:watch": "pytest-watch",
-        "check": "npm run lint && npm run typecheck && npm run test"
+        "check": "npm run lint && npm run typecheck && npm run test",
+        "deploy": "func azure functionapp publish bifrost-api-ugyjs"
     },
     "devDependencies": {
         "pyright": "^1.1.390"

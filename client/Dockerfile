@@ -16,4 +16,4 @@ EXPOSE 4280 5173
 
 # Start SWA CLI with Vite
 # The API URL will be provided via environment variable
-CMD ["sh", "-c", "echo 'Starting SWA with API_URL=${API_URL}' && npm run dev"]
+CMD ["sh", "-c", "echo 'Starting SWA with API_URL=${API_URL}' && npm run dev:docker"]

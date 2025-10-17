@@ -6,12 +6,14 @@
     "author": "Jack Musick <jack@gocovi.com>",
     "private": true,
     "scripts": {
-        "dev": "swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://functions:80",
+        "dev": "cp staticwebapp.config.local.json staticwebapp.config.json && swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://localhost:7071",
+        "dev:docker": "cp staticwebapp.config.local.json staticwebapp.config.json && swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://functions",
         "build": "tsc -b && vite build",
+        "build:prod": "cp staticwebapp.config.prod.json staticwebapp.config.json && npm run build",
         "tsc": "tsc -b",
         "preview": "swa start dist",
         "lint": "eslint .",
-        "deploy": "swa deploy",
+        "deploy": "npm run build:prod && swa deploy",
         "generate:types": "npx openapi-typescript http://localhost:7071/api/openapi.json -o src/lib/v1.d.ts"
     },
     "dependencies": {

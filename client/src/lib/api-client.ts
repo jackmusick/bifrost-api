@@ -5,6 +5,7 @@
 
 import createClient from "openapi-fetch";
 import type { paths } from "./v1";
+import { useHealthStore } from "@/stores/healthStore";
 
 // Create base client
 export const apiClient = createClient<paths>({
@@ -28,6 +29,15 @@ apiClient.use({
 
         return request;
     },
+    async onResponse({ response }) {
+        // Check for 500+ errors and mark server as unhealthy
+        if (response.status >= 500) {
+            const healthStore = useHealthStore.getState();
+            healthStore.incrementErrorCount();
+            healthStore.markUnhealthy();
+        }
+        return response;
+    },
 });
 
 /**
@@ -48,6 +58,15 @@ export function withOrgContext(orgId: string) {
             }
 
             return request;
+        },
+        async onResponse({ response }) {
+            // Check for 500+ errors and mark server as unhealthy
+            if (response.status >= 500) {
+                const healthStore = useHealthStore.getState();
+                healthStore.incrementErrorCount();
+                healthStore.markUnhealthy();
+            }
+            return response;
         },
     });
 
@@ -73,6 +92,15 @@ export function withUserContext(userId: string) {
 
             return request;
         },
+        async onResponse({ response }) {
+            // Check for 500+ errors and mark server as unhealthy
+            if (response.status >= 500) {
+                const healthStore = useHealthStore.getState();
+                healthStore.incrementErrorCount();
+                healthStore.markUnhealthy();
+            }
+            return response;
+        },
     });
 
     return client;
@@ -91,6 +119,15 @@ export function withContext(orgId: string, userId: string) {
             request.headers.set("X-Organization-Id", orgId);
             request.headers.set("X-User-Id", userId);
             return request;
+        },
+        async onResponse({ response }) {
+            // Check for 500+ errors and mark server as unhealthy
+            if (response.status >= 500) {
+                const healthStore = useHealthStore.getState();
+                healthStore.incrementErrorCount();
+                healthStore.markUnhealthy();
+            }
+            return response;
         },
     });
 

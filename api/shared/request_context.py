@@ -144,9 +144,8 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         logger.error(f"Failed to parse Easy Auth principal: {e}")
         raise ValueError(f"Invalid authentication: {e}") from e
 
-    # Check if user is platform admin (auto-create if they have PlatformAdmin role)
-    has_platform_admin_role = 'PlatformAdmin' in user_roles
-    is_admin = _is_platform_admin(email, name, has_platform_admin_role)
+    # Check if user is platform admin (role set by GetRoles endpoint)
+    is_admin = 'PlatformAdmin' in user_roles
 
     # Determine org_id based on user role and headers
     provided_org_id = req.headers.get('X-Organization-Id')
@@ -179,12 +178,27 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
     org_id = _get_user_org_id(email)
 
     if not org_id:
-        # User not found - try auto-provisioning by email domain
-        logger.info(f"User {email} has no org assignment, attempting domain-based auto-provisioning")
-        org_id = _auto_provision_user_by_domain(email, name)
+        # User exists but has no org assignment
+        # Try auto-provisioning by domain before failing
+        logger.info(f"User {email} has no org assignment, attempting auto-provisioning")
 
-        if not org_id:
-            raise ValueError(f"User {email} has no organization assignment. Contact administrator.")
+        try:
+            from shared.user_provisioning import ensure_user_provisioned
+
+            result = ensure_user_provisioned(email)
+
+            if result.was_created:
+                logger.info(f"Auto-provisioned user {email} to org {result.org_id}")
+
+            org_id = result.org_id
+
+            if not org_id:
+                # Still no org after provisioning attempt
+                raise ValueError(f"User {email} has no organization assignment. Contact administrator.")
+
+        except Exception as e:
+            logger.error(f"Auto-provisioning failed for {email}: {e}")
+            raise ValueError(f"User {email} has no organization assignment. Contact administrator.") from e
 
     logger.info(f"User {email} in org scope: {org_id}")
 
@@ -196,99 +210,6 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         is_platform_admin=False,
         is_function_key=False
     )
-
-
-def _is_platform_admin(email: str, display_name: str, has_platform_admin_role: bool) -> bool:
-    """
-    Check if user is a platform admin, auto-creating if they have PlatformAdmin role.
-
-    Special case: The very first user to log into the platform is automatically
-    promoted to PlatformAdmin, regardless of their EasyAuth roles.
-
-    Args:
-        email: User's email address
-        display_name: User's display name
-        has_platform_admin_role: Whether user has 'PlatformAdmin' in their EasyAuth roles
-
-    Returns:
-        True if user is a platform admin, False otherwise
-    """
-    from datetime import datetime
-
-    from shared.storage import TableStorageService
-
-    try:
-        users_service = TableStorageService("Users")
-        # Users table structure: PK=email, RK="user"
-
-        try:
-            user_entity = users_service.get_entity(email, "user")
-            assert user_entity is not None, "User entity not found"
-            is_admin = user_entity.get("IsPlatformAdmin", False)
-            user_type = user_entity.get("UserType")
-            logger.info(f"User lookup for {email}: IsPlatformAdmin={is_admin}, UserType={user_type}")
-            return is_admin and user_type == "PLATFORM"
-
-        except Exception:
-            # User doesn't exist - check if they should be auto-created as PlatformAdmin
-
-            # First, check if this is the very first user in the system
-            # Only fetch the first user to efficiently check if ANY users exist
-            query_result = users_service.query_entities(
-                "PartitionKey ne ''",
-                select=["PartitionKey"]
-            )
-            # Use next() to get just one entity - much more efficient than list()
-            first_user = next(iter(query_result), None)
-            is_first_user = first_user is None
-
-            if is_first_user:
-                logger.info(f"First user login detected! Auto-promoting {email} to PlatformAdmin")
-
-                # Create new PlatformAdmin user
-                new_user = {
-                    "PartitionKey": email,
-                    "RowKey": "user",
-                    "Email": email,
-                    "DisplayName": display_name or email.split('@')[0],
-                    "UserType": "PLATFORM",
-                    "IsPlatformAdmin": True,
-                    "IsActive": True,
-                    "CreatedAt": datetime.utcnow().isoformat(),
-                    "LastLogin": datetime.utcnow().isoformat()
-                }
-
-                users_service.insert_entity(new_user)
-                logger.info(f"Successfully created first user as PlatformAdmin: {email}")
-                return True
-
-            # Not first user - check if they have PlatformAdmin role from EasyAuth
-            if has_platform_admin_role:
-                logger.info(f"Auto-creating PlatformAdmin user for {email}")
-
-                # Create new PlatformAdmin user
-                new_user = {
-                    "PartitionKey": email,
-                    "RowKey": "user",
-                    "Email": email,
-                    "DisplayName": display_name or email.split('@')[0],
-                    "UserType": "PLATFORM",
-                    "IsPlatformAdmin": True,
-                    "IsActive": True,
-                    "CreatedAt": datetime.utcnow().isoformat(),
-                    "LastLogin": datetime.utcnow().isoformat()
-                }
-
-                users_service.insert_entity(new_user)
-                logger.info(f"Successfully created PlatformAdmin user: {email}")
-                return True
-            else:
-                logger.warning(f"User {email} not found and doesn't have PlatformAdmin role")
-                return False
-
-    except Exception as e:
-        logger.error(f"Failed to check/create platform admin status for {email}: {e}")
-        return False
 
 
 def _get_user_org_id(email: str) -> str | None:
@@ -327,91 +248,4 @@ def _get_user_org_id(email: str) -> str | None:
 
     except Exception as e:
         logger.error(f"Error looking up user org: {e}")
-        return None
-
-
-def _auto_provision_user_by_domain(email: str, display_name: str) -> str | None:
-    """
-    Auto-provision a user by matching their email domain to an organization.
-
-    If a user's email domain (e.g., 'acme.com' from 'user@acme.com') matches
-    an organization's Domain field, auto-create the user as an ORG user and
-    assign them to that organization.
-
-    Args:
-        email: User's email address
-        display_name: User's display name
-
-    Returns:
-        Organization ID if user was auto-provisioned, None otherwise
-    """
-    from datetime import datetime
-
-    from shared.storage import TableStorageService
-
-    try:
-        # Extract domain from email (e.g., 'acme.com' from 'user@acme.com')
-        if '@' not in email:
-            logger.warning(f"Invalid email format for auto-provisioning: {email}")
-            return None
-
-        user_domain = email.split('@')[1].lower()
-        logger.info(f"Attempting to auto-provision user with domain: {user_domain}")
-
-        # Query all active organizations with matching domain
-        entities_service = TableStorageService("Entities")
-        query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'org:' and RowKey lt 'org;' and IsActive eq true"
-        org_entities = list(entities_service.query_entities(query_filter))
-
-        # Find organization with matching domain
-        matched_org = None
-        for org_entity in org_entities:
-            org_domain = org_entity.get("Domain")
-            if org_domain and org_domain.lower() == user_domain:
-                matched_org = org_entity
-                logger.info(f"Found matching organization: {org_entity['Name']} with domain {org_domain}")
-                break
-
-        if not matched_org:
-            logger.info(f"No organization found with domain: {user_domain}")
-            return None
-
-        # Extract org_id from RowKey "org:uuid"
-        org_id = matched_org["RowKey"].split(":", 1)[1]
-
-        # Create new ORG user
-        users_service = TableStorageService("Users")
-        new_user = {
-            "PartitionKey": email,
-            "RowKey": "user",
-            "Email": email,
-            "DisplayName": display_name or email.split('@')[0],
-            "UserType": "ORG",
-            "IsPlatformAdmin": False,
-            "IsActive": True,
-            "CreatedAt": datetime.utcnow().isoformat(),
-            "LastLogin": datetime.utcnow().isoformat()
-        }
-
-        users_service.insert_entity(new_user)
-        logger.info(f"Auto-created ORG user: {email}")
-
-        # Create user-org permission relationship in Relationships table
-        # Structure: PK="GLOBAL", RK="userperm:{email}:{org_id}"
-        relationships_service = TableStorageService("Relationships")
-        permission_entity = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"userperm:{email}:{org_id}",
-            "UserId": email,
-            "OrganizationId": org_id,
-            "CreatedAt": datetime.utcnow().isoformat()
-        }
-
-        relationships_service.insert_entity(permission_entity)
-        logger.info(f"Created org permission for {email} -> {org_id}")
-
-        return org_id
-
-    except Exception as e:
-        logger.error(f"Error auto-provisioning user by domain: {e}", exc_info=True)
         return None

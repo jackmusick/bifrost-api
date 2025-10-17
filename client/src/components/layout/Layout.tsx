@@ -39,8 +39,7 @@ export function Layout() {
     <div className="min-h-screen bg-background">
       <Header />
       <div className="flex">
-        {/* Only show sidebar for platform admins, not org users */}
-        {isPlatformAdmin && <Sidebar />}
+        <Sidebar />
         <main className="flex-1 p-6 lg:p-8">
           <Outlet />
         </main>

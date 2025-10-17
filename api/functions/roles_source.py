@@ -8,6 +8,9 @@ This function is invoked by SWA's rolesSource configuration:
     "rolesSource": "/api/GetRoles"
   }
 }
+
+Note: This endpoint delegates to shared/user_provisioning.py for all
+auto-provisioning logic (first user, domain-based join, etc.)
 """
 
 import json
@@ -15,7 +18,7 @@ import logging
 
 import azure.functions as func
 
-from shared.storage import TableStorageService
+from shared.user_provisioning import ensure_user_provisioned
 
 logger = logging.getLogger(__name__)
 
@@ -52,90 +55,36 @@ def get_roles(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"GetRoles called for user: {user_email} (ID: {user_id})")
 
-        if not user_id:
-            logger.warning("No userId provided in GetRoles request")
+        if not user_id or not user_email:
+            logger.warning("No userId/userDetails provided in GetRoles request")
             return func.HttpResponse(
                 json.dumps({"roles": ["anonymous"]}),
                 status_code=200,
-                mimetype="application/json"
+                mimetype="application/json",
             )
 
-        # Query Users table to get user details
-        users_service = TableStorageService("Users")
-        user_entity = users_service.get_entity(user_email, "user")
+        # Ensure user is provisioned (handles first user, domain-based join, etc.)
+        try:
+            result = ensure_user_provisioned(user_email)
 
-        if not user_entity:
-            # User doesn't exist - check if this is the first user in the system
-            logger.info(f"User {user_email} not found, checking if first user")
+            # Return roles based on provisioning result
+            response = {"roles": result.roles}
+            logger.info(f"Returning roles for {user_email}: {result.roles}")
 
-            # Efficiently check if ANY users exist
-            query_result = users_service.query_entities(
-                "PartitionKey ne ''",
-                select=["PartitionKey"]
+            return func.HttpResponse(
+                json.dumps(response),
+                status_code=200,
+                mimetype="application/json",
             )
-            first_user = next(iter(query_result), None)
-            is_first_user = first_user is None
 
-            if is_first_user:
-                # First user in the system - auto-promote to PlatformAdmin
-                logger.info(f"First user login detected! Auto-promoting {user_email} to PlatformAdmin")
-
-                from datetime import datetime
-
-                new_user = {
-                    "PartitionKey": user_email,
-                    "RowKey": "user",
-                    "Email": user_email,
-                    "DisplayName": user_email.split('@')[0],
-                    "UserType": "PLATFORM",
-                    "IsPlatformAdmin": True,
-                    "IsActive": True,
-                    "CreatedAt": datetime.utcnow().isoformat(),
-                    "LastLogin": datetime.utcnow().isoformat()
-                }
-
-                users_service.insert_entity(new_user)
-                logger.info(f"Successfully created first user as PlatformAdmin: {user_email}")
-
-                # Return PlatformAdmin role
-                return func.HttpResponse(
-                    json.dumps({"roles": ["authenticated", "PlatformAdmin"]}),
-                    status_code=200,
-                    mimetype="application/json"
-                )
-            else:
-                # Not first user and doesn't exist - return anonymous
-                logger.warning(f"User {user_email} not found in database and not first user, assigning anonymous role")
-                return func.HttpResponse(
-                    json.dumps({"roles": ["anonymous"]}),
-                    status_code=200,
-                    mimetype="application/json"
-                )
-
-        # Start building roles list
-        roles = ["authenticated"]  # All authenticated users get this base role
-
-        # Check if platform admin
-        is_platform_admin = user_entity.get("IsPlatformAdmin", False)
-        user_type = user_entity.get("UserType", "ORG")
-
-        if is_platform_admin and user_type == "PLATFORM":
-            roles.append("PlatformAdmin")
-            logger.info(f"User {user_email} assigned PlatformAdmin role")
-        else:
-            # Organization user
-            roles.append("OrgUser")
-            logger.info(f"User {user_email} assigned OrgUser role")
-
-        # Return roles to SWA
-        response = {"roles": roles}
-        logger.info(f"Returning roles for {user_email}: {roles}")
-
-        return func.HttpResponse(
-            json.dumps(response),
-            status_code=200,
-            mimetype="application/json"
-        )
+        except ValueError as e:
+            # User could not be auto-provisioned (no domain match)
+            logger.warning(f"User {user_email} could not be provisioned: {e}")
+            return func.HttpResponse(
+                json.dumps({"roles": ["anonymous"]}),
+                status_code=200,
+                mimetype="application/json",
+            )
 
     except Exception as e:
         logger.error(f"Error in GetRoles: {str(e)}", exc_info=True)
@@ -143,5 +92,5 @@ def get_roles(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"roles": ["anonymous"]}),
             status_code=200,
-            mimetype="application/json"
+            mimetype="application/json",
         )

@@ -13,27 +13,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useForms, useDeleteForm } from '@/hooks/useForms'
 import { useOrgScope } from '@/contexts/OrgScopeContext'
 import { useAuth } from '@/hooks/useAuth'
-import { useOrganizations } from '@/hooks/useOrganizations'
 
 export function Forms() {
   const navigate = useNavigate()
   const { scope, isGlobalScope } = useOrgScope()
   const { data: forms, isLoading, refetch } = useForms()
-  const { data: organization } = useOrganizations()
-  const organizations = organization ? [organization] : []
   const deleteForm = useDeleteForm()
   const { isPlatformAdmin } = useAuth()
 
   // For now, only platform admins can manage forms
   // TODO: Add organization-specific permission check via API
   const canManageForms = isPlatformAdmin
-
-  // Helper to get organization name from orgId
-  const getOrgName = (orgId: string) => {
-    if (orgId === 'GLOBAL') return 'Global'
-    const org = organizations?.find(o => o.id === orgId)
-    return org?.name || orgId
-  }
 
   const handleCreate = () => {
     navigate('/forms/new')
@@ -140,20 +130,6 @@ export function Forms() {
                   <div>
                     <span className="text-muted-foreground">Fields:</span>{' '}
                     {form.formSchema.fields.length} field{form.formSchema.fields.length !== 1 ? 's' : ''}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Organization:</span>{' '}
-                    {form.isGlobal ? (
-                      <Badge variant="secondary" className="text-xs">
-                        <Globe className="mr-1 h-3 w-3" />
-                        Global
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">
-                        <Building2 className="mr-1 h-3 w-3" />
-                        {getOrgName(form.orgId)}
-                      </Badge>
-                    )}
                   </div>
                 </div>
 

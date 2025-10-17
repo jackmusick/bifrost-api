@@ -153,19 +153,13 @@ class TestGetRequestContext:
 
     def test_platform_admin_user_global_scope(self, mock_users_table):
         """Platform admin user with no X-Organization-Id header"""
-        # Mock user lookup - platform admin
-        mock_users_table.get_entity.return_value = {
-            "PartitionKey": "admin@example.com",
-            "RowKey": "user",
-            "Email": "admin@example.com",
-            "Name": "Admin User",
-            "IsPlatformAdmin": True,
-            "UserType": "PLATFORM"
-        }
-
-        # Create principal header (base64 encoded JSON)
+        # Create principal header (base64 encoded JSON) with PlatformAdmin role
         import base64
-        principal = {"userId": "admin@example.com", "userDetails": "admin@example.com"}
+        principal = {
+            "userId": "admin@example.com",
+            "userDetails": "admin@example.com",
+            "userRoles": ["authenticated", "PlatformAdmin"]  # Role from GetRoles
+        }
         principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
 
         req = Mock(spec=func.HttpRequest)
@@ -183,19 +177,13 @@ class TestGetRequestContext:
 
     def test_platform_admin_user_with_org_header(self, mock_users_table):
         """Platform admin user switching to specific org scope"""
-        # Mock user lookup - platform admin
-        mock_users_table.get_entity.return_value = {
-            "PartitionKey": "admin@example.com",
-            "RowKey": "user",
-            "Email": "admin@example.com",
-            "Name": "Admin User",
-            "IsPlatformAdmin": True,
-            "UserType": "PLATFORM"
-        }
-
-        # Create principal header (base64 encoded JSON)
+        # Create principal header (base64 encoded JSON) with PlatformAdmin role
         import base64
-        principal = {"userId": "admin@example.com", "userDetails": "admin@example.com"}
+        principal = {
+            "userId": "admin@example.com",
+            "userDetails": "admin@example.com",
+            "userRoles": ["authenticated", "PlatformAdmin"]  # Role from GetRoles
+        }
         principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
 
         req = Mock(spec=func.HttpRequest)
@@ -300,107 +288,19 @@ class TestGetRequestContext:
         with pytest.raises(PermissionError, match="Only platform administrators"):
             get_request_context(req)
 
+    # NOTE: First user auto-promotion and platform admin auto-creation
+    # now happen in GetRoles endpoint, not in request_context
+    # These tests are moved to test_roles_source.py
+
+    @pytest.mark.skip(reason="User auto-provisioning moved to GetRoles endpoint")
     def test_first_user_auto_promotion_to_platform_admin(self, mock_users_table):
-        """First user in system auto-promoted to PlatformAdmin regardless of roles"""
-        # Mock user lookup - user doesn't exist
-        from azure.core.exceptions import ResourceNotFoundError
-        mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
+        """DEPRECATED: First user auto-promotion now happens in GetRoles"""
+        pass
 
-        # Mock query_entities to return empty list (no users in system)
-        mock_users_table.query_entities.return_value = []
-
-        # Mock successful insert
-        mock_users_table.insert_entity.return_value = {
-            "PartitionKey": "first-user@example.com",
-            "RowKey": "user",
-            "Email": "first-user@example.com",
-            "DisplayName": "first-user",
-            "UserType": "PLATFORM",
-            "IsPlatformAdmin": True,
-            "IsActive": True
-        }
-
-        # Create principal WITHOUT PlatformAdmin role (but should still become admin)
-        principal = {
-            "userId": "first-user@example.com",
-            "userDetails": "first-user@example.com",
-            "userRoles": ["authenticated"]  # No PlatformAdmin role
-        }
-        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
-
-        req = Mock(spec=func.HttpRequest)
-        req.headers = {
-            "X-MS-CLIENT-PRINCIPAL": principal_header
-        }
-        req.params = {}
-
-        context = get_request_context(req)
-
-        # Verify user was auto-created as PlatformAdmin
-        mock_users_table.insert_entity.assert_called_once()
-        created_user = mock_users_table.insert_entity.call_args[0][0]
-        assert created_user["Email"] == "first-user@example.com"
-        assert created_user["UserType"] == "PLATFORM"
-        assert created_user["IsPlatformAdmin"] is True
-
-        # Verify context is correct
-        assert context.user_id == "first-user@example.com"
-        assert context.email == "first-user@example.com"
-        assert context.is_platform_admin is True
-        assert context.org_id is None
-        assert context.scope == "GLOBAL"
-
+    @pytest.mark.skip(reason="User auto-provisioning moved to GetRoles endpoint")
     def test_platform_admin_auto_creation(self, mock_users_table):
-        """Auto-create PlatformAdmin user when they don't exist but have the role"""
-        # Mock user lookup - user doesn't exist
-        from azure.core.exceptions import ResourceNotFoundError
-        mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
-
-        # Mock query_entities to return existing users (not first user)
-        mock_users_table.query_entities.return_value = [
-            {"PartitionKey": "existing@example.com", "RowKey": "user"}
-        ]
-
-        # Mock successful insert
-        mock_users_table.insert_entity.return_value = {
-            "PartitionKey": "new-admin@example.com",
-            "RowKey": "user",
-            "Email": "new-admin@example.com",
-            "DisplayName": "new-admin",
-            "UserType": "PLATFORM",
-            "IsPlatformAdmin": True,
-            "IsActive": True
-        }
-
-        # Create principal with PlatformAdmin role
-        principal = {
-            "userId": "new-admin@example.com",
-            "userDetails": "new-admin@example.com",
-            "userRoles": ["authenticated", "PlatformAdmin"]
-        }
-        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
-
-        req = Mock(spec=func.HttpRequest)
-        req.headers = {
-            "X-MS-CLIENT-PRINCIPAL": principal_header
-        }
-        req.params = {}
-
-        context = get_request_context(req)
-
-        # Verify user was auto-created
-        mock_users_table.insert_entity.assert_called_once()
-        created_user = mock_users_table.insert_entity.call_args[0][0]
-        assert created_user["Email"] == "new-admin@example.com"
-        assert created_user["UserType"] == "PLATFORM"
-        assert created_user["IsPlatformAdmin"] is True
-
-        # Verify context is correct
-        assert context.user_id == "new-admin@example.com"
-        assert context.email == "new-admin@example.com"
-        assert context.is_platform_admin is True
-        assert context.org_id is None
-        assert context.scope == "GLOBAL"
+        """DEPRECATED: Platform admin auto-creation now happens in GetRoles"""
+        pass
 
     def test_user_without_platform_admin_role_not_created(self, mock_users_table, monkeypatch):
         """User without PlatformAdmin role should not be auto-created (when not first user)"""
@@ -467,88 +367,10 @@ class TestGetRequestContext:
         assert context.org_id is None
         assert context.scope == "GLOBAL"
 
+    @pytest.mark.skip(reason="User auto-provisioning moved to GetRoles endpoint")
     def test_domain_based_auto_provisioning_success(self, mock_users_table, monkeypatch):
-        """User auto-provisioned when email domain matches organization"""
-        from azure.core.exceptions import ResourceNotFoundError
-
-        # Mock user lookup - user doesn't exist
-        mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
-
-        # Mock relationships table - no existing assignments
-        mock_relationships_table = Mock(spec=TableStorageService)
-        mock_relationships_table.query_entities.return_value = []
-
-        # Mock entities table - organization with matching domain
-        mock_entities_table = Mock(spec=TableStorageService)
-        mock_entities_table.query_entities.return_value = [
-            {
-                "PartitionKey": "GLOBAL",
-                "RowKey": "org:test-org-123",
-                "Name": "Acme Corporation",
-                "Domain": "acme.com",
-                "IsActive": True
-            }
-        ]
-
-        # Track insert calls
-        user_insert_called = False
-        relationship_insert_called = False
-
-        def mock_users_insert(entity):
-            nonlocal user_insert_called
-            user_insert_called = True
-            assert entity["Email"] == "newuser@acme.com"
-            assert entity["UserType"] == "ORG"
-            assert entity["IsPlatformAdmin"] is False
-
-        def mock_relationships_insert(entity):
-            nonlocal relationship_insert_called
-            relationship_insert_called = True
-            assert entity["PartitionKey"] == "GLOBAL"
-            assert entity["RowKey"] == "userperm:newuser@acme.com:test-org-123"
-            assert entity["UserId"] == "newuser@acme.com"
-            assert entity["OrganizationId"] == "test-org-123"
-
-        mock_users_table.insert_entity.side_effect = mock_users_insert
-        mock_relationships_table.insert_entity.side_effect = mock_relationships_insert
-
-        def mock_table_service_init(table_name):
-            if table_name == "Users":
-                return mock_users_table
-            elif table_name == "Relationships":
-                return mock_relationships_table
-            elif table_name == "Entities":
-                return mock_entities_table
-            return Mock(spec=TableStorageService)
-
-        monkeypatch.setattr("shared.storage.TableStorageService", mock_table_service_init)
-
-        # Create principal without PlatformAdmin role
-        principal = {
-            "userId": "newuser@acme.com",
-            "userDetails": "newuser@acme.com",
-            "userRoles": ["authenticated"]
-        }
-        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
-
-        req = Mock(spec=func.HttpRequest)
-        req.headers = {
-            "X-MS-CLIENT-PRINCIPAL": principal_header
-        }
-        req.params = {}
-
-        context = get_request_context(req)
-
-        # Verify user was auto-created with correct properties
-        assert user_insert_called, "User should have been created"
-        assert relationship_insert_called, "Org relationship should have been created"
-
-        # Verify context is correct
-        assert context.user_id == "newuser@acme.com"
-        assert context.email == "newuser@acme.com"
-        assert context.is_platform_admin is False
-        assert context.org_id == "test-org-123"
-        assert context.scope == "test-org-123"
+        """DEPRECATED: Domain-based auto-provisioning now happens in GetRoles"""
+        pass
 
     def test_domain_based_auto_provisioning_no_matching_domain(self, mock_users_table, monkeypatch):
         """User not auto-provisioned when no matching domain found"""
@@ -605,74 +427,10 @@ class TestGetRequestContext:
         # Verify user was NOT auto-created
         mock_users_table.insert_entity.assert_not_called()
 
+    @pytest.mark.skip(reason="User auto-provisioning moved to GetRoles endpoint")
     def test_domain_based_auto_provisioning_case_insensitive(self, mock_users_table, monkeypatch):
-        """Domain matching is case-insensitive"""
-        from azure.core.exceptions import ResourceNotFoundError
-
-        # Mock user lookup - user doesn't exist
-        mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
-
-        # Mock relationships table - no existing assignments
-        mock_relationships_table = Mock(spec=TableStorageService)
-        mock_relationships_table.query_entities.return_value = []
-
-        # Mock entities table - organization with UPPERCASE domain
-        mock_entities_table = Mock(spec=TableStorageService)
-        mock_entities_table.query_entities.return_value = [
-            {
-                "PartitionKey": "GLOBAL",
-                "RowKey": "org:test-org-456",
-                "Name": "Big Corp",
-                "Domain": "BIGCORP.COM",  # Uppercase - should still match
-                "IsActive": True
-            }
-        ]
-
-        user_insert_called = False
-        relationship_insert_called = False
-
-        def mock_users_insert(entity):
-            nonlocal user_insert_called
-            user_insert_called = True
-
-        def mock_relationships_insert(entity):
-            nonlocal relationship_insert_called
-            relationship_insert_called = True
-
-        mock_users_table.insert_entity.side_effect = mock_users_insert
-        mock_relationships_table.insert_entity.side_effect = mock_relationships_insert
-
-        def mock_table_service_init(table_name):
-            if table_name == "Users":
-                return mock_users_table
-            elif table_name == "Relationships":
-                return mock_relationships_table
-            elif table_name == "Entities":
-                return mock_entities_table
-            return Mock(spec=TableStorageService)
-
-        monkeypatch.setattr("shared.storage.TableStorageService", mock_table_service_init)
-
-        # User email with lowercase domain
-        principal = {
-            "userId": "user@bigcorp.com",
-            "userDetails": "user@bigcorp.com",
-            "userRoles": ["authenticated"]
-        }
-        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
-
-        req = Mock(spec=func.HttpRequest)
-        req.headers = {
-            "X-MS-CLIENT-PRINCIPAL": principal_header
-        }
-        req.params = {}
-
-        context = get_request_context(req)
-
-        # Verify user was auto-created (case-insensitive match worked)
-        assert user_insert_called, "User should have been created"
-        assert relationship_insert_called, "Org relationship should have been created"
-        assert context.org_id == "test-org-456"
+        """DEPRECATED: Domain-based auto-provisioning now happens in GetRoles"""
+        pass
 
 
 class TestContextScoping:

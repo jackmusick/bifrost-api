@@ -9,10 +9,9 @@ import { useScopeStore } from '@/stores/scopeStore'
 
 export function useExecutions(filters?: ExecutionFilters) {
   const orgId = useScopeStore((state) => state.scope.orgId)
-  const hasHydrated = useScopeStore((state) => state._hasHydrated)
 
   // Debug: log when orgId changes
-  console.log('useExecutions - orgId:', orgId, 'filters:', filters, 'hasHydrated:', hasHydrated)
+  console.log('useExecutions - orgId:', orgId, 'filters:', filters)
 
   return useQuery({
     queryKey: ['executions', orgId, filters],
@@ -22,8 +21,6 @@ export function useExecutions(filters?: ExecutionFilters) {
       // We include orgId in the key so React Query automatically refetches when scope changes
       return executionsService.getExecutions(filters)
     },
-    // Wait for Zustand to rehydrate from localStorage before making API calls
-    enabled: hasHydrated,
     // Don't use cached data from previous scope
     staleTime: 0,
   })
