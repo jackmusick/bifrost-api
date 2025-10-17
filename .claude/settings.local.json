@@ -44,7 +44,8 @@
       "Bash(npm run test:unit:*)",
       "Bash(npm run test:integration:*)",
       "WebSearch",
-      "Bash(npm run test:ci:*)"
+      "Bash(npm run test:ci:*)",
+      "WebFetch(domain:stackoverflow.com)"
     ],
     "deny": [],
     "ask": []

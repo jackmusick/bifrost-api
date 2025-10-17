@@ -195,3 +195,4 @@ Desktop.ini
 AzuriteConfig
 .ruff_cache/
 .secrets
+*.zip

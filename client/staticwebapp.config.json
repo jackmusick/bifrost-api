@@ -1,11 +1,32 @@
 {
+    "auth": {
+        "rolesSource": "/api/GetRoles",
+        "identityProviders": {
+            "azureActiveDirectory": {
+                "registration": {
+                    "openIdIssuer": "https://login.microsoftonline.com/common/v2.0",
+                    "clientIdSettingName": "ENTRA_CLIENT_ID",
+                    "clientSecretSettingName": "ENTRA_CLIENT_SECRET"
+                }
+            }
+        }
+    },
     "navigationFallback": {
         "rewrite": "/index.html",
         "exclude": [
-            "*.{css,scss,js,json,png,gif,ico,jpg,svg,woff,woff2,ttf,eot}",
-            "/@*/*",
-            "/src/*",
-            "/node_modules/*"
+            "*.css",
+            "*.scss",
+            "*.js",
+            "*.json",
+            "*.png",
+            "*.gif",
+            "*.ico",
+            "*.jpg",
+            "*.svg",
+            "*.woff",
+            "*.woff2",
+            "*.ttf",
+            "*.eot"
         ]
     },
     "routes": [
@@ -14,108 +35,38 @@
             "allowedRoles": ["anonymous"]
         },
         {
-            "route": "/api/GetRoles",
-            "methods": ["POST"],
+            "route": "/api/health*",
+            "methods": ["GET"],
             "allowedRoles": ["authenticated"]
         },
         {
-            "route": "/api/openapi.json",
+            "route": "/api/discovery",
             "methods": ["GET"],
-            "allowedRoles": ["anonymous"]
+            "allowedRoles": ["authenticated"]
         },
         {
-            "route": "/api/openapi.yaml",
+            "route": "/api/data-providers*",
             "methods": ["GET"],
-            "allowedRoles": ["anonymous"]
+            "allowedRoles": ["authenticated", "PlatformAdmin"]
         },
         {
-            "route": "/api/docs",
+            "route": "/api/forms*",
             "methods": ["GET"],
-            "allowedRoles": ["anonymous"]
+            "allowedRoles": ["authenticated", "PlatformAdmin"]
         },
         {
-            "route": "/api/forms",
-            "methods": ["GET"],
-            "allowedRoles": ["OrgUser", "PlatformAdmin"]
-        },
-        {
-            "route": "/api/forms/*",
-            "methods": ["GET"],
-            "allowedRoles": ["OrgUser", "PlatformAdmin"]
-        },
-        {
-            "route": "/api/forms/*/submit",
+            "route": "/api/workflows*",
             "methods": ["POST"],
-            "allowedRoles": ["OrgUser", "PlatformAdmin"]
-        },
-        {
-            "route": "/api/forms",
-            "methods": ["POST"],
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/forms/*",
-            "methods": ["PUT", "DELETE"],
-            "allowedRoles": ["PlatformAdmin"]
+            "allowedRoles": ["authenticated", "PlatformAdmin"]
         },
         {
             "route": "/api/executions*",
             "methods": ["GET"],
-            "allowedRoles": ["OrgUser", "PlatformAdmin"]
-        },
-        {
-            "route": "/api/users*",
-            "methods": ["GET"],
-            "allowedRoles": ["OrgUser", "PlatformAdmin"]
-        },
-        {
-            "route": "/api/organizations",
-            "methods": ["GET"],
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/organizations/*",
-            "methods": ["POST", "PUT", "DELETE", "PATCH"],
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/organizations/*/integrations*",
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/roles*",
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/permissions*",
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/config*",
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/workflow-keys*",
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/workflows/metadata",
-            "methods": ["GET"],
-            "allowedRoles": ["authenticated"]
-        },
-        {
-            "route": "/api/workflows/*",
-            "methods": ["POST"],
-            "allowedRoles": ["PlatformAdmin"]
-        },
-        {
-            "route": "/api/data-providers/*",
-            "methods": ["GET"],
-            "allowedRoles": ["authenticated"]
+            "allowedRoles": ["authenticated", "PlatformAdmin"]
         },
         {
             "route": "/api/*",
-            "allowedRoles": ["anonymous"]
+            "allowedRoles": ["PlatformAdmin"]
         }
     ],
     "responseOverrides": {

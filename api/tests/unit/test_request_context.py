@@ -300,11 +300,66 @@ class TestGetRequestContext:
         with pytest.raises(PermissionError, match="Only platform administrators"):
             get_request_context(req)
 
+    def test_first_user_auto_promotion_to_platform_admin(self, mock_users_table):
+        """First user in system auto-promoted to PlatformAdmin regardless of roles"""
+        # Mock user lookup - user doesn't exist
+        from azure.core.exceptions import ResourceNotFoundError
+        mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
+
+        # Mock query_entities to return empty list (no users in system)
+        mock_users_table.query_entities.return_value = []
+
+        # Mock successful insert
+        mock_users_table.insert_entity.return_value = {
+            "PartitionKey": "first-user@example.com",
+            "RowKey": "user",
+            "Email": "first-user@example.com",
+            "DisplayName": "first-user",
+            "UserType": "PLATFORM",
+            "IsPlatformAdmin": True,
+            "IsActive": True
+        }
+
+        # Create principal WITHOUT PlatformAdmin role (but should still become admin)
+        principal = {
+            "userId": "first-user@example.com",
+            "userDetails": "first-user@example.com",
+            "userRoles": ["authenticated"]  # No PlatformAdmin role
+        }
+        principal_header = base64.b64encode(json.dumps(principal).encode()).decode()
+
+        req = Mock(spec=func.HttpRequest)
+        req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": principal_header
+        }
+        req.params = {}
+
+        context = get_request_context(req)
+
+        # Verify user was auto-created as PlatformAdmin
+        mock_users_table.insert_entity.assert_called_once()
+        created_user = mock_users_table.insert_entity.call_args[0][0]
+        assert created_user["Email"] == "first-user@example.com"
+        assert created_user["UserType"] == "PLATFORM"
+        assert created_user["IsPlatformAdmin"] is True
+
+        # Verify context is correct
+        assert context.user_id == "first-user@example.com"
+        assert context.email == "first-user@example.com"
+        assert context.is_platform_admin is True
+        assert context.org_id is None
+        assert context.scope == "GLOBAL"
+
     def test_platform_admin_auto_creation(self, mock_users_table):
         """Auto-create PlatformAdmin user when they don't exist but have the role"""
         # Mock user lookup - user doesn't exist
         from azure.core.exceptions import ResourceNotFoundError
         mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
+
+        # Mock query_entities to return existing users (not first user)
+        mock_users_table.query_entities.return_value = [
+            {"PartitionKey": "existing@example.com", "RowKey": "user"}
+        ]
 
         # Mock successful insert
         mock_users_table.insert_entity.return_value = {
@@ -348,20 +403,31 @@ class TestGetRequestContext:
         assert context.scope == "GLOBAL"
 
     def test_user_without_platform_admin_role_not_created(self, mock_users_table, monkeypatch):
-        """User without PlatformAdmin role should not be auto-created"""
+        """User without PlatformAdmin role should not be auto-created (when not first user)"""
         # Mock user lookup - user doesn't exist
         from azure.core.exceptions import ResourceNotFoundError
         mock_users_table.get_entity.side_effect = ResourceNotFoundError("Entity not found")
 
+        # Mock query_entities to return existing users (not first user)
+        mock_users_table.query_entities.return_value = [
+            {"PartitionKey": "existing@example.com", "RowKey": "user"}
+        ]
+
         # Mock relationships table (for org lookup)
         mock_relationships_table = Mock(spec=TableStorageService)
         mock_relationships_table.query_entities.return_value = []
+
+        # Mock entities table (for domain-based provisioning)
+        mock_entities_table = Mock(spec=TableStorageService)
+        mock_entities_table.query_entities.return_value = []
 
         def mock_table_service_init(table_name):
             if table_name == "Users":
                 return mock_users_table
             elif table_name == "Relationships":
                 return mock_relationships_table
+            elif table_name == "Entities":
+                return mock_entities_table
             return Mock(spec=TableStorageService)
 
         monkeypatch.setattr("shared.storage.TableStorageService", mock_table_service_init)

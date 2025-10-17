@@ -48,8 +48,8 @@ export function UserPermissionsDialog({ user, open, onClose }: UserPermissionsDi
   })
 
   const { data: orgPermissions, isLoading: permsLoading } = useOrgPermissions(selectedOrgId)
-  
-  const orgPermissionsArray = (orgPermissions as { userId: string; orgId: string }[]) || []
+
+  const orgPermissionsArray = (orgPermissions as { userId: string; orgId: string }[] | undefined) || []
   const grantMutation = useGrantPermissions()
   const revokeMutation = useRevokePermissions()
 

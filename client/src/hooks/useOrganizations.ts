@@ -9,10 +9,11 @@ type CreateOrganizationRequest = components['schemas']['CreateOrganizationReques
 type UpdateOrganizationRequest = components['schemas']['UpdateOrganizationRequest']
 import { toast } from 'sonner'
 
-export function useOrganizations() {
+export function useOrganizations(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizationsService.getOrganizations(),
+    enabled: options?.enabled ?? true,
     meta: {
       onError: (error: Error) => {
         toast.error('Failed to load organizations', {

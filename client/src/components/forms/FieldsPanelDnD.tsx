@@ -288,7 +288,12 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | undefined>()
   const [newFieldType, setNewFieldType] = useState<string | undefined>()
-  const [workflowInputData, setWorkflowInputData] = useState<Record<string, unknown>>()
+  const [workflowInputData, setWorkflowInputData] = useState<{
+    name: string
+    required: boolean
+    helpText?: string
+    dataProvider?: string
+  }>()
   const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>()
   const [isDraggingNew, setIsDraggingNew] = useState(false)
   const [isWorkflowInput, setIsWorkflowInput] = useState(false)
@@ -348,11 +353,13 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
             setNewFieldType(source.data['fieldType'] as string)
             setSelectedField(undefined)
             setEditingIndex(undefined)
+            const description = source.data['description'] as string | undefined
+            const dataProvider = source.data['dataProvider'] as string | undefined
             setWorkflowInputData({
               name: source.data['fieldName'] as string,
               required: source.data['required'] as boolean,
-              helpText: source.data['description'] as string | undefined,
-              dataProvider: source.data['dataProvider'] as string | undefined,
+              ...(description !== undefined && { helpText: description }),
+              ...(dataProvider !== undefined && { dataProvider }),
             })
             setIsWorkflowInput(true)
             setIsDialogOpen(true)
@@ -540,8 +547,8 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
         }}
         onSave={handleSaveField}
         {...(newFieldType && { defaultType: newFieldType })}
-        workflowInputData={workflowInputData ?? undefined}
-        isWorkflowInput={isWorkflowInput ?? undefined}
+        {...(workflowInputData && { workflowInputData })}
+        {...(isWorkflowInput && { isWorkflowInput })}
       />
     </div>
   )

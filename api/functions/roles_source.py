@@ -62,15 +62,55 @@ def get_roles(req: func.HttpRequest) -> func.HttpResponse:
 
         # Query Users table to get user details
         users_service = TableStorageService("Users")
-        user_entity = users_service.get_entity("USER", user_id)
+        user_entity = users_service.get_entity(user_email, "user")
 
         if not user_entity:
-            logger.warning(f"User {user_id} not found in database, assigning anonymous role")
-            return func.HttpResponse(
-                json.dumps({"roles": ["anonymous"]}),
-                status_code=200,
-                mimetype="application/json"
+            # User doesn't exist - check if this is the first user in the system
+            logger.info(f"User {user_email} not found, checking if first user")
+
+            # Efficiently check if ANY users exist
+            query_result = users_service.query_entities(
+                "PartitionKey ne ''",
+                select=["PartitionKey"]
             )
+            first_user = next(iter(query_result), None)
+            is_first_user = first_user is None
+
+            if is_first_user:
+                # First user in the system - auto-promote to PlatformAdmin
+                logger.info(f"First user login detected! Auto-promoting {user_email} to PlatformAdmin")
+
+                from datetime import datetime
+
+                new_user = {
+                    "PartitionKey": user_email,
+                    "RowKey": "user",
+                    "Email": user_email,
+                    "DisplayName": user_email.split('@')[0],
+                    "UserType": "PLATFORM",
+                    "IsPlatformAdmin": True,
+                    "IsActive": True,
+                    "CreatedAt": datetime.utcnow().isoformat(),
+                    "LastLogin": datetime.utcnow().isoformat()
+                }
+
+                users_service.insert_entity(new_user)
+                logger.info(f"Successfully created first user as PlatformAdmin: {user_email}")
+
+                # Return PlatformAdmin role
+                return func.HttpResponse(
+                    json.dumps({"roles": ["authenticated", "PlatformAdmin"]}),
+                    status_code=200,
+                    mimetype="application/json"
+                )
+            else:
+                # Not first user and doesn't exist - return anonymous
+                logger.warning(f"User {user_email} not found in database and not first user, assigning anonymous role")
+                return func.HttpResponse(
+                    json.dumps({"roles": ["anonymous"]}),
+                    status_code=200,
+                    mimetype="application/json"
+                )
 
         # Start building roles list
         roles = ["authenticated"]  # All authenticated users get this base role

@@ -37,20 +37,25 @@ export function Header() {
     const scope = useScopeStore((state) => state.scope);
     const setScope = useScopeStore((state) => state.setScope);
     const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
-    const { data: organizationData, isLoading: orgsLoading } = useOrganizations();
+
+    const userEmail = user?.userDetails || "Loading...";
+    const userName = user?.userDetails?.split("@")[0] || "User";
+
+    // Check if user is platform admin
+    const isPlatformAdmin = user?.userRoles?.includes("PlatformAdmin") ?? false;
+
+    // Only fetch organizations if user is a platform admin
+    const { data: organizationData, isLoading: orgsLoading } = useOrganizations({
+        enabled: isPlatformAdmin
+    });
     const organizations: Organization[] = Array.isArray(organizationData) ? organizationData : [];
+
     const {
         data: engineHealth,
         isLoading: healthLoading,
         refetch,
         isRefetching,
     } = useWorkflowEngineHealth();
-
-    const userEmail = user?.userDetails || "Loading...";
-    const userName = user?.userDetails?.split("@")[0] || "User";
-
-    // Check if user is platform admin
-    const isPlatformAdmin = user?.userDetails === "jack@gocovi.com"; // TODO: Get from user profile
 
     // Determine status color and message
     const getServerStatus = () => {

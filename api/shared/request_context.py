@@ -202,6 +202,9 @@ def _is_platform_admin(email: str, display_name: str, has_platform_admin_role: b
     """
     Check if user is a platform admin, auto-creating if they have PlatformAdmin role.
 
+    Special case: The very first user to log into the platform is automatically
+    promoted to PlatformAdmin, regardless of their EasyAuth roles.
+
     Args:
         email: User's email address
         display_name: User's display name
@@ -228,6 +231,38 @@ def _is_platform_admin(email: str, display_name: str, has_platform_admin_role: b
 
         except Exception:
             # User doesn't exist - check if they should be auto-created as PlatformAdmin
+
+            # First, check if this is the very first user in the system
+            # Only fetch the first user to efficiently check if ANY users exist
+            query_result = users_service.query_entities(
+                "PartitionKey ne ''",
+                select=["PartitionKey"]
+            )
+            # Use next() to get just one entity - much more efficient than list()
+            first_user = next(iter(query_result), None)
+            is_first_user = first_user is None
+
+            if is_first_user:
+                logger.info(f"First user login detected! Auto-promoting {email} to PlatformAdmin")
+
+                # Create new PlatformAdmin user
+                new_user = {
+                    "PartitionKey": email,
+                    "RowKey": "user",
+                    "Email": email,
+                    "DisplayName": display_name or email.split('@')[0],
+                    "UserType": "PLATFORM",
+                    "IsPlatformAdmin": True,
+                    "IsActive": True,
+                    "CreatedAt": datetime.utcnow().isoformat(),
+                    "LastLogin": datetime.utcnow().isoformat()
+                }
+
+                users_service.insert_entity(new_user)
+                logger.info(f"Successfully created first user as PlatformAdmin: {email}")
+                return True
+
+            # Not first user - check if they have PlatformAdmin role from EasyAuth
             if has_platform_admin_role:
                 logger.info(f"Auto-creating PlatformAdmin user for {email}")
 

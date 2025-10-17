@@ -76,6 +76,27 @@
             },
             "resources": [
                 {
+                    "type": "blobServices",
+                    "apiVersion": "2025-01-01",
+                    "name": "default",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+                    ],
+                    "resources": [
+                        {
+                            "type": "containers",
+                            "apiVersion": "2025-01-01",
+                            "name": "deployments",
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+                            ],
+                            "properties": {
+                                "publicAccess": "None"
+                            }
+                        }
+                    ]
+                },
+                {
                     "type": "fileServices",
                     "apiVersion": "2025-01-01",
                     "name": "default",
@@ -189,6 +210,10 @@
                             }
                         }
                     },
+                    "scaleAndConcurrency": {
+                        "instanceMemoryMB": 512,
+                        "maximumInstanceCount": 100
+                    },
                     "runtime": {
                         "name": "python",
                         "version": "3.11"
@@ -201,32 +226,12 @@
                             "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
                         },
                         {
-                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-                        },
-                        {
-                            "name": "WEBSITE_CONTENTSHARE",
-                            "value": "[toLower(variables('apiFunctionAppName'))]"
-                        },
-                        {
-                            "name": "FUNCTIONS_EXTENSION_VERSION",
-                            "value": "~4"
-                        },
-                        {
-                            "name": "FUNCTIONS_WORKER_RUNTIME",
-                            "value": "python"
-                        },
-                        {
                             "name": "AZURE_FUNCTIONS_ENVIRONMENT",
                             "value": "Production"
                         },
                         {
                             "name": "AZURE_KEY_VAULT_URL",
                             "value": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]"
-                        },
-                        {
-                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-                            "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).InstrumentationKey]"
                         },
                         {
                             "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
@@ -287,13 +292,19 @@
             "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
             ],
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Web/staticSites/linkedBackends",
+            "apiVersion": "2024-04-01",
+            "name": "[concat(variables('staticWebAppName'), '/backend')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))]",
+                "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
+            ],
             "properties": {
-                "linkedBackends": [
-                    {
-                        "backendResourceId": "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]",
-                        "region": "[resourceGroup().location]"
-                    }
-                ]
+                "backendResourceId": "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]",
+                "region": "[resourceGroup().location]"
             }
         }
     ],

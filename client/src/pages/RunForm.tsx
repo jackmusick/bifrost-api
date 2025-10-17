@@ -7,16 +7,19 @@ import { FormRenderer } from '@/components/forms/FormRenderer'
 import { useForm } from '@/hooks/useForms'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useUser } from '@/contexts/UserContext'
+import type { components } from '@/lib/v1'
+
+type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse']
 
 export function RunForm() {
   const { formId } = useParams()
   const navigate = useNavigate()
   const { isLoading: userLoading } = useUser()
   const { data: form, isLoading, error } = useForm(formId)
-  const [executionResult, setExecutionResult] = useState<unknown | undefined>()
+  const [executionResult, setExecutionResult] = useState<WorkflowExecutionResponse | undefined>()
 
   const handleSuccess = (result: unknown) => {
-    setExecutionResult(result)
+    setExecutionResult(result as WorkflowExecutionResponse)
   }
 
   if (isLoading || userLoading) {

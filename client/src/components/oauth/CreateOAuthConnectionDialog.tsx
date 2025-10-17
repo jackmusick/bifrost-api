@@ -25,6 +25,7 @@ import { useCreateOAuthConnection, useUpdateOAuthConnection, useOAuthConnection 
 import type { components } from '@/lib/v1'
 import { OAuthProviderPreset, OAUTH_PROVIDER_PRESETS } from '@/lib/client-types'
 type CreateOAuthConnectionRequest = components['schemas']['CreateOAuthConnectionRequest']
+type UpdateOAuthConnectionRequest = components['schemas']['UpdateOAuthConnectionRequest']
 type OAuthConnectionDetail = components['schemas']['OAuthConnectionDetail']
 type OAuthFlowType = OAuthProviderPreset['oauth_flow_type']
 import { toast } from 'sonner'
@@ -131,21 +132,17 @@ export function CreateOAuthConnectionDialog({
 
     if (isEditMode) {
       // Update existing connection
-      const updateData: Record<string, string | null> = {
+      const updateData: UpdateOAuthConnectionRequest = {
         client_id: formData.client_id,
+        client_secret: formData.client_secret || null,
         authorization_url: formData.authorization_url,
         token_url: formData.token_url,
         scopes: formData.scopes,
       }
 
-      // Only include client_secret if provided
-      if (formData.client_secret) {
-        (updateData as Record<string, string | null>)['client_secret'] = formData.client_secret
-      }
-
       await updateMutation.mutateAsync({
         connectionName: formData.connection_name,
-        data: updateData as Record<string, string | null>,
+        data: updateData,
       })
     } else {
       // Create new connection

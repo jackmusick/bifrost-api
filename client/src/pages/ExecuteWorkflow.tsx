@@ -12,6 +12,7 @@ import { useWorkflowsMetadata, useExecuteWorkflow } from '@/hooks/useWorkflows'
 import { PrettyInputDisplay } from '@/components/execution/PrettyInputDisplay'
 import type { components } from '@/lib/v1'
 type WorkflowParameter = components['schemas']['WorkflowParameter']
+type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse']
 
 export function ExecuteWorkflow() {
   const { workflowName } = useParams()
@@ -20,7 +21,7 @@ export function ExecuteWorkflow() {
   const executeWorkflow = useExecuteWorkflow()
 
   const [parameters, setParameters] = useState<Record<string, unknown>>({})
-  const [executionResult, setExecutionResult] = useState<unknown | undefined>()
+  const [executionResult, setExecutionResult] = useState<WorkflowExecutionResponse | undefined>()
 
   const workflow = data?.workflows?.find((w) => w.name === workflowName)
 
@@ -45,7 +46,7 @@ export function ExecuteWorkflow() {
   }
 
   const renderParameterInput = (param: WorkflowParameter) => {
-    const value = parameters[param.name ?? ''] ?? ''
+    const value = parameters[param.name ?? '']
 
     switch (param.type) {
       case 'bool':
@@ -79,7 +80,7 @@ export function ExecuteWorkflow() {
               id={param.name ?? 'number'}
               type="number"
               step={param.type === 'float' ? '0.1' : '1'}
-              value={value}
+              value={value as string | number | undefined ?? ''}
               onChange={(e) =>
                 handleParameterChange(
                   param.name ?? '',
@@ -104,7 +105,7 @@ export function ExecuteWorkflow() {
             <Input
               id={param.name ?? 'list'}
               type="text"
-              value={Array.isArray(value) ? value.join(', ') : value}
+              value={Array.isArray(value) ? value.join(', ') : (value as string ?? '')}
               onChange={(e) =>
                 handleParameterChange(
                   param.name ?? '',
@@ -131,7 +132,7 @@ export function ExecuteWorkflow() {
             <Input
               id={param.name ?? 'text'}
               type={param.type === 'email' ? 'email' : 'text'}
-              value={value}
+              value={(value as string) ?? ''}
               onChange={(e) => handleParameterChange(param.name ?? '', e.target.value)}
               required={param.required}
             />
