@@ -1,18 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m pytest tests/integration/test_form_components.py tests/integration/test_form_context_and_visibility.py --tb=line)",
-      "Bash(python -m pytest tests/integration/engine/test_workspace_execution.py tests/integration/test_form_context_and_visibility.py --tb=short)",
-      "Bash(python -m pytest tests/unit/test_authorization.py tests/integration/test_form_context_and_visibility.py --tb=line)",
-      "Bash(python -m pytest tests/unit/ tests/integration/test_form_context_and_visibility.py --tb=line)",
-      "Bash(python -m pytest tests/ --collect-only)",
-      "Bash(find /Users/jack/GitHub/bifrost-integrations/api/tests -type f -name \"*.py\" ! -name \"__init__.py\" -exec wc -l {} +)",
-      "Bash(for dir in unit integration contract e2e)",
-      "Bash(do echo \"=== $dir ===\")",
-      "Bash(find /Users/jack/GitHub/bifrost-integrations/api/tests/$dir -type f -name \"test_*.py\")",
-      "Bash(done)",
-      "Bash(find /Users/jack/GitHub/bifrost-integrations/api/tests -name \"*.py\" -type f ! -name \"__init__.py\" -exec grep -l \"pytest.mark\" {})",
-      "Bash(find . -name \"test_*.py\" -type f -exec wc -l {} +)"
+      "Bash(for type in unit integration contract e2e)",
+      "Bash(do echo \"=== Lines of code in $type tests ===\")",
+      "Bash(find ./$type -name \"test_*.py\" -type f 2)",
+      "Bash(/dev/null -exec wc -l {} +)",
+      "Bash(find tests/$dir -name \"test_*.py\" -type f 2)",
+      "Bash(ruff check .)",
+      "Bash(ruff check . --fix)",
+      "Bash(npm run tsc)",
+      "Bash(npm run lint)",
+      "Bash(timeout 60 python -m pytest api/tests/ --co -q)",
+      "Bash(git add -A)"
     ],
     "deny": [],
     "ask": []

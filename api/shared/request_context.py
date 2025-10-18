@@ -149,7 +149,9 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
 
     # Ensure user exists in database (auto-provision if needed)
     # This handles development scenarios where GetRoles isn't called
-    _ensure_user_exists(email, is_admin)
+    from shared.user_lookup import ensure_user_exists_in_db, get_user_organization
+
+    ensure_user_exists_in_db(email, is_admin)
 
     # Determine org_id based on user role and headers
     provided_org_id = req.headers.get('X-Organization-Id')
@@ -179,7 +181,7 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         raise PermissionError("Only platform administrators can override organization context")
 
     # Look up user's org in database
-    org_id = _get_user_org_id(email)
+    org_id = get_user_organization(email)
 
     if not org_id:
         # User exists but has no org assignment
@@ -216,79 +218,4 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
     )
 
 
-def _ensure_user_exists(email: str, is_platform_admin: bool) -> None:
-    """
-    Ensure user exists in Users table, creating if necessary.
-
-    This handles development scenarios where GetRoles endpoint isn't called
-    (e.g., when using X-MS-CLIENT-PRINCIPAL header directly in local dev).
-
-    The user's role (PlatformAdmin vs OrgUser) comes from SWA/GetRoles,
-    so we trust that as the source of truth.
-
-    Args:
-        email: User's email address
-        is_platform_admin: Whether user has PlatformAdmin role (from SWA)
-    """
-    from shared.models import UserType
-    from shared.repositories.users import UserRepository
-
-    user_repo = UserRepository()
-
-    # Check if user exists
-    user = user_repo.get_user(email)
-
-    if user:
-        # User exists - update last login
-        try:
-            user_repo.update_last_login(email)
-        except Exception as e:
-            logger.warning(f"Failed to update last login for {email}: {e}")
-        return
-
-    # User doesn't exist - create based on their role
-    logger.info(f"Auto-creating user {email} (PlatformAdmin={is_platform_admin})")
-
-    user_type = UserType.PLATFORM if is_platform_admin else UserType.ORG
-    user_repo.create_user(
-        email=email,
-        display_name=email.split("@")[0],
-        user_type=user_type,
-        is_platform_admin=is_platform_admin
-    )
-
-    logger.info(f"Created user {email} in database")
-
-    # If ORG user, try to auto-provision org relationship by domain
-    if not is_platform_admin:
-        try:
-            from shared.user_provisioning import _provision_org_relationship_by_domain
-            org_id = _provision_org_relationship_by_domain(email)
-            logger.info(f"Auto-provisioned org relationship for {email} -> {org_id}")
-        except ValueError as e:
-            logger.warning(f"Could not auto-provision org relationship: {e}")
-            # Don't raise - user will get proper error when we try to get org_id
-
-
-def _get_user_org_id(email: str) -> str | None:
-    """
-    Look up user's organization ID from database.
-
-    Uses UserRepository to query relationships.
-    """
-    from shared.repositories.users import UserRepository
-
-    try:
-        user_repo = UserRepository()
-        org_id = user_repo.get_user_org_id(email)
-
-        if org_id:
-            logger.debug(f"User {email} belongs to org: {org_id}")
-        else:
-            logger.warning(f"User {email} has no org assignments")
-
-        return org_id
-
-    except Exception as e:
-        logger.error(f"Error looking up user org: {e}")
-        return None
+# Note: Helper functions moved to shared/user_lookup.py for better testability

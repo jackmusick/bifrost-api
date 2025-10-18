@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import azure.functions as func
+from functions.discovery import get_discovery_metadata
 
 # Manually trigger workspace discovery for tests
 workspace_path = Path("/Users/jack/GitHub/bifrost-integrations/workflows/workspace")
@@ -31,8 +32,6 @@ if workspace_path.exists():
                 spec.loader.exec_module(module)
         except Exception:
             pass
-
-from functions.discovery import get_discovery_metadata
 
 
 class TestMetadataEndpoint:

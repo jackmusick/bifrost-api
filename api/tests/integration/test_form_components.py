@@ -3,12 +3,11 @@ Integration tests for Rich Form Components (User Story 2)
 Tests component rendering, validation, and data submission with file uploads
 """
 
-import json
 
 import pytest
 
 from functions.file_uploads import generate_file_upload_url
-from functions.forms import create_form, execute_form, get_form
+from functions.forms import create_form
 from tests.helpers.http_helpers import (
     create_mock_request,
     create_platform_admin_headers,

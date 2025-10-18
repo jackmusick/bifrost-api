@@ -6,15 +6,12 @@ Tests decorator registration, metadata extraction, and parameter handling
 import pytest
 
 from shared.decorators import VALID_PARAM_TYPES, data_provider, param, workflow
-from shared.registry import get_registry
 
 
 @pytest.fixture
-def registry():
-    """Get registry instance and clear it before each test"""
-    reg = get_registry()
-    reg.clear_all()
-    return reg
+def registry(isolated_registry):
+    """Use isolated registry for each test to prevent state pollution"""
+    return isolated_registry
 
 
 class TestWorkflowDecorator:

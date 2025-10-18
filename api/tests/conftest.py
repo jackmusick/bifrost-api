@@ -1,122 +1,230 @@
 """
-Pytest fixtures for Bifrost Integrations tests
-Provides reusable test infrastructure for all test files
+Pytest fixtures for Bifrost Integrations testing infrastructure.
+
+This module provides:
+1. ISOLATED infrastructure (Azurite on ports 10100-10102, Functions on port 8080)
+2. Real HTTP integration tests (no mock requests)
+3. Session-scoped fixtures for efficiency
+4. Function-scoped fixtures for isolation
 """
 
 import os
-
-# Add parent directory to path for imports
+import shutil
+import subprocess
 import sys
-import uuid
+import time
 from datetime import datetime
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
+from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableServiceClient
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from shared.init_tables import REQUIRED_TABLES, init_tables
 from shared.storage import TableStorageService
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
+# Import fixture modules
+pytest_plugins = ["tests.fixtures.registry", "tests.fixtures.auth"]
 
 # ==================== CONFIGURATION ====================
 
-@pytest.fixture(scope="session", autouse=True)
-def load_test_workflows():
-    """
-    Load test workflows into the workflow registry at session start.
-    This ensures workflows are available for form context tests.
-    """
-    try:
-        import workspace.examples.test_form_workflows  # noqa: F401
-    except ImportError:
-        # Tests may still run, but workflow-dependent tests will fail
-        pass
-    yield
+# Test infrastructure ports (ISOLATED from dev)
+TEST_AZURITE_BLOB_PORT = 10100
+TEST_AZURITE_QUEUE_PORT = 10101
+TEST_AZURITE_TABLE_PORT = 10102
+TEST_FUNCTIONS_PORT = 8080
+TEST_FUNCTIONS_URL = f"http://localhost:{TEST_FUNCTIONS_PORT}"
+
+# Azurite connection string for tests
+TEST_AZURITE_CONNECTION = (
+    "DefaultEndpointsProtocol=http;"
+    "AccountName=devstoreaccount1;"
+    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+    f"BlobEndpoint=http://127.0.0.1:{TEST_AZURITE_BLOB_PORT}/devstoreaccount1;"
+    f"QueueEndpoint=http://127.0.0.1:{TEST_AZURITE_QUEUE_PORT}/devstoreaccount1;"
+    f"TableEndpoint=http://127.0.0.1:{TEST_AZURITE_TABLE_PORT}/devstoreaccount1;"
+)
+
+
+# ==================== SESSION FIXTURES (Start Once Per Test Run) ====================
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
-    """Set up test environment variables"""
-    # Full Azurite connection string (required for blob storage SDK)
-    os.environ["AzureWebJobsStorage"] = (
-        "DefaultEndpointsProtocol=http;"
-        "AccountName=devstoreaccount1;"
-        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
-        "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-        "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
-        "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
-    )
-    os.environ["KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
+    """Set up test environment variables once per session"""
+    os.environ["AzureWebJobsStorage"] = TEST_AZURITE_CONNECTION
     os.environ["AZURE_KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
+    os.environ["KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
     os.environ["AZURE_TENANT_ID"] = "test-tenant-id"
     os.environ["AZURE_CLIENT_ID"] = "test-client-id"
+    os.environ["FUNCTIONS_WORKER_RUNTIME"] = "python"
     yield
 
 
-@pytest.fixture(scope="function", autouse=True)
-def mock_keyvault(monkeypatch):
+@pytest.fixture(scope="session", autouse=True)
+def mock_key_vault():
     """
-    Mock KeyVault client for tests to avoid requiring real Azure credentials.
-    Only active in test environment (AZURE_FUNCTIONS_ENVIRONMENT != Testing with real vault).
+    Mock Azure Key Vault globally for all tests (session-scoped).
+    We can't connect to real Key Vault in tests.
     """
-    from unittest.mock import MagicMock
-
-    from azure.core.exceptions import ResourceNotFoundError
-
-    # Only mock if we're not using a real vault (check if running in CI or without Azure auth)
-    if os.environ.get("AZURE_FUNCTIONS_ENVIRONMENT") == "Testing":
-        return  # Skip mocking in integration tests that use real KeyVault
-
-    # Create a mock KeyVault client
     mock_client = MagicMock()
 
-    # Mock delete_secret to return success
-    mock_poller = MagicMock()
-    mock_poller.wait = MagicMock()
-    mock_client.begin_delete_secret = MagicMock(return_value=mock_poller)
+    # In-memory secret storage
+    secrets_store = {}
 
-    # Mock get_secret to raise not found (simulating no secrets in test vault)
+    def mock_set_secret(name, value):
+        secrets_store[name] = value
+        return MagicMock(name=name, value=value)
+
     def mock_get_secret(name):
-        raise ResourceNotFoundError(f"Secret not found: {name}")
-    mock_client.get_secret = MagicMock(side_effect=mock_get_secret)
+        if name not in secrets_store:
+            raise ResourceNotFoundError(f"Secret '{name}' not found")
+        return MagicMock(name=name, value=secrets_store[name])
 
-    # Mock set_secret to return success
-    mock_client.set_secret = MagicMock()
+    def mock_delete_secret(name):
+        if name in secrets_store:
+            del secrets_store[name]
+        return MagicMock()
 
-    # Patch the SecretClient constructor to return our mock
-    def mock_secret_client_init(vault_url, credential):
-        return mock_client
-
-    monkeypatch.setattr("shared.keyvault.SecretClient", lambda **kwargs: mock_client)
-
-
-# ==================== INFRASTRUCTURE FIXTURES ====================
-
-@pytest.fixture(scope="function")
-def azurite_tables():
-    """
-    Initialize all 9 tables in Azurite and clean up after test
-    Scope: function - ensures test isolation
-    """
-    # Use full Azurite connection string
-    connection_string = (
-        "DefaultEndpointsProtocol=http;"
-        "AccountName=devstoreaccount1;"
-        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
-        "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-        "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
-        "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+    mock_client.set_secret = mock_set_secret
+    mock_client.get_secret = mock_get_secret
+    mock_client.begin_delete_secret = lambda name: MagicMock(
+        wait=lambda: mock_delete_secret(name)
     )
 
-    # Initialize tables
-    init_tables(connection_string)
+    # Patch SecretClient globally
+    with patch("shared.keyvault.SecretClient", return_value=mock_client):
+        yield mock_client
 
-    yield connection_string
+
+@pytest.fixture(scope="session")
+def test_azurite():
+    """
+    Start dedicated Azurite instance for tests on ports 10100-10102.
+    Completely isolated from dev docker-compose (ports 10000-10002).
+
+    Returns:
+        dict: Configuration with connection_string and port information
+    """
+    storage_path = "/tmp/azurite-tests"
+
+    # Clean any previous test data
+    shutil.rmtree(storage_path, ignore_errors=True)
+    os.makedirs(storage_path, exist_ok=True)
+
+    # Start Azurite on test ports
+    process = subprocess.Popen(
+        [
+            "npx",
+            "azurite",
+            "--silent",
+            "--location",
+            storage_path,
+            "--blobPort",
+            str(TEST_AZURITE_BLOB_PORT),
+            "--queuePort",
+            str(TEST_AZURITE_QUEUE_PORT),
+            "--tablePort",
+            str(TEST_AZURITE_TABLE_PORT),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    # Wait for Azurite to start
+    time.sleep(3)
+
+    yield {
+        "connection_string": TEST_AZURITE_CONNECTION,
+        "blob_port": TEST_AZURITE_BLOB_PORT,
+        "queue_port": TEST_AZURITE_QUEUE_PORT,
+        "table_port": TEST_AZURITE_TABLE_PORT,
+    }
+
+    # Cleanup
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    shutil.rmtree(storage_path, ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
+def azure_functions_server(test_azurite, mock_key_vault):
+    """
+    Start Azure Functions on port 8080 with test Azurite connection.
+    Isolated from dev Functions running on port 7071.
+
+    Yields:
+        str: Base URL for Functions server (http://localhost:8080)
+    """
+    # Environment for Functions process
+    env = os.environ.copy()
+    env["AzureWebJobsStorage"] = TEST_AZURITE_CONNECTION
+    env["AZURE_KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
+    env["FUNCTIONS_WORKER_RUNTIME"] = "python"
+
+    # Start Functions on test port
+    api_dir = os.path.join(os.path.dirname(__file__), "..")
+    process = subprocess.Popen(
+        ["func", "start", "--port", str(TEST_FUNCTIONS_PORT)],
+        cwd=api_dir,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    # Wait for Functions to be ready (up to 60 seconds)
+    for i in range(60):
+        try:
+            # Try to hit a simple endpoint
+            response = requests.get(f"{TEST_FUNCTIONS_URL}/api/data-providers", timeout=2)
+            if response.status_code in [200, 401]:  # 401 is fine - server is up
+                print(f"\n✓ Azure Functions ready on {TEST_FUNCTIONS_URL}")
+                break
+        except Exception:
+            if i == 59:
+                process.terminate()
+                raise RuntimeError(
+                    f"Azure Functions failed to start on port {TEST_FUNCTIONS_PORT}"
+                )
+            time.sleep(1)
+
+    yield TEST_FUNCTIONS_URL
+
+    # Cleanup
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+# ==================== FUNCTION-SCOPED FIXTURES (Per Test) ====================
+
+
+@pytest.fixture(scope="function")
+def azurite_tables(test_azurite):
+    """
+    Initialize all required tables in test Azurite for each test.
+    Scope: function - ensures test isolation
+
+    Yields:
+        str: Full Azurite connection string
+    """
+    # Initialize tables
+    init_tables(TEST_AZURITE_CONNECTION)
+
+    yield TEST_AZURITE_CONNECTION
 
     # Cleanup - delete all entities from all tables
-    service_client = TableServiceClient.from_connection_string(
-        connection_string)
+    service_client = TableServiceClient.from_connection_string(TEST_AZURITE_CONNECTION)
     for table_name in REQUIRED_TABLES:
         table_client = service_client.get_table_client(table_name)
         try:
@@ -124,56 +232,60 @@ def azurite_tables():
             entities = list(table_client.query_entities(query_filter=""))
             for entity in entities:
                 table_client.delete_entity(
-                    partition_key=entity['PartitionKey'],
-                    row_key=entity['RowKey']
+                    partition_key=entity["PartitionKey"], row_key=entity["RowKey"]
                 )
         except Exception:
             # Table might not exist or be empty - that's OK
             pass
 
 
+# ==================== TABLE SERVICE FIXTURES ====================
+
+
 @pytest.fixture
 def entities_service(azurite_tables):
-    """Returns TableStorageService instance for Entities table (orgs, forms, executions, audit)"""
+    """Returns TableStorageService instance for Entities table"""
     return TableStorageService("Entities")
 
 
 @pytest.fixture
 def config_service(azurite_tables):
-    """Returns TableStorageService instance for Config table (config, integrations, oauth, system)"""
+    """Returns TableStorageService instance for Config table"""
     return TableStorageService("Config")
 
 
 @pytest.fixture
 def users_service(azurite_tables):
-    """Returns TableStorageService instance for Entities table (users now stored here)"""
+    """Returns TableStorageService instance for Entities table (users)"""
     return TableStorageService("Entities")
 
 
 @pytest.fixture
 def relationships_service(azurite_tables):
-    """Returns TableStorageService instance for Relationships table (roles, permissions, etc.)"""
+    """Returns TableStorageService instance for Relationships table"""
     return TableStorageService("Relationships")
 
 
 # ==================== ENTITY FIXTURES ====================
 
+
 @pytest.fixture
 def test_org(entities_service) -> dict[str, Any]:
     """
-    Creates a test organization in the new 4-table structure
+    Creates a test organization in Azurite.
     Table: Entities
     PartitionKey: GLOBAL
     RowKey: org:{uuid}
-    Returns dict with org_id, name
     """
+    import uuid
+
     org_id = str(uuid.uuid4())
 
     entity = {
         "PartitionKey": "GLOBAL",
         "RowKey": f"org:{org_id}",
         "Name": "Test Organization",
-        "Domain": "example.com",  # Added domain for user provisioning
+        "Domain": "example.com",
         "IsActive": True,
         "CreatedAt": datetime.utcnow().isoformat(),
         "CreatedBy": "test-system",
@@ -182,28 +294,21 @@ def test_org(entities_service) -> dict[str, Any]:
 
     entities_service.insert_entity(entity)
 
-    return {
-        "org_id": org_id,
-        "name": "Test Organization",
-        "domain": "example.com"
-    }
+    return {"org_id": org_id, "name": "Test Organization", "domain": "example.com"}
 
 
 @pytest.fixture
 def test_org_2(entities_service) -> dict[str, Any]:
-    """
-    Creates a second test organization for multi-org tests
-    Table: Entities
-    PartitionKey: GLOBAL
-    RowKey: org:{uuid}
-    """
+    """Creates a second test organization for multi-org tests"""
+    import uuid
+
     org_id = str(uuid.uuid4())
 
     entity = {
         "PartitionKey": "GLOBAL",
         "RowKey": f"org:{org_id}",
         "Name": "Test Organization 2",
-        "Domain": "company.com",  # Added different domain for provisioning
+        "Domain": "company.com",
         "IsActive": True,
         "CreatedAt": datetime.utcnow().isoformat(),
         "CreatedBy": "test-system",
@@ -212,22 +317,12 @@ def test_org_2(entities_service) -> dict[str, Any]:
 
     entities_service.insert_entity(entity)
 
-    return {
-        "org_id": org_id,
-        "name": "Test Organization 2",
-        "domain": "company.com"
-    }
+    return {"org_id": org_id, "name": "Test Organization 2", "domain": "company.com"}
 
 
 @pytest.fixture
 def test_user(users_service) -> dict[str, Any]:
-    """
-    Creates a test user
-    Table: Entities
-    PartitionKey: GLOBAL
-    RowKey: user:{email}
-    Returns dict with user_id, email
-    """
+    """Creates a test user"""
     email = "test@example.com"
 
     entity = {
@@ -244,21 +339,12 @@ def test_user(users_service) -> dict[str, Any]:
 
     users_service.insert_entity(entity)
 
-    return {
-        "user_id": email,  # user_id is now the email
-        "email": email,
-        "display_name": "Test User"
-    }
+    return {"user_id": email, "email": email, "display_name": "Test User"}
 
 
 @pytest.fixture
 def test_user_2(users_service) -> dict[str, Any]:
-    """
-    Creates a second test user for permission tests
-    Table: Entities
-    PartitionKey: GLOBAL
-    RowKey: user:{email}
-    """
+    """Creates a second test user for permission tests"""
     email = "test2@company.com"
 
     entity = {
@@ -275,160 +361,113 @@ def test_user_2(users_service) -> dict[str, Any]:
 
     users_service.insert_entity(entity)
 
+    return {"user_id": email, "email": email, "display_name": "Test User 2"}
+
+
+@pytest.fixture
+def test_platform_admin_user(users_service) -> dict[str, Any]:
+    """
+    Creates a platform admin user for testing.
+
+    This fixture is used by tests that require platform-level administrative access.
+    """
+    email = "admin@platform.test"
+
+    entity = {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"user:{email}",
+        "Email": email,
+        "DisplayName": "Platform Admin",
+        "UserType": "PLATFORM",
+        "IsPlatformAdmin": True,
+        "IsActive": True,
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "LastLogin": datetime.utcnow().isoformat(),
+    }
+
+    users_service.insert_entity(entity)
+
     return {
-        "user_id": email,  # user_id is now the email
+        "user_id": email,
         "email": email,
-        "display_name": "Test User 2"
+        "display_name": "Platform Admin",
+        "user_type": "PLATFORM",
+        "is_platform_admin": True,
+    }
+
+
+@pytest.fixture
+def test_form(test_org, entities_service) -> dict[str, Any]:
+    """Creates a sample form linked to user_onboarding workflow"""
+    import json
+    import uuid
+
+    form_id = str(uuid.uuid4())
+
+    form_schema = {
+        "fields": [
+            {"name": "first_name", "label": "First Name", "type": "text", "required": True},
+            {"name": "last_name", "label": "Last Name", "type": "text", "required": True},
+            {"name": "email", "label": "Email", "type": "email", "required": True},
+        ]
+    }
+
+    entity = {
+        "PartitionKey": test_org["org_id"],
+        "RowKey": f"form:{form_id}",
+        "Name": "Test User Onboarding Form",
+        "Description": "Test form for user onboarding workflow",
+        "LinkedWorkflow": "user_onboarding",
+        "FormSchema": json.dumps(form_schema),
+        "IsActive": True,
+        "IsPublic": False,
+        "CreatedBy": "test-system",
+        "CreatedAt": datetime.utcnow().isoformat(),
+        "UpdatedAt": datetime.utcnow().isoformat(),
+    }
+
+    entities_service.insert_entity(entity)
+
+    return {
+        "form_id": form_id,
+        "org_id": test_org["org_id"],
+        "name": "Test User Onboarding Form",
+        "linked_workflow": "user_onboarding",
+        "form_schema": form_schema,
     }
 
 
 # ==================== PERMISSION FIXTURES ====================
 
-@pytest.fixture
-def test_user_with_full_permissions(test_org, test_user, relationships_service) -> dict[str, Any]:
-    """
-    Creates a user with full permissions via role assignment in new 4-table structure
-    Table: Relationships
-    PartitionKey: GLOBAL
-    RowKey patterns: userrole:{user_id}:{role_id} and assignedrole:{role_id}:{user_id}
-    Returns combined dict with user and org info
-    """
-    # Create an "admin" role for testing
-    admin_role_id = str(uuid.uuid4())
-    role_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"role:{admin_role_id}",
-        "Name": "Admin",
-        "Description": "Admin role for testing",
-        "IsActive": True,
-        "CreatedBy": "test-system",
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat()
-    }
-    relationships_service.insert_entity(role_entity)
-
-    # Assign user to admin role (dual-indexed)
-    now = datetime.utcnow()
-
-    # Primary index: assignedrole:role_uuid:user_id (for querying users by role)
-    entity1 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"assignedrole:{admin_role_id}:{test_user['user_id']}",
-        "UserId": test_user["user_id"],
-        "RoleId": admin_role_id,
-        "AssignedBy": "test-system",
-        "AssignedAt": now.isoformat()
-    }
-    relationships_service.insert_entity(entity1)
-
-    # Dual index: userrole:user_id:role_uuid (for querying roles by user)
-    entity2 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userrole:{test_user['user_id']}:{admin_role_id}",
-        "UserId": test_user["user_id"],
-        "RoleId": admin_role_id,
-        "AssignedBy": "test-system",
-        "AssignedAt": now.isoformat()
-    }
-    relationships_service.insert_entity(entity2)
-
-    return {
-        **test_user,
-        **test_org,
-        "role_id": admin_role_id,
-        "permissions": {
-            "canExecuteWorkflows": True,
-            "canManageConfig": True,
-            "canManageForms": True,
-            "canViewHistory": True,
-        }
-    }
-
 
 @pytest.fixture
-def test_user_with_no_permissions(test_org, test_user) -> dict[str, Any]:
-    """
-    Creates user with no role assignments (no permissions)
-    No entities created in Relationships table - user has no roles
-    """
-    return {
-        **test_user,
-        **test_org,
-        "permissions": {
-            "canExecuteWorkflows": False,
-            "canManageConfig": False,
-            "canManageForms": False,
-            "canViewHistory": False,
-        }
-    }
-
-
-@pytest.fixture
-def test_user_with_limited_permissions(test_org, test_user, relationships_service) -> dict[str, Any]:
-    """
-    Creates user with limited permissions via "viewer" role assignment
-    Table: Relationships
-    """
-    # Create a "viewer" role for testing (limited permissions)
-    viewer_role_id = str(uuid.uuid4())
-    role_entity = {
+def test_org_with_user(test_org, test_user, relationships_service):
+    """Creates a test organization with an assigned user"""
+    permission_entity = {
         "PartitionKey": "GLOBAL",
-        "RowKey": f"role:{viewer_role_id}",
-        "Name": "Viewer",
-        "Description": "Viewer role for testing (limited permissions)",
-        "IsActive": True,
-        "CreatedBy": "test-system",
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat()
+        "RowKey": f"userperm:{test_user['email']}:{test_org['org_id']}",
+        "UserId": test_user["email"],
+        "OrganizationId": test_org["org_id"],
+        "GrantedBy": "test-system",
+        "GrantedAt": datetime.utcnow().isoformat(),
     }
-    relationships_service.insert_entity(role_entity)
 
-    # Assign user to viewer role (dual-indexed)
-    now = datetime.utcnow()
-
-    entity1 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"assignedrole:{viewer_role_id}:{test_user['user_id']}",
-        "UserId": test_user["user_id"],
-        "RoleId": viewer_role_id,
-        "AssignedBy": "test-system",
-        "AssignedAt": now.isoformat()
-    }
-    relationships_service.insert_entity(entity1)
-
-    entity2 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userrole:{test_user['user_id']}:{viewer_role_id}",
-        "UserId": test_user["user_id"],
-        "RoleId": viewer_role_id,
-        "AssignedBy": "test-system",
-        "AssignedAt": now.isoformat()
-    }
-    relationships_service.insert_entity(entity2)
+    relationships_service.insert_entity(permission_entity)
 
     return {
-        **test_user,
         **test_org,
-        "role_id": viewer_role_id,
-        "permissions": {
-            "canExecuteWorkflows": True,
-            "canManageConfig": False,
-            "canManageForms": False,
-            "canViewHistory": True,
-        }
+        **test_user,
+        "user_type": "ORG",
+        "is_platform_admin": False,
     }
 
 
 # ==================== CONFIG FIXTURES ====================
 
+
 @pytest.fixture
 def test_org_with_config(test_org, config_service) -> dict[str, Any]:
-    """
-    Creates org with sample configs in new 4-table structure
-    Table: Config
-    PartitionKey: {org_id}
-    RowKey: config:{key}
-    """
+    """Creates org with sample configs"""
     configs = [
         {
             "PartitionKey": test_org["org_id"],
@@ -455,196 +494,16 @@ def test_org_with_config(test_org, config_service) -> dict[str, Any]:
 
     return {
         **test_org,
-        "configs": {
-            "default_location": "NYC",
-            "timeout": "30"
-        }
+        "configs": {"default_location": "NYC", "timeout": "30"},
     }
 
 
-# ==================== FORM FIXTURES ====================
+# ==================== CONTEXT FIXTURES ====================
 
-@pytest.fixture
-def test_form(test_org, entities_service) -> dict[str, Any]:
-    """
-    Creates a sample form linked to user_onboarding workflow in new 4-table structure
-    Table: Entities
-    PartitionKey: {org_id}
-    RowKey: form:{uuid}
-    """
-    import json
-
-    form_id = str(uuid.uuid4())
-
-    form_schema = {
-        "fields": [
-            {
-                "name": "first_name",
-                "label": "First Name",
-                "type": "text",
-                "required": True
-            },
-            {
-                "name": "last_name",
-                "label": "Last Name",
-                "type": "text",
-                "required": True
-            },
-            {
-                "name": "email",
-                "label": "Email",
-                "type": "email",
-                "required": True
-            }
-        ]
-    }
-
-    entity = {
-        "PartitionKey": test_org["org_id"],
-        "RowKey": f"form:{form_id}",
-        "Name": "Test User Onboarding Form",
-        "Description": "Test form for user onboarding workflow",
-        "LinkedWorkflow": "user_onboarding",
-        "FormSchema": json.dumps(form_schema),
-        "IsActive": True,
-        "IsPublic": False,
-        "CreatedBy": "test-system",
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-
-    entities_service.insert_entity(entity)
-
-    return {
-        "form_id": form_id,
-        "org_id": test_org["org_id"],
-        "name": "Test User Onboarding Form",
-        "linked_workflow": "user_onboarding",
-        "form_schema": form_schema
-    }
-
-
-@pytest.fixture
-def test_global_form(entities_service) -> dict[str, Any]:
-    """
-    Creates a global form (available to all organizations) in new 4-table structure
-    Table: Entities
-    PartitionKey: GLOBAL
-    RowKey: form:{uuid}
-    """
-    import json
-
-    form_id = str(uuid.uuid4())
-
-    form_schema = {
-        "fields": [
-            {
-                "name": "company_name",
-                "label": "Company Name",
-                "type": "text",
-                "required": True
-            }
-        ]
-    }
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"form:{form_id}",
-        "Name": "Global Customer Onboarding Form",
-        "Description": "Global template for customer onboarding",
-        "LinkedWorkflow": "global_customer_onboarding",
-        "FormSchema": json.dumps(form_schema),
-        "IsActive": True,
-        "IsPublic": True,
-        "CreatedBy": "test-system",
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-
-    entities_service.insert_entity(entity)
-
-    return {
-        "form_id": form_id,
-        "org_id": "GLOBAL",
-        "name": "Global Customer Onboarding Form",
-        "linked_workflow": "global_customer_onboarding",
-        "form_schema": form_schema
-    }
-
-
-# ==================== WORKFLOW FIXTURES ====================
-
-@pytest.fixture
-def mock_context(test_org):
-    """
-    Returns mock OrganizationContext for workflow testing
-    """
-    from unittest.mock import MagicMock
-
-    context = MagicMock()
-    context.org_id = test_org["org_id"]
-    context.org_name = test_org["name"]
-
-    # Mock methods
-    context.get_config = MagicMock(return_value="mock-value")
-    context.get_secret = MagicMock(return_value="mock-secret")
-    context.get_integration = MagicMock(return_value=MagicMock())
-
-    return context
-
-
-@pytest.fixture
-def mock_jwt_token(test_user):
-    """
-    Returns a mock JWT token string for testing auth middleware
-    """
-    from datetime import timedelta
-
-    import jwt
-
-    payload = {
-        "oid": test_user["user_id"],
-        "preferred_username": test_user["email"],
-        "name": test_user["display_name"],
-        "exp": datetime.utcnow() + timedelta(hours=1),
-        "iat": datetime.utcnow(),
-        "iss": "https://login.microsoftonline.com/test-tenant/v2.0",
-        "aud": "test-client-id"
-    }
-
-    # Sign with a test secret (in real tests, this would be validated)
-    token = jwt.encode(payload, "test-secret", algorithm="HS256")
-
-    return token
-
-
-# ==================== HELPER FUNCTIONS ====================
-
-def generate_test_uuid() -> str:
-    """Generate a test UUID"""
-    return str(uuid.uuid4())
-
-
-def clear_table(table_name: str):
-    """Clear all entities from a table"""
-    service = TableStorageService(table_name)
-
-    entities = list(service.query_entities())
-    for entity in entities:
-        service.delete_entity(
-            partition_key=entity["PartitionKey"],
-            row_key=entity["RowKey"]
-        )
-
-
-# ==================== AUTHENTICATION FIXTURES ====================
 
 @pytest.fixture
 def platform_admin_context():
-    """
-    Returns a RequestContext for a platform admin user
-    Used for testing admin-only endpoints and GLOBAL scope operations
-    """
+    """Returns a RequestContext for a platform admin user"""
     from shared.request_context import RequestContext
 
     return RequestContext(
@@ -653,16 +512,13 @@ def platform_admin_context():
         name="Test Platform Admin",
         org_id=None,  # GLOBAL scope
         is_platform_admin=True,
-        is_function_key=False
+        is_function_key=False,
     )
 
 
 @pytest.fixture
 def org_user_context(test_org):
-    """
-    Returns a RequestContext for an organization user
-    Used for testing org-scoped operations
-    """
+    """Returns a RequestContext for an organization user"""
     from shared.request_context import RequestContext
 
     return RequestContext(
@@ -671,312 +527,33 @@ def org_user_context(test_org):
         name="Test Org User",
         org_id=test_org["org_id"],
         is_platform_admin=False,
-        is_function_key=False
+        is_function_key=False,
     )
 
 
 @pytest.fixture
 def function_key_context():
-    """
-    Returns a RequestContext for function key authentication
-    Used for testing system-to-system operations
-    """
+    """Returns a RequestContext for function key authentication"""
     from shared.request_context import RequestContext
 
     return RequestContext(
         user_id="system",
         email="system@local",
         name="System (Function Key)",
-        org_id=None,  # Can be set via headers
+        org_id=None,
         is_platform_admin=True,
-        is_function_key=True
+        is_function_key=True,
     )
 
 
-@pytest.fixture
-def mock_admin_request():
-    """
-    Returns a mock HTTP request with platform admin authentication
-    Used for testing admin endpoints
-    """
-    from tests.helpers.mock_requests import MockRequestHelper
+# ==================== MARKERS ====================
 
-    return MockRequestHelper.create_platform_admin_request(
-        method="GET",
-        url="/api/test"
+
+def pytest_configure(config):
+    """Register custom pytest markers"""
+    config.addinivalue_line("markers", "unit: Unit tests (fast, mocked dependencies)")
+    config.addinivalue_line(
+        "markers", "integration: Integration tests (real HTTP + Azurite)"
     )
-
-
-@pytest.fixture
-def mock_org_user_request(test_org):
-    """
-    Returns a mock HTTP request with org user authentication
-    Used for testing org user endpoints
-    """
-    from tests.helpers.mock_requests import MockRequestHelper
-
-    return MockRequestHelper.create_org_user_request(
-        method="GET",
-        url="/api/test",
-        org_id=test_org["org_id"]
-    )
-
-
-@pytest.fixture
-def mock_function_key_request():
-    """
-    Returns a mock HTTP request with function key authentication
-    Used for testing system endpoints
-    """
-    from tests.helpers.mock_requests import MockRequestHelper
-
-    return MockRequestHelper.create_function_key_request(
-        method="GET",
-        url="/api/test"
-    )
-
-
-@pytest.fixture
-def mock_anonymous_request():
-    """
-    Returns a mock HTTP request without authentication
-    Used for testing anonymous endpoints
-    """
-    from tests.helpers.mock_requests import MockRequestHelper
-
-    return MockRequestHelper.create_anonymous_request(
-        method="GET",
-        url="/api/test"
-    )
-
-
-@pytest.fixture
-def test_org_with_user(test_org, test_user, relationships_service):
-    """
-    Creates a test organization with an assigned user via user permission relationship
-    Returns combined dict with org and user info
-    """
-    # Create user-org permission relationship in Relationships table
-    permission_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{test_user['email']}:{test_org['org_id']}",
-        "UserId": test_user["email"],
-        "OrganizationId": test_org["org_id"],
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-
-    relationships_service.insert_entity(permission_entity)
-
-    return {
-        **test_org,
-        **test_user,
-        "user_type": "ORG",
-        "is_platform_admin": False
-    }
-
-
-@pytest.fixture
-def test_platform_admin_user(users_service, relationships_service, test_org=None):
-    """
-    Creates a platform admin user for testing
-    Table: Entities
-    PartitionKey: GLOBAL
-    RowKey: user:{email}
-    Returns dict with user info
-
-    Optional test_org allows assigning the admin to an organization
-    """
-    email = "admin@test.com"
-
-    user_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{email}",
-        "Email": email,
-        "DisplayName": "Test Platform Admin",
-        "IsActive": True,
-        "UserType": "PLATFORM",
-        "IsPlatformAdmin": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-
-    users_service.upsert_entity(user_entity)
-
-    # Optional org relationship for the platform admin
-    if test_org:
-        permission_entity = {
-            "PartitionKey": "GLOBAL",
-            "RowKey": f"userperm:{email}:{test_org['org_id']}",
-            "UserId": email,
-            "OrganizationId": test_org['org_id'],
-            "GrantedBy": "test-system",
-            "GrantedAt": datetime.utcnow().isoformat(),
-        }
-        relationships_service.insert_entity(permission_entity)
-
-    return {
-        "user_id": email,  # user_id is now the email
-        "email": email,
-        "display_name": "Test Platform Admin",
-        "user_type": "PLATFORM",
-        "is_platform_admin": True,
-        "org_id": test_org["org_id"] if test_org else None
-    }
-
-
-@pytest.fixture(scope="function")
-def load_seed_data(azurite_tables):
-    """
-    Load seed data for E2E tests that explicitly need it
-    This creates the test users (jack@gocovi.com, jack@gocovi.dev) and sample data
-
-    NOTE: Not autouse - tests must explicitly request this fixture if they need seed data
-    """
-    # Import seed data function
-    import os
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-    try:
-        from seed_data import seed_all_data
-        # Use full Azurite connection string
-        connection_string = (
-            "DefaultEndpointsProtocol=http;"
-            "AccountName=devstoreaccount1;"
-            "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
-            "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-            "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
-            "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
-        )
-        seed_all_data(connection_string)
-    except Exception as e:
-        # If seed data fails, tests will fail with clearer errors
-        print(f"Warning: Failed to load seed data: {e}")
-        pass
-
-
-@pytest.fixture
-def mock_auth_users(users_service, relationships_service, test_org):
-    """
-    Ensures that mock authentication users actually exist in the database with proper org relationships.
-    This fixture creates the test users referenced in mock_auth.py (TestUsers)
-    and establishes their org relationships so integration tests don't get 401 errors.
-
-    Creates:
-    - Platform admin user (admin@test.com)
-    - Org user (user@test.com) with relationship to test_org
-    - Org user 2 (user2@test.com) with relationship to test_org
-    - Other org user (other@test.com) with relationship to other-org
-    """
-    from tests.helpers.mock_auth import TestUsers
-
-    # Create platform admin user entity
-    admin_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{TestUsers.PLATFORM_ADMIN['email']}",
-        "Email": TestUsers.PLATFORM_ADMIN["email"],
-        "DisplayName": TestUsers.PLATFORM_ADMIN["name"],
-        "UserType": "PLATFORM",
-        "IsPlatformAdmin": True,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-    users_service.upsert_entity(admin_entity)
-
-    # Create org user entity
-    org_user_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{TestUsers.ORG_USER['email']}",
-        "Email": TestUsers.ORG_USER["email"],
-        "DisplayName": TestUsers.ORG_USER["name"],
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-    users_service.upsert_entity(org_user_entity)
-
-    # Create org user 2 entity
-    org_user_2_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{TestUsers.ORG_USER_2['email']}",
-        "Email": TestUsers.ORG_USER_2["email"],
-        "DisplayName": TestUsers.ORG_USER_2["name"],
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-    users_service.upsert_entity(org_user_2_entity)
-
-    # Create other org user entity
-    other_user_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{TestUsers.OTHER_ORG_USER['email']}",
-        "Email": TestUsers.OTHER_ORG_USER["email"],
-        "DisplayName": TestUsers.OTHER_ORG_USER["name"],
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-    users_service.upsert_entity(other_user_entity)
-
-    # Create user-org relationships for org users
-    # Org user -> test_org
-    userperm_entity_1 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{TestUsers.ORG_USER['email']}:{test_org['org_id']}",
-        "UserId": TestUsers.ORG_USER["email"],
-        "OrganizationId": test_org["org_id"],
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-    relationships_service.upsert_entity(userperm_entity_1)
-
-    # Org user 2 -> test_org
-    userperm_entity_2 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{TestUsers.ORG_USER_2['email']}:{test_org['org_id']}",
-        "UserId": TestUsers.ORG_USER_2["email"],
-        "OrganizationId": test_org["org_id"],
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-    relationships_service.upsert_entity(userperm_entity_2)
-
-    # Create "other-org" for OTHER_ORG_USER
-    other_org_id = TestUsers.OTHER_ORG_USER["org_id"]
-    other_org_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"org:{other_org_id}",
-        "Name": "Other Test Organization",
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "CreatedBy": "test-system",
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-    users_service.upsert_entity(other_org_entity)
-
-    # Other user -> other-org
-    userperm_entity_3 = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{TestUsers.OTHER_ORG_USER['email']}:{other_org_id}",
-        "UserId": TestUsers.OTHER_ORG_USER["email"],
-        "OrganizationId": other_org_id,
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-    relationships_service.upsert_entity(userperm_entity_3)
-
-    return {
-        "platform_admin": TestUsers.PLATFORM_ADMIN,
-        "org_user": TestUsers.ORG_USER,
-        "org_user_2": TestUsers.ORG_USER_2,
-        "other_org_user": TestUsers.OTHER_ORG_USER,
-    }
+    config.addinivalue_line("markers", "e2e: End-to-end tests (complete workflows)")
+    config.addinivalue_line("markers", "slow: Tests that take >1 second")

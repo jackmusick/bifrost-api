@@ -9,11 +9,9 @@ from shared.registry import DataProviderMetadata, WorkflowMetadata, WorkflowPara
 
 
 @pytest.fixture
-def registry():
-    """Get registry instance and clear it before each test"""
-    reg = get_registry()
-    reg.clear_all()
-    return reg
+def registry(isolated_registry):
+    """Use isolated registry for each test to prevent state pollution"""
+    return isolated_registry
 
 
 class TestWorkflowRegistry:
