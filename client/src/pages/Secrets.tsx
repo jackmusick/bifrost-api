@@ -130,9 +130,8 @@ export function Secrets() {
               These secrets can be referenced in Config entries using type <code className="px-1.5 py-0.5 bg-muted rounded text-xs">secret_ref</code>
             </p>
           </div>
-          <Button onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Secret
+          <Button variant="outline" size="icon" onClick={handleCreate} title="Create Secret">
+            <Plus className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -210,9 +209,8 @@ export function Secrets() {
               <p className="mt-2 text-sm text-muted-foreground">
                 Create your first secret to get started
               </p>
-              <Button onClick={handleCreate} className="mt-4">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Secret
+              <Button variant="outline" size="icon" onClick={handleCreate} title="Create Secret" className="mt-4">
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
           )}

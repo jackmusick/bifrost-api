@@ -23,6 +23,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 # ==================== CONFIGURATION ====================
 
 @pytest.fixture(scope="session", autouse=True)
+def load_test_workflows():
+    """
+    Load test workflows into the workflow registry at session start.
+    This ensures workflows are available for form context tests.
+    """
+    try:
+        import workspace.examples.test_form_workflows  # noqa: F401
+    except ImportError:
+        # Tests may still run, but workflow-dependent tests will fail
+        pass
+    yield
+
+@pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Set up test environment variables"""
     # Full Azurite connection string (required for blob storage SDK)

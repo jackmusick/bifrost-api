@@ -143,9 +143,8 @@ export function Organizations() {
               Manage customer organizations and their configurations
             </p>
           </div>
-          <Button onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Organization
+          <Button variant="outline" size="icon" onClick={handleCreate} title="Create Organization">
+            <Plus className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -236,9 +235,8 @@ export function Organizations() {
               <p className="mt-2 text-sm text-muted-foreground">
                 Create your first organization to get started
               </p>
-              <Button onClick={handleCreate} className="mt-4">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Organization
+              <Button variant="outline" size="icon" onClick={handleCreate} title="Create Organization" className="mt-4">
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
           )}

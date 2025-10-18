@@ -1,11 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(AzureWebJobsStorage=\"UseDevelopmentStorage=true\" python -c \"\nfrom shared.storage import TableStorageService\n\n# Test writing and reading job status in Config table\nconfig = TableStorageService(''Config'')\n\n# Test writing\ntest_entity = {\n    ''PartitionKey'': ''SYSTEM'',\n    ''RowKey'': ''jobstatus:TokenRefreshJob'',\n    ''Status'': ''test'',\n    ''TotalConnections'': 42,\n    ''Message'': ''Test job status''\n}\nconfig.upsert_entity(test_entity)\nprint(''✓ Successfully wrote job status to Config table with SYSTEM partition'')\n\n# Test reading back\nresult = config.get_entity(''SYSTEM'', ''jobstatus:TokenRefreshJob'')\nprint(f''✓ Successfully read back:'')\nprint(f''  Status: {result[\"\"Status\"\"]}'')\nprint(f''  TotalConnections: {result[\"\"TotalConnections\"\"]}'')\nprint(f''  Message: {result[\"\"Message\"\"]}'')\n\")",
-      "Bash(npm --prefix /Users/jack/GitHub/bifrost-integrations/client run lint)",
-      "Bash(docker compose:*)",
-      "Bash(docker logs:*)",
-      "mcp__context7__resolve-library-id"
+      "Bash(python -m pytest tests/integration/test_form_components.py tests/integration/test_form_context_and_visibility.py --tb=line)",
+      "Bash(python -m pytest tests/integration/engine/test_workspace_execution.py tests/integration/test_form_context_and_visibility.py --tb=short)",
+      "Bash(python -m pytest tests/unit/test_authorization.py tests/integration/test_form_context_and_visibility.py --tb=line)",
+      "Bash(python -m pytest tests/unit/ tests/integration/test_form_context_and_visibility.py --tb=line)",
+      "Bash(python -m pytest tests/ --collect-only)",
+      "Bash(find /Users/jack/GitHub/bifrost-integrations/api/tests -type f -name \"*.py\" ! -name \"__init__.py\" -exec wc -l {} +)",
+      "Bash(for dir in unit integration contract e2e)",
+      "Bash(do echo \"=== $dir ===\")",
+      "Bash(find /Users/jack/GitHub/bifrost-integrations/api/tests/$dir -type f -name \"test_*.py\")",
+      "Bash(done)",
+      "Bash(find /Users/jack/GitHub/bifrost-integrations/api/tests -name \"*.py\" -type f ! -name \"__init__.py\" -exec grep -l \"pytest.mark\" {})",
+      "Bash(find . -name \"test_*.py\" -type f -exec wc -l {} +)"
     ],
     "deny": [],
     "ask": []

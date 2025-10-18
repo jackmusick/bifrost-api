@@ -173,9 +173,8 @@ export function OAuthConnections() {
             <Button variant="outline" size="icon" onClick={() => refetch()} title="Refresh">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Connection
+            <Button variant="outline" size="icon" onClick={handleCreate} title="New Connection">
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -259,9 +258,8 @@ export function OAuthConnections() {
                 Get started by creating your first OAuth connection. Connect to services like
                 Microsoft Graph, Google APIs, or any OAuth 2.0 provider.
               </p>
-              <Button onClick={handleCreate} className="mt-4">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Connection
+              <Button variant="outline" size="icon" onClick={handleCreate} title="Create Connection" className="mt-4">
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
           )}

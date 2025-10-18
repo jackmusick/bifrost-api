@@ -48,7 +48,11 @@ export function Forms() {
         description: null,
         linkedWorkflow: null,
         formSchema: null,
-        isActive: !currentlyActive
+        isActive: !currentlyActive,
+        // NEW MVP fields (optional)
+        launchWorkflowId: null,
+        allowedQueryParams: null,
+        defaultLaunchParams: null,
       }
     })
   }
@@ -104,13 +108,12 @@ export function Forms() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()}>
+          <Button variant="outline" size="icon" onClick={() => refetch()} title="Refresh">
             <RefreshCw className="h-4 w-4" />
           </Button>
           {canManageForms && (
-            <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Form
+            <Button variant="outline" size="icon" onClick={handleCreate} title="Create Form">
+              <Plus className="h-4 w-4" />
             </Button>
           )}
         </div>
@@ -221,9 +224,8 @@ export function Forms() {
               }
             </p>
             {canManageForms && (
-              <Button onClick={handleCreate} className="mt-4">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Form
+              <Button variant="outline" size="icon" onClick={handleCreate} className="mt-4" title="Create Form">
+                <Plus className="h-4 w-4" />
               </Button>
             )}
           </CardContent>

@@ -61,23 +61,25 @@ export function RunForm() {
         <div className="space-y-6">
             <div className="flex justify-center">
                 <div className="w-full max-w-2xl">
-                    <div className="flex items-center gap-4">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate("/forms")}
-                        >
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
+                    <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-4xl font-extrabold tracking-tight">
                                 {form.name}
                             </h1>
-                            <p className="mt-2 text-muted-foreground">
-                                {form.description ||
-                                    `Executes workflow: ${form.linkedWorkflow}`}
-                            </p>
+                            {form.description && (
+                                <p className="mt-2 text-muted-foreground">
+                                    {form.description}
+                                </p>
+                            )}
                         </div>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => navigate("/forms")}
+                            title="Back to Forms"
+                        >
+                            <ArrowLeft className="h-4 w-4" />
+                        </Button>
                     </div>
                 </div>
             </div>

@@ -385,9 +385,14 @@ def require_platform_admin(handler):
             logger.warning(
                 f"Non-admin user {context.user_id} attempted to access admin endpoint"
             )
+            import json
             return func.HttpResponse(
-                "Forbidden - Platform Administrator privileges required",
-                status_code=403
+                body=json.dumps({
+                    "error": "Forbidden",
+                    "message": "Platform Administrator privileges required"
+                }),
+                status_code=403,
+                mimetype="application/json"
             )
 
         # Call handler

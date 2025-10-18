@@ -10,6 +10,7 @@ from datetime import datetime
 
 import azure.functions as func
 
+from shared.decorators import require_platform_admin, with_request_context
 from shared.error_handling import WorkflowError
 from shared.execution_logger import get_execution_logger
 from shared.middleware import with_org_context
@@ -29,7 +30,7 @@ bp = func.Blueprint()
     path="/workflows/{workflowName}/execute",
     method="POST",
     summary="Execute a workflow",
-    description="Execute a workflow with the provided parameters",
+    description="Execute a workflow with the provided parameters (Platform admin only)",
     tags=["Workflows"],
     request_model=WorkflowExecutionRequest,
     response_model=WorkflowExecutionResponse,
@@ -41,7 +42,9 @@ bp = func.Blueprint()
         }
     }
 )
+@with_request_context
 @with_org_context
+@require_platform_admin
 async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
     """
     Execute a workflow with the provided parameters.

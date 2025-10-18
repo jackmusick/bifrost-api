@@ -303,3 +303,109 @@ async def load_organization_context(
 class OrganizationNotFoundError(Exception):
     """Raised when organization is not found or inactive."""
     pass
+
+
+def has_workflow_key(handler: Callable) -> Callable:
+    """
+    Decorator to allow workflow execution via API key OR user authentication.
+
+    Checks for API key in Authorization header first. If valid, creates a global
+    scope context with API key user. If no API key or invalid, falls back to
+    standard authentication via @with_org_context.
+
+    Usage:
+        @bp.route(route="workflows/{workflowName}/execute", methods=["POST"])
+        @has_workflow_key
+        async def execute_workflow(req: func.HttpRequest):
+            # Accessible via API key OR authenticated user
+            context = req.org_context
+            pass
+
+    Authorization header format:
+        Authorization: Bearer wk_abc123def456...
+
+    Returns:
+        401 Unauthorized: If API key is invalid or revoked
+        Otherwise passes through to @with_org_context decorator
+    """
+    @functools.wraps(handler)
+    async def wrapper(req: func.HttpRequest) -> func.HttpResponse:
+        # Check for API key in Authorization header
+        auth_header = req.headers.get('Authorization', '')
+
+        if auth_header.startswith('Bearer '):
+            api_key = auth_header[7:]  # Remove 'Bearer ' prefix
+
+            # Validate API key
+            from shared.auth.workflow_keys import validate_workflow_key
+            import os
+
+            connection_str = os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
+
+            # Extract workflow ID from route params if present
+            workflow_id = req.route_params.get('workflowName')
+
+            try:
+                is_valid = validate_workflow_key(connection_str, api_key, workflow_id)
+
+                if is_valid:
+                    # Create global scope context for API key access
+                    # API key users get GLOBAL scope to access all workflows
+                    logger.info(
+                        f"Valid API key authentication for workflow: {workflow_id or 'global'}",
+                        extra={"workflow_id": workflow_id}
+                    )
+
+                    # Create minimal global context for API key access
+                    # No organization, but with API key caller
+                    api_caller = Caller(
+                        user_id="API_KEY",
+                        email="api-key@system.local",
+                        name="API Key User"
+                    )
+
+                    api_context = OrganizationContext(
+                        org=None,  # API keys get global scope
+                        config={},  # No org-specific config
+                        caller=api_caller,
+                        execution_id=str(__import__('uuid').uuid4())
+                    )
+
+                    # Inject context into request
+                    req.org_context = api_context  # type: ignore[attr-defined]
+
+                    # Call handler directly (skip org context decorator)
+                    return await handler(req)
+                else:
+                    logger.warning(
+                        f"Invalid or revoked API key attempted for workflow: {workflow_id}",
+                        extra={"workflow_id": workflow_id}
+                    )
+                    return func.HttpResponse(
+                        json.dumps({
+                            "error": "Unauthorized",
+                            "message": "Invalid or revoked API key"
+                        }),
+                        status_code=401,
+                        mimetype="application/json"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"API key validation failed: {str(e)}",
+                    exc_info=True,
+                    extra={"workflow_id": workflow_id}
+                )
+                return func.HttpResponse(
+                    json.dumps({
+                        "error": "Unauthorized",
+                        "message": "API key validation failed"
+                    }),
+                    status_code=401,
+                    mimetype="application/json"
+                )
+
+        # No API key provided, fall back to standard authentication
+        # Apply @with_org_context decorator
+        return await with_org_context(handler)(req)
+
+    return wrapper

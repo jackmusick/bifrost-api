@@ -61,6 +61,7 @@ __all__ = [
     'CreateFormRequest',
     'UpdateFormRequest',
     'FormExecuteRequest',
+    'FormStartupResponse',
 
     # Workflow Execution
     'ExecutionLog',
@@ -99,6 +100,28 @@ __all__ = [
     'OAuthCredentials',
     'OAuthCallbackRequest',
     'OAuthCallbackResponse',
+
+    # MVP File Uploads
+    'FileUploadRequest',
+    'FileUploadResponse',
+
+    # Workflow API Keys (User Story 3)
+    'WorkflowKey',
+    'WorkflowKeyCreateRequest',
+    'WorkflowKeyResponse',
+
+    # Async Execution (User Story 4)
+    'AsyncExecution',
+    'AsyncExecutionStatus',
+
+    # CRON Scheduling (User Story 5)
+    'CronSchedule',
+    'CronScheduleCreateRequest',
+    'CronScheduleUpdateRequest',
+
+    # Platform Branding (User Story 7)
+    'BrandingSettings',
+    'BrandingUpdateRequest',
 
     # Common
     'ErrorResponse',
@@ -140,6 +163,12 @@ class FormFieldType(str, Enum):
     SELECT = "select"
     CHECKBOX = "checkbox"
     TEXTAREA = "textarea"
+    # NEW MVP form component types (T012, T028)
+    RADIO = "radio"
+    DATETIME = "datetime"
+    MARKDOWN = "markdown"
+    HTML = "html"
+    FILE = "file"
 
 
 class IntegrationType(str, Enum):
@@ -286,6 +315,12 @@ class User(BaseModel):
     lastLogin: datetime | None = None
     createdAt: datetime
 
+    # NEW: Entra ID fields for enhanced authentication (T007)
+    entraUserId: str | None = Field(
+        None, description="Azure AD user object ID (oid claim) for duplicate prevention")
+    lastEntraIdSync: datetime | None = Field(
+        None, description="Last synchronization timestamp from Azure AD")
+
     @field_validator('isPlatformAdmin')
     @classmethod
     def validate_platform_admin(cls, v, info):
@@ -423,6 +458,22 @@ class FormField(BaseModel):
     placeholder: str | None = None
     helpText: str | None = None
 
+    # NEW MVP fields (T012)
+    visibilityExpression: str | None = Field(
+        None, description="JavaScript expression for conditional visibility (e.g., context.field.show === true)")
+    options: list[dict[str, str]] | None = Field(
+        None, description="Options for radio/select fields")
+    allowedTypes: list[str] | None = Field(
+        None, description="Allowed MIME types for file uploads")
+    multiple: bool | None = Field(
+        None, description="Allow multiple file uploads")
+    maxSizeMB: int | None = Field(
+        None, description="Maximum file size in MB")
+    content: str | None = Field(
+        None, description="Static content for markdown/HTML components")
+    allowAsQueryParam: bool | None = Field(
+        None, description="Whether this field's value can be populated from URL query parameters")
+
 
 class FormSchema(BaseModel):
     """Form schema with field definitions"""
@@ -455,6 +506,14 @@ class Form(BaseModel):
     createdAt: datetime
     updatedAt: datetime
 
+    # NEW MVP fields (T012)
+    launchWorkflowId: str | None = Field(
+        None, description="Optional workflow to execute on form load for context generation")
+    allowedQueryParams: list[str] | None = Field(
+        None, description="List of allowed query parameter names to inject into form context")
+    defaultLaunchParams: dict[str, Any] | None = Field(
+        None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
+
 
 class CreateFormRequest(BaseModel):
     """Request model for creating a form"""
@@ -466,6 +525,14 @@ class CreateFormRequest(BaseModel):
     isPublic: bool = Field(
         default=False, description="If true, any authenticated user can execute")
 
+    # NEW MVP fields (T012)
+    launchWorkflowId: str | None = Field(
+        None, description="Optional workflow to execute on form load for context generation")
+    allowedQueryParams: list[str] | None = Field(
+        None, description="List of allowed query parameter names to inject into form context")
+    defaultLaunchParams: dict[str, Any] | None = Field(
+        None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
+
 
 class UpdateFormRequest(BaseModel):
     """Request model for updating a form"""
@@ -475,10 +542,23 @@ class UpdateFormRequest(BaseModel):
     formSchema: FormSchema | None = None
     isActive: bool | None = None
 
+    # NEW MVP fields (T012)
+    launchWorkflowId: str | None = Field(
+        None, description="Optional workflow to execute on form load for context generation")
+    allowedQueryParams: list[str] | None = Field(
+        None, description="List of allowed query parameter names to inject into form context")
+    defaultLaunchParams: dict[str, Any] | None = Field(
+        None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
+
 
 class FormExecuteRequest(BaseModel):
     """Request model for executing a form"""
     form_data: dict[str, Any] = Field(..., description="Form field values")
+
+
+class FormStartupResponse(BaseModel):
+    """Response model for form startup/launch workflow execution"""
+    result: dict[str, Any] | str | None = Field(None, description="Workflow execution result")
 
 
 # ==================== WORKFLOW EXECUTION MODELS ====================
@@ -756,6 +836,156 @@ class DashboardMetricsResponse(BaseModel):
 # ==================== LIST RESPONSE MODELS ====================
 
 # List Response Models removed - Deprecated in favor of returning bare arrays
+
+
+# ==================== MVP FILE UPLOAD MODELS (T027, T028) ====================
+
+class FileUploadRequest(BaseModel):
+    """Request model for generating file upload SAS URL"""
+    file_name: str = Field(..., description="Original file name")
+    content_type: str = Field(..., description="MIME type of the file")
+    file_size: int = Field(..., description="File size in bytes")
+
+class FileUploadResponse(BaseModel):
+    """Response model for file upload SAS URL generation"""
+    upload_url: str = Field(..., description="SAS URL for direct upload to Blob Storage")
+    blob_uri: str = Field(..., description="Final blob URI (without SAS token)")
+    expires_at: str = Field(..., description="SAS token expiration timestamp (ISO format)")
+
+
+# ==================== WORKFLOW API KEYS (T004, T032, T033, T034 - User Story 3) ====================
+
+class WorkflowKey(BaseModel):
+    """Workflow API Key for HTTP access without user authentication"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique key ID")
+    hashedKey: str = Field(..., description="SHA-256 hash of the API key")
+    workflowId: str | None = Field(None, description="Workflow-specific key, or None for global access")
+    createdBy: str = Field(..., description="User email who created the key")
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    lastUsedAt: datetime | None = None
+    revoked: bool = Field(default=False)
+    revokedAt: datetime | None = None
+    revokedBy: str | None = None
+    expiresAt: datetime | None = Field(None, description="Optional expiration timestamp")
+    description: str | None = Field(None, description="Optional key description")
+
+class WorkflowKeyCreateRequest(BaseModel):
+    """Request model for creating a workflow API key"""
+    workflowId: str | None = Field(None, description="Workflow-specific key, or None for global")
+    expiresInDays: int | None = Field(None, description="Days until key expires (default: no expiration)")
+    description: str | None = Field(None, description="Optional key description")
+
+class WorkflowKeyResponse(BaseModel):
+    """Response model for workflow key (includes raw key on creation only)"""
+    id: str
+    rawKey: str | None = Field(None, description="Raw API key (only returned on creation)")
+    maskedKey: str | None = Field(None, description="Last 4 characters for display")
+    workflowId: str | None = None
+    createdBy: str
+    createdAt: datetime
+    lastUsedAt: datetime | None = None
+    revoked: bool
+    expiresAt: datetime | None = None
+    description: str | None = None
+
+
+# ==================== ASYNC EXECUTION (T004, T042, T043 - User Story 4) ====================
+
+class AsyncExecutionStatus(str, Enum):
+    """Async execution status values"""
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class AsyncExecution(BaseModel):
+    """Async workflow execution tracking"""
+    executionId: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    workflowId: str = Field(..., description="Workflow name to execute")
+    status: AsyncExecutionStatus = Field(default=AsyncExecutionStatus.QUEUED)
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
+    context: dict[str, Any] = Field(default_factory=dict, description="Execution context (org scope, user)")
+    result: Any | None = Field(None, description="Workflow result (for small results)")
+    resultBlobUri: str | None = Field(None, description="Blob URI for large results (>32KB)")
+    error: str | None = Field(None, description="Error message if failed")
+    errorDetails: dict[str, Any] | None = Field(None, description="Detailed error information")
+    queuedAt: datetime = Field(default_factory=datetime.utcnow)
+    startedAt: datetime | None = None
+    completedAt: datetime | None = None
+    durationMs: int | None = Field(None, description="Execution duration in milliseconds")
+
+
+# ==================== CRON SCHEDULING (T004, T052, T053 - User Story 5) ====================
+
+class CronSchedule(BaseModel):
+    """CRON schedule configuration for automatic workflow execution"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    workflowId: str = Field(..., description="Workflow name to execute on schedule")
+    cronExpression: str = Field(..., description="Standard CRON expression (e.g., '0 2 * * *')")
+    humanReadable: str | None = Field(None, description="Human-readable schedule description")
+    enabled: bool = Field(default=True)
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Default parameters for execution")
+    nextRunAt: datetime = Field(..., description="Next scheduled execution time")
+    lastRunAt: datetime | None = None
+    lastExecutionId: str | None = Field(None, description="ID of last execution")
+    createdBy: str = Field(..., description="User email who created the schedule")
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+class CronScheduleCreateRequest(BaseModel):
+    """Request model for creating a CRON schedule"""
+    workflowId: str = Field(..., description="Workflow name to schedule")
+    cronExpression: str = Field(..., description="CRON expression (e.g., '0 2 * * *' for 2am daily)")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = Field(default=True)
+
+    @field_validator('cronExpression')
+    @classmethod
+    def validate_cron_expression(cls, v):
+        """Validate CRON expression format"""
+        from croniter import croniter
+        if not croniter.is_valid(v):
+            raise ValueError(f"Invalid CRON expression: {v}")
+        return v
+
+class CronScheduleUpdateRequest(BaseModel):
+    """Request model for updating a CRON schedule"""
+    cronExpression: str | None = None
+    parameters: dict[str, Any] | None = None
+    enabled: bool | None = None
+
+
+# ==================== PLATFORM BRANDING (T004, T071 - User Story 7) ====================
+
+class BrandingSettings(BaseModel):
+    """Organization branding configuration"""
+    orgId: str = Field(..., description="Organization ID or 'GLOBAL' for platform default")
+    squareLogoUrl: str | None = Field(None, description="Square logo URL (for icons, 1:1 ratio)")
+    rectangleLogoUrl: str | None = Field(None, description="Rectangle logo URL (for headers, 16:9 ratio)")
+    primaryColor: str | None = Field(None, description="Primary brand color (hex format, e.g., #FF5733)")
+    updatedBy: str = Field(..., description="User email who last updated branding")
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator('primaryColor')
+    @classmethod
+    def validate_hex_color(cls, v):
+        """Validate hex color format"""
+        if v is None:
+            return v
+        if not v.startswith('#') or len(v) not in [4, 7]:
+            raise ValueError("Primary color must be a valid hex color (e.g., #FFF or #FF5733)")
+        try:
+            int(v[1:], 16)
+        except ValueError:
+            raise ValueError("Primary color must be a valid hex color")
+        return v
+
+class BrandingUpdateRequest(BaseModel):
+    """Request model for updating branding settings"""
+    squareLogoUrl: str | None = None
+    rectangleLogoUrl: str | None = None
+    primaryColor: str | None = None
 
 
 # ==================== ERROR MODEL ====================

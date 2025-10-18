@@ -72,4 +72,22 @@ export const formsService = {
     if (error || !data) throw new Error(`Failed to submit form: ${error}`)
     return data as FormExecutionResponse
   },
+
+  /**
+   * Execute form's launch workflow to get initial context
+   * @param formId - Form ID
+   * @param inputData - Parameters to pass to launch workflow
+   */
+  async executeFormStartup(formId: string, inputData?: Record<string, unknown>) {
+    const { data, error} = await apiClient.POST('/forms/{formId}/startup', {
+      params: {
+        path: { formId },
+      },
+      body: {
+        form_data: inputData || {},
+      },
+    })
+    if (error || !data) throw new Error(`Failed to execute form startup: ${error}`)
+    return data
+  },
 }

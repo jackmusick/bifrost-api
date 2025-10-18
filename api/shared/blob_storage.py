@@ -6,9 +6,11 @@ Handles large execution data (logs, results, snapshots) that exceed Table Storag
 import json
 import logging
 import os
+import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
-from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.storage.blob import BlobServiceClient, BlobSasPermissions, ContainerClient, generate_blob_sas
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,10 @@ class BlobStorageService:
 
         if not connection_string:
             raise ValueError("AzureWebJobsStorage environment variable not set")
+
+        # Expand UseDevelopmentStorage=true shorthand for blob storage
+        if connection_string == "UseDevelopmentStorage=true":
+            connection_string = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
 
         self.connection_string = connection_string
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -315,6 +321,160 @@ class BlobStorageService:
                 exc_info=True
             )
             return None
+
+    def generate_upload_url(
+        self,
+        file_name: str,
+        content_type: str,
+        file_size: int | None = None,
+        max_size_bytes: int = 100 * 1024 * 1024,  # 100MB default
+        allowed_types: list[str] | None = None
+    ) -> dict:
+        """
+        Generate a Shared Access Signature (SAS) URL for direct file upload
+
+        Args:
+            file_name: Original filename
+            content_type: MIME type of the file
+            file_size: Size of the file in bytes
+            max_size_bytes: Maximum allowed file size
+            allowed_types: List of allowed MIME types
+
+        Returns:
+            Dictionary with upload URL, blob URI, and expiration
+
+        Raises:
+            ValueError: If file type or size is invalid
+        """
+        # Validate file type
+        if allowed_types and content_type not in allowed_types:
+            raise ValueError(f"File type {content_type} is not allowed")
+
+        # Validate file size
+        if file_size and file_size > max_size_bytes:
+            raise ValueError(f"File exceeds maximum size of {max_size_bytes/1024/1024} MB")
+
+        # Generate unique blob name with original filename preserved
+        safe_filename = uuid.uuid4().hex + '_' + file_name
+        container_name = "uploads"
+        blob_name = safe_filename
+
+        # Ensure container exists
+        container_client = self._ensure_container_exists(container_name)
+        blob_client = container_client.get_blob_client(blob_name)
+
+        # Generate SAS token with write permission
+        account_name = self.blob_service_client.account_name
+
+        # Extract account key from connection string
+        # Parse connection string to get account key
+        conn_parts = dict(item.split('=', 1) for item in self.connection_string.split(';') if '=' in item)
+        account_key = conn_parts.get('AccountKey')
+
+        sas_token = generate_blob_sas(
+            account_name=account_name,
+            container_name=container_name,
+            blob_name=blob_name,
+            account_key=account_key,
+            permission=BlobSasPermissions(write=True, create=True),
+            expiry=datetime.utcnow() + timedelta(minutes=15)
+        )
+
+        logger.info(
+            f"Generated upload URL for file: {file_name}",
+            extra={
+                "blob_name": blob_name,
+                "content_type": content_type,
+                "file_size": file_size
+            }
+        )
+
+        return {
+            "upload_url": f"{blob_client.url}?{sas_token}",
+            "blob_uri": blob_client.url,
+            "blob_name": blob_name,
+            "expires_at": (datetime.utcnow() + timedelta(minutes=15)).isoformat(),
+            "file_name": file_name,
+            "content_type": content_type
+        }
+
+    def get_blob_metadata(self, blob_uri: str) -> dict:
+        """
+        Retrieve metadata for a blob
+
+        Args:
+            blob_uri: Full URI of the blob
+
+        Returns:
+            Dictionary of blob metadata
+        """
+        try:
+            # Parse blob URI to get container and blob name
+            # URI format: https://account.blob.core.windows.net/container/blob
+            parts = blob_uri.replace('https://', '').replace('http://', '').split('/')
+            if len(parts) < 3:
+                raise ValueError(f"Invalid blob URI: {blob_uri}")
+
+            container_name = parts[1]
+            blob_name = '/'.join(parts[2:])
+
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+            properties = blob_client.get_blob_properties()
+
+            return {
+                "name": properties.name,
+                "size": properties.size,
+                "content_type": properties.content_settings.content_type,
+                "last_modified": properties.last_modified.isoformat() if properties.last_modified else None,
+                "etag": properties.etag
+            }
+        except Exception as e:
+            logger.error(
+                f"Failed to get blob metadata: {str(e)}",
+                extra={"blob_uri": blob_uri},
+                exc_info=True
+            )
+            return {
+                "error": str(e),
+                "blob_uri": blob_uri
+            }
+
+    def delete_blob(self, blob_uri: str) -> bool:
+        """
+        Delete a blob from storage
+
+        Args:
+            blob_uri: Full URI of the blob to delete
+
+        Returns:
+            True if deletion successful, False otherwise
+        """
+        try:
+            # Parse blob URI to get container and blob name
+            parts = blob_uri.replace('https://', '').replace('http://', '').split('/')
+            if len(parts) < 3:
+                raise ValueError(f"Invalid blob URI: {blob_uri}")
+
+            container_name = parts[1]
+            blob_name = '/'.join(parts[2:])
+
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_client.delete_blob()
+
+            logger.info(
+                f"Deleted blob: {blob_uri}",
+                extra={"blob_name": blob_name}
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to delete blob: {str(e)}",
+                extra={"blob_uri": blob_uri},
+                exc_info=True
+            )
+            return False
 
 
 # Singleton instance

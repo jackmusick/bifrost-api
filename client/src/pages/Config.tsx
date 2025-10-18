@@ -167,9 +167,8 @@ export function Config() {
                             }`}
                         />
                     </Button>
-                    <Button onClick={handleAdd}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Config
+                    <Button variant="outline" size="icon" onClick={handleAdd} title="Add Config">
+                        <Plus className="h-4 w-4" />
                     </Button>
                 </div>
             </div>
@@ -286,9 +285,8 @@ export function Config() {
                             <p className="mt-2 text-sm text-muted-foreground">
                                 Get started by creating your first config entry
                             </p>
-                            <Button onClick={handleAdd} className="mt-4">
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add Config
+                            <Button variant="outline" size="icon" onClick={handleAdd} className="mt-4" title="Add Config">
+                                <Plus className="h-4 w-4" />
                             </Button>
                         </div>
                     )}

@@ -427,6 +427,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/forms/{formId}/startup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute form's launch workflow
+         * @description Execute the form's launch workflow to populate initial form context. Accepts parameters via query string (GET) or request body (POST). User must have access to view the form.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Form ID (UUID) */
+                    formId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FormExecuteRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FormStartupResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/forms/{formId}/execute": {
         parameters: {
             query?: never;
@@ -2440,7 +2491,7 @@ export interface paths {
         put?: never;
         /**
          * Execute a workflow
-         * @description Execute a workflow with the provided parameters
+         * @description Execute a workflow with the provided parameters (Platform admin only)
          */
         post: {
             parameters: {
@@ -2707,6 +2758,18 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /**
+             * Entrauserid
+             * @description Azure AD user object ID (oid claim) for duplicate prevention
+             * @default null
+             */
+            entraUserId: string | null;
+            /**
+             * Lastentraidsync
+             * @description Last synchronization timestamp from Azure AD
+             * @default null
+             */
+            lastEntraIdSync: string | null;
         };
         /**
          * Role
@@ -2972,7 +3035,7 @@ export interface components {
          * @description Form field types
          * @enum {string}
          */
-        FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea";
+        FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "datetime" | "markdown" | "html" | "file";
         /**
          * FormField
          * @description Form field definition
@@ -3022,6 +3085,50 @@ export interface components {
              * @default null
              */
             helpText: string | null;
+            /**
+             * Visibilityexpression
+             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
+             * @default null
+             */
+            visibilityExpression: string | null;
+            /**
+             * Options
+             * @description Options for radio/select fields
+             * @default null
+             */
+            options: {
+                [key: string]: string;
+            }[] | null;
+            /**
+             * Allowedtypes
+             * @description Allowed MIME types for file uploads
+             * @default null
+             */
+            allowedTypes: string[] | null;
+            /**
+             * Multiple
+             * @description Allow multiple file uploads
+             * @default null
+             */
+            multiple: boolean | null;
+            /**
+             * Maxsizemb
+             * @description Maximum file size in MB
+             * @default null
+             */
+            maxSizeMB: number | null;
+            /**
+             * Content
+             * @description Static content for markdown/HTML components
+             * @default null
+             */
+            content: string | null;
+            /**
+             * Allowasqueryparam
+             * @description Whether this field's value can be populated from URL query parameters
+             * @default null
+             */
+            allowAsQueryParam: boolean | null;
         };
         /**
          * FormSchema
@@ -3087,6 +3194,26 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
+            /**
+             * Launchworkflowid
+             * @description Optional workflow to execute on form load for context generation
+             * @default null
+             */
+            launchWorkflowId: string | null;
+            /**
+             * Allowedqueryparams
+             * @description List of allowed query parameter names to inject into form context
+             * @default null
+             */
+            allowedQueryParams: string[] | null;
+            /**
+             * Defaultlaunchparams
+             * @description Default parameter values for launch workflow (used when not provided via query params or POST body)
+             * @default null
+             */
+            defaultLaunchParams: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * CreateFormRequest
@@ -3114,6 +3241,26 @@ export interface components {
              * @default false
              */
             isPublic: boolean;
+            /**
+             * Launchworkflowid
+             * @description Optional workflow to execute on form load for context generation
+             * @default null
+             */
+            launchWorkflowId: string | null;
+            /**
+             * Allowedqueryparams
+             * @description List of allowed query parameter names to inject into form context
+             * @default null
+             */
+            allowedQueryParams: string[] | null;
+            /**
+             * Defaultlaunchparams
+             * @description Default parameter values for launch workflow (used when not provided via query params or POST body)
+             * @default null
+             */
+            defaultLaunchParams: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * UpdateFormRequest
@@ -3142,6 +3289,26 @@ export interface components {
              * @default null
              */
             isActive: boolean | null;
+            /**
+             * Launchworkflowid
+             * @description Optional workflow to execute on form load for context generation
+             * @default null
+             */
+            launchWorkflowId: string | null;
+            /**
+             * Allowedqueryparams
+             * @description List of allowed query parameter names to inject into form context
+             * @default null
+             */
+            allowedQueryParams: string[] | null;
+            /**
+             * Defaultlaunchparams
+             * @description Default parameter values for launch workflow (used when not provided via query params or POST body)
+             * @default null
+             */
+            defaultLaunchParams: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * FormExecuteRequest
@@ -3155,6 +3322,20 @@ export interface components {
             form_data: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * FormStartupResponse
+         * @description Response model for form startup/launch workflow execution
+         */
+        FormStartupResponse: {
+            /**
+             * Result
+             * @description Workflow execution result
+             * @default null
+             */
+            result: {
+                [key: string]: unknown;
+            } | string | null;
         };
         /**
          * ExecutionLog
@@ -3729,6 +3910,48 @@ export interface components {
              * @default null
              */
             error_message: string | null;
+        };
+        /**
+         * FileUploadRequest
+         * @description Request model for generating file upload SAS URL
+         */
+        FileUploadRequest: {
+            /**
+             * File Name
+             * @description Original file name
+             */
+            file_name: string;
+            /**
+             * Content Type
+             * @description MIME type of the file
+             */
+            content_type: string;
+            /**
+             * File Size
+             * @description File size in bytes
+             */
+            file_size: number;
+        };
+        /**
+         * FileUploadResponse
+         * @description Response model for file upload SAS URL generation
+         */
+        FileUploadResponse: {
+            /**
+             * Upload Url
+             * @description SAS URL for direct upload to Blob Storage
+             */
+            upload_url: string;
+            /**
+             * Blob Uri
+             * @description Final blob URI (without SAS token)
+             */
+            blob_uri: string;
+            /**
+             * Expires At
+             * @description SAS token expiration timestamp (ISO format)
+             */
+            expires_at: string;
         };
         /**
          * ErrorResponse

@@ -9,6 +9,7 @@ import azure.functions as func
 from functions.data_providers import bp as data_providers_bp
 from functions.discovery import bp as discovery_bp
 from functions.executions import bp as executions_bp
+from functions.file_uploads import bp as file_uploads_bp
 from functions.forms import bp as forms_bp
 from functions.health import bp as health_bp
 from functions.metrics import bp as metrics_bp
@@ -201,6 +202,7 @@ app.register_functions(organizations_bp)
 app.register_functions(org_config_bp)
 app.register_functions(permissions_bp)
 app.register_functions(forms_bp)
+app.register_functions(file_uploads_bp)  # File upload SAS URL generation (User Story 2)
 app.register_functions(roles_bp)
 app.register_functions(executions_bp)  # Workflow execution history
 app.register_functions(roles_source_bp)  # SWA roles source

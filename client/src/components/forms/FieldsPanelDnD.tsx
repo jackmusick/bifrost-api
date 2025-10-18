@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Pencil, Trash2, GripVertical, Plus, Type, Mail, Hash, ChevronDown, CheckSquare, TextCursorInput, Star, Workflow as WorkflowIcon } from 'lucide-react'
+import { Pencil, Trash2, GripVertical, Plus, Type, Mail, Hash, ChevronDown, CheckSquare, TextCursorInput, Star, Workflow as WorkflowIcon, CircleDot, Calendar, FileText, Code, Upload } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -22,6 +22,11 @@ interface FieldsPanelProps {
   fields: FormField[]
   setFields: (fields: FormField[]) => void
   linkedWorkflow?: string
+  previewContext?: {
+    workflow: Record<string, unknown>
+    query: Record<string, string>
+    field: Record<string, unknown>
+  }
 }
 
 // Field type templates for the palette
@@ -32,6 +37,11 @@ const FIELD_TEMPLATES = [
   { type: 'select', icon: ChevronDown, label: 'Dropdown', color: 'bg-orange-500' },
   { type: 'checkbox', icon: CheckSquare, label: 'Checkbox', color: 'bg-pink-500' },
   { type: 'textarea', icon: TextCursorInput, label: 'Text Area', color: 'bg-indigo-500' },
+  { type: 'radio', icon: CircleDot, label: 'Radio Buttons', color: 'bg-cyan-500' },
+  { type: 'datetime', icon: Calendar, label: 'Date & Time', color: 'bg-amber-500' },
+  { type: 'markdown', icon: FileText, label: 'Markdown', color: 'bg-slate-500' },
+  { type: 'html', icon: Code, label: 'HTML Content', color: 'bg-red-500' },
+  { type: 'file', icon: Upload, label: 'File Upload', color: 'bg-emerald-500' },
 ]
 
 interface FieldItemProps {
@@ -101,6 +111,11 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
       select: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
       checkbox: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
       textarea: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+      radio: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+      datetime: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+      markdown: 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200',
+      html: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+      file: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
     }
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded ${colors[type] || 'bg-gray-100 text-gray-800'}`}>
@@ -283,7 +298,7 @@ function WorkflowInputItem({ param }: WorkflowInputItemProps) {
   )
 }
 
-export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPanelProps) {
+export function FieldsPanelDnD({ fields, setFields, linkedWorkflow, previewContext }: FieldsPanelProps) {
   const [selectedField, setSelectedField] = useState<FormField | undefined>()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | undefined>()
@@ -416,10 +431,10 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 w-full h-full">
       {/* Field Palette */}
-      <Card className="lg:col-span-1">
-        <CardHeader className="pb-3">
+      <Card className="lg:col-span-1 flex flex-col h-full overflow-hidden">
+        <CardHeader className="pb-3 flex-shrink-0">
           <div className="flex items-center gap-2">
             <WorkflowIcon className="h-4 w-4 text-primary" />
             <CardTitle className="text-base">Field Palette</CardTitle>
@@ -428,7 +443,7 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
             Drag fields into the form builder
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 overflow-y-auto flex-1 min-h-0">
           {/* Workflow Inputs Section */}
           {workflowParams.length > 0 && (
             <div className="space-y-2">
@@ -481,8 +496,8 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
       </Card>
 
       {/* Drop Zone */}
-      <Card className="lg:col-span-3">
-        <CardHeader>
+      <Card className="lg:col-span-3 flex flex-col h-full overflow-hidden">
+        <CardHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Form Fields</CardTitle>
@@ -499,15 +514,16 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
                 setIsWorkflowInput(false)
                 setIsDialogOpen(true)
               }}
-              size="sm"
+              variant="outline"
+              size="icon"
+              title="Add Field"
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Field
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div ref={dropZoneRef} className="min-h-[400px]">
+        <CardContent className="overflow-y-auto flex-1 min-h-0">
+          <div ref={dropZoneRef} className="min-h-full">
             {fields.length > 0 ? (
               <div className="space-y-2">
                 {fields.map((field, index) => (
@@ -526,7 +542,7 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
                 <div className="max-w-sm">
                   <h3 className="text-lg font-semibold mb-2">Drop fields here</h3>
                   <p className="text-sm text-muted-foreground">
-                    Drag field types from the left palette or click "Add Field" to get started
+                    Drag field types from the left palette or click the + button to get started
                   </p>
                 </div>
               </div>
@@ -546,6 +562,8 @@ export function FieldsPanelDnD({ fields, setFields, linkedWorkflow }: FieldsPane
           setIsWorkflowInput(false)
         }}
         onSave={handleSaveField}
+        allFieldNames={fields.map(f => f.name)}
+        {...(previewContext && { previewContext })}
         {...(newFieldType && { defaultType: newFieldType })}
         {...(workflowInputData && { workflowInputData })}
         {...(isWorkflowInput && { isWorkflowInput })}

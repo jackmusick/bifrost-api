@@ -79,6 +79,10 @@ class FormRepository(ScopedRepository):
             "CreatedBy": created_by,
             "CreatedAt": now.isoformat(),
             "UpdatedAt": now.isoformat(),
+            # NEW MVP fields (T012)
+            "LaunchWorkflowId": form_request.launchWorkflowId,
+            "AllowedQueryParams": json.dumps(form_request.allowedQueryParams) if form_request.allowedQueryParams is not None else None,
+            "DefaultLaunchParams": json.dumps(form_request.defaultLaunchParams) if form_request.defaultLaunchParams is not None else None,
         }
 
         # 2. Workflow index (for "what forms use this workflow?")
@@ -254,6 +258,16 @@ class FormRepository(ScopedRepository):
         if updates.isActive is not None:
             form_entity["IsActive"] = updates.isActive
 
+        # NEW MVP fields (T012)
+        if updates.launchWorkflowId is not None:
+            form_entity["LaunchWorkflowId"] = updates.launchWorkflowId
+
+        if updates.allowedQueryParams is not None:
+            form_entity["AllowedQueryParams"] = json.dumps(updates.allowedQueryParams)
+
+        if updates.defaultLaunchParams is not None:
+            form_entity["DefaultLaunchParams"] = json.dumps(updates.defaultLaunchParams)
+
         form_entity["UpdatedAt"] = now.isoformat()
 
         # Save primary record
@@ -414,9 +428,27 @@ class FormRepository(ScopedRepository):
             elif isinstance(form_schema_raw, dict):
                 form_schema = FormSchema(**form_schema_raw)
 
-        # Parse datetime fields
-        created_at = self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow())
-        updated_at = self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow())
+        # Parse datetime fields (cast because _parse_datetime with default always returns datetime)
+        created_at = cast(datetime, self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow()))
+        updated_at = cast(datetime, self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow()))
+
+        # Parse AllowedQueryParams from JSON string (NEW MVP field)
+        allowed_query_params = None
+        allowed_query_params_raw = entity.get("AllowedQueryParams")
+        if allowed_query_params_raw:
+            if isinstance(allowed_query_params_raw, str):
+                allowed_query_params = json.loads(allowed_query_params_raw)
+            elif isinstance(allowed_query_params_raw, list):
+                allowed_query_params = allowed_query_params_raw
+
+        # Parse DefaultLaunchParams from JSON string (NEW MVP field)
+        default_launch_params = None
+        default_launch_params_raw = entity.get("DefaultLaunchParams")
+        if default_launch_params_raw:
+            if isinstance(default_launch_params_raw, str):
+                default_launch_params = json.loads(default_launch_params_raw)
+            elif isinstance(default_launch_params_raw, dict):
+                default_launch_params = default_launch_params_raw
 
         return Form(
             id=form_id,
@@ -431,4 +463,8 @@ class FormRepository(ScopedRepository):
             createdBy=cast(str, entity.get("CreatedBy", "")),
             createdAt=created_at,
             updatedAt=updated_at,
+            # NEW MVP fields (T012)
+            launchWorkflowId=entity.get("LaunchWorkflowId"),
+            allowedQueryParams=allowed_query_params,
+            defaultLaunchParams=default_launch_params,
         )
