@@ -13,8 +13,11 @@ omit =
     */site-packages/*
     */function_app.py
     */seed_data.py
+    */clear_data.py
+    */analyze_coverage.py
     */scripts/*
     */migrations/*
+    workspace/examples/*
 
 # Parallel mode for better performance
 parallel = True

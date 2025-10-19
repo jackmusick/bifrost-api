@@ -42,7 +42,7 @@ class UserRepository(BaseRepository):
         query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;'"
 
         # Use select to only fetch RowKey for efficiency
-        query_result = self.service.query_entities(query_filter, select=["RowKey"])
+        query_result = self._service.query_entities(query_filter, select=["RowKey"])
 
         # Check if any results exist
         first_user = next(iter(query_result), None)

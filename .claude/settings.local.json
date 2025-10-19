@@ -38,7 +38,16 @@
       "Bash(chmod +x /Users/jack/GitHub/bifrost-integrations/.devcontainer/post-create.sh)",
       "Bash(npm run test)",
       "Bash(pip install pytest-env)",
-      "Bash(find tests/contract -name \"*.py\" -exec wc -l {} +)"
+      "Bash(find tests/contract -name \"*.py\" -exec wc -l {} +)",
+      "Bash(for file in tests/contract/test_*.py)",
+      "Bash(do echo \"$file:\")",
+      "Bash(done)",
+      "Bash(cat /Users/jack/GitHub/bifrost-integrations/api/pytest.ini)",
+      "Bash(curl http://localhost:10102)",
+      "Bash(curl -s http://localhost:7071/api/health)",
+      "Bash(curl http://localhost:7071/api/health)",
+      "Read(//private/tmp/**)",
+      "Bash(docker compose up -d)"
     ],
     "deny": [],
     "ask": []
