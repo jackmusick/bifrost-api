@@ -207,6 +207,31 @@ def user_headers(test_org_id):
 
 
 @pytest.fixture
+def regular_user_headers(test_org_id):
+    """Headers for regular user without platform admin role
+
+    Simulates a regular user without platform admin privileges.
+    Used for testing authorization restrictions on admin-only endpoints.
+    """
+    email = "regular-user@example.com"
+    user_id = "regular-user-id-12345"
+
+    principal = {
+        "userId": user_id,
+        "userDetails": email,
+        "userRoles": ["Contributor"]  # No PlatformAdmin role
+    }
+
+    return {
+        "x-organization-id": test_org_id,
+        "x-ms-client-principal": base64.b64encode(
+            json.dumps(principal).encode()
+        ).decode(),
+        "Content-Type": "application/json"
+    }
+
+
+@pytest.fixture
 def test_oauth_connection(api_base_url, platform_admin_headers, table_service):
     """Create a test OAuth connection in Azurite
 
