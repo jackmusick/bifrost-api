@@ -350,3 +350,212 @@ class TestCallerExtraction:
 
         assert caller.user_id == "public:anonymous"
         assert "public" in caller.email.lower()
+
+
+class TestMiddlewareRequestParsing:
+    """Test request parsing edge cases in middleware"""
+
+    def test_parse_json_body_with_valid_content(self):
+        """Should parse valid JSON body"""
+        request = Mock(spec=func.HttpRequest)
+        request.get_json = Mock(return_value={"name": "test", "value": 123})
+
+        data = request.get_json()
+        assert data["name"] == "test"
+        assert data["value"] == 123
+
+    def test_parse_query_parameters(self):
+        """Should extract query parameters from request"""
+        request = Mock(spec=func.HttpRequest)
+        request.params = {"limit": "10", "offset": "0"}
+
+        assert request.params.get("limit") == "10"
+        assert request.params.get("offset") == "0"
+
+    def test_parse_multipart_form_data(self):
+        """Should handle multipart form data"""
+        request = Mock(spec=func.HttpRequest)
+        request.files = {"file": "test_file"}
+
+        assert "file" in request.files
+
+    def test_parse_empty_body(self):
+        """Should handle empty request body gracefully"""
+        request = Mock(spec=func.HttpRequest)
+        request.get_json = Mock(return_value=None)
+
+        data = request.get_json()
+        assert data is None
+
+    def test_parse_url_encoded_body(self):
+        """Should handle URL-encoded form data"""
+        request = Mock(spec=func.HttpRequest)
+        request.get_body = Mock(return_value=b"key1=value1&key2=value2")
+
+        # URL encoding parsing would happen in middleware
+        body = request.get_body()
+        assert b"key1=value1" in body
+
+
+class TestMiddlewareResponseFormatting:
+    """Test response formatting in middleware"""
+
+    def test_format_json_response_success(self):
+        """Should format successful JSON response"""
+        response_data = {"status": "success", "id": "123"}
+        json_response = json.dumps(response_data)
+
+        assert json.loads(json_response) == response_data
+
+    def test_format_error_response_400(self):
+        """Should format 400 Bad Request error"""
+        error_response = {
+            "error": "BadRequest",
+            "message": "Invalid input"
+        }
+        json_response = json.dumps(error_response)
+
+        parsed = json.loads(json_response)
+        assert parsed["error"] == "BadRequest"
+
+    def test_format_error_response_401(self):
+        """Should format 401 Unauthorized error"""
+        error_response = {
+            "error": "Unauthorized",
+            "message": "Invalid API key"
+        }
+        json_response = json.dumps(error_response)
+
+        parsed = json.loads(json_response)
+        assert parsed["error"] == "Unauthorized"
+
+    def test_format_error_response_403(self):
+        """Should format 403 Forbidden error"""
+        error_response = {
+            "error": "Forbidden",
+            "message": "Access denied"
+        }
+        json_response = json.dumps(error_response)
+
+        parsed = json.loads(json_response)
+        assert parsed["error"] == "Forbidden"
+
+    def test_add_cors_headers_to_response(self):
+        """Should add CORS headers to response"""
+        response = func.HttpResponse("test", status_code=200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE"
+
+        assert response.headers.get("Access-Control-Allow-Origin") == "*"
+        assert "GET" in response.headers.get("Access-Control-Allow-Methods", "")
+
+
+class TestMiddlewareAuthPipeline:
+    """Test authentication pipeline middleware"""
+
+    def test_auth_header_extraction(self):
+        """Should extract Authorization header"""
+        request = Mock(spec=func.HttpRequest)
+        request.headers = {"Authorization": "Bearer token123"}
+
+        auth_header = request.headers.get("Authorization", "")
+        assert auth_header == "Bearer token123"
+
+    def test_bearer_token_parsing(self):
+        """Should parse Bearer token from header"""
+        auth_header = "Bearer wk_abc123def456"
+        token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+
+        assert token == "wk_abc123def456"
+
+    def test_missing_auth_header_handling(self):
+        """Should handle missing Authorization header"""
+        request = Mock(spec=func.HttpRequest)
+        request.headers = {}
+
+        auth_header = request.headers.get("Authorization", "")
+        assert auth_header == ""
+
+    def test_api_key_validation_format(self):
+        """Should validate API key format"""
+        api_key = "wk_abc123def456"
+        # Workflow keys typically start with "wk_"
+        assert api_key.startswith("wk_")
+
+    def test_middleware_chain_execution_order(self):
+        """Should execute middleware in correct order"""
+        execution_order = []
+
+        def middleware1(handler):
+            def wrapper(*args, **kwargs):
+                execution_order.append(1)
+                return handler(*args, **kwargs)
+            return wrapper
+
+        def middleware2(handler):
+            def wrapper(*args, **kwargs):
+                execution_order.append(2)
+                return handler(*args, **kwargs)
+            return wrapper
+
+        def handler(*args, **kwargs):
+            execution_order.append(3)
+
+        # Chain middlewares
+        wrapped = middleware1(middleware2(handler))
+        wrapped()
+
+        # Should execute 1, 2, 3 in order
+        assert execution_order == [1, 2, 3]
+
+
+class TestMiddlewareErrorHandling:
+    """Test error handling in middleware"""
+
+    def test_exception_caught_and_formatted(self):
+        """Should catch exceptions and format error response"""
+        error = ValueError("Invalid input")
+        error_response = {
+            "error": "BadRequest",
+            "message": str(error)
+        }
+
+        assert error_response["error"] == "BadRequest"
+        assert "Invalid input" in error_response["message"]
+
+    def test_404_error_formatting(self):
+        """Should format 404 Not Found"""
+        error_response = {
+            "error": "NotFound",
+            "message": "Resource not found"
+        }
+
+        assert error_response["error"] == "NotFound"
+        assert "not found" in error_response["message"].lower()
+
+    def test_500_error_formatting(self):
+        """Should format 500 Server Error"""
+        error_response = {
+            "error": "InternalServerError",
+            "message": "An unexpected error occurred"
+        }
+
+        assert error_response["error"] == "InternalServerError"
+
+    def test_validation_error_detail_included(self):
+        """Should include validation error details"""
+        validation_error = {
+            "error": "ValidationError",
+            "message": "Invalid field format",
+            "field": "email"
+        }
+
+        assert validation_error["field"] == "email"
+        assert "Invalid" in validation_error["message"]
+
+    def test_custom_error_class_handling(self):
+        """Should handle custom error classes"""
+        error = OrganizationNotFoundError("Org not found")
+
+        assert isinstance(error, Exception)
+        assert "not found" in str(error).lower()

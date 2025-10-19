@@ -9,8 +9,8 @@ This function is invoked by SWA's rolesSource configuration:
   }
 }
 
-Note: This endpoint delegates to shared/user_provisioning.py for all
-auto-provisioning logic (first user, domain-based join, etc.)
+Note: This endpoint delegates to shared/handlers/roles_source_handlers.py for all
+role determination logic and to shared/user_provisioning.py for auto-provisioning.
 """
 
 import json
@@ -18,7 +18,7 @@ import logging
 
 import azure.functions as func
 
-from shared.user_provisioning import ensure_user_provisioned
+from shared.handlers.roles_source_handlers import handle_roles_source_request
 
 logger = logging.getLogger(__name__)
 
@@ -44,47 +44,31 @@ def get_roles(req: func.HttpRequest) -> func.HttpResponse:
 
     Response format:
     {
-      "roles": ["PlatformAdmin", "CanExecuteWorkflows", "CanManageForms"]
+      "roles": ["PlatformAdmin", "OrgUser", "authenticated"]
     }
     """
     try:
         # Parse request from SWA
         request_body = req.get_json()
-        user_id = request_body.get("userId")
-        user_email = request_body.get("userDetails")
+        logger.info(f"GetRoles called with identityProvider: {request_body.get('identityProvider')}")
 
-        logger.info(f"GetRoles called for user: {user_email} (ID: {user_id})")
+        # Delegate to handler for business logic
+        response = handle_roles_source_request(request_body)
 
-        if not user_id or not user_email:
-            logger.warning("No userId/userDetails provided in GetRoles request")
-            return func.HttpResponse(
-                json.dumps({"roles": ["anonymous"]}),
-                status_code=200,
-                mimetype="application/json",
-            )
+        return func.HttpResponse(
+            json.dumps(response),
+            status_code=200,
+            mimetype="application/json",
+        )
 
-        # Ensure user is provisioned (handles first user, domain-based join, etc.)
-        try:
-            result = ensure_user_provisioned(user_email)
-
-            # Return roles based on provisioning result
-            response = {"roles": result.roles}
-            logger.info(f"Returning roles for {user_email}: {result.roles}")
-
-            return func.HttpResponse(
-                json.dumps(response),
-                status_code=200,
-                mimetype="application/json",
-            )
-
-        except ValueError as e:
-            # User could not be auto-provisioned (no domain match)
-            logger.warning(f"User {user_email} could not be provisioned: {e}")
-            return func.HttpResponse(
-                json.dumps({"roles": ["anonymous"]}),
-                status_code=200,
-                mimetype="application/json",
-            )
+    except ValueError as e:
+        # User could not be provisioned (no domain match)
+        logger.warning(f"User provisioning failed: {e}")
+        return func.HttpResponse(
+            json.dumps({"roles": ["anonymous"]}),
+            status_code=200,
+            mimetype="application/json",
+        )
 
     except Exception as e:
         logger.error(f"Error in GetRoles: {str(e)}", exc_info=True)

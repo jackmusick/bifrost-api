@@ -1,6 +1,7 @@
 """
 File Upload API
 Handles SAS URL generation for direct-to-blob file uploads
+Thin wrapper - business logic is in shared.handlers.file_uploads_handlers
 """
 
 import json
@@ -9,10 +10,11 @@ import logging
 import azure.functions as func
 
 from shared.exceptions import FileUploadError, error_to_dict
+from shared.handlers.file_uploads_handlers import generate_file_upload_url as generate_url_handler
 from shared.middleware import with_org_context
-from shared.models import FileUploadRequest, FileUploadResponse
+from shared.models import FileUploadRequest
 from shared.openapi_decorators import openapi_endpoint
-from shared.blob_storage import BlobStorageService
+from shared.models import FileUploadResponse
 
 logger = logging.getLogger(__name__)
 
@@ -67,53 +69,32 @@ async def generate_file_upload_url(req: func.HttpRequest) -> func.HttpResponse:
     3. Store the blob_uri in the form field value
     4. Submit the form with the blob_uri
     """
-    form_id = req.route_params.get('formId')
+    form_id = req.route_params.get('formId') or ""
     context = req.org_context  # type: ignore[attr-defined]
 
     try:
+        # Validate form_id was provided
+        if not form_id:
+            return func.HttpResponse(
+                json.dumps({
+                    "error": "ValidationError",
+                    "message": "formId parameter is required"
+                }),
+                status_code=400,
+                mimetype="application/json"
+            )
+
         # Parse request body
         request_data = req.get_json()
         upload_request = FileUploadRequest(**request_data)
 
-        logger.info(
-            f"Generating upload URL for file: {upload_request.file_name}",
-            extra={
-                "form_id": form_id,
-                "file_name": upload_request.file_name,
-                "content_type": upload_request.content_type,
-                "file_size": upload_request.file_size,
-                "org_id": context.org.org_id if context.org else "GLOBAL",
-                "user": context.caller.email
-            }
-        )
-
-        # Initialize blob storage service
-        blob_service = BlobStorageService()
-
-        # Generate SAS URL for upload
-        # This creates a secure, time-limited URL for direct upload
-        result = blob_service.generate_upload_url(
-            file_name=upload_request.file_name,
-            content_type=upload_request.content_type,
-            file_size=upload_request.file_size,
+        # Delegate to handler
+        response = generate_url_handler(
+            form_id=form_id,
+            request=upload_request,
+            context=context,
             max_size_bytes=100 * 1024 * 1024,  # 100MB limit
             allowed_types=None  # Allow all types for now (could be restricted by form config)
-        )
-
-        # Create response
-        response = FileUploadResponse(
-            upload_url=result['upload_url'],
-            blob_uri=result['blob_uri'],
-            expires_at=result['expires_at']
-        )
-
-        logger.info(
-            f"Successfully generated upload URL for {upload_request.file_name}",
-            extra={
-                "form_id": form_id,
-                "blob_uri": response.blob_uri,
-                "user": context.caller.email
-            }
         )
 
         return func.HttpResponse(

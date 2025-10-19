@@ -648,9 +648,7 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["GeneralHealthResponse"];
-                    };
+                    content?: never;
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -692,9 +690,7 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["KeyVaultHealthResponse"];
-                    };
+                    content?: never;
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -827,7 +823,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/connections/{connection_name}": {
+    "/oauth/connections/{name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -836,16 +832,13 @@ export interface paths {
         };
         /**
          * Get OAuth connection
-         * @description Get OAuth connection details (Platform admin only)
+         * @description Get a specific OAuth connection (Platform admin only)
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -855,9 +848,7 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["OAuthConnectionDetail"];
-                    };
+                    content?: never;
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -868,16 +859,13 @@ export interface paths {
         };
         /**
          * Update OAuth connection
-         * @description Update an OAuth connection (Platform admin only)
+         * @description Update an existing OAuth connection (Platform admin only)
          */
         put: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody: {
@@ -909,10 +897,7 @@ export interface paths {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -936,7 +921,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/connections/{connection_name}/authorize": {
+    "/oauth/connections/{name}/authorize": {
         parameters: {
             query?: never;
             header?: never;
@@ -947,16 +932,13 @@ export interface paths {
         put?: never;
         /**
          * Authorize OAuth connection
-         * @description Initiate OAuth authorization flow (Platform admin only)
+         * @description Start OAuth authorization flow (Platform admin only)
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -981,7 +963,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/connections/{connection_name}/cancel": {
+    "/oauth/connections/{name}/cancel": {
         parameters: {
             query?: never;
             header?: never;
@@ -998,10 +980,7 @@ export interface paths {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -1026,7 +1005,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/connections/{connection_name}/refresh": {
+    "/oauth/connections/{name}/refresh": {
         parameters: {
             query?: never;
             header?: never;
@@ -1037,16 +1016,13 @@ export interface paths {
         put?: never;
         /**
          * Refresh OAuth token
-         * @description Manually refresh OAuth access token using refresh token (Platform admin only)
+         * @description Refresh OAuth token (Platform admin only)
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -1071,7 +1047,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/callback/{connection_name}": {
+    "/oauth/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -1082,32 +1058,23 @@ export interface paths {
         put?: never;
         /**
          * OAuth callback
-         * @description OAuth callback endpoint - exchanges authorization code for tokens
+         * @description Handle OAuth provider callback
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["OAuthCallbackRequest"];
-                };
-            };
+            requestBody?: never;
             responses: {
                 /** @description Resource created */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["OAuthCallbackResponse"];
-                    };
+                    content?: never;
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -1122,7 +1089,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/credentials/{connection_name}": {
+    "/oauth/connections/{name}/credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -1131,16 +1098,13 @@ export interface paths {
         };
         /**
          * Get OAuth credentials
-         * @description Get OAuth credentials for workflow consumption
+         * @description Get OAuth credentials (Platform admin only)
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    /** @description Connection name */
-                    connection_name: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -1150,9 +1114,7 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["OAuthCredentialsResponse"];
-                    };
+                    content?: never;
                 };
                 400: components["responses"]["BadRequestError"];
                 401: components["responses"]["UnauthorizedError"];
@@ -1169,7 +1131,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/refresh_job_status": {
+    "/oauth/connections/{name}/refresh/{job_id}/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -1177,8 +1139,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get OAuth refresh job status
-         * @description Get status of the last OAuth token refresh job (Platform admin only)
+         * Get refresh job status
+         * @description Get status of OAuth token refresh job (Platform admin only)
          */
         get: {
             parameters: {
@@ -1744,175 +1706,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/permissions/users/{userId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get user permissions (deprecated)
-         * @description DEPRECATED: Org-specific permissions have been removed. Returns empty list for backward compatibility.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description User ID */
-                    userId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/permissions/organizations/{orgId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get organization permissions (deprecated)
-         * @description DEPRECATED: Org-specific permissions have been removed. Returns empty list for backward compatibility.
-         */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Organization ID */
-                    orgId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful operation */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/permissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Grant user permissions (deprecated)
-         * @description DEPRECATED: Org-specific permissions have been removed. Use role-based access control instead.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["GrantPermissionsRequest"];
-                };
-            };
-            responses: {
-                /** @description Resource created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        /**
-         * Revoke user permissions (deprecated)
-         * @description DEPRECATED: Org-specific permissions have been removed. Use role-based access control instead.
-         */
-        delete: {
-            parameters: {
-                query: {
-                    /** @description User ID */
-                    userId: string;
-                    /** @description Organization ID */
-                    orgId: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                400: components["responses"]["BadRequestError"];
-                401: components["responses"]["UnauthorizedError"];
-                403: components["responses"]["ForbiddenError"];
-                404: components["responses"]["NotFoundError"];
-                500: components["responses"]["InternalError"];
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/users/{userId}/roles": {
         parameters: {
             query?: never;
@@ -2057,7 +1850,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["CreateRoleRequest"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             responses: {
@@ -2107,7 +1900,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["UpdateRoleRequest"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             responses: {
@@ -2219,7 +2012,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AssignUsersToRoleRequest"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             responses: {
@@ -2346,7 +2139,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AssignFormsToRoleRequest"];
+                    "application/json": components["schemas"]["Role"];
                 };
             };
             responses: {
@@ -2796,6 +2589,30 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * RetryPolicy
+         * @description Retry policy configuration for workflow execution
+         */
+        RetryPolicy: {
+            /**
+             * Maxattempts
+             * @description Total attempts including initial execution
+             * @default 3
+             */
+            maxAttempts: number;
+            /**
+             * Backoffseconds
+             * @description Initial backoff duration in seconds
+             * @default 2
+             */
+            backoffSeconds: number;
+            /**
+             * Maxbackoffseconds
+             * @description Maximum backoff cap in seconds
+             * @default 60
+             */
+            maxBackoffSeconds: number;
+        };
         /**
          * Organization
          * @description Organization entity (response model)
@@ -3622,7 +3439,7 @@ export interface components {
          * @description Workflow execution status
          * @enum {string}
          */
-        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "CompletedWithErrors";
+        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "CompletedWithErrors";
         /**
          * WorkflowExecution
          * @description Workflow execution entity
@@ -3779,10 +3596,32 @@ export interface components {
             /** Required */
             required: boolean;
             /**
+             * Label
+             * @default null
+             */
+            label: string | null;
+            /**
              * Dataprovider
              * @default null
              */
             dataProvider: string | null;
+            /**
+             * Defaultvalue
+             * @default null
+             */
+            defaultValue: unknown | null;
+            /**
+             * Helptext
+             * @default null
+             */
+            helpText: string | null;
+            /**
+             * Validation
+             * @default null
+             */
+            validation: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Description
              * @default null
@@ -3791,26 +3630,59 @@ export interface components {
         };
         /**
          * WorkflowMetadata
-         * @description Workflow metadata from @workflow decorator
+         * @description Workflow metadata for discovery API
          */
         WorkflowMetadata: {
-            /** Name */
+            /**
+             * Name
+             * @description Workflow name (snake_case)
+             */
             name: string;
-            /** Description */
+            /**
+             * Description
+             * @description Human-readable description
+             */
             description: string;
             /**
              * Category
+             * @description Category for organization
              * @default General
              */
             category: string;
-            /** Parameters */
+            /**
+             * Tags
+             * @description Tags for categorization and search
+             */
+            tags?: string[];
+            /**
+             * Parameters
+             * @description Workflow parameters
+             */
             parameters?: components["schemas"]["WorkflowParameter"][];
             /**
-             * Requiresorg
-             * @description Whether workflow requires org context
-             * @default true
+             * Executionmode
+             * @description Execution mode
+             * @default sync
+             * @enum {string}
              */
-            requiresOrg: boolean;
+            executionMode: "sync" | "async";
+            /**
+             * Timeoutseconds
+             * @description Max execution time in seconds (max 9 minutes)
+             * @default 300
+             */
+            timeoutSeconds: number;
+            /**
+             * @description Retry configuration
+             * @default null
+             */
+            retryPolicy: components["schemas"]["RetryPolicy"] | null;
+            /**
+             * Schedule
+             * @description Cron expression for scheduled execution
+             * @default null
+             */
+            schedule: string | null;
             /**
              * Endpointenabled
              * @description Whether workflow is exposed as HTTP endpoint
@@ -3819,18 +3691,18 @@ export interface components {
             endpointEnabled: boolean;
             /**
              * Allowedmethods
-             * @description Allowed HTTP methods for endpoint
+             * @description Allowed HTTP methods
              */
             allowedMethods?: string[];
             /**
              * Disableglobalkey
-             * @description If true, only workflow-specific API keys work (global keys denied)
+             * @description If true, only workflow-specific API keys work
              * @default false
              */
             disableGlobalKey: boolean;
             /**
              * Publicendpoint
-             * @description If true, skip authentication (for webhooks)
+             * @description If true, skip authentication for webhooks
              * @default false
              */
             publicEndpoint: boolean;
@@ -3852,8 +3724,8 @@ export interface components {
         MetadataResponse: {
             /** Workflows */
             workflows?: components["schemas"]["WorkflowMetadata"][];
-            /** Option Generators */
-            option_generators?: components["schemas"]["DataProviderMetadata"][];
+            /** Dataproviders */
+            dataProviders?: components["schemas"]["DataProviderMetadata"][];
         };
         /**
          * DataProviderOption

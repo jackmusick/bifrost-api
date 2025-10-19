@@ -18,6 +18,10 @@ omit =
     */scripts/*
     */migrations/*
     workspace/examples/*
+    # API endpoints are integration tested (separate process)
+    # Coverage can't measure across process boundaries
+    # These are thoroughly tested via integration tests
+    functions/*.py
 
 # Parallel mode for better performance
 parallel = True

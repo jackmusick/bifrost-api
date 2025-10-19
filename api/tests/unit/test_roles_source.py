@@ -19,7 +19,7 @@ from shared.user_provisioning import UserProvisioningResult
 class TestGetRoles:
     """Test GetRoles endpoint for SWA role assignment"""
 
-    @patch("functions.roles_source.ensure_user_provisioned")
+    @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_platform_admin_user(self, mock_provision):
         """PlatformAdmin user gets correct roles"""
         # Mock provisioning returns PlatformAdmin
@@ -48,7 +48,7 @@ class TestGetRoles:
         # Verify provisioning was called
         mock_provision.assert_called_once_with("admin@example.com")
 
-    @patch("functions.roles_source.ensure_user_provisioned")
+    @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_org_user(self, mock_provision):
         """OrgUser gets correct roles"""
         # Mock provisioning returns OrgUser
@@ -75,7 +75,7 @@ class TestGetRoles:
         assert "OrgUser" in body["roles"]
         assert "PlatformAdmin" not in body["roles"]
 
-    @patch("functions.roles_source.ensure_user_provisioned")
+    @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_first_user_creation(self, mock_provision):
         """First user is auto-promoted to PlatformAdmin"""
         # Mock provisioning creates first user
@@ -100,7 +100,7 @@ class TestGetRoles:
         assert "authenticated" in body["roles"]
         assert "PlatformAdmin" in body["roles"]
 
-    @patch("functions.roles_source.ensure_user_provisioned")
+    @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_provisioning_failure_no_domain_match(self, mock_provision):
         """User with no domain match gets anonymous role"""
         # Mock provisioning raises ValueError (no domain match)
@@ -153,7 +153,7 @@ class TestGetRoles:
         assert "roles" in body
         assert body["roles"] == ["anonymous"]
 
-    @patch("functions.roles_source.ensure_user_provisioned")
+    @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_error_handling(self, mock_provision):
         """Unexpected errors result in anonymous role for safety"""
         # Mock provisioning raises unexpected exception

@@ -1,0 +1,265 @@
+"""
+Unit tests for discovery handlers
+Tests discovery logic with mocked registry dependencies
+"""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from shared.handlers.discovery_handlers import (
+    convert_registry_provider_to_model,
+    convert_registry_workflow_to_model,
+    get_discovery_metadata,
+)
+from shared.models import DataProviderMetadata, MetadataResponse, WorkflowMetadata
+
+
+class TestConvertRegistryWorkflowToModel:
+    """Tests for convert_registry_workflow_to_model"""
+
+    def test_basic_workflow_conversion(self):
+        """Test converting basic workflow metadata"""
+        mock_registry_workflow = MagicMock()
+        mock_registry_workflow.name = "test_workflow"
+        mock_registry_workflow.description = "Test description"
+        mock_registry_workflow.category = "Test"
+        mock_registry_workflow.tags = ["test"]
+        mock_registry_workflow.parameters = []
+        mock_registry_workflow.execution_mode = "sync"
+        mock_registry_workflow.timeout_seconds = 60
+        mock_registry_workflow.retry_policy = None
+        mock_registry_workflow.schedule = None
+        mock_registry_workflow.endpoint_enabled = False
+        mock_registry_workflow.allowed_methods = ["POST"]
+        mock_registry_workflow.disable_global_key = False
+        mock_registry_workflow.public_endpoint = False
+
+        result = convert_registry_workflow_to_model(mock_registry_workflow)
+
+        assert isinstance(result, WorkflowMetadata)
+        assert result.name == "test_workflow"
+        assert result.description == "Test description"
+        assert result.category == "Test"
+        assert result.tags == ["test"]
+
+
+class TestConvertRegistryProviderToModel:
+    """Tests for convert_registry_provider_to_model"""
+
+    def test_basic_provider_conversion(self):
+        """Test converting basic provider metadata"""
+        mock_registry_provider = MagicMock()
+        mock_registry_provider.name = "test_provider"
+        mock_registry_provider.description = "Test provider"
+
+        result = convert_registry_provider_to_model(mock_registry_provider)
+
+        assert isinstance(result, DataProviderMetadata)
+        assert result.name == "test_provider"
+        assert result.description == "Test provider"
+
+
+class TestGetDiscoveryMetadata:
+    """Tests for get_discovery_metadata"""
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_empty_registry(self, mock_get_registry):
+        """Test discovery with empty registry"""
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = []
+        mock_registry.get_all_data_providers.return_value = []
+        mock_get_registry.return_value = mock_registry
+
+        result = get_discovery_metadata()
+
+        assert isinstance(result, MetadataResponse)
+        assert len(result.workflows) == 0
+        assert len(result.dataProviders) == 0
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_single_workflow_and_provider(self, mock_get_registry):
+        """Test discovery with single workflow and provider"""
+        # Create mock workflow with all required attributes
+        mock_workflow = MagicMock()
+        mock_workflow.name = "test_workflow"
+        mock_workflow.description = "Test description"
+        mock_workflow.category = "Test"
+        mock_workflow.tags = ["test"]
+        mock_workflow.parameters = []
+        mock_workflow.execution_mode = "sync"
+        mock_workflow.timeout_seconds = 60
+        mock_workflow.retry_policy = None
+        mock_workflow.schedule = None
+        mock_workflow.endpoint_enabled = False
+        mock_workflow.allowed_methods = ["POST"]
+        mock_workflow.disable_global_key = False
+        mock_workflow.public_endpoint = False
+
+        # Create mock provider
+        mock_provider = MagicMock()
+        mock_provider.name = "test_provider"
+        mock_provider.description = "Provider description"
+
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = [mock_workflow]
+        mock_registry.get_all_data_providers.return_value = [mock_provider]
+        mock_get_registry.return_value = mock_registry
+
+        result = get_discovery_metadata()
+
+        assert isinstance(result, MetadataResponse)
+        assert len(result.workflows) == 1
+        assert len(result.dataProviders) == 1
+        assert isinstance(result.workflows[0], WorkflowMetadata)
+        assert isinstance(result.dataProviders[0], DataProviderMetadata)
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_multiple_workflows_and_providers(self, mock_get_registry):
+        """Test discovery with multiple workflows and providers"""
+        # Create multiple workflow mocks with all required attributes
+        workflows = []
+        for i in range(3):
+            mock_workflow = MagicMock()
+            mock_workflow.name = f"workflow_{i}"
+            mock_workflow.description = f"Description {i}"
+            mock_workflow.category = "Category"
+            mock_workflow.tags = []
+            mock_workflow.parameters = []
+            mock_workflow.execution_mode = "sync"
+            mock_workflow.timeout_seconds = 60
+            mock_workflow.retry_policy = None
+            mock_workflow.schedule = None
+            mock_workflow.endpoint_enabled = False
+            mock_workflow.allowed_methods = ["POST"]
+            mock_workflow.disable_global_key = False
+            mock_workflow.public_endpoint = False
+            workflows.append(mock_workflow)
+
+        # Create multiple provider mocks
+        providers = []
+        for i in range(2):
+            mock_provider = MagicMock()
+            mock_provider.name = f"provider_{i}"
+            mock_provider.description = f"Description {i}"
+            providers.append(mock_provider)
+
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = workflows
+        mock_registry.get_all_data_providers.return_value = providers
+        mock_get_registry.return_value = mock_registry
+
+        result = get_discovery_metadata()
+
+        assert isinstance(result, MetadataResponse)
+        assert len(result.workflows) == 3
+        assert len(result.dataProviders) == 2
+        # Verify conversions happened
+        assert all(isinstance(w, WorkflowMetadata) for w in result.workflows)
+        assert all(isinstance(p, DataProviderMetadata) for p in result.dataProviders)
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_metadata_response_structure(self, mock_get_registry):
+        """Test that result is valid MetadataResponse"""
+        mock_workflow = MagicMock()
+        mock_workflow.name = "test"
+        mock_workflow.description = "Test"
+        mock_workflow.category = "Test"
+        mock_workflow.tags = []
+        mock_workflow.parameters = []
+        mock_workflow.execution_mode = "sync"
+        mock_workflow.timeout_seconds = 60
+        mock_workflow.retry_policy = None
+        mock_workflow.schedule = None
+        mock_workflow.endpoint_enabled = False
+        mock_workflow.allowed_methods = ["POST"]
+        mock_workflow.disable_global_key = False
+        mock_workflow.public_endpoint = False
+
+        mock_provider = MagicMock()
+        mock_provider.name = "test"
+        mock_provider.description = "Test"
+
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = [mock_workflow]
+        mock_registry.get_all_data_providers.return_value = [mock_provider]
+        mock_get_registry.return_value = mock_registry
+
+        result = get_discovery_metadata()
+
+        # Verify it's a valid Pydantic model
+        assert isinstance(result, MetadataResponse)
+        assert hasattr(result, "workflows")
+        assert hasattr(result, "dataProviders")
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_registry_called_once(self, mock_get_registry):
+        """Test that registry is called exactly once"""
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = []
+        mock_registry.get_all_data_providers.return_value = []
+        mock_get_registry.return_value = mock_registry
+
+        get_discovery_metadata()
+
+        mock_get_registry.assert_called_once()
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_registry_methods_called(self, mock_get_registry):
+        """Test that registry methods are called"""
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = []
+        mock_registry.get_all_data_providers.return_value = []
+        mock_get_registry.return_value = mock_registry
+
+        get_discovery_metadata()
+
+        mock_registry.get_all_workflows.assert_called_once()
+        mock_registry.get_all_data_providers.assert_called_once()
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_exception_propagation(self, mock_get_registry):
+        """Test that exceptions are propagated"""
+        mock_get_registry.side_effect = RuntimeError("Registry error")
+
+        with pytest.raises(RuntimeError, match="Registry error"):
+            get_discovery_metadata()
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_workflow_access_exception(self, mock_get_registry):
+        """Test exception during workflow access"""
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.side_effect = ValueError("Workflow error")
+        mock_get_registry.return_value = mock_registry
+
+        with pytest.raises(ValueError, match="Workflow error"):
+            get_discovery_metadata()
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_provider_access_exception(self, mock_get_registry):
+        """Test exception during provider access"""
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = []
+        mock_registry.get_all_data_providers.side_effect = ValueError("Provider error")
+        mock_get_registry.return_value = mock_registry
+
+        with pytest.raises(ValueError, match="Provider error"):
+            get_discovery_metadata()
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_logging_on_retrieval(self, mock_get_registry):
+        """Test that logging occurs during retrieval"""
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = []
+        mock_registry.get_all_data_providers.return_value = []
+        mock_get_registry.return_value = mock_registry
+
+        with patch("shared.handlers.discovery_handlers.logger") as mock_logger:
+            get_discovery_metadata()
+
+            # Verify info logging was called
+            assert mock_logger.info.call_count >= 1
+            # Check that the retrieval message was logged
+            calls = [str(call) for call in mock_logger.info.call_args_list]
+            assert any("Retrieving discovery metadata" in str(call) for call in calls)
+            assert any("Retrieved metadata" in str(call) for call in calls)

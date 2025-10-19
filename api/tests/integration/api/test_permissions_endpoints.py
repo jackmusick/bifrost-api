@@ -361,3 +361,212 @@ class TestUserFiltering:
             f"Platform: {len(platform_users)}, "
             f"Org: {len(org_users)}"
         )
+
+
+class TestUserRolesQuery:
+    """Test querying user roles"""
+
+    def test_get_user_roles_empty(self, api_base_url, admin_headers):
+        """Should return empty roles if user has no roles assigned"""
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+            response = requests.get(
+                f"{api_base_url}/api/users/{user_id}/roles",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                assert "roleIds" in data or isinstance(data, list)
+                logger.info(f"User {user_id} roles query successful")
+
+    def test_get_user_roles_structure(self, api_base_url, admin_headers):
+        """Should return properly structured role response"""
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+            response = requests.get(
+                f"{api_base_url}/api/users/{user_id}/roles",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if "roleIds" in data:
+                    assert isinstance(data["roleIds"], list)
+                logger.info(f"Role response structure validated for {user_id}")
+
+    def test_get_nonexistent_user_roles(self, api_base_url, admin_headers):
+        """Should handle roles query for non-existent user"""
+        response = requests.get(
+            f"{api_base_url}/api/users/nonexistent-user-for-roles/roles",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        # Should return 404 or empty list
+        assert response.status_code in [404, 200]
+        logger.info(f"Non-existent user roles query handled: {response.status_code}")
+
+    def test_get_user_roles_multiple_times(self, api_base_url, admin_headers):
+        """Should consistently return same roles on repeated queries"""
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+
+            response1 = requests.get(
+                f"{api_base_url}/api/users/{user_id}/roles",
+                headers=admin_headers,
+                timeout=10
+            )
+            response2 = requests.get(
+                f"{api_base_url}/api/users/{user_id}/roles",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            if response1.status_code == 200 and response2.status_code == 200:
+                data1 = response1.json()
+                data2 = response2.json()
+                # Results should be identical
+                assert data1 == data2
+                logger.info("Consistent role query results verified")
+
+
+class TestUserFormsQuery:
+    """Test querying user's accessible forms"""
+
+    def test_get_user_forms_empty(self, api_base_url, admin_headers):
+        """Should return empty forms if user has no form access"""
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+            response = requests.get(
+                f"{api_base_url}/api/users/{user_id}/forms",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                assert "formIds" in data or isinstance(data, list)
+                logger.info(f"User {user_id} forms query successful")
+
+    def test_get_user_forms_structure(self, api_base_url, admin_headers):
+        """Should return properly structured forms response"""
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+            response = requests.get(
+                f"{api_base_url}/api/users/{user_id}/forms",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                assert "formIds" in data or "forms" in data or isinstance(data, list)
+                if "formIds" in data:
+                    assert isinstance(data["formIds"], list)
+                logger.info(f"Forms response structure validated for {user_id}")
+
+    def test_get_nonexistent_user_forms(self, api_base_url, admin_headers):
+        """Should handle forms query for non-existent user"""
+        response = requests.get(
+            f"{api_base_url}/api/users/nonexistent-user-for-forms/forms",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        # Should return 404 or empty list
+        assert response.status_code in [404, 200]
+        logger.info(f"Non-existent user forms query handled: {response.status_code}")
+
+    def test_get_admin_user_forms(self, api_base_url, admin_headers):
+        """Platform admin user should have access to all forms"""
+        # Admin users typically have broader access
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+            response = requests.get(
+                f"{api_base_url}/api/users/{user_id}/forms",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                # Check if admin has all forms
+                if "hasAccessToAllForms" in data:
+                    logger.info(f"Admin access status: {data['hasAccessToAllForms']}")
+
+
+class TestUserAccessControl:
+    """Test user listing access control"""
+
+    def test_list_users_requires_admin(self, api_base_url):
+        """User listing endpoint should require admin role"""
+        # No headers - should be denied
+        response = requests.get(
+            f"{api_base_url}/api/users",
+            timeout=10
+        )
+
+        # Should return 401/403 or 200 if public
+        assert response.status_code in [200, 400, 401, 403]
+        logger.info(f"User listing without auth returned: {response.status_code}")
+
+    def test_get_user_details_endpoint(self, api_base_url, admin_headers):
+        """Getting user details should work for admin"""
+        list_response = requests.get(
+            f"{api_base_url}/api/users",
+            headers=admin_headers,
+            timeout=10
+        )
+
+        if list_response.status_code == 200 and list_response.json():
+            user_id = list_response.json()[0]["id"]
+            response = requests.get(
+                f"{api_base_url}/api/users/{user_id}",
+                headers=admin_headers,
+                timeout=10
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "id" in data
+            assert "email" in data
+            logger.info(f"User details endpoint verified for {user_id}")

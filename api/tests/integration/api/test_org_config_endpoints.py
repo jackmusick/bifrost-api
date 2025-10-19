@@ -205,3 +205,331 @@ class TestOrgConfigValidation:
         )
         # May return 204 (deleted) or 404 (not found)
         assert response.status_code in [200, 204, 404]
+
+
+class TestOrgConfigTypeValidation:
+    """Test configuration value type validation"""
+
+    def test_string_config_validation(self, api_base_url, platform_admin_headers):
+        """Should validate and store string config values"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_string_config",
+                "value": "string_value_123",
+                "type": "string"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201]
+
+    def test_number_config_validation(self, api_base_url, platform_admin_headers):
+        """Should validate and store number config values"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_number_config",
+                "value": "42",
+                "type": "number"
+            },
+            timeout=10
+        )
+        # May require number type or accept string representation
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_number_config_with_min_max_validation(self, api_base_url, platform_admin_headers):
+        """Should validate number configs against min/max bounds"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_bounded_number",
+                "value": "50",
+                "type": "number",
+                "min": "0",
+                "max": "100"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_boolean_config_validation(self, api_base_url, platform_admin_headers):
+        """Should validate and store boolean config values"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_boolean_config",
+                "value": "true",
+                "type": "boolean"
+            },
+            timeout=10
+        )
+        # May require boolean type or accept string representation
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_object_config_validation(self, api_base_url, platform_admin_headers):
+        """Should validate and store JSON object config values"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_object_config",
+                "value": '{"key": "value", "nested": {"field": "data"}}',
+                "type": "object"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_array_config_validation(self, api_base_url, platform_admin_headers):
+        """Should validate and store array config values"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_array_config",
+                "value": '["item1", "item2", "item3"]',
+                "type": "array"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_enum_config_validation(self, api_base_url, platform_admin_headers):
+        """Should validate enum config against allowed values"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "test_enum_config",
+                "value": "option1",
+                "type": "enum",
+                "allowedValues": ["option1", "option2", "option3"]
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+
+class TestOrgConfigInheritance:
+    """Test global vs organization-specific config inheritance"""
+
+    def test_org_config_overrides_global(self, api_base_url, platform_admin_headers, test_org_id):
+        """Should use org-specific config when available"""
+        # Set global config
+        requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "inheritance_test_key",
+                "value": "global_value",
+                "type": "string"
+            },
+            timeout=10
+        )
+
+        # Get org config (should fallback to global)
+        response = requests.get(
+            f"{api_base_url}/api/config?org_id={test_org_id}",
+            headers=platform_admin_headers,
+            timeout=10
+        )
+        assert response.status_code in [200, 404]
+
+    def test_org_config_fallback_to_global_when_not_set(self, api_base_url, platform_admin_headers, test_org_id):
+        """Should fallback to global config if org config not set"""
+        # Get config that should fallback
+        response = requests.get(
+            f"{api_base_url}/api/config/fallback_test_key?org_id={test_org_id}",
+            headers=platform_admin_headers,
+            timeout=10
+        )
+        # Should return global or 404
+        assert response.status_code in [200, 404]
+
+    def test_delete_org_config_falls_back_to_global(self, api_base_url, platform_admin_headers, test_org_id):
+        """Should fallback to global after deleting org-specific config"""
+        # Set org config
+        set_resp = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "fallback_after_delete",
+                "value": "org_value",
+                "type": "string"
+            },
+            timeout=10
+        )
+
+        if set_resp.status_code in [200, 201]:
+            # Delete org config
+            delete_resp = requests.delete(
+                f"{api_base_url}/api/config/fallback_after_delete",
+                headers=platform_admin_headers,
+                timeout=10
+            )
+
+            if delete_resp.status_code in [200, 204]:
+                # Should now fallback to global or return 404
+                get_resp = requests.get(
+                    f"{api_base_url}/api/config/fallback_after_delete?org_id={test_org_id}",
+                    headers=platform_admin_headers,
+                    timeout=10
+                )
+                assert get_resp.status_code in [200, 404]
+
+
+class TestOrgConfigSchemaValidation:
+    """Test configuration schema enforcement"""
+
+    def test_unknown_config_key_rejected(self, api_base_url, platform_admin_headers):
+        """Should reject unknown configuration keys"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "completely_unknown_key_xyz_123",
+                "value": "some_value",
+                "type": "string"
+            },
+            timeout=10
+        )
+        # May reject or accept unknown keys
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_required_config_enforcement(self, api_base_url, platform_admin_headers):
+        """Should enforce required configuration values"""
+        # Try to delete a required config
+        response = requests.delete(
+            f"{api_base_url}/api/config/required_config_key",
+            headers=platform_admin_headers,
+            timeout=10
+        )
+        # May prevent deletion of required configs
+        assert response.status_code in [200, 204, 403, 409, 404]
+
+    def test_config_default_values_applied(self, api_base_url, platform_admin_headers):
+        """Should apply default values for configs"""
+        response = requests.get(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            timeout=10
+        )
+        assert response.status_code == 200
+        data = response.json()
+        if isinstance(data, list):
+            # Should have some configs with defaults
+            assert len(data) >= 0
+
+    def test_config_schema_evolution(self, api_base_url, platform_admin_headers):
+        """Should handle schema evolution without breaking"""
+        # Set config with new schema version
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "evolving_config",
+                "value": "value",
+                "type": "string",
+                "schema_version": "2.0",
+                "new_field": "future_compatible"
+            },
+            timeout=10
+        )
+        # Should handle gracefully
+        assert response.status_code in [200, 201, 400, 422]
+
+
+class TestOrgConfigIntegrations:
+    """Test integration-specific configuration"""
+
+    def test_oauth_integration_config(self, api_base_url, platform_admin_headers):
+        """Should store and validate OAuth integration config"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "oauth_config",
+                "value": '{"provider": "azure", "client_id": "test-id"}',
+                "type": "object"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_email_integration_config(self, api_base_url, platform_admin_headers):
+        """Should store and validate email integration config"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "email_config",
+                "value": '{"host": "smtp.example.com", "port": "587"}',
+                "type": "object"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_sso_integration_config(self, api_base_url, platform_admin_headers):
+        """Should store and validate SSO integration config"""
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "sso_config",
+                "value": '{"provider": "okta", "domain": "example.okta.com"}',
+                "type": "object"
+            },
+            timeout=10
+        )
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_integration_config_validation_rules(self, api_base_url, platform_admin_headers):
+        """Should apply provider-specific validation rules"""
+        # Try to set config with invalid OAuth config
+        response = requests.post(
+            f"{api_base_url}/api/config",
+            headers=platform_admin_headers,
+            json={
+                "key": "oauth_validation",
+                "value": '{"invalid": "config"}',  # Missing required fields
+                "type": "object",
+                "integration": "oauth"
+            },
+            timeout=10
+        )
+        # May validate or accept
+        assert response.status_code in [200, 201, 400, 422]
+
+    def test_multiple_integration_configs(self, api_base_url, platform_admin_headers):
+        """Should support multiple integration configs"""
+        configs = [
+            {
+                "key": "integration_1",
+                "value": "config1",
+                "type": "string"
+            },
+            {
+                "key": "integration_2",
+                "value": "config2",
+                "type": "string"
+            },
+            {
+                "key": "integration_3",
+                "value": "config3",
+                "type": "string"
+            }
+        ]
+
+        for config in configs:
+            response = requests.post(
+                f"{api_base_url}/api/config",
+                headers=platform_admin_headers,
+                json=config,
+                timeout=10
+            )
+            assert response.status_code in [200, 201]

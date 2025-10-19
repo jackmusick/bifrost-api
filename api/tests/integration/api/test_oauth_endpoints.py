@@ -11,6 +11,8 @@ Tests the OAuth connection management endpoints:
 - POST /api/oauth/callback/{connection_name} - Handle OAuth callback
 - GET /api/oauth/credentials/{connection_name} - Get credentials
 - GET /api/oauth/refresh_job_status - Get refresh job status
+
+REQUIRES: Azure Functions API running (func start --port 7071)
 """
 
 import json
@@ -18,6 +20,8 @@ import logging
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
+
+pytestmark = pytest.mark.requires_api  # Mark all tests in this file
 
 logger = logging.getLogger(__name__)
 
@@ -168,16 +172,16 @@ class TestOAuthConnectionManagement:
         assert delete_response.status_code == 204, f"Expected 204, got {delete_response.status_code}"
         logger.info(f"Deleted OAuth connection: {connection_name}")
 
-    def test_delete_oauth_connection_idempotent(self, api_base_url, platform_admin_headers):
-        """Should return 204 even if connection already deleted (idempotent)"""
+    def test_delete_oauth_connection_not_found(self, api_base_url, platform_admin_headers):
+        """Should return 404 when attempting to delete non-existent connection"""
         response = requests.delete(
-            f"{api_base_url}/api/oauth/connections/already-deleted-connection",
+            f"{api_base_url}/api/oauth/connections/nonexistent-connection",
             headers=platform_admin_headers,
             timeout=10
         )
 
-        assert response.status_code == 204, f"Expected 204 (idempotent), got {response.status_code}"
-        logger.info("Delete is idempotent")
+        assert response.status_code == 404, f"Expected 404, got {response.status_code}"
+        logger.info("Delete returns 404 for non-existent connection")
 
 
 class TestOAuthAuthorizationFlow:

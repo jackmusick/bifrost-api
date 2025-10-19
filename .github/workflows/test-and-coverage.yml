@@ -30,7 +30,6 @@ jobs:
             - name: Start Azurite
               run: |
                   npx --yes azurite --silent --inMemoryPersistence &
-                  sleep 10
               shell: bash
 
             - name: Install dependencies
@@ -39,14 +38,6 @@ jobs:
                   python -m pip install -q --upgrade pip
                   pip install -q -r requirements.txt
                   pip install -q pytest pytest-cov pytest-asyncio
-
-            - name: Seed Azurite with test data
-              working-directory: ./api
-              run: |
-                  export PYTHONPATH=.
-                  python seed_data.py
-              env:
-                  AzureWebJobsStorage: UseDevelopmentStorage=true
 
             - name: Run tests with coverage
               working-directory: ./api

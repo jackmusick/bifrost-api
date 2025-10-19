@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import azure.functions as func
 import pytest
 
-from functions.discovery import get_discovery_metadata
+from functions.discovery import get_discovery_metadata_handler as get_discovery_metadata
 
 
 @pytest.fixture(scope="class", autouse=True)

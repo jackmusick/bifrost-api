@@ -9,9 +9,9 @@ import logging
 import azure.functions as func
 
 from shared.decorators import with_request_context
+from shared.handlers.discovery_handlers import get_discovery_metadata
 from shared.models import MetadataResponse
 from shared.openapi_decorators import openapi_endpoint
-from shared.registry import get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ bp = func.Blueprint()
     response_model=MetadataResponse
 )
 @with_request_context
-async def get_discovery_metadata(req: func.HttpRequest) -> func.HttpResponse:
+async def get_discovery_metadata_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/discovery
     Return metadata for all registered workflows and data providers
@@ -44,81 +44,16 @@ async def get_discovery_metadata(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"x-functions-key header present: {'x-functions-key' in req.headers}")
 
     try:
-        # Get registry singleton
-        registry = get_registry()
-
-        # Get all workflows
-        workflows = []
-        for workflow_meta in registry.get_all_workflows():
-            # Convert parameters to dict format
-            parameters = []
-            for param in workflow_meta.parameters:
-                param_dict = {
-                    "name": param.name,
-                    "type": param.type,
-                    "label": param.label,
-                    "required": param.required
-                }
-
-                # Add optional fields if present
-                if param.validation:
-                    param_dict["validation"] = param.validation
-                if param.data_provider:
-                    param_dict["dataProvider"] = param.data_provider
-                if param.default_value is not None:
-                    param_dict["defaultValue"] = param.default_value
-                if param.help_text:
-                    param_dict["helpText"] = param.help_text
-
-                parameters.append(param_dict)
-
-            # Build workflow metadata dict
-            workflow_dict = {
-                "name": workflow_meta.name,
-                "description": workflow_meta.description,
-                "category": workflow_meta.category,
-                "tags": workflow_meta.tags,
-                "parameters": parameters,
-                # Execution configuration
-                "executionMode": workflow_meta.execution_mode,
-                "timeoutSeconds": workflow_meta.timeout_seconds,
-                # Retry and scheduling (for future use)
-                "retryPolicy": workflow_meta.retry_policy,
-                "schedule": workflow_meta.schedule,
-                # HTTP Endpoint configuration
-                "endpointEnabled": workflow_meta.endpoint_enabled,
-                "allowedMethods": workflow_meta.allowed_methods,
-                "disableGlobalKey": workflow_meta.disable_global_key,
-                "publicEndpoint": workflow_meta.public_endpoint
-            }
-
-            workflows.append(workflow_dict)
-
-        # Get all data providers
-        data_providers = []
-        for provider_meta in registry.get_all_data_providers():
-            provider_dict = {
-                "name": provider_meta.name,
-                "description": provider_meta.description,
-                "category": provider_meta.category,
-                "cacheTtlSeconds": provider_meta.cache_ttl_seconds
-            }
-
-            data_providers.append(provider_dict)
-
-        # Build response
-        response_data = {
-            "workflows": workflows,
-            "dataProviders": data_providers
-        }
+        # Call business logic handler
+        metadata = get_discovery_metadata()
 
         logger.info(
-            f"Returning metadata: {len(workflows)} workflows, "
-            f"{len(data_providers)} data providers"
+            f"Returning metadata: {len(metadata.workflows)} workflows, "
+            f"{len(metadata.dataProviders)} data providers"
         )
 
         return func.HttpResponse(
-            json.dumps(response_data),
+            json.dumps(metadata.model_dump(by_alias=True, exclude_none=True)),
             status_code=200,
             mimetype="application/json"
         )

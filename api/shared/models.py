@@ -630,7 +630,11 @@ class WorkflowParameter(BaseModel):
     name: str
     type: str  # string, int, bool, etc.
     required: bool
+    label: str | None = None
     dataProvider: str | None = None
+    defaultValue: Any | None = None
+    helpText: str | None = None
+    validation: dict[str, Any] | None = None
     description: str | None = None
 
 
@@ -669,8 +673,7 @@ class DataProviderMetadata(BaseModel):
 class MetadataResponse(BaseModel):
     """Response model for /admin/workflow endpoint"""
     workflows: list[WorkflowMetadata] = Field(default_factory=list)
-    optionGenerators: list[DataProviderMetadata] = Field(
-        default_factory=list, alias="option_generators")
+    dataProviders: list[DataProviderMetadata] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 
