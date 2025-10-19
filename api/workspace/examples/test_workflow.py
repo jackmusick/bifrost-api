@@ -13,7 +13,10 @@ from bifrost import OrganizationContext, param, workflow
     description="Simple test workflow for validation",
     category="testing",
     tags=["test", "example"],
-    requires_org=True
+    requires_org=True,
+    endpoint_enabled=True,
+    allowed_methods=["GET", "POST"],
+    disable_global_key=False
 )
 @param("name", type="string", label="Name", required=True, help_text="Name to greet")
 @param("count", type="int", label="Count", required=False, default_value=1, help_text="Number of times to greet")
@@ -21,13 +24,24 @@ async def test_workflow(context: OrganizationContext, name: str, count: int = 1)
     """
     Simple test workflow that greets a name.
 
+    This workflow is exposed as an HTTP endpoint at:
+    - GET /api/endpoints/test_workflow?name=John&count=3
+    - POST /api/endpoints/test_workflow (with JSON body)
+
     Args:
         context: Organization context with org info and integrations
-        name: Name to greet
+        name: Name to greet (required)
         count: Number of times to greet (default: 1)
 
     Returns:
         Dictionary with greeting message and metadata
+
+    Example:
+        curl -X POST \\
+          -H "x-functions-key: YOUR_API_KEY" \\
+          -H "Content-Type: application/json" \\
+          -d '{"name": "World", "count": 3}' \\
+          https://app.azurestaticapps.net/api/endpoints/test_workflow
     """
     greetings = []
 

@@ -50,6 +50,12 @@ class WorkflowMetadata:
     requires_approval: bool = False
     required_permission: str = "canExecuteWorkflows"
 
+    # HTTP Endpoint Configuration
+    endpoint_enabled: bool = False
+    allowed_methods: list[str] = field(default_factory=lambda: ["POST"])
+    disable_global_key: bool = False
+    public_endpoint: bool = False  # If true, skip authentication (for webhooks)
+
     # Parameters and function
     parameters: list[WorkflowParameter] = field(default_factory=list)
     function: Any = None  # The actual Python function

@@ -551,9 +551,8 @@ async def delete_integration(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # Delete integration using repository (idempotent - no error if doesn't exist)
-        from shared.models import IntegrationType
         config_repo = ConfigRepository(context)
-        config_repo.delete_integration(IntegrationType(integration_type))
+        config_repo.delete_integration(integration_type)  # Pass string directly - repository handles it
         logger.info(f"Deleted {integration_type} integration for org {org_id}")
 
         return func.HttpResponse(

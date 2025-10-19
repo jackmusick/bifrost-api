@@ -29,8 +29,9 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     Check if user can view a form.
 
     Rules:
-    - Platform admins: can view all forms
+    - Platform admins: can view all active forms
     - Regular users: can view all active forms (global forms + their org's forms)
+    - Inactive forms are hidden from everyone
 
     Args:
         context: RequestContext
@@ -39,10 +40,6 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     Returns:
         True if user can view form, False otherwise
     """
-    # Platform admins can view all forms
-    if context.is_platform_admin:
-        return True
-
     # Get form using repository (handles GLOBAL fallback automatically)
     form_repo = FormRepository(context)
     form = form_repo.get_form(form_id)
@@ -50,9 +47,13 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     if not form:
         return False
 
-    # Check if form is active
+    # Check if form is active (inactive forms are hidden from everyone)
     if not form.isActive:
         return False
+
+    # Platform admins can view all active forms
+    if context.is_platform_admin:
+        return True
 
     # If we got the form, user can view it (repository handles scope checking)
     return True
@@ -92,8 +93,8 @@ def get_user_visible_forms(context: RequestContext) -> list[dict]:
 
     # Platform admin sees all forms in their current scope (set by X-Organization-Id)
     if context.is_platform_admin:
-        # Admin can see all forms (including inactive) in their scope
-        forms = form_repo.list_forms(include_global=False, active_only=False)
+        # Admin can see all active forms in their scope (inactive forms are hidden from everyone)
+        forms = form_repo.list_forms(include_global=False, active_only=True)
         # Convert Form models to dicts for backward compatibility (JSON-serializable)
         return [form.model_dump(mode="json") for form in forms]
 

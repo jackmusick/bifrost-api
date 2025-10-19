@@ -38,7 +38,13 @@ def workflow(
     requires_org: bool = True,
     expose_in_forms: bool = True,
     requires_approval: bool = False,
-    required_permission: str = "canExecuteWorkflows"
+    required_permission: str = "canExecuteWorkflows",
+
+    # HTTP Endpoint Configuration
+    endpoint_enabled: bool = False,
+    allowed_methods: list[str] | None = None,
+    disable_global_key: bool = False,
+    public_endpoint: bool = False
 ):
     """
     Decorator for registering workflow functions
@@ -51,7 +57,10 @@ def workflow(
             tags=["m365", "user"],
             execution_mode="sync",
             timeout_seconds=300,
-            expose_in_forms=True
+            expose_in_forms=True,
+            endpoint_enabled=True,
+            allowed_methods=["GET", "POST"],
+            disable_global_key=False
         )
         @param("first_name", type="string", label="First Name", required=True)
         @param("last_name", type="string", label="Last Name", required=True)
@@ -73,12 +82,18 @@ def workflow(
         expose_in_forms: Can this be called from forms? (default: True)
         requires_approval: Requires approval before execution (default: False)
         required_permission: Permission required to execute (default: "canExecuteWorkflows")
+        endpoint_enabled: Whether to expose as HTTP endpoint at /api/endpoints/{name} (default: False)
+        allowed_methods: HTTP methods allowed for endpoint (default: ["POST"])
+        disable_global_key: If True, only workflow-specific API keys work (default: False)
+        public_endpoint: If True, skip authentication for webhooks (default: False)
 
     Returns:
         Decorated function (unchanged for normal Python execution)
     """
     if tags is None:
         tags = []
+    if allowed_methods is None:
+        allowed_methods = ["POST"]
 
     def decorator(func: Callable) -> Callable:
         # Extract function signature
@@ -105,6 +120,10 @@ def workflow(
             expose_in_forms=expose_in_forms,
             requires_approval=requires_approval,
             required_permission=required_permission,
+            endpoint_enabled=endpoint_enabled,
+            allowed_methods=allowed_methods,
+            disable_global_key=disable_global_key,
+            public_endpoint=public_endpoint,
             parameters=pending_params,
             function=func
         )

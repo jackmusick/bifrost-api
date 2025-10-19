@@ -279,19 +279,6 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving form {form_id}")
 
     try:
-        # Check if user has access to this form
-        if not can_user_view_form(context, form_id):
-            logger.warning(f"User {context.user_id} denied access to form {form_id}")
-            error = ErrorResponse(
-                error="Forbidden",
-                message="You don't have permission to access this form"
-            )
-            return func.HttpResponse(
-                json.dumps(error.model_dump()),
-                status_code=403,
-                mimetype="application/json"
-            )
-
         # Get form using repository (handles GLOBAL fallback)
         form_repo = FormRepository(context)
         form = form_repo.get_form(form_id)
@@ -308,8 +295,9 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
 
-        # Check if form is active (skip for platform admins who can manage inactive forms)
-        if not context.is_platform_admin and not form.isActive:
+        # Check if form is active (inactive forms return 404 for everyone)
+        # This check comes BEFORE permission check so inactive forms always return 404
+        if not form.isActive:
             logger.warning(f"Form {form_id} is not active")
             error = ErrorResponse(
                 error="NotFound",
@@ -318,6 +306,19 @@ async def get_form(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(
                 json.dumps(error.model_dump()),
                 status_code=404,
+                mimetype="application/json"
+            )
+
+        # Check if user has access to this form (after existence and active checks)
+        if not can_user_view_form(context, form_id):
+            logger.warning(f"User {context.user_id} denied access to form {form_id}")
+            error = ErrorResponse(
+                error="Forbidden",
+                message="You don't have permission to access this form"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=403,
                 mimetype="application/json"
             )
 

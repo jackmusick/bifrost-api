@@ -20,17 +20,12 @@ import { OAuthConnections } from "@/pages/OAuthConnections";
 import { OAuthCallback } from "@/pages/OAuthCallback";
 import { Docs } from "@/pages/Docs";
 import { Dashboard } from "@/pages/Dashboard";
+import { WorkflowKeys } from "@/pages/WorkflowKeys";
 
 import { OrgScopeProvider } from "@/contexts/OrgScopeContext";
 
 function Settings() {
-    return (
-        <div>
-            <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-                Settings
-            </h1>
-        </div>
-    );
+    return <WorkflowKeys />;
 }
 
 function App() {
@@ -209,6 +204,18 @@ function App() {
                                 element={
                                     <ProtectedRoute requirePlatformAdmin>
                                         <Docs />
+                                    </ProtectedRoute>
+                                }
+                            />
+
+                            {/* Workflow API Keys - PlatformAdmin only */}
+                            <Route
+                                path="workflow-keys"
+                                element={
+                                    <ProtectedRoute requirePlatformAdmin>
+                                        <WorkflowEngineGuard>
+                                            <WorkflowKeys />
+                                        </WorkflowEngineGuard>
                                     </ProtectedRoute>
                                 }
                             />

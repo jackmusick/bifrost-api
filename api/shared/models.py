@@ -633,6 +633,11 @@ class WorkflowMetadata(BaseModel):
     parameters: list[WorkflowParameter] = Field(default_factory=list)
     requiresOrg: bool = Field(
         default=True, description="Whether workflow requires org context")
+    # Endpoint configuration (for /api/endpoints/{name} route)
+    endpointEnabled: bool = Field(default=False, description="Whether workflow is exposed as HTTP endpoint")
+    allowedMethods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods for endpoint")
+    disableGlobalKey: bool = Field(default=False, description="If true, only workflow-specific API keys work (global keys denied)")
+    publicEndpoint: bool = Field(default=False, description="If true, skip authentication (for webhooks)")
 
 
 class DataProviderMetadata(BaseModel):
@@ -868,12 +873,14 @@ class WorkflowKey(BaseModel):
     revokedBy: str | None = None
     expiresAt: datetime | None = Field(None, description="Optional expiration timestamp")
     description: str | None = Field(None, description="Optional key description")
+    disableGlobalKey: bool = Field(default=False, description="If true, workflow opts out of global API keys")
 
 class WorkflowKeyCreateRequest(BaseModel):
     """Request model for creating a workflow API key"""
     workflowId: str | None = Field(None, description="Workflow-specific key, or None for global")
     expiresInDays: int | None = Field(None, description="Days until key expires (default: no expiration)")
     description: str | None = Field(None, description="Optional key description")
+    disableGlobalKey: bool = Field(default=False, description="If true, workflow opts out of global API keys")
 
 class WorkflowKeyResponse(BaseModel):
     """Response model for workflow key (includes raw key on creation only)"""
@@ -887,7 +894,7 @@ class WorkflowKeyResponse(BaseModel):
     revoked: bool
     expiresAt: datetime | None = None
     description: str | None = None
-
+    disableGlobalKey: bool = Field(default=False, description="If true, workflow opts out of global API keys")
 
 # ==================== ASYNC EXECUTION (T004, T042, T043 - User Story 4) ====================
 

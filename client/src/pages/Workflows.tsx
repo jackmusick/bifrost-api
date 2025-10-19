@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PlayCircle, Code, RefreshCw, Webhook } from 'lucide-react'
+import { PlayCircle, Code, RefreshCw, Webhook, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowsMetadata } from '@/hooks/useWorkflows'
+import { useWorkflowKeys } from '@/hooks/useWorkflowKeys'
 import { HttpTriggerDialog } from '@/components/workflows/HttpTriggerDialog'
 import type { components } from '@/lib/v1'
 type Workflow = components['schemas']['WorkflowMetadata']
@@ -19,10 +20,29 @@ type Workflow = components['schemas']['WorkflowMetadata']
 export function Workflows() {
   const navigate = useNavigate()
   const { data, isLoading, refetch } = useWorkflowsMetadata()
+  const { data: apiKeys } = useWorkflowKeys({ includeRevoked: false })
   const [webhookDialogOpen, setWebhookDialogOpen] = useState(false)
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null)
 
   const workflows = data?.workflows || []
+
+  // Create a map of workflows that have API keys
+  const workflowsWithKeys = useMemo(() => {
+    if (!apiKeys) return new Set<string>()
+
+    const workflowSet = new Set<string>()
+    apiKeys.forEach((key) => {
+      if (key.workflowId && !key.revokedAt) {
+        workflowSet.add(key.workflowId)
+      }
+    })
+    return workflowSet
+  }, [apiKeys])
+
+  const hasGlobalKey = useMemo(() => {
+    if (!apiKeys) return false
+    return apiKeys.some((key) => !key.workflowId && !key.revokedAt)
+  }, [apiKeys])
 
   const handleExecute = (workflowName: string) => {
     navigate(`/workflows/${workflowName}/execute`)
@@ -61,17 +81,49 @@ export function Workflows() {
                 <CardTitle className="flex items-center justify-between">
                   <span className="font-mono text-base">{workflow.name}</span>
                   <div className="flex items-center gap-1">
-                    <Badge
-                      variant="outline"
-                      className="cursor-pointer hover:bg-accent"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleShowWebhook(workflow)
-                      }}
-                    >
-                      <Webhook className="mr-1 h-3 w-3" />
-                      HTTP
-                    </Badge>
+                    {workflow.endpointEnabled && (
+                      <Badge
+                        variant={
+                          workflow.publicEndpoint
+                            ? "destructive"
+                            : (hasGlobalKey || workflowsWithKeys.has(workflow.name ?? '') ? "default" : "outline")
+                        }
+                        className={`cursor-pointer transition-colors ${
+                          workflow.publicEndpoint
+                            ? 'bg-orange-600 hover:bg-orange-700 border-orange-600'
+                            : hasGlobalKey || workflowsWithKeys.has(workflow.name ?? '')
+                            ? 'bg-green-600 hover:bg-green-700'
+                            : 'text-muted-foreground hover:bg-accent'
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleShowWebhook(workflow)
+                        }}
+                        title={
+                          workflow.publicEndpoint
+                            ? 'Public webhook endpoint - no authentication required'
+                            : (hasGlobalKey || workflowsWithKeys.has(workflow.name ?? '')
+                              ? 'HTTP endpoint enabled with API key'
+                              : 'HTTP endpoint (no API key configured)')
+                        }
+                      >
+                        {workflow.publicEndpoint ? (
+                          <AlertTriangle className="mr-1 h-3 w-3" />
+                        ) : (
+                          <Webhook className="mr-1 h-3 w-3" />
+                        )}
+                        Endpoint
+                      </Badge>
+                    )}
+                    {workflow.disableGlobalKey && (
+                      <Badge
+                        variant="outline"
+                        className="bg-orange-600 text-white hover:bg-orange-700 border-orange-600"
+                        title="This workflow only accepts workflow-specific API keys (global keys are disabled)"
+                      >
+                        Global Opt-Out
+                      </Badge>
+                    )}
                     {workflow.category && (
                       <Badge variant="secondary">{workflow.category}</Badge>
                     )}

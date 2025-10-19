@@ -83,7 +83,12 @@ async def get_discovery_metadata(req: func.HttpRequest) -> func.HttpResponse:
                 # Execution mode
                 "executionMode": workflow_meta.execution_mode,
                 # Forms
-                "exposeInForms": workflow_meta.expose_in_forms
+                "exposeInForms": workflow_meta.expose_in_forms,
+                # HTTP Endpoint configuration
+                "endpointEnabled": workflow_meta.endpoint_enabled,
+                "allowedMethods": workflow_meta.allowed_methods,
+                "disableGlobalKey": workflow_meta.disable_global_key,
+                "publicEndpoint": workflow_meta.public_endpoint
             }
 
             workflows.append(workflow_dict)

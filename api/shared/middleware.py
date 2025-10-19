@@ -15,6 +15,41 @@ from .context import Caller, Organization, OrganizationContext
 logger = logging.getLogger(__name__)
 
 
+def load_config_for_partition(partition_key: str) -> dict:
+    """
+    Load configuration values for a given partition (org ID or GLOBAL).
+
+    Extracts config entities from Table Storage and parses JSON values.
+
+    Args:
+        partition_key: Partition to load config from (org ID or "GLOBAL")
+
+    Returns:
+        Dictionary of config key-value pairs
+    """
+    from .storage import get_org_config
+
+    config = {}
+    config_entities = get_org_config(partition_key)
+
+    for entity in config_entities:
+        # RowKey format: "config:{key}"
+        key = entity['RowKey'].replace('config:', '', 1)
+        value = entity.get('Value')
+
+        # Parse JSON if type is json
+        if entity.get('Type') == 'json':
+            try:
+                assert value is not None, "Value cannot be None for JSON parsing"
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse JSON config: {key}")
+
+        config[key] = value
+
+    return config
+
+
 def with_org_context(handler: Callable) -> Callable:
     """
     Decorator to load OrganizationContext from request headers.
@@ -119,7 +154,7 @@ async def load_organization_context(
         OrganizationNotFoundError: If org_id provided but org doesn't exist or is inactive
         AuthenticationError: If authentication fails
     """
-    from .storage import get_org_config, get_organization
+    from .storage import get_organization
 
     org = None
     config = {}
@@ -145,41 +180,11 @@ async def load_organization_context(
         )
 
         # Load organization config (all config for this org)
-        config_entities = get_org_config(org_id)
-
-        for entity in config_entities:
-            # RowKey format: "config:{key}"
-            key = entity['RowKey'].replace('config:', '', 1)
-            value = entity.get('Value')
-
-            # Parse JSON if type is json
-            if entity.get('Type') == 'json':
-                try:
-                    assert value is not None, "Value cannot be None for JSON parsing"
-                    value = json.loads(value)
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse JSON config: {key}")
-
-            config[key] = value
+        config = load_config_for_partition(org_id)
     else:
         # Load GLOBAL configs for platform admin context
         logger.info("Loading GLOBAL configs for platform admin context")
-        config_entities = get_org_config("GLOBAL")
-
-        for entity in config_entities:
-            # RowKey format: "config:{key}"
-            key = entity['RowKey'].replace('config:', '', 1)
-            value = entity.get('Value')
-
-            # Parse JSON if type is json
-            if entity.get('Type') == 'json':
-                try:
-                    assert value is not None, "Value cannot be None for JSON parsing"
-                    value = json.loads(value)
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse JSON config: {key}")
-
-            config[key] = value
+        config = load_config_for_partition("GLOBAL")
 
     # T056: Extract caller from authenticated principal
     # Use authentication service to get principal, then create Caller
@@ -222,9 +227,9 @@ async def load_organization_context(
                 logger.info(f"No org_id provided for non-admin user {principal.email}, looking up from database")
 
                 # Import here to avoid circular dependency
-                from shared.request_context import _get_user_org_id
+                from shared.user_lookup import get_user_organization
 
-                user_org_id = _get_user_org_id(principal.email)
+                user_org_id = get_user_organization(principal.email)
 
                 if user_org_id:
                     org_id = user_org_id
@@ -250,22 +255,7 @@ async def load_organization_context(
                     )
 
                     # Load organization config (all config for this org)
-                    config_entities = get_org_config(org_id)
-
-                    for entity in config_entities:
-                        # RowKey format: "config:{key}"
-                        key = entity['RowKey'].replace('config:', '', 1)
-                        value = entity.get('Value')
-
-                        # Parse JSON if type is json
-                        if entity.get('Type') == 'json':
-                            try:
-                                assert value is not None, "Value cannot be None for JSON parsing"
-                                value = json.loads(value)
-                            except json.JSONDecodeError:
-                                logger.warning(f"Failed to parse JSON config: {key}")
-
-                        config[key] = value
+                    config = load_config_for_partition(org_id)
                 else:
                     # User has no org assignment
                     raise OrganizationNotFoundError(
@@ -307,17 +297,18 @@ class OrganizationNotFoundError(Exception):
 
 def has_workflow_key(handler: Callable) -> Callable:
     """
-    Decorator to allow workflow execution via API key OR user authentication.
+    Decorator to allow workflow execution via API key, user authentication, or public access.
 
-    Checks for API key in Authorization header first. If valid, creates a global
-    scope context with API key user. If no API key or invalid, falls back to
-    standard authentication via @with_org_context.
+    Checks workflow metadata to determine authentication requirements:
+    - If public_endpoint=True: Allow unauthenticated access with minimal context
+    - If API key in Authorization header: Validate and create API key context
+    - Otherwise: Fall back to standard user authentication via @with_org_context
 
     Usage:
         @bp.route(route="workflows/{workflowName}/execute", methods=["POST"])
         @has_workflow_key
         async def execute_workflow(req: func.HttpRequest):
-            # Accessible via API key OR authenticated user
+            # Accessible via API key, authenticated user, OR public (if enabled)
             context = req.org_context
             pass
 
@@ -325,11 +316,52 @@ def has_workflow_key(handler: Callable) -> Callable:
         Authorization: Bearer wk_abc123def456...
 
     Returns:
-        401 Unauthorized: If API key is invalid or revoked
+        401 Unauthorized: If API key is invalid or revoked (for non-public endpoints)
         Otherwise passes through to @with_org_context decorator
     """
     @functools.wraps(handler)
     async def wrapper(req: func.HttpRequest) -> func.HttpResponse:
+        # Check if this is a public endpoint (webhook)
+        # Get workflow name from route params
+        workflow_id = req.route_params.get('workflowName')
+
+        if workflow_id:
+            # Check workflow metadata to see if it's public
+            from shared.registry import get_registry
+            registry = get_registry()
+            workflow_metadata = registry.get_workflow(workflow_id)
+
+            if workflow_metadata and workflow_metadata.public_endpoint:
+                # Public endpoint - create minimal anonymous context
+                logger.info(
+                    f"Public endpoint access for workflow: {workflow_id}",
+                    extra={"workflow_id": workflow_id}
+                )
+
+                # Create anonymous caller for public endpoints
+                anonymous_caller = Caller(
+                    user_id="public:anonymous",
+                    email="public@system.local",
+                    name="Public Access (Webhook)"
+                )
+
+                # Load GLOBAL config
+                config = load_config_for_partition("GLOBAL")
+
+                public_context = OrganizationContext(
+                    org=None,  # Public endpoints have no organization context
+                    config=config,
+                    caller=anonymous_caller,
+                    execution_id=str(__import__('uuid').uuid4())
+                )
+
+                # Inject context into request
+                req.org_context = public_context  # type: ignore[attr-defined]
+
+                # Call handler directly (skip auth)
+                return await handler(req)
+
+        # Not a public endpoint - proceed with authentication
         # Check for API key in Authorization header
         auth_header = req.headers.get('Authorization', '')
 
@@ -337,7 +369,7 @@ def has_workflow_key(handler: Callable) -> Callable:
             api_key = auth_header[7:]  # Remove 'Bearer ' prefix
 
             # Validate API key
-            from shared.auth.workflow_keys import validate_workflow_key
+            from shared.workflow_keys import validate_workflow_key
             import os
 
             connection_str = os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
@@ -346,27 +378,31 @@ def has_workflow_key(handler: Callable) -> Callable:
             workflow_id = req.route_params.get('workflowName')
 
             try:
-                is_valid = validate_workflow_key(connection_str, api_key, workflow_id)
+                is_valid, key_id = validate_workflow_key(connection_str, api_key, workflow_id)
 
                 if is_valid:
                     # Create global scope context for API key access
                     # API key users get GLOBAL scope to access all workflows
                     logger.info(
                         f"Valid API key authentication for workflow: {workflow_id or 'global'}",
-                        extra={"workflow_id": workflow_id}
+                        extra={"workflow_id": workflow_id, "key_id": key_id}
                     )
 
                     # Create minimal global context for API key access
                     # No organization, but with API key caller
+                    # Use key_id in the caller name for logging purposes
                     api_caller = Caller(
-                        user_id="API_KEY",
+                        user_id=f"api_key:{key_id}" if key_id else "api_key:unknown",
                         email="api-key@system.local",
-                        name="API Key User"
+                        name=f"API Key ({key_id})" if key_id else "API Key"
                     )
+
+                    # Load GLOBAL config for platform admin context
+                    config = load_config_for_partition("GLOBAL")
 
                     api_context = OrganizationContext(
                         org=None,  # API keys get global scope
-                        config={},  # No org-specific config
+                        config=config,  # Use GLOBAL config
                         caller=api_caller,
                         execution_id=str(__import__('uuid').uuid4())
                     )

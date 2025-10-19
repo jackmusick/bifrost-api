@@ -22,14 +22,10 @@ class TestAzuriteSeedData:
     """Test Azurite seed script functionality"""
 
     @pytest.fixture
-    def table_service_client(self):
+    def table_service_client(self, test_azurite):
         """Create TableServiceClient for Azurite"""
-        connection_string = os.environ.get(
-            "AzureWebJobsStorage",
-            "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
-            "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
-            "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
-        )
+        # Use connection string from test_azurite fixture (ensures Docker Compose is running)
+        connection_string = test_azurite["connection_string"]
         return TableServiceClient.from_connection_string(connection_string)
 
     @pytest.fixture

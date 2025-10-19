@@ -424,3 +424,4 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
             status_code=200,
             mimetype="application/json"
         )
+

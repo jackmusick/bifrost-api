@@ -142,6 +142,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/endpoints/{workflowName}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a workflow via HTTP endpoint
+         * @description Execute a workflow as an HTTP endpoint using API key authentication
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Name of the workflow to execute */
+                    workflowName: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/executions": {
         parameters: {
             query?: never;
@@ -234,6 +279,57 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forms/{formId}/files/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate SAS URL for file upload
+         * @description Generate a secure SAS URL for uploading files directly to blob storage
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Form ID to associate uploaded file with */
+                    formId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FileUploadRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileUploadResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -2531,6 +2627,171 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflow-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List workflow API keys
+         * @description Get all workflow API keys for the current user (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowKeyResponse"][];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        /**
+         * Create a workflow API key
+         * @description Generate a new API key for workflow HTTP access (Platform admin only)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WorkflowKeyCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowKeyResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflow-keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a workflow API key
+         * @description Revoke an existing workflow API key (Platform admin only)
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description ID of the key to revoke */
+                    keyId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/endpoints/test_workflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GET test_workflow
+         * @description Simple test workflow for validation
+         */
+        get: operations["execute_workflow_endpoint_test_workflow_get"];
+        put?: never;
+        /**
+         * POST test_workflow
+         * @description Simple test workflow for validation
+         */
+        post: operations["execute_workflow_endpoint_test_workflow_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/endpoints/webhook_example": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * POST webhook_example
+         * @description Public webhook endpoint for external integrations
+         */
+        post: operations["execute_workflow_endpoint_webhook_example_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3550,6 +3811,29 @@ export interface components {
              * @default true
              */
             requiresOrg: boolean;
+            /**
+             * Endpointenabled
+             * @description Whether workflow is exposed as HTTP endpoint
+             * @default false
+             */
+            endpointEnabled: boolean;
+            /**
+             * Allowedmethods
+             * @description Allowed HTTP methods for endpoint
+             */
+            allowedMethods?: string[];
+            /**
+             * Disableglobalkey
+             * @description If true, only workflow-specific API keys work (global keys denied)
+             * @default false
+             */
+            disableGlobalKey: boolean;
+            /**
+             * Publicendpoint
+             * @description If true, skip authentication (for webhooks)
+             * @default false
+             */
+            publicEndpoint: boolean;
         };
         /**
          * DataProviderMetadata
@@ -3952,6 +4236,419 @@ export interface components {
              * @description SAS token expiration timestamp (ISO format)
              */
             expires_at: string;
+        };
+        /**
+         * WorkflowKey
+         * @description Workflow API Key for HTTP access without user authentication
+         */
+        WorkflowKey: {
+            /**
+             * Id
+             * @description Unique key ID
+             */
+            id?: string;
+            /**
+             * Hashedkey
+             * @description SHA-256 hash of the API key
+             */
+            hashedKey: string;
+            /**
+             * Workflowid
+             * @description Workflow-specific key, or None for global access
+             * @default null
+             */
+            workflowId: string | null;
+            /**
+             * Createdby
+             * @description User email who created the key
+             */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt?: string;
+            /**
+             * Lastusedat
+             * @default null
+             */
+            lastUsedAt: string | null;
+            /**
+             * Revoked
+             * @default false
+             */
+            revoked: boolean;
+            /**
+             * Revokedat
+             * @default null
+             */
+            revokedAt: string | null;
+            /**
+             * Revokedby
+             * @default null
+             */
+            revokedBy: string | null;
+            /**
+             * Expiresat
+             * @description Optional expiration timestamp
+             * @default null
+             */
+            expiresAt: string | null;
+            /**
+             * Description
+             * @description Optional key description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Disableglobalkey
+             * @description If true, workflow opts out of global API keys
+             * @default false
+             */
+            disableGlobalKey: boolean;
+        };
+        /**
+         * WorkflowKeyCreateRequest
+         * @description Request model for creating a workflow API key
+         */
+        WorkflowKeyCreateRequest: {
+            /**
+             * Workflowid
+             * @description Workflow-specific key, or None for global
+             * @default null
+             */
+            workflowId: string | null;
+            /**
+             * Expiresindays
+             * @description Days until key expires (default: no expiration)
+             * @default null
+             */
+            expiresInDays: number | null;
+            /**
+             * Description
+             * @description Optional key description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Disableglobalkey
+             * @description If true, workflow opts out of global API keys
+             * @default false
+             */
+            disableGlobalKey: boolean;
+        };
+        /**
+         * WorkflowKeyResponse
+         * @description Response model for workflow key (includes raw key on creation only)
+         */
+        WorkflowKeyResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Rawkey
+             * @description Raw API key (only returned on creation)
+             * @default null
+             */
+            rawKey: string | null;
+            /**
+             * Maskedkey
+             * @description Last 4 characters for display
+             * @default null
+             */
+            maskedKey: string | null;
+            /**
+             * Workflowid
+             * @default null
+             */
+            workflowId: string | null;
+            /** Createdby */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /**
+             * Lastusedat
+             * @default null
+             */
+            lastUsedAt: string | null;
+            /** Revoked */
+            revoked: boolean;
+            /**
+             * Expiresat
+             * @default null
+             */
+            expiresAt: string | null;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Disableglobalkey
+             * @description If true, workflow opts out of global API keys
+             * @default false
+             */
+            disableGlobalKey: boolean;
+        };
+        /**
+         * AsyncExecutionStatus
+         * @description Async execution status values
+         * @enum {string}
+         */
+        AsyncExecutionStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+        /**
+         * AsyncExecution
+         * @description Async workflow execution tracking
+         */
+        AsyncExecution: {
+            /** Executionid */
+            executionId?: string;
+            /**
+             * Workflowid
+             * @description Workflow name to execute
+             */
+            workflowId: string;
+            /** @default queued */
+            status: components["schemas"]["AsyncExecutionStatus"];
+            /**
+             * Parameters
+             * @description Workflow input parameters
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Context
+             * @description Execution context (org scope, user)
+             */
+            context?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Result
+             * @description Workflow result (for small results)
+             * @default null
+             */
+            result: unknown | null;
+            /**
+             * Resultbloburi
+             * @description Blob URI for large results (>32KB)
+             * @default null
+             */
+            resultBlobUri: string | null;
+            /**
+             * Error
+             * @description Error message if failed
+             * @default null
+             */
+            error: string | null;
+            /**
+             * Errordetails
+             * @description Detailed error information
+             * @default null
+             */
+            errorDetails: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Queuedat
+             * Format: date-time
+             */
+            queuedAt?: string;
+            /**
+             * Startedat
+             * @default null
+             */
+            startedAt: string | null;
+            /**
+             * Completedat
+             * @default null
+             */
+            completedAt: string | null;
+            /**
+             * Durationms
+             * @description Execution duration in milliseconds
+             * @default null
+             */
+            durationMs: number | null;
+        };
+        /**
+         * CronSchedule
+         * @description CRON schedule configuration for automatic workflow execution
+         */
+        CronSchedule: {
+            /** Id */
+            id?: string;
+            /**
+             * Workflowid
+             * @description Workflow name to execute on schedule
+             */
+            workflowId: string;
+            /**
+             * Cronexpression
+             * @description Standard CRON expression (e.g., '0 2 * * *')
+             */
+            cronExpression: string;
+            /**
+             * Humanreadable
+             * @description Human-readable schedule description
+             * @default null
+             */
+            humanReadable: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Parameters
+             * @description Default parameters for execution
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Nextrunat
+             * Format: date-time
+             * @description Next scheduled execution time
+             */
+            nextRunAt: string;
+            /**
+             * Lastrunat
+             * @default null
+             */
+            lastRunAt: string | null;
+            /**
+             * Lastexecutionid
+             * @description ID of last execution
+             * @default null
+             */
+            lastExecutionId: string | null;
+            /**
+             * Createdby
+             * @description User email who created the schedule
+             */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt?: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt?: string;
+        };
+        /**
+         * CronScheduleCreateRequest
+         * @description Request model for creating a CRON schedule
+         */
+        CronScheduleCreateRequest: {
+            /**
+             * Workflowid
+             * @description Workflow name to schedule
+             */
+            workflowId: string;
+            /**
+             * Cronexpression
+             * @description CRON expression (e.g., '0 2 * * *' for 2am daily)
+             */
+            cronExpression: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /**
+         * CronScheduleUpdateRequest
+         * @description Request model for updating a CRON schedule
+         */
+        CronScheduleUpdateRequest: {
+            /**
+             * Cronexpression
+             * @default null
+             */
+            cronExpression: string | null;
+            /**
+             * Parameters
+             * @default null
+             */
+            parameters: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Enabled
+             * @default null
+             */
+            enabled: boolean | null;
+        };
+        /**
+         * BrandingSettings
+         * @description Organization branding configuration
+         */
+        BrandingSettings: {
+            /**
+             * Orgid
+             * @description Organization ID or 'GLOBAL' for platform default
+             */
+            orgId: string;
+            /**
+             * Squarelogourl
+             * @description Square logo URL (for icons, 1:1 ratio)
+             * @default null
+             */
+            squareLogoUrl: string | null;
+            /**
+             * Rectanglelogourl
+             * @description Rectangle logo URL (for headers, 16:9 ratio)
+             * @default null
+             */
+            rectangleLogoUrl: string | null;
+            /**
+             * Primarycolor
+             * @description Primary brand color (hex format, e.g., #FF5733)
+             * @default null
+             */
+            primaryColor: string | null;
+            /**
+             * Updatedby
+             * @description User email who last updated branding
+             */
+            updatedBy: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt?: string;
+        };
+        /**
+         * BrandingUpdateRequest
+         * @description Request model for updating branding settings
+         */
+        BrandingUpdateRequest: {
+            /**
+             * Squarelogourl
+             * @default null
+             */
+            squareLogoUrl: string | null;
+            /**
+             * Rectanglelogourl
+             * @default null
+             */
+            rectangleLogoUrl: string | null;
+            /**
+             * Primarycolor
+             * @default null
+             */
+            primaryColor: string | null;
         };
         /**
          * ErrorResponse
@@ -4407,4 +5104,226 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    execute_workflow_endpoint_test_workflow_get: {
+        parameters: {
+            query: {
+                /** @description Name to greet */
+                name: string;
+                /** @description Number of times to greet */
+                count?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workflow executed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        executionId?: string;
+                        status?: string;
+                        result?: Record<string, never>;
+                        durationMs?: number;
+                        /** Format: date-time */
+                        startedAt?: string;
+                        /** Format: date-time */
+                        completedAt?: string;
+                    };
+                };
+            };
+            /** @description Bad request (invalid input or validation errors) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized (invalid or missing API key) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Endpoint not found or not enabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (only GET, POST allowed for this endpoint) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    execute_workflow_endpoint_test_workflow_post: {
+        parameters: {
+            query: {
+                /** @description Name to greet */
+                name: string;
+                /** @description Number of times to greet */
+                count?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    count?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Workflow executed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        executionId?: string;
+                        status?: string;
+                        result?: Record<string, never>;
+                        durationMs?: number;
+                        /** Format: date-time */
+                        startedAt?: string;
+                        /** Format: date-time */
+                        completedAt?: string;
+                    };
+                };
+            };
+            /** @description Bad request (invalid input or validation errors) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized (invalid or missing API key) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Endpoint not found or not enabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (only GET, POST allowed for this endpoint) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    execute_workflow_endpoint_webhook_example_post: {
+        parameters: {
+            query: {
+                /** @description Type of webhook event */
+                event_type: string;
+                /** @description Event payload data */
+                payload?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    event_type: string;
+                    payload?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Workflow executed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        executionId?: string;
+                        status?: string;
+                        result?: Record<string, never>;
+                        durationMs?: number;
+                        /** Format: date-time */
+                        startedAt?: string;
+                        /** Format: date-time */
+                        completedAt?: string;
+                    };
+                };
+            };
+            /** @description Bad request (invalid input or validation errors) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized (invalid or missing API key) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Endpoint not found or not enabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (only POST allowed for this endpoint) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+}

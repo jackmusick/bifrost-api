@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Copy, Check, Webhook, Info, ExternalLink } from 'lucide-react'
+import { Copy, Check, Webhook, RefreshCw, AlertTriangle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import {
   Dialog,
   DialogContent,
@@ -8,8 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
+import { useWorkflowKeys, useCreateWorkflowKey } from '@/hooks/useWorkflowKeys'
 import type { components } from '@/lib/v1'
 type Workflow = components['schemas']['WorkflowMetadata']
 
@@ -24,13 +25,40 @@ export function HttpTriggerDialog({
   open,
   onOpenChange,
 }: HttpTriggerDialogProps) {
-  const [copiedUrl, setCopiedUrl] = useState(false)
   const [copiedCurl, setCopiedCurl] = useState(false)
-  const [copiedPowerShell, setCopiedPowerShell] = useState(false)
+  const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null)
+  const navigate = useNavigate()
 
-  // Get base URL for direct function access
-  const functionAppUrl = import.meta.env['VITE_WORKFLOW_FUNCTION_URL'] || 'https://{your-function-app}.azurewebsites.net'
-  const directUrl = `${functionAppUrl}/api/workflows/${workflow.name}`
+  // Get base URL from current browser location
+  const baseUrl = `${window.location.protocol}//${window.location.host}`
+  const directUrl = `${baseUrl}/api/endpoints/${workflow.name}`
+
+  // Query for existing workflow-specific key
+  const { data: existingKeys, refetch: refetchKeys } = useWorkflowKeys({
+    workflowId: workflow.name,
+    includeRevoked: false
+  })
+  const createKeyMutation = useCreateWorkflowKey()
+
+  // Get the workflow's key (only one per workflow)
+  const workflowKey = existingKeys?.[0]
+  const displayKey = newlyGeneratedKey || workflowKey?.maskedKey || ''
+  const hasKey = !!workflowKey || !!newlyGeneratedKey
+
+  // Handle key generation
+  const handleGenerateKey = async () => {
+    try {
+      const result = await createKeyMutation.mutateAsync({
+        workflowId: workflow.name,
+      })
+      if (result.rawKey) {
+        setNewlyGeneratedKey(result.rawKey)
+        refetchKeys()
+      }
+    } catch (err) {
+      console.error('Failed to generate key:', err)
+    }
+  }
 
   const copyToClipboard = async (text: string, setCopied: (value: boolean) => void) => {
     try {
@@ -42,128 +70,141 @@ export function HttpTriggerDialog({
     }
   }
 
+  // Check if this is a public endpoint (webhook)
+  const isPublicEndpoint = workflow.publicEndpoint ?? false
+
   // Example parameters
   const exampleParams = workflow.parameters?.reduce((acc, param) => ({
     ...acc,
     [param.name ?? 'param']: (param.type === 'string' ? '<string>' : param.type === 'int' ? 0 : param.type === 'bool' ? false : null),
   }), {} as Record<string, unknown>) ?? {}
 
-  // cURL example
-  const curlExample = `curl -X POST "${directUrl}" \\
+  // cURL example - skip auth header for public endpoints
+  const apiKeyValue = displayKey || 'YOUR_API_KEY'
+  const curlExample = isPublicEndpoint
+    ? `curl -X POST "${directUrl}" \\
   -H "Content-Type: application/json" \\
-  -H "x-functions-key: YOUR_FUNCTION_KEY" \\
+  -d '${JSON.stringify(exampleParams, null, 2)}'`
+    : `curl -X POST "${directUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${apiKeyValue}" \\
   -d '${JSON.stringify(exampleParams, null, 2)}'`
 
-  // PowerShell example
-  const powerShellExample = `$headers = @{
-    "Content-Type" = "application/json"
-    "x-functions-key" = "YOUR_FUNCTION_KEY"
+  const handleManageKeys = () => {
+    onOpenChange(false)
+    navigate('/workflow-keys')
   }
-
-$body = @${JSON.stringify(exampleParams, null, 4).replace(/{/g, '{').replace(/}/g, '}')}
-
-Invoke-RestMethod -Uri "${directUrl}" \`
-    -Method POST \`
-    -Headers $headers \`
-    -Body ($body | ConvertTo-Json)`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-fit max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Webhook className="h-5 w-5" />
-            HTTP Trigger Configuration
+            HTTP Endpoint Configuration
+            {isPublicEndpoint && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-destructive/10 text-destructive rounded-md border border-destructive/20">
+                <AlertTriangle className="h-3 w-3" />
+                Public
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
-            Call <span className="font-mono font-semibold">{workflow.name}</span> via HTTP
+            Call <span className="font-mono font-semibold">{workflow.name}</span> via HTTP endpoint
+            {isPublicEndpoint && (
+              <span className="block mt-1 text-destructive">
+                This is a public webhook endpoint - no authentication required
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Info Alert */}
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              This workflow can be called from external systems using an Azure Function key for authentication.
-            </AlertDescription>
-          </Alert>
-
-          {/* Direct Function URL */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Direct Function URL</label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 p-3 bg-muted rounded-md font-mono text-sm overflow-x-auto">
-                {directUrl}
+          {/* Parameters List */}
+          {workflow.parameters && workflow.parameters.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Parameters</label>
+              <div className="bg-muted rounded-md p-4 space-y-2">
+                {workflow.parameters.map((param) => (
+                  <div key={param.name} className="flex items-start gap-2 text-sm">
+                    <code className="font-mono text-xs bg-background px-2 py-1 rounded">
+                      {param.name}{param.required && <span className="text-destructive">*</span>}
+                    </code>
+                    <span className="text-muted-foreground">
+                      ({param.type})
+                      {param.description && ` - ${param.description}`}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => copyToClipboard(directUrl, setCopiedUrl)}
-              >
-                {copiedUrl ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Use <code className="px-1 py-0.5 bg-muted rounded">x-functions-key</code> header for authentication
-            </p>
-          </div>
-
-          {/* Function Key Instructions */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Azure Function Key</label>
-            <div className="p-4 bg-muted rounded-md space-y-2 text-sm">
-              <p><strong>To get your function key:</strong></p>
-              <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li>Go to Azure Portal → Your Function App</li>
-                <li>Navigate to "Functions" → Select your workflow function</li>
-                <li>Click "Function Keys" → Copy the default key</li>
-              </ol>
-              <p className="flex items-center gap-2 mt-2">
-                <ExternalLink className="h-3 w-3" />
-                <a
-                  href="https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-http-webhook-trigger?tabs=python-v2%2Cisolated-process%2Cnodejs-v4%2Cfunctionsv2&pivots=programming-language-python#authorization-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Learn more about Azure Function keys
-                </a>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-destructive">*</span> Required parameters
               </p>
             </div>
-          </div>
+          )}
 
-          {/* Required Headers */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Required Headers</label>
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">Content-Type</Badge>
-                <span className="text-muted-foreground">application/json</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">x-functions-key</Badge>
-                <span className="text-muted-foreground">Your Azure Function key</span>
-              </div>
+          {/* API Key Management - Hidden for public endpoints */}
+          {!isPublicEndpoint && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Workflow API Key</label>
+              {hasKey ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="text"
+                    value={displayKey}
+                    readOnly
+                    className="font-mono text-xs flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateKey}
+                    disabled={createKeyMutation.isPending}
+                    title="Regenerate API key"
+                  >
+                    {createKeyMutation.isPending ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground flex-1">
+                    No API key configured for this workflow
+                  </p>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleGenerateKey}
+                    disabled={createKeyMutation.isPending}
+                  >
+                    {createKeyMutation.isPending ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Generate Key
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {hasKey
+                  ? 'This key is permanent and specific to this workflow. Click refresh to regenerate.'
+                  : 'Generate a workflow-specific API key for authenticating HTTP requests.'}
+              </p>
             </div>
-          </div>
-
-          {/* Body Format */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Request Body (Flat JSON)</label>
-            <div className="p-4 bg-muted rounded-md">
-              <pre className="text-xs overflow-x-auto">
-                <code>{JSON.stringify(exampleParams, null, 2)}</code>
-              </pre>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Send workflow parameters as flat JSON (no nested "inputData" or "parameters" object)
-            </p>
-          </div>
+          )}
 
           {/* cURL Example */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Example: cURL</label>
+            <label className="text-sm font-medium">Example Request</label>
             <div className="relative">
               <pre className="p-4 bg-muted rounded-md text-xs overflow-x-auto">
                 <code>{curlExample}</code>
@@ -177,37 +218,24 @@ Invoke-RestMethod -Uri "${directUrl}" \`
                 {copiedCurl ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               </Button>
             </div>
+            {!hasKey && !isPublicEndpoint && (
+              <p className="text-xs text-muted-foreground">
+                Generate a workflow API key above to authenticate requests
+              </p>
+            )}
+            {isPublicEndpoint && (
+              <p className="text-xs text-muted-foreground">
+                This is a public endpoint - no authentication required
+              </p>
+            )}
           </div>
 
-          {/* PowerShell Example */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Example: PowerShell</label>
-            <div className="relative">
-              <pre className="p-4 bg-muted rounded-md text-xs overflow-x-auto">
-                <code>{powerShellExample}</code>
-              </pre>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute top-2 right-2"
-                onClick={() => copyToClipboard(powerShellExample, setCopiedPowerShell)}
-              >
-                {copiedPowerShell ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-              </Button>
-            </div>
+          {/* Manage API Keys Button */}
+          <div className="flex justify-center pt-2">
+            <Button onClick={handleManageKeys} variant="outline">
+              Manage API Keys
+            </Button>
           </div>
-
-          {/* Usage Notes */}
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription className="text-xs space-y-1">
-              <p><strong>UI vs. External Calls:</strong></p>
-              <ul className="list-disc list-inside ml-2 space-y-1">
-                <li><strong>Via UI/Forms:</strong> Authenticated with Azure AD (no function key needed)</li>
-                <li><strong>Direct HTTP:</strong> Requires Azure Function key in x-functions-key header</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
         </div>
       </DialogContent>
     </Dialog>

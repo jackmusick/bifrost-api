@@ -14,6 +14,16 @@ This comprehensive guide covers everything you need to know about developing wor
 -   [Testing](#testing)
 -   [Best Practices](#best-practices)
 -   [Advanced Patterns](#advanced-patterns)
+-   [HTTP Endpoints](#http-endpoints)
+    -   [Exposing Workflows as Endpoints](#exposing-workflows-as-endpoints)
+    -   [Endpoint Configuration](#endpoint-configuration)
+    -   [Calling HTTP Endpoints](#calling-http-endpoints)
+    -   [API Key Management](#api-key-management)
+    -   [OpenAPI Documentation](#openapi-documentation)
+    -   [Webhook Integration Examples](#webhook-integration-examples)
+    -   [REST API Patterns](#rest-api-patterns)
+    -   [Public Endpoints (Webhooks)](#public-endpoints-webhooks)
+    -   [Best Practices for HTTP Endpoints](#best-practices-for-http-endpoints)
 
 ---
 
@@ -1439,5 +1449,701 @@ async def bulk_user_import(context, users_data):
     context.log("info", "Bulk import completed", results["summary"])
     return results
 ```
+
+---
+
+## HTTP Endpoints
+
+Workflows can be exposed as HTTP endpoints for webhook integration, external automation, and third-party tool integration. This feature transforms workflows into REST API endpoints with full HTTP method support, API key authentication, and automatic OpenAPI documentation.
+
+### Exposing Workflows as Endpoints
+
+Enable HTTP endpoint access using the `endpoint_enabled` parameter in the `@workflow` decorator:
+
+```python
+@workflow(
+    name="process_webhook",
+    description="Process incoming webhook data",
+    category="integration",
+    endpoint_enabled=True,                    # Enable HTTP endpoint
+    allowed_methods=["GET", "POST"],          # Allowed HTTP methods
+    disable_global_key=False                  # Use global API key (default)
+)
+@param("event_type", "string", "Event type", required=True)
+@param("payload", "json", "Event payload", required=False)
+async def process_webhook(context, event_type, payload=None):
+    """
+    Process webhook events from external systems.
+
+    This workflow is exposed as an HTTP endpoint at:
+    POST /api/endpoints/process_webhook
+    """
+    context.log("info", f"Processing {event_type} event")
+
+    # Process the webhook payload
+    result = await process_event(event_type, payload)
+
+    return {"success": True, "result": result}
+```
+
+### Endpoint Configuration
+
+#### `endpoint_enabled` (bool)
+When `True`, exposes the workflow at `/api/endpoints/{workflow_name}`. When `False` (default), the workflow can only be executed through the UI or the `/api/workflows/{workflow_name}/execute` endpoint.
+
+#### `allowed_methods` (list[str])
+Specifies which HTTP methods are permitted. Supported methods:
+- `GET` - Retrieve or query data
+- `POST` - Create or process data (default)
+- `PUT` - Update or replace data
+- `DELETE` - Remove or deactivate data
+
+```python
+# Example: Read-only endpoint
+@workflow(
+    name="get_status",
+    endpoint_enabled=True,
+    allowed_methods=["GET"]  # Only allow GET requests
+)
+async def get_status(context):
+    return {"status": "operational", "version": "1.0.0"}
+
+# Example: Full CRUD endpoint
+@workflow(
+    name="manage_resource",
+    endpoint_enabled=True,
+    allowed_methods=["GET", "POST", "PUT", "DELETE"]
+)
+async def manage_resource(context, resource_id, action, data=None):
+    # Handle different methods in workflow logic
+    return {"action": action, "resource_id": resource_id}
+```
+
+#### `disable_global_key` (bool)
+Controls API key authentication behavior:
+- `False` (default) - Both global API keys and workflow-specific keys work
+- `True` - Only workflow-specific API keys are accepted (global keys rejected)
+
+```python
+# Example: Require dedicated API key
+@workflow(
+    name="sensitive_operation",
+    endpoint_enabled=True,
+    allowed_methods=["POST"],
+    disable_global_key=True  # Require workflow-specific key
+)
+async def sensitive_operation(context, data):
+    """
+    This workflow requires a dedicated API key.
+    Global platform API keys will be rejected.
+    """
+    return {"processed": True}
+```
+
+### Calling HTTP Endpoints
+
+#### Endpoint URL Pattern
+Enabled workflows are accessible at:
+```
+{method} https://your-app.azurestaticapps.net/api/endpoints/{workflow_name}
+```
+
+#### Authentication
+All endpoint calls require API key authentication via:
+1. **Header** (recommended): `x-functions-key: your-api-key`
+2. **Query parameter**: `?code=your-api-key`
+
+Create API keys in the platform UI under Workflows → API Keys.
+
+#### Input Parameters
+
+**Query Parameters** and **JSON Body** are both supported. If both are provided, **JSON body takes precedence**.
+
+**Example with Query Parameters (GET):**
+```bash
+curl -X GET \
+  -H "x-functions-key: your-api-key" \
+  "https://your-app.azurestaticapps.net/api/endpoints/get_user?email=user@example.com"
+```
+
+**Example with JSON Body (POST):**
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "x-functions-key: your-api-key" \
+  -d '{
+    "email": "user@example.com",
+    "name": "John Doe",
+    "department": "IT"
+  }' \
+  https://your-app.azurestaticapps.net/api/endpoints/create_user
+```
+
+**Example with Both (Body takes precedence):**
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "x-functions-key: your-api-key" \
+  -d '{"email": "override@example.com"}' \
+  "https://your-app.azurestaticapps.net/api/endpoints/process?email=fallback@example.com"
+
+# Result: email="override@example.com" (from body, not query string)
+```
+
+#### HTTP Status Codes
+
+Endpoints return standard HTTP status codes:
+- `200 OK` - Workflow executed successfully (even if workflow returned `success: false`)
+- `400 Bad Request` - Invalid input or missing required parameters
+- `404 Not Found` - Endpoint not enabled or workflow doesn't exist
+- `405 Method Not Allowed` - HTTP method not in `allowed_methods`
+- `401 Unauthorized` - Invalid or missing API key
+- `500 Internal Server Error` - Pre-execution infrastructure error
+
+**Important**: Workflow execution errors return `200` with `status: "Failed"` in the response body. This distinguishes workflow-level failures from infrastructure errors.
+
+#### Response Format
+
+All endpoint responses follow the standard workflow execution response format:
+
+```json
+{
+  "executionId": "uuid",
+  "status": "Success" | "Failed" | "CompletedWithErrors",
+  "result": { ... },              // Present on success
+  "error": "error message",        // Present on failure
+  "errorType": "ErrorType",        // Present on failure
+  "details": { ... },              // Present on failure with details
+  "durationMs": 1234,
+  "startedAt": "2024-01-15T10:30:00Z",
+  "completedAt": "2024-01-15T10:30:01Z"
+}
+```
+
+### API Key Management
+
+#### Global API Keys
+Platform-wide keys that work for all workflows (unless `disable_global_key=True`). Created in the UI under Platform Settings → API Keys.
+
+#### Workflow-Specific API Keys
+Scoped to a single workflow. Created in the UI under Workflows → {workflow_name} → API Keys.
+
+**Key Priority**:
+1. If workflow has `disable_global_key=True`, **only** workflow-specific keys work
+2. Otherwise, workflow-specific keys are tried first, then global keys
+
+```python
+# Example: Opt out of global keys for sensitive workflow
+@workflow(
+    name="financial_report",
+    endpoint_enabled=True,
+    allowed_methods=["POST"],
+    disable_global_key=True  # Only dedicated keys work
+)
+async def financial_report(context, month, year):
+    """
+    Generate financial reports.
+    Requires dedicated API key for auditing purposes.
+    """
+    return {"report": generate_report(month, year)}
+```
+
+### OpenAPI Documentation
+
+Enabled endpoints automatically appear in the OpenAPI specification at:
+```
+GET /api/openapi.json
+```
+
+The OpenAPI spec includes:
+- Endpoint paths and methods
+- Required and optional parameters
+- Parameter types and validation rules
+- Request/response schemas
+- Authentication requirements
+
+Access the Swagger UI documentation at:
+```
+https://your-app.azurestaticapps.net/api/swagger
+```
+
+### Webhook Integration Examples
+
+#### GitHub Webhook
+```python
+@workflow(
+    name="github_webhook",
+    description="Process GitHub webhook events",
+    endpoint_enabled=True,
+    allowed_methods=["POST"],
+    requires_org=False  # Public webhook, no org context
+)
+@param("action", "string", "Webhook action", required=True)
+@param("repository", "json", "Repository data", required=True)
+@param("sender", "json", "Sender data", required=True)
+async def github_webhook(context, action, repository, sender):
+    """
+    Handle GitHub webhook events.
+
+    Endpoint: POST /api/endpoints/github_webhook
+    Configure in GitHub: Repo Settings → Webhooks → Add webhook
+    Payload URL: https://your-app.azurestaticapps.net/api/endpoints/github_webhook?code=YOUR_API_KEY
+    """
+    context.log("info", f"GitHub {action} event", {
+        "repo": repository.get("name"),
+        "sender": sender.get("login")
+    })
+
+    if action == "opened":
+        # Handle PR opened
+        await notify_team(repository, sender)
+    elif action == "closed":
+        # Handle PR closed
+        await update_tracking(repository)
+
+    return {"processed": True, "action": action}
+```
+
+#### Stripe Webhook
+```python
+@workflow(
+    name="stripe_webhook",
+    description="Process Stripe payment events",
+    endpoint_enabled=True,
+    allowed_methods=["POST"],
+    disable_global_key=True  # Require dedicated key for security
+)
+@param("type", "string", "Event type", required=True)
+@param("data", "json", "Event data", required=True)
+async def stripe_webhook(context, type, data):
+    """
+    Handle Stripe webhook events.
+
+    Endpoint: POST /api/endpoints/stripe_webhook
+    Configure in Stripe Dashboard → Webhooks → Add endpoint
+    """
+    context.log("info", f"Stripe event: {type}")
+
+    if type == "payment_intent.succeeded":
+        await process_successful_payment(data)
+    elif type == "payment_intent.failed":
+        await handle_failed_payment(data)
+
+    return {"received": True}
+```
+
+#### Zapier Integration
+```python
+@workflow(
+    name="zapier_trigger",
+    description="Trigger for Zapier integration",
+    endpoint_enabled=True,
+    allowed_methods=["GET", "POST"]
+)
+@param("trigger_type", "string", "Trigger type", required=True)
+@param("data", "json", "Trigger data", required=False)
+async def zapier_trigger(context, trigger_type, data=None):
+    """
+    Zapier trigger endpoint.
+
+    GET: Verify connection
+    POST: Process trigger
+    """
+    if context.request.method == "GET":
+        # Zapier connection test
+        return {"status": "connected"}
+
+    # Process Zapier trigger
+    result = await process_trigger(trigger_type, data)
+    return {"result": result}
+```
+
+### REST API Patterns
+
+#### Resource Management
+```python
+@workflow(
+    name="manage_tickets",
+    endpoint_enabled=True,
+    allowed_methods=["GET", "POST", "PUT", "DELETE"]
+)
+@param("ticket_id", "string", "Ticket ID", required=False)
+@param("action", "string", "Action", required=False)
+@param("data", "json", "Ticket data", required=False)
+async def manage_tickets(context, ticket_id=None, action=None, data=None):
+    """
+    RESTful ticket management endpoint.
+
+    GET /api/endpoints/manage_tickets?ticket_id=123 - Get ticket
+    POST /api/endpoints/manage_tickets - Create ticket
+    PUT /api/endpoints/manage_tickets?ticket_id=123 - Update ticket
+    DELETE /api/endpoints/manage_tickets?ticket_id=123 - Delete ticket
+    """
+    method = context.request.method
+
+    if method == "GET":
+        return await get_ticket(ticket_id)
+    elif method == "POST":
+        return await create_ticket(data)
+    elif method == "PUT":
+        return await update_ticket(ticket_id, data)
+    elif method == "DELETE":
+        return await delete_ticket(ticket_id)
+```
+
+### Public Endpoints (Webhooks)
+
+For workflows that need to accept unauthenticated requests from external systems (like webhooks from third-party services), you can use the `public_endpoint` parameter.
+
+#### Enabling Public Endpoints
+
+```python
+@workflow(
+    name="webhook_example",
+    description="Public webhook endpoint for external integrations",
+    category="webhooks",
+    tags=["webhook", "public", "example"],
+    requires_org=False,          # No organization context required
+    endpoint_enabled=True,        # Enable HTTP endpoint
+    allowed_methods=["POST"],     # Accept POST requests
+    public_endpoint=True          # No authentication required
+)
+@param("event_type", type="string", label="Event Type", required=True)
+@param("payload", type="json", label="Payload", required=False)
+async def webhook_example(context, event_type: str, payload: dict = None):
+    """
+    Public webhook endpoint that accepts events from external systems.
+
+    This workflow is exposed as a PUBLIC HTTP endpoint at:
+    - POST /api/endpoints/webhook_example
+
+    No authentication is required. External systems can POST directly.
+    """
+    context.info(f"Received webhook event: {event_type}")
+
+    # Process the payload
+    result = {
+        "status": "received",
+        "event_type": event_type,
+        "received_at": datetime.utcnow().isoformat(),
+        "caller": context.caller.name,  # Will be "Public Access (Webhook)"
+        "has_payload": payload is not None
+    }
+
+    if payload:
+        context.info(f"Payload keys: {list(payload.keys())}")
+        result["payload_keys"] = list(payload.keys())
+
+    # Save checkpoint for audit trail
+    context.save_checkpoint("webhook_received", {
+        "event_type": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+        "payload_size": len(str(payload)) if payload else 0
+    })
+
+    return result
+```
+
+#### Public Endpoint Configuration
+
+When `public_endpoint=True` is set:
+
+- **No Authentication Required**: The endpoint can be called without any API key
+- **Anonymous Caller**: `context.caller.name` will be "Public Access (Webhook)"
+- **UI Indicators**: The workflow shows an orange warning badge in the UI
+- **No API Key Management**: Public endpoints are excluded from API key creation dialogs
+- **Security Implications**: The endpoint is completely open to the internet
+
+#### Calling Public Endpoints
+
+**No authentication headers needed:**
+
+```bash
+curl -X POST "https://your-app.azurestaticapps.net/api/endpoints/webhook_example" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "order.created",
+    "payload": {
+      "order_id": "12345",
+      "total": 99.99
+    }
+  }'
+```
+
+Compare this to authenticated endpoints which require:
+
+```bash
+curl -X POST "https://your-app.azurestaticapps.net/api/endpoints/authenticated_workflow" \
+  -H "Content-Type: application/json" \
+  -H "x-functions-key: YOUR_API_KEY" \
+  -d '{"data": "value"}'
+```
+
+#### Security Considerations for Public Endpoints
+
+Since public endpoints accept unauthenticated requests, you should implement additional security measures in your workflow code:
+
+```python
+@workflow(
+    name="secure_webhook",
+    public_endpoint=True,
+    endpoint_enabled=True,
+    allowed_methods=["POST"]
+)
+@param("signature", "string", "Webhook signature", required=True)
+@param("payload", "json", "Event data", required=True)
+async def secure_webhook(context, signature: str, payload: dict):
+    """
+    Public webhook with signature validation.
+    """
+    # 1. Verify webhook signature
+    secret = await context.get_secret("webhook_secret")
+    expected_signature = hmac.new(
+        secret.encode(),
+        json.dumps(payload).encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if signature != expected_signature:
+        context.log("error", "Invalid webhook signature", {
+            "received": signature[:8] + "...",
+            "expected": expected_signature[:8] + "..."
+        })
+        raise PermissionError("Invalid webhook signature")
+
+    # 2. Validate payload structure
+    required_fields = ["event_type", "timestamp", "data"]
+    missing = [f for f in required_fields if f not in payload]
+    if missing:
+        raise ValidationError(f"Missing required fields: {missing}")
+
+    # 3. Check timestamp to prevent replay attacks
+    event_time = datetime.fromisoformat(payload["timestamp"])
+    age_seconds = (datetime.utcnow() - event_time).total_seconds()
+    if age_seconds > 300:  # 5 minutes
+        raise ValidationError("Webhook event too old (replay attack?)")
+
+    # 4. Rate limiting (implement in your infrastructure)
+    # Consider using Azure API Management or similar
+
+    # 5. Log all access for security auditing
+    context.log("info", "Valid webhook received", {
+        "event_type": payload.get("event_type"),
+        "timestamp": payload.get("timestamp"),
+        "source_ip": context.request.headers.get("X-Forwarded-For")
+    })
+
+    # Process the validated webhook
+    return await process_webhook_event(payload)
+```
+
+#### Best Practices for Public Webhooks
+
+```python
+# ✅ Good - Validate webhook signatures
+@workflow(public_endpoint=True)
+async def validated_webhook(context, signature, payload):
+    verify_signature(signature, payload)
+    return process_payload(payload)
+
+# ✅ Good - Log all webhook activity
+@workflow(public_endpoint=True)
+async def logged_webhook(context, data):
+    context.log("info", "Webhook received", {
+        "source_ip": context.request.headers.get("X-Forwarded-For"),
+        "user_agent": context.request.headers.get("User-Agent")
+    })
+    return process_data(data)
+
+# ✅ Good - Validate payload structure
+@workflow(public_endpoint=True)
+@param("event_type", "string", required=True)
+@param("data", "json", required=True)
+async def validated_structure(context, event_type, data):
+    if event_type not in ["created", "updated", "deleted"]:
+        raise ValidationError("Invalid event_type")
+    return process_event(event_type, data)
+
+# ❌ Bad - No validation, no logging
+@workflow(public_endpoint=True)
+async def unsafe_webhook(context, data):
+    # Blindly process any data without validation
+    return process_data(data)
+
+# ❌ Bad - Using public_endpoint for internal workflows
+@workflow(public_endpoint=True)
+async def internal_workflow(context, sensitive_data):
+    # This should require authentication!
+    return process_sensitive_data(sensitive_data)
+```
+
+#### When to Use Public Endpoints
+
+**✅ Good Use Cases:**
+- External webhook integrations (GitHub, Stripe, etc.)
+- Public API endpoints for mobile apps
+- Third-party system notifications
+- IoT device data collection
+- Public form submissions
+
+**❌ Bad Use Cases:**
+- Internal business workflows
+- Workflows handling sensitive data without validation
+- Administrative operations
+- User account management
+- Financial transactions without verification
+
+#### Monitoring and Security
+
+```python
+@workflow(
+    name="monitored_webhook",
+    public_endpoint=True,
+    endpoint_enabled=True,
+    allowed_methods=["POST"]
+)
+@param("event", "json", required=True)
+async def monitored_webhook(context, event):
+    """
+    Public webhook with comprehensive monitoring.
+    """
+    start_time = datetime.utcnow()
+
+    try:
+        # Track request metadata
+        metadata = {
+            "source_ip": context.request.headers.get("X-Forwarded-For"),
+            "user_agent": context.request.headers.get("User-Agent"),
+            "content_length": len(json.dumps(event)),
+            "timestamp": start_time.isoformat()
+        }
+
+        context.log("info", "Webhook request received", metadata)
+
+        # Validate and process
+        result = await process_webhook(event)
+
+        # Track success metrics
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        context.log("info", "Webhook processed successfully", {
+            "duration_seconds": duration,
+            **metadata
+        })
+
+        return result
+
+    except Exception as e:
+        # Track failure metrics
+        context.log("error", "Webhook processing failed", {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            **metadata
+        })
+        raise
+```
+
+### Best Practices for HTTP Endpoints
+
+#### 1. **Security**
+```python
+# ✅ Good - Dedicated key for sensitive operations
+@workflow(
+    name="delete_data",
+    endpoint_enabled=True,
+    allowed_methods=["DELETE"],
+    disable_global_key=True  # Require dedicated key
+)
+
+# ✅ Good - Validate input thoroughly
+async def process_webhook(context, data):
+    if not data or "required_field" not in data:
+        raise ValidationError("Missing required field")
+
+    # Additional validation
+    if not is_valid_signature(context.request.headers):
+        raise PermissionError("Invalid signature")
+```
+
+#### 2. **Method Selection**
+```python
+# ✅ Good - Use appropriate HTTP methods
+@workflow(endpoint_enabled=True, allowed_methods=["GET"])
+async def get_status():  # Read-only operation
+    pass
+
+@workflow(endpoint_enabled=True, allowed_methods=["POST"])
+async def create_resource():  # Create operation
+    pass
+
+# ❌ Bad - Allowing all methods for simple operation
+@workflow(endpoint_enabled=True, allowed_methods=["GET", "POST", "PUT", "DELETE"])
+async def get_status():  # Only needs GET
+    pass
+```
+
+#### 3. **Parameter Handling**
+```python
+# ✅ Good - Support both query params and body
+@workflow(endpoint_enabled=True, allowed_methods=["GET", "POST"])
+@param("email", "email", "User email", required=True)
+async def lookup_user(context, email):
+    # Works with both:
+    # GET /api/endpoints/lookup_user?email=user@example.com
+    # POST /api/endpoints/lookup_user {"email": "user@example.com"}
+    pass
+```
+
+#### 4. **Error Handling**
+```python
+# ✅ Good - Return structured errors
+async def process_data(context, data):
+    try:
+        result = await process(data)
+        return {"success": True, "result": result}
+    except Exception as e:
+        # Workflow error (returns 200 with status: "Failed")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+```
+
+#### 5. **Documentation**
+```python
+# ✅ Good - Clear docstring with endpoint details
+@workflow(
+    name="process_order",
+    description="Process customer orders from e-commerce platform",
+    endpoint_enabled=True,
+    allowed_methods=["POST"]
+)
+async def process_order(context, order_id, items, customer):
+    """
+    Process e-commerce orders.
+
+    Endpoint: POST /api/endpoints/process_order
+    Authentication: API key required (x-functions-key header)
+
+    Example:
+        curl -X POST \\
+          -H "x-functions-key: YOUR_KEY" \\
+          -H "Content-Type: application/json" \\
+          -d '{"order_id": "123", "items": [...], "customer": {...}}' \\
+          https://app.azurestaticapps.net/api/endpoints/process_order
+
+    Returns:
+        {
+            "success": true,
+            "order_id": "123",
+            "status": "processed",
+            "tracking_number": "TRACK123"
+        }
+    """
+    # Implementation
+    pass
+```
+
+---
 
 This comprehensive guide provides everything you need to develop robust, secure, and maintainable workflows in the Bifrost Integrations platform.

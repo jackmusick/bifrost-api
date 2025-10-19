@@ -8,6 +8,7 @@ import azure.functions as func
 
 from functions.data_providers import bp as data_providers_bp
 from functions.discovery import bp as discovery_bp
+from functions.endpoints import bp as endpoints_bp
 from functions.executions import bp as executions_bp
 from functions.file_uploads import bp as file_uploads_bp
 from functions.forms import bp as forms_bp
@@ -23,6 +24,7 @@ from functions.roles import bp as roles_bp
 from functions.roles_source import bp as roles_source_bp
 from functions.secrets import bp as secrets_bp
 from functions.workflows import bp as workflows_bp
+from functions.workflow_keys import bp as workflow_keys_bp
 from shared.init_tables import init_tables
 
 # ==================== DEBUGPY INITIALIZATION ====================
@@ -218,4 +220,6 @@ if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
 # Register blueprints - Workflow Engine (unified in functions/)
 app.register_functions(discovery_bp)  # Workflow and data provider discovery
 app.register_functions(workflows_bp)  # Workflow execution
+app.register_functions(endpoints_bp)  # Workflow HTTP endpoints (API key auth)
+app.register_functions(workflow_keys_bp)  # Workflow API key management (User Story 3)
 app.register_functions(data_providers_bp)  # Data provider API endpoints

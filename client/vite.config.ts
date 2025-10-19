@@ -36,6 +36,11 @@ export default defineConfig({
         host: "0.0.0.0", // Bind to all interfaces for Docker
         port: 5173,
         strictPort: true, // Fail if port is already in use
+        watch: {
+            // Enable polling for Docker on macOS/Windows where fs events don't work well
+            usePolling: true,
+            interval: 1000, // Check for changes every second
+        },
         fs: {
             // Allow serving files from one level up to the project root
             allow: [".."],

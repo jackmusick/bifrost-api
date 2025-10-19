@@ -63,9 +63,12 @@
             "allowedRoles": ["PlatformAdmin"]
         },
         {
-            "route": "/api/workflows*",
-            "methods": ["POST"],
-            "allowedRoles": ["authenticated"]
+            "route": "/api/endpoints/*",
+            "allowedRoles": ["anonymous"]
+        },
+        {
+            "route": "/api/workflows/*",
+            "allowedRoles": ["anonymous", "authenticated"]
         },
         {
             "route": "/api/executions",
@@ -79,7 +82,7 @@
         },
         {
             "route": "/api/*",
-            "allowedRoles": ["PlatformAdmin"]
+            "allowedRoles": ["anonymous"]
         }
     ],
     "responseOverrides": {

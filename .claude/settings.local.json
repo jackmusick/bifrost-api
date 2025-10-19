@@ -1,17 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(for type in unit integration contract e2e)",
-      "Bash(do echo \"=== Lines of code in $type tests ===\")",
-      "Bash(find ./$type -name \"test_*.py\" -type f 2)",
-      "Bash(/dev/null -exec wc -l {} +)",
-      "Bash(find tests/$dir -name \"test_*.py\" -type f 2)",
-      "Bash(ruff check .)",
-      "Bash(ruff check . --fix)",
-      "Bash(npm run tsc)",
-      "Bash(npm run lint)",
-      "Bash(timeout 60 python -m pytest api/tests/ --co -q)",
-      "Bash(git add -A)"
+      "Bash(ruff check shared/middleware.py --fix)",
+      "Bash(ruff check functions/endpoints.py --fix)",
+      "Bash(ruff check shared/middleware.py shared/registry.py shared/decorators.py shared/models.py functions/endpoints.py)",
+      "Bash(curl -X POST \"http://localhost:4280/api/endpoints/webhook_example\" )",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks)"
     ],
     "deny": [],
     "ask": []

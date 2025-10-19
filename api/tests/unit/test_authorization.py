@@ -33,8 +33,10 @@ class TestCanUserViewForm:
         return Mock(spec=TableStorageService)
 
     def test_platform_admin_can_view_any_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Platform admins can view all forms regardless of scope"""
-        # Platform admins bypass form checks, so no mocking needed
+        """Platform admins can view all active forms regardless of scope"""
+        from shared.models import Form, FormSchema
+        from datetime import datetime
+
         context = RequestContext(
             user_id="admin@example.com",
             email="admin@example.com",
@@ -45,9 +47,31 @@ class TestCanUserViewForm:
         )
 
         form_id = str(uuid.uuid4())
+
+        # Mock FormRepository to return an active form
+        mock_form = Form(
+            id=form_id,
+            orgId="other-org",
+            name="Other Org Form",
+            description="Form from another org",
+            linkedWorkflow="test_workflow",
+            formSchema=FormSchema(fields=[]),
+            isActive=True,
+            isPublic=False,
+            createdAt=datetime.utcnow(),
+            updatedAt=datetime.utcnow(),
+            createdBy="user@example.com"
+        )
+
+        # Mock the repository's get_form method
+        def mock_get_form(repo_self, form_id):
+            return mock_form
+
+        monkeypatch.setattr("shared.repositories.forms.FormRepository.get_form", mock_get_form)
+
         result = can_user_view_form(context, form_id)
 
-        # Platform admin always returns True without checking repository
+        # Platform admin can view active forms from any org
         assert result is True
 
     def test_regular_user_can_view_global_active_form(self, mock_entities_table, mock_relationships_table, monkeypatch):

@@ -146,17 +146,19 @@ class ConfigRepository(ScopedRepository):
         logger.info(f"Found {len(integrations)} integration configs")
         return integrations
 
-    def delete_integration(self, integration_type: IntegrationType) -> bool:
+    def delete_integration(self, integration_type: IntegrationType | str) -> bool:
         """
         Delete integration configuration
 
         Args:
-            integration_type: Integration type to delete
+            integration_type: Integration type to delete (enum or string)
 
         Returns:
             True if deleted, False if not found
         """
-        return self.delete(self.scope, f"integration:{integration_type.value}")
+        # Support both enum and string for flexibility (DELETE should be lenient)
+        type_value = integration_type.value if isinstance(integration_type, IntegrationType) else integration_type
+        return self.delete(self.scope, f"integration:{type_value}")
 
     def get_integration_config(
         self,

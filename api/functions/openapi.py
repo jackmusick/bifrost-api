@@ -77,6 +77,171 @@ def generate_openapi_spec() -> dict:
         models=models
     )
 
+    # ==================== GENERATE DYNAMIC WORKFLOW ENDPOINTS ====================
+    # Add endpoint definitions for enabled workflows to the OpenAPI spec
+    from shared.registry import get_registry
+
+    registry = get_registry()
+
+    # Initialize paths if not present
+    if "paths" not in spec:
+        spec["paths"] = {}
+
+    # Generate endpoint paths for each enabled workflow
+    for metadata in registry.get_all_workflows():
+        # Skip workflows that aren't enabled as endpoints
+        if not metadata.endpoint_enabled:
+            continue
+
+        # Get allowed methods for this workflow
+        allowed_methods = metadata.allowed_methods or ['POST']
+        workflow_name = metadata.name
+
+        # Create path entry if not already present (might be from decorator)
+        path_key = f"/endpoints/{workflow_name}"
+        if path_key not in spec["paths"]:
+            spec["paths"][path_key] = {}
+
+        # Add definition for each allowed HTTP method
+        for method in allowed_methods:
+            method_lower = method.lower()
+
+            # Build parameter list from workflow parameters
+            parameters = []
+
+            # Add query parameters for all workflow parameters
+            for param in metadata.parameters:
+                param_name = param.name
+                param_type = param.type
+                param_required = param.required
+                param_description = param.help_text or f"{param_name} parameter"
+
+                # Map Python types to OpenAPI types
+                openapi_type = 'string'
+                if param_type in ['int', 'integer']:
+                    openapi_type = 'integer'
+                elif param_type == 'bool':
+                    openapi_type = 'boolean'
+                elif param_type == 'float':
+                    openapi_type = 'number'
+
+                # For GET requests, always use query parameters
+                # For POST/PUT/DELETE, add as query parameters as well (body is merged)
+                param_in = 'query'
+
+                parameters.append({
+                    "name": param_name,
+                    "in": param_in,
+                    "required": param_required,
+                    "description": param_description,
+                    "schema": {
+                        "type": openapi_type
+                    }
+                })
+
+            # Build request body schema for POST/PUT methods
+            request_body = None
+            if method_lower in ['post', 'put']:
+                # For POST/PUT, parameters can also come from JSON body
+                properties = {}
+                required_fields = []
+
+                for param in getattr(metadata, 'parameters', []):
+                    param_name = getattr(param, 'name', None)
+                    param_type = getattr(param, 'type', 'string')
+                    param_required = getattr(param, 'required', False)
+
+                    openapi_type = 'string'
+                    if param_type in ['int', 'integer']:
+                        openapi_type = 'integer'
+                    elif param_type == 'bool':
+                        openapi_type = 'boolean'
+                    elif param_type == 'float':
+                        openapi_type = 'number'
+
+                    properties[param_name] = {"type": openapi_type}
+
+                    if param_required:
+                        required_fields.append(param_name)
+
+                if properties:
+                    request_body = {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": properties,
+                                    "required": required_fields if required_fields else None
+                                }
+                            }
+                        }
+                    }
+
+            # Build operation definition
+            operation = {
+                "summary": f"{method.upper()} {workflow_name}",
+                "description": getattr(metadata, 'description', f"Execute {workflow_name} workflow via HTTP endpoint"),
+                "tags": ["Workflow Endpoints"],
+                "operationId": f"execute_workflow_endpoint_{workflow_name}_{method_lower}",
+                "parameters": parameters if parameters else [],
+                "security": [{"BearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Workflow executed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "executionId": {"type": "string"},
+                                        "status": {"type": "string"},
+                                        "result": {"type": "object"},
+                                        "durationMs": {"type": "integer"},
+                                        "startedAt": {"type": "string", "format": "date-time"},
+                                        "completedAt": {"type": "string", "format": "date-time"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request (invalid input or validation errors)"
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid or missing API key)"
+                    },
+                    "404": {
+                        "description": "Endpoint not found or not enabled"
+                    },
+                    "405": {
+                        "description": f"Method not allowed (only {', '.join(allowed_methods)} allowed for this endpoint)"
+                    },
+                    "500": {
+                        "description": "Server error"
+                    }
+                }
+            }
+
+            # Add request body if present
+            if request_body:
+                operation["requestBody"] = request_body
+
+            # Add the operation to the spec
+            spec["paths"][path_key][method_lower] = operation
+
+    # Ensure security schemes are defined for API key auth
+    if "components" not in spec:
+        spec["components"] = {}
+    if "securitySchemes" not in spec["components"]:
+        spec["components"]["securitySchemes"] = {}
+
+    spec["components"]["securitySchemes"]["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "API key for workflow endpoint access. Use format: Authorization: Bearer <api_key>"
+    }
+
     return spec
 
 
