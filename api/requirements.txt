@@ -4,6 +4,7 @@ azure-data-tables
 azure-identity
 azure-keyvault-secrets
 azure-storage-blob
+azure-storage-queue
 azure-storage-file-share>=12.14.1
 
 # Microsoft Graph and API integrations
@@ -42,6 +43,7 @@ python-json-logger
 pytest
 pytest-asyncio
 pytest-cov  # Coverage reporting
+pytest-env  # Environment variables for testing
 pyjwt[crypto]  # Only used in test fixtures
 
 # Development and debugging

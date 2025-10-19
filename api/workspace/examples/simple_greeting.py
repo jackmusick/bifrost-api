@@ -12,7 +12,7 @@ from bifrost import OrganizationContext, param, workflow
     description="Simple greeting workflow",
     category="testing",
     tags=["test", "greeting"],
-    requires_org=True
+    execution_mode="sync"
 )
 @param("name", type="string", label="Name", required=True, help_text="Name to greet")
 @param("greeting_type", type="string", label="Greeting Type", required=False, default_value="Hello", help_text="Type of greeting")

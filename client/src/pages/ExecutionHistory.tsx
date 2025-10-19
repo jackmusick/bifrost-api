@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, Info, Globe, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useExecutions } from '@/hooks/useExecutions'
+import { useWorkflowPolling } from '@/hooks/useWorkflowPolling'
 import { useScopeStore } from '@/stores/scopeStore'
 import { formatDate } from '@/lib/utils'
 // import { useOrganizations } from '@/hooks/useOrganizations'
@@ -42,6 +43,31 @@ export function ExecutionHistory() {
 
   // Debug: log when scope changes
   console.log('ExecutionHistory - scope.orgId:', scope.orgId)
+
+  // Find executions that are still running and need polling
+  const runningExecutionIds = useMemo(() => {
+    if (!executions) return []
+    return executions
+      .filter((exec) => exec.status === 'Pending' || exec.status === 'Running')
+      .map((exec) => exec.executionId)
+  }, [executions])
+
+  // Poll running executions and refetch list when they complete
+  const handleExecutionComplete = useCallback(() => {
+    refetch()
+  }, [refetch])
+
+  const handleExecutionFail = useCallback(() => {
+    refetch()
+  }, [refetch])
+
+  const { isPolling } = useWorkflowPolling({
+    executionIds: runningExecutionIds,
+    intervalMs: 5000, // Poll every 5 seconds
+    onExecutionComplete: handleExecutionComplete,
+    onExecutionFail: handleExecutionFail,
+    enabled: runningExecutionIds.length > 0,
+  })
 
   // Helper to get organization name from orgId (currently unused since orgId not available in Execution schema)
   // const getOrgName = (orgId?: string) => {
@@ -115,6 +141,12 @@ export function ExecutionHistory() {
               <CardTitle>All Executions</CardTitle>
               <CardDescription>
                 Recent workflow executions and their status
+                {isPolling && (
+                  <span className="ml-2 inline-flex items-center text-blue-600">
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Auto-refreshing {runningExecutionIds.length} running execution{runningExecutionIds.length !== 1 ? 's' : ''}
+                  </span>
+                )}
               </CardDescription>
             </div>
             <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>

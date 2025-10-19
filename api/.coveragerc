@@ -1,0 +1,80 @@
+[run]
+# Source code directory
+source = .
+
+# Omit files from coverage
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */.venv/*
+    */virtualenv/*
+    */site-packages/*
+    */function_app.py
+    */seed_data.py
+    */scripts/*
+    */migrations/*
+
+# Parallel mode for better performance
+parallel = True
+
+[report]
+# Show missing line numbers
+show_missing = True
+
+# Precision for coverage percentage
+precision = 2
+
+# Skip empty files
+skip_empty = True
+
+# Skip covered files (set to False to see all files)
+skip_covered = False
+
+# Fail if coverage is below threshold (optional)
+# fail_under = 80
+
+# Sort by coverage percentage
+sort = Cover
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code
+    def __repr__
+
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Don't complain about type checking blocks
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Don't complain about protocol methods
+    @Protocol
+
+    # Don't complain about ellipsis in stubs
+    \.\.\.
+
+[html]
+# Directory for HTML report
+directory = htmlcov
+
+[xml]
+# XML report output
+output = coverage.xml
+
+[json]
+# JSON report output
+output = coverage.json

@@ -33,7 +33,6 @@ class TestWorkflowRegistry:
             description="Test workflow",
             category="Testing",
             tags=["test"],
-            requires_org=True,
             parameters=[],
             function=lambda: None
         )
@@ -273,7 +272,7 @@ class TestWorkflowMetadata:
         assert metadata.description == "Test workflow"
         assert metadata.category == "General"
         assert metadata.tags == []
-        assert metadata.requires_org is True
+        assert metadata.execution_mode == "sync"
         assert metadata.parameters == []
         assert metadata.function is None
 
@@ -289,7 +288,7 @@ class TestWorkflowMetadata:
             description="Onboard users",
             category="user_management",
             tags=["m365", "user"],
-            requires_org=True,
+            execution_mode="async",
             parameters=[param],
             function=test_func
         )
@@ -297,6 +296,7 @@ class TestWorkflowMetadata:
         assert metadata.name == "user_onboarding"
         assert metadata.category == "user_management"
         assert metadata.tags == ["m365", "user"]
+        assert metadata.execution_mode == "async"
         assert len(metadata.parameters) == 1
         assert metadata.function is test_func
 

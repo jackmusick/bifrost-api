@@ -13,7 +13,7 @@ from bifrost import OrganizationContext, param, workflow
     description="Simple test workflow for validation",
     category="testing",
     tags=["test", "example"],
-    requires_org=True,
+    execution_mode="sync",
     endpoint_enabled=True,
     allowed_methods=["GET", "POST"],
     disable_global_key=False

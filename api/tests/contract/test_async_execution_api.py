@@ -25,26 +25,26 @@ class TestAsyncExecutionRequest:
         metadata = WorkflowMetadata(
             name="long_running_workflow",
             description="Long running workflow",
-            isAsync=True
+            executionMode="async"
         )
-        assert metadata.isAsync is True
+        assert metadata.executionMode == "async"
 
     def test_workflow_metadata_async_default_false(self):
-        """Test that isAsync defaults to False"""
+        """Test that executionMode defaults to sync"""
         metadata = WorkflowMetadata(
             name="sync_workflow",
             description="Synchronous workflow"
         )
-        assert metadata.isAsync is False
+        assert metadata.executionMode == "sync"
 
     def test_workflow_metadata_explicit_sync(self):
         """Test WorkflowMetadata with explicit sync execution"""
         metadata = WorkflowMetadata(
             name="sync_workflow",
             description="Sync workflow",
-            isAsync=False
+            executionMode="sync"
         )
-        assert metadata.isAsync is False
+        assert metadata.executionMode == "sync"
 
 
 # ==================== EXECUTION STATUS TESTS ====================
@@ -104,20 +104,20 @@ class TestAsyncExecutionLifecycle:
         metadata = WorkflowMetadata(
             name="async_workflow",
             description="Async workflow",
-            isAsync=True
+            executionMode="async"
         )
 
         # When triggered, execution should be PENDING
         initial_status = ExecutionStatus.PENDING
         assert initial_status == ExecutionStatus.PENDING
-        assert metadata.isAsync is True
+        assert metadata.executionMode == "async"
 
     def test_async_workflow_running_state(self):
         """Test async workflow transitions to RUNNING"""
         metadata = WorkflowMetadata(
             name="async_workflow",
             description="Async workflow",
-            isAsync=True
+            executionMode="async"
         )
 
         # Worker picks up execution
@@ -129,7 +129,7 @@ class TestAsyncExecutionLifecycle:
         metadata = WorkflowMetadata(
             name="async_workflow",
             description="Async workflow",
-            isAsync=True
+            executionMode="async"
         )
 
         # Execution completes
@@ -141,7 +141,7 @@ class TestAsyncExecutionLifecycle:
         metadata = WorkflowMetadata(
             name="async_workflow",
             description="Async workflow",
-            isAsync=True
+            executionMode="async"
         )
 
         # Execution fails

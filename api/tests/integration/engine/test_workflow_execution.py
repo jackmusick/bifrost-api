@@ -48,9 +48,18 @@ def mock_context(mock_org, mock_caller):
 
 @pytest.fixture
 def registry():
-    """Fresh workflow registry for each test"""
+    """Fresh workflow registry for each test, restored afterward"""
+    # Save current registry state
+    old_instance = WorkflowRegistry._instance
+
+    # Create fresh registry for test
     WorkflowRegistry._instance = None
-    return WorkflowRegistry()
+    fresh = WorkflowRegistry()
+
+    yield fresh
+
+    # Restore old registry after test
+    WorkflowRegistry._instance = old_instance
 
 
 @pytest.fixture

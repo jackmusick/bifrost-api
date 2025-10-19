@@ -13,7 +13,7 @@ from bifrost import OrganizationContext, param, workflow
     description="Public webhook endpoint for external integrations",
     category="webhooks",
     tags=["webhook", "public", "example"],
-    requires_org=False,
+    execution_mode="async",
     endpoint_enabled=True,
     allowed_methods=["POST"],
     public_endpoint=True  # No authentication required

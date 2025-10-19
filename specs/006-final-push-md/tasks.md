@@ -283,7 +283,7 @@
   - Check execution result retrieval
   - Validate batch status query
 
-- [ ] T041 [P] [US4] Integration test for async workflow in `/api/tests/integration/test_async_workflow_execution.py`
+- [X] T041 [P] [US4] Integration test for async workflow in `/api/tests/integration/engine/test_async_workflow_execution.py`
   - Test full async execution lifecycle (queue → running → completed)
   - Verify context preservation in worker
   - Check failure handling and error logging
@@ -313,14 +313,14 @@
   - Route to async queue if isAsync=true, else execute synchronously
   - Return 202 Accepted with execution ID for async workflows
 
-- [ ] T045 [US4] Implement status polling in `/client/src/hooks/useWorkflowPolling.ts`
+- [X] T045 [US4] Implement status polling in `/client/src/hooks/useWorkflowPolling.ts`
   - Create hook that polls execution status every 5-10 seconds
   - Accept list of execution IDs to monitor
   - Stop polling when all executions complete/fail
   - Use React state to update execution status in place
   - Avoid full page reload
 
-- [ ] T046 [US4] Update execution history UI in `/client/src/pages/executions/ExecutionHistory.tsx`
+- [X] T046 [US4] Update execution history UI in `/client/src/pages/ExecutionHistory.tsx`
   - Display execution status badges (Queued, Running, Completed, Failed)
   - Auto-refresh unfinished executions using useWorkflowPolling hook
   - Show timestamps for queued, started, completed

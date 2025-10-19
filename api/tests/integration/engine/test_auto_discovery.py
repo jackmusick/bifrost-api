@@ -4,34 +4,39 @@ Tests that workflows are automatically discovered and registered
 """
 
 import importlib.util
-
-# Import workspace modules to trigger auto-discovery
 import sys
 from pathlib import Path
 
+import pytest
+
 from shared.registry import get_registry
 
-# Manually trigger workspace discovery for tests
-workspace_path = Path(__file__).parent.parent.parent.parent / "workspace"
-if workspace_path.exists():
-    for py_file in workspace_path.rglob("*.py"):
-        if py_file.name.startswith("_"):
-            continue
 
-        relative_path = py_file.relative_to(workspace_path)
-        module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
-        module_name = f"workspace.{'.'.join(module_parts)}"
+@pytest.fixture(scope="class", autouse=True)
+def discover_workspace_workflows():
+    """Discover and register workspace workflows before tests"""
+    workspace_path = Path(__file__).parent.parent.parent.parent / "workspace"
 
-        try:
-            spec = importlib.util.spec_from_file_location(module_name, py_file)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = module
-                spec.loader.exec_module(module)
-                print(f"Successfully imported {module_name}")
-        except Exception as e:
-            print(f"Failed to import {module_name}: {e}")
-            pass
+    if workspace_path.exists():
+        for py_file in workspace_path.rglob("*.py"):
+            if py_file.name.startswith("_"):
+                continue
+
+            relative_path = py_file.relative_to(workspace_path)
+            module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
+            module_name = f"workspace.{'.'.join(module_parts)}"
+
+            try:
+                spec = importlib.util.spec_from_file_location(module_name, py_file)
+                if spec and spec.loader:
+                    # Always create a new module instance to re-run decorators
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+            except Exception:
+                pass
+
+    yield
 
 
 class TestAutoDiscovery:

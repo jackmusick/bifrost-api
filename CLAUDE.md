@@ -66,6 +66,10 @@ export async function getDataProviders() {
 ### Testing & Quality
 
 -   **Tests**: All work requires unit and integration tests in `api/tests/`
+    -   **Integration Tests**: Use isolated testing environment with `docker-compose.testing.yml`
+    -   Start test services: `docker compose -f docker-compose.testing.yml up -d`
+    -   Run integration tests: `python -m pytest api/tests/integration/ -v`
+    -   Stop test services: `docker compose -f docker-compose.testing.yml down`
 -   **Type Checking**: Must pass `npm run typecheck` (API) and `npm run tsc` (client)
 -   **Linting**: Must pass `npm run lint` in both API and client
 -   **Seed Data**: Update `api/seed_data.py` when models change
@@ -88,4 +92,9 @@ npm run dev                           # Dev server
 
 # Local development
 docker compose up                     # Start Azurite + dependencies
+
+# Testing
+docker compose -f docker-compose.testing.yml up -d    # Start test services
+python -m pytest api/tests/integration/ -v             # Run integration tests
+docker compose -f docker-compose.testing.yml down     # Stop test services
 ```

@@ -1,13 +1,24 @@
 services:
+  # Development Azurite - for running the app
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
     ports:
       - "10000:10000" # Blob
       - "10001:10001" # Queue
       - "10002:10002" # Table
-    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --location /data"
     volumes:
       - ./azurite:/data
+
+  # Testing Azurite - for running tests (separate data, different ports)
+  azurite-test:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    ports:
+      - "10100:10100" # Blob
+      - "10101:10101" # Queue
+      - "10102:10102" # Table
+    command: "azurite --blobHost 0.0.0.0 --blobPort 10100 --queueHost 0.0.0.0 --queuePort 10101 --tableHost 0.0.0.0 --tablePort 10102 --loose --inMemoryPersistence"
+    # Note: --inMemoryPersistence means tests start with clean slate each time
+    # Note: Uses different internal ports (10100-10102) so devcontainer can distinguish from dev azurite
 
   functions:
     build:

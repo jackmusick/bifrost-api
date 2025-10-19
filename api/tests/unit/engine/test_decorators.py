@@ -39,7 +39,7 @@ class TestWorkflowDecorator:
         assert workflow_meta.description == "Test workflow"
         assert workflow_meta.category == "General"
         assert workflow_meta.tags == []
-        assert workflow_meta.requires_org is True
+        assert workflow_meta.execution_mode == "sync"
 
     def test_workflow_decorator_full_options(self, registry):
         """Test workflow decorator with all options"""
@@ -47,8 +47,7 @@ class TestWorkflowDecorator:
             name="user_onboarding",
             description="Onboard new M365 user",
             category="user_management",
-            tags=["m365", "user"],
-            requires_org=True
+            tags=["m365", "user"]
         )
         def onboard_user(context, first_name, last_name):
             return f"Onboarded {first_name} {last_name}"
@@ -56,24 +55,24 @@ class TestWorkflowDecorator:
         workflow_meta = registry.get_workflow("user_onboarding")
         assert workflow_meta.category == "user_management"
         assert workflow_meta.tags == ["m365", "user"]
-        assert workflow_meta.requires_org is True
+        assert workflow_meta.execution_mode == "sync"
 
         # Verify function still callable
         result = onboard_user(None, "John", "Doe")
         assert result == "Onboarded John Doe"
 
-    def test_workflow_decorator_requires_org_false(self, registry):
-        """Test workflow with requires_org=False"""
+    def test_workflow_decorator_execution_mode_async(self, registry):
+        """Test workflow with async execution mode"""
         @workflow(
             name="utility_workflow",
             description="Utility function",
-            requires_org=False
+            execution_mode="async"
         )
         def utility_func():
             return "utility"
 
         workflow_meta = registry.get_workflow("utility_workflow")
-        assert workflow_meta.requires_org is False
+        assert workflow_meta.execution_mode == "async"
 
     def test_workflow_function_metadata_preserved(self, registry):
         """Test that function metadata is preserved"""
