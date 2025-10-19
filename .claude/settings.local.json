@@ -5,7 +5,14 @@
       "Bash(ruff check functions/endpoints.py --fix)",
       "Bash(ruff check shared/middleware.py shared/registry.py shared/decorators.py shared/models.py functions/endpoints.py)",
       "Bash(curl -X POST \"http://localhost:4280/api/endpoints/webhook_example\" )",
-      "Bash(.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks)"
+      "Bash(.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks)",
+      "Bash(ruff check shared/async_executor.py functions/worker.py)",
+      "Bash(ruff check functions/workflows.py functions/endpoints.py)",
+      "Bash(npx pyright shared/async_executor.py functions/worker.py functions/workflows.py functions/endpoints.py function_app.py)",
+      "Bash(ruff check --select=E,W,F,I api/shared/models.py api/shared/registry.py api/shared/decorators.py api/functions/workflows.py api/functions/endpoints.py)",
+      "Bash(ruff check --select=E,W,F,I shared/models.py shared/registry.py shared/decorators.py functions/workflows.py functions/endpoints.py)",
+      "Bash(ruff check shared/models.py shared/registry.py functions/discovery.py shared/async_executor.py functions/worker.py)",
+      "Bash(npx pyright shared/models.py shared/registry.py functions/discovery.py shared/async_executor.py functions/worker.py)"
     ],
     "deny": [],
     "ask": []

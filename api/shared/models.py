@@ -17,6 +17,7 @@ __all__ = [
     # Enums
     'ConfigType',
     'ExecutionStatus',
+    'RetryPolicy',
     'FormFieldType',
     'IntegrationType',
     'UserType',
@@ -152,7 +153,15 @@ class ExecutionStatus(str, Enum):
     RUNNING = "Running"
     SUCCESS = "Success"
     FAILED = "Failed"
+    TIMEOUT = "Timeout"
     COMPLETED_WITH_ERRORS = "CompletedWithErrors"
+
+
+class RetryPolicy(BaseModel):
+    """Retry policy configuration for workflow execution"""
+    maxAttempts: int = Field(3, ge=1, le=10, description="Total attempts including initial execution")
+    backoffSeconds: int = Field(2, ge=1, description="Initial backoff duration in seconds")
+    maxBackoffSeconds: int = Field(60, ge=1, description="Maximum backoff cap in seconds")
 
 
 class FormFieldType(str, Enum):
@@ -626,18 +635,29 @@ class WorkflowParameter(BaseModel):
 
 
 class WorkflowMetadata(BaseModel):
-    """Workflow metadata from @workflow decorator"""
-    name: str
-    description: str
-    category: str = Field(default="General")
-    parameters: list[WorkflowParameter] = Field(default_factory=list)
-    requiresOrg: bool = Field(
-        default=True, description="Whether workflow requires org context")
-    # Endpoint configuration (for /api/endpoints/{name} route)
-    endpointEnabled: bool = Field(default=False, description="Whether workflow is exposed as HTTP endpoint")
-    allowedMethods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods for endpoint")
-    disableGlobalKey: bool = Field(default=False, description="If true, only workflow-specific API keys work (global keys denied)")
-    publicEndpoint: bool = Field(default=False, description="If true, skip authentication (for webhooks)")
+    """Workflow metadata for discovery API"""
+    # Required fields
+    name: str = Field(..., min_length=1, pattern=r"^[a-z0-9_]+$", description="Workflow name (snake_case)")
+    description: str = Field(..., min_length=1, description="Human-readable description")
+
+    # Optional fields with defaults
+    category: str = Field("General", description="Category for organization")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization and search")
+    parameters: list[WorkflowParameter] = Field(default_factory=list, description="Workflow parameters")
+
+    # Execution configuration
+    executionMode: Literal["sync", "async"] = Field("sync", description="Execution mode")
+    timeoutSeconds: int = Field(300, ge=1, le=540, description="Max execution time in seconds (max 9 minutes)")
+
+    # Retry and scheduling (for future use)
+    retryPolicy: RetryPolicy | None = Field(None, description="Retry configuration")
+    schedule: str | None = Field(None, description="Cron expression for scheduled execution")
+
+    # HTTP Endpoint configuration
+    endpointEnabled: bool = Field(False, description="Whether workflow is exposed as HTTP endpoint")
+    allowedMethods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods")
+    disableGlobalKey: bool = Field(False, description="If true, only workflow-specific API keys work")
+    publicEndpoint: bool = Field(False, description="If true, skip authentication for webhooks")
 
 
 class DataProviderMetadata(BaseModel):

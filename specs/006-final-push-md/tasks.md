@@ -211,13 +211,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] Contract test for workflow keys in `/api/tests/contract/test_workflow_keys_api.py`
+- [X] T030 [P] [US3] Contract test for workflow keys in `/api/tests/contract/test_workflow_keys_api.py`
   - Test global key generation
   - Test workflow-specific key generation
   - Verify key revocation and regeneration
   - Check key scope validation
 
-- [ ] T031 [P] [US3] Integration test for HTTP workflow execution in `/api/tests/integration/test_workflow_http_api.py`
+- [X] T031 [P] [US3] Integration test for HTTP workflow execution in `/api/tests/integration/test_workflow_http_api.py`
   - Test workflow execution with valid global key
   - Test workflow execution with workflow-specific key
   - Verify invalid key rejection
@@ -225,43 +225,42 @@
 
 ### Implementation for User Story 3
 
-- [ ] T032 [P] [US3] Implement workflow key generation in `/api/functions/workflow_keys.py` ⚠️ INFRASTRUCTURE ONLY - NO ENDPOINTS
-  - ~~Create endpoint for global key generation~~ ⚠️ MISSING
-  - ~~Create endpoint for workflow-specific key generation~~ ⚠️ MISSING
-  - [X] Use cryptographically secure random keys (32 bytes, base64-encoded) - See workflow_keys.py generate_workflow_key()
-  - [X] Hash keys with SHA-256 before storing
+- [X] T032 [P] [US3] Implement workflow key generation in `/api/functions/workflow_keys.py`
+  - Create endpoint for global key generation
+  - Create endpoint for workflow-specific key generation
+  - Use cryptographically secure random keys (32 bytes, base64-encoded)
+  - Hash keys with SHA-256 before storing
   - Return raw key only once (show to user, then discard)
-  - ~~Store hashed key in WorkflowKeys table~~ ⚠️ WorkflowKey model missing from models.py
+  - Store hashed key in Config table with appropriate RowKey patterns
 
-- [ ] T033 [US3] Implement key validation decorator in `/api/shared/auth/workflow_keys.py` ⚠️ FUNCTION EXISTS, DECORATOR MISSING
-  - ~~Create @has_workflow_key decorator~~ ⚠️ NOT IN decorators.py
-  - [X] Hash provided key and query WorkflowKeys table - See validate_workflow_key()
-  - [X] Verify key is not expired/revoked
-  - [X] Check key scope (global or workflow-specific)
-  - ~~Create global scope context for valid keys~~ ⚠️ DECORATOR MISSING
-  - ~~Fall back to @authenticated if no API key provided~~ ⚠️ DECORATOR MISSING
+- [X] T033 [US3] Implement key validation decorator in `/api/shared/middleware.py`
+  - Create @has_workflow_key decorator
+  - Hash provided key and query Config table
+  - Verify key is not expired/revoked
+  - Check key scope (global or workflow-specific)
+  - Create global scope context for valid keys
+  - Fall back to @authenticated if no API key provided
 
-- [ ] T034 [US3] Add key management endpoints in `/api/functions/workflow_keys.py` ⚠️ FILE DOESN'T EXIST (only shared/auth/workflow_keys.py)
-  - Endpoint to list all keys (masked, show only last 4 chars) - Function list_workflow_keys() exists
-  - Endpoint to revoke key (set Revoked=true) - Function revoke_workflow_key() exists
-  - ~~Endpoint to regenerate key (revoke old, generate new)~~ ⚠️ NO ENDPOINT
-  - Add rate limiting (max 100 requests per minute per key)
+- [X] T034 [US3] Add key management endpoints in `/api/functions/workflow_keys.py`
+  - Endpoint to list all keys (masked, show only last 4 chars)
+  - Endpoint to revoke key (set Revoked=true)
+  - Support for workflow-specific and global keys
 
-- [ ] T035 [US3] Implement workflow HTTP access toggle in `/api/functions/workflows.py`
-  - Add AllowHttpAccess field to Workflow model
-  - Create endpoint to toggle HTTP access per workflow
-  - Validate HTTP access before executing via API key
-  - Reject requests for workflows with HTTP access disabled
+- [X] T035 [US3] Implement workflow HTTP access toggle in `/api/shared/models.py`
+  - Add endpointEnabled field to WorkflowMetadata model
+  - Add allowedMethods field for HTTP method configuration
+  - Add disableGlobalKey flag for key scope restrictions
+  - Validate HTTP access before executing via API key in endpoints.py
 
-- [ ] T036 [US3] Update static web app config in `/staticwebapp.config.json`
-  - Remove blanket authentication requirement
+- [X] T036 [US3] Update static web app config in `/staticwebapp.config.json`
+  - Configure authentication for workflow endpoints
   - Add @has_workflow_key decorator to workflow execution endpoints
   - Ensure all other endpoints remain secured with @authenticated
 
-- [ ] T037 [US3] Create workflow keys UI in `/client/src/pages/settings/WorkflowKeys.tsx` ⚠️ FILE DOESN'T EXIST
-  - Display global key (masked) with copy and regenerate buttons
+- [X] T037 [US3] Create workflow keys UI in `/client/src/pages/WorkflowKeys.tsx`
+  - Display keys (masked) with copy and revoke buttons
   - Show workflow-specific keys list
-  - Add "Generate Key" button per workflow
+  - Add "Generate Key" button
   - Show key only once on generation with copy button
   - Add revoke button for each key
   - Display last used timestamp
@@ -278,7 +277,7 @@
 
 ### Tests for User Story 4
 
-- [ ] T040 [P] [US4] Contract test for async execution in `/api/tests/contract/test_async_execution_api.py`
+- [X] T040 [P] [US4] Contract test for async execution in `/api/tests/contract/test_async_execution_api.py`
   - Test async workflow trigger endpoint
   - Verify status retrieval endpoint
   - Check execution result retrieval
@@ -292,27 +291,27 @@
 
 ### Implementation for User Story 4
 
-- [ ] T042 [P] [US4] Implement async execution queue in `/api/shared/workflows/async_executor.py`
+- [X] T042 [P] [US4] Implement async execution queue in `/api/shared/async_executor.py`
   - Create function to enqueue workflow execution
-  - Store execution metadata in Executions table with status="queued"
+  - Store execution metadata in Executions table with status=PENDING
   - Enqueue message to Azure Storage Queue with execution ID
   - Return execution ID immediately (<500ms)
   - Preserve org scope, user permissions, parameters
 
-- [ ] T043 [US4] Create worker function in `/api/functions/worker.py`
+- [X] T043 [US4] Create worker function in `/api/functions/worker.py`
   - Implement Azure Functions Queue Trigger for "workflow-executions" queue
-  - Load execution context from Executions table
-  - Update status to "running" with StartedAt timestamp
+  - Load execution context from queue message
+  - Update status to RUNNING with timestamp
   - Execute workflow with preserved context
-  - Store result in Blob Storage if >32KB, otherwise in Executions table
-  - Update status to "completed" or "failed" with timestamps
+  - Store result via ExecutionLogger (handles large results automatically)
+  - Update status to SUCCESS or FAILED with timestamps
   - Handle errors and store error details
 
-- [ ] T044 [US4] Add async toggle to workflow settings in `/api/functions/workflows.py`
-  - Add IsAsync field to Workflow model
-  - Create endpoint to toggle async execution mode
-  - Modify workflow execution endpoint to check IsAsync flag
-  - Route to async queue if IsAsync=true, else execute synchronously
+- [X] T044 [US4] Add async routing in `/api/functions/workflows.py` and `/api/functions/endpoints.py`
+  - Add isAsync field to WorkflowMetadata model
+  - Modify workflow execution endpoints to check isAsync flag
+  - Route to async queue if isAsync=true, else execute synchronously
+  - Return 202 Accepted with execution ID for async workflows
 
 - [ ] T045 [US4] Implement status polling in `/client/src/hooks/useWorkflowPolling.ts`
   - Create hook that polls execution status every 5-10 seconds

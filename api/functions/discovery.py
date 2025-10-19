@@ -78,12 +78,13 @@ async def get_discovery_metadata(req: func.HttpRequest) -> func.HttpResponse:
                 "description": workflow_meta.description,
                 "category": workflow_meta.category,
                 "tags": workflow_meta.tags,
-                "requiresOrg": workflow_meta.requires_org,
                 "parameters": parameters,
-                # Execution mode
+                # Execution configuration
                 "executionMode": workflow_meta.execution_mode,
-                # Forms
-                "exposeInForms": workflow_meta.expose_in_forms,
+                "timeoutSeconds": workflow_meta.timeout_seconds,
+                # Retry and scheduling (for future use)
+                "retryPolicy": workflow_meta.retry_policy,
+                "schedule": workflow_meta.schedule,
                 # HTTP Endpoint configuration
                 "endpointEnabled": workflow_meta.endpoint_enabled,
                 "allowedMethods": workflow_meta.allowed_methods,

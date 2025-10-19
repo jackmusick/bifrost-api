@@ -6,7 +6,7 @@ Singleton registry for storing workflow and data provider metadata
 import logging
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,31 +34,24 @@ class WorkflowMetadata:
     tags: list[str] = field(default_factory=list)
 
     # Execution
-    execution_mode: str = "sync"  # "sync" | "async" | "scheduled"
+    execution_mode: Literal["sync", "async"] = "sync"
     timeout_seconds: int = 300
-    max_duration_seconds: int = 300
 
-    # Retry
+    # Retry (for future use)
     retry_policy: dict[str, Any] | None = None
 
-    # Scheduling
-    schedule: str | None = None  # Cron expression
-
-    # Access Control
-    requires_org: bool = True
-    expose_in_forms: bool = True
-    requires_approval: bool = False
-    required_permission: str = "canExecuteWorkflows"
+    # Scheduling (for future use)
+    schedule: str | None = None
 
     # HTTP Endpoint Configuration
     endpoint_enabled: bool = False
     allowed_methods: list[str] = field(default_factory=lambda: ["POST"])
     disable_global_key: bool = False
-    public_endpoint: bool = False  # If true, skip authentication (for webhooks)
+    public_endpoint: bool = False
 
     # Parameters and function
     parameters: list[WorkflowParameter] = field(default_factory=list)
-    function: Any = None  # The actual Python function
+    function: Any = None
 
 
 @dataclass
@@ -115,7 +108,7 @@ class WorkflowRegistry:
             self._workflows[metadata.name] = metadata
             logger.info(
                 f"Registered workflow: {metadata.name} "
-                f"({len(metadata.parameters)} parameters, requires_org={metadata.requires_org})"
+                f"({len(metadata.parameters)} parameters, execution_mode={metadata.execution_mode})"
             )
 
     def get_workflow(self, name: str) -> WorkflowMetadata | None:

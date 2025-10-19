@@ -181,6 +181,29 @@ async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json"
         )
 
+    # Check if workflow should execute asynchronously
+    if workflow_metadata.execution_mode == "async":
+        from shared.async_executor import enqueue_workflow_execution
+
+        # Enqueue for async execution
+        execution_id = await enqueue_workflow_execution(
+            context=context,
+            workflow_name=workflow_name,
+            parameters=input_data,
+            form_id=form_id
+        )
+
+        # Return immediately with execution ID and PENDING status (202 Accepted)
+        return func.HttpResponse(
+            json.dumps({
+                "executionId": execution_id,
+                "status": "Pending",
+                "message": "Workflow queued for async execution"
+            }),
+            status_code=202,  # 202 Accepted
+            mimetype="application/json"
+        )
+
     # Get workflow function
     workflow_func = workflow_metadata.function
 

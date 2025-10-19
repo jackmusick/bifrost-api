@@ -13,6 +13,20 @@ This comprehensive guide covers everything you need to know about developing wor
 -   [Integrations](#integrations)
 -   [Testing](#testing)
 -   [Best Practices](#best-practices)
+-   [Async Workflow Execution](#async-workflow-execution)
+    -   [Overview](#overview)
+    -   [When to Use Async Execution](#when-to-use-async-execution)
+    -   [Configuring Async Workflows](#configuring-async-workflows)
+    -   [Execution Lifecycle](#execution-lifecycle)
+    -   [Triggering Async Workflows](#triggering-async-workflows)
+    -   [Checking Execution Status](#checking-execution-status)
+    -   [Result Retrieval](#result-retrieval)
+-   [Timeout Configuration and Hung Job Prevention](#timeout-configuration-and-hung-job-prevention)
+    -   [Timeout Levels](#timeout-levels)
+    -   [Choosing the Right Timeout](#choosing-the-right-timeout)
+    -   [Timeout Best Practices](#timeout-best-practices)
+    -   [Handling Timeouts in Code](#handling-timeouts-in-code)
+    -   [Using Azure Durable Functions for Very Long Workflows](#using-azure-durable-functions-for-very-long-workflows)
 -   [Advanced Patterns](#advanced-patterns)
 -   [HTTP Endpoints](#http-endpoints)
     -   [Exposing Workflows as Endpoints](#exposing-workflows-as-endpoints)
@@ -1232,6 +1246,513 @@ async def process_user(
 async def process_user(context, user_data):
     return {"processed": True}
 ```
+
+---
+
+## Async Workflow Execution
+
+### Overview
+
+Workflows can execute asynchronously via Azure Storage Queues for long-running operations. When `isAsync=True` is set in the workflow metadata, execution is queued immediately and returns a 202 Accepted response with an execution ID. The workflow runs in the background via a queue trigger worker function.
+
+### When to Use Async Execution
+
+**Use async execution for:**
+- Long-running operations (>30 seconds)
+- Batch processing workflows
+- External integrations with slow response times
+- Operations that don't require immediate results
+- Workflows with retry logic or multiple attempts
+
+**Use synchronous execution for:**
+- Fast operations (<10 seconds)
+- Real-time interactions requiring immediate feedback
+- Simple CRUD operations
+- Operations where the caller needs the result before proceeding
+
+### Configuring Async Workflows
+
+Add `isAsync=True` to the workflow metadata:
+
+```python
+from shared.decorators import workflow, param
+from shared.context import OrganizationContext
+
+@workflow(
+    name="long_running_import",
+    description="Import large dataset from external source",
+    category="data_management",
+    isAsync=True,  # Enable async execution
+    timeout_seconds=1800  # 30 minutes
+)
+@param("source_url", "string", "Source data URL", required=True)
+@param("batch_size", "int", "Records per batch", default_value=100)
+async def long_running_import(
+    context: OrganizationContext,
+    source_url: str,
+    batch_size: int = 100
+):
+    """
+    Import large dataset asynchronously.
+    Processes in batches with progress tracking.
+    """
+    context.log("info", f"Starting import from {source_url}")
+
+    total_processed = 0
+    async for batch in fetch_batches(source_url, batch_size):
+        # Process batch
+        results = await process_batch(batch)
+        total_processed += len(batch)
+
+        # Save checkpoint every 1000 records
+        if total_processed % 1000 == 0:
+            context.save_checkpoint("import_progress", {
+                "processed": total_processed,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            context.log("info", f"Processed {total_processed} records")
+
+    return {
+        "total_processed": total_processed,
+        "status": "completed"
+    }
+```
+
+### Execution Lifecycle
+
+Async workflows follow this lifecycle:
+
+```
+1. PENDING   → Queued, not yet started (immediate response to caller)
+2. RUNNING   → Worker picked up message, executing workflow
+3. SUCCESS   → Workflow completed successfully with result
+   OR
+   FAILED    → Workflow encountered error with error details
+```
+
+### Triggering Async Workflows
+
+**Via HTTP API:**
+
+```bash
+# POST request with isAsync=true in metadata
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Organization-Id: org-123" \
+  -H "x-functions-key: your-key" \
+  -d '{
+    "source_url": "https://example.com/data.csv",
+    "batch_size": 100
+  }' \
+  http://localhost:7071/api/workflows/long_running_import
+
+# Response: 202 Accepted
+{
+  "execution_id": "exec-abc-123",
+  "status": "Pending",
+  "message": "Workflow queued for async execution"
+}
+```
+
+**Via HTTP Endpoint (if endpoint_enabled=True):**
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: wk_your_workflow_key" \
+  -d '{
+    "source_url": "https://example.com/data.csv"
+  }' \
+  https://your-instance.azurewebsites.net/api/endpoints/long_running_import
+
+# Response: 202 Accepted
+{
+  "execution_id": "exec-xyz-456",
+  "status": "Pending"
+}
+```
+
+### Checking Execution Status
+
+**Get status by execution ID:**
+
+```bash
+curl -H "X-Organization-Id: org-123" \
+  -H "x-functions-key: your-key" \
+  http://localhost:7071/api/executions/exec-abc-123
+
+# Response:
+{
+  "execution_id": "exec-abc-123",
+  "workflow_name": "long_running_import",
+  "status": "Running",
+  "started_at": "2025-01-15T10:30:00Z",
+  "duration_ms": 45000,
+  "checkpoints": [
+    {
+      "timestamp": "2025-01-15T10:30:15Z",
+      "name": "import_progress",
+      "data": {"processed": 1000}
+    },
+    {
+      "timestamp": "2025-01-15T10:30:45Z",
+      "name": "import_progress",
+      "data": {"processed": 3000}
+    }
+  ]
+}
+```
+
+**Poll for completion:**
+
+```python
+import asyncio
+import httpx
+
+async def wait_for_completion(execution_id: str, timeout_seconds: int = 300):
+    """Poll execution status until completed or timeout."""
+    start_time = time.time()
+
+    async with httpx.AsyncClient() as client:
+        while (time.time() - start_time) < timeout_seconds:
+            response = await client.get(
+                f"http://localhost:7071/api/executions/{execution_id}",
+                headers={
+                    "X-Organization-Id": "org-123",
+                    "x-functions-key": "your-key"
+                }
+            )
+
+            data = response.json()
+            status = data["status"]
+
+            if status == "Success":
+                return data["result"]
+            elif status == "Failed":
+                raise Exception(f"Workflow failed: {data.get('error_message')}")
+
+            # Still running, wait before next poll
+            await asyncio.sleep(5)
+
+        raise TimeoutError(f"Execution {execution_id} did not complete within {timeout_seconds}s")
+```
+
+### Result Retrieval
+
+**Small results (<1KB):** Stored inline in Executions table
+
+```json
+{
+  "execution_id": "exec-123",
+  "status": "Success",
+  "result": {
+    "total_processed": 5000,
+    "status": "completed"
+  }
+}
+```
+
+**Large results (>1KB):** Stored in Azure Blob Storage, referenced by URL
+
+```json
+{
+  "execution_id": "exec-456",
+  "status": "Success",
+  "result_blob_url": "https://storage.blob.core.windows.net/results/exec-456.json",
+  "result_size_bytes": 52428
+}
+```
+
+To fetch large results:
+
+```python
+async def fetch_result(execution_id: str):
+    """Fetch execution result, handling blob storage if needed."""
+    response = await client.get(f"/api/executions/{execution_id}")
+    data = response.json()
+
+    if data["status"] != "Success":
+        raise Exception(f"Execution not successful: {data['status']}")
+
+    # Check if result is in blob storage
+    if "result_blob_url" in data:
+        blob_response = await client.get(data["result_blob_url"])
+        return blob_response.json()
+    else:
+        return data["result"]
+```
+
+---
+
+## Timeout Configuration and Hung Job Prevention
+
+### Timeout Levels
+
+Bifrost provides multiple timeout layers to prevent hung jobs:
+
+#### 1. Workflow-Level Timeout (`timeout_seconds`)
+
+Set via `@workflow` decorator to specify maximum execution time for individual workflows:
+
+```python
+@workflow(
+    name="import_users",
+    description="Import users from CSV",
+    timeout_seconds=600  # 10 minutes max
+)
+async def import_users(context, csv_url):
+    # Will timeout after 10 minutes
+    pass
+```
+
+**Default:** 300 seconds (5 minutes)
+**Recommended range:** 60-1800 seconds (1-30 minutes)
+**Maximum:** 3600 seconds (1 hour) for standard Azure Functions
+
+**Note:** This parameter is currently **INFORMATIONAL ONLY** and not enforced by the runtime. Implementation is planned for a future release. Use Azure Functions timeout as the hard limit.
+
+#### 2. Azure Functions Global Timeout (`host.json`)
+
+Azure Functions enforces a hard timeout at the function app level. This is the **ACTUAL** enforced timeout.
+
+**Current configuration:** `api/host.json` has **NO** timeout setting, which means:
+- **Consumption Plan:** Default 5 minutes, max 10 minutes
+- **Premium Plan:** Default 30 minutes, unlimited max
+- **Dedicated Plan:** Default 30 minutes, unlimited max
+
+**To configure global timeout:**
+
+Edit `api/host.json`:
+
+```json
+{
+  "version": "2.0",
+  "functionTimeout": "00:10:00",  // 10 minutes (format: HH:MM:SS)
+  "logging": {
+    // ... existing config
+  },
+  "extensionBundle": {
+    // ... existing config
+  }
+}
+```
+
+**Timeout format:** `HH:MM:SS` (e.g., `00:05:00` = 5 minutes, `01:30:00` = 1.5 hours)
+
+**Plan-specific limits:**
+```json
+// Consumption Plan (max 10 minutes)
+"functionTimeout": "00:10:00"
+
+// Premium Plan (unlimited, but recommended to set reasonable limit)
+"functionTimeout": "01:00:00"  // 1 hour
+
+// Dedicated Plan (unlimited, but recommended to set reasonable limit)
+"functionTimeout": "02:00:00"  // 2 hours
+```
+
+#### 3. Queue Visibility Timeout (Async Workflows)
+
+For async workflows, Azure Storage Queue visibility timeout controls when a message reappears if processing fails:
+
+**Default:** 30 seconds (Azure Storage Queue default)
+**Recommended for async workflows:** 5-60 minutes
+
+**To configure queue visibility timeout:**
+
+In `api/functions/worker.py` (queue trigger worker):
+
+```python
+@bp.queue_trigger(
+    arg_name="msg",
+    queue_name="workflow-executions",
+    connection="AzureWebJobsStorage"
+)
+@bp.function_name("workflow_execution_worker")
+async def workflow_execution_worker(msg: func.QueueMessage) -> None:
+    # Azure will auto-extend visibility timeout as long as function is running
+    # If function crashes/times out, message reappears after visibility timeout
+    pass
+```
+
+**How it works:**
+1. Message is dequeued and hidden for visibility timeout period
+2. Azure Functions **automatically extends** visibility timeout while function runs
+3. If function completes successfully, message is deleted
+4. If function times out or crashes, message reappears after visibility timeout expires
+5. Message can be retried (up to `maxDequeueCount` in host.json)
+
+**Configure retry behavior in `host.json`:**
+
+```json
+{
+  "extensions": {
+    "queues": {
+      "maxDequeueCount": 3,  // Retry up to 3 times before moving to poison queue
+      "visibilityTimeout": "00:05:00"  // 5 minutes visibility timeout
+    }
+  }
+}
+```
+
+### Choosing the Right Timeout
+
+| Workflow Type | Timeout | Reason |
+|---------------|---------|--------|
+| Quick CRUD | 30-60s | Fast operations, fail fast |
+| API integrations | 60-300s | Account for external latency |
+| Batch processing | 300-1800s | Processing many items |
+| Large imports | 1800-3600s | Database writes, validation |
+| Long-running analytics | >3600s | Use Durable Functions |
+
+### Timeout Best Practices
+
+1. **Set conservative timeouts** - Workflows should fail fast if something is wrong
+2. **Use async execution for long operations** - Queue-based execution for >30 second workflows
+3. **Implement progress checkpoints** - Save state periodically for recovery
+4. **Configure retries carefully** - Use `maxDequeueCount` to prevent infinite loops
+5. **Monitor timeout metrics** - Track workflows approaching timeout limits
+6. **Consider Durable Functions for very long workflows** - See section below
+
+Example with checkpoints:
+
+```python
+@workflow(
+    name="process_large_dataset",
+    description="Process dataset with checkpoints",
+    isAsync=True,
+    timeout_seconds=1800  # 30 minutes
+)
+async def process_large_dataset(context, dataset_id):
+    """
+    Process large dataset with periodic checkpoints for recovery.
+    """
+    # Load dataset
+    dataset = await load_dataset(dataset_id)
+    total_items = len(dataset)
+
+    processed = 0
+    for i, item in enumerate(dataset):
+        # Process item
+        result = await process_item(item)
+        processed += 1
+
+        # Save checkpoint every 100 items (allows recovery on timeout)
+        if processed % 100 == 0:
+            context.save_checkpoint("progress", {
+                "processed": processed,
+                "total": total_items,
+                "percent": (processed / total_items) * 100
+            })
+            context.log("info", f"Progress: {processed}/{total_items} items")
+
+    return {
+        "processed": processed,
+        "total": total_items,
+        "status": "completed"
+    }
+```
+
+### Handling Timeouts in Code
+
+While workflow-level timeouts are not currently enforced by the runtime, you can implement your own timeout logic:
+
+```python
+import asyncio
+from datetime import datetime, timedelta
+from shared.error_handling import TimeoutError as WorkflowTimeoutError
+
+@workflow(
+    name="timeout_aware_workflow",
+    description="Workflow with manual timeout enforcement",
+    timeout_seconds=300
+)
+async def timeout_aware_workflow(context, large_operation):
+    """
+    Workflow that enforces its own timeout.
+    """
+    timeout_seconds = 300  # Match decorator value
+
+    try:
+        # Wrap work in asyncio.wait_for for timeout enforcement
+        result = await asyncio.wait_for(
+            perform_work(large_operation),
+            timeout=timeout_seconds
+        )
+        return result
+
+    except asyncio.TimeoutError:
+        # Log timeout
+        context.log("error", f"Workflow timed out after {timeout_seconds}s")
+
+        # Raise WorkflowError for proper error tracking
+        raise WorkflowTimeoutError(timeout_seconds)
+```
+
+### Using Azure Durable Functions for Very Long Workflows
+
+For workflows exceeding 1 hour, consider **Azure Durable Functions** which provide:
+
+- **Checkpointing**: Automatic state persistence across restarts
+- **Unlimited execution time**: No timeout limits via orchestration pattern
+- **Fan-out/fan-in**: Parallel task execution
+- **Human interaction**: Wait for external events (approvals, webhooks)
+- **Monitoring**: Built-in status queries and history
+
+**When to use Durable Functions:**
+- Workflows >1 hour execution time
+- Multi-step workflows with approval gates
+- Workflows requiring pause/resume capability
+- Complex orchestration with parallel tasks
+- Human-in-the-loop workflows
+
+**Example Durable Function pattern** (requires separate setup):
+
+```python
+import azure.durable_functions as df
+
+def orchestrator_function(context: df.DurableOrchestrationContext):
+    """
+    Durable orchestrator for very long workflow.
+    """
+    # Step 1: Import data (may take hours)
+    import_result = yield context.call_activity("import_large_dataset", dataset_url)
+
+    # Step 2: Wait for approval (indefinite wait)
+    approval = yield context.wait_for_external_event("approval_received")
+
+    # Step 3: Process approved data
+    process_result = yield context.call_activity("process_dataset", import_result)
+
+    return process_result
+
+main = df.Orchestrator.create(orchestrator_function)
+```
+
+**Setting up Durable Functions:**
+
+1. Install Durable Functions extension:
+   ```bash
+   pip install azure-functions-durable
+   ```
+
+2. Add to `host.json`:
+   ```json
+   {
+     "extensions": {
+       "durableTask": {
+         "hubName": "BifrostDurableHub",
+         "storageProvider": {
+           "connectionStringName": "AzureWebJobsStorage"
+         }
+       }
+     }
+   }
+   ```
+
+3. Create orchestrator and activity functions in `api/functions/durable/`
+
+**Learn more:** [Azure Durable Functions Documentation](https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-overview)
 
 ---
 

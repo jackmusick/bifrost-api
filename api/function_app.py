@@ -23,6 +23,7 @@ from functions.permissions import bp as permissions_bp
 from functions.roles import bp as roles_bp
 from functions.roles_source import bp as roles_source_bp
 from functions.secrets import bp as secrets_bp
+from functions.worker import bp as worker_bp
 from functions.workflows import bp as workflows_bp
 from functions.workflow_keys import bp as workflow_keys_bp
 from shared.init_tables import init_tables
@@ -223,3 +224,4 @@ app.register_functions(workflows_bp)  # Workflow execution
 app.register_functions(endpoints_bp)  # Workflow HTTP endpoints (API key auth)
 app.register_functions(workflow_keys_bp)  # Workflow API key management (User Story 3)
 app.register_functions(data_providers_bp)  # Data provider API endpoints
+app.register_functions(worker_bp)  # Async workflow execution worker (User Story 4)

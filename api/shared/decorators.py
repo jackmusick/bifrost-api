@@ -6,7 +6,7 @@ Decorators for registering workflows and data providers with metadata
 import functools
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from .registry import DataProviderMetadata, WorkflowMetadata, WorkflowParameter, get_registry
 
@@ -24,21 +24,14 @@ def workflow(
     tags: list[str] | None = None,
 
     # Execution
-    execution_mode: str = "sync",  # "sync" | "async" | "scheduled"
+    execution_mode: Literal["sync", "async"] = "sync",
     timeout_seconds: int = 300,
-    max_duration_seconds: int = 300,
 
     # Retry
     retry_policy: dict[str, Any] | None = None,
 
     # Scheduling
-    schedule: str | None = None,  # Cron expression
-
-    # Access Control
-    requires_org: bool = True,
-    expose_in_forms: bool = True,
-    requires_approval: bool = False,
-    required_permission: str = "canExecuteWorkflows",
+    schedule: str | None = None,
 
     # HTTP Endpoint Configuration
     endpoint_enabled: bool = False,
@@ -57,7 +50,6 @@ def workflow(
             tags=["m365", "user"],
             execution_mode="sync",
             timeout_seconds=300,
-            expose_in_forms=True,
             endpoint_enabled=True,
             allowed_methods=["GET", "POST"],
             disable_global_key=False
@@ -73,15 +65,10 @@ def workflow(
         description: Human-readable description
         category: Category for organization (default: "General")
         tags: Optional list of tags for filtering
-        execution_mode: "sync" | "async" | "scheduled" (default: "sync")
+        execution_mode: "sync" | "async" (default: "sync")
         timeout_seconds: Max execution time in seconds (default: 300)
-        max_duration_seconds: Hard limit for execution (default: 300)
         retry_policy: Dict with retry config (e.g., {"max_attempts": 3, "backoff": 2})
         schedule: Cron expression for scheduled workflows (e.g., "0 9 * * *")
-        requires_org: Whether workflow requires organization context (default: True)
-        expose_in_forms: Can this be called from forms? (default: True)
-        requires_approval: Requires approval before execution (default: False)
-        required_permission: Permission required to execute (default: "canExecuteWorkflows")
         endpoint_enabled: Whether to expose as HTTP endpoint at /api/endpoints/{name} (default: False)
         allowed_methods: HTTP methods allowed for endpoint (default: ["POST"])
         disable_global_key: If True, only workflow-specific API keys work (default: False)
@@ -113,13 +100,8 @@ def workflow(
             tags=tags,
             execution_mode=execution_mode,
             timeout_seconds=timeout_seconds,
-            max_duration_seconds=max_duration_seconds,
             retry_policy=retry_policy,
             schedule=schedule,
-            requires_org=requires_org,
-            expose_in_forms=expose_in_forms,
-            requires_approval=requires_approval,
-            required_permission=required_permission,
             endpoint_enabled=endpoint_enabled,
             allowed_methods=allowed_methods,
             disable_global_key=disable_global_key,
@@ -137,7 +119,7 @@ def workflow(
 
         logger.debug(
             f"Workflow decorator applied: {name} "
-            f"({len(pending_params)} params, requires_org={requires_org})"
+            f"({len(pending_params)} params, execution_mode={execution_mode})"
         )
 
         # Return function unchanged (for normal Python execution)
