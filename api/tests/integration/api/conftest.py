@@ -224,7 +224,7 @@ def test_oauth_connection(api_base_url, platform_admin_headers, table_service):
             "PartitionKey": org_id,
             "RowKey": f"oauth:{connection_name}",
             "connection_name": connection_name,
-            "oauth_provider": "generic",
+            "oauth_flow_type": "authorization_code",
             "client_id": "test-client-id",
             "redirect_uri": "/oauth/callback/test-oauth-connection-123",
             "authorization_url": "https://example.com/authorize",
@@ -258,6 +258,7 @@ def test_form(api_base_url, admin_headers, table_service):
     form_data = {
         "name": "Test Integration Form",
         "description": "Form for integration tests",
+        "linkedWorkflow": "test-workflow",
         "formSchema": {
             "fields": [
                 {
@@ -274,7 +275,6 @@ def test_form(api_base_url, admin_headers, table_service):
                 }
             ]
         },
-        "linkedWorkflow": None,
         "isPublic": True
     }
 

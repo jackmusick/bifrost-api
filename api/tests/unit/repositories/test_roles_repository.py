@@ -135,7 +135,8 @@ class TestRoleRepositoryRead:
         repo.list_roles("org-123", active_only=True)
 
         call_args = mock_table_service.query_entities.call_args
-        filter_query = call_args[0][0]
+        # query_entities is called with keyword arguments: filter=...
+        filter_query = call_args[1].get("filter", call_args[0][0] if call_args[0] else "")
         assert "IsActive eq true" in filter_query
 
 

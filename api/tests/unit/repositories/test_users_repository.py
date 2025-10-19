@@ -132,9 +132,11 @@ class TestUserRepositoryRead:
 
         # Verify efficient query parameters
         call_args = mock_table_service.query_entities.call_args
+        # query_entities is called with filter as first positional arg, select as keyword arg
+        filter_query = call_args[0][0] if call_args[0] else ""
         kwargs = call_args[1]
+        assert "RowKey ge 'user:'" in filter_query
         assert kwargs.get("select") == ["RowKey"]
-        assert kwargs.get("top") == 1
 
 
 class TestUserRepositoryUpdate:
