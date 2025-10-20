@@ -19,6 +19,14 @@ jobs:
         # Only run in upstream repo, not forks
         if: github.event.repository.fork == false
 
+        services:
+            azurite:
+                image: mcr.microsoft.com/azure-storage/azurite
+                ports:
+                    - 10000:10000 # Blob
+                    - 10001:10001 # Queue
+                    - 10002:10002 # Table
+
         steps:
             - uses: actions/checkout@v4
 
@@ -27,28 +35,49 @@ jobs:
               with:
                   python-version: "3.11"
 
-            - name: Start Azurite
-              run: |
-                  npx --yes azurite --silent --inMemoryPersistence &
-              shell: bash
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
 
-            - name: Install dependencies
+            - name: Install Python dependencies
               run: |
                   cd api
                   python -m pip install -q --upgrade pip
                   pip install -q -r requirements.txt
                   pip install -q pytest pytest-cov pytest-asyncio
 
-            - name: Run tests with coverage
+            - name: Install Azure Functions Core Tools
+              run: |
+                  npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+            - name: Start Azure Functions
               working-directory: ./api
               run: |
-                  npm run test:ci
+                  func start --port 7071 > /tmp/func.log 2>&1 &
+                  FUNC_PID=$!
+                  echo "Functions PID: $FUNC_PID"
+                  sleep 30
+                  echo "=== Functions startup log (first 100 lines) ==="
+                  head -100 /tmp/func.log
+                  echo "=== Checking health endpoint ==="
+                  curl -f http://localhost:7071/api/health || (echo "Functions health check failed" && cat /tmp/func.log && exit 1)
               env:
-                  PYTHONPATH: .
-                  AzureWebJobsStorage: UseDevelopmentStorage=true
+                  AzureWebJobsStorage: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
                   FUNCTIONS_WORKER_RUNTIME: python
                   AZURE_FUNCTIONS_ENVIRONMENT: Testing
                   AZURE_KEY_VAULT_URL: https://mock-keyvault.vault.azure.net/
+
+            - name: Run all tests with coverage
+              working-directory: ./api
+              run: |
+                  pytest tests/ --cov --cov-branch --cov-report=xml
+
+            - name: Show Functions log on failure
+              if: failure()
+              run: |
+                  echo "=== Functions log (last 200 lines) ==="
+                  tail -200 /tmp/func.log || echo "No func.log found"
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v4
