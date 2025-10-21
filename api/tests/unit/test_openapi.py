@@ -8,17 +8,11 @@ Tests the OpenAPI specification generation including:
 """
 
 import json
-import pytest
 import yaml
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 import azure.functions as func
 
-from functions.openapi import generate_openapi_spec, get_openapi_json, get_openapi_yaml, swagger_ui
-from shared.models import (
-    WorkflowExecution,
-    ErrorResponse,
-    ExecutionStatus
-)
+from functions.http.openapi import generate_openapi_spec, get_openapi_json, get_openapi_yaml, swagger_ui
 
 
 class TestOpenAPISpecGeneration:

@@ -3,13 +3,14 @@ Async Workflow Execution
 Handles queueing and execution of long-running workflows
 """
 
+import base64
 import json
 import logging
 import os
 import uuid
 from typing import Any
 
-from azure.storage.queue import QueueServiceClient  # type: ignore[import-untyped]
+from azure.storage.queue import QueueServiceClient, TextBase64EncodePolicy  # type: ignore[import-untyped]
 
 from shared.execution_logger import get_execution_logger
 from shared.models import ExecutionStatus
@@ -24,7 +25,23 @@ def get_queue_client():
     """Get Azure Storage Queue client for workflow executions"""
     connection_str = os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
     queue_service = QueueServiceClient.from_connection_string(connection_str)
-    return queue_service.get_queue_client(QUEUE_NAME)
+
+    # Use TextBase64EncodePolicy for proper Azure Functions queue compatibility
+    queue_client = queue_service.get_queue_client(
+        QUEUE_NAME,
+        message_encode_policy=TextBase64EncodePolicy()
+    )
+
+    # Auto-create queue if it doesn't exist
+    try:
+        queue_client.create_queue()
+        logger.info(f"Created queue: {QUEUE_NAME}")
+    except Exception as e:
+        # Queue might already exist, that's fine
+        if "QueueAlreadyExists" not in str(e):
+            logger.debug(f"Queue {QUEUE_NAME} status: {e}")
+
+    return queue_client
 
 
 async def enqueue_workflow_execution(
@@ -85,12 +102,6 @@ async def enqueue_workflow_execution(
 
     # Enqueue message
     queue_client = get_queue_client()
-    # Ensure queue exists
-    try:
-        queue_client.create_queue()
-    except Exception:
-        pass  # Queue might already exist
-
     queue_client.send_message(json.dumps(message))
 
     logger.info(

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link2, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Link2, Plus, RefreshCw, AlertTriangle, LayoutGrid, Table as TableIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -18,7 +18,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { SearchBox } from '@/components/search/SearchBox'
+import { useSearch } from '@/hooks/useSearch'
 import {
   useOAuthConnections,
   useDeleteOAuthConnection,
@@ -29,6 +34,7 @@ import {
 import { CreateOAuthConnectionDialog } from '@/components/oauth/CreateOAuthConnectionDialog'
 import { OAuthConnectionCard } from '@/components/oauth/OAuthConnectionCard'
 import { RefreshJobStatus } from '@/components/oauth/RefreshJobStatus'
+import { getStatusLabel, isExpired, expiresSoon } from '@/lib/client-types'
 
 
 export function OAuthConnections() {
@@ -37,12 +43,26 @@ export function OAuthConnections() {
   const [selectedOrgId] = useState<string | undefined>(undefined)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [connectionToDelete, setConnectionToDelete] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
 
   const { data: connections, isLoading, refetch } = useOAuthConnections()
   const deleteMutation = useDeleteOAuthConnection()
   const authorizeMutation = useAuthorizeOAuthConnection()
   const cancelMutation = useCancelOAuthAuthorization()
   const refreshMutation = useRefreshOAuthToken()
+
+  // Apply search filter
+  const filteredConnections = useSearch(
+    connections || [],
+    searchTerm,
+    [
+      'connection_name',
+      'oauth_flow_type',
+      'status',
+      (item) => item.status_message || ''
+    ]
+  )
 
   // Listen for OAuth success messages from popup window
   useEffect(() => {
@@ -157,8 +177,8 @@ export function OAuthConnections() {
   const stats = getConnectionStats()
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
-      <div className="flex-shrink-0">
+    <div className="space-y-6">
+      <div>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight">OAuth Connections</h1>
@@ -170,6 +190,14 @@ export function OAuthConnections() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <ToggleGroup type="single" value={viewMode} onValueChange={(value: string) => value && setViewMode(value as 'grid' | 'table')}>
+              <ToggleGroupItem value="grid" aria-label="Grid view" size="sm">
+                <LayoutGrid className="h-4 w-4" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="table" aria-label="Table view" size="sm">
+                <TableIcon className="h-4 w-4" />
+              </ToggleGroupItem>
+            </ToggleGroup>
             <Button variant="outline" size="icon" onClick={() => refetch()} title="Refresh">
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -180,8 +208,16 @@ export function OAuthConnections() {
         </div>
       </div>
 
+      {/* Search Box */}
+      <SearchBox
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search OAuth connections by name, flow type, or status..."
+        className="max-w-md"
+      />
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Connections</CardDescription>
@@ -210,53 +246,183 @@ export function OAuthConnections() {
       </div>
 
       {/* Connections List */}
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <CardHeader className="flex-shrink-0">
+      <Card>
+        <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Your Connections</CardTitle>
               <CardDescription>
-                {connections && connections.length > 0
-                  ? `Showing ${connections.length} OAuth connection${connections.length !== 1 ? 's' : ''}`
-                  : 'No connections configured yet'}
+                {filteredConnections && filteredConnections.length > 0
+                  ? `Showing ${filteredConnections.length} OAuth connection${filteredConnections.length !== 1 ? 's' : ''}`
+                  : searchTerm ? 'No connections match your search' : 'No connections configured yet'}
               </CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="flex-1 overflow-hidden flex flex-col">
+        <CardContent>
           {isLoading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-48 w-full" />
-              ))}
-            </div>
-          ) : connections && connections.length > 0 ? (
-            <div className="overflow-auto max-h-full">
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pb-4">
-                {connections.map((connection) => (
-                  <OAuthConnectionCard
-                    key={connection.connection_name}
-                    connection={connection}
-                    onAuthorize={handleAuthorize}
-                    onEdit={handleEdit}
-                    onRefresh={handleRefresh}
-                    onCancel={handleCancel}
-                    onDelete={handleDelete}
-                    isAuthorizing={authorizeMutation.isPending}
-                    isRefreshing={refreshMutation.isPending}
-                    isCanceling={cancelMutation.isPending}
-                    isDeleting={deleteMutation.isPending}
-                  />
+            viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} className="h-48 w-full" />
                 ))}
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            )
+          ) : filteredConnections && filteredConnections.length > 0 ? (
+            viewMode === 'grid' ? (
+              <div className="max-h-[calc(100vh-32rem)] overflow-auto">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pb-4">
+                  {filteredConnections.map((connection) => (
+                    <OAuthConnectionCard
+                      key={connection.connection_name}
+                      connection={connection}
+                      onAuthorize={handleAuthorize}
+                      onEdit={handleEdit}
+                      onRefresh={handleRefresh}
+                      onCancel={handleCancel}
+                      onDelete={handleDelete}
+                      isAuthorizing={authorizeMutation.isPending}
+                      isRefreshing={refreshMutation.isPending}
+                      isCanceling={cancelMutation.isPending}
+                      isDeleting={deleteMutation.isPending}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="max-h-[calc(100vh-32rem)] overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10">
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Flow Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Last Refreshed</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredConnections.map((connection) => {
+                      const expirationWarning = connection.expires_at && expiresSoon(connection.expires_at)
+                      const isTokenExpired = connection.expires_at && isExpired(connection.expires_at)
+                      const canConnect = connection.oauth_flow_type !== 'client_credentials'
+                      const needsReconnection = connection.status === 'not_connected' || connection.status === 'failed'
+
+                      return (
+                        <TableRow key={connection.connection_name}>
+                          <TableCell className="font-medium">{connection.connection_name}</TableCell>
+                          <TableCell className="text-sm">{connection.oauth_flow_type.replace('_', ' ')}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={
+                                  connection.status === 'completed' ? 'default' :
+                                  connection.status === 'failed' ? 'destructive' :
+                                  connection.status === 'waiting_callback' || connection.status === 'testing' ? 'secondary' :
+                                  'outline'
+                                }
+                                className="text-xs"
+                              >
+                                {getStatusLabel(connection.status)}
+                              </Badge>
+                              {isTokenExpired && <span className="text-xs text-red-600">Token expired</span>}
+                              {!isTokenExpired && expirationWarning && <span className="text-xs text-yellow-600">Expires soon</span>}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {connection.last_refresh_at ? (
+                              new Date(connection.last_refresh_at.endsWith('Z') ? connection.last_refresh_at : `${connection.last_refresh_at}Z`).toLocaleDateString()
+                            ) : (
+                              <span className="italic">Never</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-1 justify-end">
+                              {needsReconnection && canConnect && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAuthorize(connection.connection_name)}
+                                  disabled={authorizeMutation.isPending}
+                                >
+                                  {connection.status === 'failed' ? 'Reconnect' : 'Connect'}
+                                </Button>
+                              )}
+                              {connection.status === 'completed' && canConnect && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleAuthorize(connection.connection_name)}
+                                  disabled={authorizeMutation.isPending}
+                                  title="Reconnect"
+                                >
+                                  ↻
+                                </Button>
+                              )}
+                              {connection.status === 'waiting_callback' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleCancel(connection.connection_name)}
+                                  disabled={cancelMutation.isPending}
+                                  title="Cancel"
+                                >
+                                  ✕
+                                </Button>
+                              )}
+                              {connection.status === 'completed' && connection.expires_at && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleRefresh(connection.connection_name)}
+                                  disabled={refreshMutation.isPending}
+                                  title="Refresh token"
+                                >
+                                  ↻
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEdit(connection.connection_name)}
+                                title="Edit"
+                              >
+                                ✎
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDelete(connection.connection_name)}
+                                disabled={deleteMutation.isPending}
+                                title="Delete"
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Link2 className="h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No OAuth connections</h3>
+              <h3 className="mt-4 text-lg font-semibold">
+                {searchTerm ? 'No OAuth connections match your search' : 'No OAuth connections'}
+              </h3>
               <p className="mt-2 text-sm text-muted-foreground max-w-md">
-                Get started by creating your first OAuth connection. Connect to services like
-                Microsoft Graph, Google APIs, or any OAuth 2.0 provider.
+                {searchTerm
+                  ? 'Try adjusting your search term or clear the filter'
+                  : 'Get started by creating your first OAuth connection. Connect to services like Microsoft Graph, Google APIs, or any OAuth 2.0 provider.'}
               </p>
               <Button variant="outline" size="icon" onClick={handleCreate} title="Create Connection" className="mt-4">
                 <Plus className="h-4 w-4" />

@@ -67,6 +67,32 @@ class BaseRepository:
         """
         return self._service.query_entities(filter=filter_query, select=select)
 
+    def query_paged(
+        self,
+        filter_query: str,
+        select: list[str] | None = None,
+        results_per_page: int = 50,
+        continuation_token: dict | None = None
+    ) -> tuple[list[dict], dict | None]:
+        """
+        Query entities with pagination support.
+
+        Args:
+            filter_query: OData filter string
+            select: List of properties to select (None = all properties)
+            results_per_page: Number of results per page (default 50, max 1000)
+            continuation_token: Token from previous page (None for first page)
+
+        Returns:
+            Tuple of (list of entities, next continuation token or None)
+        """
+        return self._service.query_entities_paged(
+            filter=filter_query,
+            select=select,
+            results_per_page=results_per_page,
+            continuation_token=continuation_token
+        )
+
     def insert(self, entity: dict) -> dict:
         """
         Insert a new entity

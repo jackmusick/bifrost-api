@@ -3,8 +3,6 @@ Unit tests for OrganizationRepository
 """
 
 import pytest
-from datetime import datetime
-from unittest.mock import MagicMock
 
 from shared.repositories.organizations import OrganizationRepository
 from shared.models import CreateOrganizationRequest, UpdateOrganizationRequest

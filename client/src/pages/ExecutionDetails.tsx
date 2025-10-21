@@ -61,6 +61,15 @@ export function ExecutionDetails() {
             Completed with Errors
           </Badge>
         )
+      case 'Timeout':
+        return (
+          <Badge variant="destructive">
+            <XCircle className="mr-1 h-3 w-3" />
+            Timeout
+          </Badge>
+        )
+      default:
+        return null
     }
   }
 
@@ -76,6 +85,10 @@ export function ExecutionDetails() {
         return <Clock className="h-12 w-12 text-gray-500" />
       case 'CompletedWithErrors':
         return <XCircle className="h-12 w-12 text-yellow-500" />
+      case 'Timeout':
+        return <XCircle className="h-12 w-12 text-red-500" />
+      default:
+        return null
     }
   }
 
@@ -216,10 +229,10 @@ export function ExecutionDetails() {
         </Card>
       )}
 
-      {execution.status === 'Failed' && execution.errorMessage && (
+      {execution.errorMessage && (
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
-          <AlertTitle>Execution Failed</AlertTitle>
+          <AlertTitle>Error</AlertTitle>
           <AlertDescription>
             <pre className="mt-2 text-sm">{execution.errorMessage}</pre>
           </AlertDescription>

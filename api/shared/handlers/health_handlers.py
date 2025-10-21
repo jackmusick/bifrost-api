@@ -9,12 +9,28 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from shared.keyvault import KeyVaultClient
-from shared.models import GeneralHealthResponse, HealthCheck, KeyVaultHealthResponse
+from shared.models import BasicHealthResponse, GeneralHealthResponse, HealthCheck, KeyVaultHealthResponse
 
 logger = logging.getLogger(__name__)
 
 # Type alias for health status
 HealthStatus = Literal["healthy", "degraded", "unhealthy"]
+
+
+def perform_basic_health_check() -> BasicHealthResponse:
+    """
+    Perform a basic health check (liveness check).
+    This simply confirms the API is running and able to respond.
+    Does NOT check external dependencies.
+
+    Returns:
+        BasicHealthResponse: Basic health status
+    """
+    return BasicHealthResponse(
+        status="healthy",
+        service="Bifrost Integrations API",
+        timestamp=datetime.utcnow().isoformat() + "Z"
+    )
 
 
 def check_api_health() -> HealthCheck:

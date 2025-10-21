@@ -9,9 +9,7 @@ Tests the permissions management endpoints:
 - GET /api/users/{userId}/forms - Get user's accessible forms
 """
 
-import json
 import logging
-import pytest
 import requests
 
 logger = logging.getLogger(__name__)

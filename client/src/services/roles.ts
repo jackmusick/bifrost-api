@@ -20,7 +20,8 @@ export const rolesService = {
    */
   async createRole(request: components['schemas']['CreateRoleRequest']) {
     const { data, error } = await apiClient.POST('/roles', {
-      body: request,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      body: request as any, // OpenAPI spec incorrectly expects full Role instead of CreateRoleRequest
     })
     if (error) throw new Error(`Failed to create role: ${error}`)
     return data
@@ -32,7 +33,8 @@ export const rolesService = {
   async updateRole(roleId: string, request: components['schemas']['UpdateRoleRequest']) {
     const { data, error } = await apiClient.PUT('/roles/{roleId}', {
       params: { path: { roleId } },
-      body: request,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      body: request as any, // OpenAPI spec incorrectly expects full Role instead of UpdateRoleRequest
     })
     if (error) throw new Error(`Failed to update role: ${error}`)
     return data
@@ -63,13 +65,13 @@ export const rolesService = {
   /**
    * Assign users to a role (batch)
    */
-  async assignUsersToRole(roleId: string, request: components['schemas']['AssignUsersToRoleRequest']) {
-    const { data, error } = await apiClient.POST('/roles/{roleId}/users', {
+  async assignUsersToRole(roleId: string, request: components['schemas']['AssignUsersToRoleRequest']): Promise<void> {
+    const { error } = await apiClient.POST('/roles/{roleId}/users', {
       params: { path: { roleId } },
-      body: request,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      body: request as any, // OpenAPI spec type mismatch
     })
     if (error) throw new Error(`Failed to assign users to role: ${error}`)
-    return data
   },
 
   /**
@@ -97,13 +99,13 @@ export const rolesService = {
   /**
    * Assign forms to a role (batch)
    */
-  async assignFormsToRole(roleId: string, request: components['schemas']['AssignFormsToRoleRequest']) {
-    const { data, error } = await apiClient.POST('/roles/{roleId}/forms', {
+  async assignFormsToRole(roleId: string, request: components['schemas']['AssignFormsToRoleRequest']): Promise<void> {
+    const { error } = await apiClient.POST('/roles/{roleId}/forms', {
       params: { path: { roleId } },
-      body: request,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      body: request as any, // OpenAPI spec type mismatch
     })
     if (error) throw new Error(`Failed to assign forms to role: ${error}`)
-    return data
   },
 
   /**

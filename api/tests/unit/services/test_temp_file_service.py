@@ -14,10 +14,8 @@ Tests cover:
 import pytest
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-import tempfile
+from unittest.mock import patch
 import time
-from datetime import datetime, timedelta
 
 from services.temp_file_service import (
     TempFileService,

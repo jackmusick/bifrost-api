@@ -7,9 +7,7 @@ Tests generic system endpoints:
 - Utility endpoints
 """
 
-import json
 import logging
-import pytest
 import requests
 
 logger = logging.getLogger(__name__)
@@ -103,7 +101,7 @@ class TestVersionEndpoint:
             version_fields = ["version", "app_version", "apiVersion"]
             has_version = any(field in data for field in version_fields)
             if has_version:
-                logger.info(f"Version found in response")
+                logger.info("Version found in response")
 
     def test_status_endpoint_success(self, api_base_url):
         """GET /api/status should return system status"""

@@ -10,9 +10,7 @@ Tests the form management endpoints:
 - POST /api/forms/{formId}/execute - Submit form and execute linked workflow
 """
 
-import json
 import logging
-import pytest
 import requests
 
 logger = logging.getLogger(__name__)
@@ -291,7 +289,7 @@ class TestFormStartup:
             assert "result" in data
             logger.info("Form startup returned empty result for no launch workflow")
         else:
-            logger.info(f"Form startup returned 404 (org/form not found)")
+            logger.info("Form startup returned 404 (org/form not found)")
 
     def test_form_startup_not_found(self, api_base_url, admin_headers):
         """Should return 404 for nonexistent form"""

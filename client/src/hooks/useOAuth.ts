@@ -27,18 +27,20 @@ export const oauthKeys = {
  */
 export function useOAuthConnections() {
   const orgId = useScopeStore((state) => state.scope.orgId)
-  const hasHydrated = useScopeStore((state) => state._hasHydrated)
 
   return useQuery<components['schemas']['OAuthConnection'][]>({
     queryKey: oauthKeys.list(orgId),
     queryFn: async () => {
+      console.log('[useOAuthConnections] Fetching OAuth connections for orgId:', orgId)
       const result = await oauthService.listConnections()
       return result as unknown as components['schemas']['OAuthConnection'][]
     },
-    // Wait for Zustand to rehydrate from localStorage before making API calls
-    enabled: hasHydrated,
     // Don't use cached data from previous scope
     staleTime: 0,
+    // Remove from cache immediately when component unmounts
+    gcTime: 0,
+    // Always refetch when component mounts (navigating to page)
+    refetchOnMount: 'always',
   })
 }
 

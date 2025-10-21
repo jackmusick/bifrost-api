@@ -3,16 +3,8 @@ Contract tests for Async Workflow Execution API (User Story 4)
 Tests Pydantic validation for async workflow execution, status tracking, and result retrieval
 """
 
-from datetime import datetime, timedelta
-from typing import Optional
 
-import pytest
-from pydantic import ValidationError
 
-from shared.models import (
-    ExecutionStatus,
-    WorkflowMetadata,
-)
 
 
 # ==================== RESULT RETRIEVAL TESTS ====================

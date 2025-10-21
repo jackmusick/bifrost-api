@@ -7,8 +7,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from azure.functions import HttpRequest, HttpResponse
-from pydantic import ValidationError
+from azure.functions import HttpRequest
 
 from shared.handlers.oauth_handlers import (
     create_oauth_connection_handler,
@@ -23,7 +22,6 @@ from shared.handlers.oauth_handlers import (
     get_oauth_credentials_handler,
     get_oauth_refresh_job_status_handler,
 )
-from shared.models import ErrorResponse
 
 
 @pytest.fixture

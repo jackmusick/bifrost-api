@@ -6,9 +6,8 @@ Mocks file system operations to test in isolation.
 """
 
 import pytest
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 from services.workspace_service import WorkspaceService, get_workspace_service
 

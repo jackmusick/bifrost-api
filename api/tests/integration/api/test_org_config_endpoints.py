@@ -4,7 +4,6 @@ Tests the organization configuration management endpoints for managing
 global and organization-specific configuration key-value pairs.
 """
 
-import pytest
 import requests
 
 

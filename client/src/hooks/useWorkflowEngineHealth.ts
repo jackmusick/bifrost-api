@@ -2,8 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useHealthStore } from '@/stores/healthStore'
 
 interface ServerHealthResponse {
-  status: 'healthy' | 'unhealthy'
+  status: 'healthy' | 'degraded' | 'unhealthy'
   service: string
+  timestamp?: string
+  checks?: Array<{
+    service: string
+    healthy: boolean
+    message: string
+    metadata?: Record<string, unknown>
+  }>
 }
 
 export function useWorkflowEngineHealth() {
@@ -25,7 +32,8 @@ export function useWorkflowEngineHealth() {
         }
 
         const data = await response.json() as ServerHealthResponse
-        setHealthStatus(data.status === 'healthy' ? 'healthy' : 'unhealthy')
+        // Map degraded to healthy for UI purposes (API is still functional)
+        setHealthStatus(data.status === 'unhealthy' ? 'unhealthy' : 'healthy')
         return data
       } catch (error) {
         // Return unhealthy status instead of throwing to avoid error boundaries

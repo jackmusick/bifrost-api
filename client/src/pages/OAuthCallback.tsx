@@ -50,18 +50,20 @@ export function OAuthCallback() {
       try {
         // Send the authorization code to the API for token exchange
         const response = await oauthService.handleCallback(connectionName, code, state)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const responseData = response as any // Response may include error_message or warning_message
 
         // Check for error_message
-        if (response && typeof response === 'object' && 'error_message' in response && response.error_message) {
+        if (responseData && typeof responseData === 'object' && 'error_message' in responseData && responseData.error_message) {
           setStatus('error')
-          setMessage(response.error_message as string)
+          setMessage(responseData.error_message as string)
           // DO NOT auto-close - user must manually close after reading error
           return
         }
 
         // Check for warning_message (e.g., no refresh token)
-        if (response && typeof response === 'object' && 'warning_message' in response && response.warning_message) {
-          setWarning(response.warning_message as string)
+        if (responseData && typeof responseData === 'object' && 'warning_message' in responseData && responseData.warning_message) {
+          setWarning(responseData.warning_message as string)
           setStatus('warning')
           setMessage('Connection established with limitations')
 

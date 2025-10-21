@@ -14,7 +14,7 @@ Example:
     @workflow(name="my_workflow", description="...")
     @param("user_email", "string", required=True)
     async def my_workflow(context: OrganizationContext, user_email: str):
-        context.log("info", f"Processing {user_email}")
+        context.info(f"Processing {user_email}")
         return {"success": True}
 """
 

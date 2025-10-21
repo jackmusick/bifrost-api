@@ -17,7 +17,7 @@ print("=" * 80)
 print(f"\nCurrent Coverage: {totals['percent_covered']:.2f}%")
 print(f"Lines Covered: {totals['covered_lines']}/{totals['num_statements']}")
 print(f"Missing Lines: {totals['missing_lines']}")
-print(f"\nTarget: 90% coverage")
+print("\nTarget: 90% coverage")
 print(f"Need to cover: {int(totals['num_statements'] * 0.9 - totals['covered_lines'])} more lines")
 
 # Categorize files by coverage
@@ -150,7 +150,7 @@ CONTRACT TESTS TO CONSIDER REMOVING:
 print("\n" + "=" * 80)
 print("FILES TO EXCLUDE FROM COVERAGE (Dev Tools)")
 print("=" * 80)
-dev_files = [f for f in categorized["skip"] if not "test_" in f["path"]]
+dev_files = [f for f in categorized["skip"] if "test_" not in f["path"]]
 for f in dev_files:
     print(f"  - {f['path']}")
 print("\nAdd these to .coveragerc [run] omit section")

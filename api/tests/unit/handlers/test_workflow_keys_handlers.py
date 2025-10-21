@@ -6,7 +6,7 @@ Tests workflow key generation, listing, and revocation
 import json
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import azure.functions as func
 
@@ -16,7 +16,6 @@ from shared.handlers.workflow_keys_handlers import (
     revoke_workflow_key_handler,
     _mask_key,
 )
-from shared.models import WorkflowKeyCreateRequest
 
 
 class TestMaskKey:

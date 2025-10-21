@@ -7,6 +7,7 @@ Indexes maintained:
 2. User index: userexec:{user_id}:{execution_id} (Relationships table) - with display fields
 3. Workflow index: workflowexec:{workflow_name}:{org_id}:{execution_id} (Relationships table) - with display fields
 4. Form index: formexec:{form_id}:{execution_id} (Relationships table) - with display fields
+5. Status index: status:{status}:{execution_id} (Relationships table) - for cleanup queries
 """
 
 import json
@@ -152,6 +153,21 @@ class ExecutionRepository(BaseRepository):
                 "ErrorMessage": None,
             }
 
+        # 5. Status index - for cleanup queries (Pending/Running only)
+        status_index_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"status:{ExecutionStatus.RUNNING.value}:{execution_id}",
+            "ExecutionId": execution_id,
+            "OrganizationId": org_id,
+            # Display fields for cleanup UI
+            "WorkflowName": workflow_name,
+            "ExecutedBy": user_id,
+            "ExecutedByName": user_name,
+            "Status": ExecutionStatus.RUNNING.value,
+            "StartedAt": now.isoformat(),
+            "UpdatedAt": now.isoformat(),
+        }
+
         # Write all atomically (best effort)
         try:
             # Primary record
@@ -160,11 +176,12 @@ class ExecutionRepository(BaseRepository):
             # Indexes (in order of importance)
             self.relationships_service.insert_entity(user_index_entity)
             self.relationships_service.insert_entity(workflow_index_entity)
+            self.relationships_service.insert_entity(status_index_entity)
 
             if form_index_entity:
                 self.relationships_service.insert_entity(form_index_entity)
 
-            index_count = 3 if form_id else 2
+            index_count = 4 if form_id else 3
             logger.info(
                 f"Created execution {execution_id} with {index_count} indexes "
                 f"(workflow={workflow_name}, user={user_id}, form={form_id})"
@@ -225,6 +242,7 @@ class ExecutionRepository(BaseRepository):
         # Extract metadata for index updates
         workflow_name = execution_entity.get("WorkflowName")
         form_id = execution_entity.get("FormId")
+        old_status = execution_entity.get("Status", "")  # Capture BEFORE updating
 
         # Update primary record
         execution_entity["Status"] = status.value
@@ -284,6 +302,36 @@ class ExecutionRepository(BaseRepository):
             except Exception as e:
                 logger.warning(f"Failed to update form index for {execution_id}: {e}")
 
+        # Update status index - delete old status, create new if Pending/Running
+        try:
+            # Delete old status index if it was Pending or Running
+            if old_status in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
+                try:
+                    self.relationships_service.delete_entity(
+                        "GLOBAL",
+                        f"status:{old_status}:{execution_id}"
+                    )
+                except Exception:
+                    pass  # Might not exist, that's okay
+
+            # Create new status index only for Pending/Running
+            if status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                status_index = {
+                    "PartitionKey": "GLOBAL",
+                    "RowKey": f"status:{status.value}:{execution_id}",
+                    "ExecutionId": execution_id,
+                    "OrganizationId": org_id,
+                    "WorkflowName": workflow_name,
+                    "ExecutedBy": user_id,
+                    "ExecutedByName": execution_entity.get("ExecutedByName", ""),
+                    "Status": status.value,
+                    "StartedAt": execution_entity.get("StartedAt"),
+                    "UpdatedAt": now.isoformat(),
+                }
+                self.relationships_service.insert_entity(status_index)
+        except Exception as e:
+            logger.warning(f"Failed to update status index for {execution_id}: {e}")
+
         logger.info(
             f"Updated execution {execution_id} to status {status.value} "
             f"(duration={duration_ms}ms, indexes updated)"
@@ -327,6 +375,8 @@ class ExecutionRepository(BaseRepository):
         """
         List executions for a specific user (optimized for table view)
 
+        DEPRECATED: Use list_executions_by_user_paged() for better performance.
+
         Uses user index with display fields - NO secondary fetch needed!
 
         Args:
@@ -342,10 +392,14 @@ class ExecutionRepository(BaseRepository):
             f"RowKey lt 'userexec:{user_id}~'"
         )
 
-        index_entities = list(self.relationships_service.query_entities(filter_query))
+        # Use paginated query
+        index_entities, _ = self.relationships_service.query_entities_paged(
+            filter=filter_query,
+            results_per_page=limit
+        )
 
         executions = []
-        for entity in index_entities[:limit]:
+        for entity in index_entities:
             # Parse datetime fields
             started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
             completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
@@ -376,6 +430,71 @@ class ExecutionRepository(BaseRepository):
 
         logger.info(f"Found {len(executions)} executions for user {user_id}")
         return executions
+
+    def list_executions_by_user_paged(
+        self,
+        user_id: str,
+        results_per_page: int = 50,
+        continuation_token: dict | None = None
+    ) -> tuple[list[WorkflowExecution], dict | None]:
+        """
+        List executions for a specific user with proper pagination.
+
+        Uses user index with display fields - NO secondary fetch needed!
+
+        Args:
+            user_id: User ID
+            results_per_page: Number of results per page (default 50, max 1000)
+            continuation_token: Token from previous page (None for first page)
+
+        Returns:
+            Tuple of (list of WorkflowExecution models, next continuation token)
+        """
+        filter_query = (
+            f"PartitionKey eq 'GLOBAL' and "
+            f"RowKey ge 'userexec:{user_id}:' and "
+            f"RowKey lt 'userexec:{user_id}~'"
+        )
+
+        # Query with pagination
+        index_entities, next_token = self.relationships_service.query_entities_paged(
+            filter=filter_query,
+            results_per_page=results_per_page,
+            continuation_token=continuation_token
+        )
+
+        executions = []
+        for entity in index_entities:
+            # Parse datetime fields
+            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
+
+            # Parse status enum
+            status_str = entity.get("Status", "Pending")
+            status = ExecutionStatus(status_str) if status_str else ExecutionStatus.PENDING
+
+            # Convert index entity directly to model (has display fields!)
+            executions.append(WorkflowExecution(
+                executionId=cast(str, entity.get("ExecutionId", "")),
+                workflowName=cast(str, entity.get("WorkflowName", "")),
+                orgId=entity.get("OrganizationId"),
+                formId=entity.get("FormId"),
+                status=status,
+                executedBy=user_id,
+                executedByName=cast(str, entity.get("ExecutedByName", user_id)),
+                startedAt=started_at,
+                completedAt=completed_at,
+                durationMs=entity.get("DurationMs"),
+                errorMessage=entity.get("ErrorMessage"),
+                # Large fields NOT in index (null for table view)
+                inputData={},
+                result=None,
+                resultType=None,
+                logs=None
+            ))
+
+        logger.info(f"Found {len(executions)} executions for user {user_id} (paginated)")
+        return executions, next_token
 
     def list_executions_by_workflow(
         self,
@@ -527,6 +646,9 @@ class ExecutionRepository(BaseRepository):
         """
         List workflow executions across entire platform or within an organization.
 
+        DEPRECATED: Use list_executions_paged() for better performance.
+        This method loads all results into memory before limiting.
+
         Args:
             org_id: Optional organization ID to scope executions
             limit: Maximum number of results (default 50)
@@ -541,17 +663,143 @@ class ExecutionRepository(BaseRepository):
             f"RowKey ge 'execution:' and RowKey lt 'execution;'"
         )
 
-        entities = list(self.query(filter_query))
-        # Sort by timestamp, newest first (reverse timestamp)
-        entities.sort(key=lambda e: e.get('RowKey', ''), reverse=True)
+        # Use paginated query for better performance
+        entities, _ = self.query_paged(filter_query, results_per_page=limit)
 
-        # Convert to model, return limited results
+        # Convert to model
         executions = []
-        for entity in entities[:limit]:
+        for entity in entities:
             execution = self._entity_to_model(entity)
             executions.append(execution)
 
         return executions
+
+    def list_executions_paged(
+        self,
+        org_id: str | None = None,
+        results_per_page: int = 50,
+        continuation_token: dict | None = None
+    ) -> tuple[list[WorkflowExecution], dict | None]:
+        """
+        List workflow executions with proper pagination.
+
+        Args:
+            org_id: Optional organization ID to scope executions
+            results_per_page: Number of results per page (default 50, max 1000)
+            continuation_token: Token from previous page (None for first page)
+
+        Returns:
+            Tuple of (list of WorkflowExecution models, next continuation token)
+        """
+        partition_key = org_id or "GLOBAL"
+
+        filter_query = (
+            f"PartitionKey eq '{partition_key}' and "
+            f"RowKey ge 'execution:' and RowKey lt 'execution;'"
+        )
+
+        # Query with pagination
+        entities, next_token = self.query_paged(
+            filter_query,
+            results_per_page=results_per_page,
+            continuation_token=continuation_token
+        )
+
+        # Convert to models
+        executions = [self._entity_to_model(entity) for entity in entities]
+
+        return executions, next_token
+
+    def get_stuck_executions(
+        self,
+        pending_timeout_minutes: int = 10,
+        running_timeout_minutes: int = 30
+    ) -> list[WorkflowExecution]:
+        """
+        Get executions stuck in Pending or Running status.
+
+        Uses status index in Relationships table for efficient queries.
+        Only queries Pending and Running status indexes (no full table scan).
+
+        Args:
+            pending_timeout_minutes: Timeout for Pending status (default: 10)
+            running_timeout_minutes: Timeout for Running status (default: 30)
+
+        Returns:
+            List of stuck executions with display fields populated
+        """
+        now = datetime.utcnow()
+        stuck_executions: list[WorkflowExecution] = []
+
+        # Query status indexes for Pending and Running executions
+        for status_value, timeout_minutes in [
+            (ExecutionStatus.PENDING.value, pending_timeout_minutes),
+            (ExecutionStatus.RUNNING.value, running_timeout_minutes)
+        ]:
+            # Query status index using range query
+            filter_query = (
+                f"PartitionKey eq 'GLOBAL' and "
+                f"RowKey ge 'status:{status_value}:' and "
+                f"RowKey lt 'status:{status_value}~'"
+            )
+
+            try:
+                status_entities = list(self.relationships_service.query_entities(filter_query))
+
+                for entity in status_entities:
+                    try:
+                        # Parse UpdatedAt timestamp from index
+                        updated_at_str = entity.get("UpdatedAt")
+                        if not updated_at_str:
+                            continue
+
+                        # Parse timestamp
+                        updated_at = self._parse_datetime(updated_at_str, now)
+                        age_minutes = (now - updated_at).total_seconds() / 60
+
+                        # Check if stuck based on timeout
+                        if age_minutes > timeout_minutes:
+                            # Build WorkflowExecution from index fields
+                            started_at = self._parse_datetime(entity.get("StartedAt"), now)
+
+                            execution = WorkflowExecution(
+                                executionId=cast(str, entity.get("ExecutionId", "")),
+                                workflowName=cast(str, entity.get("WorkflowName", "")),
+                                orgId=entity.get("OrganizationId"),
+                                formId=None,  # Not in status index
+                                status=ExecutionStatus(status_value),
+                                executedBy=cast(str, entity.get("ExecutedBy", "")),
+                                executedByName=cast(str, entity.get("ExecutedByName", "")),
+                                startedAt=started_at,
+                                completedAt=None,
+                                durationMs=None,
+                                errorMessage=None,
+                                # Large fields NOT in index
+                                inputData={},
+                                result=None,
+                                resultType=None,
+                                logs=None
+                            )
+                            stuck_executions.append(execution)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error parsing status index entity: {e}",
+                            extra={
+                                "error": str(e),
+                                "execution_id": entity.get("ExecutionId"),
+                            }
+                        )
+                        continue
+
+            except Exception as e:
+                logger.error(
+                    f"Error querying status index for {status_value}: {e}",
+                    exc_info=True
+                )
+
+        logger.info(f"Found {len(stuck_executions)} stuck executions")
+        return stuck_executions
 
     def _reverse_timestamp(self, dt: datetime) -> str:
         """
@@ -613,6 +861,14 @@ class ExecutionRepository(BaseRepository):
         status_str = entity.get("Status", "Pending")
         status = ExecutionStatus(status_str) if status_str else ExecutionStatus.PENDING
 
+        # Parse durationMs (can be int, str, or None from Table Storage)
+        duration_ms = entity.get("DurationMs")
+        if duration_ms is not None and isinstance(duration_ms, str):
+            try:
+                duration_ms = int(duration_ms)
+            except (ValueError, TypeError):
+                duration_ms = None
+
         return WorkflowExecution(
             executionId=cast(str, entity.get("ExecutionId", "")),
             workflowName=cast(str, entity.get("WorkflowName", "")),
@@ -625,7 +881,7 @@ class ExecutionRepository(BaseRepository):
             result=result,
             resultType=result_type,
             errorMessage=entity.get("ErrorMessage"),
-            durationMs=entity.get("DurationMs"),
+            durationMs=duration_ms,
             startedAt=started_at,
             completedAt=completed_at,
             logs=None  # Logs fetched separately from blob storage

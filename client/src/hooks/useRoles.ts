@@ -10,11 +10,18 @@ type UpdateRoleRequest = components['schemas']['UpdateRoleRequest']
 type AssignUsersToRoleRequest = components['schemas']['AssignUsersToRoleRequest']
 type AssignFormsToRoleRequest = components['schemas']['AssignFormsToRoleRequest']
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useRoles() {
+  const orgId = useScopeStore((state) => state.scope.orgId)
+
   return useQuery({
-    queryKey: ['roles'],
+    queryKey: ['roles', orgId],
     queryFn: () => rolesService.getRoles(),
+    // Don't use cached data from previous scope
+    staleTime: 0,
+    // Always refetch when component mounts (navigating to page)
+    refetchOnMount: 'always',
   })
 }
 

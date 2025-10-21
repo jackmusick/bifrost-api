@@ -6,27 +6,34 @@ from pathlib import Path
 
 import azure.functions as func
 
-from functions.data_providers import bp as data_providers_bp
-from functions.discovery import bp as discovery_bp
-from functions.endpoints import bp as endpoints_bp
-from functions.executions import bp as executions_bp
-from functions.file_uploads import bp as file_uploads_bp
-from functions.forms import bp as forms_bp
-from functions.health import bp as health_bp
-from functions.metrics import bp as metrics_bp
-from functions.oauth_api import bp as oauth_api_bp
-from functions.oauth_refresh_timer import bp as oauth_refresh_timer_bp
-from functions.openapi import bp as openapi_bp
-from functions.org_config import bp as org_config_bp
-from functions.organizations import bp as organizations_bp
-from functions.permissions import bp as permissions_bp
-from functions.roles import bp as roles_bp
-from functions.roles_source import bp as roles_source_bp
-from functions.secrets import bp as secrets_bp
-from functions.worker import bp as worker_bp
-from functions.workflows import bp as workflows_bp
-from functions.workflow_keys import bp as workflow_keys_bp
+from functions.http.branding import bp as branding_bp
+from functions.http.data_providers import bp as data_providers_bp
+from functions.http.discovery import bp as discovery_bp
+from functions.http.endpoints import bp as endpoints_bp
+from functions.http.executions import bp as executions_bp
+from functions.http.execution_cleanup import bp as execution_cleanup_http_bp
+from functions.http.file_uploads import bp as file_uploads_bp
+from functions.http.forms import bp as forms_bp
+from functions.http.health import bp as health_bp
+from functions.http.metrics import bp as metrics_bp
+from functions.http.oauth_api import bp as oauth_api_bp
+from functions.http.openapi import bp as openapi_bp
+from functions.http.org_config import bp as org_config_bp
+from functions.http.organizations import bp as organizations_bp
+from functions.http.permissions import bp as permissions_bp
+from functions.http.roles import bp as roles_bp
+from functions.http.roles_source import bp as roles_source_bp
+from functions.http.secrets import bp as secrets_bp
+from functions.http.workflows import bp as workflows_bp
+from functions.http.workflow_keys import bp as workflow_keys_bp
+from functions.http.schedules import bp as schedules_bp
+from functions.timer.oauth_refresh_timer import bp as oauth_refresh_timer_bp
+from functions.timer.schedule_processor import bp as schedule_processor_bp
+from functions.timer.execution_cleanup import bp as execution_cleanup_timer_bp
+from functions.queue.worker import bp as worker_bp
+from functions.queue.poison_queue_handler import bp as poison_queue_handler_bp
 from shared.init_tables import init_tables
+from shared.queue_init import init_queues
 
 # ==================== DEBUGPY INITIALIZATION ====================
 # Enable debugpy for remote debugging if ENABLE_DEBUGGING=true (T016)
@@ -93,6 +100,28 @@ try:
 except Exception as e:
     logging.warning(
         f"Table initialization failed: {e} - continuing without table initialization")
+
+# ==================== QUEUE INITIALIZATION ====================
+# T008: Initialize Azure Storage Queues at startup
+# Must initialize queues BEFORE registering queue triggers to prevent binding failures
+
+try:
+    logging.info("Initializing Azure Storage Queues...")
+    queue_results = init_queues()
+
+    if queue_results["created"]:
+        logging.info(
+            f"Created {len(queue_results['created'])} queues: {', '.join(queue_results['created'])}")
+    if queue_results["already_exists"]:
+        logging.info(
+            f"{len(queue_results['already_exists'])} queues already exist")
+    if queue_results["failed"]:
+        logging.warning(
+            f"Failed to create {len(queue_results['failed'])} queues - async workflow execution may not work")
+
+except Exception as e:
+    logging.warning(
+        f"Queue initialization failed: {e} - continuing but async workflow execution may fail at runtime")
 
 # ==================== WORKSPACE DISCOVERY ====================
 # T005: Discover workspace modules to register workflows and data providers
@@ -206,8 +235,10 @@ app.register_functions(org_config_bp)
 app.register_functions(permissions_bp)
 app.register_functions(forms_bp)
 app.register_functions(file_uploads_bp)  # File upload SAS URL generation (User Story 2)
+app.register_functions(branding_bp)  # Platform branding configuration (User Story 7)
 app.register_functions(roles_bp)
 app.register_functions(executions_bp)  # Workflow execution history
+app.register_functions(execution_cleanup_http_bp)  # Stuck execution cleanup HTTP API
 app.register_functions(roles_source_bp)  # SWA roles source
 app.register_functions(openapi_bp)  # OpenAPI/Swagger endpoints
 app.register_functions(secrets_bp)  # Secret management endpoints
@@ -217,11 +248,15 @@ app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
 
 if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
     app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer
+    app.register_functions(schedule_processor_bp)  # CRON schedule processor timer (User Story 5)
+    app.register_functions(execution_cleanup_timer_bp)  # Execution cleanup timer (timeout stuck executions)
 
 # Register blueprints - Workflow Engine (unified in functions/)
 app.register_functions(discovery_bp)  # Workflow and data provider discovery
 app.register_functions(workflows_bp)  # Workflow execution
 app.register_functions(endpoints_bp)  # Workflow HTTP endpoints (API key auth)
 app.register_functions(workflow_keys_bp)  # Workflow API key management (User Story 3)
+app.register_functions(schedules_bp)  # Scheduled workflows viewer (User Story 5)
 app.register_functions(data_providers_bp)  # Data provider API endpoints
 app.register_functions(worker_bp)  # Async workflow execution worker (User Story 4)
+app.register_functions(poison_queue_handler_bp)  # Poison queue handler for failed executions

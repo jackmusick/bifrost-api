@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 import azure.functions as func
 import pytest
 
-from functions.roles_source import get_roles
+from functions.http.roles_source import get_roles
 from shared.user_provisioning import UserProvisioningResult
 
 

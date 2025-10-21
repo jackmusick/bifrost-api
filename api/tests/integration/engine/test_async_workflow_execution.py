@@ -119,6 +119,29 @@ async def queue_client():
         pass
 
 
+async def wait_for_queue_messages(queue_client, expected_count=1, max_attempts=10, delay=0.2):
+    """
+    Helper to wait for messages to appear in Azure Queue (handles Azurite delays)
+
+    Args:
+        queue_client: Azure Queue client
+        expected_count: Minimum number of messages to wait for
+        max_attempts: Maximum retry attempts
+        delay: Delay between attempts in seconds
+
+    Returns:
+        list: List of messages found
+    """
+    for attempt in range(max_attempts):
+        messages = queue_client.receive_messages(messages_per_page=max(10, expected_count))
+        message_list = list(messages)
+        if len(message_list) >= expected_count:
+            return message_list
+        if attempt < max_attempts - 1:  # Don't sleep on last attempt
+            await asyncio.sleep(delay)
+    return message_list  # Return whatever we got
+
+
 class TestAsyncWorkflowLifecycle:
     """Test the complete async workflow execution lifecycle"""
 
@@ -161,10 +184,8 @@ class TestAsyncWorkflowLifecycle:
         await asyncio.sleep(0.2)
 
         # Verify message was added to queue
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-
-        assert len(message_list) > 0, "No message found in queue"
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         # Verify message structure
         msg = message_list[0]
@@ -204,15 +225,11 @@ class TestAsyncWorkflowLifecycle:
         )
 
         # Wait for message to be in queue
-        await asyncio.sleep(0.1)
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         # Simulate worker processing (import worker function)
-        from functions.worker import workflow_execution_worker
-
-        # Get message from queue
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        from functions.queue.worker import workflow_execution_worker
 
         # Process the message with worker
         msg = message_list[0]
@@ -266,10 +283,8 @@ class TestAsyncWorkflowLifecycle:
         )
 
         # Verify message contains context data
-        await asyncio.sleep(0.1)
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         message_data = json.loads(msg.content)
@@ -310,19 +325,16 @@ class TestAsyncWorkflowLifecycle:
             parameters={"should_fail": True}
         )
 
-        await asyncio.sleep(0.1)
-
         # Get message
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()
         mock_msg.get_body.return_value = msg.content.encode('utf-8')
 
         # Execute worker (should handle error gracefully)
-        from functions.worker import workflow_execution_worker
+        from functions.queue.worker import workflow_execution_worker
 
         # Worker should not raise exception
         await workflow_execution_worker(mock_msg)
@@ -356,18 +368,15 @@ class TestAsyncWorkflowLifecycle:
             parameters={"items": 5}
         )
 
-        await asyncio.sleep(0.1)
-
         # Process message
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()
         mock_msg.get_body.return_value = msg.content.encode('utf-8')
 
-        from functions.worker import workflow_execution_worker
+        from functions.queue.worker import workflow_execution_worker
         await workflow_execution_worker(mock_msg)
 
         # Clean up
@@ -407,18 +416,15 @@ class TestAsyncWorkflowLifecycle:
             }
         )
 
-        await asyncio.sleep(0.1)
-
         # Process message
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()
         mock_msg.get_body.return_value = msg.content.encode('utf-8')
 
-        from functions.worker import workflow_execution_worker
+        from functions.queue.worker import workflow_execution_worker
 
         # Should not raise type errors
         await workflow_execution_worker(mock_msg)
@@ -495,12 +501,9 @@ class TestAsyncWorkflowQueueManagement:
             form_id="form-123"
         )
 
-        await asyncio.sleep(0.1)
-
         # Get message
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         message_data = json.loads(msg.content)
@@ -554,13 +557,13 @@ class TestAsyncWorkflowQueueManagement:
             )
             exec_ids.append(execution_id)
 
-        await asyncio.sleep(0.2)
+        # Give async operations time to complete before waiting
+        await asyncio.sleep(0.1)
 
-        # Verify 3 messages in queue
-        messages = queue_client.receive_messages(messages_per_page=10)
-        message_list = list(messages)
-
-        assert len(message_list) >= 3
+        # Wait with retry for messages to appear in queue
+        # (Azurite in-memory mode can have delays)
+        message_list = await wait_for_queue_messages(queue_client, expected_count=3)
+        assert len(message_list) >= 3, f"Expected >= 3 messages, got {len(message_list)}"
 
         # Verify each execution ID is unique
         found_ids = set()
@@ -605,13 +608,11 @@ class TestAsyncWorkflowStatusTransitions:
         )
 
         assert execution_id is not None
-        await asyncio.sleep(0.1)
 
         # Process with worker
-        from functions.worker import workflow_execution_worker
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0, "Workflow should be queued"
+        from functions.queue.worker import workflow_execution_worker
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()
@@ -647,13 +648,10 @@ class TestAsyncWorkflowStatusTransitions:
             parameters={}
         )
 
-        await asyncio.sleep(0.1)
-
         # Process with worker
-        from functions.worker import workflow_execution_worker
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        from functions.queue.worker import workflow_execution_worker
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()
@@ -693,13 +691,10 @@ class TestAsyncWorkflowStatusTransitions:
             parameters={}
         )
 
-        await asyncio.sleep(0.1)
-
         # Process with worker
-        from functions.worker import workflow_execution_worker
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        from functions.queue.worker import workflow_execution_worker
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()
@@ -744,13 +739,10 @@ class TestAsyncWorkflowStatusTransitions:
             parameters={}
         )
 
-        await asyncio.sleep(0.1)
-
         # Process with worker
-        from functions.worker import workflow_execution_worker
-        messages = queue_client.receive_messages(messages_per_page=1)
-        message_list = list(messages)
-        assert len(message_list) > 0
+        from functions.queue.worker import workflow_execution_worker
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1, f"Expected >= 1 messages, got {len(message_list)}"
 
         msg = message_list[0]
         mock_msg = MagicMock()

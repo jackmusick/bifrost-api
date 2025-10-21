@@ -11,7 +11,6 @@ Tests cover:
 """
 
 import pytest
-import json
 import zipfile
 from io import BytesIO
 from unittest.mock import MagicMock, patch

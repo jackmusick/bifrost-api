@@ -39,6 +39,8 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SearchBox } from "@/components/search/SearchBox";
+import { useSearch } from "@/hooks/useSearch";
 
 import { useConfigs, useDeleteConfig } from "@/hooks/useConfig";
 import { ConfigDialog } from "@/components/config/ConfigDialog";
@@ -55,12 +57,20 @@ export function Config() {
     const [configToDelete, setConfigToDelete] = useState<ConfigType | null>(
         null
     );
+    const [searchTerm, setSearchTerm] = useState("");
     const { scope, isGlobalScope } = useOrgScope();
 
     // Fetch configs based on current scope
     const scopeParam = isGlobalScope ? "GLOBAL" : "org";
     const { data: configs, isFetching, refetch } = useConfigs(scopeParam);
     const deleteConfig = useDeleteConfig();
+
+    // Apply search filter
+    const filteredConfigs = useSearch(
+        configs || [],
+        searchTerm,
+        ["key", "value", "type", "description"]
+    );
 
     // React Query automatically refetches when scope changes (via orgId in query key)
 
@@ -184,6 +194,14 @@ export function Config() {
                 </Alert>
             )}
 
+            {/* Search Box */}
+            <SearchBox
+                value={searchTerm}
+                onChange={setSearchTerm}
+                placeholder="Search config by key, value, type, or description..."
+                className="max-w-md"
+            />
+
             <Card>
                 <CardHeader>
                     <div>
@@ -203,87 +221,91 @@ export function Config() {
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
-                    ) : configs && configs.length > 0 ? (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    {isGlobalScope && (
-                                        <TableHead>Scope</TableHead>
-                                    )}
-                                    <TableHead>Key</TableHead>
-                                    <TableHead>Value</TableHead>
-                                    <TableHead>Type</TableHead>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">
-                                        Actions
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {configs.map((config) => (
-                                    <TableRow
-                                        key={`${config.scope}-${config.key}`}
-                                    >
+                    ) : filteredConfigs && filteredConfigs.length > 0 ? (
+                        <div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
+                            <Table>
+                                <TableHeader className="sticky top-0 bg-background z-10">
+                                    <TableRow>
                                         {isGlobalScope && (
-                                            <TableCell>
-                                                <Badge
-                                                    variant="default"
-                                                    className="text-xs"
-                                                >
-                                                    <Globe className="mr-1 h-3 w-3" />
-                                                    Global
-                                                </Badge>
-                                            </TableCell>
+                                            <TableHead>Scope</TableHead>
                                         )}
-                                        <TableCell className="font-mono">
-                                            {config.key}
-                                        </TableCell>
-                                        <TableCell className="max-w-xs truncate">
-                                            {maskValue(
-                                                config.value,
-                                                config.type
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            {getTypeBadge(config.type)}
-                                        </TableCell>
-                                        <TableCell className="max-w-xs truncate text-muted-foreground">
-                                            {config.description || "-"}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() =>
-                                                        handleEdit(config)
-                                                    }
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() =>
-                                                        handleDelete(config)
-                                                    }
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
+                                        <TableHead>Key</TableHead>
+                                        <TableHead>Value</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Description</TableHead>
+                                        <TableHead className="text-right">
+                                            Actions
+                                        </TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredConfigs.map((config) => (
+                                        <TableRow
+                                            key={`${config.scope}-${config.key}`}
+                                        >
+                                            {isGlobalScope && (
+                                                <TableCell>
+                                                    <Badge
+                                                        variant="default"
+                                                        className="text-xs"
+                                                    >
+                                                        <Globe className="mr-1 h-3 w-3" />
+                                                        Global
+                                                    </Badge>
+                                                </TableCell>
+                                            )}
+                                            <TableCell className="font-mono">
+                                                {config.key}
+                                            </TableCell>
+                                            <TableCell className="max-w-xs truncate">
+                                                {maskValue(
+                                                    config.value,
+                                                    config.type
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {getTypeBadge(config.type)}
+                                            </TableCell>
+                                            <TableCell className="max-w-xs truncate text-muted-foreground">
+                                                {config.description || "-"}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() =>
+                                                            handleEdit(config)
+                                                        }
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() =>
+                                                            handleDelete(config)
+                                                        }
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
                             <Key className="h-12 w-12 text-muted-foreground" />
                             <h3 className="mt-4 text-lg font-semibold">
-                                No configuration found
+                                {searchTerm ? 'No configuration matches your search' : 'No configuration found'}
                             </h3>
                             <p className="mt-2 text-sm text-muted-foreground">
-                                Get started by creating your first config entry
+                                {searchTerm
+                                    ? 'Try adjusting your search term or clear the filter'
+                                    : 'Get started by creating your first config entry'}
                             </p>
                             <Button variant="outline" size="icon" onClick={handleAdd} className="mt-4" title="Add Config">
                                 <Plus className="h-4 w-4" />

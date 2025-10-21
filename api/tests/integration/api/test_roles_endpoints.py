@@ -12,9 +12,7 @@ Tests the role management endpoints:
 - GET /api/roles/{roleId}/forms - Get forms assigned to role
 """
 
-import json
 import logging
-import pytest
 import requests
 
 logger = logging.getLogger(__name__)
@@ -89,7 +87,7 @@ class TestRoleCRUD:
             assert "name" in data
             logger.info(f"Retrieved role: {test_role}")
         else:
-            logger.info(f"Role not found")
+            logger.info("Role not found")
 
     def test_get_role_not_found(self, api_base_url, admin_headers):
         """Should return 404 for nonexistent role"""

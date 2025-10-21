@@ -58,11 +58,9 @@ TEST_AZURITE_CONNECTION = (
 def setup_test_environment():
     """Set up test environment variables once per session"""
     os.environ["AzureWebJobsStorage"] = TEST_AZURITE_CONNECTION
-    os.environ["AZURE_KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
-    os.environ["KEY_VAULT_URL"] = "https://test-keyvault.vault.azure.net/"
-    os.environ["AZURE_TENANT_ID"] = "test-tenant-id"
-    os.environ["AZURE_CLIENT_ID"] = "test-client-id"
     os.environ["FUNCTIONS_WORKER_RUNTIME"] = "python"
+    # NOTE: KeyVault env vars intentionally NOT set for integration tests
+    # Unit tests mock KeyVault, E2E tests should configure KeyVault separately
     yield
 
 

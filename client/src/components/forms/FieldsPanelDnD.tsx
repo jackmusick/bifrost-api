@@ -223,8 +223,8 @@ interface WorkflowInputItemProps {
     name?: string
     type?: string
     required?: boolean
-    label?: string
-    helpText?: string
+    label?: string | null
+    helpText?: string | null
     defaultValue?: unknown
     dataProvider?: string | null
   }

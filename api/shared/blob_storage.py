@@ -6,16 +6,22 @@ Handles large execution data (logs, results, snapshots) that exceed Table Storag
 import json
 import logging
 import os
+import threading
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from azure.storage.blob import BlobServiceClient, BlobSasPermissions, ContainerClient, generate_blob_sas
+from azure.core.exceptions import ResourceExistsError
+from azure.storage.blob import BlobServiceClient, BlobSasPermissions, ContainerClient, ContentSettings, generate_blob_sas
 
 logger = logging.getLogger(__name__)
 
 # Container for execution-related data
 EXECUTION_CONTAINER = "execution-data"
+
+# Lock for thread-safe container creation
+_container_locks: dict[str, threading.Lock] = {}
+_container_locks_lock = threading.Lock()
 
 
 class BlobStorageService:
@@ -34,6 +40,10 @@ class BlobStorageService:
 
         Args:
             connection_string: Optional connection string override (uses AzureWebJobsStorage if not provided)
+
+        Note:
+            Container creation uses try/except pattern instead of exists() check
+            to avoid SDK logging benign "ContainerAlreadyExists" warnings.
         """
         if connection_string is None:
             connection_string = os.environ.get("AzureWebJobsStorage")
@@ -53,9 +63,24 @@ class BlobStorageService:
 
         logger.debug(f"BlobStorageService initialized for container: {EXECUTION_CONTAINER}")
 
+    @staticmethod
+    def _make_url_browser_accessible(url: str) -> str:
+        """
+        Convert internal Docker URLs to browser-accessible URLs
+
+        Args:
+            url: Blob URL (may contain internal Docker hostnames)
+
+        Returns:
+            Browser-accessible URL with localhost
+        """
+        # Replace azurite Docker hostname with localhost for browser access
+        return url.replace('azurite:10000', 'localhost:10000')
+
     def _ensure_container_exists(self, container_name: str) -> ContainerClient:
         """
-        Ensure blob container exists, create if it doesn't
+        Ensure blob container exists, create if it doesn't.
+        Thread-safe to handle concurrent initialization.
 
         Args:
             container_name: Name of the container
@@ -63,18 +88,32 @@ class BlobStorageService:
         Returns:
             ContainerClient instance
         """
-        try:
-            container_client = self.blob_service_client.get_container_client(container_name)
+        container_client = self.blob_service_client.get_container_client(container_name)
 
-            # Check if exists
+        # Get or create a lock for this specific container
+        with _container_locks_lock:
+            if container_name not in _container_locks:
+                _container_locks[container_name] = threading.Lock()
+            container_lock = _container_locks[container_name]
+
+        # Use the container-specific lock to prevent race conditions
+        with container_lock:
+            # Check if container exists first to avoid 409 warnings in logs
             if not container_client.exists():
-                container_client = self.blob_service_client.create_container(container_name)
-                logger.info(f"Created blob container: {container_name}")
+                try:
+                    container_client.create_container()
+                    logger.info(f"Created blob container: {container_name}")
+                except ResourceExistsError:
+                    # Race condition: container was created between exists() and create_container()
+                    # This should be rare now with locks, but keeping for safety
+                    logger.debug(f"Blob container already exists (race condition): {container_name}")
+                except Exception as e:
+                    logger.error(f"Failed to create container: {str(e)}")
+                    raise
+            else:
+                logger.debug(f"Blob container already exists: {container_name}")
 
-            return container_client
-        except Exception as e:
-            logger.error(f"Failed to ensure container exists: {str(e)}")
-            raise
+        return container_client
 
     def upload_logs(self, execution_id: str, logs: list[dict[str, Any]]) -> str:
         """
@@ -390,8 +429,8 @@ class BlobStorageService:
         )
 
         return {
-            "upload_url": f"{blob_client.url}?{sas_token}",
-            "blob_uri": blob_client.url,
+            "upload_url": f"{self._make_url_browser_accessible(blob_client.url)}?{sas_token}",
+            "blob_uri": self._make_url_browser_accessible(blob_client.url),
             "blob_name": blob_name,
             "expires_at": (datetime.utcnow() + timedelta(minutes=15)).isoformat(),
             "file_name": file_name,
@@ -476,14 +515,113 @@ class BlobStorageService:
             )
             return False
 
+    async def upload_blob(
+        self,
+        container_name: str,
+        blob_name: str,
+        data: bytes,
+        content_type: str = "application/octet-stream"
+    ) -> str:
+        """
+        Generic blob upload method
 
-# Singleton instance
+        Args:
+            container_name: Name of the container
+            blob_name: Name of the blob (path within container)
+            data: Binary data to upload
+            content_type: MIME type of the content
+
+        Returns:
+            Full URL of the uploaded blob
+        """
+        try:
+            # Ensure container exists
+            container_client = self._ensure_container_exists(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+
+            # Upload with content type
+            blob_client.upload_blob(
+                data,
+                overwrite=True,
+                content_settings=ContentSettings(content_type=content_type)
+            )
+
+            logger.info(
+                f"Uploaded blob to storage: {container_name}/{blob_name}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name,
+                    "content_type": content_type,
+                    "size": len(data)
+                }
+            )
+
+            return self._make_url_browser_accessible(blob_client.url)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to upload blob: {str(e)}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name
+                },
+                exc_info=True
+            )
+            raise
+
+    async def download_blob(self, container_name: str, blob_name: str) -> bytes:
+        """
+        Download a blob from storage
+
+        Args:
+            container_name: Name of the container
+            blob_name: Name of the blob
+
+        Returns:
+            Blob data as bytes
+        """
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+
+            # Download blob
+            download_stream = blob_client.download_blob()
+            blob_data = download_stream.readall()
+
+            logger.info(
+                f"Downloaded blob from storage: {container_name}/{blob_name}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name,
+                    "size": len(blob_data)
+                }
+            )
+
+            return blob_data
+
+        except Exception as e:
+            logger.error(
+                f"Failed to download blob: {str(e)}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name
+                },
+                exc_info=True
+            )
+            raise
+
+
+# Singleton instance with thread-safe initialization
 _blob_storage_service = None
+_blob_storage_service_lock = threading.Lock()
 
 
 def get_blob_service() -> BlobStorageService:
-    """Get singleton BlobStorageService instance."""
+    """Get thread-safe singleton BlobStorageService instance."""
     global _blob_storage_service
     if _blob_storage_service is None:
-        _blob_storage_service = BlobStorageService()
+        with _blob_storage_service_lock:
+            # Double-check pattern to prevent race condition
+            if _blob_storage_service is None:
+                _blob_storage_service = BlobStorageService()
     return _blob_storage_service

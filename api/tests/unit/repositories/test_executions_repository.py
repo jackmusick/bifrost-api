@@ -33,8 +33,8 @@ class TestExecutionRepositoryCreate:
         assert result.workflowName == "CreateUserWorkflow"
         assert result.status == ExecutionStatus.RUNNING
         assert result.startedAt is not None
-        # Should create 4 indexes: primary + user + workflow + form
-        assert mock_table_service.insert_entity.call_count == 4
+        # Should create 5 indexes: primary + user + workflow + form + status
+        assert mock_table_service.insert_entity.call_count == 5
 
     def test_create_execution_without_form(self, mock_table_service):
         """Test execution creation without form_id"""
@@ -53,8 +53,8 @@ class TestExecutionRepositoryCreate:
         )
 
         assert result.formId is None
-        # Should create 3 indexes: primary + user + workflow (no form)
-        assert mock_table_service.insert_entity.call_count == 3
+        # Should create 4 indexes: primary + user + workflow + status (no form)
+        assert mock_table_service.insert_entity.call_count == 4
 
     def test_create_execution_global_scope(self, mock_table_service):
         """Test execution in GLOBAL scope"""

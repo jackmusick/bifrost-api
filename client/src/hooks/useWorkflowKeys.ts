@@ -6,14 +6,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { workflowKeysService, type WorkflowKeyCreateRequest } from '@/services/workflowKeys'
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useWorkflowKeys(params?: {
   workflowId?: string
   includeRevoked?: boolean
 }) {
+  const orgId = useScopeStore((state) => state.scope.orgId)
+
   return useQuery({
-    queryKey: ['workflow-keys', params],
+    queryKey: ['workflow-keys', orgId, params],
     queryFn: () => workflowKeysService.listWorkflowKeys(params),
+    // Don't use cached data from previous scope
+    staleTime: 0,
+    // Always refetch when component mounts (navigating to page)
+    refetchOnMount: 'always',
     meta: {
       onError: (error: Error) => {
         toast.error('Failed to load workflow keys', {

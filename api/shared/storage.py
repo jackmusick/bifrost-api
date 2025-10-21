@@ -326,6 +326,57 @@ class TableStorageService:
             logger.error(f"Failed to query entities: {str(e)}")
             raise
 
+    def query_entities_paged(
+        self,
+        filter: str | None = None,
+        select: list[str] | None = None,
+        results_per_page: int = 50,
+        continuation_token: dict | None = None
+    ) -> tuple[list[dict], dict | None]:
+        """
+        Query entities with pagination support.
+
+        Args:
+            filter: OData filter string (e.g., "PartitionKey eq 'ORG'")
+            select: List of properties to select
+            results_per_page: Number of results per page (max 1000)
+            continuation_token: Token from previous page (None for first page)
+
+        Returns:
+            Tuple of (list of entities, next continuation token or None)
+        """
+        try:
+            # Cap at Azure's limit
+            results_per_page = min(results_per_page, 1000)
+
+            # Query with pagination
+            query_filter = filter if filter else ""
+            pages = self.table_client.query_entities(
+                query_filter=query_filter,
+                select=select,
+                results_per_page=results_per_page
+            ).by_page(continuation_token=continuation_token)
+
+            # Get first page
+            page = next(pages, None)
+            if page is None:
+                return [], None
+
+            # Collect entities from this page
+            entities = [
+                self._deserialize_datetime_fields(dict(entity))
+                for entity in page
+            ]
+
+            # Get continuation token for next page from the pages iterator
+            next_token = pages.continuation_token if hasattr(pages, 'continuation_token') else None
+
+            return entities, next_token
+
+        except Exception as e:
+            logger.error(f"Failed to query entities (paged): {str(e)}")
+            raise
+
     def delete_entity(self, partition_key: str, row_key: str) -> bool:
         """
         Delete an entity

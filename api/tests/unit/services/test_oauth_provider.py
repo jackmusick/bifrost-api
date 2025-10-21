@@ -6,7 +6,7 @@ Mocks HTTP requests to OAuth providers.
 
 import pytest
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from services.oauth_provider import OAuthProviderClient

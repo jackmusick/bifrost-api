@@ -8,7 +8,6 @@ Provides mocks for:
 """
 
 import pytest
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 

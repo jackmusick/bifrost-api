@@ -5,9 +5,7 @@ Tests user permissions and roles business logic
 
 import json
 import pytest
-from datetime import datetime
-from unittest.mock import Mock, AsyncMock, patch
-import azure.functions as func
+from unittest.mock import Mock, patch
 
 from shared.handlers.permissions_handlers import (
     list_users_handler,

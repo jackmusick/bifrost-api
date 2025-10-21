@@ -17,20 +17,25 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="module")
 def api_base_url():
-    """Base URL for API (func start must be running on port 7071)"""
-    return "http://localhost:7071"
+    """Base URL for API
+
+    Default: http://localhost:7777 (docker-compose.testing.yml)
+    Can be overridden with API_BASE_URL environment variable.
+    """
+    import os
+    return os.getenv("API_BASE_URL", "http://localhost:7777")
 
 
 @pytest.fixture(scope="module")
 def azurite_connection_string():
-    """Connection string for Azurite TEST environment (from docker-compose.testing.yml)
+    """Connection string for Azurite TEST environment
 
-    Uses custom ports:
-    - Blob: 10100
-    - Queue: 10101
-    - Table: 10102
+    Default: Uses docker-compose.testing.yml ports (10100-10102)
+    Can be overridden with AZURITE_CONNECTION_STRING environment variable.
     """
-    return (
+    import os
+    return os.getenv(
+        "AZURITE_CONNECTION_STRING",
         "DefaultEndpointsProtocol=http;"
         "AccountName=devstoreaccount1;"
         "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"

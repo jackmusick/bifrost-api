@@ -1,8 +1,7 @@
 """Shared fixtures for repository unit tests"""
 
 import pytest
-from unittest.mock import MagicMock, patch, call
-from azure.core.exceptions import ResourceNotFoundError
+from unittest.mock import MagicMock, patch
 
 
 @pytest.fixture

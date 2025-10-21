@@ -6,7 +6,7 @@ Extracted from functions/file_uploads.py for unit testability
 
 import logging
 
-from shared.blob_storage import BlobStorageService
+from shared.blob_storage import get_blob_service
 from shared.context import OrganizationContext
 from shared.exceptions import FileUploadError
 from shared.models import FileUploadRequest, FileUploadResponse
@@ -58,7 +58,7 @@ def generate_file_upload_url(
     _validate_file_request(request, max_size_bytes, allowed_types)
 
     # Initialize blob storage service
-    blob_service = BlobStorageService()
+    blob_service = get_blob_service()
 
     # Generate SAS URL for upload
     # This creates a secure, time-limited URL for direct upload

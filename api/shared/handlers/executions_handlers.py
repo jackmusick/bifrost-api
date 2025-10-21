@@ -116,14 +116,19 @@ def _format_execution_response(model_dict: dict) -> dict:
     Returns:
         Formatted execution dict for API response
     """
+    # Ensure critical fields have safe defaults
+    status = model_dict.get('status')
+    if status is None:
+        status = 'Unknown'
+
     return {
-        'executionId': model_dict.get('executionId'),
-        'workflowName': model_dict.get('workflowName'),
+        'executionId': model_dict.get('executionId') or '',
+        'workflowName': model_dict.get('workflowName') or 'Unknown',
         'orgId': model_dict.get('orgId'),
-        'status': map_status_to_frontend(model_dict.get('status') or ''),
+        'status': map_status_to_frontend(status),
         'errorMessage': model_dict.get('errorMessage'),
-        'executedBy': model_dict.get('executedBy'),
-        'executedByName': model_dict.get('executedByName', model_dict.get('executedBy')),
+        'executedBy': model_dict.get('executedBy') or '',
+        'executedByName': model_dict.get('executedByName') or model_dict.get('executedBy') or 'Unknown',
         'startedAt': _to_iso_string(model_dict.get('startedAt')),
         'completedAt': _to_iso_string(model_dict.get('completedAt')),
         'formId': model_dict.get('formId'),
@@ -188,10 +193,11 @@ async def list_executions_handler(
     context: RequestContext,
     workflow_name: str | None = None,
     status: str | None = None,
-    limit: int = 50
-) -> list[dict]:
+    limit: int = 50,
+    continuation_token: str | None = None
+) -> tuple[list[dict], str | None]:
     """
-    List workflow executions with filtering and authorization.
+    List workflow executions with filtering, authorization, and pagination.
 
     Rules:
     - Platform admins: see all executions in their scope
@@ -202,29 +208,63 @@ async def list_executions_handler(
         workflow_name: Optional filter by workflow name
         status: Optional filter by status
         limit: Maximum number of results (default 50, max 1000)
+        continuation_token: Opaque continuation token from previous page
 
     Returns:
-        List of formatted execution dicts (filtered and authorized)
+        Tuple of (list of formatted execution dicts, next continuation token)
 
     Raises:
         Exception: Any errors during execution retrieval
     """
+    import base64
+    import json
+
     # Cap limit at 1000 to prevent abuse
     limit = min(limit, 1000)
 
-    # Get executions user is authorized to see
-    executions_list = get_user_executions(context, limit=limit)
+    # Decode continuation token if provided
+    decoded_token = None
+    if continuation_token:
+        try:
+            decoded_token = json.loads(base64.b64decode(continuation_token).decode('utf-8'))
+        except Exception:
+            logger.warning(f"Invalid continuation token provided, ignoring")
+            decoded_token = None
 
-    # Apply filters
+    # Get repository
+    execution_repo = ExecutionRepository(context)
+
+    # Platform admins see all in scope, regular users see only theirs
+    if context.is_platform_admin:
+        executions, next_token = execution_repo.list_executions_paged(
+            org_id=context.scope,
+            results_per_page=limit,
+            continuation_token=decoded_token
+        )
+    else:
+        executions, next_token = execution_repo.list_executions_by_user_paged(
+            user_id=context.user_id,
+            results_per_page=limit,
+            continuation_token=decoded_token
+        )
+
+    # Convert to dicts
+    executions_list = [e.model_dump(mode="json") for e in executions]
+
+    # Apply filters (TODO: Push filters down to query level for better performance)
     executions_list = filter_executions_by_workflow(executions_list, workflow_name)
     executions_list = filter_executions_by_status(executions_list, status)
-    executions_list = apply_limit(executions_list, limit)
 
     # Format for response
     formatted = [_format_execution_response(e) for e in executions_list]
 
-    logger.info(f"Returning {len(formatted)} executions for user {context.user_id}")
-    return formatted
+    # Encode next token for client
+    encoded_token = None
+    if next_token:
+        encoded_token = base64.b64encode(json.dumps(next_token).encode('utf-8')).decode('utf-8')
+
+    logger.info(f"Returning {len(formatted)} executions for user {context.user_id}, has_more={next_token is not None}")
+    return formatted, encoded_token
 
 
 async def get_execution_handler(

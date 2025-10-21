@@ -8,12 +8,19 @@ import type { components } from '@/lib/v1'
 type CreateOrganizationRequest = components['schemas']['CreateOrganizationRequest']
 type UpdateOrganizationRequest = components['schemas']['UpdateOrganizationRequest']
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useOrganizations(options?: { enabled?: boolean }) {
+  const orgId = useScopeStore((state) => state.scope.orgId)
+
   return useQuery({
-    queryKey: ['organizations'],
+    queryKey: ['organizations', orgId],
     queryFn: () => organizationsService.getOrganizations(),
     enabled: options?.enabled ?? true,
+    // Don't use cached data from previous scope
+    staleTime: 0,
+    // Always refetch when component mounts (navigating to page)
+    refetchOnMount: 'always',
     meta: {
       onError: (error: Error) => {
         toast.error('Failed to load organizations', {

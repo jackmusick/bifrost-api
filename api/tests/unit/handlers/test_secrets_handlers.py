@@ -5,7 +5,7 @@ mocking all external dependencies (KeyVault, Table Storage, RequestContext).
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from shared.handlers.secrets_handlers import (
     handle_list_secrets,

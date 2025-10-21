@@ -9,15 +9,17 @@ import { useScopeStore } from '@/stores/scopeStore'
 
 export function useWorkflowsMetadata() {
   const orgId = useScopeStore((state) => state.scope.orgId)
-  const hasHydrated = useScopeStore((state) => state._hasHydrated)
 
   return useQuery({
     queryKey: ['workflows', 'metadata', orgId],
-    queryFn: () => workflowsService.getMetadata(),
-    // Wait for Zustand to rehydrate from localStorage before making API calls
-    enabled: hasHydrated,
+    queryFn: () => {
+      console.log('[useWorkflowsMetadata] Fetching workflows for orgId:', orgId)
+      return workflowsService.getMetadata()
+    },
     // Don't use cached data from previous scope
     staleTime: 0,
+    // Remove from cache immediately when component unmounts
+    gcTime: 0,
     // Always refetch when component mounts (navigating to page)
     refetchOnMount: 'always',
   })

@@ -5,9 +5,6 @@ Tests role management with mocked TableStorageService.
 """
 
 import pytest
-from datetime import datetime
-from unittest.mock import MagicMock
-from azure.core.exceptions import ResourceNotFoundError
 
 from shared.repositories.roles import RoleRepository
 from shared.models import CreateRoleRequest, UpdateRoleRequest

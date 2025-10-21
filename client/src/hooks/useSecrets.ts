@@ -9,11 +9,18 @@ import type { components } from '@/lib/v1'
 type SecretCreateRequest = components['schemas']['SecretCreateRequest']
 type SecretUpdateRequest = components['schemas']['SecretUpdateRequest']
 import { toast } from 'sonner'
+import { useScopeStore } from '@/stores/scopeStore'
 
 export function useSecrets() {
+  const orgId = useScopeStore((state) => state.scope.orgId)
+
   return useQuery({
-    queryKey: ['secrets'],
+    queryKey: ['secrets', orgId],
     queryFn: () => secretsService.listSecrets(),
+    // Don't use cached data from previous scope
+    staleTime: 0,
+    // Always refetch when component mounts (navigating to page)
+    refetchOnMount: 'always',
     meta: {
       onError: (error: Error) => {
         toast.error('Failed to load secrets', {

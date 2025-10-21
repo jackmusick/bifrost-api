@@ -4,7 +4,6 @@ Tests CRUD operations for organizations management.
 Includes authorization checks and edge cases.
 """
 
-import json
 import pytest
 import requests
 

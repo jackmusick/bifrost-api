@@ -5,7 +5,7 @@ Tests organization CRUD operations
 
 import json
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, patch
 import azure.functions as func
 from pydantic import ValidationError
 

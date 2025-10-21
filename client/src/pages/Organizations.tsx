@@ -38,6 +38,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SearchBox } from '@/components/search/SearchBox'
+import { useSearch } from '@/hooks/useSearch'
 import {
   useOrganizations,
   useCreateOrganization,
@@ -61,6 +63,7 @@ export function Organizations() {
     name: '',
     domain: '',
   })
+  const [searchTerm, setSearchTerm] = useState('')
 
   const { data, isLoading, error, refetch } = useOrganizations()
   const organizations: Organization[] = Array.isArray(data) ? data : []
@@ -69,6 +72,13 @@ export function Organizations() {
   const createMutation = useCreateOrganization()
   const updateMutation = useUpdateOrganization()
   const deleteMutation = useDeleteOrganization()
+
+  // Apply search filter
+  const filteredOrgs = useSearch(
+    organizations,
+    searchTerm,
+    ['name', 'domain']
+  )
 
   const handleCreate = () => {
     setFormData({ name: '', domain: '' })
@@ -134,23 +144,29 @@ export function Organizations() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
-      <div className="flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight">Organizations</h1>
-            <p className="mt-2 text-muted-foreground">
-              Manage customer organizations and their configurations
-            </p>
-          </div>
-          <Button variant="outline" size="icon" onClick={handleCreate} title="Create Organization">
-            <Plus className="h-4 w-4" />
-          </Button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-4xl font-extrabold tracking-tight">Organizations</h1>
+          <p className="mt-2 text-muted-foreground">
+            Manage customer organizations and their configurations
+          </p>
         </div>
+        <Button variant="outline" size="icon" onClick={handleCreate} title="Create Organization">
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <CardHeader className="flex-shrink-0">
+      {/* Search Box */}
+      <SearchBox
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search organizations by name or type..."
+        className="max-w-md"
+      />
+
+      <Card>
+        <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>All Organizations</CardTitle>
@@ -163,77 +179,79 @@ export function Organizations() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="flex-1 overflow-hidden flex flex-col">
+        <CardContent>
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : organizations && organizations.length > 0 ? (
-            <div className="border rounded-lg overflow-hidden flex-1">
-              <div className="overflow-auto max-h-full">
-                <Table>
-                  <TableHeader className="sticky top-0 bg-background z-10">
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Domain</TableHead>
-                      <TableHead>Organization ID</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+          ) : filteredOrgs && filteredOrgs.length > 0 ? (
+            <div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background z-10">
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Domain</TableHead>
+                    <TableHead>Organization ID</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredOrgs.map((org) => (
+                    <TableRow key={org.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{org.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {org.domain || '-'}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {org.id}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={org.isActive ? 'default' : 'secondary'}>
+                          {org.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {new Date(org.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(org)}
+                            title="Edit organization"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(org)}
+                            title="Delete organization"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {organizations.map((org) => (
-                      <TableRow key={org.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">{org.name}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {org.domain || '-'}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {org.id}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={org.isActive ? 'default' : 'secondary'}>
-                            {org.isActive ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {new Date(org.createdAt).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(org)}
-                              title="Edit organization"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(org)}
-                              title="Delete organization"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Building2 className="h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No organizations found</h3>
+              <h3 className="mt-4 text-lg font-semibold">
+                {searchTerm ? 'No organizations match your search' : 'No organizations found'}
+              </h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Create your first organization to get started
+                {searchTerm
+                  ? 'Try adjusting your search term or clear the filter'
+                  : 'Create your first organization to get started'}
               </p>
               <Button variant="outline" size="icon" onClick={handleCreate} title="Create Organization" className="mt-4">
                 <Plus className="h-4 w-4" />

@@ -8,9 +8,7 @@ Tests edge cases in role management:
 - Permission inheritance
 """
 
-import json
 import logging
-import pytest
 import requests
 import uuid
 

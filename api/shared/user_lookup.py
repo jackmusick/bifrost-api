@@ -6,11 +6,56 @@ It's separated from request_context.py (which handles HTTP concerns).
 """
 
 import logging
+from datetime import datetime, timedelta
 
-from shared.models import UserType
+from shared.models import User, UserType
 from shared.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache for user lookups to reduce database calls
+# Cache key: email, Value: (User, timestamp)
+_user_cache: dict[str, tuple[User, datetime]] = {}
+# Cache key: email, Value: (org_id | None, timestamp)
+_org_cache: dict[str, tuple[str | None, datetime]] = {}
+_cache_ttl = timedelta(seconds=30)  # Cache user lookups for 30 seconds
+
+
+def _get_cached_user(email: str) -> User | None:
+    """
+    Get user from cache if present and not expired.
+
+    Args:
+        email: User email
+
+    Returns:
+        Cached User model or None if not cached or expired
+    """
+    if email in _user_cache:
+        user, cached_at = _user_cache[email]
+        age = datetime.utcnow() - cached_at
+
+        if age < _cache_ttl:
+            logger.debug(f"User cache hit for {email} (age: {age.total_seconds():.1f}s)")
+            return user
+        else:
+            # Expired - remove from cache
+            del _user_cache[email]
+            logger.debug(f"User cache expired for {email}")
+
+    return None
+
+
+def _cache_user(email: str, user: User) -> None:
+    """
+    Cache user model with current timestamp.
+
+    Args:
+        email: User email
+        user: User model to cache
+    """
+    _user_cache[email] = (user, datetime.utcnow())
+    logger.debug(f"Cached user {email}")
 
 
 def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
@@ -21,6 +66,8 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
     Used by request_context during authentication to handle development scenarios
     where GetRoles endpoint isn't called (e.g., local dev with direct headers).
 
+    Uses in-memory cache to reduce database calls for repeated requests from the same user.
+
     Args:
         email: User's email address
         is_platform_admin: Whether user has PlatformAdmin role (from SWA/GetRoles)
@@ -29,13 +76,24 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
         The user's role (PlatformAdmin vs OrgUser) comes from SWA/GetRoles,
         so we trust that as the source of truth.
     """
+    # Check cache first
+    cached_user = _get_cached_user(email)
+    if cached_user:
+        # User exists in cache - no need to hit database
+        # We don't update last_login on every request anymore (too chatty)
+        return
+
     user_repo = UserRepository()
 
-    # Check if user exists
+    # Check if user exists in database
     user = user_repo.get_user(email)
 
     if user:
-        # User exists - update last login
+        # User exists - cache it
+        _cache_user(email, user)
+
+        # Update last login only once per cache TTL (30 seconds)
+        # This reduces database calls from every request to once per 30s
         try:
             user_repo.update_last_login(email)
         except Exception as e:
@@ -46,12 +104,15 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
     logger.info(f"Auto-creating user {email} (PlatformAdmin={is_platform_admin})")
 
     user_type = UserType.PLATFORM if is_platform_admin else UserType.ORG
-    user_repo.create_user(
+    user = user_repo.create_user(
         email=email,
         display_name=email.split("@")[0],
         user_type=user_type,
         is_platform_admin=is_platform_admin
     )
+
+    # Cache the newly created user
+    _cache_user(email, user)
 
     logger.info(f"Created user {email} in database")
 
@@ -72,6 +133,7 @@ def get_user_organization(email: str) -> str | None:
     Look up user's organization ID from database.
 
     Pure business logic - takes email, queries repository, returns org_id or None.
+    Uses in-memory cache to reduce database calls.
 
     Args:
         email: User's email address
@@ -79,9 +141,25 @@ def get_user_organization(email: str) -> str | None:
     Returns:
         Organization ID if user has org assignment, None otherwise
     """
+    # Check cache first
+    if email in _org_cache:
+        org_id, cached_at = _org_cache[email]
+        age = datetime.utcnow() - cached_at
+
+        if age < _cache_ttl:
+            logger.debug(f"Org cache hit for {email}: {org_id} (age: {age.total_seconds():.1f}s)")
+            return org_id
+        else:
+            # Expired - remove from cache
+            del _org_cache[email]
+            logger.debug(f"Org cache expired for {email}")
+
     try:
         user_repo = UserRepository()
         org_id = user_repo.get_user_org_id(email)
+
+        # Cache the result (even if None)
+        _org_cache[email] = (org_id, datetime.utcnow())
 
         if org_id:
             logger.debug(f"User {email} belongs to org: {org_id}")

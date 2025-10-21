@@ -5,15 +5,11 @@ Tests workflow execution logic - focused on unit-testable portions
 
 import json
 import pytest
-import uuid
-from datetime import datetime
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, patch
 
 import azure.functions as func
 
 from shared.handlers.workflows_handlers import execute_workflow_handler
-from shared.models import ExecutionStatus
-from shared.error_handling import WorkflowError
 
 
 class TestExecuteWorkflowHandlerBasic:

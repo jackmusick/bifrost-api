@@ -119,6 +119,11 @@ __all__ = [
     'CronSchedule',
     'CronScheduleCreateRequest',
     'CronScheduleUpdateRequest',
+    'ScheduleInfo',
+    'SchedulesListResponse',
+    'CronValidationRequest',
+    'CronValidationResponse',
+    'ProcessSchedulesResponse',
 
     # Platform Branding (User Story 7)
     'BrandingSettings',
@@ -751,6 +756,13 @@ class HealthCheck(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional service-specific metadata")
 
 
+class BasicHealthResponse(BaseModel):
+    """Basic health check response (liveness check)"""
+    status: Literal["healthy"] = Field(default="healthy", description="Health status (always healthy if API responds)")
+    service: str = Field(default="Bifrost Integrations API", description="Service name")
+    timestamp: str = Field(..., description="Health check timestamp (ISO 8601)")
+
+
 class GeneralHealthResponse(BaseModel):
     """General health check response with multiple service checks"""
     status: Literal["healthy", "degraded", "unhealthy"] = Field(..., description="Overall system health status")
@@ -986,15 +998,61 @@ class CronScheduleUpdateRequest(BaseModel):
     enabled: bool | None = None
 
 
+class ScheduleInfo(BaseModel):
+    """Information about a scheduled workflow for display"""
+    workflowName: str = Field(..., description="Internal workflow name/identifier")
+    workflowDescription: str = Field(..., description="Display name of the workflow")
+    cronExpression: str = Field(..., description="CRON expression")
+    humanReadable: str = Field(..., description="Human-readable schedule (e.g., 'Every day at 2:00 AM')")
+    nextRunAt: datetime | None = Field(None, description="Next scheduled execution time")
+    lastRunAt: datetime | None = Field(None, description="Last execution time")
+    lastExecutionId: str | None = Field(None, description="ID of last execution")
+    executionCount: int = Field(0, description="Total number of times this schedule has been triggered")
+    enabled: bool = Field(True, description="Whether this schedule is currently active")
+    validationStatus: Literal["valid", "warning", "error"] | None = Field(None, description="Validation status of the CRON expression")
+    validationMessage: str | None = Field(None, description="Validation message for warning/error statuses")
+    isOverdue: bool = Field(False, description="Whether the schedule is overdue by more than 6 minutes")
+
+
+class SchedulesListResponse(BaseModel):
+    """Response model for listing scheduled workflows"""
+    schedules: list[ScheduleInfo] = Field(..., description="List of scheduled workflows")
+    totalCount: int = Field(..., description="Total number of scheduled workflows")
+
+
+class CronValidationRequest(BaseModel):
+    """Request model for CRON validation"""
+    expression: str = Field(..., description="CRON expression to validate")
+
+
+class CronValidationResponse(BaseModel):
+    """Response model for CRON validation"""
+    valid: bool = Field(..., description="Whether the CRON expression is valid")
+    humanReadable: str = Field(..., description="Human-readable description")
+    nextRuns: list[str] | None = Field(None, description="Next 5 execution times (ISO format)")
+    intervalSeconds: int | None = Field(None, description="Seconds between executions")
+    warning: str | None = Field(None, description="Warning message for too-frequent schedules")
+    error: str | None = Field(None, description="Error message for invalid expressions")
+
+
+class ProcessSchedulesResponse(BaseModel):
+    """Response model for processing due schedules"""
+    total: int = Field(..., description="Total number of scheduled workflows")
+    due: int = Field(..., description="Number of schedules that were due")
+    executed: int = Field(..., description="Number of schedules successfully executed")
+    failed: int = Field(..., description="Number of schedules that failed to execute")
+    errors: list[dict[str, str]] = Field(default_factory=list, description="List of error details")
+
+
 # ==================== PLATFORM BRANDING (T004, T071 - User Story 7) ====================
 
 class BrandingSettings(BaseModel):
     """Organization branding configuration"""
-    orgId: str = Field(..., description="Organization ID or 'GLOBAL' for platform default")
+    orgId: str | None = Field(None, description="Organization ID or 'GLOBAL' for platform default")
     squareLogoUrl: str | None = Field(None, description="Square logo URL (for icons, 1:1 ratio)")
     rectangleLogoUrl: str | None = Field(None, description="Rectangle logo URL (for headers, 16:9 ratio)")
     primaryColor: str | None = Field(None, description="Primary brand color (hex format, e.g., #FF5733)")
-    updatedBy: str = Field(..., description="User email who last updated branding")
+    updatedBy: str | None = Field(None, description="User email who last updated branding")
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
     @field_validator('primaryColor')
@@ -1013,6 +1071,7 @@ class BrandingSettings(BaseModel):
 
 class BrandingUpdateRequest(BaseModel):
     """Request model for updating branding settings"""
+    orgId: str | None = Field(None, description="Organization ID (defaults to current user's org)")
     squareLogoUrl: str | None = None
     rectangleLogoUrl: str | None = None
     primaryColor: str | None = None

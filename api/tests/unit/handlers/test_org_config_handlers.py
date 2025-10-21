@@ -5,11 +5,9 @@ Tests config and integration management business logic
 
 import json
 import pytest
-from datetime import datetime
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import azure.functions as func
-from pydantic import ValidationError
 
 from shared.handlers.org_config_handlers import (
     delete_config_handler,
@@ -20,7 +18,7 @@ from shared.handlers.org_config_handlers import (
     set_config_handler,
     set_integration_handler,
 )
-from shared.models import Config, ConfigType, IntegrationType
+from shared.models import IntegrationType
 
 
 class TestMaskSensitiveValue:

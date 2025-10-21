@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { initializeBranding } from '@/lib/branding'
 
 export interface OrgScope {
   type: 'global' | 'organization'
@@ -10,6 +11,10 @@ interface OrgScopeContextType {
   scope: OrgScope
   setScope: (scope: OrgScope) => void
   isGlobalScope: boolean
+  brandingLoaded: boolean
+  logoLoaded: boolean
+  squareLogoUrl: string | null
+  rectangleLogoUrl: string | null
 }
 
 const OrgScopeContext = createContext<OrgScopeContextType | undefined>(undefined)
@@ -30,6 +35,11 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
     return { type: 'global', orgId: null, orgName: null }
   })
 
+  const [brandingLoaded, setBrandingLoaded] = useState(false)
+  const [logoLoaded, setLogoLoaded] = useState(false)
+  const [squareLogoUrl, setSquareLogoUrl] = useState<string | null>(null)
+  const [rectangleLogoUrl, setRectangleLogoUrl] = useState<string | null>(null)
+
   // Persist to localStorage and sessionStorage when scope changes
   useEffect(() => {
     localStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify(scope))
@@ -43,10 +53,87 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
     }
   }, [scope])
 
+  // Initialize branding when scope changes or on mount
+  useEffect(() => {
+    setBrandingLoaded(false)
+    setLogoLoaded(false)
+    setSquareLogoUrl(null)
+    setRectangleLogoUrl(null)
+
+    async function loadBrandingAndLogo() {
+      try {
+        // Fetch branding data first (don't apply yet)
+        const response = await fetch(scope.orgId ? `/api/branding?orgId=${scope.orgId}` : '/api/branding')
+
+        if (!response.ok) {
+          // Fallback to default branding
+          await initializeBranding(scope.orgId || undefined)
+          setBrandingLoaded(true)
+          setLogoLoaded(true)
+          return
+        }
+
+        const branding = await response.json()
+        const rectUrl = branding.rectangleLogoUrl
+        const sqUrl = branding.squareLogoUrl
+
+        // Preload both logos if they exist
+        const preloadPromises: Promise<void>[] = []
+
+        if (rectUrl) {
+          preloadPromises.push(
+            new Promise<void>((resolve) => {
+              const img = new Image()
+              img.onload = () => resolve()
+              img.onerror = () => resolve() // Continue even on error
+              img.src = rectUrl
+              // Timeout after 5 seconds
+              setTimeout(() => resolve(), 5000)
+            })
+          )
+        }
+
+        if (sqUrl) {
+          preloadPromises.push(
+            new Promise<void>((resolve) => {
+              const img = new Image()
+              img.onload = () => resolve()
+              img.onerror = () => resolve()
+              img.src = sqUrl
+              setTimeout(() => resolve(), 5000)
+            })
+          )
+        }
+
+        // Wait for all logos to preload
+        await Promise.all(preloadPromises)
+
+        // Store logo URLs in context
+        setSquareLogoUrl(sqUrl || null)
+        setRectangleLogoUrl(rectUrl || null)
+
+        // Now apply branding (colors to CSS) - logos are already preloaded
+        await initializeBranding(scope.orgId || undefined)
+
+        // Mark everything as loaded - UI can now render
+        setBrandingLoaded(true)
+        setLogoLoaded(true)
+      } catch (err) {
+        console.error('Failed to load branding:', err)
+        // Apply default branding on error
+        await initializeBranding(scope.orgId || undefined)
+        setBrandingLoaded(true)
+        setLogoLoaded(true)
+      }
+    }
+
+    loadBrandingAndLogo()
+  }, [scope.orgId])
+
   const isGlobalScope = scope.type === 'global'
 
   return (
-    <OrgScopeContext.Provider value={{ scope, setScope, isGlobalScope }}>
+    <OrgScopeContext.Provider value={{ scope, setScope, isGlobalScope, brandingLoaded, logoLoaded, squareLogoUrl, rectangleLogoUrl }}>
       {children}
     </OrgScopeContext.Provider>
   )

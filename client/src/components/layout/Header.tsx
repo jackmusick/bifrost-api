@@ -5,6 +5,9 @@ import {
     User,
     Circle,
     RefreshCw,
+    Menu,
+    PanelLeftClose,
+    PanelLeft,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -32,7 +35,13 @@ import { useHealthStore } from "@/stores/healthStore";
 import type { components } from "@/lib/v1";
 type Organization = components["schemas"]["Organization"];
 
-export function Header() {
+interface HeaderProps {
+    onMobileMenuToggle?: () => void;
+    onSidebarToggle?: () => void;
+    isSidebarCollapsed?: boolean;
+}
+
+export function Header({ onMobileMenuToggle, onSidebarToggle, isSidebarCollapsed = false }: HeaderProps = {}) {
     const navigate = useNavigate();
     const { user } = useAuth();
     const scope = useScopeStore((state) => state.scope);
@@ -104,15 +113,32 @@ export function Header() {
     };
 
     return (
-        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-16 items-center px-6 lg:px-8">
-                {/* Logo */}
-                <div className="flex items-center gap-2 font-semibold">
-                    <img src="/logo.svg" alt="Bifrost" className="h-8 w-8" />
-                    <span className="hidden sm:inline-block">
-                        Bifrost Integrations
-                    </span>
-                </div>
+        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="flex h-16 items-center px-4 lg:px-6">
+                {/* Mobile Menu Button */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden mr-2"
+                    onClick={onMobileMenuToggle}
+                >
+                    <Menu className="h-5 w-5" />
+                </Button>
+
+                {/* Desktop Sidebar Toggle */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="hidden md:flex mr-2"
+                    onClick={onSidebarToggle}
+                    title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                    {isSidebarCollapsed ? (
+                        <PanelLeft className="h-5 w-5" />
+                    ) : (
+                        <PanelLeftClose className="h-5 w-5" />
+                    )}
+                </Button>
 
                 {/* Spacer */}
                 <div className="flex-1" />

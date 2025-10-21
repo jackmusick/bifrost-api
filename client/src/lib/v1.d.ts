@@ -4,6 +4,135 @@
  */
 
 export interface paths {
+    "/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get branding settings
+         * @description Get branding configuration (org-specific or GLOBAL fallback)
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Organization ID (defaults to current user's org) */
+                    orgId?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrandingSettings"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        /**
+         * Update branding settings
+         * @description Update branding configuration (color only - use logo upload endpoint for logos)
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BrandingUpdateRequest"];
+                };
+            };
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrandingSettings"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branding/logo/{logoType}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload logo file
+         * @description Upload square or rectangle logo to blob storage and update branding
+         */
+        post: {
+            parameters: {
+                query?: {
+                    /** @description Organization ID (defaults to current user's org) */
+                    orgId?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description Logo type: 'square' or 'rectangle' */
+                    logoType: "square" | "rectangle";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileUploadResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data-providers/{providerName}": {
         parameters: {
             query?: never;
@@ -1047,7 +1176,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/callback": {
+    "/oauth/callback/{connection_name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1064,7 +1193,10 @@ export interface paths {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    /** @description OAuth connection name */
+                    connection_name: string;
+                };
                 cookie?: never;
             };
             requestBody?: never;
@@ -1131,7 +1263,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/oauth/connections/{name}/refresh/{job_id}/status": {
+    "/oauth/refresh_job_status": {
         parameters: {
             query?: never;
             header?: never;
@@ -1140,7 +1272,7 @@ export interface paths {
         };
         /**
          * Get refresh job status
-         * @description Get status of OAuth token refresh job (Platform admin only)
+         * @description Get status of OAuth token refresh jobs (Platform admin only)
          */
         get: {
             parameters: {
@@ -2536,6 +2668,50 @@ export interface paths {
                 500: components["responses"]["InternalError"];
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get all scheduled workflows
+         * @description Get list of all workflows with CRON schedules, next run times, and execution history (Platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SchedulesListResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4507,6 +4683,12 @@ export interface components {
          */
         BrandingUpdateRequest: {
             /**
+             * Orgid
+             * @description Organization ID (defaults to current user's org)
+             * @default null
+             */
+            orgId: string | null;
+            /**
              * Squarelogourl
              * @default null
              */
@@ -4915,9 +5097,43 @@ export interface components {
             expires_at: string | null;
         };
         /**
-         * DataProviderListResponse
-         * @description Response model for listing data providers
+         * ScheduleInfo
+         * @description Information about a scheduled workflow for display
          */
+        ScheduleInfo: {
+            /** Internal workflow name/identifier */
+            workflowName: string;
+            /** Display name of the workflow */
+            workflowDescription: string;
+            /** CRON expression */
+            cronExpression: string;
+            /** Human-readable schedule (e.g., 'Every day at 2:00 AM') */
+            humanReadable: string;
+            /** Next scheduled execution time */
+            nextRunAt?: string | null;
+            /** Last execution time */
+            lastRunAt?: string | null;
+            /** ID of last execution */
+            lastExecutionId?: string | null;
+            /** Total number of times this schedule has been triggered */
+            executionCount?: number;
+            /** Whether this schedule is currently active */
+            enabled?: boolean;
+            /** Validation status of the CRON expression */
+            validationStatus?: "valid" | "warning" | "error" | null;
+            /** Validation message for warning/error statuses */
+            validationMessage?: string | null;
+        };
+        /**
+         * SchedulesListResponse
+         * @description Response model for listing scheduled workflows
+         */
+        SchedulesListResponse: {
+            /** List of scheduled workflows */
+            schedules: components["schemas"]["ScheduleInfo"][];
+            /** Total number of scheduled workflows */
+            totalCount: number;
+        };
         DataProviderListResponse: {
             /** Providers */
             providers: components["schemas"]["DataProviderMetadata"][];

@@ -8,7 +8,7 @@ Mocks TableStorageService and KeyVaultClient to test in isolation.
 import json
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 from services.oauth_storage_service import OAuthStorageService
 from models.oauth_connection import (

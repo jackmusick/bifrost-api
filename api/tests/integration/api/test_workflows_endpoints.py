@@ -7,9 +7,7 @@ Tests the workflow execution and management endpoints:
 - GET /api/workflows/{workflowName}/status - Get workflow status
 """
 
-import json
 import logging
-import pytest
 import requests
 
 logger = logging.getLogger(__name__)

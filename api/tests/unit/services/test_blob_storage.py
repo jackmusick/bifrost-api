@@ -13,9 +13,8 @@ Tests cover:
 import json
 import os
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
-from io import BytesIO
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 from shared.blob_storage import BlobStorageService
 

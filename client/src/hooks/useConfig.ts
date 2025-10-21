@@ -13,15 +13,19 @@ import { useScopeStore } from '@/stores/scopeStore'
 
 export function useConfigs(scope: ConfigScope = 'GLOBAL') {
   const currentOrgId = useScopeStore((state) => state.scope.orgId)
-  const hasHydrated = useScopeStore((state) => state._hasHydrated)
 
   return useQuery({
     queryKey: ['configs', scope, currentOrgId],
-    queryFn: () => configService.getConfigs(),
-    // Wait for Zustand to rehydrate from localStorage before making API calls
-    enabled: hasHydrated,
+    queryFn: () => {
+      console.log('[useConfigs] Fetching configs for scope:', scope, 'orgId:', currentOrgId)
+      return configService.getConfigs()
+    },
     // Don't use cached data from previous scope
     staleTime: 0,
+    // Remove from cache immediately when component unmounts
+    gcTime: 0,
+    // Always refetch when component mounts (navigating to page)
+    refetchOnMount: 'always',
   })
 }
 

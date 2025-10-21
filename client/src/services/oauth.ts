@@ -22,7 +22,8 @@ export const oauthService = {
      */
     async getConnection(connectionName: string) {
         const { data, error } = await apiClient.GET(
-            "/oauth/connections/{connection_name}",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/connections/{connection_name}" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
             }
@@ -53,7 +54,8 @@ export const oauthService = {
         request: components["schemas"]["UpdateOAuthConnectionRequest"]
     ) {
         const { data, error } = await apiClient.PUT(
-            "/oauth/connections/{connection_name}",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/connections/{connection_name}" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
                 body: request,
@@ -69,7 +71,8 @@ export const oauthService = {
      */
     async deleteConnection(connectionName: string) {
         const { data, error } = await apiClient.DELETE(
-            "/oauth/connections/{connection_name}",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/connections/{connection_name}" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
             }
@@ -85,14 +88,14 @@ export const oauthService = {
      */
     async authorize(connectionName: string): Promise<OAuthAuthorizeResponse> {
         const { data, error } = await apiClient.POST(
-            "/oauth/connections/{connection_name}/authorize",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/connections/{connection_name}/authorize" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
             }
         );
         if (error)
             throw new Error(`Failed to authorize OAuth connection: ${error}`);
-        // @ts-expect-error - Response type extends API type with authorization_url
         return data as OAuthAuthorizeResponse;
     },
 
@@ -101,7 +104,8 @@ export const oauthService = {
      */
     async cancelAuthorization(connectionName: string) {
         const { data, error } = await apiClient.POST(
-            "/oauth/connections/{connection_name}/cancel",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/connections/{connection_name}/cancel" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
             }
@@ -118,7 +122,8 @@ export const oauthService = {
         connectionName: string
     ): Promise<{ success: boolean; message: string; expires_at: string }> {
         const { data, error } = await apiClient.POST(
-            "/oauth/connections/{connection_name}/refresh",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/connections/{connection_name}/refresh" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
             }
@@ -141,13 +146,15 @@ export const oauthService = {
         state?: string | null
     ) {
         const { data, error } = await apiClient.POST(
-            "/oauth/callback/{connection_name}",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/callback/{connection_name}" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
                 body: {
                     code,
                     state: state ?? null,
-                },
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                } as any, // Type mismatch in OpenAPI spec
             }
         );
         if (error) throw new Error(`Failed to handle OAuth callback: ${error}`);
@@ -160,7 +167,8 @@ export const oauthService = {
      */
     async getCredentials(connectionName: string) {
         const { data, error } = await apiClient.GET(
-            "/oauth/credentials/{connection_name}",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "/oauth/credentials/{connection_name}" as any, // Path parameters not recognized by openapi-fetch
             {
                 params: { path: { connection_name: connectionName } },
             }
@@ -182,11 +190,13 @@ export const oauthService = {
                 message: "Connection not found",
             };
         }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const connData = connection as any; // Type narrowing required for response union
         return {
-            success: connection.status === "completed",
+            success: connData.status === "completed",
             message:
-                connection.status_message ||
-                `Connection status: ${connection.status}`,
+                connData.status_message ||
+                `Connection status: ${connData.status}`,
         };
     },
 };

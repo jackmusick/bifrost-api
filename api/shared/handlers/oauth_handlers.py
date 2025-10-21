@@ -4,39 +4,28 @@ Business logic for OAuth connection management endpoints.
 Extracted from functions/oauth_api.py to enable unit testing.
 """
 
-import json
 import logging
-import uuid
-from datetime import datetime
-from urllib.parse import urlencode
 
 import azure.functions as func
 from pydantic import ValidationError
 
 from models.oauth_connection import (
     CreateOAuthConnectionRequest,
-    OAuthConnectionDetail,
-    OAuthCredentials,
     OAuthCredentialsResponse,
     UpdateOAuthConnectionRequest,
 )
 from services.oauth_provider import OAuthProviderClient
 from services.oauth_storage_service import OAuthStorageService
-from services.oauth_test_service import OAuthTestService
 from shared.custom_types import get_context, get_route_param
 from shared.handlers.response_helpers import (
-    error_response,
     success_response,
     not_found,
     conflict,
     validation_error,
     bad_request,
     internal_error,
-    service_unavailable,
 )
-from shared.keyvault import KeyVaultClient
-from shared.models import ErrorResponse, OAuthCallbackRequest, OAuthCallbackResponse
-from shared.storage import TableStorageService
+from shared.models import OAuthCallbackRequest, OAuthCallbackResponse
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +293,7 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
             # Fallback: search across all orgs (for test scenarios)
             # In production, this would need better handling
             connection = None
-            logger.warning(f"No org_id in state, attempting connection lookup")
+            logger.warning("No org_id in state, attempting connection lookup")
 
         if not connection:
             return not_found("OAuth connection", connection_name)

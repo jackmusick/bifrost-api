@@ -21,19 +21,29 @@ import { OAuthCallback } from "@/pages/OAuthCallback";
 import { Docs } from "@/pages/Docs";
 import { Dashboard } from "@/pages/Dashboard";
 import { WorkflowKeys } from "@/pages/WorkflowKeys";
+import { Schedules } from "@/pages/Schedules";
+import { Settings } from "@/pages/Settings";
 
-import { OrgScopeProvider } from "@/contexts/OrgScopeContext";
+import { OrgScopeProvider, useOrgScope } from "@/contexts/OrgScopeContext";
 
-function Settings() {
-    return <WorkflowKeys />;
-}
+function AppRoutes() {
+    const { brandingLoaded } = useOrgScope();
 
-function App() {
+    // Wait for branding colors to load before rendering
+    // Logo component handles its own skeleton loading state
+    if (!brandingLoaded) {
+        return (
+            <div className="flex h-screen w-screen items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                    <p className="text-sm text-muted-foreground">Loading application...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <ErrorBoundary>
-            <BrowserRouter>
-                <OrgScopeProvider>
-                    <Routes>
+        <Routes>
                         {/* OAuth Callback - Public (no auth, no layout) */}
                         <Route
                             path="oauth/callback/:connectionName"
@@ -220,6 +230,18 @@ function App() {
                                 }
                             />
 
+                            {/* Scheduled Workflows - PlatformAdmin only */}
+                            <Route
+                                path="schedules"
+                                element={
+                                    <ProtectedRoute requirePlatformAdmin>
+                                        <WorkflowEngineGuard>
+                                            <Schedules />
+                                        </WorkflowEngineGuard>
+                                    </ProtectedRoute>
+                                }
+                            />
+
                             {/* Settings - PlatformAdmin only */}
                             <Route
                                 path="settings"
@@ -231,6 +253,15 @@ function App() {
                             />
                         </Route>
                     </Routes>
+    );
+}
+
+function App() {
+    return (
+        <ErrorBoundary>
+            <BrowserRouter>
+                <OrgScopeProvider>
+                    <AppRoutes />
                 </OrgScopeProvider>
             </BrowserRouter>
         </ErrorBoundary>

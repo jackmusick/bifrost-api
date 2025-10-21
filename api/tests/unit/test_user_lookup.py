@@ -9,6 +9,19 @@ from unittest.mock import Mock, patch
 
 from shared.models import User, UserType
 from shared.user_lookup import ensure_user_exists_in_db, get_user_organization
+import shared.user_lookup as user_lookup_module
+
+
+@pytest.fixture(autouse=True)
+def clear_user_caches():
+    """Clear in-memory user and org caches before each test"""
+    # Clear caches before test
+    user_lookup_module._user_cache.clear()
+    user_lookup_module._org_cache.clear()
+    yield
+    # Clear caches after test
+    user_lookup_module._user_cache.clear()
+    user_lookup_module._org_cache.clear()
 
 
 class TestEnsureUserExistsInDb:

@@ -7,12 +7,9 @@ Tests the workflow executions API:
 - Authorization checks for execution visibility
 """
 
-import json
 import logging
-import pytest
 import requests
 import uuid
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +67,7 @@ class TestExecutionsCRUD:
         )
 
         assert response.status_code == 404
-        logger.info(f"Correctly returned 404 for nonexistent execution")
+        logger.info("Correctly returned 404 for nonexistent execution")
 
     def test_get_execution_missing_id(self, api_base_url, admin_headers):
         """Should handle missing execution ID"""
@@ -142,7 +139,7 @@ class TestExecutionsStatusUpdates:
             timestamp_fields = ["startedAt", "completedAt"]
             has_timestamp = any(field in execution for field in timestamp_fields)
             assert has_timestamp
-            logger.info(f"Execution has timestamp fields")
+            logger.info("Execution has timestamp fields")
 
 
 class TestExecutionsHistory:

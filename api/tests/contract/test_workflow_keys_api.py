@@ -3,16 +3,10 @@ Contract tests for Workflow Keys API (User Story 3)
 Tests Pydantic validation for workflow API key generation, validation, and management
 """
 
-from datetime import datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from shared.models import (
-    WorkflowKey,
-    WorkflowKeyCreateRequest,
-    WorkflowKeyResponse,
-)
 
 
 # ==================== FILE UPLOAD VALIDATION TESTS ====================

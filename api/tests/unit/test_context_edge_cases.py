@@ -10,11 +10,10 @@ Tests RequestContext creation and scope resolution edge cases:
 
 import base64
 import json
-import pytest
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import Mock
 import azure.functions as func
 
-from shared.request_context import RequestContext, get_request_context
+from shared.request_context import RequestContext
 from shared.context import (
     Caller,
     Organization,

@@ -9,15 +9,12 @@ Tests authentication edge cases:
 
 import json
 import pytest
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 import base64
-from datetime import datetime, timedelta
 
 from shared.auth import (
     AuthenticationService,
-    UserPrincipal,
-    FunctionKeyPrincipal,
-    AuthenticationError
+    UserPrincipal
 )
 
 

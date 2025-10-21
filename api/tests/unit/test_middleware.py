@@ -7,20 +7,17 @@ Tests middleware decorators and edge cases in request processing:
 - Rate limiting
 """
 
-import base64
 import json
 import pytest
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import Mock, patch
 import azure.functions as func
 
 from shared.middleware import (
-    load_config_for_partition,
-    load_organization_context,
     OrganizationNotFoundError,
     with_org_context,
     has_workflow_key
 )
-from shared.context import Caller, Organization, OrganizationContext
+from shared.context import Caller
 
 
 class TestPlatformAdminMiddleware:

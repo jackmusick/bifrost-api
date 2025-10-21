@@ -2,7 +2,6 @@
 Unit tests for UserRepository
 """
 
-import pytest
 from datetime import datetime
 
 from shared.repositories.users import UserRepository

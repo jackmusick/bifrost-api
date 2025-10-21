@@ -3,8 +3,6 @@ Unit tests for ConfigRepository
 """
 
 import json
-import pytest
-from azure.core.exceptions import ResourceNotFoundError
 
 from shared.repositories.config import ConfigRepository
 from shared.models import ConfigType, IntegrationType, SetIntegrationConfigRequest

@@ -243,60 +243,39 @@ export function WorkflowKeys() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
-            <div className="flex-shrink-0">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight">
-                            Workflow API Keys
-                        </h1>
-                        <p className="mt-2 text-muted-foreground">
-                            Generate API keys for external systems to trigger
-                            workflows via HTTP
-                        </p>
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handleCreate}
-                        title="Create API Key"
-                    >
-                        <Plus className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
-
-            <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                    API keys allow external systems to execute workflows without
-                    user authentication. Global keys work with all workflows,
-                    while workflow-specific keys are scoped to individual
-                    workflows.
-                </AlertDescription>
-            </Alert>
-
+        <div className="flex flex-col h-full">
             <Card className="flex-1 flex flex-col overflow-hidden">
                 <CardHeader className="flex-shrink-0">
                     <div className="flex items-center justify-between">
                         <div>
-                            <CardTitle>Your API Keys</CardTitle>
+                            <CardTitle>Workflow Keys</CardTitle>
                             <CardDescription>
-                                View and manage your workflow API keys
+                                Generate API keys for external systems to trigger workflows. Global keys work with all workflows, workflow-specific keys are scoped to individual workflows.
                             </CardDescription>
                         </div>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => refetch()}
-                            disabled={isFetching}
-                        >
-                            <RefreshCw
-                                className={`h-4 w-4 ${
-                                    isFetching ? "animate-spin" : ""
-                                }`}
-                            />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleCreate}
+                                title="Create API Key"
+                            >
+                                <Plus className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => refetch()}
+                                disabled={isFetching}
+                                title="Refresh"
+                            >
+                                <RefreshCw
+                                    className={`h-4 w-4 ${
+                                        isFetching ? "animate-spin" : ""
+                                    }`}
+                                />
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-hidden flex flex-col">

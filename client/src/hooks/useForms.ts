@@ -20,6 +20,8 @@ export function useForms() {
         queryFn: () => formsService.getForms(),
         // Don't use cached data from previous scope
         staleTime: 0,
+        // Always refetch when component mounts (navigating to page)
+        refetchOnMount: 'always',
     });
 }
 

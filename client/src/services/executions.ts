@@ -8,13 +8,18 @@ import type { ExecutionFilters } from '@/lib/client-types'
 
 export const executionsService = {
   /**
-   * Get all executions with optional filters
+   * Get all executions with optional filters and pagination
    */
-  async getExecutions(filters?: ExecutionFilters): Promise<components['schemas']['WorkflowExecution'][]> {
+  async getExecutions(
+    filters?: ExecutionFilters,
+    continuationToken?: string
+  ): Promise<{ executions: components['schemas']['WorkflowExecution'][]; continuationToken: string | null; hasMore: boolean }> {
     const params: Record<string, string> = {}
 
     if (filters?.workflowName) params['workflowName'] = filters.workflowName
     if (filters?.status) params['status'] = filters.status
+    if (filters?.limit) params['limit'] = filters.limit.toString()
+    if (continuationToken) params['continuationToken'] = continuationToken
 
     const { data, error } = await apiClient.GET('/executions', {
       params: { query: params },
@@ -22,8 +27,8 @@ export const executionsService = {
 
     if (error) throw new Error(`Failed to fetch executions: ${error}`)
 
-    // API returns bare array of executions
-    return data || []
+    // API now returns paginated response
+    return data as any || { executions: [], continuationToken: null, hasMore: false }
   },
 
   /**

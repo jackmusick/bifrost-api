@@ -21,6 +21,7 @@ pydantic
 PyYAML
 python-dateutil
 pytz
+croniter  # CRON expression parsing for scheduled workflows
 
 # Common data manipulation
 jmespath
@@ -49,5 +50,3 @@ pyjwt[crypto]  # Only used in test fixtures
 # Development and debugging
 debugpy>=1.8.0
 azure-storage-blob==12.19.0
-croniter==2.0.1
-croniter==2.0.1

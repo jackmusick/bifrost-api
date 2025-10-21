@@ -39,6 +39,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { SearchBox } from '@/components/search/SearchBox'
+import { useSearch } from '@/hooks/useSearch'
 import {
   useSecrets,
   useCreateSecret,
@@ -64,10 +66,20 @@ export function Secrets() {
 
 
   const { data: secretsData, isFetching, refetch } = useSecrets()
+  const [searchTerm, setSearchTerm] = useState('')
 
   const createMutation = useCreateSecret()
   const updateMutation = useUpdateSecret()
   const deleteMutation = useDeleteSecret()
+
+  // Apply search filter - for secrets, we need a custom function since it's a flat list of strings
+  // We'll create objects with just the name property to search through
+  const secretsAsObjects = secretsData?.secrets?.map((name: string) => ({ name, description: '' })) || []
+  const filteredSecretNames = useSearch(
+    secretsAsObjects,
+    searchTerm,
+    ['name', 'description']
+  ).map((item) => (item as { name: string; description: string }).name)
 
   const handleCreate = () => {
     setFormData({ secretKey: '', value: '' })
@@ -143,6 +155,14 @@ export function Secrets() {
         </AlertDescription>
       </Alert>
 
+      {/* Search Box */}
+      <SearchBox
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search secrets by name or description..."
+        className="max-w-md"
+      />
+
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -162,7 +182,7 @@ export function Secrets() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : secretsData && secretsData.secrets.length > 0 ? (
+          ) : filteredSecretNames && filteredSecretNames.length > 0 ? (
             <div className="border rounded-lg overflow-hidden flex-1">
               <div className="overflow-auto max-h-full">
                 <Table>
@@ -173,7 +193,7 @@ export function Secrets() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {secretsData.secrets.map((secretName) => (
+                    {filteredSecretNames.map((secretName) => (
                       <TableRow key={secretName} className="hover:bg-muted/50">
                         <TableCell className="font-mono font-medium">{secretName}</TableCell>
                         <TableCell className="text-right">
@@ -205,9 +225,13 @@ export function Secrets() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Key className="h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No secrets found</h3>
+              <h3 className="mt-4 text-lg font-semibold">
+                {searchTerm ? 'No secrets match your search' : 'No secrets found'}
+              </h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Create your first secret to get started
+                {searchTerm
+                  ? 'Try adjusting your search term or clear the filter'
+                  : 'Create your first secret to get started'}
               </p>
               <Button variant="outline" size="icon" onClick={handleCreate} title="Create Secret" className="mt-4">
                 <Plus className="h-4 w-4" />
