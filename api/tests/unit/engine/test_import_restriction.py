@@ -88,22 +88,23 @@ class TestImportRestrictionContract:
         )
 
     def test_workspace_cannot_import_engine_storage(self):
-        """Contract: Workspace code must not import shared.storage"""
+        """Contract: Workspace code must not import blocked internal modules"""
         import tempfile
 
         from shared.import_restrictor import install_import_restrictions
 
         # Clear module cache to ensure restrictor can intercept the import
-        if 'shared.storage' in sys.modules:
-            del sys.modules['shared.storage']
+        if 'shared.keyvault' in sys.modules:
+            del sys.modules['shared.keyvault']
 
         # Create temporary workspace directory
         with tempfile.TemporaryDirectory() as tmpdir:
             install_import_restrictions([tmpdir])
 
             # Create a test file in workspace that attempts the import
+            # shared.keyvault is NOT in the whitelisted allowed exports
             test_file = Path(tmpdir) / "test_workspace_import.py"
-            test_file.write_text("import shared.storage\n")
+            test_file.write_text("import shared.keyvault\n")
 
             # Attempt to import that file (which will trigger the blocked import)
             # Note: This test simulates workspace code attempting import
@@ -146,15 +147,16 @@ class TestImportRestrictionContract:
         from shared.import_restrictor import install_import_restrictions
 
         # Clear module cache
-        if 'shared.registry' in sys.modules:
-            del sys.modules['shared.registry']
+        if 'shared.storage' in sys.modules:
+            del sys.modules['shared.storage']
 
         with tempfile.TemporaryDirectory() as tmpdir:
             install_import_restrictions([tmpdir])
 
             # Create a test file in workspace that attempts blocked import
+            # shared.storage is NOT in the whitelisted allowed exports
             test_file = Path(tmpdir) / "test_import_guidance.py"
-            test_file.write_text("import shared.registry\n")
+            test_file.write_text("import shared.storage\n")
 
             try:
                 sys.path.insert(0, tmpdir)
