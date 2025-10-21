@@ -6,8 +6,10 @@ Extracted from functions/workflows.py for unit testability
 
 import json
 import logging
+import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import azure.functions as func
 
@@ -17,6 +19,19 @@ from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionRespo
 from shared.registry import get_registry
 
 logger = logging.getLogger(__name__)
+
+# Import bifrost context management for SDK support
+# Add platform to sys.path if not already there
+platform_path = Path(__file__).parent.parent.parent / 'platform'
+if platform_path.exists() and str(platform_path) not in sys.path:
+    sys.path.insert(0, str(platform_path))
+
+try:
+    from bifrost._context import set_execution_context, clear_execution_context
+    BIFROST_CONTEXT_AVAILABLE = True
+except ImportError:
+    logger.warning("Bifrost SDK not available - user workflows cannot use bifrost SDK")
+    BIFROST_CONTEXT_AVAILABLE = False
 
 
 async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
@@ -242,9 +257,20 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
             }
         )
 
-        # Execute workflow with only defined parameters
-        # Note: Workflow functions are async and receive (context, **params)
-        result = await workflow_func(context, **workflow_params)
+        # Set execution context for bifrost SDK access
+        if BIFROST_CONTEXT_AVAILABLE:
+            set_execution_context(context)
+            logger.debug(f"Set bifrost execution context for execution {execution_id}")
+
+        try:
+            # Execute workflow with only defined parameters
+            # Note: Workflow functions are async and receive (context, **params)
+            result = await workflow_func(context, **workflow_params)
+        finally:
+            # Always clear context after execution (even if workflow fails)
+            if BIFROST_CONTEXT_AVAILABLE:
+                clear_execution_context()
+                logger.debug(f"Cleared bifrost execution context for execution {execution_id}")
 
         # Calculate duration
         end_time = datetime.utcnow()

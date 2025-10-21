@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CheckCircle, XCircle, Loader2, Clock, RefreshCw, History as HistoryIcon, Globe, Building2, Eraser, AlertCircle, Info, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
+import type { DateRange } from 'react-day-picker'
 // import { useOrganizations } from '@/hooks/useOrganizations'
 import type { components } from '@/lib/v1'
 type ExecutionStatus = components['schemas']['ExecutionStatus']
@@ -67,6 +69,7 @@ export function ExecutionHistory() {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<ExecutionStatus | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
   const [stuckExecutions, setStuckExecutions] = useState<StuckExecution[]>([])
   const [loadingStuck, setLoadingStuck] = useState(false)
@@ -79,12 +82,36 @@ export function ExecutionHistory() {
   // const { data: organization } = useOrganizations()
   // const organizations = organization ? [organization] : []
 
+  // Build filters including date range
+  const filters = useMemo(() => {
+    const baseFilters = statusFilter !== 'all' ? { status: statusFilter } : {}
+
+    if (dateRange?.from) {
+      // Set start to beginning of day (00:00:00)
+      const startDate = new Date(dateRange.from)
+      startDate.setHours(0, 0, 0, 0)
+
+      // Set end to end of day (23:59:59.999)
+      // If no end date selected, use the same day as start
+      const endDate = new Date(dateRange.to || dateRange.from)
+      endDate.setHours(23, 59, 59, 999)
+
+      return {
+        ...baseFilters,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      }
+    }
+
+    return baseFilters
+  }, [statusFilter, dateRange])
+
   const { data: response, isFetching, refetch } = useExecutions(
-    statusFilter !== 'all' ? { status: statusFilter } : undefined,
+    filters,
     currentToken
   )
 
-  const executions = response?.executions || []
+  const executions = useMemo(() => response?.executions || [], [response?.executions])
   const hasMore = response?.hasMore || false
   const nextToken = response?.continuationToken || null
 
@@ -239,7 +266,7 @@ export function ExecutionHistory() {
   useEffect(() => {
     setPageStack([])
     setCurrentToken(undefined)
-  }, [statusFilter])
+  }, [statusFilter, dateRange])
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
@@ -350,14 +377,22 @@ export function ExecutionHistory() {
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden flex flex-col">
           <Tabs defaultValue="all" onValueChange={(v) => setStatusFilter(v as ExecutionStatus | 'all')} className="flex flex-col flex-1 overflow-hidden">
-            <div className="flex-shrink-0 flex items-center justify-between gap-4 mb-4">
-              {/* Search Box */}
-              <SearchBox
-                value={searchTerm}
-                onChange={setSearchTerm}
-                placeholder="Search by workflow name, user, or execution ID..."
-                className="flex-1 max-w-2xl"
-              />
+            <div className="flex-shrink-0 space-y-4 mb-4">
+              <div className="flex items-center gap-4">
+                {/* Search Box */}
+                <SearchBox
+                  value={searchTerm}
+                  onChange={setSearchTerm}
+                  placeholder="Search by workflow name, user, or execution ID..."
+                  className="flex-1 max-w-2xl"
+                />
+
+                {/* Date Range Picker */}
+                <DateRangePicker
+                  dateRange={dateRange}
+                  onDateRangeChange={setDateRange}
+                />
+              </div>
 
               {/* Filter Tabs */}
               <TabsList>

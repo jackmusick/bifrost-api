@@ -7,7 +7,7 @@ Extracted from functions/executions.py for unit testability
 import logging
 from typing import Any
 
-from shared.authorization import can_user_view_execution, get_user_executions
+from shared.authorization import can_user_view_execution
 from shared.blob_storage import get_blob_service
 from shared.repositories.executions import ExecutionRepository
 from shared.request_context import RequestContext
@@ -175,6 +175,67 @@ def filter_executions_by_status(executions: list[dict], status: str | None) -> l
     return [e for e in executions if e.get('status') == backend_status]
 
 
+def filter_executions_by_date_range(
+    executions: list[dict],
+    start_date: str | None,
+    end_date: str | None
+) -> list[dict]:
+    """
+    Filter executions by date range.
+
+    Args:
+        executions: List of execution dicts
+        start_date: Start date in ISO format (inclusive, or None for no start filter)
+        end_date: End date in ISO format (inclusive, or None for no end filter)
+
+    Returns:
+        Filtered list of execution dicts
+    """
+    from datetime import datetime, timezone
+
+    if not start_date and not end_date:
+        return executions
+
+    filtered = []
+    for exec_dict in executions:
+        started_at_str = exec_dict.get('startedAt')
+        if not started_at_str:
+            continue
+
+        try:
+            # Parse execution start time - handle both naive and aware datetimes
+            started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+            # If naive, assume UTC
+            if started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=timezone.utc)
+
+            # Apply start date filter
+            if start_date:
+                start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                # Ensure timezone aware
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                if started_at < start_dt:
+                    continue
+
+            # Apply end date filter
+            if end_date:
+                end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                # Ensure timezone aware
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                if started_at > end_dt:
+                    continue
+
+            filtered.append(exec_dict)
+        except (ValueError, AttributeError) as e:
+            # Skip executions with invalid dates
+            logger.warning(f"Invalid date format in execution: {started_at_str}, error: {e}")
+            continue
+
+    return filtered
+
+
 def apply_limit(executions: list[dict], limit: int) -> list[dict]:
     """
     Apply limit to executions list.
@@ -193,6 +254,8 @@ async def list_executions_handler(
     context: RequestContext,
     workflow_name: str | None = None,
     status: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     limit: int = 50,
     continuation_token: str | None = None
 ) -> tuple[list[dict], str | None]:
@@ -207,6 +270,8 @@ async def list_executions_handler(
         context: RequestContext
         workflow_name: Optional filter by workflow name
         status: Optional filter by status
+        start_date: Optional filter by start date (ISO format, inclusive)
+        end_date: Optional filter by end date (ISO format, inclusive)
         limit: Maximum number of results (default 50, max 1000)
         continuation_token: Opaque continuation token from previous page
 
@@ -228,7 +293,7 @@ async def list_executions_handler(
         try:
             decoded_token = json.loads(base64.b64decode(continuation_token).decode('utf-8'))
         except Exception:
-            logger.warning(f"Invalid continuation token provided, ignoring")
+            logger.warning("Invalid continuation token provided, ignoring")
             decoded_token = None
 
     # Get repository
@@ -254,6 +319,7 @@ async def list_executions_handler(
     # Apply filters (TODO: Push filters down to query level for better performance)
     executions_list = filter_executions_by_workflow(executions_list, workflow_name)
     executions_list = filter_executions_by_status(executions_list, status)
+    executions_list = filter_executions_by_date_range(executions_list, start_date, end_date)
 
     # Format for response
     formatted = [_format_execution_response(e) for e in executions_list]

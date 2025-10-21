@@ -1,0 +1,254 @@
+"""
+Integration tests for Bifrost SDK from workflows
+
+Tests that user workflows can import and use the bifrost SDK.
+"""
+
+import pytest
+from pathlib import Path
+import sys
+
+# Add platform to path
+platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
+if str(platform_path) not in sys.path:
+    sys.path.insert(0, str(platform_path))
+
+from shared.request_context import RequestContext
+from bifrost._context import set_execution_context, clear_execution_context
+
+
+@pytest.fixture
+def test_context():
+    """Create a test execution context"""
+    return RequestContext(
+        user_id="test-user",
+        email="test@example.com",
+        name="Test User",
+        org_id="test-org",
+        is_platform_admin=False,
+        is_function_key=False
+    )
+
+
+@pytest.fixture
+def admin_context():
+    """Create an admin execution context"""
+    return RequestContext(
+        user_id="admin-user",
+        email="admin@example.com",
+        name="Admin User",
+        org_id="test-org",
+        is_platform_admin=True,
+        is_function_key=False
+    )
+
+
+class TestSDKImportsFromWorkflow:
+    """Test that SDK can be imported from workflow code"""
+
+    def test_import_bifrost_organizations(self):
+        """Test importing organizations module"""
+        from bifrost import organizations
+
+        # Verify module has expected methods
+        assert hasattr(organizations, 'create')
+        assert hasattr(organizations, 'get')
+        assert hasattr(organizations, 'list')
+        assert hasattr(organizations, 'update')
+
+    def test_import_bifrost_workflows(self):
+        """Test importing workflows module"""
+        from bifrost import workflows
+
+        assert hasattr(workflows, 'execute')
+        assert hasattr(workflows, 'list')
+        assert hasattr(workflows, 'get_status')
+
+    def test_import_bifrost_files(self):
+        """Test importing files module"""
+        from bifrost import files
+
+        assert hasattr(files, 'read')
+        assert hasattr(files, 'write')
+        assert hasattr(files, 'list')
+        assert hasattr(files, 'delete')
+        assert hasattr(files, 'exists')
+
+    def test_import_bifrost_forms(self):
+        """Test importing forms module"""
+        from bifrost import forms
+
+        assert hasattr(forms, 'list')
+        assert hasattr(forms, 'get')
+
+    def test_import_bifrost_executions(self):
+        """Test importing executions module"""
+        from bifrost import executions
+
+        assert hasattr(executions, 'list')
+        assert hasattr(executions, 'get')
+        assert hasattr(executions, 'delete')
+
+    def test_import_bifrost_roles(self):
+        """Test importing roles module"""
+        from bifrost import roles
+
+        assert hasattr(roles, 'create')
+        assert hasattr(roles, 'get')
+        assert hasattr(roles, 'list')
+        assert hasattr(roles, 'update')
+        assert hasattr(roles, 'delete')
+        assert hasattr(roles, 'assign_users')
+        assert hasattr(roles, 'assign_forms')
+
+
+class TestSDKUsageFromWorkflow:
+    """Test SDK usage patterns from workflow code"""
+
+    @pytest.mark.asyncio
+    async def test_workflow_can_use_sdk_context(self, test_context):
+        """Test that workflow can access SDK with context"""
+
+        # Set context (simulates what workflow engine does)
+        set_execution_context(test_context)
+
+        try:
+            # In a real scenario with database, this would work
+            # For now, we verify the context is accessible
+            from bifrost._context import get_execution_context
+
+            context = get_execution_context()
+            assert context.org_id == "test-org"
+            assert context.user_id == "test-user"
+        finally:
+            clear_execution_context()
+
+    def test_sdk_without_context_raises_error(self):
+        """Test that SDK raises clear error when used without context"""
+        from bifrost import organizations
+
+        # Ensure no context is set
+        clear_execution_context()
+
+        # Attempting to use SDK should raise RuntimeError
+        with pytest.raises(RuntimeError, match="No execution context found"):
+            organizations.list()
+
+
+class TestSDKFileOperations:
+    """Test file operations through SDK"""
+
+    @pytest.mark.asyncio
+    async def test_file_path_sandboxing(self, test_context):
+        """Test that file operations are sandboxed to /home"""
+        from bifrost import files
+
+        set_execution_context(test_context)
+
+        try:
+            # Directory traversal should be blocked
+            with pytest.raises(ValueError, match="Path escapes allowed directories"):
+                files.read("../../../etc/passwd")
+
+            # Absolute paths should be blocked
+            with pytest.raises(ValueError, match="Path escapes allowed directories"):
+                files.read("/etc/passwd")
+
+        finally:
+            clear_execution_context()
+
+
+class TestWorkflowDiscovery:
+    """Test that workflows in /home and /platform are discovered"""
+
+    def test_workspace_paths_include_home_and_platform(self):
+        """Test that workspace discovery includes both /home and /platform"""
+        from function_app import get_workspace_paths
+
+        paths = get_workspace_paths()
+
+        # Paths might not exist in test environment, but function should return list
+        assert isinstance(paths, list)
+
+        # If /home or /platform exist, they should be in the list
+        base_dir = Path(__file__).parent.parent.parent.parent
+        home_path = base_dir / 'home'
+        platform_path = base_dir / 'platform'
+
+        if home_path.exists():
+            assert str(home_path) in paths
+
+        if platform_path.exists():
+            assert str(platform_path) in paths
+
+
+class TestImportRestrictions:
+    """Test that import restrictions work correctly"""
+
+    def test_home_code_cannot_import_shared_directly(self):
+        """Test that code in /home cannot import from shared.*"""
+        # This would need to be tested with actual files in /home
+        # For now, we verify the restrictor is configured correctly
+
+        from shared.import_restrictor import get_active_restrictors
+
+        restrictors = get_active_restrictors()
+
+        if restrictors:
+            restrictor = restrictors[0]
+            # Verify blocked prefixes include 'shared.'
+            assert 'shared.' in restrictor.BLOCKED_PREFIXES
+
+            # Verify bifrost is in allowed exports
+            assert 'bifrost' in restrictor.ALLOWED_SHARED_EXPORTS
+
+    def test_bifrost_modules_are_whitelisted(self):
+        """Test that bifrost SDK modules are whitelisted for import"""
+        from shared.import_restrictor import WorkspaceImportRestrictor
+
+        # Check that bifrost modules are in whitelist
+        assert 'bifrost' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost.organizations' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost.workflows' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost.files' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost.forms' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost.executions' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost.roles' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+
+
+class TestEndToEndSDKUsage:
+    """End-to-end tests of SDK usage patterns"""
+
+    @pytest.mark.asyncio
+    async def test_complete_workflow_sdk_pattern(self, test_context):
+        """
+        Test complete pattern: context setup, SDK usage, context teardown.
+
+        This simulates what happens in a real workflow execution.
+        """
+        from bifrost import organizations
+        from bifrost._context import set_execution_context, clear_execution_context
+
+        # 1. Workflow engine sets context
+        set_execution_context(test_context)
+
+        try:
+            # 2. Workflow uses SDK
+            # (Would normally interact with database)
+
+            # Verify context is accessible
+            from bifrost._internal import get_context
+            ctx = get_context()
+            assert ctx.org_id == "test-org"
+
+            # 3. SDK operations would happen here
+            # organizations.list()
+            # files.write("output.txt", b"data")
+
+        finally:
+            # 4. Workflow engine clears context
+            clear_execution_context()
+
+        # 5. After context cleared, SDK should raise error
+        with pytest.raises(RuntimeError):
+            organizations.list()

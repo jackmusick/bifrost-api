@@ -9,7 +9,6 @@ from datetime import datetime
 
 import azure.functions as func
 
-from shared.decorators import with_request_context
 from shared.execution_logger import get_execution_logger
 from shared.models import ExecutionStatus
 from shared.repositories.executions import ExecutionRepository

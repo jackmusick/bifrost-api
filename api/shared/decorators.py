@@ -92,6 +92,17 @@ def workflow(
             pending_params = list(reversed(func._pending_parameters))
             delattr(func, '_pending_parameters')  # Clean up
 
+        # Detect source based on file path
+        source = None
+        if hasattr(func, '__code__'):
+            file_path = func.__code__.co_filename
+            if '/platform/' in file_path or '\\platform\\' in file_path:
+                source = 'platform'
+            elif '/home/' in file_path or '\\home\\' in file_path:
+                source = 'home'
+            elif '/workspace/' in file_path or '\\workspace\\' in file_path:
+                source = 'workspace'
+
         # Initialize metadata
         metadata = WorkflowMetadata(
             name=name,
@@ -106,6 +117,7 @@ def workflow(
             allowed_methods=allowed_methods,
             disable_global_key=disable_global_key,
             public_endpoint=public_endpoint,
+            source=source,
             parameters=pending_params,
             function=func
         )

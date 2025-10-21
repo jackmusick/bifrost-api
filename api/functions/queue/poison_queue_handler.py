@@ -9,7 +9,6 @@ Has two triggers:
 
 import json
 import logging
-from datetime import datetime
 
 import azure.functions as func
 from azure.storage.queue import QueueServiceClient
@@ -95,7 +94,7 @@ async def workflow_execution_poison_handler(msg: func.QueueMessage) -> None:
     except Exception as e:
         # Log error but don't throw - we don't want poison queue handler to fail
         logger.error(
-            f"Error processing poison queue message (queue trigger)",
+            "Error processing poison queue message (queue trigger)",
             extra={
                 "error": str(e),
                 "error_type": type(e).__name__
@@ -147,7 +146,7 @@ async def workflow_execution_poison_timer(timer: func.TimerRequest) -> None:
 
             except Exception as e:
                 logger.error(
-                    f"Error processing poison message in timer",
+                    "Error processing poison message in timer",
                     extra={"error": str(e)},
                     exc_info=True
                 )
@@ -157,7 +156,7 @@ async def workflow_execution_poison_timer(timer: func.TimerRequest) -> None:
 
         if processed > 0 or failed > 0:
             logger.warning(
-                f"Poison queue timer processed messages",
+                "Poison queue timer processed messages",
                 extra={
                     "processed": processed,
                     "failed": failed,
@@ -169,7 +168,7 @@ async def workflow_execution_poison_timer(timer: func.TimerRequest) -> None:
 
     except Exception as e:
         logger.error(
-            f"Error in poison queue timer",
+            "Error in poison queue timer",
             extra={"error": str(e)},
             exc_info=True
         )

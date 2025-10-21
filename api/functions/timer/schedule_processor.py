@@ -14,7 +14,7 @@ from shared.async_executor import enqueue_workflow_execution
 from shared.registry import get_registry
 from shared.request_context import RequestContext
 from shared.storage import TableStorageService
-from shared.workflows.cron_parser import calculate_next_run, is_cron_expression_valid, validate_cron_expression
+from shared.workflows.cron_parser import calculate_next_run, is_cron_expression_valid
 
 logger = logging.getLogger(__name__)
 
@@ -165,12 +165,33 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                 next_run_at = datetime.fromisoformat(schedule_state.get("NextRunAt", now.isoformat()))
 
                 if next_run_at <= now:
+                    # ATOMIC CLAIM: Update NextRunAt first to prevent concurrent schedulers from executing same schedule
+                    # This uses ETag-based optimistic concurrency control
+                    try:
+                        new_next_run = calculate_next_run(cron_expression, now)
+                        schedule_state["NextRunAt"] = new_next_run.isoformat()
+
+                        # Try to update with ETag - if another scheduler already claimed it, this will fail
+                        config_service.update_entity_with_etag(schedule_state)
+
+                        logger.info(
+                            f"Claimed execution slot for {workflow_name}: next run updated to {new_next_run.isoformat()}"
+                        )
+                    except Exception as claim_error:
+                        # ETag mismatch or other error - another scheduler instance claimed this execution
+                        logger.info(
+                            f"Skipping {workflow_name} - another scheduler instance claimed this execution slot",
+                            extra={"error": str(claim_error), "error_type": type(claim_error).__name__}
+                        )
+                        continue
+
                     logger.info(
                         f"Executing scheduled workflow: {workflow_name}",
                         extra={
                             "workflow_name": workflow_name,
                             "cron_expression": cron_expression,
-                            "next_run_at": next_run_at.isoformat()
+                            "original_next_run": next_run_at.isoformat(),
+                            "new_next_run": new_next_run.isoformat()
                         }
                     )
 
@@ -202,14 +223,16 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                             }
                         )
 
-                        # Update schedule state
-                        next_run_at = calculate_next_run(cron_expression, now)
+                        # Update schedule state with execution details
+                        # (NextRunAt was already updated during the claim above)
                         schedule_state["LastRunAt"] = now.isoformat()
                         schedule_state["LastExecutionId"] = execution_id
                         schedule_state["ExecutionCount"] = int(
                             schedule_state.get("ExecutionCount", 0)
                         ) + 1
-                        schedule_state["NextRunAt"] = next_run_at.isoformat()
+                        # Use regular upsert since we don't need ETag here (already claimed)
+                        # Remove etag to avoid validation issues
+                        schedule_state.pop("etag", None)
                         config_service.upsert_entity(schedule_state)
 
                         results["executed"] += 1

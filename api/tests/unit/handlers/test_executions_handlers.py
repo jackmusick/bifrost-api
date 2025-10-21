@@ -277,32 +277,49 @@ class TestListExecutionsHandler:
     """Tests for list_executions_handler function"""
 
     @pytest.mark.asyncio
-    async def test_list_executions_handler_basic(self, mock_context, sample_execution_dict):
+    async def test_list_executions_handler_basic(self, mock_context, sample_workflow_execution):
         """Test basic listing of executions"""
-        with patch('shared.handlers.executions_handlers.get_user_executions') as mock_get:
-            mock_get.return_value = [sample_execution_dict]
+        with patch('shared.handlers.executions_handlers.ExecutionRepository') as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_executions_by_user_paged.return_value = ([sample_workflow_execution], None)
 
-            result = await list_executions_handler(mock_context)
+            result, token = await list_executions_handler(mock_context)
 
             assert len(result) == 1
-            assert result[0]['executionId'] == sample_execution_dict['executionId']
+            assert result[0]['executionId'] == sample_workflow_execution.executionId
             assert result[0]['workflowName'] == 'test-workflow'
-            mock_get.assert_called_once_with(mock_context, limit=50)
+            assert token is None
 
     @pytest.mark.asyncio
     async def test_list_executions_handler_with_workflow_filter(
-        self, mock_context, sample_execution_dict
+        self, mock_context, sample_workflow_execution
     ):
         """Test listing executions with workflow filter"""
-        sample_execution_dict['workflowName'] = 'target-workflow'
-        other_execution = sample_execution_dict.copy()
-        other_execution['executionId'] = str(uuid.uuid4())
-        other_execution['workflowName'] = 'other-workflow'
+        sample_workflow_execution.workflowName = 'target-workflow'
+        other_execution = WorkflowExecution(
+            executionId=str(uuid.uuid4()),
+            workflowName='other-workflow',
+            orgId='org-456',
+            status='Success',
+            errorMessage=None,
+            executedBy='user-123',
+            executedByName='Test User',
+            startedAt=datetime.now(),
+            completedAt=datetime.now(),
+            formId=None,
+            durationMs=1500,
+            inputData={'param1': 'value1'},
+            result={'key': 'value'},
+            logs=[]
+        )
 
-        with patch('shared.handlers.executions_handlers.get_user_executions') as mock_get:
-            mock_get.return_value = [sample_execution_dict, other_execution]
+        with patch('shared.handlers.executions_handlers.ExecutionRepository') as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_executions_by_user_paged.return_value = ([sample_workflow_execution, other_execution], None)
 
-            result = await list_executions_handler(
+            result, _ = await list_executions_handler(
                 mock_context, workflow_name='target-workflow'
             )
 
@@ -311,72 +328,119 @@ class TestListExecutionsHandler:
 
     @pytest.mark.asyncio
     async def test_list_executions_handler_with_status_filter(
-        self, mock_context, sample_execution_dict
+        self, mock_context, sample_workflow_execution
     ):
         """Test listing executions with status filter"""
-        sample_execution_dict['status'] = 'Success'
-        other_execution = sample_execution_dict.copy()
-        other_execution['executionId'] = str(uuid.uuid4())
-        other_execution['status'] = 'Failed'
+        sample_workflow_execution.status = 'Success'
+        other_execution = WorkflowExecution(
+            executionId=str(uuid.uuid4()),
+            workflowName='test-workflow',
+            orgId='org-456',
+            status='Failed',
+            errorMessage=None,
+            executedBy='user-123',
+            executedByName='Test User',
+            startedAt=datetime.now(),
+            completedAt=datetime.now(),
+            formId=None,
+            durationMs=1500,
+            inputData={'param1': 'value1'},
+            result={'key': 'value'},
+            logs=[]
+        )
 
-        with patch('shared.handlers.executions_handlers.get_user_executions') as mock_get:
-            mock_get.return_value = [sample_execution_dict, other_execution]
+        with patch('shared.handlers.executions_handlers.ExecutionRepository') as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_executions_by_user_paged.return_value = ([sample_workflow_execution, other_execution], None)
 
-            result = await list_executions_handler(mock_context, status='completed')
+            result, _ = await list_executions_handler(mock_context, status='completed')
 
             assert len(result) == 1
             assert result[0]['status'] == 'Success'
 
     @pytest.mark.asyncio
     async def test_list_executions_handler_with_custom_limit(
-        self, mock_context, sample_execution_dict
+        self, mock_context
     ):
         """Test listing executions with custom limit"""
-        executions = [sample_execution_dict.copy() for _ in range(100)]
-        for i, e in enumerate(executions):
-            e['executionId'] = str(uuid.uuid4())
+        executions = [
+            WorkflowExecution(
+                executionId=str(uuid.uuid4()),
+                workflowName='test-workflow',
+                orgId='org-456',
+                status='Success',
+                errorMessage=None,
+                executedBy='user-123',
+                executedByName='Test User',
+                startedAt=datetime.now(),
+                completedAt=datetime.now(),
+                formId=None,
+                durationMs=1500,
+                inputData={'param1': 'value1'},
+                result={'key': 'value'},
+                logs=[]
+            )
+            for _ in range(100)
+        ]
 
-        with patch('shared.handlers.executions_handlers.get_user_executions') as mock_get:
-            mock_get.return_value = executions
+        with patch('shared.handlers.executions_handlers.ExecutionRepository') as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_executions_by_user_paged.return_value = (executions[:10], None)
 
-            result = await list_executions_handler(mock_context, limit=10)
+            result, _ = await list_executions_handler(mock_context, limit=10)
 
             assert len(result) == 10
-            mock_get.assert_called_once_with(mock_context, limit=10)
 
     @pytest.mark.asyncio
     async def test_list_executions_handler_limit_capped_at_1000(
-        self, mock_context, sample_execution_dict
+        self, mock_context, sample_workflow_execution
     ):
         """Test that limit is capped at 1000"""
-        with patch('shared.handlers.executions_handlers.get_user_executions') as mock_get:
-            mock_get.return_value = [sample_execution_dict]
+        with patch('shared.handlers.executions_handlers.ExecutionRepository') as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_executions_by_user_paged.return_value = ([sample_workflow_execution], None)
 
             await list_executions_handler(mock_context, limit=5000)
 
-            mock_get.assert_called_once_with(mock_context, limit=1000)
+            # Verify the repository was called with capped limit (1000)
+            mock_repo.list_executions_by_user_paged.assert_called_once()
+            call_args = mock_repo.list_executions_by_user_paged.call_args
+            assert call_args[1]['results_per_page'] == 1000
 
     @pytest.mark.asyncio
     async def test_list_executions_handler_combined_filters(
-        self, mock_context, sample_execution_dict
+        self, mock_context
     ):
         """Test listing with multiple filters applied"""
-        sample_execution_dict['workflowName'] = 'target-workflow'
-        sample_execution_dict['status'] = 'Success'
+        executions = []
+        for i in range(5):
+            exec = WorkflowExecution(
+                executionId=str(uuid.uuid4()),
+                workflowName='target-workflow' if i not in [1, 3] else 'other-workflow',
+                orgId='org-456',
+                status='Success' if i not in [2, 3] else 'Failed',
+                errorMessage=None,
+                executedBy='user-123',
+                executedByName='Test User',
+                startedAt=datetime.now(),
+                completedAt=datetime.now(),
+                formId=None,
+                durationMs=1500,
+                inputData={'param1': 'value1'},
+                result={'key': 'value'},
+                logs=[]
+            )
+            executions.append(exec)
 
-        executions = [sample_execution_dict.copy() for _ in range(5)]
-        executions[1]['workflowName'] = 'other-workflow'
-        executions[2]['status'] = 'Failed'
-        executions[3]['workflowName'] = 'other-workflow'
-        executions[3]['status'] = 'Failed'
+        with patch('shared.handlers.executions_handlers.ExecutionRepository') as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_executions_by_user_paged.return_value = (executions, None)
 
-        for i, e in enumerate(executions):
-            e['executionId'] = str(uuid.uuid4())
-
-        with patch('shared.handlers.executions_handlers.get_user_executions') as mock_get:
-            mock_get.return_value = executions
-
-            result = await list_executions_handler(
+            result, _ = await list_executions_handler(
                 mock_context, workflow_name='target-workflow', status='completed'
             )
 

@@ -18,6 +18,8 @@ export const executionsService = {
 
     if (filters?.workflowName) params['workflowName'] = filters.workflowName
     if (filters?.status) params['status'] = filters.status
+    if (filters?.startDate) params['startDate'] = filters.startDate
+    if (filters?.endDate) params['endDate'] = filters.endDate
     if (filters?.limit) params['limit'] = filters.limit.toString()
     if (continuationToken) params['continuationToken'] = continuationToken
 
@@ -28,7 +30,7 @@ export const executionsService = {
     if (error) throw new Error(`Failed to fetch executions: ${error}`)
 
     // API now returns paginated response
-    return data as any || { executions: [], continuationToken: null, hasMore: false }
+    return data || { executions: [], continuationToken: null, hasMore: false }
   },
 
   /**

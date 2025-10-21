@@ -4,7 +4,6 @@ import {
     Plus,
     Trash2,
     RefreshCw,
-    Info,
     Loader2,
     Copy,
     Check,

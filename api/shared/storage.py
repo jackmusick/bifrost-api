@@ -9,8 +9,9 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError, ResourceModifiedError
 from azure.data.tables import TableClient, UpdateMode
+from azure.core import MatchConditions
 
 if TYPE_CHECKING:
     from shared.request_context import RequestContext
@@ -219,6 +220,73 @@ class TableStorageService:
             logger.error(f"Failed to update entity: {str(e)}")
             raise
 
+    def update_entity_with_etag(self, entity: dict, mode: str = "merge") -> dict:
+        """
+        Update an existing entity with optimistic concurrency control using ETag.
+
+        This method uses the 'etag' field in the entity to ensure the entity hasn't been
+        modified by another process since it was read. If the entity has been modified,
+        an exception is raised.
+
+        Args:
+            entity: Entity dictionary with RowKey and 'etag' field (from get_entity)
+            mode: Update mode - "merge" (default) or "replace"
+
+        Returns:
+            The updated entity
+
+        Raises:
+            ValueError: If entity doesn't have 'etag' field
+            ResourceModifiedError: If entity was modified since read (ETag mismatch)
+            ResourceNotFoundError: If entity doesn't exist
+        """
+        # Auto-apply PartitionKey if not set
+        entity = self._apply_partition_key(entity)
+
+        if "PartitionKey" not in entity or "RowKey" not in entity:
+            raise ValueError("Entity must have PartitionKey and RowKey")
+
+        if "etag" not in entity:
+            raise ValueError("Entity must have 'etag' field for optimistic concurrency. Use get_entity() first.")
+
+        try:
+            # Extract etag and remove from entity dict (not a data field)
+            etag = entity.pop("etag")
+
+            # Serialize datetime fields
+            entity = self._serialize_datetime_fields(entity)
+
+            # Update entity with ETag for optimistic concurrency
+            if mode == "replace":
+                self.table_client.update_entity(entity, mode=UpdateMode.REPLACE, etag=etag, match_condition=MatchConditions.IfNotModified)
+            else:
+                self.table_client.update_entity(entity, mode=UpdateMode.MERGE, etag=etag, match_condition=MatchConditions.IfNotModified)
+
+            logger.info(
+                f"Updated entity with ETag ({mode}): {self.table_name} "
+                f"PK={entity['PartitionKey']} RK={entity['RowKey']}"
+            )
+
+            return entity
+
+        except ResourceModifiedError:
+            logger.warning(
+                f"Entity was modified by another process (ETag mismatch): {self.table_name} "
+                f"PK={entity['PartitionKey']} RK={entity['RowKey']}"
+            )
+            raise
+
+        except ResourceNotFoundError:
+            logger.error(
+                f"Entity not found for update: {self.table_name} "
+                f"PK={entity['PartitionKey']} RK={entity['RowKey']}"
+            )
+            raise
+
+        except Exception as e:
+            logger.error(f"Failed to update entity with ETag: {str(e)}")
+            raise
+
     def upsert_entity(self, entity: dict, mode: str = "merge") -> dict:
         """
         Insert or update an entity (creates if doesn't exist) with automatic partition key handling.
@@ -266,21 +334,28 @@ class TableStorageService:
             row_key: The row key
 
         Returns:
-            Entity dictionary or None if not found
+            Entity dictionary or None if not found (includes 'etag' metadata for optimistic concurrency)
         """
         try:
             entity = self.table_client.get_entity(
                 partition_key=partition_key, row_key=row_key
             )
 
+            # Convert to dict and preserve metadata (etag, timestamp)
+            entity_dict = dict(entity)
+
             # Deserialize datetime fields
-            entity = self._deserialize_datetime_fields(dict(entity))
+            entity_dict = self._deserialize_datetime_fields(entity_dict)
+
+            # Preserve etag for optimistic concurrency control
+            if hasattr(entity, 'metadata') and 'etag' in entity.metadata:
+                entity_dict['etag'] = entity.metadata['etag']
 
             logger.debug(
                 f"Retrieved entity: {self.table_name} PK={partition_key} RK={row_key}"
             )
 
-            return entity
+            return entity_dict
 
         except ResourceNotFoundError:
             logger.debug(

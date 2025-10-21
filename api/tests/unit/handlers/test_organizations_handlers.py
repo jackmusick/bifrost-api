@@ -27,19 +27,25 @@ class TestListOrganizationsHandler:
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.context = Mock(user_id="admin-123")
 
-        org1 = Mock(model_dump=Mock(return_value={"id": "org-1", "name": "Org 1"}))
-        org2 = Mock(model_dump=Mock(return_value={"id": "org-2", "name": "Org 2"}))
+        org1 = Mock()
+        org1.name = "Org 1"
+        org1.model_dump = Mock(return_value={"id": "org-1", "name": "Org 1"})
+        org2 = Mock()
+        org2.name = "Org 2"
+        org2.model_dump = Mock(return_value={"id": "org-2", "name": "Org 2"})
 
         with patch('shared.handlers.organizations_handlers.OrganizationRepository') as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.list_organizations.return_value = [org1, org2]
+            mock_repo.list_organizations.return_value = [org2, org1]  # Return out of order to test sorting
 
             response = await list_organizations_handler(mock_req)
 
             assert response.status_code == 200
             data = json.loads(response.get_body())
             assert len(data) == 2
-            # Should be sorted by name
+            # Should be sorted by name, so org1 comes first
+            assert data[0]["name"] == "Org 1"
+            assert data[1]["name"] == "Org 2"
             mock_repo.list_organizations.assert_called_once_with(active_only=True)
 
     @pytest.mark.asyncio

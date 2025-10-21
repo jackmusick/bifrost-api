@@ -17,18 +17,19 @@ from functions.http.discovery import get_discovery_metadata_handler as get_disco
 
 
 @pytest.fixture(scope="class", autouse=True)
-def discover_workspace_workflows():
-    """Discover and register workspace workflows before tests"""
-    workspace_path = Path(__file__).parent.parent.parent.parent / "workspace"
+def discover_platform_workflows():
+    """Discover and register platform workflows before tests"""
+    # Test workflows are now in /platform/examples
+    platform_path = Path(__file__).parent.parent.parent.parent / "platform"
 
-    if workspace_path.exists():
-        for py_file in workspace_path.rglob("*.py"):
+    if platform_path.exists():
+        for py_file in platform_path.rglob("*.py"):
             if py_file.name.startswith("_"):
                 continue
 
-            relative_path = py_file.relative_to(workspace_path)
+            relative_path = py_file.relative_to(platform_path)
             module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
-            module_name = f"workspace.{'.'.join(module_parts)}"
+            module_name = f"platform.{'.'.join(module_parts)}"
 
             try:
                 spec = importlib.util.spec_from_file_location(module_name, py_file)
@@ -51,7 +52,8 @@ class TestMetadataEndpoint:
         # Create mock request
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
 
         # Call endpoint
         response = asyncio.run(get_discovery_metadata(req))
@@ -63,7 +65,8 @@ class TestMetadataEndpoint:
         """Test that metadata endpoint returns workflows array"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
         response = asyncio.run(get_discovery_metadata(req))
 
         # Parse JSON response
@@ -77,6 +80,8 @@ class TestMetadataEndpoint:
         """Test that metadata endpoint returns dataProviders array"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
         response = asyncio.run(get_discovery_metadata(req))
 
         # Parse JSON response
@@ -89,6 +94,8 @@ class TestMetadataEndpoint:
         """Test that test_workflow is included in response"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
         response = asyncio.run(get_discovery_metadata(req))
 
         data = json.loads(response.get_body().decode())
@@ -110,6 +117,8 @@ class TestMetadataEndpoint:
         """Test that workflow parameters are formatted correctly"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
         response = asyncio.run(get_discovery_metadata(req))
 
         data = json.loads(response.get_body().decode())
@@ -150,6 +159,8 @@ class TestMetadataEndpoint:
         """Test that optional parameter fields are excluded when not present"""
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
         response = asyncio.run(get_discovery_metadata(req))
 
         data = json.loads(response.get_body().decode())
@@ -171,7 +182,8 @@ class TestMetadataEndpoint:
         # This endpoint should work without any auth headers
         req = Mock(spec=func.HttpRequest)
         req.headers = {}
-        req.headers = {}
+        req.params = Mock()
+        req.params.get = Mock(return_value='true')  # Show platform workflows
 
         response = asyncio.run(get_discovery_metadata(req))
 

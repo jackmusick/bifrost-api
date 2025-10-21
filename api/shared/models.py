@@ -70,6 +70,8 @@ __all__ = [
     'WorkflowExecutionRequest',
     'WorkflowExecutionResponse',
     'ExecutionsListResponse',
+    'StuckExecutionsResponse',
+    'CleanupTriggeredResponse',
 
     # Metadata
     'WorkflowParameter',
@@ -624,8 +626,24 @@ class WorkflowExecutionResponse(BaseModel):
 
 
 class ExecutionsListResponse(BaseModel):
-    """Response model for listing workflow executions"""
+    """Response model for listing workflow executions with pagination"""
     executions: list[WorkflowExecution] = Field(..., description="List of workflow executions")
+    continuationToken: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded)")
+    hasMore: bool = Field(..., description="Whether more results are available")
+
+
+class StuckExecutionsResponse(BaseModel):
+    """Response model for stuck executions query"""
+    executions: list[WorkflowExecution] = Field(..., description="List of stuck executions")
+    count: int = Field(..., description="Number of stuck executions found")
+
+
+class CleanupTriggeredResponse(BaseModel):
+    """Response model for cleanup trigger operation"""
+    cleaned: int = Field(..., description="Total number of executions cleaned up")
+    pending: int = Field(..., description="Number of pending executions timed out")
+    running: int = Field(..., description="Number of running executions timed out")
+    failed: int = Field(..., description="Number of executions that failed to clean up")
 
 
 # ==================== METADATA MODELS ====================
@@ -667,6 +685,9 @@ class WorkflowMetadata(BaseModel):
     allowedMethods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods")
     disableGlobalKey: bool = Field(False, description="If true, only workflow-specific API keys work")
     publicEndpoint: bool = Field(False, description="If true, skip authentication for webhooks")
+
+    # Source tracking (for UI filtering)
+    source: Literal["home", "platform", "workspace"] | None = Field(None, description="Where the workflow is located")
 
 
 class DataProviderMetadata(BaseModel):

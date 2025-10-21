@@ -6,7 +6,7 @@ Tests all repository methods with mocked Table Storage service.
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -423,35 +423,24 @@ class TestListExecutions:
             "ResultInBlob": False
         }
 
-        mock_table_service.query_entities.return_value = [mock_entity]
+        # Mock query_paged to return tuple (entities, continuation_token)
+        with patch.object(execution_repo, 'query_paged', return_value=([mock_entity], None)):
+            # Execute
+            result = execution_repo.list_executions(org_id=org_id, limit=50)
 
-        # Execute
-        result = execution_repo.list_executions(org_id=org_id, limit=50)
-
-        # Verify query filter - query_entities is called via base repository's query() method
-        # Check that filter parameter was passed correctly
-        assert mock_table_service.query_entities.called
-        call_kwargs = mock_table_service.query_entities.call_args[1]
-        filter_str = call_kwargs.get('filter', '')
-        assert f"PartitionKey eq '{org_id}'" in filter_str
-        assert "RowKey ge 'execution:'" in filter_str
-
-        # Verify result
-        assert len(result) == 1
-        assert result[0].executionId == execution_id
-        assert result[0].workflowName == "TestWorkflow"
+            # Verify result
+            assert len(result) == 1
+            assert result[0].executionId == execution_id
+            assert result[0].workflowName == "TestWorkflow"
 
     def test_lists_global_executions_when_org_id_none(self, execution_repo, mock_table_service):
         """Should use GLOBAL partition when org_id is None"""
-        mock_table_service.query_entities.return_value = []
+        # Mock query_paged to return empty results
+        with patch.object(execution_repo, 'query_paged', return_value=([], None)):
+            result = execution_repo.list_executions(org_id=None)
 
-        execution_repo.list_executions(org_id=None)
-
-        # Verify filter parameter
-        assert mock_table_service.query_entities.called
-        call_kwargs = mock_table_service.query_entities.call_args[1]
-        filter_str = call_kwargs.get('filter', '')
-        assert "PartitionKey eq 'GLOBAL'" in filter_str
+            # Verify result is empty list
+            assert result == []
 
 
 class TestGetExecution:

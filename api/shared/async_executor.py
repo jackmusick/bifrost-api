@@ -3,7 +3,6 @@ Async Workflow Execution
 Handles queueing and execution of long-running workflows
 """
 
-import base64
 import json
 import logging
 import os

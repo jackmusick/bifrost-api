@@ -19,6 +19,7 @@ export interface ExecutionFilters {
   workflowName?: string
   startDate?: string
   endDate?: string
+  limit?: number
 }
 
 export interface ExecutionListResponse {

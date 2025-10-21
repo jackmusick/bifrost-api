@@ -1,0 +1,71 @@
+"""
+Forms SDK for Bifrost.
+
+Provides Python API for form operations (read-only for now).
+"""
+
+from __future__ import annotations
+
+from shared.handlers.forms_logic import get_form_logic, list_forms_logic
+from shared.models import Form
+
+from ._internal import get_context
+
+
+class forms:
+    """
+    Form operations (read-only).
+
+    Allows workflows to list and get form definitions.
+    """
+
+    @staticmethod
+    def list() -> list[Form]:
+        """
+        List all forms available to the current user.
+
+        Returns:
+            list[Form]: List of form objects
+
+        Raises:
+            RuntimeError: If no execution context
+
+        Example:
+            >>> from bifrost import forms
+            >>> all_forms = forms.list()
+            >>> for form in all_forms:
+            ...     print(f"{form.id}: {form.title}")
+        """
+        context = get_context()
+
+        return list_forms_logic(context)
+
+    @staticmethod
+    def get(form_id: str) -> Form:
+        """
+        Get a form definition by ID.
+
+        Args:
+            form_id: Form ID
+
+        Returns:
+            Form: Form object
+
+        Raises:
+            ValueError: If form not found
+            RuntimeError: If no execution context
+
+        Example:
+            >>> from bifrost import forms
+            >>> form = forms.get("form-123")
+            >>> print(form.title)
+            >>> print(form.schema)
+        """
+        context = get_context()
+
+        form = get_form_logic(context, form_id)
+
+        if not form:
+            raise ValueError(f"Form not found: {form_id}")
+
+        return form

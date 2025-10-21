@@ -6,6 +6,7 @@ Extracted from functions/organizations.py for unit testability
 
 import json
 import logging
+from typing import TYPE_CHECKING
 
 import azure.functions as func
 from pydantic import ValidationError
@@ -13,36 +14,177 @@ from pydantic import ValidationError
 from shared.models import (
     CreateOrganizationRequest,
     ErrorResponse,
+    Organization,
     UpdateOrganizationRequest,
 )
 from shared.repositories.organizations import OrganizationRepository
 
+if TYPE_CHECKING:
+    from shared.request_context import RequestContext
+
 logger = logging.getLogger(__name__)
+
+
+# ==================== BUSINESS LOGIC FUNCTIONS ====================
+# These functions contain the core business logic and can be called by both
+# HTTP handlers and the Bifrost SDK
+
+
+def list_organizations_logic(context: 'RequestContext') -> list[Organization]:
+    """
+    List all organizations (business logic).
+
+    Args:
+        context: Request context with user info
+
+    Returns:
+        list[Organization]: List of organization objects
+    """
+    logger.info(f"User {context.user_id} listing organizations")
+
+    org_repo = OrganizationRepository()
+    orgs = org_repo.list_organizations(active_only=True)
+
+    # Sort by name
+    orgs.sort(key=lambda o: o.name)
+
+    logger.info(f"Returning {len(orgs)} organizations for user {context.user_id}")
+
+    return orgs
+
+
+def create_organization_logic(
+    context: 'RequestContext',
+    name: str,
+    domain: str | None = None,
+    is_active: bool = True
+) -> Organization:
+    """
+    Create a new organization (business logic).
+
+    Args:
+        context: Request context with user info
+        name: Organization name
+        domain: Organization domain (optional)
+        is_active: Whether organization is active (default: True)
+
+    Returns:
+        Organization: Created organization object
+    """
+    logger.info(f"User {context.user_id} creating organization: {name}")
+
+    create_request = CreateOrganizationRequest(
+        name=name,
+        domain=domain,
+        isActive=is_active
+    )
+
+    org_repo = OrganizationRepository()
+    org = org_repo.create_organization(
+        org_request=create_request,
+        created_by=context.user_id
+    )
+
+    logger.info(f"Created organization {org.id}: {org.name}")
+
+    return org
+
+
+def get_organization_logic(context: 'RequestContext', org_id: str) -> Organization | None:
+    """
+    Get organization by ID (business logic).
+
+    Args:
+        context: Request context with user info
+        org_id: Organization ID
+
+    Returns:
+        Organization | None: Organization object or None if not found
+    """
+    logger.info(f"User {context.user_id} retrieving organization {org_id}")
+
+    org_repo = OrganizationRepository()
+    org = org_repo.get_organization(org_id)
+
+    if not org:
+        logger.warning(f"Organization {org_id} not found")
+
+    return org
+
+
+def update_organization_logic(
+    context: 'RequestContext',
+    org_id: str,
+    **updates
+) -> Organization | None:
+    """
+    Update organization (business logic).
+
+    Args:
+        context: Request context with user info
+        org_id: Organization ID
+        **updates: Fields to update (name, domain, isActive)
+
+    Returns:
+        Organization | None: Updated organization object or None if not found
+    """
+    logger.info(f"User {context.user_id} updating organization {org_id}")
+
+    update_request = UpdateOrganizationRequest(**updates)
+
+    org_repo = OrganizationRepository()
+    org = org_repo.update_organization(org_id, update_request)
+
+    if org:
+        logger.info(f"Updated organization {org_id}")
+    else:
+        logger.warning(f"Organization {org_id} not found for update")
+
+    return org
+
+
+def delete_organization_logic(context: 'RequestContext', org_id: str) -> bool:
+    """
+    Soft delete organization (business logic).
+
+    Args:
+        context: Request context with user info
+        org_id: Organization ID
+
+    Returns:
+        bool: True if deleted, False if not found
+    """
+    logger.info(f"User {context.user_id} deleting organization {org_id}")
+
+    org_repo = OrganizationRepository()
+    success = org_repo.delete_organization(org_id)
+
+    if success:
+        logger.info(f"Soft deleted organization {org_id}")
+    else:
+        logger.warning(f"Organization {org_id} not found for deletion")
+
+    return success
+
+
+# ==================== HTTP HANDLERS ====================
+# These functions handle HTTP-specific concerns (parsing requests, returning responses)
+# and delegate to the business logic functions above
 
 
 async def list_organizations_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/organizations
-    List all organizations
-
-    - Platform Admins: See all organizations
-    - Organization Users: Access denied (403)
+    List all organizations (HTTP handler)
     """
     context = req.context  # type: ignore[attr-defined]
-    logger.info(f"User {context.user_id} listing organizations")
 
     try:
-        # Platform admin - get ALL organizations using repository
-        org_repo = OrganizationRepository()
-        orgs = org_repo.list_organizations(active_only=True)
+        # Call business logic
+        orgs = list_organizations_logic(context)
 
         # Convert to JSON
         organizations = [org.model_dump(mode="json") for org in orgs]
-
-        # Sort by name
-        organizations.sort(key=lambda o: o["name"])
-
-        logger.info(f"Returning {len(organizations)} organizations for platform admin {context.user_id}")
 
         return func.HttpResponse(
             json.dumps(organizations),
@@ -66,24 +208,20 @@ async def list_organizations_handler(req: func.HttpRequest) -> func.HttpResponse
 async def create_organization_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/organizations
-    Create a new client organization
+    Create a new client organization (HTTP handler)
     """
     context = req.context  # type: ignore[attr-defined]
-    logger.info(f"User {context.user_id} creating organization")
 
     try:
         # Parse and validate request body
         request_body = req.get_json()
         create_request = CreateOrganizationRequest(**request_body)
 
-        # Create organization using repository
-        org_repo = OrganizationRepository()
-        org = org_repo.create_organization(
-            org_request=create_request,
-            created_by=context.user_id
+        # Call business logic
+        org = create_organization_logic(
+            context=context,
+            **create_request.model_dump()
         )
-
-        logger.info(f"Created organization {org.id}: {org.name}")
 
         return func.HttpResponse(
             json.dumps(org.model_dump(mode="json")),
@@ -132,24 +270,18 @@ async def create_organization_handler(req: func.HttpRequest) -> func.HttpRespons
 async def get_organization_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/organizations/{orgId}
-    Get a specific organization by ID
-
-    Platform admin only endpoint
+    Get a specific organization by ID (HTTP handler)
     """
     context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
 
     assert org_id is not None, "orgId is required"
 
-    logger.info(f"User {context.user_id} retrieving organization {org_id}")
-
     try:
-        # Get organization using repository
-        org_repo = OrganizationRepository()
-        org = org_repo.get_organization(org_id)
+        # Call business logic
+        org = get_organization_logic(context, org_id)
 
         if not org:
-            logger.warning(f"Organization {org_id} not found")
             error = ErrorResponse(
                 error="NotFound",
                 message="Organization not found"
@@ -182,25 +314,24 @@ async def get_organization_handler(req: func.HttpRequest) -> func.HttpResponse:
 async def update_organization_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     PATCH /api/organizations/{orgId}
-    Update an organization
-
-    Platform admin only endpoint
+    Update an organization (HTTP handler)
     """
     context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
 
     assert org_id is not None, "orgId is required"
 
-    logger.info(f"User {context.user_id} updating organization {org_id}")
-
     try:
         # Parse and validate update request
         request_body = req.get_json()
         update_request = UpdateOrganizationRequest(**request_body)
 
-        # Update organization using repository
-        org_repo = OrganizationRepository()
-        org = org_repo.update_organization(org_id, update_request)
+        # Call business logic
+        org = update_organization_logic(
+            context=context,
+            org_id=org_id,
+            **update_request.model_dump(exclude_unset=True)
+        )
 
         if not org:
             error = ErrorResponse(
@@ -212,8 +343,6 @@ async def update_organization_handler(req: func.HttpRequest) -> func.HttpRespons
                 status_code=404,
                 mimetype="application/json"
             )
-
-        logger.info(f"Updated organization {org_id}")
 
         return func.HttpResponse(
             json.dumps(org.model_dump(mode="json")),
@@ -250,21 +379,16 @@ async def update_organization_handler(req: func.HttpRequest) -> func.HttpRespons
 async def delete_organization_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     DELETE /api/organizations/{orgId}
-    Soft delete an organization (sets IsActive=False)
-
-    Platform admin only endpoint
+    Soft delete an organization (HTTP handler)
     """
     context = req.context  # type: ignore[attr-defined]
     org_id = req.route_params.get("orgId")
 
     assert org_id is not None, "orgId is required"
 
-    logger.info(f"User {context.user_id} deleting organization {org_id}")
-
     try:
-        # Soft delete organization using repository
-        org_repo = OrganizationRepository()
-        success = org_repo.delete_organization(org_id)
+        # Call business logic
+        success = delete_organization_logic(context, org_id)
 
         if not success:
             error = ErrorResponse(
@@ -276,8 +400,6 @@ async def delete_organization_handler(req: func.HttpRequest) -> func.HttpRespons
                 status_code=404,
                 mimetype="application/json"
             )
-
-        logger.info(f"Soft deleted organization {org_id}")
 
         return func.HttpResponse(
             status_code=204  # No Content

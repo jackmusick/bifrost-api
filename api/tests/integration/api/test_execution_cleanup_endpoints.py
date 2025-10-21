@@ -13,7 +13,6 @@ from uuid import uuid4
 
 import pytest
 import requests
-from azure.data.tables import TableServiceClient
 
 logger = logging.getLogger(__name__)
 

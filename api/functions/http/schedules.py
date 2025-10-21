@@ -173,7 +173,14 @@ async def process_due_schedules(req: func.HttpRequest) -> func.HttpResponse:
     summary="Trigger scheduled workflow now",
     description="Manually trigger a scheduled workflow execution (queues it like a normal scheduled run)",
     tags=["Schedules"],
-    response_model=WorkflowExecutionResponse
+    response_model=WorkflowExecutionResponse,
+    path_params={
+        "workflow_name": {
+            "description": "Workflow name (snake_case)",
+            "schema": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+            "required": True
+        }
+    }
 )
 @with_request_context
 @require_platform_admin

@@ -21,8 +21,11 @@ import { useSearch } from '@/hooks/useSearch'
 import type { components } from '@/lib/v1'
 type Workflow = components['schemas']['WorkflowMetadata']
 
+type WorkflowFilter = 'home' | 'platform' | 'both'
+
 export function Workflows() {
   const navigate = useNavigate()
+  const [filter, setFilter] = useState<WorkflowFilter>('home')
   const { data, isLoading, refetch } = useWorkflowsMetadata()
   const { data: apiKeys } = useWorkflowKeys({ includeRevoked: false })
   const [webhookDialogOpen, setWebhookDialogOpen] = useState(false)
@@ -30,11 +33,19 @@ export function Workflows() {
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
 
-  const workflows = data?.workflows || []
+  const workflows = useMemo(() => data?.workflows || [], [data?.workflows])
+
+  // Apply source filter
+  const sourceFilteredWorkflows = useMemo(() => {
+    if (filter === 'both') return workflows
+    if (filter === 'home') return workflows.filter(w => w.source === 'home' || w.source === 'workspace')
+    if (filter === 'platform') return workflows.filter(w => w.source === 'platform')
+    return workflows
+  }, [workflows, filter])
 
   // Apply search filter
   const filteredWorkflows = useSearch(
-    workflows,
+    sourceFilteredWorkflows,
     searchTerm,
     [
       'name',
@@ -95,13 +106,26 @@ export function Workflows() {
         </div>
       </div>
 
-      {/* Search Box */}
-      <SearchBox
-        value={searchTerm}
-        onChange={setSearchTerm}
-        placeholder="Search workflows by name, description, or category..."
-        className="max-w-md"
-      />
+      {/* Search Box and Filters */}
+      <div className="flex items-center gap-4">
+        <SearchBox
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search workflows by name, description, or category..."
+          className="max-w-md flex-1"
+        />
+        <ToggleGroup type="single" value={filter} onValueChange={(value: string) => value && setFilter(value as WorkflowFilter)}>
+          <ToggleGroupItem value="home" aria-label="Home workflows">
+            Home
+          </ToggleGroupItem>
+          <ToggleGroupItem value="platform" aria-label="Platform examples">
+            Platform
+          </ToggleGroupItem>
+          <ToggleGroupItem value="both" aria-label="All workflows">
+            Both
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
 
       {isLoading ? (
         viewMode === 'grid' ? (

@@ -57,29 +57,61 @@ def get_workspace_paths():
     Dynamically determine workspace paths.
 
     Returns list of existing workspace directories:
-    - System workspace: /workspace (Azure Files mount in production)
-    - User workspace: ./workspace (local development)
+    - /home: User code (workflows, scripts, files)
+    - /platform: Platform-provided code (SDK, examples, integrations)
 
     This is a function (not a constant) to support hot-reload scenarios
     where workspace directories might be created after startup.
     """
     paths = []
+    base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
-    system_path = Path('/workspace')
-    if system_path.exists():
-        paths.append(str(system_path))
+    # /home - user code directory
+    home_path = base_dir / 'home'
+    if home_path.exists():
+        paths.append(str(home_path))
 
-    # Use absolute path like original workflows/function_app.py did
-    user_path = Path(os.path.dirname(os.path.abspath(__file__))) / 'workspace'
-    if user_path.exists():
-        paths.append(str(user_path))
+    # /platform - platform code directory
+    platform_path = base_dir / 'platform'
+    if platform_path.exists():
+        paths.append(str(platform_path))
+
+    # Legacy /workspace support (for backwards compatibility during migration)
+    legacy_workspace = base_dir / 'workspace'
+    if legacy_workspace.exists():
+        paths.append(str(legacy_workspace))
 
     return paths
 
 
+def get_home_path() -> str | None:
+    """Get the /home directory path if it exists."""
+    base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+    home_path = base_dir / 'home'
+    return str(home_path) if home_path.exists() else None
+
+
+# Add /platform to sys.path so bifrost imports work
+# This allows: from bifrost import organizations
+base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+platform_path = base_dir / 'platform'
+if platform_path.exists() and str(platform_path) not in sys.path:
+    sys.path.insert(0, str(platform_path))
+    logging.info(f"Added /platform to sys.path: {platform_path}")
+
+# Add /home/.packages to sys.path for user-installed packages
+# This allows users to: pip install --target=/home/.packages <package>
+packages_path = base_dir / 'home' / '.packages'
+# Ensure .packages directory exists so users don't need to restart after first package install
+packages_path.mkdir(parents=True, exist_ok=True)
+if str(packages_path) not in sys.path:
+    sys.path.insert(0, str(packages_path))
+    logging.info(f"Added /home/.packages to sys.path: {packages_path}")
+
 # Install import restrictions to prevent workspace code from importing engine internals
-# Initial setup - gets paths at startup time
-install_import_restrictions(get_workspace_paths())
+# /home code has stricter restrictions (only bifrost SDK)
+# /platform code can import from shared.* (needs handlers)
+install_import_restrictions(get_workspace_paths(), home_path=get_home_path())
 
 # ==================== TABLE INITIALIZATION ====================
 # T007: Initialize Azure Table Storage tables at startup
@@ -129,17 +161,18 @@ except Exception as e:
 
 def discover_workspace_modules():
     """
-    Dynamically discover and import all Python files in workspace/ subdirectories.
+    Dynamically discover and import all Python files in workspace subdirectories.
 
-    This function scans BOTH system and user workspace paths:
-    - System workspace: /workspace (Azure Files mount in production)
-    - User workspace: ./workspace (local development)
+    This function scans all workspace paths:
+    - /home: User code (workflows, scripts)
+    - /platform: Platform-provided code (SDK, examples, integrations)
+    - /workspace: Legacy support (backwards compatibility)
 
     This allows developers to add workflows without restarting the app,
     and supports both production (mounted volumes) and development (local files).
 
-    No __init__.py files are required - this allows workspace/ to be purely
-    user code without any framework dependencies.
+    No __init__.py files are required - this allows workspace code to be purely
+    user/platform code without any framework dependencies.
     """
     discovered_count = 0
 

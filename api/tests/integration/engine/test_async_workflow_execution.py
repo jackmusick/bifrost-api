@@ -6,8 +6,7 @@ End-to-end tests for async workflow execution lifecycle
 import asyncio
 import json
 import time
-from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,7 +15,6 @@ from shared.context import Caller, Organization, OrganizationContext
 from shared.decorators import workflow
 from shared.error_handling import WorkflowError
 from shared.execution_logger import get_execution_logger
-from shared.models import ExecutionStatus
 from shared.registry import WorkflowRegistry
 from shared.request_context import RequestContext
 

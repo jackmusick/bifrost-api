@@ -4,7 +4,7 @@ Cleans up stuck executions that remain in PENDING or RUNNING status for too long
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import azure.functions as func
 
@@ -115,7 +115,7 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
                 # Continue processing other executions
 
         logger.info(
-            f"Execution cleanup completed",
+            "Execution cleanup completed",
             extra={
                 "pending_timeouts": pending_count,
                 "running_timeouts": running_count,

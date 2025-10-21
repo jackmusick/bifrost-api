@@ -14,7 +14,7 @@ from shared.models import ExecutionStatus, ProcessSchedulesResponse, ScheduleInf
 from shared.registry import get_registry
 from shared.request_context import RequestContext
 from shared.storage import TableStorageService
-from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid, validate_cron_expression
+from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,7 @@ bp = func.Blueprint()
     path="/discovery",
     method="GET",
     summary="Discover available workflows and data providers",
-    description="Returns metadata for all registered workflows and data providers",
+    description="Returns metadata for all registered workflows and data providers.",
     tags=["Discovery"],
     response_model=MetadataResponse
 )

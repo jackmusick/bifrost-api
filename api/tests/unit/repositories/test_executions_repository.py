@@ -5,6 +5,7 @@ Unit tests for ExecutionRepository
 import json
 import pytest
 from datetime import datetime
+from unittest.mock import patch
 
 from shared.repositories.executions import ExecutionRepository
 from shared.models import ExecutionStatus
@@ -131,7 +132,8 @@ class TestExecutionRepositoryRead:
                 "WorkflowName": "Workflow1",
                 "Status": "Success",
                 "StartedAt": "2024-01-15T10:30:00",
-                "CompletedAt": "2024-01-15T10:31:00"
+                "CompletedAt": "2024-01-15T10:31:00",
+                "InputData": "{}"
             },
             {
                 "PartitionKey": "GLOBAL",
@@ -140,17 +142,18 @@ class TestExecutionRepositoryRead:
                 "WorkflowName": "Workflow2",
                 "Status": "Running",
                 "StartedAt": "2024-01-15T11:00:00",
-                "CompletedAt": None
+                "CompletedAt": None,
+                "InputData": "{}"
             }
         ]
 
-        mock_table_service.query_entities.return_value = iter(executions_data)
+        # Mock relationships_service.query_entities_paged to return tuple
+        with patch.object(repo.relationships_service, 'query_entities_paged', return_value=(executions_data, None)):
+            result = repo.list_executions_by_user("user@example.com", limit=50)
 
-        result = repo.list_executions_by_user("user@example.com", limit=50)
-
-        assert len(result) == 2
-        assert result[0].executionId == "exec-1"
-        assert result[1].status == ExecutionStatus.RUNNING
+            assert len(result) == 2
+            assert result[0].executionId == "exec-1"
+            assert result[1].status == ExecutionStatus.RUNNING
 
     def test_list_executions_by_workflow(self, mock_table_service):
         """Test listing executions for a workflow"""
@@ -226,11 +229,11 @@ class TestExecutionRepositoryRead:
         """Test listing executions when none exist"""
         repo = ExecutionRepository()
 
-        mock_table_service.query_entities.return_value = iter([])
+        # Mock query_paged to return empty tuple
+        with patch.object(repo, 'query_paged', return_value=([], None)):
+            result = repo.list_executions("org-123", limit=50)
 
-        result = repo.list_executions("org-123", limit=50)
-
-        assert result == []
+            assert result == []
 
 
 class TestExecutionRepositoryUpdate:

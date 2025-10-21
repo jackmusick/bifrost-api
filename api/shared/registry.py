@@ -49,6 +49,9 @@ class WorkflowMetadata:
     disable_global_key: bool = False
     public_endpoint: bool = False
 
+    # Source tracking (home, platform, workspace)
+    source: Literal["home", "platform", "workspace"] | None = None
+
     # Parameters and function
     parameters: list[WorkflowParameter] = field(default_factory=list)
     function: Any = None

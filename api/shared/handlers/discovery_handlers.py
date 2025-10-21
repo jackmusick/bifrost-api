@@ -63,6 +63,7 @@ def convert_registry_workflow_to_model(
         allowedMethods=registry_workflow.allowed_methods,
         disableGlobalKey=registry_workflow.disable_global_key,
         publicEndpoint=registry_workflow.public_endpoint,
+        source=registry_workflow.source,
     )
 
 

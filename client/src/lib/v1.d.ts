@@ -236,7 +236,7 @@ export interface paths {
         };
         /**
          * Discover available workflows and data providers
-         * @description Returns metadata for all registered workflows and data providers
+         * @description Returns metadata for all registered workflows and data providers.
          */
         get: {
             parameters: {
@@ -325,7 +325,7 @@ export interface paths {
         };
         /**
          * List workflow executions
-         * @description List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.
+         * @description List workflow executions with filtering and pagination. Platform admins see all executions in their org scope. Regular users see only their own executions.
          */
         get: {
             parameters: {
@@ -334,8 +334,14 @@ export interface paths {
                     workflowName?: string;
                     /** @description Filter by execution status */
                     status?: "Pending" | "Running" | "Success" | "Failed" | "CompletedWithErrors";
-                    /** @description Maximum number of results (default: 50, max: 1000) */
+                    /** @description Filter by start date (ISO format, inclusive) */
+                    startDate?: string;
+                    /** @description Filter by end date (ISO format, inclusive) */
+                    endDate?: string;
+                    /** @description Maximum number of results (default: 25, max: 1000) */
                     limit?: number;
+                    /** @description Continuation token from previous page for pagination */
+                    continuationToken?: string;
                 };
                 header?: never;
                 path?: never;
@@ -349,7 +355,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["WorkflowExecution"][];
+                        "application/json": components["schemas"]["ExecutionsListResponse"];
                     };
                 };
                 400: components["responses"]["BadRequestError"];
@@ -408,6 +414,94 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/executions/cleanup/stuck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get stuck executions
+         * @description Get list of executions stuck in Pending/Running state beyond timeout thresholds (platform admin only)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful operation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StuckExecutionsResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/executions/cleanup/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger cleanup of stuck executions
+         * @description Manually trigger cleanup of stuck executions (times them out and updates status) - platform admin only
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CleanupTriggeredResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -760,8 +854,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * General health check
-         * @description Check the overall health status of the API and its dependencies
+         * Basic health check
+         * @description Simple liveness check - returns 200 if API is running
          */
         get: {
             parameters: {
@@ -2717,6 +2811,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedules/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate CRON expression
+         * @description Test a CRON expression and return validation results with next run times
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CronValidationRequest"];
+                };
+            };
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CronValidationResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Process all due schedules now
+         * @description Manually trigger execution of all schedules that are currently due (server determines which schedules are due)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProcessSchedulesResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{workflow_name}/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger scheduled workflow now
+         * @description Manually trigger a scheduled workflow execution (queues it like a normal scheduled run)
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Workflow name (snake_case) */
+                    workflow_name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resource created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowExecutionResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequestError"];
+                401: components["responses"]["UnauthorizedError"];
+                403: components["responses"]["ForbiddenError"];
+                404: components["responses"]["NotFoundError"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/endpoints/test_workflow": {
         parameters: {
             query?: never;
@@ -3751,7 +3984,7 @@ export interface components {
         };
         /**
          * ExecutionsListResponse
-         * @description Response model for listing workflow executions
+         * @description Response model for listing workflow executions with pagination
          */
         ExecutionsListResponse: {
             /**
@@ -3759,6 +3992,59 @@ export interface components {
              * @description List of workflow executions
              */
             executions: components["schemas"]["WorkflowExecution"][];
+            /**
+             * Continuationtoken
+             * @description Continuation token for next page (opaque, base64-encoded)
+             * @default null
+             */
+            continuationToken: string | null;
+            /**
+             * Hasmore
+             * @description Whether more results are available
+             */
+            hasMore: boolean;
+        };
+        /**
+         * StuckExecutionsResponse
+         * @description Response model for stuck executions query
+         */
+        StuckExecutionsResponse: {
+            /**
+             * Executions
+             * @description List of stuck executions
+             */
+            executions: components["schemas"]["WorkflowExecution"][];
+            /**
+             * Count
+             * @description Number of stuck executions found
+             */
+            count: number;
+        };
+        /**
+         * CleanupTriggeredResponse
+         * @description Response model for cleanup trigger operation
+         */
+        CleanupTriggeredResponse: {
+            /**
+             * Cleaned
+             * @description Total number of executions cleaned up
+             */
+            cleaned: number;
+            /**
+             * Pending
+             * @description Number of pending executions timed out
+             */
+            pending: number;
+            /**
+             * Running
+             * @description Number of running executions timed out
+             */
+            running: number;
+            /**
+             * Failed
+             * @description Number of executions that failed to clean up
+             */
+            failed: number;
         };
         /**
          * WorkflowParameter
@@ -3882,6 +4168,12 @@ export interface components {
              * @default false
              */
             publicEndpoint: boolean;
+            /**
+             * Source
+             * @description Where the workflow is located
+             * @default null
+             */
+            source: ("home" | "platform" | "workspace") | null;
         };
         /**
          * DataProviderMetadata
@@ -4639,6 +4931,180 @@ export interface components {
             enabled: boolean | null;
         };
         /**
+         * ScheduleInfo
+         * @description Information about a scheduled workflow for display
+         */
+        ScheduleInfo: {
+            /**
+             * Workflowname
+             * @description Internal workflow name/identifier
+             */
+            workflowName: string;
+            /**
+             * Workflowdescription
+             * @description Display name of the workflow
+             */
+            workflowDescription: string;
+            /**
+             * Cronexpression
+             * @description CRON expression
+             */
+            cronExpression: string;
+            /**
+             * Humanreadable
+             * @description Human-readable schedule (e.g., 'Every day at 2:00 AM')
+             */
+            humanReadable: string;
+            /**
+             * Nextrunat
+             * @description Next scheduled execution time
+             * @default null
+             */
+            nextRunAt: string | null;
+            /**
+             * Lastrunat
+             * @description Last execution time
+             * @default null
+             */
+            lastRunAt: string | null;
+            /**
+             * Lastexecutionid
+             * @description ID of last execution
+             * @default null
+             */
+            lastExecutionId: string | null;
+            /**
+             * Executioncount
+             * @description Total number of times this schedule has been triggered
+             * @default 0
+             */
+            executionCount: number;
+            /**
+             * Enabled
+             * @description Whether this schedule is currently active
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Validationstatus
+             * @description Validation status of the CRON expression
+             * @default null
+             */
+            validationStatus: ("valid" | "warning" | "error") | null;
+            /**
+             * Validationmessage
+             * @description Validation message for warning/error statuses
+             * @default null
+             */
+            validationMessage: string | null;
+            /**
+             * Isoverdue
+             * @description Whether the schedule is overdue by more than 6 minutes
+             * @default false
+             */
+            isOverdue: boolean;
+        };
+        /**
+         * SchedulesListResponse
+         * @description Response model for listing scheduled workflows
+         */
+        SchedulesListResponse: {
+            /**
+             * Schedules
+             * @description List of scheduled workflows
+             */
+            schedules: components["schemas"]["ScheduleInfo"][];
+            /**
+             * Totalcount
+             * @description Total number of scheduled workflows
+             */
+            totalCount: number;
+        };
+        /**
+         * CronValidationRequest
+         * @description Request model for CRON validation
+         */
+        CronValidationRequest: {
+            /**
+             * Expression
+             * @description CRON expression to validate
+             */
+            expression: string;
+        };
+        /**
+         * CronValidationResponse
+         * @description Response model for CRON validation
+         */
+        CronValidationResponse: {
+            /**
+             * Valid
+             * @description Whether the CRON expression is valid
+             */
+            valid: boolean;
+            /**
+             * Humanreadable
+             * @description Human-readable description
+             */
+            humanReadable: string;
+            /**
+             * Nextruns
+             * @description Next 5 execution times (ISO format)
+             * @default null
+             */
+            nextRuns: string[] | null;
+            /**
+             * Intervalseconds
+             * @description Seconds between executions
+             * @default null
+             */
+            intervalSeconds: number | null;
+            /**
+             * Warning
+             * @description Warning message for too-frequent schedules
+             * @default null
+             */
+            warning: string | null;
+            /**
+             * Error
+             * @description Error message for invalid expressions
+             * @default null
+             */
+            error: string | null;
+        };
+        /**
+         * ProcessSchedulesResponse
+         * @description Response model for processing due schedules
+         */
+        ProcessSchedulesResponse: {
+            /**
+             * Total
+             * @description Total number of scheduled workflows
+             */
+            total: number;
+            /**
+             * Due
+             * @description Number of schedules that were due
+             */
+            due: number;
+            /**
+             * Executed
+             * @description Number of schedules successfully executed
+             */
+            executed: number;
+            /**
+             * Failed
+             * @description Number of schedules that failed to execute
+             */
+            failed: number;
+            /**
+             * Errors
+             * @description List of error details
+             */
+            errors?: {
+                [key: string]: string;
+            }[];
+        };
+        /**
          * BrandingSettings
          * @description Organization branding configuration
          */
@@ -4646,8 +5112,9 @@ export interface components {
             /**
              * Orgid
              * @description Organization ID or 'GLOBAL' for platform default
+             * @default null
              */
-            orgId: string;
+            orgId: string | null;
             /**
              * Squarelogourl
              * @description Square logo URL (for icons, 1:1 ratio)
@@ -4669,8 +5136,9 @@ export interface components {
             /**
              * Updatedby
              * @description User email who last updated branding
+             * @default null
              */
-            updatedBy: string;
+            updatedBy: string | null;
             /**
              * Updatedat
              * Format: date-time
@@ -5097,43 +5565,9 @@ export interface components {
             expires_at: string | null;
         };
         /**
-         * ScheduleInfo
-         * @description Information about a scheduled workflow for display
+         * DataProviderListResponse
+         * @description Response model for listing data providers
          */
-        ScheduleInfo: {
-            /** Internal workflow name/identifier */
-            workflowName: string;
-            /** Display name of the workflow */
-            workflowDescription: string;
-            /** CRON expression */
-            cronExpression: string;
-            /** Human-readable schedule (e.g., 'Every day at 2:00 AM') */
-            humanReadable: string;
-            /** Next scheduled execution time */
-            nextRunAt?: string | null;
-            /** Last execution time */
-            lastRunAt?: string | null;
-            /** ID of last execution */
-            lastExecutionId?: string | null;
-            /** Total number of times this schedule has been triggered */
-            executionCount?: number;
-            /** Whether this schedule is currently active */
-            enabled?: boolean;
-            /** Validation status of the CRON expression */
-            validationStatus?: "valid" | "warning" | "error" | null;
-            /** Validation message for warning/error statuses */
-            validationMessage?: string | null;
-        };
-        /**
-         * SchedulesListResponse
-         * @description Response model for listing scheduled workflows
-         */
-        SchedulesListResponse: {
-            /** List of scheduled workflows */
-            schedules: components["schemas"]["ScheduleInfo"][];
-            /** Total number of scheduled workflows */
-            totalCount: number;
-        };
         DataProviderListResponse: {
             /** Providers */
             providers: components["schemas"]["DataProviderMetadata"][];

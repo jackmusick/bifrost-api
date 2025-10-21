@@ -183,12 +183,12 @@ class TestGenerateFileUploadUrl:
             "expires_at": "2025-10-19T12:00:00Z",
         }
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_successful_url_generation(self, mock_blob_service_class):
+    @patch("shared.handlers.file_uploads_handlers.get_blob_service")
+    def test_successful_url_generation(self, mock_get_blob_service):
         """Test successful SAS URL generation"""
         # Setup
         mock_service = MagicMock()
-        mock_blob_service_class.return_value = mock_service
+        mock_get_blob_service.return_value = mock_service
         mock_service.generate_upload_url.return_value = self._create_blob_service_response()
 
         context = self._create_mock_context()
@@ -220,12 +220,12 @@ class TestGenerateFileUploadUrl:
             allowed_types=None,
         )
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_custom_max_size_bytes(self, mock_blob_service_class):
+    @patch("shared.handlers.file_uploads_handlers.get_blob_service")
+    def test_custom_max_size_bytes(self, mock_get_blob_service):
         """Test custom max_size_bytes parameter is passed through"""
         # Setup
         mock_service = MagicMock()
-        mock_blob_service_class.return_value = mock_service
+        mock_get_blob_service.return_value = mock_service
         mock_service.generate_upload_url.return_value = self._create_blob_service_response()
 
         context = self._create_mock_context()
@@ -249,12 +249,12 @@ class TestGenerateFileUploadUrl:
         call_kwargs = mock_service.generate_upload_url.call_args[1]
         assert call_kwargs["max_size_bytes"] == custom_max
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_allowed_types_passed_through(self, mock_blob_service_class):
+    @patch("shared.handlers.file_uploads_handlers.get_blob_service")
+    def test_allowed_types_passed_through(self, mock_get_blob_service):
         """Test allowed_types parameter is passed through"""
         # Setup
         mock_service = MagicMock()
-        mock_blob_service_class.return_value = mock_service
+        mock_get_blob_service.return_value = mock_service
         mock_service.generate_upload_url.return_value = self._create_blob_service_response()
 
         context = self._create_mock_context()
@@ -332,8 +332,7 @@ class TestGenerateFileUploadUrl:
 
         assert "file_size must be greater than 0" in exc_info.value.message
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_file_size_exceeds_default_max(self, mock_blob_service_class):
+    def test_file_size_exceeds_default_max(self):
         """Test error when file_size exceeds default 100MB limit"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -351,8 +350,7 @@ class TestGenerateFileUploadUrl:
 
         assert "file_size exceeds maximum" in exc_info.value.message
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_content_type_not_allowed(self, mock_blob_service_class):
+    def test_content_type_not_allowed(self):
         """Test error when content_type not in allowed_types"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -372,12 +370,12 @@ class TestGenerateFileUploadUrl:
 
         assert "not in allowed types" in exc_info.value.message
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_multiple_file_uploads_independently(self, mock_blob_service_class):
+    @patch("shared.handlers.file_uploads_handlers.get_blob_service")
+    def test_multiple_file_uploads_independently(self, mock_get_blob_service):
         """Test multiple file uploads work independently"""
         # Setup
         mock_service = MagicMock()
-        mock_blob_service_class.return_value = mock_service
+        mock_get_blob_service.return_value = mock_service
 
         # Create responses for two calls
         response1 = {
@@ -415,12 +413,12 @@ class TestGenerateFileUploadUrl:
         assert result2.blob_uri == "https://storage.blob.core.windows.net/uploads/file2.zip"
         assert mock_service.generate_upload_url.call_count == 2
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_blob_service_exception_propagates(self, mock_blob_service_class):
+    @patch("shared.handlers.file_uploads_handlers.get_blob_service")
+    def test_blob_service_exception_propagates(self, mock_get_blob_service):
         """Test that exceptions from BlobStorageService propagate"""
         # Setup
         mock_service = MagicMock()
-        mock_blob_service_class.return_value = mock_service
+        mock_get_blob_service.return_value = mock_service
         mock_service.generate_upload_url.side_effect = Exception("Blob service error")
 
         context = self._create_mock_context()
@@ -438,12 +436,12 @@ class TestGenerateFileUploadUrl:
                 context=context,
             )
 
-    @patch("shared.handlers.file_uploads_handlers.BlobStorageService")
-    def test_response_model_serialization(self, mock_blob_service_class):
+    @patch("shared.handlers.file_uploads_handlers.get_blob_service")
+    def test_response_model_serialization(self, mock_get_blob_service):
         """Test that FileUploadResponse is properly serialized"""
         # Setup
         mock_service = MagicMock()
-        mock_blob_service_class.return_value = mock_service
+        mock_get_blob_service.return_value = mock_service
         mock_service.generate_upload_url.return_value = self._create_blob_service_response()
 
         context = self._create_mock_context()

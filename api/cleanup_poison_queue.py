@@ -65,7 +65,7 @@ async def process_poison_queue():
             # Delete message from poison queue
             queue_client.delete_message(msg)
 
-            print(f"  ✓ Marked as FAILED and removed from poison queue")
+            print("  ✓ Marked as FAILED and removed from poison queue")
             processed += 1
 
         except Exception as e:
@@ -74,10 +74,10 @@ async def process_poison_queue():
             queue_client.delete_message(msg)
             failed += 1
 
-    print(f"\n" + "="*60)
+    print("\n" + "="*60)
     print(f"Processed: {processed} executions")
     print(f"Failed: {failed} executions")
-    print(f"="*60)
+    print("="*60)
 
 
 if __name__ == "__main__":

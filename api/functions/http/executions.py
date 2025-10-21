@@ -12,7 +12,7 @@ import azure.functions as func
 
 from shared.decorators import with_request_context
 from shared.handlers.executions_handlers import get_execution_handler, list_executions_handler
-from shared.models import WorkflowExecution
+from shared.models import WorkflowExecution, ExecutionsListResponse
 from shared.openapi_decorators import openapi_endpoint
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,9 @@ bp = func.Blueprint()
     path="/executions",
     method="GET",
     summary="List workflow executions",
-    description="List workflow executions with filtering. Platform admins see all executions in their org scope. Regular users see only their own executions.",
+    description="List workflow executions with filtering and pagination. Platform admins see all executions in their org scope. Regular users see only their own executions.",
     tags=["Executions"],
-    response_model=list[WorkflowExecution],
+    response_model=ExecutionsListResponse,
     query_params={
         "workflowName": {
             "description": "Filter by workflow name",
@@ -47,6 +47,16 @@ bp = func.Blueprint()
         "status": {
             "description": "Filter by execution status",
             "schema": {"type": "string", "enum": ["Pending", "Running", "Success", "Failed", "CompletedWithErrors"]},
+            "required": False
+        },
+        "startDate": {
+            "description": "Filter by start date (ISO format, inclusive)",
+            "schema": {"type": "string", "format": "date-time"},
+            "required": False
+        },
+        "endDate": {
+            "description": "Filter by end date (ISO format, inclusive)",
+            "schema": {"type": "string", "format": "date-time"},
             "required": False
         },
         "limit": {
@@ -69,6 +79,8 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
     Query parameters:
     - workflowName: Filter by workflow name (optional)
     - status: Filter by status (optional)
+    - startDate: Filter by start date (ISO format, inclusive, optional)
+    - endDate: Filter by end date (ISO format, inclusive, optional)
     - limit: Max results (optional, default 25, max 1000)
 
     Returns: List of workflow executions (filtered by user permissions)
@@ -81,12 +93,14 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
         # Get query parameters
         workflow_name = req.params.get('workflowName')
         status = req.params.get('status')
+        start_date = req.params.get('startDate')
+        end_date = req.params.get('endDate')
         limit = int(req.params.get('limit', '25'))
         continuation_token = req.params.get('continuationToken')
 
         # Call handler to list executions (now returns continuation token)
         executions, next_token = await list_executions_handler(
-            context, workflow_name, status, limit, continuation_token
+            context, workflow_name, status, start_date, end_date, limit, continuation_token
         )
 
         # Return paginated response
