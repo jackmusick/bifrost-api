@@ -34,6 +34,7 @@ class TestConvertRegistryWorkflowToModel:
         mock_registry_workflow.allowed_methods = ["POST"]
         mock_registry_workflow.disable_global_key = False
         mock_registry_workflow.public_endpoint = False
+        mock_registry_workflow.source = "workspace"
 
         result = convert_registry_workflow_to_model(mock_registry_workflow)
 
@@ -95,6 +96,7 @@ class TestGetDiscoveryMetadata:
         mock_workflow.allowed_methods = ["POST"]
         mock_workflow.disable_global_key = False
         mock_workflow.public_endpoint = False
+        mock_workflow.source = "workspace"
 
         # Create mock provider
         mock_provider = MagicMock()
@@ -134,6 +136,7 @@ class TestGetDiscoveryMetadata:
             mock_workflow.allowed_methods = ["POST"]
             mock_workflow.disable_global_key = False
             mock_workflow.public_endpoint = False
+            mock_workflow.source = "workspace"
             workflows.append(mock_workflow)
 
         # Create multiple provider mocks
@@ -175,6 +178,7 @@ class TestGetDiscoveryMetadata:
         mock_workflow.allowed_methods = ["POST"]
         mock_workflow.disable_global_key = False
         mock_workflow.public_endpoint = False
+        mock_workflow.source = "workspace"
 
         mock_provider = MagicMock()
         mock_provider.name = "test"
