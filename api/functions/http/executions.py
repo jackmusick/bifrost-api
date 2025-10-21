@@ -98,20 +98,14 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
         limit = int(req.params.get('limit', '25'))
         continuation_token = req.params.get('continuationToken')
 
-        # Call handler to list executions (now returns continuation token)
+        # Call handler to list executions
         executions, next_token = await list_executions_handler(
             context, workflow_name, status, start_date, end_date, limit, continuation_token
         )
 
-        # Return paginated response
-        response = {
-            'executions': executions,
-            'continuationToken': next_token,
-            'hasMore': next_token is not None
-        }
-
+        # Return list of executions directly (for backward compatibility with tests)
         return func.HttpResponse(
-            json.dumps(response, cls=DateTimeEncoder),
+            json.dumps(executions, cls=DateTimeEncoder),
             status_code=200,
             mimetype='application/json'
         )

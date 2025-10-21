@@ -25,9 +25,10 @@ class ExecutionLogger:
     Uses ExecutionRepository for all database operations with automatic index management.
     """
 
-    def __init__(self):
-        self.repository = ExecutionRepository()
+    def __init__(self, context=None):
+        self.repository = ExecutionRepository(context)
         self.blob_service = get_blob_service()
+        self.context = context
 
     async def create_execution(
         self,

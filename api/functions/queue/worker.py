@@ -45,6 +45,9 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
     user_id: str = ""
     start_time = datetime.utcnow()
 
+    # Get execution logger early so it's available in exception handler
+    exec_logger = get_execution_logger()
+
     try:
         # Parse queue message
         message_body = msg.get_body().decode('utf-8')
@@ -66,9 +69,6 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
                 "org_id": org_id
             }
         )
-
-        # Get execution logger
-        exec_logger = get_execution_logger()
 
         # Update status to RUNNING
         await exec_logger.update_execution(

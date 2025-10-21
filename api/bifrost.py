@@ -22,6 +22,20 @@ from shared.models import (
     OAuthCredentials,
 )
 
+# Lazy-load SDK modules to avoid import issues
+def __getattr__(name):
+    """Dynamically load SDK modules when accessed."""
+    sdk_modules = [
+        'config', 'executions', 'files', 'forms', 'oauth',
+        'organizations', 'roles', 'secrets', 'workflows'
+    ]
+    if name in sdk_modules:
+        import importlib
+        module = importlib.import_module(f'platform.bifrost.{name}')
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 __all__ = [
     # Decorators
     "workflow",
@@ -37,4 +51,14 @@ __all__ = [
     "ConfigType",
     "FormFieldType",
     "IntegrationType",
+    # SDK
+    "config",
+    "executions",
+    "files",
+    "forms",
+    "oauth",
+    "organizations",
+    "roles",
+    "secrets",
+    "workflows",
 ]

@@ -9,7 +9,7 @@ from datetime import datetime
 
 import azure.functions as func
 
-from shared.execution_logger import get_execution_logger
+from shared.execution_logger import ExecutionLogger, get_execution_logger
 from shared.models import ExecutionStatus
 from shared.repositories.executions import ExecutionRepository
 from shared.request_context import RequestContext
@@ -27,8 +27,8 @@ async def get_stuck_executions_handler(
     Returns executions that are stuck in Pending or Running status
     for longer than the timeout threshold.
     """
-    # Get execution repository
-    execution_repo = ExecutionRepository()
+    # Get execution repository with context for proper org scoping
+    execution_repo = ExecutionRepository(context)
 
     # Get stuck executions
     stuck_executions = execution_repo.get_stuck_executions(
@@ -75,9 +75,9 @@ async def trigger_cleanup_handler(
 
     Finds and times out executions stuck in Pending or Running status.
     """
-    # Get execution logger and repository
-    exec_logger = get_execution_logger()
-    execution_repo = ExecutionRepository()
+    # Get execution logger with context for proper org scoping
+    exec_logger = ExecutionLogger(context)
+    execution_repo = ExecutionRepository(context)
 
     # Get stuck executions
     stuck_executions = execution_repo.get_stuck_executions(
