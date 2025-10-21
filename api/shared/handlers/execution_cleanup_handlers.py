@@ -119,30 +119,13 @@ async def trigger_cleanup_handler(
                 }
             )
 
-            # Create log entry for manual timeout
-            timeout_log = [
-                {
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": "error",
-                    "message": timeout_reason,
-                    "data": {
-                        "timeout_type": "manual_cleanup",
-                        "original_status": execution.status.value,
-                        "triggered_by": context.user_id,
-                        "triggered_by_name": context.user_name
-                    }
-                }
-            ]
-
-            # Update execution to TIMEOUT status with log
+            # Update execution to TIMEOUT status
             await exec_logger.update_execution(
                 execution_id=execution.executionId,
                 org_id=execution.orgId,  # Get org_id from execution (retrieved from status index)
                 user_id=execution.executedBy,
                 status=ExecutionStatus.TIMEOUT,
-                error_message=timeout_reason,
-                error_type="ManualCleanup",
-                logs=timeout_log
+                error_message=timeout_reason
             )
 
         except Exception as e:
