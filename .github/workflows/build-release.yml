@@ -29,17 +29,18 @@ jobs:
 
             - name: Build API package
               run: |
-                  cd api
                   python -m pip install -q --upgrade pip
                   pip install -q -r requirements.txt --target=".python_packages/lib/site-packages"
 
                   # Create zip excluding unnecessary files
-                  zip -q -r ../api.zip . \
+                  zip -q -r api.zip . \
                     -x "*.pyc" \
                     -x "*__pycache__*" \
                     -x "tests/*" \
                     -x ".git/*" \
-                    -x ".venv/*"
+                    -x ".venv/*" \
+                    -x ".devcontainer/*" \
+                    -x ".github/*"
 
             - name: Upload API artifact
               uses: actions/upload-artifact@v4

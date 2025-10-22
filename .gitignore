@@ -198,3 +198,4 @@ AzuriteConfig
 .ruff_cache/
 .secrets
 *.zip
+home/

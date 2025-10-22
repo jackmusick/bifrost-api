@@ -4,12 +4,18 @@ on:
     push:
         branches: [main]
         paths:
-            - "api/**"
+            - "**.py"
+            - "requirements.txt"
+            - "host.json"
+            - "test.sh"
             - ".github/workflows/test-and-coverage.yml"
     pull_request:
         branches: [main]
         paths:
-            - "api/**"
+            - "**.py"
+            - "requirements.txt"
+            - "host.json"
+            - "test.sh"
             - ".github/workflows/test-and-coverage.yml"
     workflow_dispatch:
 jobs:
@@ -31,7 +37,6 @@ jobs:
 
             - name: Install Python dependencies
               run: |
-                  cd api
                   python -m pip install -q --upgrade pip
                   pip install -q -r requirements.txt
                   pip install -q pytest pytest-cov pytest-asyncio
@@ -42,14 +47,13 @@ jobs:
 
             - name: Run tests with coverage
               run: |
-                  cd api
                   chmod +x test.sh
                   ./test.sh --coverage
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v4
               with:
-                  files: ./api/coverage.xml
+                  files: ./coverage.xml
                   flags: api
                   name: api-coverage
                   token: ${{ secrets.CODECOV_TOKEN }}
