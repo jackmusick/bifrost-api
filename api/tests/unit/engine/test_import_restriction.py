@@ -94,20 +94,21 @@ class TestImportRestrictionContract:
         from shared.import_restrictor import install_import_restrictions
 
         # Clear module cache to ensure restrictor can intercept the import
-        if 'shared.keyvault' in sys.modules:
-            del sys.modules['shared.keyvault']
+        if 'shared.blob_storage' in sys.modules:
+            del sys.modules['shared.blob_storage']
 
-        # Create temporary workspace directory
+        # Create temporary home directory (user code with stricter restrictions)
         with tempfile.TemporaryDirectory() as tmpdir:
-            install_import_restrictions([tmpdir])
+            # Treat tmpdir as home code (stricter restrictions)
+            install_import_restrictions([tmpdir], home_path=tmpdir)
 
-            # Create a test file in workspace that attempts the import
-            # shared.keyvault is NOT in the whitelisted allowed exports
+            # Create a test file in home that attempts the import
+            # shared.blob_storage is NOT accessible to user code (not in whitelist)
             test_file = Path(tmpdir) / "test_workspace_import.py"
-            test_file.write_text("import shared.keyvault\n")
+            test_file.write_text("import shared.blob_storage\n")
 
             # Attempt to import that file (which will trigger the blocked import)
-            # Note: This test simulates workspace code attempting import
+            # Note: This test simulates home user code attempting import
             with pytest.raises(ImportError) as exc_info:
                 sys.path.insert(0, tmpdir)
                 try:
@@ -119,8 +120,8 @@ class TestImportRestrictionContract:
                         del sys.modules['test_workspace_import']
 
             assert "cannot import" in str(exc_info.value).lower() or \
-                   "workspace" in str(exc_info.value).lower(), (
-                "Error message must indicate workspace cannot import engine modules"
+                   "/home" in str(exc_info.value).lower(), (
+                "Error message must indicate home user code cannot import engine modules"
             )
 
     def test_workspace_can_import_allowed_decorators(self):
@@ -147,16 +148,17 @@ class TestImportRestrictionContract:
         from shared.import_restrictor import install_import_restrictions
 
         # Clear module cache
-        if 'shared.storage' in sys.modules:
-            del sys.modules['shared.storage']
+        if 'shared.execution_logger' in sys.modules:
+            del sys.modules['shared.execution_logger']
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            install_import_restrictions([tmpdir])
+            # Treat tmpdir as home code (stricter restrictions)
+            install_import_restrictions([tmpdir], home_path=tmpdir)
 
-            # Create a test file in workspace that attempts blocked import
-            # shared.storage is NOT in the whitelisted allowed exports
+            # Create a test file in home that attempts blocked import
+            # shared.execution_logger is NOT accessible to user code (not in whitelist)
             test_file = Path(tmpdir) / "test_import_guidance.py"
-            test_file.write_text("import shared.storage\n")
+            test_file.write_text("import shared.execution_logger\n")
 
             try:
                 sys.path.insert(0, tmpdir)
@@ -166,11 +168,11 @@ class TestImportRestrictionContract:
                 error_msg = str(e).lower()
                 # Check for helpful guidance in error message
                 assert any(keyword in error_msg for keyword in [
-                    'public api',
-                    'documentation',
-                    'workspace',
-                    'decorators',
-                    'context'
+                    'bifrost',
+                    'sdk',
+                    '/home',
+                    'user code',
+                    'documentation'
                 ]), f"Error message must provide guidance to developers. Got: {error_msg}"
             finally:
                 sys.path.remove(tmpdir)

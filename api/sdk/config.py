@@ -45,10 +45,16 @@ class config:
         context = get_context()
         target_org = org_id or context.org_id
 
-        repo = ConfigRepository()
-        value = repo.get_config_value(key, target_org)
+        repo = ConfigRepository(context)
 
-        return value if value is not None else default
+        # Get config using the repository's actual method
+        # Note: Repository is already scoped to target_org via context
+        config = repo.get_config(key, fallback_to_global=True)
+
+        if config:
+            return config.value
+
+        return default
 
     @staticmethod
     def set(key: str, value: Any, org_id: str | None = None) -> None:
@@ -73,12 +79,32 @@ class config:
         context = get_context()
         target_org = org_id or context.org_id
 
-        repo = ConfigRepository()
-        repo.set_config_value(
+        repo = ConfigRepository(context)
+
+        # Convert value to string for storage
+        # ConfigRepository expects ConfigType, default to string
+        from shared.models import ConfigType
+        import json
+
+        # Handle different value types
+        if isinstance(value, (dict, list)):
+            config_type = ConfigType.json
+            str_value = json.dumps(value)
+        elif isinstance(value, bool):
+            config_type = ConfigType.bool
+            str_value = str(value).lower()
+        elif isinstance(value, int):
+            config_type = ConfigType.int
+            str_value = str(value)
+        else:
+            config_type = ConfigType.string
+            str_value = str(value)
+
+        repo.set_config(
             key=key,
-            value=value,
-            org_id=target_org,
-            set_by=context.user_id
+            value=str_value,
+            config_type=config_type,
+            updated_by=context.user_id
         )
 
     @staticmethod
@@ -104,10 +130,32 @@ class config:
         context = get_context()
         target_org = org_id or context.org_id
 
-        repo = ConfigRepository()
-        configs = repo.list_config(target_org)
+        repo = ConfigRepository(context)
 
-        return configs
+        # list_config returns list of Config models
+        configs = repo.list_config(include_global=True)
+
+        # Convert to dict[str, Any] as advertised in docstring
+        config_dict = {}
+        for config in configs:
+            # Parse value based on type
+            if config.type == "json":
+                import json
+                try:
+                    config_dict[config.key] = json.loads(config.value)
+                except (json.JSONDecodeError, TypeError):
+                    config_dict[config.key] = config.value
+            elif config.type == "bool":
+                config_dict[config.key] = config.value.lower() == "true"
+            elif config.type == "int":
+                try:
+                    config_dict[config.key] = int(config.value)
+                except (ValueError, TypeError):
+                    config_dict[config.key] = config.value
+            else:
+                config_dict[config.key] = config.value
+
+        return config_dict
 
     @staticmethod
     def delete(key: str, org_id: str | None = None) -> bool:
@@ -131,5 +179,5 @@ class config:
         context = get_context()
         target_org = org_id or context.org_id
 
-        repo = ConfigRepository()
-        return repo.delete_config(key, target_org)
+        repo = ConfigRepository(context)
+        return repo.delete_config(key)

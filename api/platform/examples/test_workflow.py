@@ -1,0 +1,33 @@
+"""
+Simple test workflow for validation
+
+This workflow is used by integration tests to verify auto-discovery.
+"""
+
+from bifrost import workflow, param, OrganizationContext
+
+
+@workflow(
+    name="test_workflow",
+    description="Simple test workflow for validation",
+    category="testing",
+    tags=["test", "example"]
+)
+@param("name", "string", label="Name", required=True, help_text="Name to greet")
+@param("count", "int", label="Count", required=False, default_value=1, help_text="Number of times to greet")
+async def test_workflow(context: OrganizationContext, name: str, count: int = 1):
+    """Simple test workflow for validation"""
+    context.info(f"Test workflow executed with name={name}, count={count}")
+
+    messages = []
+    for i in range(count):
+        message = f"Hello, {name}! (iteration {i+1})"
+        messages.append(message)
+        context.info(message)
+
+    return {
+        "status": "success",
+        "name": name,
+        "count": count,
+        "messages": messages
+    }

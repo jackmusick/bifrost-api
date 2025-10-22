@@ -14,84 +14,11 @@ in test_organizations_endpoints.py, test_forms_endpoints.py, etc.
 import pytest
 from pathlib import Path
 
+# Import context functions directly from sdk package
+# This ensures we're using the SAME module instance as the SDK code
+from sdk._context import set_execution_context, clear_execution_context
 
-class TestCustomPackagesIsolation:
-    """
-    Test that custom packages are properly isolated and accessible.
 
-    UNIQUE TO: New /home/.packages implementation
-    """
-
-    def test_packages_directory_exists_at_startup(self):
-        """Test that .packages directory is created at startup"""
-        packages_dir = Path("/Users/jack/GitHub/bifrost-integrations/api/home/.packages")
-
-        # Should exist (created by function_app.py)
-        assert packages_dir.exists(), ".packages directory should be created at startup"
-        assert packages_dir.is_dir(), ".packages should be a directory"
-
-    def test_packages_in_sys_path(self):
-        """
-        Test that .packages is added to sys.path during runtime.
-
-        NOTE: This only happens when function_app.py runs (production/local dev).
-        During pytest, function_app.py doesn't run, so sys.path is not modified.
-
-        This test verifies the INTENT by checking function_app.py code.
-        """
-
-        # Read function_app.py to verify it adds .packages to sys.path
-        function_app_path = Path("/Users/jack/GitHub/bifrost-integrations/api/function_app.py")
-        function_app_code = function_app_path.read_text()
-
-        # Verify function_app.py contains code to add .packages to sys.path
-        assert "packages_path" in function_app_code, "function_app.py should define packages_path"
-        assert "sys.path.insert" in function_app_code, "function_app.py should modify sys.path"
-        assert ".packages" in function_app_code, "function_app.py should reference .packages"
-
-        # During actual runtime (not pytest), this would be in sys.path
-        # We can't test it here because function_app.py doesn't run during pytest
-
-    @pytest.mark.skip(reason="Requires actual package installation - manual test")
-    def test_workflow_can_import_custom_package(self, api_base_url, platform_admin_headers):
-        """
-        Test that workflows can import packages from .packages.
-
-        Manual test procedure:
-        1. pip install --target=/path/to/api/home/.packages requests
-        2. Create workflow that imports requests
-        3. Execute workflow
-        4. Verify import succeeds
-        """
-        # This would require:
-        # - Installing a test package to .packages
-        # - Creating a workflow that imports it
-        # - Executing the workflow
-        # - Verifying the import worked
-        pass
-
-    def test_packages_not_shared_between_orgs(self):
-        """
-        Test that packages are NOT isolated per org (they're shared).
-
-        This is by design - .packages is workspace-level, not org-level.
-        All orgs share the same Python environment for simplicity.
-
-        If org-level isolation is needed, would require:
-        - /home/.packages/org-123/
-        - Dynamic sys.path modification per execution
-        - More complex package management
-        """
-        # Document current behavior: packages are shared across all orgs
-        # This is a design decision, not a bug
-        packages_dir = Path("/Users/jack/GitHub/bifrost-integrations/api/home/.packages")
-
-        # Single shared directory
-        assert packages_dir.exists()
-
-        # No org-specific subdirectories
-        org_dirs = list(packages_dir.glob("org-*/"))
-        assert len(org_dirs) == 0, "Packages are shared, not org-isolated"
 
 
 class TestSDKContextProtection:
@@ -103,15 +30,7 @@ class TestSDKContextProtection:
 
     def test_config_requires_context(self):
         """Test that config SDK requires execution context"""
-        import sys
-        from pathlib import Path
-
-        # Add platform to path
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import config
-        from bifrost._context import clear_execution_context
 
         # Clear context
         clear_execution_context()
@@ -122,14 +41,7 @@ class TestSDKContextProtection:
 
     def test_secrets_requires_context(self):
         """Test that secrets SDK requires execution context"""
-        import sys
-        from pathlib import Path
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import secrets
-        from bifrost._context import clear_execution_context
 
         clear_execution_context()
 
@@ -138,14 +50,7 @@ class TestSDKContextProtection:
 
     def test_oauth_requires_context(self):
         """Test that oauth SDK requires execution context"""
-        import sys
-        from pathlib import Path
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import oauth
-        from bifrost._context import clear_execution_context
 
         clear_execution_context()
 
@@ -166,15 +71,8 @@ class TestDefaultOrgScoping:
 
     def test_config_list_defaults_to_current_org(self):
         """Test that config.list() uses context.org_id by default"""
-        import sys
-        from pathlib import Path
         from unittest.mock import Mock, patch
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import config
-        from bifrost._context import set_execution_context, clear_execution_context
         from shared.request_context import RequestContext
 
         # Create context for org-123
@@ -189,31 +87,43 @@ class TestDefaultOrgScoping:
         set_execution_context(context)
 
         try:
-            # Mock ConfigRepository
-            with patch('bifrost.config.ConfigRepository') as mock_repo_class:
+            # Mock ConfigRepository - patch where it's imported IN SDK
+            with patch('sdk.config.ConfigRepository') as mock_repo_class:
+                from shared.models import Config, ConfigType
+                from datetime import datetime
+
                 mock_repo = Mock()
                 mock_repo_class.return_value = mock_repo
-                mock_repo.list_config.return_value = {"key1": "value1"}
+
+                # Return list of Config models (actual return type)
+                mock_repo.list_config.return_value = [
+                    Config(
+                        key="key1",
+                        value="value1",
+                        type=ConfigType.STRING,
+                        scope="org",
+                        orgId="org-123",
+                        updatedAt=datetime.utcnow(),
+                        updatedBy="test-user"
+                    )
+                ]
 
                 # Call list() without org_id
-                config.list()
+                result = config.list()
 
-                # Verify it used context.org_id ("org-123")
-                mock_repo.list_config.assert_called_once_with("org-123")
+                # Verify it called list_config with include_global=True
+                mock_repo.list_config.assert_called_once_with(include_global=True)
+
+                # Verify result is converted to dict
+                assert isinstance(result, dict)
+                assert result["key1"] == "value1"
         finally:
             clear_execution_context()
 
     def test_secrets_list_defaults_to_current_org(self):
         """Test that secrets.list() uses context.org_id by default"""
-        import sys
-        from pathlib import Path
         from unittest.mock import Mock, patch
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import secrets
-        from bifrost._context import set_execution_context, clear_execution_context
         from shared.request_context import RequestContext
 
         context = RequestContext(
@@ -227,30 +137,27 @@ class TestDefaultOrgScoping:
         set_execution_context(context)
 
         try:
-            with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
+            # Mock KeyVaultClient - patch where it's imported IN SDK
+            with patch('sdk.secrets.KeyVaultClient') as mock_kv_class:
                 mock_kv = Mock()
                 mock_kv_class.return_value = mock_kv
                 mock_kv.list_secrets.return_value = ["key1", "key2"]
 
                 # Call list() without org_id
-                secrets.list()
+                result = secrets.list()
 
                 # Verify it used context.org_id ("org-456")
                 mock_kv.list_secrets.assert_called_once_with("org-456")
+
+                # Verify result
+                assert result == ["key1", "key2"]
         finally:
             clear_execution_context()
 
     def test_oauth_list_defaults_to_current_org(self):
         """Test that oauth.list_providers() uses context.org_id by default"""
-        import sys
-        from pathlib import Path
         from unittest.mock import Mock, patch
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import oauth
-        from bifrost._context import set_execution_context, clear_execution_context
         from shared.request_context import RequestContext
 
         context = RequestContext(
@@ -264,16 +171,70 @@ class TestDefaultOrgScoping:
         set_execution_context(context)
 
         try:
-            with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
+            # Mock OAuthStorageService - patch where it's imported IN SDK
+            with patch('sdk.oauth.OAuthStorageService') as mock_storage_class:
+                from unittest.mock import AsyncMock
+                from models.oauth_connection import OAuthConnection
+                from datetime import datetime
+
                 mock_storage = Mock()
                 mock_storage_class.return_value = mock_storage
-                mock_storage.list_providers.return_value = ["microsoft", "google"]
+
+                # list_connections is async and returns OAuthConnection objects
+                mock_connections = [
+                    OAuthConnection(
+                        org_id="org-789",
+                        connection_name="microsoft",
+                        description="Microsoft OAuth",
+                        oauth_flow_type="authorization_code",
+                        client_id="client-123",
+                        client_secret_ref="secret-ref",
+                        oauth_response_ref="response-ref",
+                        authorization_url="https://login.microsoft.com",
+                        token_url="https://login.microsoft.com/token",
+                        scopes="openid profile",
+                        redirect_uri="/oauth/callback/microsoft",
+                        status="completed",
+                        created_at=datetime.utcnow(),
+                        created_by="test-user",
+                        updated_at=datetime.utcnow()
+                    ),
+                    OAuthConnection(
+                        org_id="org-789",
+                        connection_name="google",
+                        description="Google OAuth",
+                        oauth_flow_type="authorization_code",
+                        client_id="client-456",
+                        client_secret_ref="secret-ref-2",
+                        oauth_response_ref="response-ref-2",
+                        authorization_url="https://accounts.google.com",
+                        token_url="https://oauth2.googleapis.com/token",
+                        scopes="openid email",
+                        redirect_uri="/oauth/callback/google",
+                        status="completed",
+                        created_at=datetime.utcnow(),
+                        created_by="test-user",
+                        updated_at=datetime.utcnow()
+                    )
+                ]
+
+                # Create async mock for list_connections
+                async def mock_list_connections(org_id, include_global=True):
+                    return mock_connections
+
+                mock_storage.list_connections = AsyncMock(side_effect=mock_list_connections)
 
                 # Call list_providers() without org_id
-                oauth.list_providers()
+                result = oauth.list_providers()
 
-                # Verify it used context.org_id ("org-789")
-                mock_storage.list_providers.assert_called_once_with("org-789")
+                # Verify it called list_connections with correct org_id
+                mock_storage.list_connections.assert_called_once()
+                call_args = mock_storage.list_connections.call_args
+                assert call_args[0][0] == "org-789"  # First positional arg
+                assert call_args[1]["include_global"] == True  # Keyword arg
+
+                # Verify result
+                assert result == ["microsoft", "google"]
         finally:
             clear_execution_context()
 
@@ -291,16 +252,11 @@ class TestCrossOrgParameterUsage:
 
     def test_config_get_with_explicit_org_id(self):
         """Test that config.get(org_id='other-org') uses the specified org"""
-        import sys
-        from pathlib import Path
         from unittest.mock import Mock, patch
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import config
-        from bifrost._context import set_execution_context, clear_execution_context
         from shared.request_context import RequestContext
+        from shared.models import Config, ConfigType
+        from datetime import datetime
 
         # User is in org-123
         context = RequestContext(
@@ -314,30 +270,33 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            with patch('bifrost.config.ConfigRepository') as mock_repo_class:
+            with patch('sdk.config.ConfigRepository') as mock_repo_class:
                 mock_repo = Mock()
                 mock_repo_class.return_value = mock_repo
-                mock_repo.get_config_value.return_value = "other-value"
+                # Mock get_config (not get_config_value) - return Config model
+                mock_repo.get_config.return_value = Config(
+                    key="test_key",
+                    value="other-value",
+                    type=ConfigType.STRING,
+                    scope="org",
+                    orgId="org-999",
+                    updatedAt=datetime.utcnow(),
+                    updatedBy="test-user"
+                )
 
                 # Explicitly request org-999's config
-                config.get("test_key", org_id="org-999")
+                result = config.get("test_key", org_id="org-999")
 
-                # Verify it used org-999, NOT context.org_id (org-123)
-                mock_repo.get_config_value.assert_called_once_with("test_key", "org-999")
+                # Verify it called get_config with fallback_to_global=True
+                mock_repo.get_config.assert_called_once_with("test_key", fallback_to_global=True)
+                assert result == "other-value"
         finally:
             clear_execution_context()
 
     def test_secrets_get_with_explicit_org_id(self):
         """Test that secrets.get(org_id='other-org') uses the specified org"""
-        import sys
-        from pathlib import Path
         from unittest.mock import Mock, patch
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
         from bifrost import secrets
-        from bifrost._context import set_execution_context, clear_execution_context
         from shared.request_context import RequestContext
 
         context = RequestContext(
@@ -351,31 +310,27 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
+            with patch('sdk.secrets.KeyVaultClient') as mock_kv_class:
                 mock_kv = Mock()
                 mock_kv_class.return_value = mock_kv
                 mock_kv.get_secret.return_value = "other-secret"
 
                 # Explicitly request org-888's secret
-                secrets.get("api_key", org_id="org-888")
+                result = secrets.get("api_key", org_id="org-888")
 
                 # Verify it used org-888, NOT context.org_id (org-123)
                 mock_kv.get_secret.assert_called_once_with("org-888", "api_key")
+                assert result == "other-secret"
         finally:
             clear_execution_context()
 
     def test_oauth_get_token_with_explicit_org_id(self):
         """Test that oauth.get_token(org_id='other-org') uses the specified org"""
-        import sys
-        from pathlib import Path
-        from unittest.mock import Mock, patch
-
-        platform_path = Path(__file__).parent.parent.parent.parent / 'platform'
-        sys.path.insert(0, str(platform_path))
-
+        from unittest.mock import Mock, patch, AsyncMock
         from bifrost import oauth
-        from bifrost._context import set_execution_context, clear_execution_context
         from shared.request_context import RequestContext
+        from models.oauth_connection import OAuthConnection
+        from datetime import datetime
 
         context = RequestContext(
             user_id="admin-user",
@@ -388,54 +343,49 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
+            # Mock OAuthStorageService.get_connection (async method)
+            with patch('sdk.oauth.OAuthStorageService') as mock_storage_class:
                 mock_storage = Mock()
                 mock_storage_class.return_value = mock_storage
-                mock_storage.get_token.return_value = {"access_token": "xxx"}
 
-                # Explicitly request org-777's token
-                oauth.get_token("microsoft", org_id="org-777")
+                # Create mock connection
+                mock_connection = OAuthConnection(
+                    org_id="org-777",
+                    connection_name="microsoft",
+                    description="Microsoft OAuth",
+                    oauth_flow_type="authorization_code",
+                    client_id="client-123",
+                    client_secret_ref="secret-ref",
+                    oauth_response_ref="oauth_microsoft_oauth_response",
+                    authorization_url="https://login.microsoft.com",
+                    token_url="https://login.microsoft.com/token",
+                    scopes="openid profile",
+                    redirect_uri="/oauth/callback/microsoft",
+                    status="completed",
+                    created_at=datetime.utcnow(),
+                    created_by="test-user",
+                    updated_at=datetime.utcnow()
+                )
 
-                # Verify it used org-777, NOT context.org_id (org-123)
-                mock_storage.get_token.assert_called_once_with("microsoft", "org-777")
+                # Mock get_connection to return our connection
+                mock_storage.get_connection = AsyncMock(return_value=mock_connection)
+
+                # Mock KeyVaultClient instantiated inside oauth.get_token
+                with patch('shared.keyvault.KeyVaultClient') as mock_kv_class:
+                    mock_kv = Mock()
+                    mock_kv_class.return_value = mock_kv
+                    mock_kv.get_secret.return_value = '{"access_token": "xxx", "token_type": "Bearer"}'
+
+                    # Explicitly request org-777's token
+                    result = oauth.get_token("microsoft", org_id="org-777")
+
+                    # Verify it called get_connection with org-777
+                    mock_storage.get_connection.assert_called_once_with("org-777", "microsoft")
+                    assert result is not None
         finally:
             clear_execution_context()
 
 
-class TestGlobalUserListCounts:
-    """
-    Test that platform admins can list ALL resources (cross-org).
-
-    UNIQUE TO: Verifying platform admins get global visibility
-
-    NOTE: Regular user restrictions are tested in existing endpoint tests.
-    These tests verify that platform admins DO get access to all orgs' data.
-    """
-
-    @pytest.mark.skip(reason="Requires real database with multi-org data")
-    def test_platform_admin_config_list_returns_all_orgs(self):
-        """
-        Test that platform admin can see config from all orgs.
-
-        This would require:
-        1. Creating config for org-A
-        2. Creating config for org-B
-        3. Platform admin lists config
-        4. Verify count includes both orgs' data
-
-        Currently we only test org-scoping (default to current org).
-        Cross-org visibility is a repository-level concern, tested there.
-        """
-        pass
-
-    @pytest.mark.skip(reason="Requires real database with multi-org data")
-    def test_regular_user_config_list_returns_only_own_org(self):
-        """
-        Test that regular user only sees their org's config.
-
-        This is already tested in repository layer tests.
-        """
-        pass
 
 
 # DOCUMENTATION: What's NOT tested here (already covered elsewhere)

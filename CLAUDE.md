@@ -66,10 +66,12 @@ export async function getDataProviders() {
 ### Testing & Quality
 
 -   **Tests**: All work requires unit and integration tests in `api/tests/`
-    -   **Integration Tests**: Use isolated testing environment with `docker-compose.testing.yml`
-    -   Start test services: `docker compose -f docker-compose.testing.yml up -d`
-    -   Run integration tests: `python -m pytest api/tests/integration/ -v`
-    -   Stop test services: `docker compose -f docker-compose.testing.yml down`
+    -   **IMPORTANT**: Always use `./test.sh` to run tests - it starts all required dependencies (Azurite, Functions runtime)
+    -   Running pytest directly (`python -m pytest`) will FAIL for integration tests that need Azure Functions context
+    -   Run all tests: `cd api && ./test.sh`
+    -   Run specific test file: `cd api && ./test.sh tests/integration/platform/test_sdk_from_workflow.py`
+    -   Run specific test: `cd api && ./test.sh tests/integration/platform/test_sdk_from_workflow.py::TestSDKFileOperations::test_file_path_sandboxing -v`
+    -   Run with coverage: `cd api && ./test.sh --coverage`
 -   **Type Checking**: Must pass `npm run typecheck` (API) and `npm run tsc` (client)
 -   **Linting**: Must pass `npm run lint` in both API and client
 -   **Seed Data**: Update `api/seed_data.py` when models change
@@ -77,24 +79,26 @@ export async function getDataProviders() {
 ### Commands
 
 ```bash
-# Backend
+# Backend Testing (ALWAYS USE test.sh!)
 cd api
-python -m pytest tests/ -v           # Run tests
+./test.sh                                              # Run all tests with dependencies
+./test.sh tests/integration/                          # Run specific test directory
+./test.sh tests/integration/platform/test_sdk_from_workflow.py  # Run specific file
+./test.sh --coverage                                   # Run with coverage report
+
+# Backend Quality Checks
+cd api
 ruff check .                          # Lint Python
 npx pyright                           # Type check Python
 
 # Frontend
 cd client
-npm run generate:types                # Generate types from API
+npm run generate:types                # Generate types from API (requires func running)
 npm run tsc                           # Type check
 npm run lint                          # Lint and format
 npm run dev                           # Dev server
 
 # Local development
 docker compose up                     # Start Azurite + dependencies
-
-# Testing
-docker compose -f docker-compose.testing.yml up -d    # Start test services
-python -m pytest api/tests/integration/ -v             # Run integration tests
-docker compose -f docker-compose.testing.yml down     # Stop test services
+cd api && func start                  # Start Azure Functions locally
 ```

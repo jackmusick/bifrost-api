@@ -26,16 +26,16 @@ class TestWorkspaceIsolation:
     @pytest.fixture
     def workspace_path(self):
         """Get actual workspace path"""
-        # Navigate from tests/engine/integration to api/workspace
-        return Path(__file__).parent.parent.parent.parent / "workspace"
+        # Navigate from tests/engine/integration to api/platform/examples
+        return Path(__file__).parent.parent.parent.parent / "platform" / "examples"
 
     def test_workspace_workflows_can_be_imported(self, workspace_path):
         """Integration: Workspace workflows can be imported and discovered"""
         assert workspace_path.exists(), f"Workspace path not found: {workspace_path}"
 
-        # Import workspace examples module (actual structure)
+        # Import platform examples module (actual structure)
         try:
-            import workspace.examples.test_workflow  # noqa: F401
+            import platform.examples.test_workflow  # noqa: F401
             # If this succeeds, workspace code is accessible
             assert True
         except ImportError as e:

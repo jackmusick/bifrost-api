@@ -180,7 +180,7 @@ class TestExecutionLogger:
 
                 logger = ExecutionLogger()
 
-                await logger.create_execution(
+                logger.create_execution(
                     execution_id="test-exec-123",
                     org_id="org-456",
                     user_id="user-789",
@@ -216,7 +216,7 @@ class TestExecutionLogger:
 
                 logger = ExecutionLogger()
 
-                await logger.update_execution(
+                logger.update_execution(
                     execution_id="test-exec-123",
                     org_id="org-456",
                     user_id="user-789",

@@ -88,47 +88,59 @@ The platform handles the hard parts - OAuth flows, credential encryption, multi-
 
 ### Local Development
 
-Get started in under 5 minutes with Docker.
+Get started in under 5 minutes with Docker Compose or GitHub Codespaces.
 
-#### Prerequisites
+#### Option 1: Docker Compose (Recommended)
+
+**Prerequisites:**
 
 -   Docker Desktop 24+
 -   Git
--   VS Code (recommended)
+-   Azure AD App Registration (for authentication)
 
-#### Setup
+**Setup:**
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/your-org/bifrost-integrations.git
 cd bifrost-integrations
 
-# 2. Build the Docker image
-cd workflows
-docker build -t bifrost-workflows:latest .
-cd ..
+# 2. Set up App Registration for local authentication
+# Go to Azure Portal > App Registrations > New Registration
+# - Name: "Bifrost Local Dev"
+# - Redirect URI: http://localhost:4280/.auth/login/aad/callback
+# - Create a client secret
+# Copy the Application (client) ID and client secret value
 
-# 3. Start the environment
-./start.sh
+# 3. Configure environment variables
+cp .env.example .env
+# Edit .env and add your App Registration credentials:
+# ENTRA_CLIENT_ID=your-app-id-here
+# ENTRA_CLIENT_SECRET=your-client-secret-here
+
+# Also update client/.env.local with the same values
+cp client/.env.example client/.env.local
+# Edit client/.env.local with your credentials
+
+# 4. Start the environment
+docker compose up
 ```
 
-#### Verify
+**Access the Platform:**
 
-```bash
-# Check health endpoint
-curl http://localhost:7071/api/health
-
-# Expected response:
-# {"status": "healthy", "version": "1.0.0"}
-```
-
-#### Access the Platform
-
--   **API**: http://localhost:7071
+-   **Full App (with auth)**: http://localhost:4280 - Login with Azure AD
+-   **API Direct**: http://localhost:7071
 -   **OpenAPI Spec**: http://localhost:7071/api/openapi.json
--   **Swagger UI**: http://localhost:7071/api/docs
 
-#### Test a Workflow
+**How Authentication Works:**
+
+1. You visit http://localhost:4280 and click "Sign In"
+2. Redirected to Azure AD login
+3. After login, SWA calls `/api/GetRoles` endpoint
+4. GetRoles auto-provisions your user (first user = admin)
+5. You're redirected back to the app with your roles
+
+**Test with Function Key (bypasses auth):**
 
 ```bash
 curl -X POST \
@@ -137,19 +149,53 @@ curl -X POST \
   -H "X-Organization-Id: test-org-active" \
   -d '{"name": "Alice", "language": "spanish"}' \
   http://localhost:7071/api/workflows/hello_world
+
+# Expected: {"greeting": "¡Hola, Alice!", ...}
 ```
 
-**Expected Response:**
+#### Option 2: GitHub Codespaces (Zero Setup)
 
-```json
-{
-    "greeting": "¡Hola, Alice!",
-    "language": "spanish",
-    "organization": "Test Organization"
-}
-```
+**No local installation required!** Works on any device, including Chromebooks and iPads.
 
-👉 **See [client/public/docs/local-development.md](client/public/docs/local-development.md) for complete local development guide**
+1. Click the **Code** button → **Codespaces** → **Create codespace on main**
+2. Wait 3 minutes for environment setup
+3. In the terminal:
+
+    ```bash
+    # Start Azurite
+    azurite &
+
+    # Start Functions (in terminal 1)
+    cd api && func start
+
+    # Start SWA CLI (in terminal 2)
+    cd client && npm run dev
+    ```
+
+4. Open forwarded port 4280 when prompted
+
+**Note**: For full authentication in Codespaces, you'll still need to set up an App Registration and update the codespace secrets.
+
+#### Troubleshooting
+
+**Issue: "Authentication required" error**
+
+-   Ensure your App Registration redirect URI includes `http://localhost:4280/.auth/login/aad/callback`
+-   Verify `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` are set in both `.env` and `client/.env.local`
+-   Check Docker Compose logs: `docker compose logs swa`
+
+**Issue: GetRoles endpoint not being called**
+
+-   Verify `client/staticwebapp.config.json` has `"rolesSource": "/api/GetRoles"`
+-   Check Functions logs: `docker compose logs functions | grep GetRoles`
+
+**Issue: User has no organization assignment**
+
+-   First user is automatically provisioned as admin
+-   Subsequent users need domain-based auto-provisioning or manual assignment
+-   Check Functions logs for provisioning errors
+
+👉 **See [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for complete setup guide and architecture details**
 
 ---
 

@@ -24,14 +24,24 @@ from shared.models import (
 
 # Lazy-load SDK modules to avoid import issues
 def __getattr__(name):
-    """Dynamically load SDK modules when accessed."""
+    """Dynamically load SDK classes when accessed."""
     sdk_modules = [
         'config', 'executions', 'files', 'forms', 'oauth',
         'organizations', 'roles', 'secrets', 'workflows'
     ]
+    # Internal/private modules are loaded as-is (not classes)
+    internal_modules = ['_context', '_internal']
+
     if name in sdk_modules:
         import importlib
-        module = importlib.import_module(f'platform.bifrost.{name}')
+        module = importlib.import_module(f'sdk.{name}')
+        # Get the class from the module (class name matches module name)
+        cls = getattr(module, name)
+        globals()[name] = cls
+        return cls
+    elif name in internal_modules:
+        import importlib
+        module = importlib.import_module(f'sdk.{name}')
         globals()[name] = module
         return module
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
@@ -51,7 +61,7 @@ __all__ = [
     "ConfigType",
     "FormFieldType",
     "IntegrationType",
-    # SDK
+    # SDK (lazy-loaded via __getattr__)
     "config",
     "executions",
     "files",

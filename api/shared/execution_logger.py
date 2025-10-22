@@ -30,7 +30,7 @@ class ExecutionLogger:
         self.blob_service = get_blob_service()
         self.context = context
 
-    async def create_execution(
+    def create_execution(
         self,
         execution_id: str,
         org_id: str | None,
@@ -80,7 +80,7 @@ class ExecutionLogger:
         # Return as dict for compatibility with existing code
         return execution_model.model_dump()
 
-    async def update_execution(
+    def update_execution(
         self,
         execution_id: str,
         org_id: str | None,

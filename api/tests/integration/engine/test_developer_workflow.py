@@ -31,11 +31,11 @@ class TestDeveloperWorkflow:
         Integration: Developer can commit workspace changes
 
         Simulates:
-        1. Developer modifies workspace/workflows/
+        1. Developer modifies platform/examples/
         2. Commits and pushes
         3. GitHub Action should PASS
         """
-        workspace_dir = repo_root / "api" / "workspace"
+        workspace_dir = repo_root / "api" / "platform" / "examples"
 
         # Verify workspace directory exists
         assert workspace_dir.exists(), (
@@ -43,7 +43,7 @@ class TestDeveloperWorkflow:
         )
 
         # This test documents the expected behavior:
-        # Changes to workspace/* should NOT trigger the GitHub Action failure
+        # Changes to platform/examples/* should NOT trigger the GitHub Action failure
         # The actual GitHub Action will be tested in T021
 
         assert True, (

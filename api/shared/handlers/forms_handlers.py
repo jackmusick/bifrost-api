@@ -397,7 +397,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
         exec_logger = get_execution_logger()
         start_time = datetime.utcnow()
 
-        await exec_logger.create_execution(
+        exec_logger.create_execution(
             execution_id=execution_id,
             org_id=request_context.org_id,
             user_id=request_context.user_id,
@@ -442,7 +442,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             execution_status = ExecutionStatus.COMPLETED_WITH_ERRORS
             error_message = result.get('error', 'Workflow completed with errors')
 
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=request_context.org_id,
             user_id=request_context.user_id,

@@ -103,7 +103,7 @@ async def record_workflow_execution_result(
         update_kwargs["error_type"] = type(error).__name__
 
     # Update execution record
-    await exec_logger.update_execution(**update_kwargs)
+    exec_logger.update_execution(**update_kwargs)
 
     # Build response
     response_data = {

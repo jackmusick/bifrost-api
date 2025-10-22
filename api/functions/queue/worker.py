@@ -71,7 +71,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         )
 
         # Update status to RUNNING
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -153,7 +153,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Update execution with SUCCESS
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -180,7 +180,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -204,7 +204,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,

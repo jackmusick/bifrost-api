@@ -210,7 +210,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # Create execution record (status=RUNNING)
-        await exec_logger.create_execution(
+        exec_logger.create_execution(
             execution_id=execution_id,
             org_id=context.org_id,
             user_id=user_id,
@@ -303,7 +303,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Update execution record
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=context.org_id,
             user_id=user_id,
@@ -349,7 +349,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Update execution record (status=FAILED)
-        await exec_logger.update_execution(
+        exec_logger.update_execution(
             execution_id=execution_id,
             org_id=context.org_id,
             user_id=user_id,
@@ -402,7 +402,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Try to update execution record (status=FAILED)
         # Use try-catch here too in case update itself fails
         try:
-            await exec_logger.update_execution(
+            exec_logger.update_execution(
                 execution_id=execution_id,
                 org_id=context.org_id,
                 user_id=user_id,

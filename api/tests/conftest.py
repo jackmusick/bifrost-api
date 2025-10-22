@@ -94,9 +94,28 @@ def mock_key_vault():
         wait=lambda: mock_delete_secret(name)
     )
 
-    # Patch SecretClient globally
-    with patch("shared.keyvault.SecretClient", return_value=mock_client):
-        yield mock_client
+    # Mock list_properties_of_secrets for KeyVault tests
+    def mock_list_properties():
+        props_list = []
+        for name in secrets_store:
+            prop = MagicMock()
+            prop.name = name
+            props_list.append(prop)
+        return props_list
+
+    mock_client.list_properties_of_secrets = mock_list_properties
+
+    # Patch both SecretClient and DefaultAzureCredential globally for all tests
+    patcher_secret = patch("shared.keyvault.SecretClient", return_value=mock_client)
+    patcher_credential = patch("shared.keyvault.DefaultAzureCredential", return_value=MagicMock())
+
+    patcher_secret.start()
+    patcher_credential.start()
+
+    yield mock_client
+
+    patcher_secret.stop()
+    patcher_credential.stop()
 
 
 @pytest.fixture(scope="session")

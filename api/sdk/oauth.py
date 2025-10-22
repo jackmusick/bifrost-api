@@ -43,11 +43,47 @@ class oauth:
             ...     access_token = token["access_token"]
             ...     # Use the token for API calls
         """
+        import asyncio
+        from shared.keyvault import KeyVaultClient
+        import json
+
         context = get_context()
         target_org = org_id or context.org_id
 
         storage = OAuthStorageService()
-        return storage.get_token(provider, target_org)
+
+        # Get connection using async method
+        loop = asyncio.new_event_loop()
+        try:
+            connection = loop.run_until_complete(
+                storage.get_connection(target_org, provider)
+            )
+        finally:
+            loop.close()
+
+        if not connection or connection.status != "completed":
+            return None
+
+        # Retrieve OAuth response from Key Vault
+        try:
+            kv = KeyVaultClient()
+            oauth_response_ref = connection.oauth_response_ref
+            # oauth_response_ref contains the Key Vault secret name
+            secret_value = kv.get_secret(target_org, oauth_response_ref.replace(f"oauth_{provider}_oauth_response", ""))
+            if not secret_value:
+                # Try alternate pattern
+                keyvault_secret_name = f"{target_org}--oauth-{provider}-response"
+                # Extract just the secret name part (after org--)
+                parts = keyvault_secret_name.split("--", 1)
+                if len(parts) == 2:
+                    secret_value = kv.get_secret(target_org, parts[1])
+
+            if secret_value:
+                return json.loads(secret_value)
+        except Exception:
+            pass
+
+        return None
 
     @staticmethod
     def set_token(
@@ -110,11 +146,24 @@ class oauth:
             >>> for provider in providers:
             ...     print(f"OAuth configured for: {provider}")
         """
+        import asyncio
+
         context = get_context()
         target_org = org_id or context.org_id
 
         storage = OAuthStorageService()
-        return storage.list_providers(target_org)
+
+        # List connections using async method
+        loop = asyncio.new_event_loop()
+        try:
+            connections = loop.run_until_complete(
+                storage.list_connections(target_org, include_global=True)
+            )
+        finally:
+            loop.close()
+
+        # Extract connection names (providers)
+        return [conn.connection_name for conn in connections]
 
     @staticmethod
     def delete_token(provider: str, org_id: str | None = None) -> bool:

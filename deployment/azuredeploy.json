@@ -62,7 +62,7 @@
     "resources": [
         {
             "type": "Microsoft.Storage/storageAccounts",
-            "apiVersion": "2025-01-01",
+            "apiVersion": "2023-01-01",
             "name": "[variables('storageAccountName')]",
             "location": "[resourceGroup().location]",
             "sku": {
@@ -77,7 +77,7 @@
             "resources": [
                 {
                     "type": "blobServices",
-                    "apiVersion": "2025-01-01",
+                    "apiVersion": "2023-01-01",
                     "name": "default",
                     "dependsOn": [
                         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
@@ -85,7 +85,7 @@
                     "resources": [
                         {
                             "type": "containers",
-                            "apiVersion": "2025-01-01",
+                            "apiVersion": "2023-01-01",
                             "name": "deployments",
                             "dependsOn": [
                                 "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
@@ -98,7 +98,7 @@
                 },
                 {
                     "type": "fileServices",
-                    "apiVersion": "2025-01-01",
+                    "apiVersion": "2023-01-01",
                     "name": "default",
                     "dependsOn": [
                         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
@@ -112,7 +112,7 @@
                     "resources": [
                         {
                             "type": "shares",
-                            "apiVersion": "2025-01-01",
+                            "apiVersion": "2023-01-01",
                             "name": "workspaces",
                             "dependsOn": [
                                 "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
@@ -125,7 +125,7 @@
                         },
                         {
                             "type": "shares",
-                            "apiVersion": "2025-01-01",
+                            "apiVersion": "2023-01-01",
                             "name": "tmp",
                             "dependsOn": [
                                 "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
@@ -152,7 +152,7 @@
         },
         {
             "type": "Microsoft.KeyVault/vaults",
-            "apiVersion": "2025-05-01",
+            "apiVersion": "2023-07-01",
             "name": "[variables('keyVaultName')]",
             "location": "[resourceGroup().location]",
             "properties": {
@@ -184,7 +184,7 @@
         },
         {
             "type": "Microsoft.Web/sites",
-            "apiVersion": "2024-11-01",
+            "apiVersion": "2024-04-01",
             "name": "[variables('apiFunctionAppName')]",
             "location": "[resourceGroup().location]",
             "kind": "functionapp,linux",
@@ -240,6 +240,18 @@
                         {
                             "name": "PYTHON_ENABLE_WORKER_EXTENSIONS",
                             "value": "1"
+                        },
+                        {
+                            "name": "PYTHON_ISOLATE_WORKER_DEPENDENCIES",
+                            "value": "1"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTSHARE",
+                            "value": "[toLower(variables('apiFunctionAppName'))]"
                         }
                     ],
                     "azureStorageAccounts": {
@@ -248,14 +260,14 @@
                             "accountName": "[variables('storageAccountName')]",
                             "shareName": "workspaces",
                             "mountPath": "/workspace",
-                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
+                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value]"
                         },
                         "tmp": {
                             "type": "AzureFiles",
                             "accountName": "[variables('storageAccountName')]",
                             "shareName": "tmp",
                             "mountPath": "/tmp",
-                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2025-01-01').keys[0].value]"
+                            "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value]"
                         }
                     },
                     "ftpsState": "Disabled",

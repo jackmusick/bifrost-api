@@ -96,7 +96,7 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
                 ]
 
                 # Update execution to TIMEOUT status with log
-                await exec_logger.update_execution(
+                exec_logger.update_execution(
                     execution_id=execution.executionId,
                     org_id=org_id,
                     user_id=execution.executedBy,

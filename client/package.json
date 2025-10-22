@@ -9,7 +9,7 @@
         "dev": "node watch-config.js & swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://localhost:7071",
         "dev:docker": "node watch-config.js & swa start http://localhost:5173 --run \"vite\" --api-devserver-url http://functions",
         "build": "tsc -b && vite build",
-        "build:prod": "cp staticwebapp.config.prod.json staticwebapp.config.json && npm run build",
+        "build:prod": "npm run build",
         "tsc": "tsc -b",
         "preview": "swa start dist",
         "lint": "eslint .",

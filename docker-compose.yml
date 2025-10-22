@@ -28,6 +28,7 @@ services:
       - AzureWebJobsSecretStorageType=files
       - ENABLE_DEBUGGING=${ENABLE_DEBUGGING:-true}
       - AZURE_FUNCTIONS_ENVIRONMENT=Development
+      # WARNING: Dev-only encryption key - DO NOT use in production
       - WEBSITE_AUTH_ENCRYPTION_KEY=C0sm0Rk3y567890123456789012345678901234567890123456789012345
       - AZURE_KEY_VAULT_URL=${AZURE_KEY_VAULT_URL}
       - AZURE_CONFIG_DIR=/root/.azure # This allows the Functions container to use the Azure CLI credentials from the host
@@ -58,5 +59,7 @@ services:
     volumes:
       - ./client:/app # Live code reload
       - /app/node_modules # Prevent overwriting node_modules (use container's version)
+      - ./client/staticwebapp.config.json:/app/staticwebapp.config.json # Mount unified config
     depends_on:
-      - functions
+      functions:
+        condition: service_healthy # Wait for Functions to be ready

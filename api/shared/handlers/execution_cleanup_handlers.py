@@ -120,7 +120,7 @@ async def trigger_cleanup_handler(
             )
 
             # Update execution to TIMEOUT status
-            await exec_logger.update_execution(
+            exec_logger.update_execution(
                 execution_id=execution.executionId,
                 org_id=execution.orgId,  # Get org_id from execution (retrieved from status index)
                 user_id=execution.executedBy,

@@ -16,9 +16,6 @@ jobs:
     test-api:
         runs-on: ubuntu-latest
         name: API Tests
-        # Only run in upstream repo, not forks
-        if: github.event.repository.fork == false
-
         steps:
             - uses: actions/checkout@v4
 

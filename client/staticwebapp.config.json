@@ -1,4 +1,16 @@
 {
+    "auth": {
+        "rolesSource": "/api/GetRoles",
+        "identityProviders": {
+            "azureActiveDirectory": {
+                "registration": {
+                    "openIdIssuer": "https://login.microsoftonline.com/common/v2.0",
+                    "clientIdSettingName": "ENTRA_CLIENT_ID",
+                    "clientSecretSettingName": "ENTRA_CLIENT_SECRET"
+                }
+            }
+        }
+    },
     "navigationFallback": {
         "rewrite": "/index.html",
         "exclude": [
@@ -82,7 +94,7 @@
         },
         {
             "route": "/api/*",
-            "allowedRoles": ["anonymous"]
+            "allowedRoles": ["PlatformAdmin"]
         }
     ],
     "responseOverrides": {

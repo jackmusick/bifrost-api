@@ -14,27 +14,31 @@ from shared.registry import get_registry
 
 @pytest.fixture(scope="class", autouse=True)
 def discover_workspace_workflows():
-    """Discover and register workspace workflows before tests"""
-    workspace_path = Path(__file__).parent.parent.parent.parent / "workspace"
+    """Discover and register workflows from platform and home directories before tests"""
+    api_path = Path(__file__).parent.parent.parent.parent
 
-    if workspace_path.exists():
-        for py_file in workspace_path.rglob("*.py"):
-            if py_file.name.startswith("_"):
-                continue
+    # Discover from both platform and home directories
+    for workspace_name in ["platform", "home"]:
+        workspace_path = api_path / workspace_name
 
-            relative_path = py_file.relative_to(workspace_path)
-            module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
-            module_name = f"workspace.{'.'.join(module_parts)}"
+        if workspace_path.exists():
+            for py_file in workspace_path.rglob("*.py"):
+                if py_file.name.startswith("_"):
+                    continue
 
-            try:
-                spec = importlib.util.spec_from_file_location(module_name, py_file)
-                if spec and spec.loader:
-                    # Always create a new module instance to re-run decorators
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[module_name] = module
-                    spec.loader.exec_module(module)
-            except Exception:
-                pass
+                relative_path = py_file.relative_to(workspace_path)
+                module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
+                module_name = f"{workspace_name}.{'.'.join(module_parts)}"
+
+                try:
+                    spec = importlib.util.spec_from_file_location(module_name, py_file)
+                    if spec and spec.loader:
+                        # Always create a new module instance to re-run decorators
+                        module = importlib.util.module_from_spec(spec)
+                        sys.modules[module_name] = module
+                        spec.loader.exec_module(module)
+                except Exception:
+                    pass
 
     yield
 

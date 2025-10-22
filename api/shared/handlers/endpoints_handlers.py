@@ -201,7 +201,7 @@ async def _execute_sync(
 
     try:
         # Create execution record (status=RUNNING)
-        await exec_logger.create_execution(
+        exec_logger.create_execution(
             execution_id=execution_id,
             org_id=context.org_id,
             user_id=context.caller.user_id,

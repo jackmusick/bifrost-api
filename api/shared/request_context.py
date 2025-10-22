@@ -111,18 +111,13 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
     principal_header = req.headers.get('X-MS-CLIENT-PRINCIPAL')
 
     if not principal_header:
-        # No authentication found
-        # This should only happen if auth_level=ANONYMOUS
-        # For local dev, we allow it and treat as GLOBAL system user
-        logger.warning("No authentication found, treating as local dev system user")
-
-        return RequestContext(
-            user_id="local-dev",
-            email="local-dev@system.local",
-            name="Local Development",
-            org_id=None,  # GLOBAL scope
-            is_platform_admin=True,
-            is_function_key=True
+        # No authentication found - this is an error
+        # In production, SWA handles auth and always provides X-MS-CLIENT-PRINCIPAL
+        # In local dev with GetRoles enabled, SWA CLI provides the same header
+        logger.error("No authentication found - request rejected")
+        raise ValueError(
+            "Authentication required. "
+            "Ensure you're using SWA with GetRoles configured, or provide a function key."
         )
 
     # Parse Easy Auth principal
@@ -147,11 +142,9 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
     # Check if user is platform admin (role set by GetRoles endpoint)
     is_admin = 'PlatformAdmin' in user_roles
 
-    # Ensure user exists in database (auto-provision if needed)
-    # This handles development scenarios where GetRoles isn't called
-    from shared.user_lookup import ensure_user_exists_in_db, get_user_organization
-
-    ensure_user_exists_in_db(email, is_admin)
+    # Get user's organization from database
+    # GetRoles endpoint ensures user exists and is properly provisioned
+    from shared.user_lookup import get_user_organization
 
     # Determine org_id based on user role and headers
     provided_org_id = req.headers.get('X-Organization-Id')
@@ -181,30 +174,17 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         raise PermissionError("Only platform administrators can override organization context")
 
     # Look up user's org in database
+    # GetRoles endpoint ensures user is provisioned with org assignment
     org_id = get_user_organization(email)
 
     if not org_id:
-        # User exists but has no org assignment
-        # Try auto-provisioning by domain before failing
-        logger.info(f"User {email} has no org assignment, attempting auto-provisioning")
-
-        try:
-            from shared.user_provisioning import ensure_user_provisioned
-
-            result = ensure_user_provisioned(email)
-
-            if result.was_created:
-                logger.info(f"Auto-provisioned user {email} to org {result.org_id}")
-
-            org_id = result.org_id
-
-            if not org_id:
-                # Still no org after provisioning attempt
-                raise ValueError(f"User {email} has no organization assignment. Contact administrator.")
-
-        except Exception as e:
-            logger.error(f"Auto-provisioning failed for {email}: {e}")
-            raise ValueError(f"User {email} has no organization assignment. Contact administrator.") from e
+        # User authenticated but has no org assignment
+        # This should not happen if GetRoles is working properly
+        logger.error(f"User {email} authenticated but has no organization assignment")
+        raise ValueError(
+            f"User {email} has no organization assignment. "
+            "Please contact your administrator to assign you to an organization."
+        )
 
     logger.info(f"User {email} in org scope: {org_id}")
 
@@ -218,4 +198,5 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
     )
 
 
-# Note: Helper functions moved to shared/user_lookup.py for better testability
+# Note: User provisioning is handled by GetRoles endpoint (shared/handlers/roles_source_handlers.py)
+# This module only looks up existing users - GetRoles ensures they exist first
