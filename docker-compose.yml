@@ -18,7 +18,7 @@ services:
       retries: 3
   functions:
     build:
-      context: ./api
+      context: .
       dockerfile: Dockerfile
     ports:
       - "7071:80" # Azure Functions runtime
@@ -45,21 +45,3 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  swa:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-    ports:
-      - "4280:4280" # SWA CLI
-    environment:
-      - API_URL=http://functions:80
-      - ENTRA_CLIENT_ID=${ENTRA_CLIENT_ID}
-      - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET}
-    volumes:
-      - ./client:/app # Live code reload
-      - /app/node_modules # Prevent overwriting node_modules (use container's version)
-      - ./client/staticwebapp.config.json:/app/staticwebapp.config.json # Mount unified config
-    depends_on:
-      functions:
-        condition: service_healthy # Wait for Functions to be ready

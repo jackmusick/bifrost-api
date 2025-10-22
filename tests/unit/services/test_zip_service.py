@@ -15,7 +15,7 @@ import zipfile
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-from services.zip_service import (
+from shared.services.zip_service import (
     create_workspace_zip,
     create_selective_zip,
     estimate_workspace_size,
@@ -77,7 +77,7 @@ class TestCreateWorkspaceZip:
 
     def test_create_workspace_zip_empty_workspace(self):
         """Should handle empty workspace"""
-        with patch("services.zip_service.get_workspace_service") as mock_get_ws:
+        with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.return_value = []
             mock_get_ws.return_value = mock_service
@@ -91,7 +91,7 @@ class TestCreateWorkspaceZip:
 
     def test_create_workspace_zip_file_content(self):
         """Should include correct file content in ZIP"""
-        with patch("services.zip_service.get_workspace_service") as mock_get_ws:
+        with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.return_value = [
                 {"path": "file1.txt", "isDirectory": False, "size": 1024},
@@ -147,7 +147,7 @@ class TestCreateWorkspaceZip:
 
     def test_create_workspace_zip_preserves_paths(self):
         """Should preserve file paths in ZIP"""
-        with patch("services.zip_service.get_workspace_service") as mock_get_ws:
+        with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.return_value = [
                 {"path": "src/main.py", "isDirectory": False},
@@ -287,7 +287,7 @@ class TestZipServiceErrorHandling:
 
     def test_create_workspace_zip_workspace_service_error(self):
         """Should raise error when workspace service fails"""
-        with patch("services.zip_service.get_workspace_service") as mock_get_ws:
+        with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.side_effect = Exception("Service error")
             mock_get_ws.return_value = mock_service
@@ -297,7 +297,7 @@ class TestZipServiceErrorHandling:
 
     def test_create_selective_zip_workspace_service_error(self):
         """Should raise error when workspace service fails"""
-        with patch("services.zip_service.get_workspace_service") as mock_get_ws:
+        with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             # Error happens when trying to read file
             mock_service.read_file.side_effect = Exception("Service error")
@@ -362,7 +362,7 @@ class TestZipServiceIntegration:
 
     def test_full_workflow_create_read_verify(self):
         """Should create, read, and verify ZIP contents"""
-        with patch("services.zip_service.get_workspace_service") as mock_get_ws:
+        with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.return_value = [
                 {"path": "config.json", "isDirectory": False},

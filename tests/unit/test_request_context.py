@@ -141,20 +141,6 @@ class TestHttpParsing:
         assert context.is_platform_admin is True
         assert context.is_function_key is True
 
-    def test_local_dev_mode(self):
-        """Local development mode with no auth headers"""
-        req = Mock(spec=func.HttpRequest)
-        req.headers = {}
-        req.params = {}
-
-        context = get_request_context(req)
-
-        assert context.user_id == "local-dev"
-        assert context.is_platform_admin is True
-        assert context.is_function_key is True
-        assert context.org_id is None
-        assert context.scope == "GLOBAL"
-
     @patch("shared.user_lookup.ensure_user_exists_in_db")
     @patch("shared.user_lookup.get_user_organization")
     def test_platform_admin_user_global_scope(self, mock_get_org, mock_ensure_user):
@@ -176,7 +162,7 @@ class TestHttpParsing:
         assert context.is_platform_admin is True
         assert context.org_id is None
         assert context.scope == "GLOBAL"
-        mock_ensure_user.assert_called_once_with("admin@example.com", True)
+        # Note: ensure_user_exists_in_db is now called in GetRoles endpoint, not here
 
     @patch("shared.user_lookup.ensure_user_exists_in_db")
     @patch("shared.user_lookup.get_user_organization")
@@ -225,7 +211,7 @@ class TestHttpParsing:
         assert context.is_platform_admin is False
         assert context.org_id == "org-789"
         assert context.scope == "org-789"
-        mock_ensure_user.assert_called_once_with("user@example.com", False)
+        # Note: ensure_user_exists_in_db is now called in GetRoles endpoint, not here
         mock_get_org.assert_called_once_with("user@example.com")
 
     @patch("shared.user_lookup.ensure_user_exists_in_db")

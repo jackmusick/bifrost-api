@@ -5,7 +5,7 @@ Manage OAuth connections for workflows and integrations
 
 import azure.functions as func
 
-from models.oauth_connection import (
+from shared.models import (
     CreateOAuthConnectionRequest,
     UpdateOAuthConnectionRequest,
 )

@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 
 import azure.functions as func
 
-from services.oauth_provider import OAuthProviderClient
-from services.oauth_storage_service import OAuthStorageService
+from shared.services.oauth_provider import OAuthProviderClient
+from shared.services.oauth_storage_service import OAuthStorageService
 from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 

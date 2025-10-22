@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime
 
-from models.oauth_connection import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
+from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
 from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
 

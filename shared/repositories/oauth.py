@@ -10,10 +10,10 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from services.oauth_storage_service import OAuthStorageService
+from shared.services.oauth_storage_service import OAuthStorageService
 
 if TYPE_CHECKING:
-    from models.oauth_connection import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
+    from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
     from shared.request_context import RequestContext
 
 logger = logging.getLogger(__name__)

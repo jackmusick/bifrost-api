@@ -10,8 +10,8 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from services.oauth_storage_service import OAuthStorageService
-from models.oauth_connection import (
+from shared.services.oauth_storage_service import OAuthStorageService
+from shared.models import (
     CreateOAuthConnectionRequest,
     UpdateOAuthConnectionRequest,
     OAuthConnection

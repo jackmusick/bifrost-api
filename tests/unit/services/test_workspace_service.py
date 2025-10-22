@@ -9,7 +9,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from services.workspace_service import WorkspaceService, get_workspace_service
+from shared.services.workspace_service import WorkspaceService, get_workspace_service
 
 
 class TestWorkspaceServiceInitialization:
@@ -18,7 +18,7 @@ class TestWorkspaceServiceInitialization:
     def test_get_workspace_path_default(self, mock_filesystem):
         """Should use default workspace path from env"""
         with patch.dict("os.environ", {"WORKSPACE_PATH": "/workspace"}):
-            with patch("services.workspace_service.Path") as mock_path:
+            with patch("shared.services.workspace_service.Path") as mock_path:
                 path_instance = MagicMock()
                 path_instance.exists.return_value = True
                 path_instance.mkdir.return_value = None
@@ -31,7 +31,7 @@ class TestWorkspaceServiceInitialization:
 
     def test_get_workspace_path_custom(self, mock_filesystem):
         """Should use custom workspace path if provided"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             path_instance = MagicMock()
             path_instance.exists.return_value = True
             path_instance.mkdir.return_value = None
@@ -43,7 +43,7 @@ class TestWorkspaceServiceInitialization:
 
     def test_ensure_workspace_exists(self, mock_filesystem):
         """Should create workspace directory if missing"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             path_instance = MagicMock()
             path_instance.exists.return_value = False
             path_instance.mkdir.return_value = None
@@ -60,7 +60,7 @@ class TestWorkspaceServiceFileOperations:
 
     def test_list_workflow_files(self, mock_filesystem):
         """Should list all files in workspace"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace path
             workspace = MagicMock()
             workspace.exists.return_value = True
@@ -76,7 +76,7 @@ class TestWorkspaceServiceFileOperations:
 
     def test_list_files_with_content(self, mock_filesystem):
         """Should return file metadata with size and modification time"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
             workspace = MagicMock()
             workspace.exists.return_value = True
@@ -99,7 +99,7 @@ class TestWorkspaceServiceFileOperations:
 
     def test_read_workflow_file(self, mock_filesystem):
         """Should read workflow file contents"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
             workspace = MagicMock()
             workspace.exists.return_value = True
@@ -122,7 +122,7 @@ class TestWorkspaceServiceFileOperations:
 
     def test_write_workflow_file(self, mock_filesystem):
         """Should write file to workspace"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
             workspace = MagicMock()
             workspace.exists.return_value = True
@@ -148,7 +148,7 @@ class TestWorkspaceServiceFileOperations:
 
     def test_delete_workflow_file(self, mock_filesystem):
         """Should delete file from workspace"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
             workspace = MagicMock()
             workspace.exists.return_value = True
@@ -174,7 +174,7 @@ class TestWorkspaceServiceValidation:
 
     def test_validate_workflow_name(self, mock_filesystem):
         """Should validate workflow name format"""
-        with patch("services.workspace_service.Path") as mock_path_class:
+        with patch("shared.services.workspace_service.Path") as mock_path_class:
             # Create proper mock for Path
             workspace = MagicMock()
             workspace.exists.return_value = True
@@ -185,7 +185,7 @@ class TestWorkspaceServiceValidation:
 
             # For validate_path, we don't mock - it uses real Path internally
             # Reset the patch to use real Path for validate_path
-            with patch("services.workspace_service.Path", Path):
+            with patch("shared.services.workspace_service.Path", Path):
                 # Valid names
                 assert service.validate_path("workflow.py") is True
                 assert service.validate_path("my_workflow.py") is True
@@ -194,7 +194,7 @@ class TestWorkspaceServiceValidation:
 
     def test_prevent_directory_traversal(self, mock_filesystem):
         """Should reject paths with .. or absolute paths"""
-        with patch("services.workspace_service.Path"):
+        with patch("shared.services.workspace_service.Path"):
             service = WorkspaceService()
 
             # Invalid - directory traversal
@@ -204,7 +204,7 @@ class TestWorkspaceServiceValidation:
 
     def test_reject_absolute_paths(self, mock_filesystem):
         """Should reject absolute paths"""
-        with patch("services.workspace_service.Path"):
+        with patch("shared.services.workspace_service.Path"):
             service = WorkspaceService()
 
             assert service.validate_path("/etc/passwd") is False
@@ -212,7 +212,7 @@ class TestWorkspaceServiceValidation:
 
     def test_restrict_to_valid_characters(self, mock_filesystem):
         """Should reject paths with invalid characters"""
-        with patch("services.workspace_service.Path"):
+        with patch("shared.services.workspace_service.Path"):
             service = WorkspaceService()
 
             # Invalid characters
@@ -229,7 +229,7 @@ class TestWorkspaceServiceErrors:
 
     def test_handles_missing_file(self, mock_filesystem):
         """Should handle file not found"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -247,7 +247,7 @@ class TestWorkspaceServiceErrors:
 
     def test_handles_file_read_errors(self, mock_filesystem):
         """Should handle file read failures"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -267,7 +267,7 @@ class TestWorkspaceServiceErrors:
 
     def test_handles_file_write_errors(self, mock_filesystem):
         """Should handle file write failures"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -287,7 +287,7 @@ class TestWorkspaceServiceErrors:
 
     def test_handles_missing_workspace_directory(self, mock_filesystem):
         """Should handle workspace directory not found"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = False
             workspace.mkdir.side_effect = OSError("Cannot create directory")
@@ -305,7 +305,7 @@ class TestWorkspaceServiceDirectories:
 
     def test_create_directory(self, mock_filesystem):
         """Should create directory in workspace"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -325,7 +325,7 @@ class TestWorkspaceServiceDirectories:
 
     def test_delete_directory_recursive(self, mock_filesystem):
         """Should delete directory recursively"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -346,7 +346,7 @@ class TestWorkspaceServiceDirectories:
 
     def test_delete_empty_directory(self, mock_filesystem):
         """Should delete empty directory without recursive flag"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -374,9 +374,9 @@ class TestWorkspaceServiceSingleton:
 
     def test_get_workspace_service_singleton(self, mock_filesystem):
         """Should return same instance on multiple calls"""
-        with patch("services.workspace_service.Path"):
+        with patch("shared.services.workspace_service.Path"):
             # Reset singleton
-            import services.workspace_service as ws_module
+            import shared.services.workspace_service as ws_module
             ws_module._workspace_service = None
 
             service1 = get_workspace_service()
@@ -397,7 +397,7 @@ class TestWorkspaceServiceIntegration:
 
     def test_full_workflow_lifecycle(self, mock_filesystem):
         """Should handle complete workflow file lifecycle"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -436,7 +436,7 @@ class TestWorkspaceServiceIntegration:
 
     def test_path_validation_in_operations(self, mock_filesystem):
         """Should validate paths before operations"""
-        with patch("services.workspace_service.Path"):
+        with patch("shared.services.workspace_service.Path"):
             service = WorkspaceService()
 
             # Should reject invalid paths
@@ -459,7 +459,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_list_files_recursive_traversal(self):
         """Should recursively traverse directories"""
-        with patch("services.workspace_service.Path") as mock_path_class:
+        with patch("shared.services.workspace_service.Path") as mock_path_class:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -490,7 +490,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_read_file_returns_bytes(self, mock_filesystem):
         """Should return file content as bytes"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -513,7 +513,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_write_file_creates_parents(self, mock_filesystem):
         """Should create parent directories if needed"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -538,7 +538,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_delete_file_not_a_file(self, mock_filesystem):
         """Should reject deleting non-files"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -557,7 +557,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_list_files_with_relative_path(self, mock_filesystem):
         """Should list files from relative path"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -584,7 +584,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_create_directory_already_exists(self, mock_filesystem):
         """Should reject creating existing directory"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -602,7 +602,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_delete_directory_not_found(self, mock_filesystem):
         """Should reject deleting non-existent directory"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
@@ -620,7 +620,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
     def test_delete_directory_not_a_directory(self, mock_filesystem):
         """Should reject deleting non-directories"""
-        with patch("services.workspace_service.Path") as mock_path:
+        with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None

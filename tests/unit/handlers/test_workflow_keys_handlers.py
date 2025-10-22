@@ -62,9 +62,9 @@ class TestCreateWorkflowKeyHandler:
                 disableGlobalKey=False
             ))
 
-            with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+            with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
                 mock_client = mock_table.return_value
-                mock_client.create_entity = Mock()
+                mock_client.create_workflow_key = Mock()
 
                 response = await create_workflow_key_handler(mock_req)
 
@@ -72,7 +72,7 @@ class TestCreateWorkflowKeyHandler:
                 data = json.loads(response.get_body())
                 assert data["rawKey"] == "raw_key_abc123"
                 assert data["id"] == "key-123"
-                mock_client.create_entity.assert_called_once()
+                mock_client.create_workflow_key.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_create_workflow_key_global(self):
@@ -101,15 +101,15 @@ class TestCreateWorkflowKeyHandler:
                 disableGlobalKey=False
             ))
 
-            with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+            with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
                 mock_client = mock_table.return_value
-                mock_client.create_entity = Mock()
+                mock_client.create_workflow_key = Mock()
 
                 response = await create_workflow_key_handler(mock_req)
 
                 assert response.status_code == 201
                 # Verify global key uses correct prefix
-                call_args = mock_client.create_entity.call_args
+                call_args = mock_client.create_workflow_key.call_args
                 entity = call_args[0][0]
                 assert entity["RowKey"].startswith("systemconfig:globalkey:")
 
@@ -139,9 +139,9 @@ class TestCreateWorkflowKeyHandler:
                 disableGlobalKey=False
             ))
 
-            with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+            with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
                 mock_client = mock_table.return_value
-                mock_client.create_entity = Mock()
+                mock_client.create_workflow_key = Mock()
 
                 response = await create_workflow_key_handler(mock_req)
 
@@ -193,9 +193,9 @@ class TestListWorkflowKeysHandler:
         mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
         mock_req.params = {}
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.query_entities.return_value = []
+            mock_client.list_workflow_keys.return_value = []
 
             response = await list_workflow_keys_handler(mock_req)
 
@@ -210,17 +210,18 @@ class TestListWorkflowKeysHandler:
         mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
         mock_req.params = {"workflowId": "workflows.specific"}
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.query_entities.return_value = []
+            mock_client.list_workflow_keys.return_value = []
 
             response = await list_workflow_keys_handler(mock_req)
 
             assert response.status_code == 200
             # Verify query filters by workflow
-            call_args = mock_client.query_entities.call_args
-            query = call_args[0][0]
-            assert "workflows.specific" in query
+            call_args = mock_client.list_workflow_keys.call_args
+            # Args are: (user_email, workflow_id_filter, include_revoked)
+            workflow_id_filter = call_args[0][1]
+            assert workflow_id_filter == "workflows.specific"
 
     @pytest.mark.asyncio
     async def test_list_workflow_keys_include_revoked(self):
@@ -229,17 +230,18 @@ class TestListWorkflowKeysHandler:
         mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
         mock_req.params = {"includeRevoked": "true"}
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.query_entities.return_value = []
+            mock_client.list_workflow_keys.return_value = []
 
             response = await list_workflow_keys_handler(mock_req)
 
             assert response.status_code == 200
-            # Verify query doesn't filter out revoked
-            call_args = mock_client.query_entities.call_args
-            query = call_args[0][0]
-            assert "Revoked eq false" not in query
+            # Verify include_revoked parameter is True
+            call_args = mock_client.list_workflow_keys.call_args
+            # Args are: (user_email, workflow_id_filter, include_revoked)
+            include_revoked = call_args[0][2]
+            assert include_revoked is True
 
     @pytest.mark.asyncio
     async def test_list_workflow_keys_exclude_revoked(self):
@@ -248,17 +250,18 @@ class TestListWorkflowKeysHandler:
         mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
         mock_req.params = {}
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.query_entities.return_value = []
+            mock_client.list_workflow_keys.return_value = []
 
             response = await list_workflow_keys_handler(mock_req)
 
             assert response.status_code == 200
-            # Verify query filters out revoked
-            call_args = mock_client.query_entities.call_args
-            query = call_args[0][0]
-            assert "Revoked eq false" in query
+            # Verify include_revoked parameter is False (default)
+            call_args = mock_client.list_workflow_keys.call_args
+            # Args are: (user_email, workflow_id_filter, include_revoked)
+            include_revoked = call_args[0][2]
+            assert include_revoked is False
 
     @pytest.mark.asyncio
     async def test_list_workflow_keys_error(self):
@@ -267,9 +270,9 @@ class TestListWorkflowKeysHandler:
         mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
         mock_req.params = {}
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.query_entities.side_effect = Exception("Database error")
+            mock_client.list_workflow_keys.side_effect = Exception("Database error")
 
             response = await list_workflow_keys_handler(mock_req)
 
@@ -295,21 +298,22 @@ class TestRevokeWorkflowKeyHandler:
             "Revoked": False,
         }
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_entity.return_value = entity
-            mock_client.update_entity = Mock()
+            mock_client.get_workflow_key_by_id.return_value = entity
+            mock_client.revoke_workflow_key.return_value = True  # Success
 
             response = await revoke_workflow_key_handler(mock_req)
 
             assert response.status_code == 204
-            mock_client.update_entity.assert_called_once()
-            # Verify entity marked as revoked
-            call_args = mock_client.update_entity.call_args
-            updated_entity = call_args[0][0]
-            assert updated_entity["Revoked"] is True
-            assert "RevokedAt" in updated_entity
-            assert updated_entity["RevokedBy"] == "user@example.com"
+            mock_client.revoke_workflow_key.assert_called_once()
+            # Verify revoke_workflow_key called with correct parameters
+            call_args = mock_client.revoke_workflow_key.call_args
+            # Args are: (key_id, user_email)
+            key_id = call_args[0][0]
+            user_email = call_args[0][1]
+            assert key_id == "key-123"
+            assert user_email == "user@example.com"
 
     @pytest.mark.asyncio
     async def test_revoke_workflow_key_not_found(self):
@@ -318,9 +322,9 @@ class TestRevokeWorkflowKeyHandler:
         mock_req.route_params = {"keyId": "key-nonexistent"}
         mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_entity.side_effect = Exception("Entity not found")
+            mock_client.get_workflow_key_by_id.return_value = None  # Not found
 
             response = await revoke_workflow_key_handler(mock_req)
 
@@ -342,9 +346,9 @@ class TestRevokeWorkflowKeyHandler:
             "HashedKey": "hashed123",
         }
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_entity.return_value = entity
+            mock_client.get_workflow_key_by_id.return_value = entity
 
             response = await revoke_workflow_key_handler(mock_req)
 
@@ -381,10 +385,10 @@ class TestRevokeWorkflowKeyHandler:
             "Revoked": False,
         }
 
-        with patch('shared.handlers.workflow_keys_handlers._get_config_table_client') as mock_table:
+        with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_entity.side_effect = [Exception("Not found"), entity]
-            mock_client.update_entity = Mock()
+            mock_client.get_workflow_key_by_id.return_value = entity
+            mock_client.revoke_workflow_key.return_value = True
 
             response = await revoke_workflow_key_handler(mock_req)
 

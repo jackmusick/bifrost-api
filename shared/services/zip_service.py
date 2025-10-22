@@ -10,7 +10,7 @@ import zipfile
 from io import BytesIO
 from typing import Any
 
-from services.workspace_service import get_workspace_service
+from shared.services.workspace_service import get_workspace_service
 
 logger = logging.getLogger(__name__)
 

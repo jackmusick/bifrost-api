@@ -174,7 +174,7 @@ class TestDefaultOrgScoping:
             # Mock OAuthStorageService - patch where it's imported IN SDK
             with patch('sdk.oauth.OAuthStorageService') as mock_storage_class:
                 from unittest.mock import AsyncMock
-                from models.oauth_connection import OAuthConnection
+                from shared.models import OAuthConnection
                 from datetime import datetime
 
                 mock_storage = Mock()
@@ -329,7 +329,7 @@ class TestCrossOrgParameterUsage:
         from unittest.mock import Mock, patch, AsyncMock
         from bifrost import oauth
         from shared.request_context import RequestContext
-        from models.oauth_connection import OAuthConnection
+        from shared.models import OAuthConnection
         from datetime import datetime
 
         context = RequestContext(

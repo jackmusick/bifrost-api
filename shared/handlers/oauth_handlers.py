@@ -9,13 +9,13 @@ import logging
 import azure.functions as func
 from pydantic import ValidationError
 
-from models.oauth_connection import (
+from shared.models import (
     CreateOAuthConnectionRequest,
     OAuthCredentialsResponse,
     UpdateOAuthConnectionRequest,
 )
-from services.oauth_provider import OAuthProviderClient
-from services.oauth_storage_service import OAuthStorageService
+from shared.services.oauth_provider import OAuthProviderClient
+from shared.services.oauth_storage_service import OAuthStorageService
 from shared.custom_types import get_context, get_route_param
 from shared.handlers.response_helpers import (
     success_response,

@@ -181,7 +181,7 @@ def temp_test_dir(tmp_path):
 @pytest.fixture
 def mock_workspace_service():
     """Mock WorkspaceService for zip service tests"""
-    with patch("services.zip_service.get_workspace_service") as mock:
+    with patch("shared.services.zip_service.get_workspace_service") as mock:
         service = MagicMock()
 
         # Sample files for listing
@@ -210,7 +210,7 @@ def mock_workspace_service():
 @pytest.fixture
 def mock_table_service():
     """Mock TableStorageService for OAuth storage"""
-    with patch("services.oauth_storage_service.TableStorageService") as mock:
+    with patch("shared.services.oauth_storage_service.TableStorageService") as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield instance
@@ -219,7 +219,7 @@ def mock_table_service():
 @pytest.fixture
 def mock_keyvault_client():
     """Mock KeyVaultClient for OAuth storage"""
-    with patch("services.oauth_storage_service.KeyVaultClient") as mock:
+    with patch("shared.services.oauth_storage_service.KeyVaultClient") as mock:
         instance = MagicMock()
         mock_vault = MagicMock()
         instance.return_value = mock_vault
@@ -307,7 +307,7 @@ def mock_config_table_response():
 @pytest.fixture
 def mock_filesystem():
     """Mock file system operations for workspace service"""
-    with patch("services.workspace_service.Path") as mock_path:
+    with patch("shared.services.workspace_service.Path") as mock_path:
         # Create mock path instance
         path_instance = MagicMock()
         mock_path.return_value = path_instance

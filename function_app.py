@@ -136,24 +136,34 @@ except Exception as e:
 # ==================== QUEUE INITIALIZATION ====================
 # T008: Initialize Azure Storage Queues at startup
 # Must initialize queues BEFORE registering queue triggers to prevent binding failures
+# Note: You may see "queue does not exist" errors in logs during startup - these are
+# normal and will stop once the queues are created. Azure Functions polls for queues
+# before they're created, but the errors are harmless.
 
 try:
-    logging.info("Initializing Azure Storage Queues...")
+    logging.info("="*60)
+    logging.info("QUEUE INITIALIZATION")
+    logging.info("="*60)
     queue_results = init_queues()
 
     if queue_results["created"]:
         logging.info(
-            f"Created {len(queue_results['created'])} queues: {', '.join(queue_results['created'])}")
+            f"✓ Created {len(queue_results['created'])} queues: {', '.join(queue_results['created'])}")
     if queue_results["already_exists"]:
         logging.info(
-            f"{len(queue_results['already_exists'])} queues already exist")
+            f"✓ {len(queue_results['already_exists'])} queues already exist")
     if queue_results["failed"]:
-        logging.warning(
-            f"Failed to create {len(queue_results['failed'])} queues - async workflow execution may not work")
+        logging.error(
+            f"✗ Failed to create {len(queue_results['failed'])} queues - async workflow execution may not work properly")
+        for failure in queue_results["failed"]:
+            logging.error(f"  - {failure.get('queue', 'unknown')}: {failure.get('error', 'unknown error')}")
+
+    logging.info("="*60 + "\n")
 
 except Exception as e:
-    logging.warning(
-        f"Queue initialization failed: {e} - continuing but async workflow execution may fail at runtime")
+    logging.error(
+        f"Queue initialization failed: {e} - continuing but async workflow execution may fail at runtime",
+        exc_info=True)
 
 # ==================== WORKSPACE DISCOVERY ====================
 # T005: Discover workspace modules to register workflows and data providers

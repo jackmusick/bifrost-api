@@ -11,13 +11,12 @@ Provides business logic for OpenAPI specification generation including:
 from pydantic import BaseModel
 from shared.openapi_decorators import build_openapi_spec
 from shared.registry import get_registry
-import models.oauth_connection as oauth_models
 import shared.models as models_module
 
 
 def collect_pydantic_models() -> list[type[BaseModel]]:
     """
-    Collect all Pydantic models from shared and oauth modules.
+    Collect all Pydantic models from shared.models module.
 
     Auto-discovers models from __all__ exports to ensure comprehensive
     schema generation without manual registration.
@@ -28,16 +27,10 @@ def collect_pydantic_models() -> list[type[BaseModel]]:
     models: list[type[BaseModel]] = []
 
     # Add all models from shared.models (auto-discovered from __all__)
+    # This includes OAuth models which are now merged into shared.models
     for name in models_module.__all__:
         obj = getattr(models_module, name)
         # Only include BaseModel subclasses (skip regular classes, enums, functions)
-        if isinstance(obj, type) and issubclass(obj, BaseModel):
-            models.append(obj)
-
-    # Add OAuth models (auto-discovered from __all__)
-    for name in oauth_models.__all__:
-        obj = getattr(oauth_models, name)
-        # Only include BaseModel subclasses
         if isinstance(obj, type) and issubclass(obj, BaseModel):
             models.append(obj)
 

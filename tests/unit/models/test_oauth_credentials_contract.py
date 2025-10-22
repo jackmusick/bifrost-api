@@ -6,7 +6,7 @@ Tests for GET /api/oauth/credentials/{connection_name} endpoint (User Story 3)
 import pytest
 from pydantic import ValidationError
 
-from models.oauth_connection import OAuthCredentials, OAuthCredentialsResponse
+from shared.models import OAuthCredentialsModel as OAuthCredentials, OAuthCredentialsResponse
 
 
 class TestOAuthCredentialsContract:

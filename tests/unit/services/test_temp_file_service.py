@@ -17,7 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 import time
 
-from services.temp_file_service import (
+from shared.services.temp_file_service import (
     TempFileService,
     get_temp_file_service,
     new_temp_file,
@@ -305,7 +305,7 @@ class TestTempFileServiceSingleton:
     def test_get_temp_file_service_singleton(self):
         """Should return singleton instance"""
         # Clear global state for test
-        import services.temp_file_service as temp_module
+        import shared.services.temp_file_service as temp_module
         temp_module._temp_file_service = None
 
         service1 = get_temp_file_service()
@@ -317,7 +317,7 @@ class TestTempFileServiceSingleton:
         """Should work via convenience function"""
         with patch.dict(os.environ, {"TMP_PATH": str(temp_test_dir)}):
             # Clear singleton
-            import services.temp_file_service as temp_module
+            import shared.services.temp_file_service as temp_module
             temp_module._temp_file_service = None
 
             file_path = new_temp_file(suffix=".log")
@@ -329,7 +329,7 @@ class TestTempFileServiceSingleton:
         """Should work via convenience function"""
         with patch.dict(os.environ, {"TMP_PATH": str(temp_test_dir)}):
             # Clear singleton
-            import services.temp_file_service as temp_module
+            import shared.services.temp_file_service as temp_module
             temp_module._temp_file_service = None
 
             dir_path = new_temp_directory(prefix="workspace")

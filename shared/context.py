@@ -183,7 +183,7 @@ class OrganizationContext:
         )
 
         # Use OAuthStorageService to get connection metadata
-        from services.oauth_storage_service import OAuthStorageService
+        from shared.services.oauth_storage_service import OAuthStorageService
 
         oauth_service = OAuthStorageService()
         keyvault = KeyVaultClient()

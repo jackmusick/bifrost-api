@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.oauth_storage_service import OAuthStorageService
+from shared.services.oauth_storage_service import OAuthStorageService
 
 from ._internal import get_context, require_permission
 
