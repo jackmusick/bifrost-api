@@ -50,13 +50,33 @@ FUNC_PID=$!
 
 # Wait for func to be ready
 echo "Waiting for func to be ready..."
-for i in {1..30}; do
+READY=false
+for i in {1..60}; do
     if curl -s http://localhost:7777/api/openapi/v3.json > /dev/null 2>&1; then
         echo "Services ready!"
+        READY=true
         break
+    fi
+    if [ $((i % 10)) -eq 0 ]; then
+        echo "Still waiting... ($i/60 seconds)"
+        # Show last few lines of func log for debugging
+        if [ -f /tmp/func-test.log ]; then
+            echo "Last 10 lines of func log:"
+            tail -10 /tmp/func-test.log
+        fi
     fi
     sleep 1
 done
+
+if [ "$READY" = false ]; then
+    echo "ERROR: Azure Functions failed to start within 60 seconds"
+    echo "Full func log:"
+    cat /tmp/func-test.log 2>/dev/null || echo "No log file found"
+    exit 1
+fi
+
+echo "Giving the queue a few more seconds..."
+sleep 10
 
 # Run pytest with or without coverage
 if [ "$COVERAGE" = true ]; then
