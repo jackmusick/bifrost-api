@@ -10,12 +10,11 @@ All audit logs are stored in the AuditLog table with date-based partitioning
 for efficient time-range queries and 90-day retention.
 """
 
-import json
 import logging
 import os
-import uuid
-from datetime import UTC, datetime
 from typing import Any, Optional
+
+from shared.repositories.audit import AuditRepository
 
 logger = logging.getLogger(__name__)
 
@@ -54,28 +53,22 @@ class AuditLogger:
         else:
             self._enabled = True
 
-        self._table_client = None
+        self._repository = None
 
-    def _get_table_client(self):
-        """Lazy-load table client"""
+    def _get_repository(self) -> AuditRepository | None:
+        """Lazy-load audit repository"""
         if not self._enabled:
             return None
 
-        if self._table_client is None:
+        if self._repository is None:
             try:
-                from azure.data.tables import TableServiceClient
-
-                assert self.connection_string is not None, "Connection string is None"
-                service_client = TableServiceClient.from_connection_string(
-                    self.connection_string
-                )
-                self._table_client = service_client.get_table_client("AuditLog")
+                self._repository = AuditRepository()
             except Exception as e:
-                logger.error(f"Failed to create table client for audit logging: {e}")
+                logger.error(f"Failed to create audit repository: {e}")
                 self._enabled = False
                 return None
 
-        return self._table_client
+        return self._repository
 
     async def log_function_key_access(
         self,
@@ -105,20 +98,31 @@ class AuditLogger:
             status_code: HTTP response status
             details: Additional context (JSON-serializable)
         """
-        await self._log_event(
-            event_type="function_key_access",
-            data={
-                "KeyId": key_id,
-                "KeyName": key_name,
-                "OrgId": org_id,
-                "Endpoint": endpoint,
-                "Method": method,
-                "RemoteAddr": remote_addr,
-                "UserAgent": user_agent,
-                "StatusCode": status_code,
-                "Details": json.dumps(details) if details else None
-            }
-        )
+        if not self._enabled:
+            logger.debug("Audit logging disabled, skipping function_key_access event")
+            return
+
+        repository = self._get_repository()
+        if not repository:
+            return
+
+        try:
+            repository.log_function_key_access(
+                key_id=key_id,
+                key_name=key_name,
+                org_id=org_id,
+                endpoint=endpoint,
+                method=method,
+                remote_addr=remote_addr,
+                user_agent=user_agent,
+                status_code=status_code,
+                details=details
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to log function_key_access event: {e}",
+                exc_info=True
+            )
 
     async def log_cross_org_access(
         self,
@@ -144,18 +148,29 @@ class AuditLogger:
             status_code: HTTP response status
             details: Additional context (reason, support ticket, etc.)
         """
-        await self._log_event(
-            event_type="cross_org_access",
-            data={
-                "UserId": user_id,
-                "OrgId": target_org_id,
-                "Endpoint": endpoint,
-                "Method": method,
-                "RemoteAddr": remote_addr,
-                "StatusCode": status_code,
-                "Details": json.dumps(details) if details else None
-            }
-        )
+        if not self._enabled:
+            logger.debug("Audit logging disabled, skipping cross_org_access event")
+            return
+
+        repository = self._get_repository()
+        if not repository:
+            return
+
+        try:
+            repository.log_cross_org_access(
+                user_id=user_id,
+                target_org_id=target_org_id,
+                endpoint=endpoint,
+                method=method,
+                remote_addr=remote_addr,
+                status_code=status_code,
+                details=details
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to log cross_org_access event: {e}",
+                exc_info=True
+            )
 
     async def log_import_violation_attempt(
         self,
@@ -173,93 +188,25 @@ class AuditLogger:
             workspace_file: Source file that attempted import
             stack_trace: Python stack trace (file:line format)
         """
-        await self._log_event(
-            event_type="engine_violation_attempt",
-            data={
-                "BlockedModule": blocked_module,
-                "WorkspaceFile": workspace_file,
-                "Details": json.dumps({
-                    "stack_trace": stack_trace or []
-                })
-            }
-        )
-
-    async def _log_event(
-        self,
-        event_type: str,
-        data: dict[str, Any]
-    ) -> None:
-        """
-        Internal method to log audit event to Table Storage.
-
-        Args:
-            event_type: Type of audit event
-            data: Event-specific data fields
-        """
         if not self._enabled:
-            logger.debug(f"Audit logging disabled, skipping {event_type} event")
+            logger.debug("Audit logging disabled, skipping engine_violation_attempt event")
             return
 
-        table_client = self._get_table_client()
-        if not table_client:
+        repository = self._get_repository()
+        if not repository:
             return
 
         try:
-            # Create entity
-            now = datetime.now(UTC)
-            entity = self._create_entity(event_type, now, data)
-
-            # Insert into table (fire and forget - synchronous SDK)
-            table_client.create_entity(entity)
-
-            logger.info(
-                f"Audit event logged: {event_type}",
-                extra={'event_type': event_type, 'partition_key': entity['PartitionKey']}
+            repository.log_import_violation_attempt(
+                blocked_module=blocked_module,
+                workspace_file=workspace_file,
+                stack_trace=stack_trace
             )
-
         except Exception as e:
             logger.error(
-                f"Failed to log audit event {event_type}: {e}",
+                f"Failed to log engine_violation_attempt event: {e}",
                 exc_info=True
             )
-
-    def _create_entity(
-        self,
-        event_type: str,
-        timestamp: datetime,
-        data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """
-        Create AuditLog table entity.
-
-        Args:
-            event_type: Type of audit event
-            timestamp: Event timestamp (UTC)
-            data: Event-specific data
-
-        Returns:
-            Dictionary representing table entity
-        """
-        # PartitionKey: Date in YYYY-MM-DD format
-        partition_key = timestamp.strftime("%Y-%m-%d")
-
-        # RowKey: Reverse timestamp + UUID for chronological sorting
-        # Reverse timestamp ensures newest first when querying partition
-        max_ticks = 9999999999999  # Max value for sorting
-        ticks = int(timestamp.timestamp() * 1000)  # milliseconds
-        reverse_ticks = max_ticks - ticks
-        row_key = f"{reverse_ticks}_{uuid.uuid4().hex}"
-
-        # Build entity
-        entity = {
-            "PartitionKey": partition_key,
-            "RowKey": row_key,
-            "EventType": event_type,
-            "Timestamp": timestamp.isoformat(),
-            **data  # Merge event-specific fields
-        }
-
-        return entity
 
 
 def get_audit_logger() -> AuditLogger:
