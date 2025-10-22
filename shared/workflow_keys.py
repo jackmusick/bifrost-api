@@ -9,10 +9,8 @@ import hashlib
 from datetime import datetime
 from typing import Optional
 
-from azure.data.tables import TableServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-
 from shared.models import WorkflowKey
+from shared.repositories.config import get_global_config_repository
 
 def generate_workflow_key(
     created_by: str,
@@ -65,7 +63,7 @@ def validate_workflow_key(
     3. If no workflow_id, directly try global keys
 
     Args:
-        connection_str: Azure Table Storage connection string
+        connection_str: Azure Table Storage connection string (unused, kept for compatibility)
         api_key: Raw API key to validate
         workflow_id: Optional workflow-specific scope to check
 
@@ -76,71 +74,10 @@ def validate_workflow_key(
     hashed_key = hashlib.sha256(api_key.encode()).hexdigest()
 
     try:
-        # Create TableClient for Config table
-        table_client = TableServiceClient.from_connection_string(
-            conn_str=connection_str
-        ).get_table_client("Config")
+        # Use ConfigRepository for validation
+        repo = get_global_config_repository()
+        return repo.validate_workflow_key(hashed_key, workflow_id)
 
-        # Step 1: If workflow_id provided, try workflow-specific key first
-        if workflow_id:
-            # Note: Azure Table Storage doesn't support 'like', so we filter by exact PartitionKey
-            # and then check other conditions in code or use ge/lt for prefix matching
-            workflow_key_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'workflowkey:' and RowKey lt 'workflowkey;' and HashedKey eq '{hashed_key}' and WorkflowId eq '{workflow_id}' and Revoked eq false"
-            workflow_results = list(table_client.query_entities(workflow_key_filter))
-
-            if workflow_results:
-                # Found a workflow-specific key
-                key_entity = workflow_results[0]
-
-                # Check if key is revoked (extra check, already filtered)
-                if key_entity.get('Revoked', False):
-                    return (False, None)
-
-                # Check if this key has DisableGlobalKey flag
-                disable_global_key = key_entity.get('DisableGlobalKey', False)
-
-                # Get the key ID for logging
-                key_id = key_entity.get('RowKey', 'unknown')
-
-                if disable_global_key:
-                    # This workflow-specific key forbids global keys
-                    # Update last used timestamp and return success
-                    key_entity['LastUsedAt'] = datetime.utcnow().isoformat()
-                    table_client.update_entity(key_entity)
-                    return (True, key_id)
-                else:
-                    # This workflow-specific key allows global keys as fallback
-                    # Accept this key
-                    key_entity['LastUsedAt'] = datetime.utcnow().isoformat()
-                    table_client.update_entity(key_entity)
-                    return (True, key_id)
-
-        # Step 2: Try global API keys
-        # Use ge/lt for prefix matching since 'like' is not supported
-        global_key_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'systemconfig:globalkey:' and RowKey lt 'systemconfig:globalkey;' and HashedKey eq '{hashed_key}' and Revoked eq false"
-        global_results = list(table_client.query_entities(global_key_filter))
-
-        if not global_results:
-            return (False, None)
-
-        # Get the first (and should be only) match
-        key_entity = global_results[0]
-
-        # Check if key is revoked
-        if key_entity.get('Revoked', False):
-            return (False, None)
-
-        # Get the key ID for logging
-        key_id = key_entity.get('RowKey', 'unknown')
-
-        # Update last used timestamp
-        key_entity['LastUsedAt'] = datetime.utcnow().isoformat()
-        table_client.update_entity(key_entity)
-
-        return (True, key_id)
-
-    except ResourceNotFoundError:
-        return (False, None)
     except Exception:
         # Log the error in a real implementation
         return (False, None)
@@ -148,36 +85,23 @@ def validate_workflow_key(
 
 def revoke_workflow_key(
     connection_str: str,
-    hashed_key: str
+    key_id: str,
+    revoked_by: str = "system"
 ) -> bool:
     """
     Revoke a workflow API key
 
     Args:
-        connection_str: Azure Table Storage connection string
-        hashed_key: Hashed key to revoke
+        connection_str: Azure Table Storage connection string (unused, kept for compatibility)
+        key_id: Key ID to revoke
+        revoked_by: User revoking the key
 
     Returns:
         True if key was successfully revoked, False otherwise
     """
     try:
-        table_client = TableServiceClient.from_connection_string(
-            conn_str=connection_str
-        ).get_table_client("WorkflowKeys")
-
-        key_filter = f"HashedKey eq '{hashed_key}'"
-        results = list(table_client.query_entities(key_filter))
-
-        if not results:
-            return False
-
-        key_entity = results[0]
-        key_entity['Revoked'] = True
-        key_entity['RevokedAt'] = datetime.utcnow().isoformat()
-
-        table_client.update_entity(key_entity)
-
-        return True
+        repo = get_global_config_repository()
+        return repo.revoke_workflow_key(key_id, revoked_by)
 
     except Exception:
         # Log error in a real implementation
@@ -187,40 +111,24 @@ def revoke_workflow_key(
 def list_workflow_keys(
     connection_str: str,
     user_id: str,
-    workflow_id: Optional[str] = None
-) -> list[WorkflowKey]:
+    workflow_id: Optional[str] = None,
+    include_revoked: bool = False
+) -> list[dict]:
     """
     List workflow keys for a user or specific workflow
 
     Args:
-        connection_str: Azure Table Storage connection string
+        connection_str: Azure Table Storage connection string (unused, kept for compatibility)
         user_id: User creating/owning the keys
         workflow_id: Optional workflow-specific filter
+        include_revoked: Include revoked keys
 
     Returns:
-        List of WorkflowKey models
+        List of workflow key entities
     """
     try:
-        table_client = TableServiceClient.from_connection_string(
-            conn_str=connection_str
-        ).get_table_client("WorkflowKeys")
-
-        # Build query filter
-        key_filter = f"CreatedBy eq '{user_id}'"
-
-        if workflow_id:
-            key_filter += f" and WorkflowId eq '{workflow_id}'"
-
-        results = list(table_client.query_entities(key_filter))
-
-        return [WorkflowKey(**{
-            'hashedKey': r['HashedKey'],
-            'workflowId': r.get('WorkflowId'),
-            'createdBy': r['CreatedBy'],
-            'createdAt': datetime.fromisoformat(r['CreatedAt']),
-            'lastUsedAt': datetime.fromisoformat(r['LastUsedAt']) if r.get('LastUsedAt') else None,
-            'revoked': r.get('Revoked', False)
-        }) for r in results]
+        repo = get_global_config_repository()
+        return repo.list_workflow_keys(user_id, workflow_id, include_revoked)
 
     except Exception:
         # Log error in a real implementation

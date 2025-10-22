@@ -6,11 +6,9 @@ Extracted from functions/workflow_keys.py for unit testability
 
 import json
 import logging
-import os
 from datetime import datetime, timedelta
 
 import azure.functions as func
-from azure.data.tables import TableServiceClient
 
 from shared.models import (
     ErrorResponse,
@@ -18,16 +16,10 @@ from shared.models import (
     WorkflowKeyCreateRequest,
     WorkflowKeyResponse,
 )
+from shared.repositories.config import get_global_config_repository
 from shared.workflow_keys import generate_workflow_key
 
 logger = logging.getLogger(__name__)
-
-
-def _get_config_table_client():
-    """Get Config table client for workflow keys"""
-    connection_str = os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
-    table_service = TableServiceClient.from_connection_string(conn_str=connection_str)
-    return table_service.get_table_client("Config")
 
 
 def _mask_key(hashed_key: str) -> str:
@@ -106,8 +98,8 @@ async def create_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
             disableGlobalKey=request.disableGlobalKey
         )
 
-        # Store in Config table using existing pattern
-        table_client = _get_config_table_client()
+        # Store in Config table using repository
+        repo = get_global_config_repository()
 
         # Use systemconfig:globalkey prefix for global keys, workflowkey prefix for workflow-specific
         if workflow_key.workflowId:
@@ -132,7 +124,7 @@ async def create_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
             "DisableGlobalKey": workflow_key.disableGlobalKey
         }
 
-        table_client.create_entity(entity)
+        repo.create_workflow_key(entity)
 
         logger.info(
             "Created workflow API key",
@@ -230,29 +222,9 @@ async def list_workflow_keys_handler(req: func.HttpRequest) -> func.HttpResponse
         workflow_id_filter = req.params.get('workflowId')
         include_revoked = req.params.get('includeRevoked', 'false').lower() == 'true'
 
-        # Query Config table for workflow keys
-        table_client = _get_config_table_client()
-
-        # Build query filter - query both prefixes
-        # Note: We need to query separately for global and workflow-specific keys due to RowKey prefix
-        entities = []
-
-        # Query for workflow-specific keys
-        workflow_query = f"PartitionKey eq 'GLOBAL' and RowKey ge 'workflowkey:' and RowKey lt 'workflowkey;' and CreatedBy eq '{user_email}'"
-        if not include_revoked:
-            workflow_query += " and Revoked eq false"
-        if workflow_id_filter:
-            workflow_query += f" and WorkflowId eq '{workflow_id_filter}'"
-
-        entities.extend(list(table_client.query_entities(workflow_query)))
-
-        # Query for global keys (systemconfig:globalkey prefix)
-        if not workflow_id_filter:  # Global keys have no workflow_id
-            global_query = f"PartitionKey eq 'GLOBAL' and RowKey ge 'systemconfig:globalkey:' and RowKey lt 'systemconfig:globalkey;' and CreatedBy eq '{user_email}'"
-            if not include_revoked:
-                global_query += " and Revoked eq false"
-
-            entities.extend(list(table_client.query_entities(global_query)))
+        # Query Config table for workflow keys using repository
+        repo = get_global_config_repository()
+        entities = repo.list_workflow_keys(user_email, workflow_id_filter, include_revoked)
 
         # Convert entities to response models
         responses = []
@@ -330,26 +302,9 @@ async def revoke_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
                 mimetype="application/json"
             )
 
-        # Get key from Config table
-        # Try both possible prefixes
-        table_client = _get_config_table_client()
-
-        entity = None
-        try:
-            # Try workflow-specific prefix first
-            entity = table_client.get_entity(
-                partition_key="GLOBAL",
-                row_key=f"workflowkey:{key_id}"
-            )
-        except Exception:
-            try:
-                # Try global key prefix
-                entity = table_client.get_entity(
-                    partition_key="GLOBAL",
-                    row_key=f"systemconfig:globalkey:{key_id}"
-                )
-            except Exception:
-                pass
+        # Get key from Config table using repository
+        repo = get_global_config_repository()
+        entity = repo.get_workflow_key_by_id(key_id)
 
         if not entity:
             error = ErrorResponse(
@@ -374,13 +329,18 @@ async def revoke_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
                 mimetype="application/json"
             )
 
-        # Mark as revoked
-        entity['Revoked'] = True
-        entity['RevokedAt'] = datetime.utcnow().isoformat()
-        entity['RevokedBy'] = user_email
-
-        from azure.data.tables import UpdateMode
-        table_client.update_entity(entity, mode=UpdateMode.MERGE)
+        # Revoke using repository
+        success = repo.revoke_workflow_key(key_id, user_email)
+        if not success:
+            error = ErrorResponse(
+                error="InternalError",
+                message="Failed to revoke workflow key"
+            )
+            return func.HttpResponse(
+                json.dumps(error.model_dump()),
+                status_code=500,
+                mimetype="application/json"
+            )
 
         logger.info(
             "Revoked workflow API key",
