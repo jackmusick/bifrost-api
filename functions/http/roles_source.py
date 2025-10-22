@@ -50,7 +50,9 @@ def get_roles(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Parse request from SWA
         request_body = req.get_json()
-        logger.info(f"GetRoles called with identityProvider: {request_body.get('identityProvider')}")
+
+        # Log request for debugging (SWA CLI local dev may not populate body correctly)
+        logger.info(f"GetRoles request body: {json.dumps(request_body)}")
 
         # Delegate to handler for business logic
         response = handle_roles_source_request(request_body)

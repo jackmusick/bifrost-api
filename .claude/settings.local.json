@@ -397,6 +397,9 @@
       "Bash(exec < /dev/tcp/:*)",
       "Bash(exec > /dev/tcp/:*)",
       "Bash(exec 3<>/dev/tcp/:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/jack/GitHub/bifrost-client/"
     ]
   },
   "alwaysThinkingEnabled": false

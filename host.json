@@ -7,12 +7,7 @@
             "Host": "Warning",
             "Function": "Information",
             "Host.Aggregator": "Warning",
-            "azure": "Warning",
-            "Azure.Core": "Warning",
-            "azure.storage": "Warning",
-            "azure.data.tables": "Warning",
-            "azure.identity": "Warning",
-            "azure.keyvault": "Warning"
+            "Azure": "Error"
         },
         "applicationInsights": {
             "samplingSettings": {

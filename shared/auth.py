@@ -157,14 +157,22 @@ class AuthenticationService:
             # Decode base64 JSON
             data = json.loads(base64.b64decode(header).decode('utf-8'))
 
+            # SWA production provides userId, but local dev (SWA CLI) does not
+            # Fall back to userDetails (email) as user_id for local development
             user_id = data.get('userId')
+            email = data.get('userDetails', '')
+
             if not user_id:
-                raise AuthenticationError("X-MS-CLIENT-PRINCIPAL missing userId")
+                if email:
+                    user_id = email  # Use email as user_id for local dev
+                    logger.info("SWA CLI local dev: using email as user_id")
+                else:
+                    raise AuthenticationError("X-MS-CLIENT-PRINCIPAL missing both userId and userDetails")
 
             principal = UserPrincipal(
                 user_id=user_id,
-                email=data.get('userDetails', ''),
-                name=data.get('userDetails', '').split('@')[0],
+                email=email,
+                name=email.split('@')[0] if email else user_id,
                 roles=data.get('userRoles', []),
                 identity_provider=data.get('identityProvider', 'aad')
             )

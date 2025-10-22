@@ -6,6 +6,33 @@ from pathlib import Path
 
 import azure.functions as func
 
+# ==================== EARLY INITIALIZATION ====================
+# CRITICAL: Initialize queues BEFORE importing queue blueprints
+# Queue triggers bind immediately when imported, so queues must exist first
+from shared.init_tables import init_tables
+from shared.queue_init import init_queues
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logger.info("="*60)
+logger.info("PRE-IMPORT QUEUE INITIALIZATION")
+logger.info("="*60)
+
+try:
+    queue_results = init_queues()
+    if queue_results["created"]:
+        logger.info(f"✓ Created {len(queue_results['created'])} queues")
+    if queue_results["already_exists"]:
+        logger.info(f"✓ {len(queue_results['already_exists'])} queues already exist")
+    if queue_results["failed"]:
+        logger.error(f"✗ Failed to create {len(queue_results['failed'])} queues")
+except Exception as e:
+    logger.error(f"Queue initialization failed: {e}", exc_info=True)
+
+logger.info("="*60 + "\n")
+
+# Now safe to import queue blueprints
 from functions.http.branding import bp as branding_bp
 from functions.http.data_providers import bp as data_providers_bp
 from functions.http.discovery import bp as discovery_bp
@@ -32,8 +59,6 @@ from functions.timer.schedule_processor import bp as schedule_processor_bp
 from functions.timer.execution_cleanup import bp as execution_cleanup_timer_bp
 from functions.queue.worker import bp as worker_bp
 from functions.queue.poison_queue_handler import bp as poison_queue_handler_bp
-from shared.init_tables import init_tables
-from shared.queue_init import init_queues
 
 # ==================== DEBUGPY INITIALIZATION ====================
 # Enable debugpy for remote debugging if ENABLE_DEBUGGING=true (T016)
@@ -134,36 +159,8 @@ except Exception as e:
         f"Table initialization failed: {e} - continuing without table initialization")
 
 # ==================== QUEUE INITIALIZATION ====================
-# T008: Initialize Azure Storage Queues at startup
-# Must initialize queues BEFORE registering queue triggers to prevent binding failures
-# Note: You may see "queue does not exist" errors in logs during startup - these are
-# normal and will stop once the queues are created. Azure Functions polls for queues
-# before they're created, but the errors are harmless.
-
-try:
-    logging.info("="*60)
-    logging.info("QUEUE INITIALIZATION")
-    logging.info("="*60)
-    queue_results = init_queues()
-
-    if queue_results["created"]:
-        logging.info(
-            f"✓ Created {len(queue_results['created'])} queues: {', '.join(queue_results['created'])}")
-    if queue_results["already_exists"]:
-        logging.info(
-            f"✓ {len(queue_results['already_exists'])} queues already exist")
-    if queue_results["failed"]:
-        logging.error(
-            f"✗ Failed to create {len(queue_results['failed'])} queues - async workflow execution may not work properly")
-        for failure in queue_results["failed"]:
-            logging.error(f"  - {failure.get('queue', 'unknown')}: {failure.get('error', 'unknown error')}")
-
-    logging.info("="*60 + "\n")
-
-except Exception as e:
-    logging.error(
-        f"Queue initialization failed: {e} - continuing but async workflow execution may fail at runtime",
-        exc_info=True)
+# Queue initialization moved to TOP of file (before blueprint imports)
+# See lines 9-33 for queue initialization code
 
 # ==================== WORKSPACE DISCOVERY ====================
 # T005: Discover workspace modules to register workflows and data providers

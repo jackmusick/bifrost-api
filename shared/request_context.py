@@ -125,13 +125,20 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
         principal_json = base64.b64decode(principal_header).decode('utf-8')
         principal_data = json.loads(principal_json)
 
+        # SWA production provides userId, but local dev (SWA CLI) does not
+        # Fall back to userDetails (email) as user_id for local development
         user_id = principal_data.get('userId')
         email = principal_data.get('userDetails', '')
-        name = email.split('@')[0] if email else user_id
-        user_roles = principal_data.get('userRoles', [])
 
         if not user_id:
-            raise ValueError("X-MS-CLIENT-PRINCIPAL missing userId")
+            if email:
+                user_id = email  # Use email as user_id for local dev
+                logger.info("SWA CLI local dev: using email as user_id")
+            else:
+                raise ValueError("X-MS-CLIENT-PRINCIPAL missing both userId and userDetails")
+
+        name = email.split('@')[0] if email else user_id
+        user_roles = principal_data.get('userRoles', [])
 
         logger.info(f"Easy Auth user: {email}, roles: {user_roles}")
 

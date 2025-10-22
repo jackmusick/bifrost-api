@@ -85,7 +85,7 @@ def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
     This is the main entry point for the roles source endpoint.
     It orchestrates extracting user info, provisioning, and returning roles.
 
-    Request format from SWA:
+    Request format from SWA (per Microsoft docs):
     {
       "identityProvider": "aad",
       "userId": "user-id-from-azure-ad",
@@ -112,8 +112,8 @@ def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
     # Extract user information
     user_id, user_email = extract_user_info(request_body)
 
-    if not user_id or not user_email:
-        logger.warning("No userId/userDetails provided in GetRoles request")
+    if not user_email:
+        logger.warning("No userDetails (email) provided in GetRoles request")
         # Return anonymous role for missing credentials
         return {"roles": ["anonymous"]}
 

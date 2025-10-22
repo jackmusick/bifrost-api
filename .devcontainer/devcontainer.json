@@ -1,7 +1,6 @@
 {
     "name": "Bifrost API Development",
     "image": "mcr.microsoft.com/devcontainers/python:3.11",
-
     "features": {
         "ghcr.io/devcontainers/features/azure-cli:1": {
             "version": "latest"
@@ -10,18 +9,19 @@
             "version": "20"
         }
     },
-
     "postCreateCommand": "pip install -r requirements.txt && npm install -g azure-functions-core-tools@4 azurite --unsafe-perm true",
-
     "forwardPorts": [7071, 10000, 10001, 10002],
-
     "customizations": {
         "vscode": {
             "extensions": [
                 "ms-python.python",
                 "ms-python.vscode-pylance",
                 "ms-azuretools.vscode-azurefunctions",
-                "charliermarsh.ruff"
+                "charliermarsh.ruff",
+                "Azurite.azurite",
+                "Anthropic.claude-code",
+                "naumovs.color-highlight",
+                "SanjulaGanepola.github-local-actions"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
