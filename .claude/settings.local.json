@@ -301,7 +301,9 @@
       "Bash(api/tests/integration/engine/test_workflow_execution.py )",
       "Bash(api/tests/integration/platform/test_bifrost_sdk_security.py )",
       "Bash(api/tests/integration/api/test_execution_cleanup_endpoints.py)",
-      "Bash(./test.sh:*)"
+      "Bash(./test.sh:*)",
+      "Read(//Users/jack/GitHub/bifrost-client/**)",
+      "Read(//Users/jack/GitHub/**)"
     ],
     "deny": [
       "Bash(rm -rf /)",
