@@ -183,8 +183,12 @@ class TestHandleRolesSourceRequest:
         assert response["roles"] == ["authenticated", "PlatformAdmin"]
         mock_get_roles.assert_called_once_with("user@example.com")
 
-    def test_missing_userId_returns_anonymous(self):
-        """Test that missing userId returns anonymous role"""
+    @patch("shared.handlers.roles_source_handlers.get_roles_for_user")
+    def test_missing_userId_still_provisions_user(self, mock_get_roles):
+        """Test that missing userId doesn't prevent provisioning if userDetails is present"""
+        # userId is optional - userDetails (email) is what matters for provisioning
+        mock_get_roles.return_value = {"roles": ["authenticated", "PlatformAdmin"]}
+
         request_body = {
             "identityProvider": "aad",
             "userDetails": "user@example.com",
@@ -193,7 +197,8 @@ class TestHandleRolesSourceRequest:
 
         response = handle_roles_source_request(request_body)
 
-        assert response["roles"] == ["anonymous"]
+        assert response["roles"] == ["authenticated", "PlatformAdmin"]
+        mock_get_roles.assert_called_once_with("user@example.com")
 
     def test_missing_userDetails_returns_anonymous(self):
         """Test that missing userDetails returns anonymous role"""

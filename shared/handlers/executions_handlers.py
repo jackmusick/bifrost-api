@@ -126,6 +126,7 @@ def _format_execution_response(model_dict: dict) -> dict:
         'workflowName': model_dict.get('workflowName') or 'Unknown',
         'orgId': model_dict.get('orgId'),
         'status': map_status_to_frontend(status),
+        'inputData': model_dict.get('inputData', {}),
         'errorMessage': model_dict.get('errorMessage'),
         'executedBy': model_dict.get('executedBy') or '',
         'executedByName': model_dict.get('executedByName') or model_dict.get('executedBy') or 'Unknown',

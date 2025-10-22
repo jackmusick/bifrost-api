@@ -103,9 +103,15 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
             context, workflow_name, status, start_date, end_date, limit, continuation_token
         )
 
-        # Return list of executions directly (for backward compatibility with tests)
+        # Return paginated response
+        response = ExecutionsListResponse(
+            executions=executions,
+            continuationToken=next_token,
+            hasMore=next_token is not None
+        )
+
         return func.HttpResponse(
-            json.dumps(executions, cls=DateTimeEncoder),
+            json.dumps(response.model_dump(), cls=DateTimeEncoder),
             status_code=200,
             mimetype='application/json'
         )

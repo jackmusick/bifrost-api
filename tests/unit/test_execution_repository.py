@@ -201,7 +201,7 @@ class TestUpdateExecution:
         assert result.status == ExecutionStatus.SUCCESS
 
     def test_updates_execution_to_pending(self, execution_repo, mock_table_service, mock_relationships_service):
-        """Should update status index when changing to Pending"""
+        """Should update status index when changing to Pending and NOT set CompletedAt"""
         execution_id = str(uuid4())
         org_id = "org-123"
 
@@ -224,6 +224,12 @@ class TestUpdateExecution:
             user_id="user@example.com",
             status=ExecutionStatus.PENDING
         )
+
+        # Should NOT set CompletedAt for Pending status
+        updated_entity = mock_table_service.update_entity.call_args[0][0]
+        assert updated_entity["Status"] == ExecutionStatus.PENDING.value
+        # CompletedAt should remain unchanged (not set)
+        assert "CompletedAt" not in updated_entity or updated_entity.get("CompletedAt") == existing_entity.get("CompletedAt")
 
         # Should delete old Running status index
         assert mock_relationships_service.delete_entity.called

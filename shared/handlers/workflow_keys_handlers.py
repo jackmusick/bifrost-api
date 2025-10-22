@@ -29,6 +29,34 @@ def _mask_key(hashed_key: str) -> str:
     return f"****{hashed_key[-4:]}"
 
 
+def _parse_datetime(value: str | datetime | None) -> datetime | None:
+    """
+    Parse a datetime value that could be either a string or datetime object.
+    Azure Table Storage returns datetime objects, but test fixtures use strings.
+
+    Args:
+        value: The value to parse (string, datetime, or None)
+
+    Returns:
+        datetime object or None
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to parse datetime from string '{value}': {e}")
+            return None
+
+    logger.warning(f"Unexpected datetime type: {type(value)} for value {value}")
+    return None
+
+
 async def create_workflow_key_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     Create a new workflow API key.
@@ -229,16 +257,22 @@ async def list_workflow_keys_handler(req: func.HttpRequest) -> func.HttpResponse
         # Convert entities to response models
         responses = []
         for entity in entities:
+            # Parse datetime fields (Azure Table Storage returns datetime objects, tests use strings)
+            created_at = _parse_datetime(entity['CreatedAt'])
+            if created_at is None:
+                logger.error(f"Invalid CreatedAt for workflow key {entity['RowKey']}")
+                continue
+
             response = WorkflowKeyResponse(
                 id=entity.get('KeyId', entity['RowKey'].split(':')[1]),
                 rawKey=None,  # Never show raw key after creation
                 maskedKey=_mask_key(entity['HashedKey']),
                 workflowId=entity.get('WorkflowId'),
                 createdBy=entity['CreatedBy'],
-                createdAt=datetime.fromisoformat(entity['CreatedAt']),
-                lastUsedAt=datetime.fromisoformat(entity['LastUsedAt']) if entity.get('LastUsedAt') else None,
+                createdAt=created_at,
+                lastUsedAt=_parse_datetime(entity.get('LastUsedAt')),
                 revoked=entity.get('Revoked', False),
-                expiresAt=datetime.fromisoformat(entity['ExpiresAt']) if entity.get('ExpiresAt') else None,
+                expiresAt=_parse_datetime(entity.get('ExpiresAt')),
                 description=entity.get('Description'),
                 disableGlobalKey=entity.get('DisableGlobalKey', False)
             )

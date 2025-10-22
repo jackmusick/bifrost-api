@@ -246,8 +246,12 @@ class ExecutionRepository(BaseRepository):
 
         # Update primary record
         execution_entity["Status"] = status.value
-        execution_entity["CompletedAt"] = now.isoformat()
-        execution_entity["DurationMs"] = duration_ms
+
+        # Only set CompletedAt for terminal statuses (not Pending/Running)
+        if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+            execution_entity["CompletedAt"] = now.isoformat()
+            execution_entity["DurationMs"] = duration_ms
+
         execution_entity["ErrorMessage"] = error_message
         execution_entity["ResultInBlob"] = result_in_blob
 
@@ -264,8 +268,10 @@ class ExecutionRepository(BaseRepository):
             )
             if user_index:
                 user_index["Status"] = status.value
-                user_index["CompletedAt"] = now.isoformat()
-                user_index["DurationMs"] = duration_ms
+                # Only set CompletedAt for terminal statuses
+                if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                    user_index["CompletedAt"] = now.isoformat()
+                    user_index["DurationMs"] = duration_ms
                 user_index["ErrorMessage"] = error_message
                 self.relationships_service.update_entity(user_index)
         except Exception as e:
@@ -279,8 +285,10 @@ class ExecutionRepository(BaseRepository):
             )
             if workflow_index:
                 workflow_index["Status"] = status.value
-                workflow_index["CompletedAt"] = now.isoformat()
-                workflow_index["DurationMs"] = duration_ms
+                # Only set CompletedAt for terminal statuses
+                if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                    workflow_index["CompletedAt"] = now.isoformat()
+                    workflow_index["DurationMs"] = duration_ms
                 workflow_index["ErrorMessage"] = error_message
                 self.relationships_service.update_entity(workflow_index)
         except Exception as e:
@@ -295,8 +303,10 @@ class ExecutionRepository(BaseRepository):
                 )
                 if form_index:
                     form_index["Status"] = status.value
-                    form_index["CompletedAt"] = now.isoformat()
-                    form_index["DurationMs"] = duration_ms
+                    # Only set CompletedAt for terminal statuses
+                    if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                        form_index["CompletedAt"] = now.isoformat()
+                        form_index["DurationMs"] = duration_ms
                     form_index["ErrorMessage"] = error_message
                     self.relationships_service.update_entity(form_index)
             except Exception as e:
@@ -748,19 +758,25 @@ class ExecutionRepository(BaseRepository):
 
                 for entity in status_entities:
                     try:
-                        # Parse UpdatedAt timestamp from index
-                        updated_at_str = entity.get("UpdatedAt")
-                        if not updated_at_str:
-                            continue
+                        # Use StartedAt to determine age (more accurate than UpdatedAt)
+                        # This catches executions that never progressed from initial creation
+                        started_at_str = entity.get("StartedAt")
+                        if not started_at_str:
+                            # Fallback to UpdatedAt if StartedAt is missing (shouldn't happen)
+                            started_at_str = entity.get("UpdatedAt")
+                            if not started_at_str:
+                                continue
 
-                        # Parse timestamp
-                        updated_at = self._parse_datetime(updated_at_str, now)
-                        age_minutes = (now - updated_at).total_seconds() / 60
+                        # Parse timestamp (with non-None default, should never be None)
+                        started_at = self._parse_datetime(started_at_str, now)
+                        if started_at is None:
+                            continue  # Skip if parsing failed
+                        age_minutes = (now - started_at).total_seconds() / 60
 
                         # Check if stuck based on timeout
                         if age_minutes > timeout_minutes:
-                            # Build WorkflowExecution from index fields
-                            started_at = self._parse_datetime(entity.get("StartedAt"), now)
+                            # Build WorkflowExecution from index fields (use already-parsed started_at)
+                            execution_started_at = started_at
 
                             execution = WorkflowExecution(
                                 executionId=cast(str, entity.get("ExecutionId", "")),
@@ -770,7 +786,7 @@ class ExecutionRepository(BaseRepository):
                                 status=ExecutionStatus(status_value),
                                 executedBy=cast(str, entity.get("ExecutedBy", "")),
                                 executedByName=cast(str, entity.get("ExecutedByName", "")),
-                                startedAt=started_at,
+                                startedAt=execution_started_at,
                                 completedAt=None,
                                 durationMs=None,
                                 errorMessage=None,

@@ -56,10 +56,12 @@ async def html_table_example(
     }
     colors = themes.get(theme.lower(), themes["blue"])
 
-    context.info(f"Generating HTML table with {row_count} rows using {theme} theme")
+    context.info(
+        f"Generating HTML table with {row_count} rows using {theme} theme")
 
     # Sample data generator
-    products = ["Widget", "Gadget", "Doohickey", "Thingamajig", "Whatchamacallit"]
+    products = ["Widget", "Gadget", "Doohickey",
+                "Thingamajig", "Whatchamacallit"]
     statuses = ["Active", "Pending", "Completed", "On Hold"]
 
     # Build table rows
@@ -106,139 +108,178 @@ async def html_table_example(
     # Generate timestamp
     timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Build complete HTML
+    # Build HTML with dark mode support using CSS media query
     html = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, {colors['secondary']} 0%, #ffffff 100%);
-            padding: 40px 20px;
-            min-height: 100vh;
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-        }}
-        .header {{
-            background: white;
-            padding: 32px;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 24px;
-        }}
-        h1 {{
-            color: {colors['primary']};
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }}
-        .subtitle {{
-            color: #6b7280;
-            font-size: 14px;
-        }}
-        .card {{
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-        }}
-        thead {{
-            background: {colors['primary']};
-            color: white;
-        }}
-        thead th {{
-            padding: 16px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        thead th:nth-child(4),
-        thead th:nth-child(5),
-        thead th:nth-child(6) {{
-            text-align: right;
-        }}
-        tbody tr:hover {{
-            background-color: {colors['hover']};
-        }}
-        tfoot {{
-            background: #f9fafb;
-            font-weight: 600;
-        }}
-        tfoot td {{
-            padding: 16px;
-            border-top: 2px solid {colors['primary']};
-        }}
-        .footer {{
-            margin-top: 24px;
-            text-align: center;
-            color: #6b7280;
-            font-size: 14px;
-        }}
-        .badge {{
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            background: {colors['secondary']};
-            color: {colors['primary']};
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>{title}</h1>
-            <p class="subtitle">Generated on {timestamp} • Organization: {context.org_id or 'Global'}</p>
-        </div>
+<style>
+    .html-table-container {{
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+    }}
+    .html-table-header {{
+        background: white;
+        padding: 32px;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 24px;
+        border: 1px solid #e5e7eb;
+    }}
+    .html-table-header h1 {{
+        color: {colors['primary']};
+        font-size: 32px;
+        font-weight: 700;
+        margin: 0 0 8px 0;
+    }}
+    .html-table-header p {{
+        color: #6b7280;
+        font-size: 14px;
+        margin: 0;
+    }}
+    .html-table-card {{
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+    }}
+    .html-table {{
+        width: 100%;
+        border-collapse: collapse;
+    }}
+    .html-table thead {{
+        background: {colors['primary']};
+        color: white;
+    }}
+    .html-table th {{
+        padding: 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }}
+    .html-table tbody tr {{
+        border-bottom: 1px solid #e5e7eb;
+    }}
+    .html-table tbody tr:hover {{
+        background-color: {colors['hover']};
+    }}
+    .html-table td {{
+        padding: 12px 16px;
+    }}
+    .html-table tfoot {{
+        background: #f9fafb;
+        font-weight: 600;
+    }}
+    .html-table tfoot td {{
+        padding: 16px;
+        border-top: 2px solid {colors['primary']};
+    }}
+    .html-table-footer {{
+        margin-top: 24px;
+        text-align: center;
+        color: #6b7280;
+        font-size: 14px;
+    }}
+    .html-table-footer p {{
+        margin: 0;
+    }}
 
-        <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Product</th>
-                        <th style="text-align: center;">Status</th>
-                        <th style="text-align: right;">Quantity</th>
-                        <th style="text-align: right;">Unit Price</th>
-                        <th style="text-align: right;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="5" style="text-align: right;">Total:</td>
-                        <td style="text-align: right; color: {colors['primary']}; font-size: 18px;">${total_amount:,.2f}</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {{
+        .html-table-header,
+        .html-table-card {{
+            background: #1f2937;
+            border-color: #374151;
+        }}
+        .html-table-header h1 {{
+            color: #60a5fa;
+        }}
+        .html-table-header p,
+        .html-table-footer {{
+            color: #9ca3af;
+        }}
+        .html-table tbody tr {{
+            border-bottom-color: #374151;
+        }}
+        .html-table tbody tr:hover {{
+            background-color: #374151;
+        }}
+        .html-table td {{
+            color: #e5e7eb;
+        }}
+        .html-table tfoot {{
+            background: #111827;
+        }}
+        .html-table tfoot td {{
+            color: #e5e7eb;
+        }}
+    }}
 
-        <div class="footer">
-            <p>Generated by Bifrost Workflows • Powered by {context.caller.name}</p>
-        </div>
+    /* Support for .dark class on html/body (Tailwind style) */
+    .dark .html-table-header,
+    .dark .html-table-card {{
+        background: #1f2937;
+        border-color: #374151;
+    }}
+    .dark .html-table-header h1 {{
+        color: #60a5fa;
+    }}
+    .dark .html-table-header p,
+    .dark .html-table-footer {{
+        color: #9ca3af;
+    }}
+    .dark .html-table tbody tr {{
+        border-bottom-color: #374151;
+    }}
+    .dark .html-table tbody tr:hover {{
+        background-color: #374151;
+    }}
+    .dark .html-table td {{
+        color: #e5e7eb;
+    }}
+    .dark .html-table tfoot {{
+        background: #111827;
+    }}
+    .dark .html-table tfoot td {{
+        color: #e5e7eb;
+    }}
+</style>
+
+<div class="html-table-container">
+    <div class="html-table-header">
+        <h1>{title}</h1>
+        <p>Generated on {timestamp} • Organization: {context.org_id or 'Global'}</p>
     </div>
-</body>
-</html>"""
+
+    <div class="html-table-card">
+        <table class="html-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Product</th>
+                    <th style="text-align: center;">Status</th>
+                    <th style="text-align: right;">Quantity</th>
+                    <th style="text-align: right;">Unit Price</th>
+                    <th style="text-align: right;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="5" style="text-align: right;">Total:</td>
+                    <td style="text-align: right; color: {colors['primary']}; font-size: 18px;">${total_amount:,.2f}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div class="html-table-footer">
+        <p>Generated by Bifrost Workflows • Powered by {context.caller.name}</p>
+    </div>
+</div>"""
 
     context.save_checkpoint("table_generated", {
         "row_count": row_count,
@@ -246,6 +287,7 @@ async def html_table_example(
         "theme": theme
     })
 
-    context.info(f"HTML table generated successfully with total amount: ${total_amount:,.2f}")
+    context.info(
+        f"HTML table generated successfully with total amount: ${total_amount:,.2f}")
 
     return html
