@@ -372,12 +372,14 @@ class TestListDataProvidersHandler:
             provider1.description = "Get M365 licenses"
             provider1.category = "m365"
             provider1.cache_ttl_seconds = 300
+            provider1.parameters = []  # Empty parameters list
 
             provider2 = Mock()
             provider2.name = "get_devices"
             provider2.description = "Get connected devices"
             provider2.category = "intune"
             provider2.cache_ttl_seconds = 600
+            provider2.parameters = []  # Empty parameters list
 
             registry.get_all_data_providers.return_value = [provider1, provider2]
 
@@ -408,6 +410,7 @@ class TestListDataProvidersHandler:
             provider.description = "Test provider"
             provider.category = "test"
             provider.cache_ttl_seconds = 300
+            provider.parameters = []  # Empty parameters list
 
             registry.get_all_data_providers.return_value = [provider]
 
@@ -422,6 +425,7 @@ class TestListDataProvidersHandler:
             assert "description" in provider_data
             assert "category" in provider_data
             assert "cache_ttl_seconds" in provider_data
+            assert "parameters" in provider_data
 
     @pytest.mark.asyncio
     async def test_list_always_returns_200(self):
@@ -440,6 +444,7 @@ class TestListDataProvidersHandler:
             provider.description = "Test"
             provider.category = "test"
             provider.cache_ttl_seconds = 300
+            provider.parameters = []  # Empty parameters list
             registry.get_all_data_providers.return_value = [provider]
 
             response2, status2 = await list_data_providers_handler()
