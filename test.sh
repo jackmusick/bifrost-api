@@ -57,13 +57,9 @@ for i in {1..60}; do
         READY=true
         break
     fi
+
     if [ $((i % 10)) -eq 0 ]; then
         echo "Still waiting... ($i/60 seconds)"
-        # Show last few lines of func log for debugging
-        if [ -f /tmp/func-test.log ]; then
-            echo "Last 10 lines of func log:"
-            tail -10 /tmp/func-test.log
-        fi
     fi
     sleep 1
 done
@@ -76,7 +72,7 @@ if [ "$READY" = false ]; then
 fi
 
 echo "Giving the queue a few more seconds..."
-sleep 10
+sleep 15
 
 # Run pytest with or without coverage
 if [ "$COVERAGE" = true ]; then
