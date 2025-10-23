@@ -173,7 +173,7 @@ curl http://localhost:7071/api/metadata
 ### Step 1: Test Data Provider Execution via API
 
 ```bash
-# Using POST with JSON body
+# Call data provider with inputs via POST
 curl -X POST http://localhost:7071/api/data-providers/get_github_repos \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your-jwt>" \
@@ -184,8 +184,8 @@ curl -X POST http://localhost:7071/api/data-providers/get_github_repos \
     }
   }'
 
-# Using GET with query parameters
-curl "http://localhost:7071/api/data-providers/get_github_repos?inputs[token]=ghp_token&inputs[org]=microsoft" \
+# For providers with no required inputs, POST with no body works too
+curl -X POST http://localhost:7071/api/data-providers/get_available_licenses \
   -H "Authorization: Bearer <your-jwt>"
 ```
 
