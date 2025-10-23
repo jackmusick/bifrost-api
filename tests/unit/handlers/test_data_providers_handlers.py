@@ -10,6 +10,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from shared.handlers.data_providers_handlers import (
     get_data_provider_options_handler,
     list_data_providers_handler,
+    compute_cache_key,
     _cache
 )
 from shared.request_context import RequestContext
@@ -92,6 +93,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock(return_value=mock_options)
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response, status_code = await get_data_provider_options_handler(
@@ -120,6 +122,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock(return_value={"not": "a list"})
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response, status_code = await get_data_provider_options_handler(
@@ -145,6 +148,7 @@ class TestGetDataProviderOptionsHandler:
                 side_effect=Exception("Provider connection failed")
             )
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response, status_code = await get_data_provider_options_handler(
@@ -178,6 +182,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock()  # Should NOT be called
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response, status_code = await get_data_provider_options_handler(
@@ -214,6 +219,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock(return_value=new_options)
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response, status_code = await get_data_provider_options_handler(
@@ -250,6 +256,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock(return_value=new_options)
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response, status_code = await get_data_provider_options_handler(
@@ -283,6 +290,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock(return_value=org1_options)
             provider_metadata.cache_ttl_seconds = 300
+            provider_metadata.parameters = []  # Empty parameters list
             registry.get_data_provider.return_value = provider_metadata
 
             response1, status1 = await get_data_provider_options_handler(
@@ -318,6 +326,7 @@ class TestGetDataProviderOptionsHandler:
             provider_metadata = Mock()
             provider_metadata.function = AsyncMock(return_value=mock_options)
             provider_metadata.cache_ttl_seconds = 600  # 10 minutes
+            provider_metadata.parameters = []  # Empty parameters list
 
             registry.get_data_provider.return_value = provider_metadata
 
@@ -435,3 +444,155 @@ class TestListDataProvidersHandler:
 
             response2, status2 = await list_data_providers_handler()
             assert status2 == 200
+
+
+class TestComputeCacheKey:
+    """T023: Unit test for cache key computation with input hash"""
+
+    def test_cache_key_without_inputs_and_org(self):
+        """Test cache key format without inputs or org_id (backward compatible)"""
+        key = compute_cache_key("my_provider")
+
+        assert key == "my_provider"
+
+    def test_cache_key_with_org_no_inputs(self):
+        """Test cache key format with org_id but no inputs"""
+        key = compute_cache_key("my_provider", org_id="org-123")
+
+        assert key == "org-123:my_provider"
+
+    def test_cache_key_with_inputs_no_org(self):
+        """
+        T023: Test cache key includes input hash when inputs provided
+
+        Expected format: {provider_name}:{input_hash}
+        Input hash should be first 16 characters of SHA-256 of sorted JSON
+        """
+        inputs = {"token": "ghp_abc123", "org": "my-org"}
+        key = compute_cache_key("get_repos", inputs=inputs)
+
+        # Should have format: provider_name:hash
+        assert ":" in key
+        parts = key.split(":")
+        assert parts[0] == "get_repos"
+        assert len(parts[1]) == 16  # Hash is 16 characters
+
+    def test_cache_key_with_inputs_and_org(self):
+        """
+        T023: Test cache key with both inputs and org_id
+
+        Expected format: {org_id}:{provider_name}:{input_hash}
+        """
+        inputs = {"param1": "value1", "param2": "value2"}
+        key = compute_cache_key("my_provider", inputs=inputs, org_id="org-456")
+
+        # Should have format: org_id:provider_name:hash
+        parts = key.split(":")
+        assert len(parts) == 3
+        assert parts[0] == "org-456"
+        assert parts[1] == "my_provider"
+        assert len(parts[2]) == 16  # Hash is 16 characters
+
+    def test_cache_key_deterministic(self):
+        """
+        T023: Test that cache key is deterministic for same inputs
+
+        Expected behavior:
+        - Same inputs (different order) should produce same hash
+        - JSON keys are sorted for deterministic hashing
+        """
+        inputs1 = {"b": "2", "a": "1", "c": "3"}
+        inputs2 = {"a": "1", "c": "3", "b": "2"}
+        inputs3 = {"c": "3", "a": "1", "b": "2"}
+
+        key1 = compute_cache_key("provider", inputs=inputs1, org_id="org")
+        key2 = compute_cache_key("provider", inputs=inputs2, org_id="org")
+        key3 = compute_cache_key("provider", inputs=inputs3, org_id="org")
+
+        # All keys should be identical (deterministic)
+        assert key1 == key2
+        assert key2 == key3
+
+    def test_cache_key_different_inputs_different_hash(self):
+        """
+        T023: Test that different inputs produce different cache keys
+
+        Expected behavior:
+        - Different input values should produce different hashes
+        - Cache isolation between different input sets
+        """
+        key1 = compute_cache_key("provider", inputs={"token": "abc123"}, org_id="org")
+        key2 = compute_cache_key("provider", inputs={"token": "xyz789"}, org_id="org")
+
+        # Keys should be different
+        assert key1 != key2
+
+        # Provider and org parts should match
+        assert key1.split(":")[0] == key2.split(":")[0]  # org
+        assert key1.split(":")[1] == key2.split(":")[1]  # provider
+
+        # Hash parts should differ
+        assert key1.split(":")[2] != key2.split(":")[2]
+
+    def test_cache_key_empty_inputs_dict(self):
+        """
+        Test cache key with empty inputs dict (edge case)
+
+        Expected behavior:
+        - Empty dict is treated as "no inputs" (Python truthiness)
+        - Falls back to backward-compatible format without hash
+        """
+        key = compute_cache_key("provider", inputs={}, org_id="org")
+
+        # Empty dict should be treated like no inputs (backward compatible)
+        assert key == "org:provider"
+
+    def test_cache_key_complex_input_types(self):
+        """Test cache key with complex input values (nested dicts, lists, etc.)"""
+        inputs = {
+            "string": "value",
+            "number": 42,
+            "bool": True,
+            "list": [1, 2, 3],
+            "nested": {"key": "val"}
+        }
+
+        key = compute_cache_key("provider", inputs=inputs, org_id="org")
+
+        # Should handle complex JSON-serializable inputs
+        parts = key.split(":")
+        assert len(parts) == 3
+        assert parts[0] == "org"
+        assert parts[1] == "provider"
+        assert len(parts[2]) == 16
+
+    def test_cache_key_input_value_changes(self):
+        """
+        T023: Test that changing input values changes cache key
+
+        Expected behavior:
+        - Same parameter name, different value = different cache key
+        - Ensures proper cache isolation
+        """
+        base_inputs = {"repo": "owner/repo1", "token": "abc"}
+        updated_inputs = {"repo": "owner/repo2", "token": "abc"}
+
+        key1 = compute_cache_key("get_branches", inputs=base_inputs)
+        key2 = compute_cache_key("get_branches", inputs=updated_inputs)
+
+        assert key1 != key2  # Different cache keys
+
+    def test_cache_key_additional_parameter(self):
+        """
+        T023: Test that adding a parameter changes cache key
+
+        Expected behavior:
+        - Adding new parameter should change hash
+        """
+        inputs1 = {"token": "abc"}
+        inputs2 = {"token": "abc", "filter": "active"}
+
+        key1 = compute_cache_key("provider", inputs=inputs1)
+        key2 = compute_cache_key("provider", inputs=inputs2)
+
+        assert key1 != key2  # Different cache keys

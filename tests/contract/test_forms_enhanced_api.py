@@ -10,6 +10,8 @@ from pydantic import ValidationError
 
 from shared.models import (
     CreateFormRequest,
+    DataProviderInputConfig,
+    DataProviderInputMode,
     FileUploadRequest,
     FileUploadResponse,
     Form,
@@ -238,3 +240,175 @@ class TestEnhancedFormIntegration:
         assert form.formSchema.fields[2].multiple is True
         assert form.formSchema.fields[2].allowedTypes == ["application/pdf"]
         assert form.formSchema.fields[2].maxSizeMB == 50
+
+
+class TestDataProviderInputsValidation:
+    """T020: Contract test for POST /api/forms with dataProviderInputs validation"""
+
+    def test_form_field_with_static_data_provider_inputs(self):
+        """
+        Test that FormField with dataProvider and dataProviderInputs validates correctly.
+
+        Expected behavior:
+        - dataProviderInputs is optional when dataProvider is set
+        - Each input config must have valid mode (static, fieldRef, expression)
+        - Static mode requires 'value' field
+        - Input keys should match data provider parameter names
+        """
+        # Valid form field with data provider and static inputs
+        field = FormField(
+            name="repo_selector",
+            label="Select Repository",
+            type=FormFieldType.SELECT,
+            required=True,
+            dataProvider="get_github_repos",
+            dataProviderInputs={
+                "token": DataProviderInputConfig(
+                    mode=DataProviderInputMode.STATIC,
+                    value="ghp_test_token_12345"
+                ),
+                "org": DataProviderInputConfig(
+                    mode=DataProviderInputMode.STATIC,
+                    value="my-org"
+                )
+            }
+        )
+
+        assert field.dataProvider == "get_github_repos"
+        assert field.dataProviderInputs is not None
+        assert len(field.dataProviderInputs) == 2
+        assert field.dataProviderInputs["token"].mode == DataProviderInputMode.STATIC
+        assert field.dataProviderInputs["token"].value == "ghp_test_token_12345"
+        assert field.dataProviderInputs["org"].mode == DataProviderInputMode.STATIC
+        assert field.dataProviderInputs["org"].value == "my-org"
+
+    def test_data_provider_inputs_without_data_provider_fails(self):
+        """
+        Test that dataProviderInputs cannot be set without dataProvider.
+
+        Expected behavior:
+        - Setting dataProviderInputs without dataProvider should raise ValidationError
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            FormField(
+                name="invalid_field",
+                label="Invalid Field",
+                type=FormFieldType.SELECT,
+                required=False,
+                # No dataProvider set!
+                dataProviderInputs={
+                    "param": DataProviderInputConfig(
+                        mode=DataProviderInputMode.STATIC,
+                        value="test"
+                    )
+                }
+            )
+
+        errors = exc_info.value.errors()
+        assert any("dataProviderInputs requires dataProvider" in str(e.get("ctx", {}).get("error", "")) for e in errors)
+
+    def test_static_input_mode_validation(self):
+        """
+        Test that static mode requires 'value' field and rejects other fields.
+
+        Expected behavior:
+        - mode="static" requires 'value' to be set
+        - mode="static" should reject 'fieldName' or 'expression'
+        """
+        # Valid static mode
+        config = DataProviderInputConfig(
+            mode=DataProviderInputMode.STATIC,
+            value="test_value"
+        )
+        assert config.mode == DataProviderInputMode.STATIC
+        assert config.value == "test_value"
+        assert config.fieldName is None
+        assert config.expression is None
+
+        # Invalid: static mode without value
+        with pytest.raises(ValidationError) as exc_info:
+            DataProviderInputConfig(
+                mode=DataProviderInputMode.STATIC
+                # Missing value!
+            )
+        assert any("value required for static mode" in str(e) for e in exc_info.value.errors())
+
+        # Invalid: static mode with fieldName
+        with pytest.raises(ValidationError) as exc_info:
+            DataProviderInputConfig(
+                mode=DataProviderInputMode.STATIC,
+                value="test",
+                fieldName="other_field"  # Should not be set for static mode
+            )
+        assert any("only value should be set for static mode" in str(e) for e in exc_info.value.errors())
+
+    def test_complete_form_with_data_provider_inputs(self):
+        """
+        Test complete form creation with data provider inputs in multiple fields.
+
+        Expected behavior:
+        - Form can have multiple fields with dataProviderInputs
+        - Each field's inputs are independent
+        - Form validation passes with valid dataProviderInputs
+        """
+        request = CreateFormRequest(
+            name="Form with Data Provider Inputs",
+            linkedWorkflow="workflows.process_repo_selection",
+            formSchema=FormSchema(
+                fields=[
+                    FormField(
+                        name="github_token",
+                        label="GitHub Token",
+                        type=FormFieldType.TEXT,
+                        required=True
+                    ),
+                    FormField(
+                        name="repository",
+                        label="Select Repository",
+                        type=FormFieldType.SELECT,
+                        required=True,
+                        dataProvider="get_github_repos",
+                        dataProviderInputs={
+                            "token": DataProviderInputConfig(
+                                mode=DataProviderInputMode.STATIC,
+                                value="ghp_static_token"
+                            )
+                        }
+                    ),
+                    FormField(
+                        name="branch",
+                        label="Select Branch",
+                        type=FormFieldType.SELECT,
+                        required=True,
+                        dataProvider="get_github_branches",
+                        dataProviderInputs={
+                            "token": DataProviderInputConfig(
+                                mode=DataProviderInputMode.STATIC,
+                                value="ghp_static_token"
+                            ),
+                            "repo": DataProviderInputConfig(
+                                mode=DataProviderInputMode.STATIC,
+                                value="my-org/my-repo"
+                            )
+                        }
+                    )
+                ]
+            )
+        )
+
+        assert len(request.formSchema.fields) == 3
+
+        # First field has no data provider
+        assert request.formSchema.fields[0].dataProvider is None
+        assert request.formSchema.fields[0].dataProviderInputs is None
+
+        # Second field has data provider with 1 input
+        assert request.formSchema.fields[1].dataProvider == "get_github_repos"
+        assert len(request.formSchema.fields[1].dataProviderInputs) == 1
+        assert "token" in request.formSchema.fields[1].dataProviderInputs
+
+        # Third field has data provider with 2 inputs
+        assert request.formSchema.fields[2].dataProvider == "get_github_branches"
+        assert len(request.formSchema.fields[2].dataProviderInputs) == 2
+        assert "token" in request.formSchema.fields[2].dataProviderInputs
+        assert "repo" in request.formSchema.fields[2].dataProviderInputs

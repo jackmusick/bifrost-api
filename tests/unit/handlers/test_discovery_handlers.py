@@ -53,12 +53,17 @@ class TestConvertRegistryProviderToModel:
         mock_registry_provider = MagicMock()
         mock_registry_provider.name = "test_provider"
         mock_registry_provider.description = "Test provider"
+        mock_registry_provider.category = "General"
+        mock_registry_provider.cache_ttl_seconds = 300
+        mock_registry_provider.parameters = []
 
         result = convert_registry_provider_to_model(mock_registry_provider)
 
         assert isinstance(result, DataProviderMetadata)
         assert result.name == "test_provider"
         assert result.description == "Test provider"
+        assert result.category == "General"
+        assert result.cache_ttl_seconds == 300
 
 
 class TestGetDiscoveryMetadata:
@@ -102,6 +107,9 @@ class TestGetDiscoveryMetadata:
         mock_provider = MagicMock()
         mock_provider.name = "test_provider"
         mock_provider.description = "Provider description"
+        mock_provider.category = "General"
+        mock_provider.cache_ttl_seconds = 300
+        mock_provider.parameters = []
 
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = [mock_workflow]
@@ -145,6 +153,9 @@ class TestGetDiscoveryMetadata:
             mock_provider = MagicMock()
             mock_provider.name = f"provider_{i}"
             mock_provider.description = f"Description {i}"
+            mock_provider.category = "General"
+            mock_provider.cache_ttl_seconds = 300
+            mock_provider.parameters = []
             providers.append(mock_provider)
 
         mock_registry = MagicMock()
@@ -183,6 +194,9 @@ class TestGetDiscoveryMetadata:
         mock_provider = MagicMock()
         mock_provider.name = "test"
         mock_provider.description = "Test"
+        mock_provider.category = "General"
+        mock_provider.cache_ttl_seconds = 300
+        mock_provider.parameters = []
 
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = [mock_workflow]

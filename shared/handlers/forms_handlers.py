@@ -22,6 +22,54 @@ from shared.repositories.forms import FormRepository
 logger = logging.getLogger(__name__)
 
 
+def validate_data_provider_inputs_for_form(form_schema_fields: list) -> list[str]:
+    """
+    Validate dataProviderInputs for all fields in a form (T028-T030).
+
+    Args:
+        form_schema_fields: List of FormField objects
+
+    Returns:
+        List of validation error messages (empty if valid)
+
+    Validation rules:
+        1. If field has dataProvider, check if provider exists in registry
+        2. If provider has required parameters, validate that static inputs are provided
+        3. dataProviderInputs validation is handled by Pydantic model validators
+    """
+    from shared.registry import get_registry
+    errors = []
+
+    registry = get_registry()
+
+    for field in form_schema_fields:
+        if not field.dataProvider:
+            continue
+
+        # Get provider metadata from registry
+        provider_metadata = registry.get_data_provider(field.dataProvider)
+
+        if not provider_metadata:
+            errors.append(
+                f"Field '{field.name}' references unknown data provider '{field.dataProvider}'"
+            )
+            continue
+
+        # T029: Validate required parameters are provided (for static mode only)
+        # Note: For fieldRef and expression modes, validation happens at runtime
+        if provider_metadata.parameters:
+            for param in provider_metadata.parameters:
+                if param.required:
+                    # Check if input is provided in dataProviderInputs
+                    if not field.dataProviderInputs or param.name not in field.dataProviderInputs:
+                        errors.append(
+                            f"Field '{field.name}' uses data provider '{field.dataProvider}': "
+                            f"required parameter '{param.name}' is missing from dataProviderInputs"
+                        )
+
+    return errors
+
+
 def validate_launch_workflow_params(
     launch_workflow_id: str | None,
     default_launch_params: dict | None,
@@ -96,6 +144,17 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
         if validation_error:
             logger.warning(f"Launch workflow validation failed: {validation_error}")
             error = ErrorResponse(error="ValidationError", message=validation_error)
+            return error.model_dump(), 400
+
+        # T028-T030: Validate dataProviderInputs for all form fields
+        data_provider_errors = validate_data_provider_inputs_for_form(create_request.formSchema.fields)
+        if data_provider_errors:
+            logger.warning(f"Data provider validation failed: {data_provider_errors}")
+            error = ErrorResponse(
+                error="ValidationError",
+                message="Data provider configuration validation failed",
+                details={"errors": data_provider_errors}
+            )
             return error.model_dump(), 400
 
         form_repo = FormRepository(request_context)
@@ -185,6 +244,17 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
         if validation_error:
             logger.warning(f"Launch workflow validation failed: {validation_error}")
             error = ErrorResponse(error="ValidationError", message=validation_error)
+            return error.model_dump(), 400
+
+        # T028-T030: Validate dataProviderInputs for all form fields
+        data_provider_errors = validate_data_provider_inputs_for_form(merged_form_schema.fields)
+        if data_provider_errors:
+            logger.warning(f"Data provider validation failed: {data_provider_errors}")
+            error = ErrorResponse(
+                error="ValidationError",
+                message="Data provider configuration validation failed",
+                details={"errors": data_provider_errors}
+            )
             return error.model_dump(), 400
 
         form = form_repo.update_form(form_id, update_request)

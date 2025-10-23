@@ -65,6 +65,7 @@ class DataProviderMetadata:
     category: str = "General"
     cache_ttl_seconds: int = 300  # Default 5 minutes
     function: Any = None  # The actual Python function
+    parameters: list = field(default_factory=list)  # Input parameters from @param decorators (T024)
 
 
 class WorkflowRegistry:

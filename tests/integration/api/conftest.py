@@ -67,30 +67,32 @@ def test_org_id(table_service):
 
     try:
         # Create organization entity in Entities table (GLOBAL partition)
+        # Match the structure from shared/repositories/organizations.py
         org_entity = {
             "PartitionKey": "GLOBAL",
             "RowKey": f"org:{org_id}",
-            "org_id": org_id,
-            "name": "Test Organization",
-            "description": "Test organization for integration tests",
-            "is_active": True,
-            "created_at": "2024-01-01T00:00:00Z",
-            "created_by": "test-system"
+            "Name": "Test Organization",
+            "Domain": None,
+            "IsActive": True,
+            "CreatedAt": "2024-01-01T00:00:00Z",
+            "CreatedBy": "test-system",
+            "UpdatedAt": "2024-01-01T00:00:00Z"
         }
         entities_table.upsert_entity(org_entity)
 
-        # Also create in Organizations table
-        org_entity_orgs = {
-            "PartitionKey": "Organizations",
-            "RowKey": org_id,
-            "org_id": org_id,
-            "name": "Test Organization",
-            "description": "Test organization for integration tests",
-            "is_active": True,
-            "created_at": "2024-01-01T00:00:00Z",
-            "created_by": "test-system"
-        }
-        orgs_table.upsert_entity(org_entity_orgs)
+        # Also create in Organizations table (if it exists)
+        # Note: This table may not be used by all code paths
+        try:
+            org_entity_orgs = {
+                "PartitionKey": "Organizations",
+                "RowKey": org_id,
+                "Name": "Test Organization",
+                "IsActive": True,
+                "CreatedAt": "2024-01-01T00:00:00Z"
+            }
+            orgs_table.upsert_entity(org_entity_orgs)
+        except Exception:
+            pass  # Organizations table may not exist
 
         logger.info(f"Created test organization: {org_id}")
     except Exception as e:
@@ -276,6 +278,63 @@ def test_oauth_connection(api_base_url, platform_admin_headers, table_service):
         entities_table.delete_entity(partition_key=org_id, row_key=f"oauth:{connection_name}")
     except Exception as e:
         logger.warning(f"Could not cleanup OAuth connection: {e}")
+
+
+@pytest.fixture
+def platform_test_form(api_base_url, platform_admin_headers):
+    """Create a test form in GLOBAL org using platform admin headers
+
+    Uses the actual API endpoint to create a test form in GLOBAL partition.
+    Returns the form ID.
+    """
+    form_data = {
+        "name": "Test Platform Form",
+        "description": "Form for platform-level integration tests",
+        "linkedWorkflow": "test_workflow",
+        "formSchema": {
+            "fields": [
+                {
+                    "type": "text",
+                    "name": "email",
+                    "label": "Email Address",
+                    "required": True
+                },
+                {
+                    "type": "text",
+                    "name": "name",
+                    "label": "Full Name",
+                    "required": True
+                }
+            ]
+        },
+        "isPublic": True
+    }
+
+    response = requests.post(
+        f"{api_base_url}/api/forms",
+        headers=platform_admin_headers,
+        json=form_data,
+        timeout=10
+    )
+
+    if response.status_code != 201:
+        logger.warning(f"Failed to create platform test form: {response.status_code} - {response.text}")
+        pytest.skip("Could not create platform test form")
+
+    form_id = response.json().get("id")
+    logger.info(f"Created platform test form: {form_id}")
+
+    yield form_id
+
+    # Cleanup
+    try:
+        requests.delete(
+            f"{api_base_url}/api/forms/{form_id}",
+            headers=platform_admin_headers,
+            timeout=10
+        )
+    except Exception as e:
+        logger.warning(f"Could not cleanup platform test form: {e}")
 
 
 @pytest.fixture

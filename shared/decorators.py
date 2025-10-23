@@ -257,12 +257,20 @@ def data_provider(
         Decorated function (unchanged for normal Python execution)
     """
     def decorator(func: Callable) -> Callable:
+        # Collect parameters from @param decorators (if any) - T010
+        # Decorators are applied bottom-up, so parameters are in reverse order
+        pending_params = []
+        if hasattr(func, '_pending_parameters'):
+            pending_params = list(reversed(func._pending_parameters))
+            delattr(func, '_pending_parameters')  # Clean up
+
         # Create metadata
         metadata = DataProviderMetadata(
             name=name,
             description=description,
             category=category,
             cache_ttl_seconds=cache_ttl_seconds,
+            parameters=pending_params,  # T010: Add parameters
             function=func
         )
 

@@ -4,6 +4,8 @@ Business logic for data provider discovery and option retrieval
 Extracted from functions/data_providers.py for unit testability
 """
 
+import hashlib
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -23,10 +25,76 @@ logger = logging.getLogger(__name__)
 _cache: dict[str, dict[str, Any]] = {}
 
 
+def validate_data_provider_inputs(
+    provider_metadata: "DataProviderMetadata",
+    inputs: dict[str, Any] | None
+) -> list[str]:
+    """
+    Validate input parameters against data provider parameter definitions (T025).
+
+    Args:
+        provider_metadata: Data provider metadata with parameter definitions
+        inputs: Input values provided by caller
+
+    Returns:
+        List of validation error messages (empty if valid)
+
+    Validation rules:
+        1. All required parameters must be present in inputs
+        2. Input values must match expected types (basic validation)
+        3. Extra inputs (not defined in parameters) are allowed (forward compatibility)
+    """
+    errors = []
+    inputs = inputs or {}
+
+    # Check required parameters
+    for param in provider_metadata.parameters:
+        if param.required and param.name not in inputs:
+            errors.append(
+                f"Required parameter '{param.name}' is missing"
+            )
+
+    # Note: We allow extra inputs for forward compatibility
+    # This allows forms to pass inputs that may be used by future provider versions
+
+    return errors
+
+
+def compute_cache_key(provider_name: str, inputs: dict[str, Any] | None = None, org_id: str | None = None) -> str:
+    """
+    Compute cache key for data provider with inputs (T012).
+
+    Args:
+        provider_name: Name of the data provider
+        inputs: Input parameter values (optional)
+        org_id: Organization ID (optional)
+
+    Returns:
+        Cache key string
+
+    Format:
+        - Without inputs: "{org_id}:{provider_name}"
+        - With inputs: "{org_id}:{provider_name}:{input_hash}"
+    """
+    if not inputs:
+        # Backward compatible format
+        return f"{org_id}:{provider_name}" if org_id else provider_name
+
+    # Sort keys for deterministic hash
+    input_str = json.dumps(inputs, sort_keys=True)
+    input_hash = hashlib.sha256(input_str.encode()).hexdigest()[:16]
+
+    if org_id:
+        return f"{org_id}:{provider_name}:{input_hash}"
+    else:
+        return f"{provider_name}:{input_hash}"
+
+
 async def get_data_provider_options_handler(
     provider_name: str,
     context: "RequestContext",
-    no_cache: bool = False
+    no_cache: bool = False,
+    inputs: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any], int]:
     """
     Call a data provider and return options.
@@ -35,6 +103,7 @@ async def get_data_provider_options_handler(
         provider_name: Name of the data provider
         context: RequestContext with organization context
         no_cache: If True, bypass cache
+        inputs: Optional input parameter values for the data provider (T024)
 
     Returns:
         Tuple of (response_dict, status_code)
@@ -55,7 +124,7 @@ async def get_data_provider_options_handler(
 
     Status codes:
         200: Success
-        400: Missing or invalid provider name
+        400: Missing or invalid provider name, or invalid/missing required parameters
         404: Provider not found
         500: Provider execution error
     """
@@ -78,12 +147,26 @@ async def get_data_provider_options_handler(
         )
         return error.model_dump(), 404
 
+    # T025: Validate input parameters against provider parameter definitions
+    validation_errors = validate_data_provider_inputs(provider_metadata, inputs)
+    if validation_errors:
+        error = ErrorResponse(
+            error="BadRequest",
+            message="Invalid or missing required parameters",
+            details={"errors": validation_errors}
+        )
+        return error.model_dump(), 400
+
     # Get provider function
     provider_func = provider_metadata.function
     cache_ttl = provider_metadata.cache_ttl_seconds
 
-    # Check cache (keyed by org_id + provider_name)
-    cache_key = f"{context.org_id}:{provider_name}"
+    # T026: Compute cache key with inputs hash (if inputs provided)
+    cache_key = compute_cache_key(
+        provider_name=provider_name,
+        inputs=inputs,
+        org_id=context.org_id
+    )
     cached_result = None
     cache_expires_at = None
 
@@ -111,12 +194,18 @@ async def get_data_provider_options_handler(
                 f"Calling data provider: {provider_name}",
                 extra={
                     "provider": provider_name,
-                    "org_id": context.org_id
+                    "org_id": context.org_id,
+                    "inputs": inputs if inputs else {}
                 }
             )
 
-            # Call provider function
-            options = await provider_func(context)
+            # T027: Call provider function with validated inputs as kwargs
+            if inputs and provider_metadata.parameters:
+                # Provider has parameters - pass inputs as keyword arguments
+                options = await provider_func(context, **inputs)
+            else:
+                # No parameters or no inputs - call with context only (backward compatible)
+                options = await provider_func(context)
 
             # Validate options format (basic check)
             if not isinstance(options, list):

@@ -79,9 +79,32 @@ def convert_registry_provider_to_model(
     Returns:
         DataProviderMetadata Pydantic model for API response
     """
+    # Convert parameters from registry dataclass to dict with proper field mapping (T024)
+    parameters = []
+    if registry_provider.parameters:
+        for p in registry_provider.parameters:
+            param_dict = {
+                "name": p.name,
+                "type": p.type,
+                "required": p.required,
+            }
+            # Add optional fields only if they're not None
+            if p.label is not None:
+                param_dict["label"] = p.label
+            if p.default_value is not None:
+                param_dict["defaultValue"] = p.default_value
+            if p.help_text is not None:
+                param_dict["helpText"] = p.help_text
+            if hasattr(p, 'description') and p.description is not None:
+                param_dict["description"] = p.description
+            parameters.append(param_dict)
+
     return DataProviderMetadata(
         name=registry_provider.name,
         description=registry_provider.description,
+        category=registry_provider.category,
+        cache_ttl_seconds=registry_provider.cache_ttl_seconds,
+        parameters=parameters,
     )
 
 

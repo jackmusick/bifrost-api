@@ -196,6 +196,13 @@ class FormFieldType(str, Enum):
     FILE = "file"
 
 
+class DataProviderInputMode(str, Enum):
+    """Data provider input configuration modes (T005)"""
+    STATIC = "static"
+    FIELD_REF = "fieldRef"
+    EXPRESSION = "expression"
+
+
 class IntegrationType(str, Enum):
     """Supported integration types"""
     MSGRAPH = "msgraph"
@@ -493,6 +500,34 @@ class FormFieldValidation(BaseModel):
     message: str | None = None
 
 
+class DataProviderInputConfig(BaseModel):
+    """Configuration for a single data provider input parameter (T006)"""
+    mode: DataProviderInputMode
+    value: str | None = None
+    fieldName: str | None = None
+    expression: str | None = None
+
+    @model_validator(mode='after')
+    def validate_mode_data(self):
+        """Ensure exactly one field is set based on mode"""
+        if self.mode == DataProviderInputMode.STATIC:
+            if not self.value:
+                raise ValueError("value required for static mode")
+            if self.fieldName or self.expression:
+                raise ValueError("only value should be set for static mode")
+        elif self.mode == DataProviderInputMode.FIELD_REF:
+            if not self.fieldName:
+                raise ValueError("fieldName required for fieldRef mode")
+            if self.value or self.expression:
+                raise ValueError("only fieldName should be set for fieldRef mode")
+        elif self.mode == DataProviderInputMode.EXPRESSION:
+            if not self.expression:
+                raise ValueError("expression required for expression mode")
+            if self.value or self.fieldName:
+                raise ValueError("only expression should be set for expression mode")
+        return self
+
+
 class FormField(BaseModel):
     """Form field definition"""
     name: str = Field(..., description="Parameter name for workflow")
@@ -502,6 +537,8 @@ class FormField(BaseModel):
     validation: dict[str, Any] | None = None
     dataProvider: str | None = Field(
         None, description="Data provider name for dynamic options")
+    dataProviderInputs: dict[str, DataProviderInputConfig] | None = Field(
+        None, description="Input configurations for data provider parameters (T007)")
     defaultValue: Any | None = None
     placeholder: str | None = None
     helpText: str | None = None
@@ -521,6 +558,13 @@ class FormField(BaseModel):
         None, description="Static content for markdown/HTML components")
     allowAsQueryParam: bool | None = Field(
         None, description="Whether this field's value can be populated from URL query parameters")
+
+    @model_validator(mode='after')
+    def validate_data_provider_inputs(self):
+        """Ensure dataProviderInputs is only set when dataProvider is set (T007)"""
+        if self.dataProviderInputs and not self.dataProvider:
+            raise ValueError("dataProviderInputs requires dataProvider to be set")
+        return self
 
 
 class FormSchema(BaseModel):
@@ -723,9 +767,12 @@ class WorkflowMetadata(BaseModel):
 
 
 class DataProviderMetadata(BaseModel):
-    """Data provider metadata from @data_provider decorator"""
+    """Data provider metadata from @data_provider decorator (T008)"""
     name: str
     description: str
+    category: str = "General"
+    cache_ttl_seconds: int = 300
+    parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
 
 
 class MetadataResponse(BaseModel):
@@ -737,6 +784,12 @@ class MetadataResponse(BaseModel):
 
 
 # ==================== DATA PROVIDER RESPONSE MODELS ====================
+
+class DataProviderRequest(BaseModel):
+    """Request model for data provider endpoint (T009)"""
+    orgId: str | None = Field(None, description="Organization ID for org-scoped providers")
+    inputs: dict[str, Any] | None = Field(None, description="Input parameter values for data provider")
+
 
 class DataProviderOption(BaseModel):
     """Data provider option item"""

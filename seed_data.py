@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 ORG_COVI_DEV_ID = str(uuid.uuid4())
 FORM_GREETING_ID = str(uuid.uuid4())
 FORM_ONBOARDING_ID = str(uuid.uuid4())
+FORM_GITHUB_WORKFLOW_ID = str(uuid.uuid4())  # T042: Form with data provider inputs
 
 logger.info("Seed data UUIDs:")
 logger.info(f"  Org Covi Development: {ORG_COVI_DEV_ID}")
 logger.info(f"  Form Simple Greeting: {FORM_GREETING_ID}")
 logger.info(f"  Form User Onboarding: {FORM_ONBOARDING_ID}")
+logger.info(f"  Form GitHub Workflow: {FORM_GITHUB_WORKFLOW_ID}")
 
 # ==================== TABLE 1: CONFIG ====================
 
@@ -196,6 +198,72 @@ SAMPLE_ENTITIES = [
         "IsPublic": False,
         "CreatedBy": "jack@gocovi.dev",
         "CreatedAt": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+        "UpdatedAt": datetime.utcnow().isoformat(),
+    },
+    # T042: Form with static data provider inputs
+    {
+        "PartitionKey": "GLOBAL",
+        "RowKey": f"form:{FORM_GITHUB_WORKFLOW_ID}",
+        "Name": "GitHub Repository Workflow",
+        "Description": "Create a workflow for a GitHub repository (demonstrates data provider inputs)",
+        "FormSchema": json.dumps({
+            "fields": [
+                {
+                    "name": "github_token",
+                    "label": "GitHub Personal Access Token",
+                    "type": "text",
+                    "required": True,
+                    "placeholder": "ghp_xxxxxxxxxxxx",
+                    "helpText": "GitHub PAT with repo access"
+                },
+                {
+                    "name": "repository",
+                    "label": "Select Repository",
+                    "type": "select",
+                    "required": True,
+                    "dataProvider": "get_github_repos",
+                    "dataProviderInputs": {
+                        "token": {
+                            "mode": "static",
+                            "value": "ghp_demo_token_for_testing_12345"
+                        },
+                        "org": {
+                            "mode": "static",
+                            "value": "gocovi"
+                        }
+                    }
+                },
+                {
+                    "name": "branch",
+                    "label": "Select Branch",
+                    "type": "select",
+                    "required": True,
+                    "dataProvider": "get_github_branches",
+                    "dataProviderInputs": {
+                        "token": {
+                            "mode": "static",
+                            "value": "ghp_demo_token_for_testing_12345"
+                        },
+                        "repo": {
+                            "mode": "static",
+                            "value": "gocovi/bifrost-api"
+                        }
+                    }
+                },
+                {
+                    "name": "workflow_name",
+                    "label": "Workflow Name",
+                    "type": "text",
+                    "required": True,
+                    "placeholder": "CI Pipeline"
+                }
+            ]
+        }),
+        "LinkedWorkflow": "create_github_workflow",
+        "IsActive": True,
+        "IsPublic": True,
+        "CreatedBy": "jack@gocovi.com",
+        "CreatedAt": (datetime.utcnow() - timedelta(days=2)).isoformat(),
         "UpdatedAt": datetime.utcnow().isoformat(),
     },
     # Users (from SAMPLE_USERS, now integrated into Entities)
@@ -462,6 +530,7 @@ def seed_all_data(connection_string: str = None):
     logger.info(f"  ORG_COVI_DEV_ID = '{ORG_COVI_DEV_ID}'")
     logger.info(f"  FORM_GREETING_ID = '{FORM_GREETING_ID}'")
     logger.info(f"  FORM_ONBOARDING_ID = '{FORM_ONBOARDING_ID}'")
+    logger.info(f"  FORM_GITHUB_WORKFLOW_ID = '{FORM_GITHUB_WORKFLOW_ID}'")
     logger.info("="*60)
 
     return results
