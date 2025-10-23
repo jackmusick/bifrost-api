@@ -293,13 +293,24 @@ async def list_data_providers_handler() -> tuple[dict[str, Any], int]:
     registry = get_registry()
     providers = registry.get_all_data_providers()
 
-    # Convert to response format
+    # Convert to response format (T031 - include parameters for User Story 1)
     provider_list = [
         {
             "name": p.name,
             "description": p.description,
             "category": p.category,
-            "cache_ttl_seconds": p.cache_ttl_seconds
+            "cache_ttl_seconds": p.cache_ttl_seconds,
+            "parameters": [
+                {
+                    "name": param.name,
+                    "type": param.type,
+                    "required": param.required,
+                    "label": param.label,
+                    "defaultValue": param.default_value,
+                    "helpText": param.help_text,
+                }
+                for param in (p.parameters or [])
+            ]
         }
         for p in providers
     ]
