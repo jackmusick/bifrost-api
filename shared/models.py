@@ -80,6 +80,9 @@ __all__ = [
     'MetadataResponse',
 
     # Data Providers
+    'DataProviderInputMode',
+    'DataProviderInputConfig',
+    'DataProviderRequest',
     'DataProviderOption',
     'DataProviderResponse',
 
