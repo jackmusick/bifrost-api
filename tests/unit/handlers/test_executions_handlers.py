@@ -7,7 +7,7 @@ Uses AsyncMock for async functions and mocks repositories.
 
 import uuid
 from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 

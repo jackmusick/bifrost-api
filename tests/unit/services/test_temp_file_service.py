@@ -43,7 +43,7 @@ class TestTempFileServiceInitialization:
         nested_path = temp_test_dir / "nested" / "temp"
         assert not nested_path.exists()
 
-        service = TempFileService(tmp_path=str(nested_path))
+        TempFileService(tmp_path=str(nested_path))
 
         assert nested_path.exists()
         assert nested_path.is_dir()
@@ -286,7 +286,7 @@ class TestTempFileServiceCleanup:
 
         # Create files
         file1 = service.create_temp_file(prefix="file1", suffix=".txt")
-        file2 = service.create_temp_file(prefix="file2", suffix=".txt")
+        service.create_temp_file(prefix="file2", suffix=".txt")
 
         # Set file1 to old time (but we'll mock unlink to fail)
         old_time = time.time() - (25 * 3600)

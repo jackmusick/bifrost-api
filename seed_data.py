@@ -209,6 +209,8 @@ SAMPLE_ENTITIES = [
         "IsActive": True,
         "LastLogin": datetime.utcnow().isoformat(),
         "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
+        "EntraUserId": "00000000-0000-0000-0001-000000000001",
+        "LastEntraIdSync": datetime.utcnow().isoformat(),
     },
     {
         "PartitionKey": "GLOBAL",
@@ -220,6 +222,8 @@ SAMPLE_ENTITIES = [
         "IsActive": True,
         "LastLogin": datetime.utcnow().isoformat(),
         "CreatedAt": (datetime.utcnow() - timedelta(days=100)).isoformat(),
+        "EntraUserId": "00000000-0000-0000-0002-000000000001",
+        "LastEntraIdSync": datetime.utcnow().isoformat(),
     },
 ]
 

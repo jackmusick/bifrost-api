@@ -256,7 +256,7 @@ class TestGetStuckExecutions:
     def test_returns_empty_when_no_stuck_executions(self, api_base_url, platform_admin_headers):
         """Should return empty list when no stuck executions exist"""
         # Clean up any existing stuck executions first (from previous test runs)
-        cleanup_response = requests.post(
+        requests.post(
             f"{api_base_url}/api/executions/cleanup/trigger",
             headers=platform_admin_headers,
             json={},
@@ -289,7 +289,7 @@ class TestTriggerCleanup:
             timeout=10
         )
         assert get_response.status_code == 200
-        before_count = get_response.json()["count"]
+        get_response.json()["count"]
 
         # Trigger cleanup
         response = requests.post(

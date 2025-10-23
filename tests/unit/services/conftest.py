@@ -219,12 +219,15 @@ def mock_table_service():
 @pytest.fixture
 def mock_keyvault_client():
     """Mock KeyVaultClient for OAuth storage"""
-    with patch("shared.services.oauth_storage_service.KeyVaultClient") as mock:
-        instance = MagicMock()
-        mock_vault = MagicMock()
-        instance.return_value = mock_vault
-        instance.return_value._client = MagicMock()
-        yield instance
+    with patch("shared.services.oauth_storage_service.KeyVaultClient") as mock_kv_class:
+        # Create mock instance that will be returned when KeyVaultClient() is called
+        mock_instance = MagicMock()
+        mock_instance._client = MagicMock()
+
+        # When KeyVaultClient() is instantiated, return our mock instance
+        mock_kv_class.return_value = mock_instance
+
+        yield mock_kv_class
 
 
 @pytest.fixture

@@ -12,7 +12,6 @@ in test_organizations_endpoints.py, test_forms_endpoints.py, etc.
 """
 
 import pytest
-from pathlib import Path
 
 # Import context functions directly from sdk package
 # This ensures we're using the SAME module instance as the SDK code
@@ -231,7 +230,7 @@ class TestDefaultOrgScoping:
                 mock_storage.list_connections.assert_called_once()
                 call_args = mock_storage.list_connections.call_args
                 assert call_args[0][0] == "org-789"  # First positional arg
-                assert call_args[1]["include_global"] == True  # Keyword arg
+                assert call_args[1]["include_global"]  # Keyword arg
 
                 # Verify result
                 assert result == ["microsoft", "google"]

@@ -294,7 +294,7 @@ class TestOAuthProviderMetadata:
 
         before_parse = datetime.utcnow()
         result = oauth_client._parse_token_response(response_data)
-        after_parse = datetime.utcnow()
+        datetime.utcnow()
 
         assert result["access_token"] == "token_123"
         assert result["token_type"] == "Bearer"
@@ -315,7 +315,7 @@ class TestOAuthProviderMetadata:
 
         before_parse = datetime.utcnow()
         result = oauth_client._parse_token_response(response_data)
-        after_parse = datetime.utcnow()
+        datetime.utcnow()
 
         assert "expires_at" in result
         # Should default to 1 hour

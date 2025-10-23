@@ -10,6 +10,7 @@ from datetime import datetime
 from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
 from shared.keyvault import KeyVaultClient
 from shared.storage import TableStorageService
+from shared.secret_naming import generate_oauth_secret_name
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,12 @@ class OAuthStorageService:
             try:
                 keyvault = KeyVaultClient()
                 assert keyvault._client is not None, "KeyVault client is None"
-                keyvault_secret_name = f"{org_id}--oauth-{request.connection_name}-client-secret"
+                # Generate secret name using new bifrost_{scope}_oauth_{name}_{type}_{uuid} convention
+                keyvault_secret_name = generate_oauth_secret_name(
+                    org_id,
+                    request.connection_name,
+                    "client-secret"
+                )
 
                 keyvault._client.set_secret(keyvault_secret_name, request.client_secret)
                 logger.info(f"Stored client_secret in Key Vault: {keyvault_secret_name}")
@@ -327,9 +333,10 @@ class OAuthStorageService:
 
             metadata = json.loads(metadata_entity['Value'])
 
-            # Optional: Fetch secrets if they exist
-            client_secret_ref = self._fetch_config_secret(org_id, client_secret_rowkey) or f"oauth_{connection_name}_client_secret"
-            oauth_response_ref = self._fetch_config_secret(org_id, oauth_response_rowkey) or f"oauth_{connection_name}_oauth_response"
+            # Use short reference names (not Key Vault secret names)
+            # These are used to construct the config table RowKeys
+            client_secret_ref = f"oauth_{connection_name}_client_secret"
+            oauth_response_ref = f"oauth_{connection_name}_oauth_response"
 
             now = datetime.utcnow()
 
@@ -476,7 +483,28 @@ class OAuthStorageService:
         try:
             keyvault = KeyVaultClient()
             assert keyvault._client is not None, "KeyVault client is None"
-            keyvault_secret_name = f"{org_id}--oauth-{connection_name}-response"
+
+            # Check if we have an existing oauth_response config to reuse the secret name
+            oauth_response_rowkey = f"config:oauth_{connection_name}_oauth_response"
+            existing_config = None
+            try:
+                existing_config = self.config_table.get_entity(org_id, oauth_response_rowkey)
+            except Exception:
+                # No existing config, will create new secret
+                pass
+
+            if existing_config and existing_config.get('Type') == 'secret_ref':
+                # Reuse existing secret name (creates new version in Key Vault)
+                keyvault_secret_name = existing_config['Value']
+                logger.info(f"Updating existing OAuth token secret '{keyvault_secret_name}' for {connection_name}")
+            else:
+                # Generate new secret name using bifrost-{scope}-oauth-{name}-{type}-{uuid} convention
+                keyvault_secret_name = generate_oauth_secret_name(
+                    org_id,
+                    connection_name,
+                    "response"
+                )
+                logger.info(f"Creating new OAuth token secret for {connection_name}")
 
             keyvault._client.set_secret(keyvault_secret_name, json.dumps(oauth_response))
             logger.info(f"Stored OAuth tokens in Key Vault: {keyvault_secret_name}")
@@ -523,6 +551,168 @@ class OAuthStorageService:
             self.config_table.upsert_entity(metadata_config)
 
         return True
+
+    async def refresh_token(
+        self,
+        org_id: str,
+        connection_name: str
+    ) -> bool:
+        """
+        Refresh OAuth access token for any flow type
+
+        Handles both authorization_code (uses refresh_token) and
+        client_credentials (gets new token with client_id + client_secret)
+
+        Args:
+            org_id: Organization ID
+            connection_name: Connection name
+
+        Returns:
+            True if refreshed successfully, False otherwise
+        """
+        from shared.services.oauth_provider import OAuthProviderClient
+        from shared.storage import TableStorageService
+        import json
+
+        try:
+            # Get connection
+            connection = await self.get_connection(org_id, connection_name)
+            if not connection:
+                logger.error(f"Connection not found for refresh: {connection_name}")
+                return False
+
+            logger.info(f"Refreshing OAuth connection: {connection_name} (flow={connection.oauth_flow_type})")
+
+            # Get OAuth response config to retrieve current tokens
+            # Config table uses RowKey: config:oauth_{connection_name}_oauth_response
+            config_service = TableStorageService("Config")
+            oauth_response_key = f"config:oauth_{connection_name}_oauth_response"
+            oauth_response_config = config_service.get_entity(
+                connection.org_id,
+                oauth_response_key
+            )
+
+            if not oauth_response_config:
+                logger.error(f"OAuth response config not found: {oauth_response_key}")
+                return False
+
+            # Get Key Vault secret name from config
+            keyvault_secret_name = oauth_response_config.get("Value")
+            if not keyvault_secret_name:
+                logger.error("OAuth response config missing Key Vault secret name")
+                return False
+
+            # Retrieve current OAuth tokens from Key Vault
+            keyvault = KeyVaultClient()
+            assert keyvault._client is not None, "Key Vault client not initialized"
+            secret = keyvault._client.get_secret(keyvault_secret_name)
+            oauth_response_json = secret.value
+            assert oauth_response_json is not None, "OAuth response is None"
+            oauth_response = json.loads(oauth_response_json)
+
+            # Get client secret if exists
+            client_secret = None
+            if connection.client_secret_ref:
+                try:
+                    # client_secret_ref is the short name like "oauth_{name}_client_secret"
+                    # Config table RowKey is "config:oauth_{name}_client_secret"
+                    client_secret_key = f"config:{connection.client_secret_ref}"
+
+                    logger.info(f"Looking up client secret with key: {client_secret_key}")
+                    client_secret_config = config_service.get_entity(
+                        connection.org_id,
+                        client_secret_key
+                    )
+
+                    if client_secret_config:
+                        keyvault_secret_name = client_secret_config.get("Value")
+                        if keyvault_secret_name:
+                            logger.info(f"Retrieving client secret from Key Vault: {keyvault_secret_name}")
+                            secret = keyvault._client.get_secret(keyvault_secret_name)
+                            client_secret = secret.value
+                            logger.info("Successfully retrieved client secret")
+                        else:
+                            logger.warning(f"Client secret config found but missing Value field")
+                    else:
+                        logger.warning(f"Client secret config not found for key: {client_secret_key}")
+                except Exception as e:
+                    logger.error(f"Could not retrieve client_secret: {e}", exc_info=True)
+
+            # Refresh based on flow type
+            oauth_provider = OAuthProviderClient()
+
+            if connection.oauth_flow_type == "client_credentials":
+                # Client credentials: get new token with client_id + client_secret
+                logger.info(f"Refreshing client_credentials token for {connection_name}")
+
+                if not client_secret:
+                    raise Exception("Client credentials flow requires client_secret")
+
+                success, result = await oauth_provider.get_client_credentials_token(
+                    token_url=connection.token_url,
+                    client_id=connection.client_id,
+                    client_secret=client_secret,
+                    scopes=connection.scopes
+                )
+
+                if not success:
+                    error_msg = result.get("error_description", result.get("error", "Token refresh failed"))
+                    logger.error(f"Failed to refresh token: {error_msg}")
+                    return False
+
+                # Client credentials doesn't have refresh token
+                new_refresh_token = None
+
+            else:
+                # Authorization code flow: use refresh_token
+                logger.info(f"Refreshing authorization_code token for {connection_name}")
+
+                refresh_token = oauth_response.get("refresh_token")
+
+                if not refresh_token:
+                    logger.error(f"No refresh token available for {connection_name}")
+                    return False
+
+                success, result = await oauth_provider.refresh_access_token(
+                    token_url=connection.token_url,
+                    refresh_token=refresh_token,
+                    client_id=connection.client_id,
+                    client_secret=client_secret
+                )
+
+                if not success:
+                    error_msg = result.get("error_description", result.get("error", "Token refresh failed"))
+                    logger.error(f"Failed to refresh token: {error_msg}")
+                    return False
+
+                # Preserve old refresh_token if new one not provided
+                new_refresh_token = result.get("refresh_token") or refresh_token
+
+            # Store refreshed tokens
+            await self.store_tokens(
+                org_id=connection.org_id,
+                connection_name=connection_name,
+                access_token=result["access_token"],
+                refresh_token=new_refresh_token,
+                expires_at=result["expires_at"],
+                token_type=result["token_type"],
+                updated_by="system"
+            )
+
+            # Update connection status
+            await self.update_connection_status(
+                org_id=connection.org_id,
+                connection_name=connection_name,
+                status="completed",
+                status_message="Token refreshed successfully"
+            )
+
+            logger.info(f"Successfully refreshed token for {connection_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error refreshing token for {connection_name}: {e}", exc_info=True)
+            return False
 
     async def update_connection_status(
         self,
@@ -672,3 +862,196 @@ class OAuthStorageService:
             created_by=entity["created_by"],
             updated_at=updated_at
         )
+
+    async def run_refresh_job(
+        self,
+        trigger_type: str = "automatic",
+        trigger_user: str | None = None,
+        refresh_threshold_minutes: int | None = None
+    ) -> dict:
+        """
+        Run the OAuth token refresh job
+
+        This method contains the shared logic for refreshing expiring OAuth tokens.
+        Can be called by both the timer trigger and HTTP endpoint.
+
+        Args:
+            trigger_type: Type of trigger ("automatic" or "manual")
+            trigger_user: Email of user who triggered (for manual triggers)
+            refresh_threshold_minutes: Override threshold in minutes (default: 30 for automatic, None for manual to refresh all)
+
+        Returns:
+            Dictionary with job results including:
+            - total_connections: Total OAuth connections found
+            - needs_refresh: Connections that need refresh
+            - refreshed_successfully: Successfully refreshed count
+            - refresh_failed: Failed refresh count
+            - errors: List of error details
+            - duration_seconds: Job duration
+        """
+        from datetime import timedelta
+
+        start_time = datetime.utcnow()
+
+        # Track results
+        results = {
+            "total_connections": 0,
+            "needs_refresh": 0,
+            "refreshed_successfully": 0,
+            "refresh_failed": 0,
+            "errors": []
+        }
+
+        try:
+            # Get all OAuth connections from all orgs
+            all_connections = []
+
+            # Query GLOBAL connections
+            global_connections = await self.list_connections("GLOBAL", include_global=False)
+            all_connections.extend(global_connections)
+
+            results["total_connections"] = len(all_connections)
+            logger.info(f"Found {len(all_connections)} total OAuth connections")
+
+            # Filter connections that need refresh
+            now = datetime.utcnow()
+
+            # Determine refresh threshold
+            # Default: 30 minutes for automatic, no threshold (refresh all completed) for manual
+            if refresh_threshold_minutes is not None:
+                refresh_threshold = now + timedelta(minutes=refresh_threshold_minutes)
+                logger.info(f"Using custom refresh threshold: {refresh_threshold_minutes} minutes")
+            elif trigger_type == "automatic":
+                refresh_threshold = now + timedelta(minutes=30)
+                logger.info("Using automatic refresh threshold: 30 minutes")
+            else:
+                # Manual trigger with no threshold - refresh all completed connections
+                refresh_threshold = None
+                logger.info("Manual trigger: refreshing all completed connections")
+
+            connections_to_refresh = []
+            for conn in all_connections:
+                # Only refresh completed connections with tokens
+                if conn.status != "completed":
+                    continue
+
+                # Check if token expires soon (or refresh all if no threshold)
+                if refresh_threshold is None:
+                    # Manual trigger with no threshold - refresh all completed connections
+                    connections_to_refresh.append(conn)
+                elif conn.expires_at and conn.expires_at <= refresh_threshold:
+                    connections_to_refresh.append(conn)
+
+            results["needs_refresh"] = len(connections_to_refresh)
+            logger.info(f"Found {len(connections_to_refresh)} connections needing refresh")
+
+            # Refresh each connection
+            for connection in connections_to_refresh:
+                try:
+                    # Use the centralized refresh_token method
+                    success = await self.refresh_token(
+                        org_id=connection.org_id,
+                        connection_name=connection.connection_name
+                    )
+
+                    if success:
+                        results["refreshed_successfully"] += 1
+                        logger.info(f"Successfully refreshed: {connection.connection_name}")
+                    else:
+                        results["refresh_failed"] += 1
+                        logger.error(f"Failed to refresh: {connection.connection_name}")
+
+                except Exception as e:
+                    results["refresh_failed"] += 1
+                    error_info = {
+                        "connection_name": connection.connection_name,
+                        "org_id": connection.org_id,
+                        "error": str(e)
+                    }
+                    results["errors"].append(error_info)
+
+                    logger.error(
+                        f"Failed to refresh {connection.connection_name}: {str(e)}",
+                        extra=error_info
+                    )
+
+                    # Update connection status to failed
+                    try:
+                        await self.update_connection_status(
+                            org_id=connection.org_id,
+                            connection_name=connection.connection_name,
+                            status="failed",
+                            status_message=f"{trigger_type.capitalize()} refresh failed: {str(e)}"
+                        )
+                    except Exception as status_error:
+                        logger.error(f"Could not update status: {status_error}")
+
+            # Calculate duration
+            end_time = datetime.utcnow()
+            duration_seconds = (end_time - start_time).total_seconds()
+            results["duration_seconds"] = duration_seconds
+
+            # Store job status in Config table
+            job_status_entity = {
+                "PartitionKey": "SYSTEM",
+                "RowKey": "jobstatus:TokenRefreshJob",
+                "StartTime": start_time.isoformat(),
+                "EndTime": end_time.isoformat(),
+                "DurationSeconds": duration_seconds,
+                "Status": "completed",
+                "TriggerType": trigger_type,
+                "TotalConnections": results["total_connections"],
+                "NeedsRefresh": results["needs_refresh"],
+                "RefreshedSuccessfully": results["refreshed_successfully"],
+                "RefreshFailed": results["refresh_failed"],
+                "Errors": json.dumps(results["errors"]) if results["errors"] else None
+            }
+
+            if trigger_user:
+                job_status_entity["TriggerUser"] = trigger_user
+
+            self.config_table.upsert_entity(job_status_entity)
+
+            # Log summary
+            logger.info(
+                f"{trigger_type.capitalize()} OAuth token refresh completed in {duration_seconds:.2f}s: "
+                f"Total={results['total_connections']}, "
+                f"NeedsRefresh={results['needs_refresh']}, "
+                f"Success={results['refreshed_successfully']}, "
+                f"Failed={results['refresh_failed']}"
+            )
+
+            return results
+
+        except Exception as e:
+            logger.error(f"OAuth refresh job failed: {str(e)}", exc_info=True)
+
+            # Store failed job status
+            end_time = datetime.utcnow()
+            duration_seconds = (end_time - start_time).total_seconds()
+
+            job_status_entity = {
+                "PartitionKey": "SYSTEM",
+                "RowKey": "jobstatus:TokenRefreshJob",
+                "StartTime": start_time.isoformat(),
+                "EndTime": end_time.isoformat(),
+                "DurationSeconds": duration_seconds,
+                "Status": "failed",
+                "TriggerType": trigger_type,
+                "ErrorMessage": str(e),
+                "TotalConnections": 0,
+                "NeedsRefresh": 0,
+                "RefreshedSuccessfully": 0,
+                "RefreshFailed": 0,
+                "Errors": None
+            }
+
+            if trigger_user:
+                job_status_entity["TriggerUser"] = trigger_user
+
+            try:
+                self.config_table.upsert_entity(job_status_entity)
+            except Exception:
+                pass
+
+            raise

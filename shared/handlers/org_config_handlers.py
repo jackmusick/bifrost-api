@@ -16,6 +16,12 @@ from shared.models import (
     SetIntegrationConfigRequest,
 )
 from shared.repositories.config import ConfigRepository
+from shared.keyvault import KeyVaultClient
+from shared.secret_naming import (
+    generate_secret_name,
+    SecretNameTooLongError,
+    InvalidSecretComponentError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +105,13 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
     - If scope='GLOBAL' in request body: Save to GLOBAL partition
     - If scope='org' in request body: Save to context.scope (from X-Organization-Id header)
 
+    Special handling for secret_ref type:
+    - If value is a secret reference (existing secret name), store it as-is
+    - If value is NOT a secret reference, treat it as the actual secret value:
+      1. Generate a unique secret name: bifrost_{scope}_{config_key}_{uuid}
+      2. Store the secret value in Key Vault
+      3. Store the generated secret name as the config value
+
     Platform admin only endpoint
     """
     context = req.context  # type: ignore[attr-defined]
@@ -115,10 +128,95 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
         existing_config = config_repo.get_config(set_request.key, fallback_to_global=False)
         status_code = 200 if existing_config else 201
 
+        # Handle secret_ref type with explicit value vs secretRef
+        config_value = set_request.value
+        if set_request.type.value == "secret_ref":
+            # Check which field is provided
+            if set_request.value:
+                # Value provided - create or update secret in Key Vault
+                try:
+                    keyvault = KeyVaultClient()
+                    if keyvault._client is None:
+                        raise ValueError("Key Vault client not initialized - cannot create inline secret")
+
+                    # Check if we're updating an existing config with a secret
+                    if existing_config and existing_config.type.value == "secret_ref":
+                        # Updating existing secret - reuse the same secret name (creates new version)
+                        secret_name = existing_config.value
+                        logger.info(f"Updating existing secret '{secret_name}' for config key '{set_request.key}'")
+                    else:
+                        # Creating new secret - generate unique name
+                        secret_name = generate_secret_name(
+                            scope=context.scope,
+                            name_component=set_request.key
+                        )
+                        logger.info(f"Creating new secret for config key '{set_request.key}'")
+
+                    # Store/update secret in Key Vault (creates new version if secret exists)
+                    keyvault._client.set_secret(secret_name, set_request.value)
+                    logger.info(f"Stored secret in Key Vault: {secret_name}")
+
+                    # Use the secret name as the config value
+                    config_value = secret_name
+
+                except SecretNameTooLongError as e:
+                    logger.error(f"Generated secret name too long: {e}")
+                    error = ErrorResponse(
+                        error="ValidationError",
+                        message=str(e),
+                        details={"key": set_request.key, "scope": context.scope}
+                    )
+                    return func.HttpResponse(
+                        json.dumps(error.model_dump()),
+                        status_code=400,
+                        mimetype="application/json"
+                    )
+
+                except InvalidSecretComponentError as e:
+                    logger.error(f"Invalid secret component: {e}")
+                    error = ErrorResponse(
+                        error="ValidationError",
+                        message=str(e),
+                        details={"key": set_request.key, "scope": context.scope}
+                    )
+                    return func.HttpResponse(
+                        json.dumps(error.model_dump()),
+                        status_code=400,
+                        mimetype="application/json"
+                    )
+
+                except ValueError as e:
+                    logger.error(f"Key Vault not available: {e}")
+                    error = ErrorResponse(
+                        error="ServiceUnavailable",
+                        message="Key Vault is not available - cannot create inline secret"
+                    )
+                    return func.HttpResponse(
+                        json.dumps(error.model_dump()),
+                        status_code=503,
+                        mimetype="application/json"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Failed to create secret in Key Vault: {e}", exc_info=True)
+                    error = ErrorResponse(
+                        error="InternalServerError",
+                        message="Failed to create secret in Key Vault"
+                    )
+                    return func.HttpResponse(
+                        json.dumps(error.model_dump()),
+                        status_code=500,
+                        mimetype="application/json"
+                    )
+            else:
+                # secretRef provided - use it directly
+                config_value = set_request.secretRef
+                logger.info(f"Using existing secret reference '{config_value}' for config key '{set_request.key}'")
+
         # Set config using repository
         config = config_repo.set_config(
             key=set_request.key,
-            value=set_request.value,
+            value=config_value,  # Use potentially modified value (secret name)
             config_type=set_request.type,
             description=set_request.description,
             updated_by=context.user_id
@@ -127,7 +225,7 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Mask sensitive values in response
         config.value = mask_sensitive_value(
             set_request.key,
-            set_request.value,
+            config_value,
             set_request.type.value
         )
 

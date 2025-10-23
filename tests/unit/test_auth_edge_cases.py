@@ -187,7 +187,7 @@ class TestTokenExtraction:
 
         # Should handle empty values
         email = payload.get('email') or 'unknown@system.local'
-        name = payload.get('name') or email
+        payload.get('name') or email
 
         assert email == 'unknown@system.local'
 
@@ -302,7 +302,7 @@ class TestAuthenticationErrorHandling:
 
         # Should fail to decode
         try:
-            decoded = base64.b64decode(request.headers["x-ms-client-principal"])
+            base64.b64decode(request.headers["x-ms-client-principal"])
             assert False, "Should have failed to decode"
         except Exception:
             pass  # Expected

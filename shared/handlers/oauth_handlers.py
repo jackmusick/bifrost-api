@@ -5,6 +5,8 @@ Extracted from functions/oauth_api.py to enable unit testing.
 """
 
 import logging
+import uuid
+from urllib.parse import urlencode
 
 import azure.functions as func
 from pydantic import ValidationError
@@ -16,6 +18,9 @@ from shared.models import (
 )
 from shared.services.oauth_provider import OAuthProviderClient
 from shared.services.oauth_storage_service import OAuthStorageService
+from shared.services.oauth_test_service import OAuthTestService
+from shared.keyvault import KeyVaultClient
+from shared.storage import TableStorageService
 from shared.custom_types import get_context, get_route_param
 from shared.handlers.response_helpers import (
     success_response,
@@ -25,7 +30,6 @@ from shared.handlers.response_helpers import (
     bad_request,
     internal_error,
 )
-from shared.models import OAuthCallbackRequest, OAuthCallbackResponse
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,87 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
         )
 
         logger.info(f"Created OAuth connection: {create_request.connection_name}")
+
+        # If client_credentials flow, immediately acquire token
+        if create_request.oauth_flow_type == "client_credentials":
+            logger.info(f"Client credentials flow detected, acquiring initial token for {create_request.connection_name}")
+
+            try:
+                # Get client secret from Key Vault
+                client_secret = None
+                if connection.client_secret_ref:
+                    config_service = TableStorageService("Config")
+                    client_secret_key = f"config:{connection.client_secret_ref}"
+                    client_secret_config = config_service.get_entity(
+                        connection.org_id,
+                        client_secret_key
+                    )
+
+                    if client_secret_config:
+                        keyvault_secret_name = client_secret_config.get("Value")
+                        if keyvault_secret_name:
+                            keyvault = KeyVaultClient()
+                            assert keyvault._client is not None, "Key Vault client not initialized"
+                            secret = keyvault._client.get_secret(keyvault_secret_name)
+                            client_secret = secret.value
+
+                if not client_secret:
+                    raise ValueError("Client credentials flow requires client_secret")
+
+                # Get initial token
+                oauth_provider = OAuthProviderClient()
+                success, result = await oauth_provider.get_client_credentials_token(
+                    token_url=connection.token_url,
+                    client_id=connection.client_id,
+                    client_secret=client_secret,
+                    scopes=connection.scopes
+                )
+
+                if not success:
+                    error_msg = result.get("error_description", result.get("error", "Token acquisition failed"))
+                    logger.error(f"Failed to acquire client credentials token: {error_msg}")
+                    await oauth_service.update_connection_status(
+                        org_id=org_id,
+                        connection_name=create_request.connection_name,
+                        status="failed",
+                        status_message=f"Failed to acquire initial token: {error_msg}"
+                    )
+                else:
+                    # Store tokens
+                    await oauth_service.store_tokens(
+                        org_id=connection.org_id,
+                        connection_name=connection.connection_name,
+                        access_token=result["access_token"],
+                        refresh_token=None,  # Client credentials doesn't use refresh tokens
+                        expires_at=result["expires_at"],
+                        token_type=result["token_type"],
+                        updated_by="system"
+                    )
+
+                    # Update status to completed
+                    await oauth_service.update_connection_status(
+                        org_id=org_id,
+                        connection_name=create_request.connection_name,
+                        status="completed",
+                        status_message="Client credentials token acquired successfully"
+                    )
+
+                    logger.info(f"Client credentials token acquired for {create_request.connection_name}")
+
+                    # Re-fetch connection to get updated status
+                    connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+
+            except Exception as e:
+                logger.error(f"Error acquiring client credentials token: {str(e)}", exc_info=True)
+                await oauth_service.update_connection_status(
+                    org_id=org_id,
+                    connection_name=create_request.connection_name,
+                    status="failed",
+                    status_message=f"Failed to acquire initial token: {str(e)}"
+                )
+                # Re-fetch connection to get updated status
+                connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+
         detail = connection.to_detail()
         return success_response(detail.model_dump(mode="json"), 201)
 
@@ -197,12 +282,52 @@ async def authorize_oauth_connection_handler(req: func.HttpRequest) -> func.Http
         if not connection:
             return not_found("OAuth connection", name)
 
-        # Start authorization flow
-        provider = OAuthProviderClient(connection)
-        auth_url = await provider.get_authorization_url()
+        # Check if client credentials flow (doesn't need authorization)
+        if connection.oauth_flow_type == "client_credentials":
+            return bad_request("Client credentials flow does not require authorization")
 
-        logger.info(f"Generated authorization URL for: {name}")
-        return success_response({"authorization_url": auth_url})
+        # Generate state parameter for CSRF protection
+        state = str(uuid.uuid4())
+
+        # Build full redirect URI (UI callback page)
+        # req.url is like: https://domain.com/api/oauth/connections/name/authorize
+        # We need: https://domain.com/oauth/callback/connection_name (no /api/)
+        base_url = req.url.split('/api')[0] if '/api' in req.url else req.url.rsplit('/', 4)[0]
+        # Ensure redirect_uri doesn't have /api/ prefix
+        redirect_path = connection.redirect_uri
+        if redirect_path.startswith('/api/'):
+            redirect_path = redirect_path[4:]  # Remove /api prefix
+        full_redirect_uri = f"{base_url}{redirect_path}"
+
+        logger.info(f"Using redirect_uri for authorization: {full_redirect_uri}")
+
+        # Build authorization URL
+        auth_params = {
+            "client_id": connection.client_id,
+            "redirect_uri": full_redirect_uri,
+            "response_type": "code",
+            "scope": connection.scopes.replace(",", " "),  # OAuth spec uses space-separated
+            "state": state
+        }
+
+        authorization_url = f"{connection.authorization_url}?{urlencode(auth_params)}"
+
+        # Update connection status to waiting_callback
+        await oauth_service.update_connection_status(
+            org_id=org_id,
+            connection_name=name,
+            status="waiting_callback",
+            status_message=f"Waiting for OAuth callback (state: {state})"
+        )
+
+        logger.info(f"Generated authorization URL for {name}")
+
+        # Return authorization URL
+        return success_response({
+            "authorization_url": authorization_url,
+            "state": state,
+            "message": "Visit the authorization URL to complete OAuth flow"
+        })
 
     except Exception as e:
         logger.error(f"Error authorizing OAuth connection: {str(e)}", exc_info=True)
@@ -224,7 +349,14 @@ async def cancel_oauth_authorization_handler(req: func.HttpRequest) -> func.Http
         if not connection:
             return not_found("OAuth connection", name)
 
-        await oauth_service.cancel_authorization(org_id, name)
+        # Reset to not_connected status
+        await oauth_service.update_connection_status(
+            org_id=org_id,
+            connection_name=name,
+            status="not_connected",
+            status_message="Authorization canceled by user"
+        )
+
         logger.info(f"Canceled OAuth authorization: {name}")
 
         return success_response({"message": "Authorization canceled"})
@@ -263,49 +395,174 @@ async def refresh_oauth_token_handler(req: func.HttpRequest) -> func.HttpRespons
 
 
 async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
-    """Handle OAuth provider callback."""
-    connection_name = get_route_param(req, "connection_name")
-    logger.info(f"Handling OAuth callback for connection: {connection_name}")
+    """
+    Handle OAuth provider callback.
 
+    This is called by the UI callback page, not directly by the OAuth provider.
+    The UI receives the authorization code from the OAuth provider redirect,
+    then sends it here for server-side token exchange.
+    """
+    connection_name = get_route_param(req, "connection_name")
+
+    # Get code from POST body
     try:
         request_body = req.get_json()
-        callback_request = OAuthCallbackRequest(**request_body)
+        code = request_body.get("code")
+    except ValueError:
+        logger.error("Invalid JSON in callback request body")
+        return bad_request("Request body must be valid JSON")
 
-        # Extract org_id from state parameter (which should contain it)
-        # State format should be: {org_id}:{connection_name}:{random_state}
-        # If state is missing or invalid, we can try to find the connection anyway
-        state = callback_request.state
-        org_id = None
+    logger.info(f"OAuth callback received for {connection_name}")
 
-        if state and ':' in state:
-            parts = state.split(':', 2)
-            if len(parts) >= 1:
-                org_id = parts[0]
-
-        # If we can't get org_id from state, try to find any connection with this name
-        # This is a fallback for testing or simple scenarios
+    try:
+        # Create services
         oauth_service = OAuthStorageService()
+        oauth_provider = OAuthProviderClient()
+        oauth_test = OAuthTestService()
 
-        if org_id:
-            # Try with the specific org_id
-            connection = await oauth_service.get_connection(org_id, connection_name)
-        else:
-            # Fallback: search across all orgs (for test scenarios)
-            # In production, this would need better handling
-            connection = None
-            logger.warning("No org_id in state, attempting connection lookup")
+        # Try to find connection (check GLOBAL first for simplicity)
+        connection = await oauth_service.get_connection("GLOBAL", connection_name)
 
         if not connection:
+            # Try other orgs if needed (for now, just fail)
+            logger.error(f"OAuth connection not found: {connection_name}")
             return not_found("OAuth connection", connection_name)
 
-        # TODO: Implement actual callback handling logic
-        # For now, return success to pass test structure
-        response = OAuthCallbackResponse(
-            success=True,
-            message="Authorization successful",
-            status="connected"
+        # Validate authorization code
+        if not code:
+            logger.error("OAuth callback missing authorization code")
+            return bad_request("Missing authorization code")
+
+        # Exchange code for tokens
+        logger.info(f"Exchanging authorization code for tokens: {connection_name}")
+
+        await oauth_service.update_connection_status(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            status="testing",
+            status_message="Exchanging authorization code for access token"
         )
-        return success_response(response.model_dump(mode="json"))
+
+        # Build full redirect URI (UI callback page URL) - must match authorize endpoint
+        # req.url is like: https://domain.com/api/oauth/callback/connection_name
+        # We need: https://domain.com/oauth/callback/connection_name (no /api/)
+        base_url = req.url.split('/api')[0] if '/api' in req.url else req.url.rsplit('/', 3)[0]
+        # Ensure redirect_uri doesn't have /api/ prefix (same logic as authorize endpoint)
+        redirect_path = connection.redirect_uri
+        if redirect_path.startswith('/api/'):
+            redirect_path = redirect_path[4:]  # Remove /api prefix
+        full_redirect_uri = f"{base_url}{redirect_path}"
+
+        logger.info(f"Using redirect_uri for token exchange: {full_redirect_uri}")
+
+        # Get client secret from Key Vault (or leave None for PKCE)
+        client_secret = None
+        if connection.client_secret_ref:
+            try:
+                # Get client secret config entry to retrieve Key Vault secret name
+                config_service = TableStorageService("Config")
+                client_secret_key = f"config:{connection.client_secret_ref}"
+                client_secret_config = config_service.get_entity(
+                    connection.org_id,
+                    client_secret_key
+                )
+
+                if client_secret_config:
+                    keyvault_secret_name = client_secret_config.get("Value")
+                    if keyvault_secret_name:
+                        try:
+                            keyvault = KeyVaultClient()
+                            assert keyvault._client is not None, "Key Vault client not initialized"
+                            secret = keyvault._client.get_secret(keyvault_secret_name)
+                            client_secret = secret.value
+                            logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
+                        except ValueError as e:
+                            logger.warning(f"KeyVault not available for client_secret retrieval: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve client_secret from Key Vault: {e}")
+
+        success, result = await oauth_provider.exchange_code_for_token(
+            token_url=connection.token_url,
+            code=code,
+            client_id=connection.client_id,
+            client_secret=client_secret,
+            redirect_uri=full_redirect_uri
+        )
+
+        if not success:
+            error_msg = result.get("error_description", result.get("error", "Token exchange failed"))
+            logger.error(f"Token exchange failed: {error_msg}")
+
+            await oauth_service.update_connection_status(
+                org_id=connection.org_id,
+                connection_name=connection_name,
+                status="failed",
+                status_message=f"Token exchange failed: {error_msg}"
+            )
+
+            # Return structured response with error_message field
+            return success_response({
+                "success": False,
+                "message": "OAuth token exchange failed",
+                "status": "failed",
+                "connection_name": connection_name,
+                "warning_message": None,
+                "error_message": error_msg
+            })
+
+        # Test connection
+        logger.info(f"Testing OAuth connection: {connection_name}")
+
+        test_success, test_message = await oauth_test.test_connection(
+            access_token=result["access_token"],
+            authorization_url=connection.authorization_url,
+            token_url=connection.token_url
+        )
+
+        # Store tokens
+        await oauth_service.store_tokens(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            access_token=result["access_token"],
+            refresh_token=result.get("refresh_token"),
+            expires_at=result["expires_at"],
+            token_type=result["token_type"],
+            updated_by="system"
+        )
+
+        # Update final status
+        final_status = "completed" if test_success else "failed"
+        await oauth_service.update_connection_status(
+            org_id=connection.org_id,
+            connection_name=connection_name,
+            status=final_status,
+            status_message=test_message
+        )
+
+        logger.info(f"OAuth connection completed: {connection_name} (status={final_status})")
+
+        # Check if refresh token was provided
+        warning_message = None
+        refresh_token = result.get("refresh_token")
+        logger.info(f"Refresh token check for {connection_name}: refresh_token={refresh_token!r}, type={type(refresh_token)}")
+
+        if not refresh_token:
+            warning_message = (
+                "The OAuth provider did not return a refresh token. "
+                "This connection will not be able to automatically refresh when the access token expires. "
+                "If this was unintentional, review your OAuth application settings with the provider."
+            )
+            logger.warning(f"No refresh token returned for {connection_name}")
+
+        # Return JSON success response with structured fields
+        return success_response({
+            "success": True,
+            "message": "OAuth connection completed successfully",
+            "status": final_status,
+            "connection_name": connection_name,
+            "warning_message": warning_message,
+            "error_message": None
+        })
 
     except ValidationError as e:
         logger.warning(f"Validation error in OAuth callback: {e}")
@@ -313,7 +570,7 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
 
     except ValueError as e:
         logger.error(f"Error in OAuth callback: {str(e)}")
-        return bad_request("Invalid callback request")
+        return bad_request(f"Invalid callback request: {str(e)}")
 
     except Exception as e:
         logger.error(f"Error handling OAuth callback: {str(e)}", exc_info=True)
@@ -358,10 +615,48 @@ async def get_oauth_refresh_job_status_handler(req: func.HttpRequest) -> func.Ht
     logger.info(f"User {context.email} checking OAuth refresh job status")
 
     try:
-        # TODO: Implement actual refresh job tracking
-        # For now, return a placeholder message
-        return success_response({"message": "No refresh jobs have run yet"})
+        # Get job status from Config table
+        config_service = TableStorageService("Config")
+
+        try:
+            job_status = config_service.get_entity("SYSTEM", "jobstatus:TokenRefreshJob")
+
+            # Convert to dict and remove Azure Table metadata
+            status_dict = {
+                k: v for k, v in job_status.items()
+                if not k.startswith("_") and k not in ["PartitionKey", "RowKey", "Timestamp", "etag"]
+            }
+
+            return success_response(status_dict)
+        except Exception:
+            # No job has run yet
+            return success_response({"message": "No refresh jobs have run yet"})
 
     except Exception as e:
         logger.error(f"Error getting refresh job status: {str(e)}", exc_info=True)
         return internal_error("Failed to get refresh job status")
+
+
+async def trigger_oauth_refresh_job_handler(req: func.HttpRequest) -> func.HttpResponse:
+    """Manually trigger the OAuth token refresh job."""
+    context = get_context(req)
+
+    logger.info(f"User {context.email} manually triggering OAuth refresh job")
+
+    try:
+        # Initialize service and run refresh job
+        oauth_service = OAuthStorageService()
+        results = await oauth_service.run_refresh_job(
+            trigger_type="manual",
+            trigger_user=context.email
+        )
+
+        # Return results
+        return success_response({
+            "message": "Refresh job completed",
+            **results
+        })
+
+    except Exception as e:
+        logger.error(f"Manual OAuth refresh job failed: {str(e)}", exc_info=True)
+        return internal_error(f"Failed to trigger refresh job: {str(e)}")

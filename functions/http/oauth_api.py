@@ -22,6 +22,7 @@ from shared.handlers.oauth_handlers import (
     oauth_callback_handler,
     get_oauth_credentials_handler,
     get_oauth_refresh_job_status_handler,
+    trigger_oauth_refresh_job_handler,
 )
 from shared.openapi_decorators import openapi_endpoint
 
@@ -210,3 +211,19 @@ async def get_oauth_credentials(req: func.HttpRequest) -> func.HttpResponse:
 async def get_oauth_refresh_job_status(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/oauth/refresh_job_status - Get refresh job status"""
     return await get_oauth_refresh_job_status_handler(req)
+
+
+@bp.function_name("oauth_trigger_refresh_job")
+@bp.route(route="oauth/refresh_all", methods=["POST"])
+@openapi_endpoint(
+    path="/oauth/refresh_all",
+    method="POST",
+    summary="Trigger refresh job",
+    description="Manually trigger OAuth token refresh job for all expiring tokens (Platform admin only)",
+    tags=["OAuth"]
+)
+@with_request_context
+@require_platform_admin
+async def trigger_oauth_refresh_job(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/oauth/refresh_all - Manually trigger refresh job"""
+    return await trigger_oauth_refresh_job_handler(req)

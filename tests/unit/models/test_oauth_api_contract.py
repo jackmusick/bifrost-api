@@ -152,15 +152,16 @@ class TestCreateOAuthConnectionRequest:
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
                 connection_name="test"
-                # Missing: oauth_flow_type, client_id, client_secret, URLs
+                # Missing: oauth_flow_type, client_id, token_url
+                # authorization_url is optional (not needed for client_credentials)
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"oauth_flow_type", "client_id",
-                          "authorization_url", "token_url"}
+        required_fields = {"oauth_flow_type", "client_id", "token_url"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
         # client_secret is optional (for PKCE flow)
+        # authorization_url is optional (not needed for client_credentials)
 
     def test_scopes_optional_defaults_to_empty(self):
         """Test that scopes field is optional and defaults to empty string"""
@@ -170,11 +171,70 @@ class TestCreateOAuthConnectionRequest:
             oauth_flow_type="client_credentials",
             client_id="abc",
             client_secret="secret",
-            authorization_url="https://auth.com/authorize",
             token_url="https://auth.com/token"
         )
 
         assert request.scopes == ""
+
+    def test_client_credentials_requires_client_secret(self):
+        """Test that client_credentials flow requires client_secret"""
+
+        with pytest.raises(ValidationError) as exc_info:
+            CreateOAuthConnectionRequest(
+                connection_name="test",
+                oauth_flow_type="client_credentials",
+                client_id="abc123",
+                token_url="https://auth.com/token"
+                # Missing client_secret
+            )
+
+        errors = exc_info.value.errors()
+        assert any("client_secret is required" in str(e["ctx"]) for e in errors if "ctx" in e)
+
+    def test_client_credentials_does_not_require_authorization_url(self):
+        """Test that client_credentials flow does not require authorization_url"""
+
+        request = CreateOAuthConnectionRequest(
+            connection_name="test",
+            oauth_flow_type="client_credentials",
+            client_id="abc123",
+            client_secret="secret",
+            token_url="https://auth.com/token"
+            # No authorization_url
+        )
+
+        assert request.oauth_flow_type == "client_credentials"
+        assert request.authorization_url is None
+
+    def test_authorization_code_requires_authorization_url(self):
+        """Test that authorization_code flow requires authorization_url"""
+
+        with pytest.raises(ValidationError) as exc_info:
+            CreateOAuthConnectionRequest(
+                connection_name="test",
+                oauth_flow_type="authorization_code",
+                client_id="abc123",
+                token_url="https://auth.com/token"
+                # Missing authorization_url
+            )
+
+        errors = exc_info.value.errors()
+        assert any("authorization_url is required" in str(e["ctx"]) for e in errors if "ctx" in e)
+
+    def test_client_credentials_with_empty_string_authorization_url(self):
+        """Test that client_credentials flow accepts empty string for authorization_url"""
+
+        request = CreateOAuthConnectionRequest(
+            connection_name="test",
+            oauth_flow_type="client_credentials",
+            client_id="abc123",
+            client_secret="secret",
+            authorization_url="",  # Empty string should be converted to None
+            token_url="https://auth.com/token"
+        )
+
+        assert request.oauth_flow_type == "client_credentials"
+        assert request.authorization_url is None  # Empty string converted to None
 
 
 class TestOAuthConnectionSummary:

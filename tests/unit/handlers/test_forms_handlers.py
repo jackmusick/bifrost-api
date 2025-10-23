@@ -1,6 +1,5 @@
 """Unit tests for forms_handlers module - validates workflow parameter business logic"""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from shared.handlers.forms_handlers import (

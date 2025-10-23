@@ -33,6 +33,7 @@ except Exception as e:
 logger.info("="*60 + "\n")
 
 # Now safe to import queue blueprints
+# ruff: noqa: E402
 from functions.http.branding import bp as branding_bp
 from functions.http.data_providers import bp as data_providers_bp
 from functions.http.discovery import bp as discovery_bp

@@ -49,7 +49,11 @@ class UserProvisioningResult:
         return roles
 
 
-def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
+def ensure_user_provisioned(
+    user_email: str,
+    entra_user_id: str | None = None,
+    display_name: str | None = None
+) -> UserProvisioningResult:
     """
     Ensure user exists in the system, creating if necessary.
 
@@ -61,8 +65,16 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
     2. Subsequent users → Match email domain to organization
     3. No domain match → Return None (user must be manually added)
 
+    Lookup Strategy (when entra_user_id provided):
+    1. Look up by Entra user ID first (stable identifier)
+    2. If found but email/name changed, update user profile
+    3. If not found, look up by email
+    4. If found by email but no Entra ID stored, backfill it
+
     Args:
         user_email: User's email address
+        entra_user_id: Azure AD user object ID (oid claim), if available
+        display_name: User's display name from auth provider
 
     Returns:
         UserProvisioningResult with user type, admin status, and org_id
@@ -73,16 +85,76 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
     if not user_email or "@" not in user_email:
         raise ValueError(f"Invalid email format: {user_email}")
 
-    logger.info(f"Processing user provisioning for {user_email}")
+    logger.info(f"Processing user provisioning for {user_email} (entra_id={entra_user_id})")
 
     user_repo = UserRepository()
 
-    # Check if user already exists
+    # Strategy 1: If we have Entra ID, look up by that first (most reliable)
+    if entra_user_id:
+        user = user_repo.get_user_by_entra_id(entra_user_id)
+
+        if user:
+            logger.info(f"Found user by Entra ID: {user.email}")
+
+            # Check if email or display name has changed
+            email_changed = user.email != user_email
+            name_changed = display_name and user.displayName != display_name
+
+            if email_changed or name_changed:
+                logger.info(
+                    f"User profile changed - email: {user.email} -> {user_email}, "
+                    f"name: {user.displayName} -> {display_name}"
+                )
+                updated_user = user_repo.update_user_profile(
+                    old_email=user.email,
+                    new_email=user_email,
+                    display_name=display_name or user.displayName
+                )
+                if updated_user:
+                    user = updated_user
+
+            # Update last login
+            try:
+                user_repo.update_last_login(user.email)
+            except Exception as e:
+                logger.warning(f"Failed to update last login for {user.email}: {e}")
+
+            # Get org_id if ORG user
+            org_id = None
+            if user.userType == UserType.ORG:
+                org_id = user_repo.get_user_org_id(user.email)
+                logger.info(f"Retrieved org_id for {user.email}: {org_id}")
+
+                # If ORG user has no org assignment, try to auto-provision by domain
+                if not org_id:
+                    logger.warning(
+                        f"ORG user {user.email} exists but has no org assignment. "
+                        f"Attempting domain-based auto-provisioning."
+                    )
+                    try:
+                        org_id = _provision_org_relationship_by_domain(user.email)
+                        logger.info(f"Auto-provisioned org relationship for {user.email} -> {org_id}")
+                    except ValueError as e:
+                        logger.error(f"Failed to auto-provision org relationship: {e}")
+                        raise
+
+            return UserProvisioningResult(
+                user_type=user.userType.value,
+                is_platform_admin=user.isPlatformAdmin,
+                org_id=org_id,
+                was_created=False,
+            )
+
+    # Strategy 2: Look up by email
     user = user_repo.get_user(user_email)
 
     if user:
-        # User exists - return current status
-        logger.info(f"Existing user: type={user.userType.value}, is_platform_admin={user.isPlatformAdmin}")
+        logger.info(f"Found user by email: {user_email}")
+
+        # If we have Entra ID but user doesn't, backfill it
+        if entra_user_id and not user.entraUserId:
+            logger.info(f"Backfilling Entra ID for {user_email}")
+            user_repo.update_user_entra_id(user_email, entra_user_id)
 
         # Update last login
         try:
@@ -103,15 +175,11 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
                     f"Attempting domain-based auto-provisioning."
                 )
                 try:
-                    # Try to match domain and create relationship
                     org_id = _provision_org_relationship_by_domain(user_email)
                     logger.info(f"Auto-provisioned org relationship for {user_email} -> {org_id}")
                 except ValueError as e:
                     logger.error(f"Failed to auto-provision org relationship: {e}")
-                    # Re-raise so caller knows provisioning failed
                     raise
-
-        logger.debug(f"User {user_email} already exists: type={user.userType.value}, org={org_id}")
 
         return UserProvisioningResult(
             user_type=user.userType.value,
@@ -129,13 +197,17 @@ def ensure_user_provisioned(user_email: str) -> UserProvisioningResult:
 
     if is_first_user:
         # First user in system - create as PlatformAdmin
-        return _create_first_platform_admin(user_email)
+        return _create_first_platform_admin(user_email, entra_user_id, display_name)
 
     # Not first user - try domain-based auto-provisioning
-    return _provision_user_by_domain(user_email)
+    return _provision_user_by_domain(user_email, entra_user_id, display_name)
 
 
-def _create_first_platform_admin(user_email: str) -> UserProvisioningResult:
+def _create_first_platform_admin(
+    user_email: str,
+    entra_user_id: str | None = None,
+    display_name: str | None = None
+) -> UserProvisioningResult:
     """Create the first user as a PlatformAdmin"""
     logger.info(f"First user login detected! Auto-promoting {user_email} to PlatformAdmin")
 
@@ -143,9 +215,10 @@ def _create_first_platform_admin(user_email: str) -> UserProvisioningResult:
 
     _ = user_repo.create_user(
         email=user_email,
-        display_name=user_email.split("@")[0],
+        display_name=display_name or user_email.split("@")[0],
         user_type=UserType.PLATFORM,
-        is_platform_admin=True
+        is_platform_admin=True,
+        entra_user_id=entra_user_id
     )
 
     logger.info(f"Successfully created first user as PlatformAdmin: {user_email}")
@@ -155,7 +228,11 @@ def _create_first_platform_admin(user_email: str) -> UserProvisioningResult:
     )
 
 
-def _provision_user_by_domain(user_email: str) -> UserProvisioningResult:
+def _provision_user_by_domain(
+    user_email: str,
+    entra_user_id: str | None = None,
+    display_name: str | None = None
+) -> UserProvisioningResult:
     """
     Attempt to provision user by matching email domain to organization.
 
@@ -184,9 +261,10 @@ def _provision_user_by_domain(user_email: str) -> UserProvisioningResult:
     user_repo = UserRepository()
     _ = user_repo.create_user(
         email=user_email,
-        display_name=user_email.split("@")[0],
+        display_name=display_name or user_email.split("@")[0],
         user_type=UserType.ORG,
-        is_platform_admin=False
+        is_platform_admin=False,
+        entra_user_id=entra_user_id
     )
 
     logger.info(f"Auto-created ORG user: {user_email}")

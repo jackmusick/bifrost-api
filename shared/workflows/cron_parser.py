@@ -166,7 +166,6 @@ def cron_to_human_readable(expression: str) -> str:
         minute, hour, day, month, dayofweek = parts
 
         # Build description based on patterns
-        descriptions = []
 
         # Check if it's every N minutes (must check BEFORE every minute)
         if minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dayofweek == "*":

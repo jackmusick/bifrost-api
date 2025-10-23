@@ -24,13 +24,14 @@ class TestExtractUserInfo:
             "identityProvider": "aad",
             "userId": "user-123",
             "userDetails": "user@example.com",
-            "claims": [],
+            "claims": [{"typ": "name", "val": "Test User"}],
         }
 
-        user_id, user_email = extract_user_info(request_body)
+        entra_id, user_email, display_name = extract_user_info(request_body)
 
-        assert user_id == "user-123"
+        assert entra_id == "user-123"
         assert user_email == "user@example.com"
+        assert display_name == "Test User"
 
     def test_handles_missing_userId(self):
         """Test extraction when userId is missing"""
@@ -40,10 +41,11 @@ class TestExtractUserInfo:
             "claims": [],
         }
 
-        user_id, user_email = extract_user_info(request_body)
+        entra_id, user_email, display_name = extract_user_info(request_body)
 
-        assert user_id is None
+        assert entra_id is None
         assert user_email == "user@example.com"
+        assert display_name is None
 
     def test_handles_missing_userDetails(self):
         """Test extraction when userDetails is missing"""
@@ -53,19 +55,21 @@ class TestExtractUserInfo:
             "claims": [],
         }
 
-        user_id, user_email = extract_user_info(request_body)
+        entra_id, user_email, display_name = extract_user_info(request_body)
 
-        assert user_id == "user-123"
+        assert entra_id == "user-123"
         assert user_email is None
+        assert display_name is None
 
     def test_handles_empty_request(self):
         """Test extraction from empty request body"""
         request_body: dict = {}
 
-        user_id, user_email = extract_user_info(request_body)
+        entra_id, user_email, display_name = extract_user_info(request_body)
 
-        assert user_id is None
+        assert entra_id is None
         assert user_email is None
+        assert display_name is None
 
     def test_handles_none_values(self):
         """Test extraction when userId and userDetails are None"""
@@ -76,10 +80,11 @@ class TestExtractUserInfo:
             "claims": [],
         }
 
-        user_id, user_email = extract_user_info(request_body)
+        entra_id, user_email, display_name = extract_user_info(request_body)
 
-        assert user_id is None
+        assert entra_id is None
         assert user_email is None
+        assert display_name is None
 
 
 class TestGetRolesForUser:
@@ -100,7 +105,7 @@ class TestGetRolesForUser:
         response = get_roles_for_user("admin@example.com")
 
         assert response["roles"] == ["authenticated", "PlatformAdmin"]
-        mock_provision.assert_called_once_with("admin@example.com")
+        mock_provision.assert_called_once_with("admin@example.com", None, None)
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_returns_org_user_roles(self, mock_provision):
@@ -117,7 +122,7 @@ class TestGetRolesForUser:
         response = get_roles_for_user("user@org.com")
 
         assert response["roles"] == ["authenticated", "OrgUser"]
-        mock_provision.assert_called_once_with("user@org.com")
+        mock_provision.assert_called_once_with("user@org.com", None, None)
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_raises_on_provisioning_failure(self, mock_provision):
@@ -128,7 +133,7 @@ class TestGetRolesForUser:
             get_roles_for_user("unknown@nomatch.com")
 
         assert "No matching domain found" in str(exc_info.value)
-        mock_provision.assert_called_once_with("unknown@nomatch.com")
+        mock_provision.assert_called_once_with("unknown@nomatch.com", None, None)
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_new_user_created_as_admin(self, mock_provision):
@@ -181,7 +186,7 @@ class TestHandleRolesSourceRequest:
         response = handle_roles_source_request(request_body)
 
         assert response["roles"] == ["authenticated", "PlatformAdmin"]
-        mock_get_roles.assert_called_once_with("user@example.com")
+        mock_get_roles.assert_called_once_with("user@example.com", "user-123", None)
 
     @patch("shared.handlers.roles_source_handlers.get_roles_for_user")
     def test_missing_userId_still_provisions_user(self, mock_get_roles):
@@ -198,7 +203,7 @@ class TestHandleRolesSourceRequest:
         response = handle_roles_source_request(request_body)
 
         assert response["roles"] == ["authenticated", "PlatformAdmin"]
-        mock_get_roles.assert_called_once_with("user@example.com")
+        mock_get_roles.assert_called_once_with("user@example.com", None, None)
 
     def test_missing_userDetails_returns_anonymous(self):
         """Test that missing userDetails returns anonymous role"""

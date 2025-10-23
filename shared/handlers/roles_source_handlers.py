@@ -27,22 +27,35 @@ class RolesSourceResponse(TypedDict):
     roles: list[str]
 
 
-def extract_user_info(request_body: dict) -> tuple[str | None, str | None]:
+def extract_user_info(request_body: dict) -> tuple[str | None, str | None, str | None]:
     """
-    Extract user ID and email from SWA request.
+    Extract user ID, email, and display name from SWA request.
 
     Args:
         request_body: Parsed JSON request body from SWA
 
     Returns:
-        tuple: (user_id, user_email) - either may be None if not provided
+        tuple: (entra_user_id, user_email, display_name) - any may be None if not provided
     """
-    user_id = request_body.get("userId")
+    entra_user_id = request_body.get("userId")
     user_email = request_body.get("userDetails")
-    return user_id, user_email
+
+    # Try to extract display name from claims if available
+    display_name = None
+    claims = request_body.get("claims", [])
+    for claim in claims:
+        if claim.get("typ") == "name":
+            display_name = claim.get("val")
+            break
+
+    return entra_user_id, user_email, display_name
 
 
-def get_roles_for_user(user_email: str) -> RolesSourceResponse:
+def get_roles_for_user(
+    user_email: str,
+    entra_user_id: str | None = None,
+    display_name: str | None = None
+) -> RolesSourceResponse:
     """
     Determine roles for a user through provisioning.
 
@@ -53,6 +66,8 @@ def get_roles_for_user(user_email: str) -> RolesSourceResponse:
 
     Args:
         user_email: User's email address from authentication provider
+        entra_user_id: Azure AD user object ID (oid claim), if available
+        display_name: User's display name from auth provider
 
     Returns:
         RolesSourceResponse: Dictionary with "roles" key containing list of role strings
@@ -60,11 +75,11 @@ def get_roles_for_user(user_email: str) -> RolesSourceResponse:
     Raises:
         ValueError: If user cannot be provisioned (e.g., no domain match)
     """
-    logger.info(f"Getting roles for user: {user_email}")
+    logger.info(f"Getting roles for user: {user_email} (entra_id={entra_user_id})")
 
     try:
         # Ensure user is provisioned (handles first user, domain-based join, etc.)
-        result = ensure_user_provisioned(user_email)
+        result = ensure_user_provisioned(user_email, entra_user_id, display_name)
 
         # Return roles based on provisioning result
         response: RolesSourceResponse = {"roles": result.roles}
@@ -110,7 +125,7 @@ def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
     logger.info("Handling roles source request from SWA")
 
     # Extract user information
-    user_id, user_email = extract_user_info(request_body)
+    entra_user_id, user_email, display_name = extract_user_info(request_body)
 
     if not user_email:
         logger.warning("No userDetails (email) provided in GetRoles request")
@@ -118,4 +133,4 @@ def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
         return {"roles": ["anonymous"]}
 
     # Get roles for the user
-    return get_roles_for_user(user_email)
+    return get_roles_for_user(user_email, entra_user_id, display_name)

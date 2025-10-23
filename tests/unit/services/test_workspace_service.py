@@ -24,7 +24,7 @@ class TestWorkspaceServiceInitialization:
                 path_instance.mkdir.return_value = None
                 mock_path.return_value = path_instance
 
-                service = WorkspaceService()
+                WorkspaceService()
 
                 # Path should be created
                 path_instance.mkdir.assert_called()
@@ -49,7 +49,7 @@ class TestWorkspaceServiceInitialization:
             path_instance.mkdir.return_value = None
             mock_path.return_value = path_instance
 
-            service = WorkspaceService("/workspace")
+            WorkspaceService("/workspace")
 
             # mkdir should be called with parents=True, exist_ok=True
             path_instance.mkdir.assert_called()
@@ -404,7 +404,7 @@ class TestWorkspaceServiceIntegration:
             workspace.__truediv__.return_value = MagicMock()
             mock_path.return_value = workspace
 
-            service = WorkspaceService()
+            WorkspaceService()
 
             # 1. Create directory
             dir_path = workspace / "workflows"

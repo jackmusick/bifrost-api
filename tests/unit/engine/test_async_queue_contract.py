@@ -7,7 +7,7 @@ without depending on actual Azure Queue Storage infrastructure.
 
 import json
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.request_context import RequestContext
@@ -100,7 +100,7 @@ class TestQueueMessageCreation:
             is_function_key=False
         )
 
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=context,
             workflow_name="test_workflow",
             parameters={"test": "data"},
@@ -145,7 +145,7 @@ class TestQueueMessageCreation:
         )
 
         # Execute with form_id
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=context,
             workflow_name="test_workflow",
             parameters={"data": "value"},
@@ -187,7 +187,7 @@ class TestQueueMessageCreation:
         )
 
         # Execute with empty parameters
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=context,
             workflow_name="test_workflow",
             parameters={}

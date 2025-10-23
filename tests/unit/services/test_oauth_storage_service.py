@@ -567,6 +567,100 @@ class TestOAuthStorageServiceIntegration:
         assert mock_table_service.upsert_entity.call_count >= 2  # One for oauth_response, one for metadata
 
     @pytest.mark.asyncio
+    async def test_store_tokens_reuses_existing_secret_name(self, mock_table_service, mock_keyvault_client):
+        """Should reuse existing secret name when updating tokens (creates new version)"""
+        service = OAuthStorageService()
+
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+        existing_secret_name = "bifrost-org-123-oauth-github-response-existing-uuid"
+
+        # Mock existing oauth_response config with secret reference
+        # Now there are TWO get_entity calls: one for oauth_response config, one for metadata
+        mock_table_service.get_entity.side_effect = [
+            # First call: check for existing oauth_response config (line 490)
+            {
+                "PartitionKey": "org-123",
+                "RowKey": "config:oauth_github_oauth_response",
+                "Value": existing_secret_name,
+                "Type": "secret_ref"
+            },
+            # Second call: get metadata (line 532)
+            {
+                "PartitionKey": "org-123",
+                "RowKey": "config:oauth_github_metadata",
+                "Value": json.dumps({
+                    "oauth_flow_type": "authorization_code",
+                    "status": "completed"
+                }),
+                "Type": "json"
+            }
+        ]
+
+        result = await service.store_tokens(
+            "org-123",
+            "github",
+            "new_access_token",
+            "new_refresh_token",
+            expires_at
+        )
+
+        assert result is True
+
+        # Verify that set_secret was called with the EXISTING secret name (not a new UUID)
+        kv_instance = mock_keyvault_client.return_value
+        kv_instance._client.set_secret.assert_called_once()
+        call_args = kv_instance._client.set_secret.call_args
+        secret_name_used = call_args[0][0]
+        assert secret_name_used == existing_secret_name, "Should reuse existing secret name"
+
+        # Verify the secret value contains the new tokens
+        secret_value = call_args[0][1]
+        token_data = json.loads(secret_value)
+        assert token_data["access_token"] == "new_access_token"
+        assert token_data["refresh_token"] == "new_refresh_token"
+
+    @pytest.mark.asyncio
+    async def test_store_tokens_creates_new_secret_when_no_existing(self, mock_table_service, mock_keyvault_client):
+        """Should create new secret name when no existing oauth_response config"""
+        service = OAuthStorageService()
+
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+
+        # Mock no existing oauth_response config, but existing metadata
+        # First call: check for existing oauth_response config (raises - caught in try/except at line 490)
+        # Second call: get metadata (line 532) - should return valid metadata
+        mock_table_service.get_entity.side_effect = [
+            Exception("Entity not found"),  # First call: no existing oauth_response
+            {  # Second call: metadata exists
+                "PartitionKey": "org-123",
+                "RowKey": "config:oauth_github_metadata",
+                "Value": json.dumps({
+                    "oauth_flow_type": "authorization_code",
+                    "status": "pending"
+                }),
+                "Type": "json"
+            }
+        ]
+
+        result = await service.store_tokens(
+            "org-123",
+            "github",
+            "access_token_123",
+            "refresh_token_456",
+            expires_at
+        )
+
+        assert result is True
+
+        # Verify that set_secret was called with a NEW bifrost-formatted secret name
+        kv_instance = mock_keyvault_client.return_value
+        kv_instance._client.set_secret.assert_called_once()
+        call_args = kv_instance._client.set_secret.call_args
+        secret_name_used = call_args[0][0]
+        assert secret_name_used.startswith("bifrost-org-123-oauth-github-response-")
+        assert len(secret_name_used.split('-')) >= 8  # Should have UUID components
+
+    @pytest.mark.asyncio
     async def test_update_connection_not_found(self, mock_table_service):
         """Should return None when updating non-existent connection"""
         service = OAuthStorageService()

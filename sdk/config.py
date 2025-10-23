@@ -43,7 +43,6 @@ class config:
             >>> other_url = config.get("api_url", org_id="other-org")
         """
         context = get_context()
-        target_org = org_id or context.org_id
 
         repo = ConfigRepository(context)
 
@@ -77,7 +76,6 @@ class config:
             >>> config.set("api_url", "https://other.example.com", org_id="other-org")
         """
         context = get_context()
-        target_org = org_id or context.org_id
 
         repo = ConfigRepository(context)
 
@@ -128,7 +126,6 @@ class config:
             ...     print(f"{key}: {value}")
         """
         context = get_context()
-        target_org = org_id or context.org_id
 
         repo = ConfigRepository(context)
 
@@ -177,7 +174,6 @@ class config:
             >>> config.delete("old_api_url")
         """
         context = get_context()
-        target_org = org_id or context.org_id
 
         repo = ConfigRepository(context)
         return repo.delete_config(key)

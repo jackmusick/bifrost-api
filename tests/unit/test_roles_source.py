@@ -46,7 +46,7 @@ class TestGetRoles:
         assert "PlatformAdmin" in body["roles"]
 
         # Verify provisioning was called
-        mock_provision.assert_called_once_with("admin@example.com")
+        mock_provision.assert_called_once_with("admin@example.com", "admin-id-456", None)
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
     def test_org_user(self, mock_provision):

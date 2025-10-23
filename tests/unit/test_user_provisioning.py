@@ -92,6 +92,7 @@ class TestEnsureUserProvisioned:
         mock_user_repo_class.return_value = mock_user_repo
 
         # Mock user doesn't exist
+        mock_user_repo.get_user_by_entra_id.return_value = None
         mock_user_repo.get_user.return_value = None
 
         # Mock has_any_users returns False (no users exist)
@@ -110,7 +111,7 @@ class TestEnsureUserProvisioned:
         assert result.user_type == "PLATFORM"
         assert result.is_platform_admin is True
         assert result.was_created is True
-        mock_create_first.assert_called_once_with("first@example.com")
+        mock_create_first.assert_called_once_with("first@example.com", None, None)
 
     @patch("shared.user_provisioning._provision_user_by_domain")
     @patch("shared.user_provisioning.UserRepository")
@@ -120,6 +121,7 @@ class TestEnsureUserProvisioned:
         mock_user_repo_class.return_value = mock_user_repo
 
         # Mock user doesn't exist
+        mock_user_repo.get_user_by_entra_id.return_value = None
         mock_user_repo.get_user.return_value = None
 
         # Mock has_any_users returns True (users exist)
@@ -135,7 +137,7 @@ class TestEnsureUserProvisioned:
         assert result.user_type == "ORG"
         assert result.org_id == "org-456"
         assert result.was_created is True
-        mock_provision.assert_called_once_with("newuser@company.com")
+        mock_provision.assert_called_once_with("newuser@company.com", None, None)
 
     def test_invalid_email_format(self):
         """Invalid email raises ValueError"""
@@ -222,7 +224,8 @@ class TestCreateFirstPlatformAdmin:
             email="first@example.com",
             display_name="first",
             user_type=UserType.PLATFORM,
-            is_platform_admin=True
+            is_platform_admin=True,
+            entra_user_id=None
         )
 
 
@@ -285,7 +288,8 @@ class TestProvisionUserByDomain:
             email="newuser@company.com",
             display_name="newuser",
             user_type=UserType.ORG,
-            is_platform_admin=False
+            is_platform_admin=False,
+            entra_user_id=None
         )
 
         # Verify relationship was created
@@ -361,7 +365,8 @@ class TestProvisionUserByDomain:
             email="user@company.com",
             display_name="user",
             user_type=UserType.ORG,
-            is_platform_admin=False
+            is_platform_admin=False,
+            entra_user_id=None
         )
 
 

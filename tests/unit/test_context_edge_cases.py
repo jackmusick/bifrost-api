@@ -105,7 +105,7 @@ class TestContextCreationEdgeCases:
         assert context1.scope == "org-123"
 
         # Regular user with GLOBAL attempted
-        context2 = RequestContext(
+        RequestContext(
             user_id="user@example.com",
             email="user@example.com",
             name="User",
@@ -392,7 +392,7 @@ class TestOrganizationContext:
             name="User"
         )
 
-        context = OrganizationContext(
+        OrganizationContext(
             org=org,
             config=config,
             caller=caller,
@@ -466,7 +466,7 @@ class TestContextFromHttpRequest:
 
     def test_extract_org_id_case_insensitive(self):
         """Should handle case variations in header name"""
-        request = Mock(spec=func.HttpRequest)
+        Mock(spec=func.HttpRequest)
 
         # Try different case variations
         headers_variants = [

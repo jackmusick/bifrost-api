@@ -133,15 +133,17 @@ class TestSetConfigRequest:
         assert any(e["loc"] == ("key",) and e["type"] == "missing" for e in errors)
 
     def test_missing_required_value(self):
-        """Test that value is required"""
+        """Test that value is required for non-secret types"""
         with pytest.raises(ValidationError) as exc_info:
             SetConfigRequest(
                 key="test_key",
                 type=ConfigType.STRING
+                # No value or secretRef provided
             )
 
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("value",) and e["type"] == "missing" for e in errors)
+        # Should get validation error about missing value
+        assert any("value" in str(e) for e in errors)
 
     def test_missing_required_type(self):
         """Test that type is required"""
@@ -165,6 +167,60 @@ class TestSetConfigRequest:
 
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("type",) for e in errors)
+
+    def test_secret_ref_requires_value_or_secret_ref(self):
+        """Test that secret_ref type requires either value or secretRef"""
+        # Missing both should fail
+        with pytest.raises(ValidationError) as exc_info:
+            SetConfigRequest(
+                key="test_key",
+                type=ConfigType.SECRET_REF
+            )
+        errors = exc_info.value.errors()
+        assert any("value" in str(e) or "secretRef" in str(e) for e in errors)
+
+    def test_secret_ref_with_value(self):
+        """Test that secret_ref accepts value (to create secret)"""
+        config = SetConfigRequest(
+            key="test_key",
+            value="my-secret-value",
+            type=ConfigType.SECRET_REF
+        )
+        assert config.value == "my-secret-value"
+        assert config.secretRef is None
+
+    def test_secret_ref_with_secret_ref(self):
+        """Test that secret_ref accepts secretRef (to reference existing)"""
+        config = SetConfigRequest(
+            key="test_key",
+            secretRef="bifrost-global-api-key-12345678-1234-1234-1234-123456789012",
+            type=ConfigType.SECRET_REF
+        )
+        assert config.secretRef == "bifrost-global-api-key-12345678-1234-1234-1234-123456789012"
+        assert config.value is None
+
+    def test_secret_ref_cannot_have_both(self):
+        """Test that secret_ref cannot have both value and secretRef"""
+        with pytest.raises(ValidationError) as exc_info:
+            SetConfigRequest(
+                key="test_key",
+                value="my-secret",
+                secretRef="bifrost-global-api-key-12345678-1234-1234-1234-123456789012",
+                type=ConfigType.SECRET_REF
+            )
+        errors = exc_info.value.errors()
+        assert any("both" in str(e).lower() for e in errors)
+
+    def test_non_secret_type_forbids_secret_ref(self):
+        """Test that non-secret types cannot use secretRef"""
+        with pytest.raises(ValidationError) as exc_info:
+            SetConfigRequest(
+                key="test_key",
+                secretRef="some-secret-name",
+                type=ConfigType.STRING
+            )
+        errors = exc_info.value.errors()
+        assert any("secretRef" in str(e) for e in errors)
 
 
 class TestConfigResponse:

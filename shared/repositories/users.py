@@ -65,12 +65,40 @@ class UserRepository(BaseRepository):
 
         return None
 
+    def get_user_by_entra_id(self, entra_user_id: str) -> User | None:
+        """
+        Get user by Entra (Azure AD) user ID
+
+        This performs a partition scan, so it's slower than lookup by email.
+        Use this for initial authentication when only the Entra ID is known.
+
+        Args:
+            entra_user_id: Azure AD user object ID (oid claim)
+
+        Returns:
+            User model or None if not found
+        """
+        query_filter = (
+            f"PartitionKey eq 'GLOBAL' and "
+            f"RowKey ge 'user:' and "
+            f"RowKey lt 'user;' and "
+            f"EntraUserId eq '{entra_user_id}'"
+        )
+
+        entities = list(self._service.query_entities(query_filter))
+
+        if entities:
+            return self._entity_to_model(entities[0])
+
+        return None
+
     def create_user(
         self,
         email: str,
         display_name: str,
         user_type: UserType,
-        is_platform_admin: bool = False
+        is_platform_admin: bool = False,
+        entra_user_id: str | None = None
     ) -> User:
         """
         Create new user
@@ -80,6 +108,7 @@ class UserRepository(BaseRepository):
             display_name: Display name
             user_type: PLATFORM or ORG
             is_platform_admin: Whether user is platform admin
+            entra_user_id: Azure AD user object ID (oid claim)
 
         Returns:
             Created User model
@@ -98,9 +127,14 @@ class UserRepository(BaseRepository):
             "LastLogin": now.isoformat(),
         }
 
+        # Add entra_user_id if provided
+        if entra_user_id:
+            user_entity["EntraUserId"] = entra_user_id
+            user_entity["LastEntraIdSync"] = now.isoformat()
+
         self.insert(user_entity)
 
-        logger.info(f"Created user {email} (type={user_type}, admin={is_platform_admin})")
+        logger.info(f"Created user {email} (type={user_type}, admin={is_platform_admin}, entra_id={entra_user_id})")
 
         return self._entity_to_model(user_entity)
 
@@ -116,6 +150,94 @@ class UserRepository(BaseRepository):
         if entity:
             entity["LastLogin"] = datetime.utcnow().isoformat()
             self.update(entity)
+
+    def update_user_entra_id(self, email: str, entra_user_id: str) -> None:
+        """
+        Backfill Entra user ID for existing user
+
+        This is called when we match a user by email but they don't have
+        an Entra ID stored yet.
+
+        Args:
+            email: User email
+            entra_user_id: Azure AD user object ID (oid claim)
+        """
+        entity = self.get_by_id("GLOBAL", f"user:{email}")
+
+        if entity:
+            now = datetime.utcnow()
+            entity["EntraUserId"] = entra_user_id
+            entity["LastEntraIdSync"] = now.isoformat()
+            self.update(entity)
+            logger.info(f"Backfilled Entra ID for {email}: {entra_user_id}")
+
+    def update_user_profile(self, old_email: str, new_email: str, display_name: str) -> User | None:
+        """
+        Update user's email and display name
+
+        This is called when we match a user by Entra ID but their email/name has changed.
+        Note: This involves deleting and recreating the entity because email is part of RowKey.
+
+        Args:
+            old_email: Current email (used for lookup)
+            new_email: New email address
+            display_name: New display name
+
+        Returns:
+            Updated User model or None if user not found
+        """
+        entity = self.get_by_id("GLOBAL", f"user:{old_email}")
+
+        if not entity:
+            logger.warning(f"Cannot update profile: user {old_email} not found")
+            return None
+
+        # If email hasn't changed, just update display name
+        if old_email == new_email:
+            entity["DisplayName"] = display_name
+            entity["LastEntraIdSync"] = datetime.utcnow().isoformat()
+            self.update(entity)
+            logger.info(f"Updated display name for {old_email} to {display_name}")
+            return self._entity_to_model(entity)
+
+        # Email changed - need to delete old and create new
+        # (because email is part of RowKey)
+        logger.info(f"Email changed from {old_email} to {new_email}, migrating user entity")
+
+        # Create new entity with updated email
+        new_entity = {
+            "PartitionKey": "GLOBAL",
+            "RowKey": f"user:{new_email}",
+            "Email": new_email,
+            "DisplayName": display_name,
+            "UserType": entity.get("UserType"),
+            "IsPlatformAdmin": entity.get("IsPlatformAdmin", False),
+            "IsActive": entity.get("IsActive", True),
+            "CreatedAt": entity.get("CreatedAt"),
+            "LastLogin": datetime.utcnow().isoformat(),
+            "EntraUserId": entity.get("EntraUserId"),
+            "LastEntraIdSync": datetime.utcnow().isoformat(),
+        }
+
+        # Insert new entity
+        self.insert(new_entity)
+
+        # Delete old entity
+        self._service.delete_entity("GLOBAL", f"user:{old_email}")
+
+        logger.info(f"Migrated user from {old_email} to {new_email}")
+
+        # Update relationships if this is an ORG user
+        org_id = self.get_user_org_id(old_email)
+        if org_id:
+            logger.info(f"Updating org relationships for migrated user {old_email} -> {new_email}")
+            # Delete old relationships
+            self.relationships_service.delete_entity("GLOBAL", f"userperm:{old_email}:{org_id}")
+            self.relationships_service.delete_entity("GLOBAL", f"orgperm:{org_id}:{old_email}")
+            # Create new relationships
+            self.assign_user_to_org(new_email, org_id, "system")
+
+        return self._entity_to_model(new_entity)
 
     def get_user_org_id(self, email: str) -> str | None:
         """
@@ -245,6 +367,7 @@ class UserRepository(BaseRepository):
         # Parse datetime fields
         created_at = self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow())
         last_login = self._parse_datetime(entity.get("LastLogin"), None)
+        last_entra_id_sync = self._parse_datetime(entity.get("LastEntraIdSync"), None)
 
         return User(
             id=cast(str, entity.get("Email", "")),  # User ID is email
@@ -254,5 +377,7 @@ class UserRepository(BaseRepository):
             isPlatformAdmin=entity.get("IsPlatformAdmin", False),
             isActive=entity.get("IsActive", True),
             lastLogin=last_login,
-            createdAt=created_at,
+            createdAt=created_at or datetime.utcnow(),  # Fallback to now if None
+            entraUserId=entity.get("EntraUserId"),
+            lastEntraIdSync=last_entra_id_sync,
         )

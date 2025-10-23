@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ==================== PUBLIC API ====================
 # All models exported for OpenAPI spec generation
@@ -281,9 +281,32 @@ class Config(BaseModel):
 class SetConfigRequest(BaseModel):
     """Request model for setting config"""
     key: str = Field(..., pattern=r"^[a-zA-Z0-9_]+$")
-    value: str
+    value: str | None = Field(None, description="Config value (for non-secret types) or raw secret value to create/update in Key Vault")
+    secretRef: str | None = Field(None, description="Reference to existing Key Vault secret (for secret_ref type only)")
     type: ConfigType
-    description: str | None = None
+    description: str | None = Field(None, description="Optional description of this config entry")
+
+    @model_validator(mode='after')
+    def validate_value_or_secret_ref(self):
+        """Ensure exactly one of value or secretRef is provided for secret_ref type"""
+        value = self.value
+        secret_ref = self.secretRef
+        config_type = self.type
+
+        # For secret_ref type, require exactly one of value or secretRef
+        if config_type == ConfigType.SECRET_REF:
+            if value and secret_ref:
+                raise ValueError("Cannot specify both 'value' and 'secretRef' for secret_ref type")
+            if not value and not secret_ref:
+                raise ValueError("Must specify either 'value' (to create/update secret) or 'secretRef' (to reference existing secret) for secret_ref type")
+        else:
+            # For non-secret types, require value and forbid secretRef
+            if not value:
+                raise ValueError(f"'value' is required for type '{config_type.value}'")
+            if secret_ref:
+                raise ValueError(f"'secretRef' can only be used with type 'secret_ref', not '{config_type.value}'")
+
+        return self
 
 
 # ==================== INTEGRATION CONFIG MODELS ====================
@@ -1287,20 +1310,12 @@ class CreateOAuthConnectionRequest(BaseModel):
     )
     client_secret: str | None = Field(
         None,
-        description="OAuth client secret (optional for PKCE flow, will be stored securely in Key Vault)"
+        description="OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)"
     )
-
-    @classmethod
-    def model_validate(cls, obj):
-        # Convert empty string to None for optional fields
-        if isinstance(obj, dict):
-            if obj.get('client_secret') == '':
-                obj['client_secret'] = None
-        return super().model_validate(obj)
-    authorization_url: str = Field(
-        ...,
+    authorization_url: str | None = Field(
+        None,
         pattern=r"^https://",
-        description="OAuth authorization endpoint URL (must be HTTPS)"
+        description="OAuth authorization endpoint URL (required for authorization_code, not used for client_credentials)"
     )
     token_url: str = Field(
         ...,
@@ -1311,6 +1326,44 @@ class CreateOAuthConnectionRequest(BaseModel):
         default="",
         description="Comma-separated list of OAuth scopes to request"
     )
+
+    @classmethod
+    def model_validate(cls, obj):
+        # Convert empty string to None for optional fields
+        if isinstance(obj, dict):
+            if obj.get('client_secret') == '':
+                obj['client_secret'] = None
+            if obj.get('authorization_url') == '' or obj.get('authorization_url') is None:
+                obj['authorization_url'] = None
+        return super().model_validate(obj)
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_strings(cls, data):
+        """Convert empty strings to None for optional fields before validation"""
+        if isinstance(data, dict):
+            if data.get('client_secret') == '':
+                data['client_secret'] = None
+            if data.get('authorization_url') == '':
+                data['authorization_url'] = None
+        return data
+
+    @model_validator(mode='after')
+    def validate_flow_requirements(self) -> 'CreateOAuthConnectionRequest':
+        """Validate field requirements based on OAuth flow type"""
+        if self.oauth_flow_type == 'client_credentials':
+            # Client credentials: requires client_secret, doesn't need authorization_url
+            if not self.client_secret:
+                raise ValueError("client_secret is required for client_credentials flow")
+            # Authorization URL is not used in client_credentials flow
+            # We'll just ignore it if provided, or use a placeholder if needed
+
+        elif self.oauth_flow_type == 'authorization_code':
+            # Authorization code: requires authorization_url, client_secret is optional (PKCE)
+            if not self.authorization_url:
+                raise ValueError("authorization_url is required for authorization_code flow")
+
+        return self
 
 
 class UpdateOAuthConnectionRequest(BaseModel):
@@ -1364,7 +1417,10 @@ class OAuthConnectionDetail(BaseModel):
         ...,
         description="OAuth client ID (safe to expose)"
     )
-    authorization_url: str
+    authorization_url: str | None = Field(
+        None,
+        description="OAuth authorization endpoint (required for authorization_code, not used for client_credentials)"
+    )
     token_url: str
     scopes: str
     redirect_uri: str = Field(
@@ -1418,7 +1474,11 @@ class OAuthConnection(BaseModel):
         ...,
         description="Reference to OAuth response in Config table (oauth_{name}_oauth_response)"
     )
-    authorization_url: str = Field(..., pattern=r"^https://")
+    authorization_url: str | None = Field(
+        None,
+        pattern=r"^https://",
+        description="OAuth authorization endpoint (required for authorization_code, not used for client_credentials)"
+    )
     token_url: str = Field(..., pattern=r"^https://")
     scopes: str = ""
     redirect_uri: str = Field(

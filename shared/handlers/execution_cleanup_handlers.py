@@ -5,11 +5,10 @@ Business logic for stuck execution cleanup operations
 
 import json
 import logging
-from datetime import datetime
 
 import azure.functions as func
 
-from shared.execution_logger import ExecutionLogger, get_execution_logger
+from shared.execution_logger import ExecutionLogger
 from shared.models import ExecutionStatus
 from shared.repositories.executions import ExecutionRepository
 from shared.request_context import RequestContext

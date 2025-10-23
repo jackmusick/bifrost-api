@@ -337,16 +337,20 @@ class KeyVaultClient:
     @staticmethod
     def _build_secret_name(org_id: str, secret_key: str) -> str:
         """
-        Build Key Vault secret name following naming convention.
+        Build Key Vault secret name following LEGACY naming convention.
 
-        Format: {org_id}--{secret-key}
+        DEPRECATED: This method supports the legacy format for backward compatibility.
+        New secrets should use the bifrost_{scope}_{name}_{uuid} convention
+        via shared.secret_naming.generate_secret_name().
+
+        Legacy Format: {org_id}--{secret-key}
 
         Args:
             org_id: Organization identifier or "GLOBAL"
             secret_key: Secret key/name
 
         Returns:
-            Formatted secret name
+            Formatted secret name (legacy format)
         """
         return f"{org_id}--{secret_key}"
 

@@ -218,7 +218,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
                 # Don't trust the stored value as it may be from before rounding was added
                 if "NextRunAt" in schedule_state:
                     try:
-                        stored_next_run = datetime.fromisoformat(schedule_state["NextRunAt"])
+                        datetime.fromisoformat(schedule_state["NextRunAt"])
                         # Recalculate from the CRON expression to ensure proper rounding
                         next_run_at = calculate_next_run(cron_expression, datetime.utcnow()).replace(tzinfo=timezone.utc)
                     except (ValueError, TypeError):

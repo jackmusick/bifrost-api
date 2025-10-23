@@ -38,11 +38,6 @@ class TestPlatformAdminMiddleware:
 
     def test_load_org_context_non_admin_without_org_id(self):
         """Non-admin without org_id should fail"""
-        principal = {
-            "userId": "user@example.com",
-            "userDetails": "user@example.com",
-            "userRoles": ["Contributor"]
-        }
 
         request = Mock(spec=func.HttpRequest)
         request.headers = {}
@@ -52,11 +47,6 @@ class TestPlatformAdminMiddleware:
     @pytest.mark.asyncio
     async def test_org_context_missing_required_org(self):
         """Should fail when org_id required but not provided"""
-        principal = {
-            "userId": "user@example.com",
-            "userDetails": "user@example.com",
-            "userRoles": ["Contributor"]
-        }
 
         request = Mock(spec=func.HttpRequest)
         request.headers = {}
@@ -71,21 +61,11 @@ class TestOrgAccessMiddleware:
     def test_user_restricted_to_own_org(self):
         """Regular user should be restricted to their organization"""
         # User principal for org-123
-        principal = {
-            "userId": "user@example.com",
-            "userDetails": "user@example.com",
-            "userRoles": ["Contributor"]
-        }
 
         # This validates the access control logic exists
 
     def test_platform_admin_can_override_org(self):
         """Platform admin can specify any org_id"""
-        principal = {
-            "userId": "admin@example.com",
-            "userDetails": "admin@example.com",
-            "userRoles": ["PlatformAdmin"]
-        }
 
         # Platform admin should be allowed to set org_id header
         # This validates admin override capability
@@ -264,14 +244,12 @@ class TestOrganizationContextLoading:
 
     def test_org_context_org_not_found(self):
         """Should raise error for nonexistent org"""
-        org_id = "nonexistent-org"
         # Test structure validates error handling
         mock_result = None
         assert mock_result is None
 
     def test_org_context_inactive_org(self):
         """Should reject inactive organization"""
-        org_id = "org-inactive"
         # Test structure validates inactive org handling
         is_active = False
         assert is_active is False

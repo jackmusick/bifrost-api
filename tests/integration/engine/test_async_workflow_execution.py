@@ -214,7 +214,7 @@ class TestAsyncWorkflowLifecycle:
         assert len(execution_id) > 0
 
         # Verify execution record was created with PENDING status
-        exec_logger = get_execution_logger()
+        get_execution_logger()
 
         # Wait a moment for async operation to complete
         await asyncio.sleep(0.2)
@@ -254,7 +254,7 @@ class TestAsyncWorkflowLifecycle:
             return {"sum": result, "org": context.org_id}
 
         # Enqueue workflow
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="worker_test_workflow",
             parameters={"x": 10, "y": 32}
@@ -311,7 +311,7 @@ class TestAsyncWorkflowLifecycle:
             }
 
         # Enqueue workflow
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="context_test_workflow",
             parameters={"action": "test_action"}
@@ -354,7 +354,7 @@ class TestAsyncWorkflowLifecycle:
             return {"success": True}
 
         # Enqueue failing workflow
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="failing_workflow",
             parameters={"should_fail": True}
@@ -396,7 +396,7 @@ class TestAsyncWorkflowLifecycle:
             }
 
         # Enqueue workflow
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="result_test_workflow",
             parameters={"items": 5}
@@ -439,7 +439,7 @@ class TestAsyncWorkflowLifecycle:
             }
 
         # Enqueue with string parameters (should be coerced)
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="typed_workflow",
             parameters={
@@ -632,7 +632,7 @@ class TestAsyncWorkflowStatusTransitions:
             )
 
         # Enqueue workflow
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="error_detail_test",
             parameters={}
@@ -676,7 +676,7 @@ class TestAsyncWorkflowStatusTransitions:
             return {"completed": True, "duration_seconds": duration}
 
         # Enqueue workflow
-        execution_id = await enqueue_workflow_execution(
+        await enqueue_workflow_execution(
             context=request_context,
             workflow_name="duration_test",
             parameters={}
