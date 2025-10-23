@@ -29,7 +29,7 @@ cleanup
 # Start Azurite on test ports (in-memory)
 echo "Starting Azurite on test ports (10100-10102)..."
 npx azurite --blobPort 10100 --queuePort 10101 --tablePort 10102 --inMemoryPersistence --silent &
-sleep 2
+sleep 15
 
 # Start func on port 7777 with test connection string
 echo "Starting func on port 7777..."
@@ -72,7 +72,7 @@ if [ "$READY" = false ]; then
 fi
 
 echo "Giving the queue a few more seconds..."
-sleep 15
+sleep 10
 
 # Run pytest with or without coverage
 if [ "$COVERAGE" = true ]; then
