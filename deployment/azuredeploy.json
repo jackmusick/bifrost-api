@@ -255,11 +255,11 @@
                         }
                     ],
                     "azureStorageAccounts": {
-                        "workspaces": {
+                        "home": {
                             "type": "AzureFiles",
                             "accountName": "[variables('storageAccountName')]",
                             "shareName": "workspaces",
-                            "mountPath": "/workspace",
+                            "mountPath": "/home",
                             "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value]"
                         },
                         "tmp": {

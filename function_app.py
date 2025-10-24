@@ -37,6 +37,7 @@ logger.info("="*60 + "\n")
 from functions.http.branding import bp as branding_bp
 from functions.http.data_providers import bp as data_providers_bp
 from functions.http.discovery import bp as discovery_bp
+from functions.http.editor_files import bp as editor_files_bp
 from functions.http.endpoints import bp as endpoints_bp
 from functions.http.executions import bp as executions_bp
 from functions.http.execution_cleanup import bp as execution_cleanup_http_bp
@@ -286,6 +287,7 @@ app.register_functions(secrets_bp)  # Secret management endpoints
 app.register_functions(health_bp)  # Health monitoring endpoints
 app.register_functions(metrics_bp)  # System metrics endpoints
 app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
+app.register_functions(editor_files_bp)  # Browser-based code editor file operations
 
 if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
     app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer

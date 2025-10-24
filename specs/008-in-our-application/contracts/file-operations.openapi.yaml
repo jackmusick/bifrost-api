@@ -1,0 +1,486 @@
+openapi: 3.0.3
+info:
+  title: Editor File Operations API
+  description: File system operations for the browser-based code editor
+  version: 1.0.0
+
+servers:
+  - url: /api/editor
+
+paths:
+  /files:
+    get:
+      summary: List files and folders in a directory
+      description: Returns a list of files and folders within the specified directory path
+      operationId: listFiles
+      tags:
+        - File Operations
+      parameters:
+        - name: path
+          in: query
+          description: Directory path relative to /home/repo (empty for root)
+          required: false
+          schema:
+            type: string
+            default: ""
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of files and folders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                    description: Directory path that was listed
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FileMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Create a new file or folder
+      description: Creates a new file or folder at the specified path
+      operationId: createFile
+      tags:
+        - File Operations
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+                - type
+              properties:
+                path:
+                  type: string
+                  description: Path for the new file/folder
+                  example: "workflows/new_workflow.py"
+                type:
+                  type: string
+                  enum: [file, folder]
+                  description: Type of item to create
+                content:
+                  type: string
+                  description: Initial content (for files only)
+                  default: ""
+      responses:
+        '201':
+          description: File or folder created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: File or folder already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /files/content:
+    get:
+      summary: Read file content
+      description: Returns the content of the specified file
+      operationId: readFile
+      tags:
+        - File Operations
+      parameters:
+        - name: path
+          in: query
+          description: File path relative to /home/repo
+          required: true
+          schema:
+            type: string
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileContentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: File too large (>10MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Write file content
+      description: Writes content to the specified file (creates if doesn't exist)
+      operationId: writeFile
+      tags:
+        - File Operations
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileContentRequest'
+      responses:
+        '200':
+          description: File written successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileContentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: File modified externally (ETag mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File too large (>10MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /files/delete:
+    post:
+      summary: Delete file or folder
+      description: Deletes the specified file or folder (folders must be empty)
+      operationId: deleteFile
+      tags:
+        - File Operations
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+              properties:
+                path:
+                  type: string
+                  description: Path to file/folder to delete
+                recursive:
+                  type: boolean
+                  description: Delete folder and all contents
+                  default: false
+      responses:
+        '204':
+          description: File or folder deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Folder not empty and recursive=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /files/rename:
+    post:
+      summary: Rename file or folder
+      description: Renames the specified file or folder
+      operationId: renameFile
+      tags:
+        - File Operations
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newName
+              properties:
+                oldPath:
+                  type: string
+                  description: Current path of file/folder
+                  example: "workflows/old_name.py"
+                newName:
+                  type: string
+                  description: New name (not full path, just name)
+                  example: "new_name.py"
+      responses:
+        '200':
+          description: File or folder renamed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: File with new name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /files/move:
+    post:
+      summary: Move file or folder
+      description: Moves the specified file or folder to a new location
+      operationId: moveFile
+      tags:
+        - File Operations
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourcePath
+                - targetPath
+              properties:
+                sourcePath:
+                  type: string
+                  description: Current path of file/folder
+                  example: "workflows/sync.py"
+                targetPath:
+                  type: string
+                  description: Target directory path (not including filename)
+                  example: "workflows/user_management"
+      responses:
+        '200':
+          description: File or folder moved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: File already exists at target or circular move detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    FileMetadata:
+      type: object
+      required:
+        - path
+        - name
+        - type
+        - modified
+        - isReadOnly
+      properties:
+        path:
+          type: string
+          description: Relative path from /home/repo
+          example: "workflows/sync_users.py"
+        name:
+          type: string
+          description: File or folder name
+          example: "sync_users.py"
+        type:
+          type: string
+          enum: [file, folder]
+          description: Item type
+        size:
+          type: integer
+          nullable: true
+          description: Size in bytes (null for folders)
+          example: 4096
+        extension:
+          type: string
+          nullable: true
+          description: File extension (null for folders)
+          example: ".py"
+        modified:
+          type: string
+          format: date-time
+          description: Last modified timestamp
+        isReadOnly:
+          type: boolean
+          description: Whether file is read-only
+          default: false
+
+    FileContentRequest:
+      type: object
+      required:
+        - path
+        - content
+      properties:
+        path:
+          type: string
+          description: File path relative to /home/repo
+          example: "workflows/sync_users.py"
+        content:
+          type: string
+          description: File content
+        encoding:
+          type: string
+          description: Content encoding
+          default: "utf-8"
+          example: "utf-8"
+
+    FileContentResponse:
+      type: object
+      required:
+        - path
+        - content
+        - encoding
+        - size
+        - etag
+        - modified
+      properties:
+        path:
+          type: string
+          description: File path relative to /home/repo
+        content:
+          type: string
+          description: File content
+        encoding:
+          type: string
+          description: Content encoding
+        size:
+          type: integer
+          description: Content size in bytes
+        etag:
+          type: string
+          description: ETag for change detection
+        modified:
+          type: string
+          format: date-time
+          description: Last modified timestamp
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

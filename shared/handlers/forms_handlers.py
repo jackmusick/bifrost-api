@@ -197,11 +197,7 @@ async def get_form_handler(form_id: str, request_context) -> tuple[dict, int]:
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
-        if not form.isActive:
-            logger.warning(f"Form {form_id} is not active")
-            error = ErrorResponse(error="NotFound", message="Form not found")
-            return error.model_dump(), 404
-
+        # Check authorization (handles admin vs regular user permissions)
         if not can_user_view_form(request_context, form_id):
             logger.warning(f"User {request_context.user_id} denied access to form {form_id}")
             error = ErrorResponse(error="Forbidden", message="You don't have permission to access this form")
@@ -330,8 +326,9 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
-        if not form.isActive:
-            logger.warning(f"Form {form_id} is not active")
+        # Regular users cannot execute inactive forms; admins can (for testing/development)
+        if not form.isActive and not request_context.is_platform_admin:
+            logger.warning(f"Form {form_id} is not active and user is not an admin")
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
@@ -436,8 +433,9 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
-        if not form.isActive:
-            logger.warning(f"Form {form_id} is not active")
+        # Regular users cannot execute inactive forms; admins can (for testing/development)
+        if not form.isActive and not request_context.is_platform_admin:
+            logger.warning(f"Form {form_id} is not active and user is not an admin")
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 

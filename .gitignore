@@ -200,4 +200,4 @@ AzuriteConfig
 .secrets
 *.zip
 home/
-system/
+system//home/

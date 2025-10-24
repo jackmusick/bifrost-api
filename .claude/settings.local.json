@@ -307,7 +307,8 @@
       "Bash(.specify/scripts/bash/create-new-feature.sh:*)",
       "Bash(.specify/scripts/bash/setup-plan.sh:*)",
       "Bash(.specify/scripts/bash/update-agent-context.sh:*)",
-      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)"
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "WebFetch(domain:ably.com)"
     ],
     "deny": [
       "Bash(rm -rf /)",

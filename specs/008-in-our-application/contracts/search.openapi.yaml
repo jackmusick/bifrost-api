@@ -1,0 +1,182 @@
+openapi: 3.0.3
+info:
+  title: Editor Search API
+  description: Full-text search across file contents in the workspace
+  version: 1.0.0
+
+servers:
+  - url: /api/editor
+
+paths:
+  /search:
+    post:
+      summary: Search file contents
+      description: Searches all files in the workspace for the specified query
+      operationId: searchFiles
+      tags:
+        - Search
+      parameters:
+        - name: X-Organization-Id
+          in: header
+          description: Organization ID for multi-tenancy
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  schemas:
+    SearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          description: Search text
+          example: "def run"
+        caseSensitive:
+          type: boolean
+          description: Case-sensitive matching
+          default: false
+        regex:
+          type: boolean
+          description: Treat query as regex pattern
+          default: false
+        filePattern:
+          type: string
+          description: Glob pattern for files to search
+          default: "**/*"
+          example: "**/*.py"
+        maxResults:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: Maximum results to return
+          default: 1000
+
+    SearchResult:
+      type: object
+      required:
+        - filePath
+        - line
+        - column
+        - matchText
+      properties:
+        filePath:
+          type: string
+          description: Relative path to file containing match
+          example: "workflows/sync_users.py"
+        line:
+          type: integer
+          minimum: 1
+          description: Line number (1-indexed)
+          example: 42
+        column:
+          type: integer
+          minimum: 0
+          description: Column number (0-indexed)
+          example: 15
+        matchText:
+          type: string
+          description: The matched text
+          example: "def run"
+        contextBefore:
+          type: string
+          nullable: true
+          description: Line before match (optional)
+          example: "# Main workflow entry point"
+        contextAfter:
+          type: string
+          nullable: true
+          description: Line after match (optional)
+          example: "    context.info(\"Starting sync\")"
+
+    SearchResponse:
+      type: object
+      required:
+        - query
+        - totalMatches
+        - filesSearched
+        - results
+        - truncated
+        - searchTimeMs
+      properties:
+        query:
+          type: string
+          description: Original search query
+        totalMatches:
+          type: integer
+          description: Total matches found
+          example: 42
+        filesSearched:
+          type: integer
+          description: Number of files searched
+          example: 150
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        truncated:
+          type: boolean
+          description: Whether results were truncated
+        searchTimeMs:
+          type: integer
+          description: Search duration in milliseconds
+          example: 234
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

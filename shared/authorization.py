@@ -29,9 +29,9 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     Check if user can view a form.
 
     Rules:
-    - Platform admins: can view all active forms
-    - Regular users: can view all active forms (global forms + their org's forms)
-    - Inactive forms are hidden from everyone
+    - Platform admins: can view all forms (active and inactive)
+    - Regular users: can only view active forms (global forms + their org's forms)
+    - Inactive forms are hidden from regular users
 
     Args:
         context: RequestContext
@@ -47,13 +47,13 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     if not form:
         return False
 
-    # Check if form is active (inactive forms are hidden from everyone)
-    if not form.isActive:
-        return False
-
-    # Platform admins can view all active forms
+    # Platform admins can view all forms (including inactive)
     if context.is_platform_admin:
         return True
+
+    # Regular users can only view active forms
+    if not form.isActive:
+        return False
 
     # If we got the form, user can view it (repository handles scope checking)
     return True
@@ -80,7 +80,7 @@ def get_user_visible_forms(context: RequestContext) -> list[dict]:
     Get all forms visible to the user (filtered by permissions).
 
     Rules:
-    - Platform admins: see all forms in context.scope (controlled by X-Organization-Id header)
+    - Platform admins: see all forms (active and inactive) in context.scope (controlled by X-Organization-Id header)
     - Regular users: see all active GLOBAL forms + all active forms in their org
 
     Args:
@@ -91,10 +91,10 @@ def get_user_visible_forms(context: RequestContext) -> list[dict]:
     """
     form_repo = FormRepository(context)
 
-    # Platform admin sees all forms in their current scope (set by X-Organization-Id)
+    # Platform admin sees all forms (including inactive) in their current scope (set by X-Organization-Id)
     if context.is_platform_admin:
-        # Admin can see all active forms in their scope (inactive forms are hidden from everyone)
-        forms = form_repo.list_forms(include_global=False, active_only=True)
+        # Admin can see all forms (active and inactive) in their scope
+        forms = form_repo.list_forms(include_global=False, active_only=False)
         # Convert Form models to dicts for backward compatibility (JSON-serializable)
         return [form.model_dump(mode="json") for form in forms]
 

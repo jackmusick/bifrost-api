@@ -143,6 +143,12 @@ __all__ = [
     'BrandingSettings',
     'BrandingUpdateRequest',
 
+    # Browser-based Code Editor
+    'FileType',
+    'FileMetadata',
+    'FileContentRequest',
+    'FileContentResponse',
+
     # Common
     'ErrorResponse',
 
@@ -1684,5 +1690,87 @@ class OAuthCredentialsResponse(BaseModel):
         None,
         description="ISO 8601 timestamp when token expires"
     )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# Editor Models (Browser-Based Code Editor)
+# ============================================================================
+
+class FileType(str, Enum):
+    """File or folder type"""
+    FILE = "file"
+    FOLDER = "folder"
+
+
+class FileMetadata(BaseModel):
+    """
+    File or folder metadata
+    Used in directory listing responses
+    """
+    path: str = Field(..., description="Relative path from /home/repo")
+    name: str = Field(..., description="File or folder name")
+    type: FileType = Field(..., description="File or folder")
+    size: int | None = Field(None, description="Size in bytes (null for folders)")
+    extension: str | None = Field(None, description="File extension (null for folders)")
+    modified: str = Field(..., description="Last modified timestamp (ISO 8601)")
+    isReadOnly: bool = Field(default=False, description="Whether file is read-only")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileContentRequest(BaseModel):
+    """Request to write file content"""
+    path: str = Field(..., description="Relative path from /home/repo")
+    content: str = Field(..., description="File content")
+    encoding: str = Field(default="utf-8", description="Content encoding")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileContentResponse(BaseModel):
+    """Response with file content"""
+    path: str = Field(..., description="Relative path from /home/repo")
+    content: str = Field(..., description="File content")
+    encoding: str = Field(..., description="Content encoding")
+    size: int = Field(..., description="Content size in bytes")
+    etag: str = Field(..., description="ETag for change detection")
+    modified: str = Field(..., description="Last modified timestamp (ISO 8601)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SearchRequest(BaseModel):
+    """Search query request"""
+    query: str = Field(..., min_length=1, description="Search text or regex pattern")
+    caseSensitive: bool = Field(default=False, description="Case-sensitive matching")
+    regex: bool = Field(default=False, description="Treat query as regex")
+    filePattern: str | None = Field(default="**/*", description="Glob pattern for files to search")
+    maxResults: int = Field(default=1000, ge=1, le=10000, description="Maximum results to return")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SearchResult(BaseModel):
+    """Single search match result"""
+    filePath: str = Field(..., description="Relative path to file containing match")
+    line: int = Field(..., ge=1, description="Line number (1-indexed)")
+    column: int = Field(..., ge=0, description="Column number (0-indexed)")
+    matchText: str = Field(..., description="The matched text")
+    contextBefore: str | None = Field(None, description="Line before match")
+    contextAfter: str | None = Field(None, description="Line after match")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SearchResponse(BaseModel):
+    """Search results response"""
+    query: str = Field(..., description="Original search query")
+    totalMatches: int = Field(..., description="Total matches found")
+    filesSearched: int = Field(..., description="Number of files searched")
+    results: list[SearchResult] = Field(..., description="Array of search results")
+    truncated: bool = Field(..., description="Whether results were truncated")
+    searchTimeMs: int = Field(..., description="Search duration in milliseconds")
 
     model_config = ConfigDict(from_attributes=True)
