@@ -126,6 +126,7 @@ def list_directory(relative_path: str = "") -> List[FileMetadata]:
 def read_file(relative_path: str) -> FileContentResponse:
     """
     Read file content with metadata.
+    Automatically detects binary files and returns them base64 encoded.
 
     Args:
         relative_path: Relative path to file
@@ -146,21 +147,35 @@ def read_file(relative_path: str) -> FileContentResponse:
     if not file_path.is_file():
         raise ValueError(f"Not a file: {relative_path}")
 
+    # Get file stats
+    stat = file_path.stat()
+
+    # Try to read as UTF-8 text first
+    encoding = "utf-8"
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
+        content_bytes = content.encode('utf-8')
     except UnicodeDecodeError:
-        raise ValueError(f"File is not UTF-8 encoded: {relative_path}")
+        # File is binary, read as bytes and encode to base64
+        encoding = "base64"
+        try:
+            import base64
+            with open(file_path, 'rb') as f:
+                binary_content = f.read()
+            content = base64.b64encode(binary_content).decode('ascii')
+            content_bytes = binary_content
+        except PermissionError:
+            raise PermissionError(f"Permission denied: {relative_path}")
+        except Exception as e:
+            raise ValueError(f"Error reading file: {str(e)}")
     except PermissionError:
         raise PermissionError(f"Permission denied: {relative_path}")
     except Exception as e:
         raise ValueError(f"Error reading file: {str(e)}")
 
-    # Get file stats
-    stat = file_path.stat()
-
     # Generate etag from content
-    etag = hashlib.md5(content.encode('utf-8')).hexdigest()
+    etag = hashlib.md5(content_bytes).hexdigest()
 
     # Modified timestamp
     modified = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
@@ -168,8 +183,8 @@ def read_file(relative_path: str) -> FileContentResponse:
     return FileContentResponse(
         path=relative_path,
         content=content,
-        encoding="utf-8",
-        size=len(content.encode('utf-8')),
+        encoding=encoding,
+        size=len(content_bytes),
         etag=etag,
         modified=modified
     )
@@ -181,8 +196,8 @@ def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> Fil
 
     Args:
         relative_path: Relative path to file
-        content: File content to write
-        encoding: Content encoding (default: utf-8)
+        content: File content to write (plain text or base64 encoded)
+        encoding: Content encoding (utf-8 or base64)
 
     Returns:
         FileContentResponse with updated metadata
@@ -191,8 +206,8 @@ def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> Fil
         ValueError: If path is invalid or encoding unsupported
         PermissionError: If file cannot be written
     """
-    if encoding != "utf-8":
-        raise ValueError("Only UTF-8 encoding is supported")
+    if encoding not in ("utf-8", "base64"):
+        raise ValueError("Only UTF-8 and base64 encodings are supported")
 
     file_path = validate_and_resolve_path(relative_path)
 
@@ -203,8 +218,19 @@ def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> Fil
     temp_path = file_path.with_suffix(file_path.suffix + ".tmp")
 
     try:
-        with open(temp_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        if encoding == "base64":
+            # Decode base64 and write as binary
+            import base64
+            binary_content = base64.b64decode(content)
+            with open(temp_path, 'wb') as f:
+                f.write(binary_content)
+            # For etag calculation
+            content_bytes = binary_content
+        else:
+            # Write as UTF-8 text
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            content_bytes = content.encode('utf-8')
 
         # Atomic rename (overwrites existing file)
         temp_path.replace(file_path)
@@ -221,7 +247,7 @@ def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> Fil
     stat = file_path.stat()
 
     # Generate etag from content
-    etag = hashlib.md5(content.encode('utf-8')).hexdigest()
+    etag = hashlib.md5(content_bytes).hexdigest()
 
     # Modified timestamp
     modified = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
@@ -229,8 +255,8 @@ def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> Fil
     return FileContentResponse(
         path=relative_path,
         content=content,
-        encoding="utf-8",
-        size=len(content.encode('utf-8')),
+        encoding=encoding,
+        size=len(content_bytes),
         etag=etag,
         modified=modified
     )

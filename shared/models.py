@@ -1723,8 +1723,8 @@ class FileMetadata(BaseModel):
 class FileContentRequest(BaseModel):
     """Request to write file content"""
     path: str = Field(..., description="Relative path from /home/repo")
-    content: str = Field(..., description="File content")
-    encoding: str = Field(default="utf-8", description="Content encoding")
+    content: str = Field(..., description="File content (plain text or base64 encoded)")
+    encoding: str = Field(default="utf-8", description="Content encoding (utf-8 or base64)")
 
     model_config = ConfigDict(from_attributes=True)
 
