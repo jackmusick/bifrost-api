@@ -105,9 +105,8 @@ async def list_executions(req: func.HttpRequest) -> func.HttpResponse:
 
         # Return paginated response
         response = ExecutionsListResponse(
-            executions=executions,
-            continuationToken=next_token,
-            hasMore=next_token is not None
+            executions=executions,  # type: ignore[arg-type]
+            continuationToken=next_token
         )
 
         return func.HttpResponse(

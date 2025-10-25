@@ -89,7 +89,8 @@ async def workflow_execution_poison_handler(msg: func.QueueMessage) -> None:
         message_data = json.loads(message_body)
 
         # Process using shared logic
-        await _process_poison_message(message_data, msg.dequeue_count)
+        dequeue_count = msg.dequeue_count if msg.dequeue_count is not None else 1
+        await _process_poison_message(message_data, dequeue_count)
 
     except Exception as e:
         # Log error but don't throw - we don't want poison queue handler to fail
@@ -138,7 +139,8 @@ async def workflow_execution_poison_timer(timer: func.TimerRequest) -> None:
                 message_data = json.loads(msg.content)
 
                 # Process using shared logic
-                await _process_poison_message(message_data, msg.dequeue_count)
+                dequeue_count = msg.dequeue_count if msg.dequeue_count is not None else 1
+                await _process_poison_message(message_data, dequeue_count)
 
                 # Delete message after successful processing
                 queue_client.delete_message(msg)

@@ -3,7 +3,7 @@ Example workflows demonstrating invalid CRON schedules
 These will be rejected by the schedule processor with warnings
 """
 
-from bifrost import workflow, OrganizationContext
+from bifrost import workflow, ExecutionContext
 
 
 # Example 1: Invalid CRON syntax (7 fields instead of 5)
@@ -14,7 +14,7 @@ from bifrost import workflow, OrganizationContext
     execution_mode="async",
     category="Testing"
 )
-async def invalid_cron_syntax(context: OrganizationContext):
+async def invalid_cron_syntax(context: ExecutionContext):
     """This workflow will never run - invalid CRON syntax"""
     return {"status": "should_not_execute"}
 
@@ -27,7 +27,7 @@ async def invalid_cron_syntax(context: OrganizationContext):
     execution_mode="async",
     category="Testing"
 )
-async def too_frequent_schedule(context: OrganizationContext):
+async def too_frequent_schedule(context: ExecutionContext):
     """This workflow will log a warning - runs too frequently"""
     return {"status": "executing_too_frequently"}
 
@@ -40,6 +40,6 @@ async def too_frequent_schedule(context: OrganizationContext):
     execution_mode="async",
     category="Testing"
 )
-async def sub_minute_schedule(context: OrganizationContext):
+async def sub_minute_schedule(context: ExecutionContext):
     """This workflow will never run - sub-minute schedules not supported"""
     return {"status": "should_not_execute"}

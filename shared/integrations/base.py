@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from shared.context import OrganizationContext
+    from shared.context import ExecutionContext
 
 
 class BaseIntegration(ABC):
@@ -20,12 +20,12 @@ class BaseIntegration(ABC):
     Provides helper methods for accessing organization config and secrets.
     """
 
-    def __init__(self, context: "OrganizationContext"):
+    def __init__(self, context: "ExecutionContext"):
         """
         Initialize integration client with organization context.
 
         Args:
-            context: OrganizationContext with org data, config, and secrets
+            context: ExecutionContext with org data, config, and secrets
         """
         self.context = context
 

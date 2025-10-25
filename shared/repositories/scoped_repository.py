@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from .base import BaseRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class ScopedRepository(BaseRepository):
         # Tries: org_id/form:123, then GLOBAL/form:123
     """
 
-    def __init__(self, table_name: str, context: 'RequestContext'):
+    def __init__(self, table_name: str, context: 'ExecutionContext'):
         """
         Initialize scoped repository
 
@@ -45,7 +45,7 @@ class ScopedRepository(BaseRepository):
 
         if context is None:
             raise ValueError(
-                f"{self.__class__.__name__} requires a RequestContext for scoping"
+                f"{self.__class__.__name__} requires a ExecutionContext for scoping"
             )
 
         self.org_id = context.org_id or "GLOBAL"

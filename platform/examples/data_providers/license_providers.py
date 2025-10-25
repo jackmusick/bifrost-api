@@ -3,7 +3,11 @@ License Data Providers
 Data providers for Microsoft 365 license selection
 """
 
+import logging
+
 from bifrost import data_provider
+
+logger = logging.getLogger(__name__)
 
 
 @data_provider(
@@ -21,7 +25,7 @@ async def get_available_licenses(context):
     - Filter by available units > consumed units
 
     Args:
-        context: OrganizationContext with org_id, integrations, etc.
+        context: ExecutionContext with org_id, integrations, etc.
 
     Returns:
         List of license options:
@@ -81,7 +85,7 @@ async def get_available_licenses(context):
     # Filter to only licenses with available units
     available = [lic for lic in mock_licenses if lic["metadata"]["available"] > 0]
 
-    context.info(
+    logger.info(
         f"Retrieved {len(available)} available licenses",
         {"org_id": context.org_id, "total_skus": len(mock_licenses)}
     )
@@ -102,7 +106,7 @@ async def get_all_licenses(context):
     Useful for license reporting and planning.
 
     Args:
-        context: OrganizationContext
+        context: ExecutionContext
 
     Returns:
         List of all license options with availability info

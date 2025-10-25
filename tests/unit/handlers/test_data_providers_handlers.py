@@ -13,7 +13,7 @@ from shared.handlers.data_providers_handlers import (
     compute_cache_key,
     _cache
 )
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 
 class TestGetDataProviderOptionsHandler:
@@ -29,7 +29,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_missing_provider_name(self):
         """Test with missing provider name"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         response, status_code = await get_data_provider_options_handler(
@@ -45,7 +45,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_empty_provider_name(self):
         """Test with empty provider name"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         response, status_code = await get_data_provider_options_handler(
@@ -60,7 +60,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_provider_not_found(self):
         """Test when provider doesn't exist in registry"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         with patch('shared.handlers.data_providers_handlers.get_registry') as mock_reg:
@@ -80,7 +80,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_provider_execution_success(self):
         """Test successful provider execution and caching"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         mock_options = [
@@ -114,7 +114,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_provider_execution_invalid_return_type(self):
         """Test when provider returns non-list result"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         with patch('shared.handlers.data_providers_handlers.get_registry') as mock_reg:
@@ -138,7 +138,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_provider_execution_exception(self):
         """Test when provider raises an exception"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         with patch('shared.handlers.data_providers_handlers.get_registry') as mock_reg:
@@ -164,7 +164,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_cache_hit_not_expired(self):
         """Test cache hit when TTL not expired"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         mock_options = [{"label": "Cached", "value": "C"}]
@@ -200,7 +200,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_cache_miss_expired(self):
         """Test cache miss when TTL expired"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         old_options = [{"label": "Old", "value": "O"}]
@@ -237,7 +237,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_no_cache_flag_bypass(self):
         """Test no_cache=True bypasses cache"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         cached_options = [{"label": "Cached", "value": "C"}]
@@ -274,10 +274,10 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_cache_separate_org_contexts(self):
         """Test cache is segregated by organization"""
-        org1_context = Mock(spec=RequestContext)
+        org1_context = Mock(spec=ExecutionContext)
         org1_context.org_id = "org-1"
 
-        org2_context = Mock(spec=RequestContext)
+        org2_context = Mock(spec=ExecutionContext)
         org2_context.org_id = "org-2"
 
         org1_options = [{"label": "Org1", "value": "O1"}]
@@ -316,7 +316,7 @@ class TestGetDataProviderOptionsHandler:
     @pytest.mark.asyncio
     async def test_cache_ttl_calculation(self):
         """Test cache expiration time is correctly calculated"""
-        context = Mock(spec=RequestContext)
+        context = Mock(spec=ExecutionContext)
         context.org_id = "org-123"
 
         mock_options = [{"label": "Test", "value": "T"}]

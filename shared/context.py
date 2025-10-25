@@ -1,10 +1,20 @@
 """
 Organization Context
 Context object passed to all workflows with org data, config, secrets, and integrations
+
+Execution Context - Unified context for all requests, workflows, and scripts
+
+This replaces both ExecutionContext and ExecutionContext with a single,
+unified context that works everywhere:
+- HTTP endpoint handlers
+- Workflows and data providers
+- Scripts
+- Bifrost SDK
+- Repository queries
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -16,9 +26,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Organization:
     """Organization entity."""
-    org_id: str
+    id: str
     name: str
-    is_active: bool
+    is_active: bool = True
+
+    @property
+    def org_id(self) -> str:
+        """Backwards compatibility: alias for id"""
+        return self.id
 
 
 @dataclass
@@ -29,71 +44,80 @@ class Caller:
     name: str
 
 
-class OrganizationContext:
+@dataclass
+class ExecutionContext:
     """
-    Context object passed to all workflows.
+    Unified execution context for all code execution.
 
-    Provides access to:
-    - Organization information (id, name)
-    - Execution metadata (execution_id, caller)
-    - Configuration (key-value pairs)
-    - Secrets (from Key Vault)
-    - Pre-authenticated integration clients
-    - State tracking (checkpoints, logs, variables)
+    Provides:
+    - User identity (user_id, email, name)
+    - Scope (GLOBAL or organization ID)
+    - Authorization (is_platform_admin, is_function_key)
+    - Configuration and secrets
+    - Workflow state tracking (logs, variables, checkpoints)
+
+    Used everywhere:
+    - HTTP handlers receive this from middleware
+    - Workflows receive this as first parameter
+    - Scripts have this available as `context`
+    - Bifrost SDK accesses this via ContextVar
+    - Repositories use this for scoped queries
     """
 
-    def __init__(
-        self,
-        org: Organization | None,
-        config: dict[str, Any],
-        caller: Caller,
-        execution_id: str
-    ):
-        self.org = org
-        self._config = config
-        self.caller = caller
-        self.execution_id = execution_id
+    # ==================== IDENTITY ====================
+    user_id: str
+    email: str
+    name: str
 
-        # Configuration resolver for transparent secret resolution
-        self._config_resolver = ConfigResolver()
+    # ==================== SCOPE ====================
+    scope: str  # "GLOBAL" or organization ID
+    organization: Organization | None  # None for GLOBAL scope
 
-        # Integration cache
-        self._integration_cache = {}
+    # ==================== AUTHORIZATION ====================
+    is_platform_admin: bool
+    is_function_key: bool
 
-        # State tracking
-        self._state_snapshots = []
-        self._integration_calls = []
-        self._logs = []
-        self._variables = {}
+    # ==================== EXECUTION ====================
+    execution_id: str
 
-    # ==================== ORG PROPERTIES ====================
+    # ==================== WORKFLOW STATE (private) ====================
+    _config: dict[str, Any] = field(default_factory=dict)
+    _config_resolver: ConfigResolver = field(default_factory=ConfigResolver)
+    _integration_cache: dict = field(default_factory=dict)
+    _state_snapshots: list = field(default_factory=list)
+    _integration_calls: list = field(default_factory=list)
+
+    # ==================== COMPUTED PROPERTIES ====================
 
     @property
     def org_id(self) -> str | None:
-        """Organization ID (None for platform admins in global context)."""
-        return self.org.org_id if self.org else None
+        """Organization ID (None for GLOBAL scope)"""
+        return self.organization.id if self.organization else None
 
     @property
     def org_name(self) -> str | None:
-        """Organization display name (None for platform admins in global context)."""
-        return self.org.name if self.org else None
+        """Organization name (None for GLOBAL scope)"""
+        return self.organization.name if self.organization else None
 
-    # ==================== EXECUTION METADATA ====================
+    @property
+    def is_global_scope(self) -> bool:
+        """True if executing in GLOBAL scope (no organization)"""
+        return self.scope == "GLOBAL"
 
     @property
     def executed_by(self) -> str:
-        """User ID who triggered this execution."""
-        return self.caller.user_id
+        """Backwards compatibility: alias for user_id"""
+        return self.user_id
 
     @property
     def executed_by_email(self) -> str:
-        """Email of user who triggered this execution."""
-        return self.caller.email
+        """Backwards compatibility: alias for email"""
+        return self.email
 
     @property
     def executed_by_name(self) -> str:
-        """Display name of user who triggered this execution."""
-        return self.caller.name
+        """Backwards compatibility: alias for name"""
+        return self.name
 
     # ==================== CONFIGURATION ====================
 
@@ -115,14 +139,13 @@ class OrganizationContext:
         Raises:
             KeyError: If secret reference cannot be resolved from Key Vault
         """
-        # Use resolver for transparent secret handling
-        if not self.org_id:
-            # Platform admin context - no org-scoped resolution
+        # GLOBAL scope - no org-scoped resolution
+        if self.is_global_scope:
             return self._config.get(key, default)
 
         try:
             return self._config_resolver.get_config(
-                org_id=self.org_id,
+                org_id=self.scope,
                 key=key,
                 config_data=self._config,
                 default=default
@@ -130,8 +153,8 @@ class OrganizationContext:
         except KeyError as e:
             # Secret resolution failed - log and re-raise with context
             logger.error(
-                f"Failed to get config '{key}' for org '{self.org_id}': {e}",
-                extra={"execution_id": self.execution_id, "org_id": self.org_id}
+                f"Failed to get config '{key}' for scope '{self.scope}': {e}",
+                extra={"execution_id": self.execution_id, "scope": self.scope}
             )
             raise
 
@@ -173,13 +196,9 @@ class OrganizationContext:
         from .models import OAuthCredentials
         from .storage import TableStorageService
 
-        # Determine scope for OAuth connection lookup
-        # For GLOBAL context (org_id=None), use "GLOBAL" as the scope
-        lookup_org_id = self.org_id if self.org_id else "GLOBAL"
-
         logger.info(
-            f"Retrieving OAuth connection: {connection_name} (scope: {lookup_org_id})",
-            extra={"execution_id": self.execution_id, "lookup_scope": lookup_org_id}
+            f"Retrieving OAuth connection: {connection_name} (scope: {self.scope})",
+            extra={"execution_id": self.execution_id, "scope": self.scope}
         )
 
         # Use OAuthStorageService to get connection metadata
@@ -190,11 +209,11 @@ class OrganizationContext:
         config_table = TableStorageService("Config")
 
         # Get connection with org→GLOBAL fallback
-        connection = await oauth_service.get_connection(lookup_org_id, connection_name)
+        connection = await oauth_service.get_connection(self.scope, connection_name)
 
         if not connection:
             raise ValueError(
-                f"OAuth connection '{connection_name}' not found for scope '{lookup_org_id}' or GLOBAL. "
+                f"OAuth connection '{connection_name}' not found for scope '{self.scope}' or GLOBAL. "
                 f"Create connection using the OAuth Connections page in the admin UI"
             )
 
@@ -232,8 +251,6 @@ class OrganizationContext:
             )
 
         # Retrieve actual OAuth tokens from Key Vault
-        # Note: keyvault_secret_name is already the full secret name (e.g., "GLOBAL--oauth-HaloPSA-response")
-        # so we use the _client directly instead of get_secret() which expects org_id and secret_key
         try:
             assert keyvault._client is not None, "KeyVault client is None"
             secret = keyvault._client.get_secret(keyvault_secret_name)
@@ -300,16 +317,6 @@ class OrganizationContext:
             }
         )
 
-        # Track credential access in context
-        self.info(
-            f"Retrieved OAuth credentials for '{connection_name}'",
-            {
-                "connection_name": connection_name,
-                "expires_at": expires_at.isoformat(),
-                "is_expired": credentials.is_expired()
-            }
-        )
-
         return credentials
 
     # ==================== SECRETS ====================
@@ -330,46 +337,7 @@ class OrganizationContext:
             KeyError: If secret not found
         """
         # TODO: Implement Key Vault integration
-        # For now, raise NotImplementedError
         raise NotImplementedError("Key Vault integration not yet implemented")
-
-    # ==================== INTEGRATIONS ====================
-
-    def get_integration(self, name: str):
-        """
-        Get pre-authenticated integration client.
-
-        For MVP, this raises NotImplementedError. Integration clients
-        will be added when needed (Microsoft Graph, HaloPSA, etc.)
-
-        Args:
-            name: Integration name
-
-        Returns:
-            Pre-authenticated integration client
-
-        Raises:
-            NotImplementedError: Integration not yet implemented
-        """
-        # Check cache
-        if name in self._integration_cache:
-            return self._integration_cache[name]
-
-        # For MVP, raise NotImplementedError
-        # Will be implemented when needed:
-        # if name == "msgraph":
-        #     from shared.integrations.msgraph import MicrosoftGraphIntegration
-        #     client = MicrosoftGraphIntegration(self)
-        # elif name == "halopsa":
-        #     from shared.integrations.halopsa import HaloPSAIntegration
-        #     client = HaloPSAIntegration(self)
-        # else:
-        #     raise ValueError(f"Unknown integration: {name}")
-
-        raise NotImplementedError(
-            f"Integration '{name}' not yet implemented. "
-            f"Add integration client to shared/integrations/{name}.py"
-        )
 
     # ==================== STATE TRACKING ====================
 
@@ -397,99 +365,6 @@ class OrganizationContext:
             f"Checkpoint saved: {name}",
             extra={"execution_id": self.execution_id, "checkpoint": checkpoint}
         )
-
-    def set_variable(self, key: str, value: Any) -> None:
-        """
-        Set a workflow variable (persisted in execution record).
-
-        Args:
-            key: Variable name
-            value: Variable value (will be sanitized)
-        """
-        self._variables[key] = self._sanitize_data(value)
-
-    def get_variable(self, key: str, default: Any = None) -> Any:
-        """Get a workflow variable."""
-        return self._variables.get(key, default)
-
-    def _log(self, level: str, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Internal logging method used by info(), warning(), error(), debug().
-
-        Args:
-            level: Log level (info, warning, error, debug)
-            message: Log message
-            data: Optional structured data dictionary
-        """
-        log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "level": level,
-            "message": message,
-            "data": self._sanitize_data(data) if data else {}
-        }
-        self._logs.append(log_entry)
-
-        # Also log to Azure Functions logger
-        logger_method = getattr(logging, level, logging.info)
-        logger_method(
-            message,
-            extra={"execution_id": self.execution_id, **log_entry.get("data", {})}
-        )
-
-    def info(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log an info-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Example:
-            context.info("Processing user")
-            context.info("User created", {"user_id": "123", "email": "user@example.com"})
-        """
-        self._log("info", message, data)
-
-    def warning(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log a warning-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Example:
-            context.warning("Rate limit approaching")
-            context.warning("OAuth token expired", {"expires_at": "2024-01-01"})
-        """
-        self._log("warning", message, data)
-
-    def error(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log an error-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Example:
-            context.error("API call failed")
-            context.error("Connection timeout", {"endpoint": "/users", "timeout": 30})
-        """
-        self._log("error", message, data)
-
-    def debug(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log a debug-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Example:
-            context.debug("Request details", {"headers": headers, "body": body})
-        """
-        self._log("debug", message, data)
 
     def _track_integration_call(
         self,
@@ -553,11 +428,9 @@ class OrganizationContext:
         Called automatically at end of execution.
 
         Returns:
-            Dict with state_snapshots, integration_calls, logs, variables
+            Dict with state_snapshots and integration_calls
         """
         return {
             "state_snapshots": self._state_snapshots,
             "integration_calls": self._integration_calls,
-            "logs": self._logs,
-            "variables": self._variables
         }

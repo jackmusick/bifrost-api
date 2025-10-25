@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from shared.context import OrganizationContext
+from shared.context import ExecutionContext
 from shared.execution_logger import ExecutionLogger
 from shared.models import ExecutionStatus, WorkflowExecutionResponse
 from shared.registry import WorkflowMetadata
@@ -62,7 +62,7 @@ def coerce_parameter_types(
 async def record_workflow_execution_result(
     exec_logger: ExecutionLogger,
     execution_id: str,
-    context: OrganizationContext,
+    context: ExecutionContext,
     status: ExecutionStatus,
     start_time: datetime,
     result: Any | None = None,
@@ -90,7 +90,7 @@ async def record_workflow_execution_result(
     update_kwargs = {
         "execution_id": execution_id,
         "org_id": context.org_id,
-        "user_id": context.caller.user_id,
+        "user_id": context.user_id,
         "status": status,
         "duration_ms": duration_ms
     }

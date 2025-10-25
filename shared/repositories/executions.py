@@ -21,7 +21,7 @@ from shared.storage import TableStorageService
 from .base import BaseRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class ExecutionRepository(BaseRepository):
     to avoid secondary fetches when rendering tables.
     """
 
-    def __init__(self, context: 'RequestContext | None' = None):
+    def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
         self.relationships_service = TableStorageService("Relationships")
 
@@ -411,7 +411,7 @@ class ExecutionRepository(BaseRepository):
         executions = []
         for entity in index_entities:
             # Parse datetime fields
-            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            started_at = cast(datetime, self._parse_datetime(entity.get("StartedAt"), datetime.utcnow()))
             completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
 
             # Parse status enum
@@ -445,8 +445,8 @@ class ExecutionRepository(BaseRepository):
         self,
         user_id: str,
         results_per_page: int = 50,
-        continuation_token: dict | None = None
-    ) -> tuple[list[WorkflowExecution], dict | None]:
+        continuation_token: dict | str | None = None
+    ) -> tuple[list[WorkflowExecution], dict | str | None]:
         """
         List executions for a specific user with proper pagination.
 
@@ -476,7 +476,7 @@ class ExecutionRepository(BaseRepository):
         executions = []
         for entity in index_entities:
             # Parse datetime fields
-            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            started_at = cast(datetime, self._parse_datetime(entity.get("StartedAt"), datetime.utcnow()))
             completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
 
             # Parse status enum
@@ -538,7 +538,7 @@ class ExecutionRepository(BaseRepository):
         executions = []
         for entity in index_entities[:limit]:
             # Parse datetime fields
-            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            started_at = cast(datetime, self._parse_datetime(entity.get("StartedAt"), datetime.utcnow()))
             completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
 
             # Parse status enum
@@ -595,7 +595,7 @@ class ExecutionRepository(BaseRepository):
         executions = []
         for entity in index_entities[:limit]:
             # Parse datetime fields
-            started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+            started_at = cast(datetime, self._parse_datetime(entity.get("StartedAt"), datetime.utcnow()))
             completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
 
             # Parse status enum
@@ -688,8 +688,8 @@ class ExecutionRepository(BaseRepository):
         self,
         org_id: str | None = None,
         results_per_page: int = 50,
-        continuation_token: dict | None = None
-    ) -> tuple[list[WorkflowExecution], dict | None]:
+        continuation_token: dict | str | None = None
+    ) -> tuple[list[WorkflowExecution], dict | str | None]:
         """
         List workflow executions with proper pagination.
 
@@ -870,7 +870,7 @@ class ExecutionRepository(BaseRepository):
                 result_type = "json"
 
         # Parse datetime fields
-        started_at = self._parse_datetime(entity.get("StartedAt"), datetime.utcnow())
+        started_at = cast(datetime, self._parse_datetime(entity.get("StartedAt"), datetime.utcnow()))
         completed_at = self._parse_datetime(entity.get("CompletedAt"), None)
 
         # Parse status enum

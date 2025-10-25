@@ -8,34 +8,34 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 # Context variable for current execution context
 # Set by workflow engine before executing user code
-_execution_context: ContextVar['RequestContext | None'] = ContextVar(
+_execution_context: ContextVar['ExecutionContext | None'] = ContextVar(
     'bifrost_execution_context',
     default=None
 )
 
 
-def set_execution_context(context: 'RequestContext') -> None:
+def set_execution_context(context: 'ExecutionContext') -> None:
     """
     Set the execution context for the current workflow execution.
 
     Called by the workflow engine before executing user code.
 
     Args:
-        context: RequestContext with user, org, and permission info
+        context: ExecutionContext with user, org, and permission info
     """
     _execution_context.set(context)
 
 
-def get_execution_context() -> 'RequestContext':
+def get_execution_context() -> 'ExecutionContext':
     """
     Get the current execution context.
 
     Returns:
-        RequestContext for the current execution
+        ExecutionContext for the current execution
 
     Raises:
         RuntimeError: If called outside of a workflow execution context

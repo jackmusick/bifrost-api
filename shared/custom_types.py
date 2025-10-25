@@ -8,16 +8,16 @@ import azure.functions as func
 
 if TYPE_CHECKING:
     from shared.auth import FunctionKeyPrincipal, UserPrincipal
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 
 class HttpRequestWithContext(Protocol):
     """
     Extended HttpRequest with injected context attribute.
 
-    Used by @with_request_context decorator to inject RequestContext.
+    Used by @with_request_context decorator to inject ExecutionContext.
     """
-    context: "RequestContext"
+    context: "ExecutionContext"
 
     # Standard HttpRequest attributes
     method: str
@@ -30,15 +30,15 @@ class HttpRequestWithContext(Protocol):
     def get_json(self) -> dict: ...
 
 
-def get_context(req: func.HttpRequest) -> "RequestContext":
+def get_context(req: func.HttpRequest) -> "ExecutionContext":
     """
-    Type-safe helper to extract RequestContext from HttpRequest.
+    Type-safe helper to extract ExecutionContext from HttpRequest.
 
     Usage:
         @with_request_context
         async def handler(req: func.HttpRequest):
             context = get_context(req)
-            # context is now properly typed as RequestContext
+            # context is now properly typed as ExecutionContext
     """
     req_with_context = cast(HttpRequestWithContext, req)
     return req_with_context.context
@@ -62,13 +62,13 @@ def get_route_param(req: func.HttpRequest, param_name: str) -> str:
 
 def get_org_context(req: func.HttpRequest) -> Any:
     """
-    Type-safe helper to extract OrganizationContext from HttpRequest.
+    Type-safe helper to extract ExecutionContext from HttpRequest.
 
     Usage:
         @with_org_context
         async def handler(req: func.HttpRequest):
             context = get_org_context(req)
-            # context is now properly typed as OrganizationContext
+            # context is now properly typed as ExecutionContext
     """
     req_with_context = cast(HttpRequestWithOrgContext, req)
     return req_with_context.org_context
@@ -116,9 +116,9 @@ class HttpRequestWithOrgContext(Protocol):
     """
     Extended HttpRequest with injected org_context attribute.
 
-    Used by @with_org_context decorator to inject OrganizationContext.
+    Used by @with_org_context decorator to inject ExecutionContext.
     """
-    org_context: "Any"  # OrganizationContext from shared.auth
+    org_context: "Any"  # ExecutionContext from shared.auth
 
     # Standard HttpRequest attributes
     method: str

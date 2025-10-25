@@ -8,21 +8,19 @@ import pytest
 from pathlib import Path
 import sys
 
-from shared.request_context import RequestContext
-
 # Import context functions - need to import after sys.path is modified
 # So we import inside an __import__ block or use absolute paths from api/
 import importlib.util
 
 def _import_bifrost_module(module_name):
-    """Import a module from the sdk directory"""
+    """Import a module from the bifrost directory"""
     api_base = Path(__file__).parent.parent.parent.parent
-    sdk_path = api_base / 'sdk'
-    module_path = sdk_path / f'{module_name}.py'
+    bifrost_path = api_base / 'bifrost'
+    module_path = bifrost_path / f'{module_name}.py'
 
-    spec = importlib.util.spec_from_file_location(f'sdk.{module_name}', module_path)
+    spec = importlib.util.spec_from_file_location(f'bifrost.{module_name}', module_path)
     module = importlib.util.module_from_spec(spec)
-    sys.modules[f'sdk.{module_name}'] = module
+    sys.modules[f'bifrost.{module_name}'] = module
     spec.loader.exec_module(module)
     return module
 
@@ -36,26 +34,36 @@ get_execution_context = _context_module.get_execution_context
 @pytest.fixture
 def test_context():
     """Create a test execution context"""
-    return RequestContext(
+    from shared.context import ExecutionContext, Organization
+
+    org = Organization(id="test-org", name="Test Org", is_active=True)
+    return ExecutionContext(
         user_id="test-user",
         email="test@example.com",
         name="Test User",
-        org_id="test-org",
+        scope="test-org",
+        organization=org,
         is_platform_admin=False,
-        is_function_key=False
+        is_function_key=False,
+        execution_id="test-exec-123"
     )
 
 
 @pytest.fixture
 def admin_context():
     """Create an admin execution context"""
-    return RequestContext(
+    from shared.context import ExecutionContext, Organization
+
+    org = Organization(id="test-org", name="Test Org", is_active=True)
+    return ExecutionContext(
         user_id="admin-user",
         email="admin@example.com",
         name="Admin User",
-        org_id="test-org",
+        scope="test-org",
+        organization=org,
         is_platform_admin=True,
-        is_function_key=False
+        is_function_key=False,
+        execution_id="test-exec-456"
     )
 
 

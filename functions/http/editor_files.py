@@ -6,6 +6,7 @@ Thin wrapper - business logic is in shared.editor.file_operations
 
 import json
 import logging
+import os
 
 import azure.functions as func
 
@@ -25,6 +26,58 @@ logger = logging.getLogger(__name__)
 
 # Create blueprint for editor file endpoints
 bp = func.Blueprint()
+
+
+@bp.route(route="editor/types/bifrost", methods=["GET"])
+@bp.function_name("editor_bifrost_types")
+@openapi_endpoint(
+    path="/editor/types/bifrost",
+    method="GET",
+    summary="Get bifrost SDK type hints",
+    description="Serve bifrost SDK type stub file for Monaco Editor autocomplete and type checking",
+    tags=["Editor"],
+)
+async def editor_bifrost_types(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Serve bifrost SDK type stub file for Monaco Editor.
+    Provides autocomplete and type hints for workflow development.
+    """
+    try:
+        # Path to the type stub file
+        stubs_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "stubs",
+            "bifrost.pyi"
+        )
+
+        with open(stubs_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        return func.HttpResponse(
+            content,
+            mimetype="text/plain",
+            headers={
+                "Content-Type": "text/x-python",
+                "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
+            }
+        )
+
+    except FileNotFoundError:
+        logger.error(f"Type stub file not found at: {stubs_path}")
+        return func.HttpResponse(
+            "Type stub file not found",
+            status_code=404
+        )
+    except Exception as e:
+        logger.error(f"Error serving type stub: {str(e)}", exc_info=True)
+        return func.HttpResponse(
+            body=json.dumps({
+                "error": "InternalServerError",
+                "message": f"Failed to serve type stub: {str(e)}",
+            }),
+            status_code=500,
+            mimetype="application/json",
+        )
 
 
 @bp.route(route="editor/files", methods=["GET"])

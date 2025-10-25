@@ -12,7 +12,7 @@ from croniter import croniter
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.registry import get_registry
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 from shared.storage import TableStorageService
 from shared.workflows.cron_parser import calculate_next_run, is_cron_expression_valid
 
@@ -74,7 +74,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                 cron_expression = workflow_meta.schedule
 
                 # Validate CRON expression using comprehensive validation
-                if not is_cron_expression_valid(cron_expression):
+                if cron_expression is None or not is_cron_expression_valid(cron_expression):
                     logger.warning(
                         f"Invalid CRON expression for workflow {workflow_name}: {cron_expression}. "
                         f"Skipping schedule processing."
@@ -95,7 +95,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
 
                 # Check if schedule interval is too frequent (< 5 minutes)
                 try:
-                    cron = croniter(cron_expression, now)
+                    cron = croniter(cron_expression or "", now)
                     first_run = cron.get_next(datetime)
                     second_run = cron.get_next(datetime)
                     interval_seconds = (second_run - first_run).total_seconds()
@@ -120,7 +120,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                 if not schedule_state:
                     # Initialize new schedule
                     logger.info(f"Initializing schedule for workflow: {workflow_name}")
-                    next_run_at = calculate_next_run(cron_expression, now)
+                    next_run_at = calculate_next_run(cron_expression or "", now)
 
                     schedule_entity = {
                         "PartitionKey": "GLOBAL",
@@ -149,7 +149,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                     )
                     # Recalculate next run if CRON changed
                     if stored_cron != cron_expression:
-                        next_run_at = calculate_next_run(cron_expression, now)
+                        next_run_at = calculate_next_run(cron_expression or "", now)
                     else:
                         next_run_at = datetime.fromisoformat(
                             schedule_state.get("NextRunAt", now.isoformat())
@@ -168,7 +168,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                     # ATOMIC CLAIM: Update NextRunAt first to prevent concurrent schedulers from executing same schedule
                     # This uses ETag-based optimistic concurrency control
                     try:
-                        new_next_run = calculate_next_run(cron_expression, now)
+                        new_next_run = calculate_next_run(cron_expression or "", now)
                         schedule_state["NextRunAt"] = new_next_run.isoformat()
 
                         # Try to update with ETag - if another scheduler already claimed it, this will fail
@@ -197,14 +197,16 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
 
                     # Create system context for scheduled execution
                     try:
-                        # Create system request context with GLOBAL scope
-                        context = RequestContext(
-                            org_id=None,  # System/global context
+                        # Create system execution context with GLOBAL scope
+                        context = ExecutionContext(
+                            scope="GLOBAL",  # System/global context
+                            organization=None,
                             user_id="system:scheduler",
                             name="Scheduled Execution",
                             email="system@scheduler",
                             is_platform_admin=True,
-                            is_function_key=True
+                            is_function_key=True,
+                            execution_id="scheduler-" + workflow_name
                         )
 
                         # Enqueue workflow execution

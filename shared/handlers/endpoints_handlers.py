@@ -12,7 +12,7 @@ from typing import Any
 import azure.functions as func
 
 from shared.async_executor import enqueue_workflow_execution
-from shared.context import OrganizationContext
+from shared.context import ExecutionContext
 from shared.error_handling import WorkflowError
 from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 async def execute_workflow_endpoint_handler(
-    context: OrganizationContext,
+    context: ExecutionContext,
     workflow_name: str,
     http_method: str,
     input_data: dict[str, Any],
@@ -127,7 +127,7 @@ async def execute_workflow_endpoint_handler(
 
 
 async def _execute_async(
-    context: OrganizationContext,
+    context: ExecutionContext,
     workflow_name: str,
     input_data: dict[str, Any],
 ) -> tuple[func.HttpResponse, int]:
@@ -143,7 +143,7 @@ async def _execute_async(
         tuple of (HttpResponse with execution ID, 202 status)
     """
     # Enqueue for async execution
-    # Cast OrganizationContext to match RequestContext interface
+    # Cast ExecutionContext to match ExecutionContext interface
     # Both have org_id, user_id, name, and email attributes
     execution_id = await enqueue_workflow_execution(
         context=context,  # type: ignore[arg-type]
@@ -166,7 +166,7 @@ async def _execute_async(
 
 
 async def _execute_sync(
-    context: OrganizationContext,
+    context: ExecutionContext,
     workflow_name: str,
     http_method: str,
     input_data: dict[str, Any],
@@ -204,8 +204,8 @@ async def _execute_sync(
         exec_logger.create_execution(
             execution_id=execution_id,
             org_id=context.org_id,
-            user_id=context.caller.user_id,
-            user_name=context.caller.name,
+            user_id=context.user_id,
+            user_name=context.name,
             workflow_name=workflow_name,
             input_data=input_data,
             form_id=None  # Endpoints don't have form context
@@ -216,7 +216,7 @@ async def _execute_sync(
             extra={
                 "execution_id": execution_id,
                 "org_id": context.org_id,
-                "user_id": context.caller.user_id,
+                "user_id": context.user_id,
                 "workflow_name": workflow_name,
                 "http_method": http_method
             }
@@ -229,9 +229,8 @@ async def _execute_sync(
         # Separate workflow parameters from extra variables
         workflow_params, extra_variables = separate_workflow_params(coerced_data, workflow_metadata)
 
-        # Inject extra variables into context
-        for key, value in extra_variables.items():
-            context.set_variable(key, value)
+        # Extra variables are no longer injected into context
+        # They will be ignored for endpoint executions (only workflow params are used)
 
         # Call the workflow function with context as first parameter
         result = await workflow_func(context, **workflow_params)

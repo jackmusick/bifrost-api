@@ -16,6 +16,7 @@ class TestWorkflowExecutionRequest:
     def test_valid_execution_request(self):
         """Test valid execution request with all fields"""
         request = WorkflowExecutionRequest(
+            workflowName="sync_users",
             formId="form-123",
             inputData={
                 "email": "test@example.com",
@@ -24,31 +25,39 @@ class TestWorkflowExecutionRequest:
             }
         )
 
+        assert request.workflowName == "sync_users"
         assert request.formId == "form-123"
         assert request.inputData["email"] == "test@example.com"
 
     def test_execution_request_minimal(self):
         """Test execution request with minimal fields"""
         request = WorkflowExecutionRequest(
+            workflowName="test_workflow",
             inputData={"key": "value"}
         )
 
+        assert request.workflowName == "test_workflow"
         assert request.formId is None
         assert request.inputData == {"key": "value"}
 
     def test_execution_request_missing_workflow_name(self):
-        """Test that inputData defaults to empty dict"""
-        request = WorkflowExecutionRequest()
+        """Test that either workflowName or code is required"""
+        with pytest.raises(ValidationError) as exc_info:
+            WorkflowExecutionRequest()
 
-        assert request.inputData == {}
-        assert request.formId is None
+        errors = exc_info.value.errors()
+        assert any("Either 'workflowName' or 'code' must be provided" in str(e) for e in errors)
 
     def test_execution_request_missing_input_data(self):
         """Test that inputData has default factory"""
-        request = WorkflowExecutionRequest(formId="form-123")
+        request = WorkflowExecutionRequest(
+            workflowName="test_workflow",
+            formId="form-123"
+        )
 
         assert request.inputData == {}
         assert request.formId == "form-123"
+        assert request.workflowName == "test_workflow"
 
 
 class TestWorkflowExecutionResponse:

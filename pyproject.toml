@@ -1,3 +1,16 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bifrost-sdk"
+version = "1.0.0"
+description = "Bifrost Platform SDK"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["bifrost"]
+
 [tool.pytest.ini_options]
 addopts = "-ra -q --cov=. --cov-report=term-missing"
 testpaths = ["tests"]

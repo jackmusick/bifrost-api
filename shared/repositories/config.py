@@ -12,7 +12,7 @@ from shared.models import Config, ConfigType, IntegrationConfig, IntegrationType
 from .scoped_repository import ScopedRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class ConfigRepository(ScopedRepository):
     Supports different config types: string, int, bool, json, secret_ref.
     """
 
-    def __init__(self, context: 'RequestContext'):
+    def __init__(self, context: 'ExecutionContext'):
         super().__init__("Config", context)
 
     def get_config(
@@ -254,7 +254,7 @@ class ConfigRepository(ScopedRepository):
             org_id = partition_key
 
         # Parse datetime field
-        updated_at = self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow())
+        updated_at = cast(datetime, self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow()))
 
         return Config(
             key=key,
@@ -286,7 +286,7 @@ class ConfigRepository(ScopedRepository):
             settings = {}
 
         # Parse datetime field
-        updated_at = self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow())
+        updated_at = cast(datetime, self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow()))
 
         return IntegrationConfig(
             type=IntegrationType(entity.get("Type")),

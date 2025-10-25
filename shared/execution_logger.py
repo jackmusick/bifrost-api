@@ -151,6 +151,13 @@ class ExecutionLogger:
                 extra={"execution_id": execution_id}
             )
 
+        if variables:
+            self.blob_service.upload_variables(execution_id, variables)
+            logger.info(
+                f"Stored variables in blob storage ({len(variables)} variables)",
+                extra={"execution_id": execution_id}
+            )
+
         # Delegate to repository (handles primary record + ALL indexes!)
         execution_model = self.repository.update_execution(
             execution_id=execution_id,

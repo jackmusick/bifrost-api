@@ -35,6 +35,8 @@ Example:
     token = oauth.get_token("microsoft")
 """
 
+from dataclasses import dataclass
+
 from .config import config
 from .executions import executions
 from .files import files
@@ -47,7 +49,22 @@ from .workflows import workflows
 
 # Import decorators and context from shared module
 from shared.decorators import workflow, param, data_provider
-from shared.context import OrganizationContext
+from shared.context import ExecutionContext, Organization
+from shared.models import (
+    ExecutionStatus,
+    OAuthCredentials,
+    ConfigType,
+    FormFieldType,
+    IntegrationType,
+)
+
+# For backwards compatibility with type stubs
+@dataclass
+class Caller:
+    """User who triggered the workflow execution."""
+    user_id: str
+    email: str
+    name: str
 
 __all__ = [
     'organizations',
@@ -62,7 +79,14 @@ __all__ = [
     'workflow',
     'param',
     'data_provider',
-    'OrganizationContext',
+    'ExecutionContext',
+    'Organization',
+    'Caller',
+    'ExecutionStatus',
+    'OAuthCredentials',
+    'ConfigType',
+    'FormFieldType',
+    'IntegrationType',
 ]
 
 __version__ = '1.0.0'

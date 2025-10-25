@@ -69,24 +69,24 @@ class TestWorkspaceIsolation:
         """Integration: Workspace workflows receive proper execution context"""
         # This test documents the expected behavior:
         # When a workspace workflow is executed, it should receive:
-        # 1. OrganizationContext with org_id
+        # 1. ExecutionContext with org_id
         # 2. Authenticated principal
         # 3. Request metadata
 
         # The actual execution is tested in higher-level integration tests
         assert True, (
-            "Contract: Workspace workflows must receive OrganizationContext"
+            "Contract: Workspace workflows must receive ExecutionContext"
         )
 
 
-class TestOrganizationContextIsolation:
+class TestExecutionContextIsolation:
     """Integration tests for org-scoped context enforcement"""
 
     def test_workspace_receives_org_context(self):
         """Integration: Workspace code receives organization context"""
         # When execute_workflow is called, it should:
         # 1. Load organization from X-Organization-Id header
-        # 2. Create OrganizationContext
+        # 2. Create ExecutionContext
         # 3. Pass to workspace workflow function
 
         # This validates the integration between:
@@ -103,7 +103,7 @@ class TestOrganizationContextIsolation:
         # Even with function key bypass, the system must:
         # 1. Extract X-Organization-Id from headers
         # 2. Validate organization exists and is active
-        # 3. Create OrganizationContext with that org
+        # 3. Create ExecutionContext with that org
 
         # This prevents function key from accessing invalid orgs
         assert True, (
@@ -136,13 +136,13 @@ class TestWorkspacePublicAPI:
             pytest.fail(f"Public API decorators not accessible: {e}")
 
     def test_context_module_accessible(self):
-        """Integration: OrganizationContext is accessible"""
+        """Integration: ExecutionContext is accessible"""
         try:
-            from shared.context import OrganizationContext
+            from shared.context import ExecutionContext
             # Verify it's a class
-            assert isinstance(OrganizationContext, type)
+            assert isinstance(ExecutionContext, type)
         except ImportError as e:
-            pytest.fail(f"OrganizationContext not accessible: {e}")
+            pytest.fail(f"ExecutionContext not accessible: {e}")
 
     def test_error_handling_module_accessible(self):
         """Integration: Error classes are accessible"""

@@ -8,7 +8,7 @@ import logging
 from collections.abc import Callable
 from typing import Any, Literal
 
-from .registry import DataProviderMetadata, WorkflowMetadata, WorkflowParameter, get_registry
+from .registry import DataProviderMetadata, FunctionMetadata, WorkflowMetadata, WorkflowParameter, get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +94,10 @@ def workflow(
 
         # Detect source based on file path
         source = None
+        source_file_path = None
         if hasattr(func, '__code__'):
             file_path = func.__code__.co_filename
+            source_file_path = file_path  # Store full file path
             if '/platform/' in file_path or '\\platform\\' in file_path:
                 source = 'platform'
             elif '/home/' in file_path or '\\home\\' in file_path:
@@ -125,9 +127,30 @@ def workflow(
         # Store metadata in function
         func._workflow_metadata = metadata
 
-        # Register with registry
+        # Register with old registry (backward compat)
         registry = get_registry()
         registry.register_workflow(metadata)
+
+        # Also register with unified registry
+        unified_metadata = FunctionMetadata(
+            name=name,
+            description=description,
+            category=category,
+            tags=tags + ['workflow'],  # Add 'workflow' tag
+            execution_mode=execution_mode,
+            timeout_seconds=timeout_seconds,
+            function=func,
+            parameters=pending_params,
+            endpoint_enabled=endpoint_enabled,
+            allowed_methods=allowed_methods,
+            disable_global_key=disable_global_key,
+            public_endpoint=public_endpoint,
+            source=source,
+            source_file_path=source_file_path,
+            retry_policy=retry_policy,
+            schedule=schedule
+        )
+        registry.register_function(unified_metadata)
 
         logger.debug(
             f"Workflow decorator applied: {name} "
@@ -264,6 +287,19 @@ def data_provider(
             pending_params = list(reversed(func._pending_parameters))
             delattr(func, '_pending_parameters')  # Clean up
 
+        # Detect source based on file path
+        source = None
+        source_file_path = None
+        if hasattr(func, '__code__'):
+            file_path = func.__code__.co_filename
+            source_file_path = file_path  # Store full file path
+            if '/platform/' in file_path or '\\platform\\' in file_path:
+                source = 'platform'
+            elif '/home/' in file_path or '\\home\\' in file_path:
+                source = 'home'
+            elif '/workspace/' in file_path or '\\workspace\\' in file_path:
+                source = 'workspace'
+
         # Create metadata
         metadata = DataProviderMetadata(
             name=name,
@@ -277,9 +313,25 @@ def data_provider(
         # Store metadata on function
         func._data_provider_metadata = metadata
 
-        # Register with registry
+        # Register with old registry (backward compat)
         registry = get_registry()
         registry.register_data_provider(metadata)
+
+        # Also register with unified registry
+        unified_metadata = FunctionMetadata(
+            name=name,
+            description=description,
+            category=category,
+            tags=['data_provider'],  # Just this tag
+            execution_mode='async',  # Data providers are always async
+            timeout_seconds=300,
+            function=func,
+            parameters=pending_params,
+            cache_ttl_seconds=cache_ttl_seconds,
+            source=source,
+            source_file_path=source_file_path
+        )
+        registry.register_function(unified_metadata)
 
         logger.debug(
             f"Data provider decorator applied: {name} "
@@ -296,7 +348,7 @@ def data_provider(
 
 def with_request_context(handler):
     """
-    Decorator to inject RequestContext into request.
+    Decorator to inject ExecutionContext into request.
 
     Automatically extracts user identity, org scope, and permissions
     from Azure Functions request and injects as req.context.

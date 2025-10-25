@@ -89,6 +89,9 @@ async def validate_cron_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                 valid=False,
                 humanReadable="Invalid CRON expression",
                 error="Invalid CRON syntax. Use 5 fields: minute hour day month dayofweek",
+                nextRuns=None,
+                intervalSeconds=None,
+                warning=None,
             )
             return func.HttpResponse(
                 body=response.model_dump_json(),
@@ -126,6 +129,7 @@ async def validate_cron_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             nextRuns=next_runs,
             intervalSeconds=interval_seconds,
             warning=warning,
+            error=None,
         )
 
         return func.HttpResponse(
@@ -192,4 +196,10 @@ async def trigger_schedule(req: func.HttpRequest) -> func.HttpResponse:
     providing a real test of the scheduling system.
     """
     workflow_name = req.route_params.get("workflow_name")
+    if workflow_name is None:
+        return func.HttpResponse(
+            body=json.dumps({"error": "workflow_name is required"}),
+            status_code=400,
+            mimetype="application/json",
+        )
     return await trigger_schedule_handler(req, workflow_name)

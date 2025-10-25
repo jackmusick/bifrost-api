@@ -14,14 +14,14 @@ from shared.models import (
     ErrorResponse,
     User,
 )
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 from shared.storage import get_table_service
 
 logger = logging.getLogger(__name__)
 
 
 async def list_users_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     user_type_filter: str = "",
     org_id_filter: Optional[str] = None
 ) -> func.HttpResponse:
@@ -109,7 +109,7 @@ async def list_users_handler(
 
 
 async def get_user_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     user_id: str
 ) -> func.HttpResponse:
     """
@@ -180,7 +180,7 @@ async def get_user_handler(
 
 
 async def get_user_permissions_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     user_id: str
 ) -> func.HttpResponse:
     """
@@ -211,7 +211,7 @@ async def get_user_permissions_handler(
 
 
 async def get_org_permissions_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     org_id: str
 ) -> func.HttpResponse:
     """
@@ -242,7 +242,7 @@ async def get_org_permissions_handler(
 
 
 async def grant_permissions_handler(
-    context: RequestContext
+    context: ExecutionContext
 ) -> func.HttpResponse:
     """
     Grant user permissions (deprecated endpoint).
@@ -273,7 +273,7 @@ async def grant_permissions_handler(
 
 
 async def revoke_permissions_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     user_id: str,
     org_id: str
 ) -> func.HttpResponse:
@@ -308,7 +308,7 @@ async def revoke_permissions_handler(
 
 
 async def get_user_roles_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     user_id: str
 ) -> func.HttpResponse:
     """
@@ -361,7 +361,7 @@ async def get_user_roles_handler(
 
 
 async def get_user_forms_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     user_id: str
 ) -> func.HttpResponse:
     """

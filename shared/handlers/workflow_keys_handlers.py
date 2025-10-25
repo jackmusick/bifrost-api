@@ -89,7 +89,7 @@ async def create_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
     try:
         # Get context from request
         context = req.org_context  # type: ignore[attr-defined]
-        user_email = context.caller.email
+        user_email = context.email
 
         # Parse request body
         body = req.get_json()
@@ -244,7 +244,7 @@ async def list_workflow_keys_handler(req: func.HttpRequest) -> func.HttpResponse
     try:
         # Get context from request
         context = req.org_context  # type: ignore[attr-defined]
-        user_email = context.caller.email
+        user_email = context.email
 
         # Get query parameters
         workflow_id_filter = req.params.get('workflowId')
@@ -321,7 +321,7 @@ async def revoke_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
     try:
         # Get context from request
         context = req.org_context  # type: ignore[attr-defined]
-        user_email = context.caller.email
+        user_email = context.email
 
         # Get key ID from route params
         key_id = req.route_params.get('keyId')

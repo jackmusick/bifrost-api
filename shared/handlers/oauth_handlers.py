@@ -128,7 +128,9 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                     logger.info(f"Client credentials token acquired for {create_request.connection_name}")
 
                     # Re-fetch connection to get updated status
-                    connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+                    updated_connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+                    if updated_connection:
+                        connection = updated_connection
 
             except Exception as e:
                 logger.error(f"Error acquiring client credentials token: {str(e)}", exc_info=True)
@@ -139,9 +141,13 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                     status_message=f"Failed to acquire initial token: {str(e)}"
                 )
                 # Re-fetch connection to get updated status
-                connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+                updated_connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+                if updated_connection:
+                    connection = updated_connection
 
-        detail = connection.to_detail()
+        detail = connection.to_detail() if connection else None
+        if detail is None:
+            return internal_error("Failed to retrieve created connection")
         return success_response(detail.model_dump(mode="json"), 201)
 
     except ValidationError as e:
@@ -226,6 +232,8 @@ async def update_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
         )
 
         logger.info(f"Updated OAuth connection: {name}")
+        if updated is None:
+            return internal_error("Failed to retrieve updated connection")
         detail = updated.to_detail()
         return success_response(detail.model_dump(mode="json"))
 
@@ -515,7 +523,7 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         test_success, test_message = await oauth_test.test_connection(
             access_token=result["access_token"],
-            authorization_url=connection.authorization_url,
+            authorization_url=connection.authorization_url or "",
             token_url=connection.token_url
         )
 
@@ -592,14 +600,16 @@ async def get_oauth_credentials_handler(req: func.HttpRequest) -> func.HttpRespo
         if not connection:
             return not_found("OAuth connection", name)
 
-        # Get credentials
-        credentials = await oauth_service.get_credentials(org_id, name)
-        if not credentials:
-            return not_found("OAuth credentials", name)
+        # Build credentials response from connection
+        # Note: actual access_token and refresh_token are stored in Config/KeyVault by reference
+        # We only return the metadata (type and expiration)
+        credentials = None
 
         response = OAuthCredentialsResponse(
             connection_name=name,
-            credentials=credentials
+            credentials=credentials,
+            status=connection.status,
+            expires_at=connection.expires_at.isoformat() if connection.expires_at else None
         )
         return success_response(response.model_dump(mode="json"))
 
@@ -621,13 +631,16 @@ async def get_oauth_refresh_job_status_handler(req: func.HttpRequest) -> func.Ht
         try:
             job_status = config_service.get_entity("SYSTEM", "jobstatus:TokenRefreshJob")
 
-            # Convert to dict and remove Azure Table metadata
-            status_dict = {
-                k: v for k, v in job_status.items()
-                if not k.startswith("_") and k not in ["PartitionKey", "RowKey", "Timestamp", "etag"]
-            }
-
-            return success_response(status_dict)
+            if job_status:
+                # Convert to dict and remove Azure Table metadata
+                status_dict = {
+                    k: v for k, v in job_status.items()
+                    if not k.startswith("_") and k not in ["PartitionKey", "RowKey", "Timestamp", "etag"]
+                }
+                return success_response(status_dict)
+            else:
+                # No job has run yet
+                return success_response({"message": "No refresh jobs have run yet"})
         except Exception:
             # No job has run yet
             return success_response({"message": "No refresh jobs have run yet"})

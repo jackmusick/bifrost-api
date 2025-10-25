@@ -13,12 +13,12 @@ from shared.models import Form
 from shared.repositories.forms import FormRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
 
-def list_forms_logic(context: 'RequestContext') -> list[Form]:
+def list_forms_logic(context: 'ExecutionContext') -> list[Form]:
     """
     List all forms for current organization (business logic).
 
@@ -31,14 +31,14 @@ def list_forms_logic(context: 'RequestContext') -> list[Form]:
     logger.info(f"User {context.user_id} listing forms for org {context.org_id}")
 
     repo = FormRepository(context)
-    forms = repo.list_forms(context.org_id)
+    forms = repo.list_forms()
 
     logger.info(f"Returning {len(forms)} forms for org {context.org_id}")
 
     return forms
 
 
-def get_form_logic(context: 'RequestContext', form_id: str) -> Form | None:
+def get_form_logic(context: 'ExecutionContext', form_id: str) -> Form | None:
     """
     Get form by ID (business logic).
 
@@ -52,7 +52,7 @@ def get_form_logic(context: 'RequestContext', form_id: str) -> Form | None:
     logger.info(f"User {context.user_id} getting form {form_id}")
 
     repo = FormRepository(context)
-    form = repo.get_form(form_id, context.org_id)
+    form = repo.get_form(form_id)
 
     if not form:
         logger.warning(f"Form {form_id} not found in org {context.org_id}")

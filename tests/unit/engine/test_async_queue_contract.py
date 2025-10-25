@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from shared.async_executor import enqueue_workflow_execution
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext, Organization
 
 
 class TestQueueMessageCreation:
@@ -34,14 +34,17 @@ class TestQueueMessageCreation:
         mock_exec_logger.update_execution = MagicMock()
         mock_get_logger.return_value = mock_exec_logger
 
-        # Create request context
-        context = RequestContext(
+        # Create execution context
+        org = Organization(id="test-org", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
-            org_id="test-org",
             email="test@example.com",
             name="Test User",
+            scope="test-org",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-queue"
         )
 
         # Execute
@@ -91,13 +94,16 @@ class TestQueueMessageCreation:
         mock_exec_logger.update_execution = MagicMock()
         mock_get_logger.return_value = mock_exec_logger
 
-        context = RequestContext(
+        org = Organization(id="test-org", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
-            org_id="test-org",
             email="test@example.com",
             name="Test User",
+            scope="test-org",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-create"
         )
 
         await enqueue_workflow_execution(
@@ -135,13 +141,16 @@ class TestQueueMessageCreation:
         mock_exec_logger.update_execution = MagicMock()
         mock_get_logger.return_value = mock_exec_logger
 
-        context = RequestContext(
+        org = Organization(id="test-org", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
-            org_id="test-org",
             email="test@example.com",
             name="Test User",
+            scope="test-org",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-form"
         )
 
         # Execute with form_id
@@ -177,13 +186,16 @@ class TestQueueMessageCreation:
         mock_exec_logger.update_execution = MagicMock()
         mock_get_logger.return_value = mock_exec_logger
 
-        context = RequestContext(
+        org = Organization(id="test-org", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
-            org_id="test-org",
             email="test@example.com",
             name="Test User",
+            scope="test-org",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-empty"
         )
 
         # Execute with empty parameters
@@ -218,13 +230,16 @@ class TestQueueMessageCreation:
         mock_exec_logger.update_execution = MagicMock()
         mock_get_logger.return_value = mock_exec_logger
 
-        context = RequestContext(
+        org = Organization(id="test-org", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
-            org_id="test-org",
             email="test@example.com",
             name="Test User",
+            scope="test-org",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-multi"
         )
 
         # Enqueue 3 executions

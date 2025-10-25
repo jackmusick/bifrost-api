@@ -12,7 +12,7 @@ from croniter import croniter
 from shared.async_executor import enqueue_workflow_execution
 from shared.models import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
 from shared.registry import get_registry
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 from shared.storage import TableStorageService
 from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid
 
@@ -34,7 +34,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
 
     config_service = TableStorageService("Config")
     registry = get_registry()
-    context: RequestContext = req.context
+    context: ExecutionContext = req.context  # type: ignore[attr-defined]
 
     # Get all workflows from registry
     all_workflows = registry.get_all_workflows()
@@ -55,7 +55,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
             cron_expression = workflow_meta.schedule
 
             # Validate CRON expression using comprehensive validation
-            if not is_cron_expression_valid(cron_expression):
+            if cron_expression is None or not is_cron_expression_valid(cron_expression):
                 logger.warning(
                     f"Skipping schedule with invalid CRON expression: {workflow_name} - {cron_expression}"
                 )
@@ -108,7 +108,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
                 )
 
                 # Update schedule state
-                next_run_at = calculate_next_run(cron_expression, now)
+                next_run_at = calculate_next_run(cron_expression or "", now)
                 schedule_state["LastRunAt"] = now.isoformat()
                 schedule_state["LastExecutionId"] = execution_id
                 schedule_state["ExecutionCount"] = int(
@@ -220,12 +220,12 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
                     try:
                         datetime.fromisoformat(schedule_state["NextRunAt"])
                         # Recalculate from the CRON expression to ensure proper rounding
-                        next_run_at = calculate_next_run(cron_expression, datetime.utcnow()).replace(tzinfo=timezone.utc)
+                        next_run_at = calculate_next_run(cron_expression or "", datetime.utcnow()).replace(tzinfo=timezone.utc)
                     except (ValueError, TypeError):
                         pass
 
             # Generate human-readable description
-            human_readable = cron_to_human_readable(cron_expression)
+            human_readable = cron_to_human_readable(cron_expression or "")
 
             # Validate CRON expression and check for warnings
             validation_status = "valid"
@@ -233,7 +233,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
             is_overdue = False
 
             # Check comprehensive CRON validation
-            if not is_cron_expression_valid(cron_expression):
+            if cron_expression is None or not is_cron_expression_valid(cron_expression):
                 validation_status = "error"
                 validation_message = "Invalid CRON expression"
                 # Clear next run for invalid schedules - they should never run
@@ -243,7 +243,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
                 # This is a warning - the schedule will still run but may not meet expectations
                 try:
                     now = datetime.utcnow()
-                    cron = croniter(cron_expression, now)
+                    cron = croniter(cron_expression or "", now)
                     first_run = cron.get_next(datetime)
                     second_run = cron.get_next(datetime)
                     interval_seconds = (second_run - first_run).total_seconds()
@@ -271,7 +271,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
             schedule_info = ScheduleInfo(
                 workflowName=workflow_name,
                 workflowDescription=workflow_description,
-                cronExpression=cron_expression,
+                cronExpression=cron_expression or "",
                 humanReadable=human_readable,
                 nextRunAt=next_run_at,
                 lastRunAt=last_run_at,
@@ -362,7 +362,7 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
         )
 
     # Get request context from decorator
-    context: RequestContext = req.context
+    context: ExecutionContext = req.context  # type: ignore[attr-defined]
 
     try:
         # Enqueue workflow execution (same as schedule processor)

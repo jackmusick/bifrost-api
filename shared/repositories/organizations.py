@@ -12,7 +12,7 @@ from shared.models import CreateOrganizationRequest, Organization, UpdateOrganiz
 from .base import BaseRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class OrganizationRepository(BaseRepository):
     Organizations are always stored in GLOBAL partition with RowKey: org:{uuid}
     """
 
-    def __init__(self, context: 'RequestContext | None' = None):
+    def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
 
     def create_organization(
@@ -244,8 +244,8 @@ class OrganizationRepository(BaseRepository):
             Organization model
         """
         # Parse datetime fields
-        created_at = self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow())
-        updated_at = self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow())
+        created_at = cast(datetime, self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow()))
+        updated_at = cast(datetime, self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow()))
 
         return Organization(
             id=org_id,

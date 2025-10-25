@@ -12,7 +12,7 @@ import pytest
 
 # Import the actual bifrost module to check its exports
 import bifrost
-from shared.context import OrganizationContext
+from shared.context import ExecutionContext
 from shared.decorators import data_provider, param, workflow
 from shared.models import ExecutionStatus, OAuthCredentials
 
@@ -123,51 +123,59 @@ class TestTypeStubAccuracy:
                 f"bifrost.__all__ lists '{export_name}' but it's not actually exported"
             )
 
-    def test_context_has_logger_methods(self):
-        """Contract: OrganizationContext must have info/warning/error/debug methods"""
-        required_methods = ['info', 'warning', 'error', 'debug']
+    def test_context_does_not_have_logger_methods(self):
+        """Contract: ExecutionContext must NOT have info/warning/error/debug methods
 
-        for method_name in required_methods:
-            assert hasattr(OrganizationContext, method_name), (
-                f"OrganizationContext missing method: {method_name}"
+        These were removed in the context API refactoring. Workflows should use
+        the logger module directly instead.
+        """
+        deprecated_methods = ['info', 'warning', 'error', 'debug']
+
+        for method_name in deprecated_methods:
+            assert not hasattr(ExecutionContext, method_name), (
+                f"ExecutionContext should not have {method_name}() method - "
+                f"use logger.{method_name}() in workflows instead"
             )
 
-            method = getattr(OrganizationContext, method_name)
-            assert callable(method), f"{method_name} is not callable"
-
-            # Check signature: (self, message: str, data: Optional[Dict] = None)
-            sig = inspect.signature(method)
-            params = list(sig.parameters.keys())
-            assert 'message' in params, f"{method_name} missing 'message' parameter"
-            assert 'data' in params, f"{method_name} missing 'data' parameter"
-
     def test_context_does_not_have_log_method(self):
-        """Contract: OrganizationContext should NOT have old log() method"""
+        """Contract: ExecutionContext should NOT have old log() method"""
         # We migrated from log() to info/warning/error/debug
         # Make sure the old method is removed
-        assert not hasattr(OrganizationContext, 'log'), (
-            "OrganizationContext should not have log() method - use info/warning/error/debug instead"
+        assert not hasattr(ExecutionContext, 'log'), (
+            "ExecutionContext should not have log() method - use info/warning/error/debug instead"
         )
 
     def test_context_has_required_methods(self):
-        """Contract: OrganizationContext must have all documented methods"""
+        """Contract: ExecutionContext must have all documented methods"""
         required_methods = [
             'get_config',
             'has_config',
             'get_oauth_connection',
             'save_checkpoint',
-            'set_variable',
-            'get_variable',
             'finalize_execution'
         ]
 
         for method_name in required_methods:
-            assert hasattr(OrganizationContext, method_name), (
-                f"OrganizationContext missing method: {method_name}"
+            assert hasattr(ExecutionContext, method_name), (
+                f"ExecutionContext missing method: {method_name}"
+            )
+
+    def test_context_does_not_have_deprecated_methods(self):
+        """Contract: ExecutionContext must NOT have deprecated variable methods
+
+        set_variable() and get_variable() were removed in the context API refactoring.
+        Variables are now captured automatically from the script namespace.
+        """
+        deprecated_methods = ['set_variable', 'get_variable']
+
+        for method_name in deprecated_methods:
+            assert not hasattr(ExecutionContext, method_name), (
+                f"ExecutionContext should not have {method_name}() - "
+                f"variables are captured automatically from script namespace"
             )
 
     def test_context_has_required_properties(self):
-        """Contract: OrganizationContext must have all documented properties/attributes"""
+        """Contract: ExecutionContext must have all documented properties/attributes"""
         # Properties (with @property decorator)
         required_properties = [
             'org_id',
@@ -178,11 +186,11 @@ class TestTypeStubAccuracy:
         ]
 
         for prop_name in required_properties:
-            assert hasattr(OrganizationContext, prop_name), (
-                f"OrganizationContext missing property: {prop_name}"
+            assert hasattr(ExecutionContext, prop_name), (
+                f"ExecutionContext missing property: {prop_name}"
             )
             # Verify it's actually a property
-            attr = getattr(OrganizationContext, prop_name)
+            attr = getattr(ExecutionContext, prop_name)
             assert isinstance(attr, property), f"{prop_name} should be a @property"
 
         # Public attributes (set in __init__)
@@ -209,36 +217,45 @@ class TestTypeStubAccuracy:
                 f"OAuthCredentials missing method: {method_name}"
             )
 
-    def test_stub_file_contains_new_logger_methods(self):
-        """Contract: Stub file must document new logger-style methods"""
+    def test_stub_file_does_not_contain_logger_methods(self):
+        """Contract: Stub file must NOT document deprecated logger methods
+
+        Logger methods (info, warning, error, debug) were removed from ExecutionContext.
+        Workflows should use the logger module directly.
+        """
         stub_path = Path(__file__).parent.parent.parent.parent / "stubs" / "bifrost.pyi"
         stub_content = stub_path.read_text()
 
-        # Check that stub has new methods
-        assert 'def info(' in stub_content, "Stub missing info() method"
-        assert 'def warning(' in stub_content, "Stub missing warning() method"
-        assert 'def error(' in stub_content, "Stub missing error() method"
-        assert 'def debug(' in stub_content, "Stub missing debug() method"
+        # Check that stub does NOT have deprecated logger methods
+        import re
+        logger_methods = ['info', 'warning', 'error', 'debug']
+        for method in logger_methods:
+            pattern = rf'def {method}\('
+            matches = re.findall(pattern, stub_content)
+            assert len(matches) == 0, (
+                f"Stub file should not contain {method}() method - "
+                f"use logger.{method}() in workflows instead"
+            )
 
         # Check that old log() method is NOT in stub
-        # Note: We need to be careful not to match "# Log" in comments
-        import re
         log_method_pattern = r'def log\('
         matches = re.findall(log_method_pattern, stub_content)
         assert len(matches) == 0, (
-            "Stub file should not contain log() method - use info/warning/error/debug instead"
+            "Stub file should not contain log() method"
         )
 
     def test_stub_signature_matches_implementation(self):
         """Contract: Stub method signatures should match implementation"""
-        # Test info() signature
-        info_sig = inspect.signature(OrganizationContext.info)
-        params = list(info_sig.parameters.keys())
+        # Test get_config() signature
+        config_sig = inspect.signature(ExecutionContext.get_config)
+        params = list(config_sig.parameters.keys())
 
-        assert params == ['self', 'message', 'data'], (
-            f"info() signature mismatch. Expected ['self', 'message', 'data'], got {params}"
+        assert 'key' in params, (
+            f"get_config() signature should include 'key' parameter, got {params}"
         )
 
-        # Check data parameter has Optional[Dict] type hint
-        data_param = info_sig.parameters['data']
-        assert data_param.default is None, "data parameter should default to None"
+        # Test save_checkpoint() signature
+        checkpoint_sig = inspect.signature(ExecutionContext.save_checkpoint)
+        checkpoint_params = list(checkpoint_sig.parameters.keys())
+        assert 'name' in checkpoint_params, "save_checkpoint() should have 'name' parameter"
+        assert 'data' in checkpoint_params, "save_checkpoint() should have 'data' parameter"

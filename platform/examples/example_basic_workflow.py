@@ -4,7 +4,11 @@ Simple Greeting Workflow
 A basic workflow for testing form submission and execution.
 """
 
-from bifrost import OrganizationContext, param, workflow
+import logging
+
+from bifrost import ExecutionContext, param, workflow
+
+logger = logging.getLogger(__name__)
 
 
 @workflow(
@@ -18,7 +22,7 @@ from bifrost import OrganizationContext, param, workflow
 @param("greeting_type", type="string", label="Greeting Type", required=False, default_value="Hello", help_text="Type of greeting")
 @param("include_timestamp", type="bool", label="Include Timestamp", required=False, default_value=False, help_text="Whether to include timestamp")
 async def simple_greeting(
-    context: OrganizationContext,
+    context: ExecutionContext,
     name: str,
     greeting_type: str = "Hello",
     include_timestamp: bool = False
@@ -43,7 +47,7 @@ async def simple_greeting(
         timestamp = datetime.datetime.utcnow().isoformat()
         greeting += f" (at {timestamp})"
 
-    context.info(f"Generated greeting: {greeting}")
+    logger.info(f"Generated greeting: {greeting}")
 
     return {
         "greeting": greeting,

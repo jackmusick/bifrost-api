@@ -3,7 +3,6 @@ Integration tests for data providers with @param decorators (T021)
 Tests that data providers with parameters execute correctly with inputs
 """
 
-import pytest
 import requests
 
 

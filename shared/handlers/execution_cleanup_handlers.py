@@ -11,14 +11,14 @@ import azure.functions as func
 from shared.execution_logger import ExecutionLogger
 from shared.models import ExecutionStatus
 from shared.repositories.executions import ExecutionRepository
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
 
 async def get_stuck_executions_handler(
     req: func.HttpRequest,
-    context: RequestContext
+    context: ExecutionContext
 ) -> func.HttpResponse:
     """
     Get list of stuck executions.
@@ -67,7 +67,7 @@ async def get_stuck_executions_handler(
 
 async def trigger_cleanup_handler(
     req: func.HttpRequest,
-    context: RequestContext
+    context: ExecutionContext
 ) -> func.HttpResponse:
     """
     Manually trigger cleanup of stuck executions.

@@ -36,7 +36,7 @@ async def get_stuck(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
         200: List of stuck executions
     """
-    return await get_stuck_executions_handler(req, req.context)
+    return await get_stuck_executions_handler(req, req.context)  # type: ignore[attr-defined]
 
 
 @bp.function_name("cleanup_trigger")
@@ -58,4 +58,4 @@ async def trigger_cleanup(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
         200: Cleanup results with counts
     """
-    return await trigger_cleanup_handler(req, req.context)
+    return await trigger_cleanup_handler(req, req.context)  # type: ignore[attr-defined]

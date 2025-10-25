@@ -79,8 +79,8 @@ class TestExecuteSync:
         """Test successful sync workflow execution"""
         mock_context = Mock()
         mock_context.org_id = "org-123"
-        mock_context.caller = Mock(user_id="user-123", name="Test User")
-        mock_context.set_variable = Mock()
+        mock_context.user_id = "user-123"
+        mock_context.name = "Test User"
 
         mock_workflow_func = AsyncMock(return_value={"result": "success"})
 
@@ -134,8 +134,8 @@ class TestExecuteSync:
         """Test sync execution with WorkflowError"""
         mock_context = Mock()
         mock_context.org_id = "org-123"
-        mock_context.caller = Mock(user_id="user-123", name="Test User")
-        mock_context.set_variable = Mock()
+        mock_context.user_id = "user-123"
+        mock_context.name = "Test User"
 
         mock_workflow_func = AsyncMock(side_effect=WorkflowError("ValidationError", "Workflow failed"))
 
@@ -189,8 +189,8 @@ class TestExecuteSync:
         """Test sync execution with unexpected error"""
         mock_context = Mock()
         mock_context.org_id = "org-123"
-        mock_context.caller = Mock(user_id="user-123", name="Test User")
-        mock_context.set_variable = Mock()
+        mock_context.user_id = "user-123"
+        mock_context.name = "Test User"
 
         mock_workflow_func = AsyncMock(side_effect=RuntimeError("Unexpected error"))
 
@@ -239,8 +239,8 @@ class TestExecuteSync:
         """Test sync execution with extra variables injected into context"""
         mock_context = Mock()
         mock_context.org_id = "org-123"
-        mock_context.caller = Mock(user_id="user-123", name="Test User")
-        mock_context.set_variable = Mock()
+        mock_context.user_id = "user-123"
+        mock_context.name = "Test User"
 
         mock_workflow_func = AsyncMock(return_value={"result": "success"})
 
@@ -283,6 +283,3 @@ class TestExecuteSync:
                         )
 
                         assert status == 200
-
-                        # Verify extra variables were set
-                        mock_context.set_variable.assert_called_with("extra_var", "extra_value")

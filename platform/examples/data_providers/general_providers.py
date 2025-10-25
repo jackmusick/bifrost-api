@@ -3,7 +3,11 @@ General Data Providers
 Data providers for common dropdown options
 """
 
+import logging
+
 from bifrost import data_provider
+
+logger = logging.getLogger(__name__)
 
 
 @data_provider(
@@ -17,7 +21,7 @@ async def get_priority_levels(context):
     Get standard priority level options for tickets or tasks.
 
     Args:
-        context: OrganizationContext
+        context: ExecutionContext
 
     Returns:
         List of priority options
@@ -45,7 +49,7 @@ async def get_priority_levels(context):
         }
     ]
 
-    context.info(
+    logger.info(
         f"Retrieved {len(priorities)} priority levels",
         {"org_id": context.org_id}
     )
@@ -64,7 +68,7 @@ async def get_ticket_categories(context):
     Get common IT ticket categories.
 
     Args:
-        context: OrganizationContext
+        context: ExecutionContext
 
     Returns:
         List of ticket category options
@@ -107,7 +111,7 @@ async def get_ticket_categories(context):
         }
     ]
 
-    context.info(
+    logger.info(
         f"Retrieved {len(categories)} ticket categories",
         {"org_id": context.org_id}
     )
@@ -131,7 +135,7 @@ async def get_departments(context):
     - OrganizationConfig table
 
     Args:
-        context: OrganizationContext
+        context: ExecutionContext
 
     Returns:
         List of department options
@@ -176,7 +180,7 @@ async def get_departments(context):
         }
     ]
 
-    context.info(
+    logger.info(
         f"Retrieved {len(departments)} departments",
         {"org_id": context.org_id}
     )
@@ -195,7 +199,7 @@ async def get_office_locations(context):
     Get list of office locations for the organization.
 
     Args:
-        context: OrganizationContext
+        context: ExecutionContext
 
     Returns:
         List of office location options
@@ -249,7 +253,7 @@ async def get_office_locations(context):
         }
     ]
 
-    context.info(
+    logger.info(
         f"Retrieved {len(locations)} office locations",
         {"org_id": context.org_id}
     )
@@ -268,7 +272,7 @@ async def get_countries(context):
     Get list of common countries.
 
     Args:
-        context: OrganizationContext
+        context: ExecutionContext
 
     Returns:
         List of country options
@@ -301,7 +305,7 @@ async def get_countries(context):
         {"label": "Mexico", "value": "MX"}
     ]
 
-    context.info(
+    logger.info(
         f"Retrieved {len(countries)} countries",
         {"org_id": context.org_id}
     )

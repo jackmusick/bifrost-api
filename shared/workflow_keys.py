@@ -40,7 +40,9 @@ def generate_workflow_key(
         createdBy=created_by,
         createdAt=datetime.utcnow(),
         lastUsedAt=None,
-        revoked=False
+        revoked=False,
+        expiresAt=None,
+        description=None
     )
 
     return raw_key, workflow_key

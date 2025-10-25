@@ -44,7 +44,7 @@ class TestCreateWorkflowKeyHandler:
             "expiresInDays": 90,
             "description": "Test key"
         }
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         with patch('shared.handlers.workflow_keys_handlers.generate_workflow_key') as mock_gen:
             mock_gen.return_value = ("raw_key_abc123", Mock(
@@ -83,7 +83,7 @@ class TestCreateWorkflowKeyHandler:
             "expiresInDays": None,
             "description": "Global key"
         }
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         with patch('shared.handlers.workflow_keys_handlers.generate_workflow_key') as mock_gen:
             mock_gen.return_value = ("raw_key_global", Mock(
@@ -121,7 +121,7 @@ class TestCreateWorkflowKeyHandler:
             "workflowId": "workflows.test",
             "expiresInDays": 30,
         }
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         with patch('shared.handlers.workflow_keys_handlers.generate_workflow_key') as mock_gen:
             mock_gen.return_value = ("raw_key_exp", Mock(
@@ -152,7 +152,7 @@ class TestCreateWorkflowKeyHandler:
         """Test validation error in key creation"""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.get_json.return_value = {}
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         with patch('shared.handlers.workflow_keys_handlers.WorkflowKeyCreateRequest') as MockRequest:
             MockRequest.side_effect = ValueError("Invalid input")
@@ -170,7 +170,7 @@ class TestCreateWorkflowKeyHandler:
         mock_req.get_json.return_value = {
             "workflowId": "workflows.test"
         }
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         with patch('shared.handlers.workflow_keys_handlers.generate_workflow_key') as mock_gen:
             mock_gen.side_effect = Exception("Key generation failed")
@@ -190,7 +190,7 @@ class TestListWorkflowKeysHandler:
     async def test_list_workflow_keys_empty(self):
         """Test listing when no keys exist"""
         mock_req = Mock(spec=func.HttpRequest)
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
         mock_req.params = {}
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
@@ -207,7 +207,7 @@ class TestListWorkflowKeysHandler:
     async def test_list_workflow_keys_filter_by_workflow(self):
         """Test listing keys filtered by workflow"""
         mock_req = Mock(spec=func.HttpRequest)
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
         mock_req.params = {"workflowId": "workflows.specific"}
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
@@ -227,7 +227,7 @@ class TestListWorkflowKeysHandler:
     async def test_list_workflow_keys_include_revoked(self):
         """Test listing with revoked keys included"""
         mock_req = Mock(spec=func.HttpRequest)
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
         mock_req.params = {"includeRevoked": "true"}
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
@@ -247,7 +247,7 @@ class TestListWorkflowKeysHandler:
     async def test_list_workflow_keys_exclude_revoked(self):
         """Test listing excluding revoked keys (default)"""
         mock_req = Mock(spec=func.HttpRequest)
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
         mock_req.params = {}
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
@@ -267,7 +267,7 @@ class TestListWorkflowKeysHandler:
     async def test_list_workflow_keys_error(self):
         """Test error handling in listing"""
         mock_req = Mock(spec=func.HttpRequest)
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
         mock_req.params = {}
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
@@ -287,7 +287,7 @@ class TestRevokeWorkflowKeyHandler:
         """Test successful key revocation"""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.route_params = {"keyId": "key-123"}
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         entity = {
             "PartitionKey": "GLOBAL",
@@ -320,7 +320,7 @@ class TestRevokeWorkflowKeyHandler:
         """Test revoking non-existent key"""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.route_params = {"keyId": "key-nonexistent"}
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
@@ -337,7 +337,7 @@ class TestRevokeWorkflowKeyHandler:
         """Test revoking key owned by another user"""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.route_params = {"keyId": "key-123"}
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         entity = {
             "PartitionKey": "GLOBAL",
@@ -361,7 +361,7 @@ class TestRevokeWorkflowKeyHandler:
         """Test revoking without keyId"""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.route_params = {}  # No keyId
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         response = await revoke_workflow_key_handler(mock_req)
 
@@ -374,7 +374,7 @@ class TestRevokeWorkflowKeyHandler:
         """Test revoking global (non-workflow-specific) key"""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.route_params = {"keyId": "key-global"}
-        mock_req.org_context = Mock(caller=Mock(email="user@example.com"))
+        mock_req.org_context = Mock(email="user@example.com")
 
         # First call fails (workflow key), second succeeds (global key)
         entity = {

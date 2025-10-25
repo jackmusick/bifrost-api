@@ -233,7 +233,7 @@ class TestConfigLoading:
             pass  # Expected
 
 
-class TestOrganizationContextLoading:
+class TestExecutionContextLoading:
     """Test organization context loading"""
 
     def test_org_context_with_valid_org_id(self):

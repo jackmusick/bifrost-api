@@ -10,7 +10,7 @@ from typing import Any
 from shared.authorization import can_user_view_execution
 from shared.blob_storage import get_blob_service
 from shared.repositories.executions import ExecutionRepository
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +252,7 @@ def apply_limit(executions: list[dict], limit: int) -> list[dict]:
 
 
 async def list_executions_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     workflow_name: str | None = None,
     status: str | None = None,
     start_date: str | None = None,
@@ -268,7 +268,7 @@ async def list_executions_handler(
     - Regular users: see only their own executions
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         workflow_name: Optional filter by workflow name
         status: Optional filter by status
         start_date: Optional filter by start date (ISO format, inclusive)
@@ -289,30 +289,47 @@ async def list_executions_handler(
     limit = min(limit, 1000)
 
     # Decode continuation token if provided
+    # Azure SDK returns string tokens, so we base64-decode them back to strings
     decoded_token = None
     if continuation_token:
+        logger.info(f"[Pagination Debug] Received continuation_token: {continuation_token[:50]}..." if len(continuation_token) > 50 else f"[Pagination Debug] Received continuation_token: {continuation_token}")
         try:
-            decoded_token = json.loads(base64.b64decode(continuation_token).decode('utf-8'))
-        except Exception:
-            logger.warning("Invalid continuation token provided, ignoring")
+            decoded_str = base64.b64decode(continuation_token).decode('utf-8')
+            logger.info(f"[Pagination Debug] Decoded to: {decoded_str[:100]}..." if len(decoded_str) > 100 else f"[Pagination Debug] Decoded to: {decoded_str}")
+            # Try to parse as JSON (for dict-style tokens), otherwise use as string
+            try:
+                decoded_token = json.loads(decoded_str)
+                logger.info(f"[Pagination Debug] Parsed as JSON dict")
+            except json.JSONDecodeError:
+                # It's a plain string token from Azure
+                decoded_token = decoded_str
+                logger.info(f"[Pagination Debug] Using as plain string")
+        except Exception as e:
+            logger.warning(f"Invalid continuation token provided, ignoring: {e}")
             decoded_token = None
+    else:
+        logger.info("[Pagination Debug] No continuation_token provided (first page)")
 
     # Get repository
     execution_repo = ExecutionRepository(context)
 
     # Platform admins see all in scope, regular users see only theirs
     if context.is_platform_admin:
+        logger.info(f"[Pagination Debug] Querying as platform admin for scope={context.scope}")
         executions, next_token = execution_repo.list_executions_paged(
             org_id=context.scope,
             results_per_page=limit,
             continuation_token=decoded_token
         )
     else:
+        logger.info(f"[Pagination Debug] Querying as regular user for user_id={context.user_id}")
         executions, next_token = execution_repo.list_executions_by_user_paged(
             user_id=context.user_id,
             results_per_page=limit,
             continuation_token=decoded_token
         )
+
+    logger.info(f"[Pagination Debug] Repository returned {len(executions)} executions, next_token={next_token}")
 
     # Convert to dicts
     executions_list = [e.model_dump(mode="json") for e in executions]
@@ -328,14 +345,20 @@ async def list_executions_handler(
     # Encode next token for client
     encoded_token = None
     if next_token:
-        encoded_token = base64.b64encode(json.dumps(next_token).encode('utf-8')).decode('utf-8')
+        # Handle both dict and string tokens
+        if isinstance(next_token, str):
+            # String token from Azure - base64 encode it directly
+            encoded_token = base64.b64encode(next_token.encode('utf-8')).decode('utf-8')
+        else:
+            # Dict token - JSON encode then base64
+            encoded_token = base64.b64encode(json.dumps(next_token).encode('utf-8')).decode('utf-8')
 
     logger.info(f"Returning {len(formatted)} executions for user {context.user_id}, has_more={next_token is not None}")
     return formatted, encoded_token
 
 
 async def get_execution_handler(
-    context: RequestContext,
+    context: ExecutionContext,
     execution_id: str
 ) -> tuple[dict | None, str | None]:
     """
@@ -346,7 +369,7 @@ async def get_execution_handler(
     - Regular users: can only view their own executions
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         execution_id: Execution ID (UUID)
 
     Returns:
@@ -381,6 +404,9 @@ async def get_execution_handler(
     blob_service = get_blob_service()
     logs = blob_service.get_logs(execution_id)
 
+    # Fetch variables from blob storage
+    variables = blob_service.get_variables(execution_id)
+
     # Fetch result (from blob if no inline result, otherwise use inline)
     result = None
     result_type = None
@@ -400,6 +426,7 @@ async def get_execution_handler(
     # Use mode='json' to serialize datetime objects to ISO strings
     execution = execution_model.model_dump(mode='json')
     execution['logs'] = logs
+    execution['variables'] = variables
     execution['result'] = result
     execution['resultType'] = result_type
 

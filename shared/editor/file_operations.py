@@ -47,8 +47,8 @@ def validate_and_resolve_path(relative_path: str) -> Path:
     Raises:
         ValueError: If path is invalid or attempts directory traversal
     """
-    # Get base path
-    base_path = get_base_path()
+    # Get base path and resolve it (handle symlinks like /var -> /private/var on macOS)
+    base_path = get_base_path().resolve()
 
     # Remove leading slashes from relative path
     clean_path = relative_path.lstrip("/")
@@ -88,12 +88,12 @@ def list_directory(relative_path: str = "") -> List[FileMetadata]:
         raise ValueError(f"Not a directory: {relative_path}")
 
     results: List[FileMetadata] = []
-    base_path = get_base_path()
+    base_path = get_base_path().resolve()
 
     for item in sorted(dir_path.iterdir()):
         try:
             stat = item.stat()
-            relative = str(item.relative_to(base_path))
+            relative = str(item.resolve().relative_to(base_path))
 
             # Determine type
             file_type = FileType.FOLDER if item.is_dir() else FileType.FILE

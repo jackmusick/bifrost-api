@@ -5,7 +5,11 @@ A public webhook endpoint that can be called without authentication.
 This demonstrates the public_endpoint feature for receiving external webhooks.
 """
 
-from bifrost import OrganizationContext, param, workflow
+import logging
+
+from bifrost import ExecutionContext, param, workflow
+
+logger = logging.getLogger(__name__)
 
 
 @workflow(
@@ -21,7 +25,7 @@ from bifrost import OrganizationContext, param, workflow
 @param("event_type", type="string", label="Event Type", required=True, help_text="Type of webhook event")
 @param("payload", type="json", label="Payload", required=False, help_text="Event payload data")
 async def webhook_example(
-    context: OrganizationContext,
+    context: ExecutionContext,
     event_type: str,
     payload: dict = None
 ) -> dict:
@@ -57,7 +61,7 @@ async def webhook_example(
     import datetime
 
     # Log the webhook event
-    context.info(f"Received webhook event: {event_type}")
+    logger.info(f"Received webhook event: {event_type}")
 
     # Process the payload
     timestamp = datetime.datetime.utcnow().isoformat()
@@ -66,12 +70,12 @@ async def webhook_example(
         "status": "received",
         "event_type": event_type,
         "received_at": timestamp,
-        "caller": context.caller.name,  # Will be "Public Access (Webhook)"
+        "caller": context.name,  # Will be "Public Access (Webhook)"
         "has_payload": payload is not None
     }
 
     if payload:
-        context.info(f"Payload keys: {list(payload.keys())}")
+        logger.info(f"Payload keys: {list(payload.keys())}")
         result["payload_keys"] = list(payload.keys())
 
     # Save checkpoint for audit trail

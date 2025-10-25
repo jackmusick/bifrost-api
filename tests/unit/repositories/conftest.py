@@ -53,13 +53,12 @@ def mock_table_service():
 
 @pytest.fixture
 def mock_context():
-    """Mock RequestContext for scoped repositories"""
+    """Mock ExecutionContext for scoped repositories"""
     context = MagicMock()
     context.org_id = "test-org-123"
     context.user_id = "test-user-456"
     context.scope = "test-org-123"
-    context.caller = MagicMock()
-    context.caller.email = "test@example.com"
+    context.email = "test@example.com"
     return context
 
 

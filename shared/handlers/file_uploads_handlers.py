@@ -7,7 +7,7 @@ Extracted from functions/file_uploads.py for unit testability
 import logging
 
 from shared.blob_storage import get_blob_service
-from shared.context import OrganizationContext
+from shared.context import ExecutionContext
 from shared.exceptions import FileUploadError
 from shared.models import FileUploadRequest, FileUploadResponse
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def generate_file_upload_url(
     form_id: str,
     request: FileUploadRequest,
-    context: OrganizationContext,
+    context: ExecutionContext,
     max_size_bytes: int = 100 * 1024 * 1024,
     allowed_types: list[str] | None = None,
 ) -> FileUploadResponse:
@@ -31,7 +31,7 @@ def generate_file_upload_url(
     Args:
         form_id: Form ID to associate uploaded file with
         request: FileUploadRequest with file metadata
-        context: OrganizationContext with org/user information
+        context: ExecutionContext with org/user information
         max_size_bytes: Maximum allowed file size (default 100MB)
         allowed_types: List of allowed MIME types (None = all types allowed)
 
@@ -50,7 +50,7 @@ def generate_file_upload_url(
             "content_type": request.content_type,
             "file_size": request.file_size,
             "org_id": context.org_id,
-            "user": context.caller.email,
+            "user": context.email,
         },
     )
 
@@ -82,7 +82,7 @@ def generate_file_upload_url(
         extra={
             "form_id": form_id,
             "blob_uri": response.blob_uri,
-            "user": context.caller.email,
+            "user": context.email,
             "org_id": context.org_id,
         },
     )

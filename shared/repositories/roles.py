@@ -13,7 +13,7 @@ from shared.storage import TableStorageService
 from .base import BaseRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class RoleRepository(BaseRepository):
     - Form-Role: formrole:{form_id}:{role_uuid}
     """
 
-    def __init__(self, context: 'RequestContext | None' = None):
+    def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
         self.relationships_service = TableStorageService("Relationships")
 
@@ -422,8 +422,8 @@ class RoleRepository(BaseRepository):
             Role model
         """
         # Parse datetime fields
-        created_at = self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow())
-        updated_at = self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow())
+        created_at = cast(datetime, self._parse_datetime(entity.get("CreatedAt"), datetime.utcnow()))
+        updated_at = cast(datetime, self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow()))
 
         return Role(
             id=role_id,

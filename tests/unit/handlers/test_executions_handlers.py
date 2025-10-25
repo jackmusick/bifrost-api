@@ -20,7 +20,7 @@ from shared.handlers.executions_handlers import (
     map_status_to_frontend,
 )
 from shared.models import WorkflowExecution
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 
 # ============================================================================
@@ -30,8 +30,8 @@ from shared.request_context import RequestContext
 
 @pytest.fixture
 def mock_context():
-    """Create a mock RequestContext"""
-    context = Mock(spec=RequestContext)
+    """Create a mock ExecutionContext"""
+    context = Mock(spec=ExecutionContext)
     context.user_id = "user-123"
     context.is_platform_admin = False
     context.scope = "org-456"
@@ -40,8 +40,8 @@ def mock_context():
 
 @pytest.fixture
 def mock_context_admin():
-    """Create a mock RequestContext for platform admin"""
-    context = Mock(spec=RequestContext)
+    """Create a mock ExecutionContext for platform admin"""
+    context = Mock(spec=ExecutionContext)
     context.user_id = "admin-user"
     context.is_platform_admin = True
     context.scope = "GLOBAL"

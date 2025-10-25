@@ -13,9 +13,9 @@ in test_organizations_endpoints.py, test_forms_endpoints.py, etc.
 
 import pytest
 
-# Import context functions directly from sdk package
+# Import context functions directly from bifrost package
 # This ensures we're using the SAME module instance as the SDK code
-from sdk._context import set_execution_context, clear_execution_context
+from bifrost._context import set_execution_context, clear_execution_context
 
 
 
@@ -72,22 +72,25 @@ class TestDefaultOrgScoping:
         """Test that config.list() uses context.org_id by default"""
         from unittest.mock import Mock, patch
         from bifrost import config
-        from shared.request_context import RequestContext
+        from shared.context import ExecutionContext, Organization
 
         # Create context for org-123
-        context = RequestContext(
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
             email="test@example.com",
             name="Test User",
-            org_id="org-123",
+            scope="org-123",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-123"
         )
         set_execution_context(context)
 
         try:
             # Mock ConfigRepository - patch where it's imported IN SDK
-            with patch('sdk.config.ConfigRepository') as mock_repo_class:
+            with patch('bifrost.config.ConfigRepository') as mock_repo_class:
                 from shared.models import Config, ConfigType
                 from datetime import datetime
 
@@ -123,21 +126,24 @@ class TestDefaultOrgScoping:
         """Test that secrets.list() uses context.org_id by default"""
         from unittest.mock import Mock, patch
         from bifrost import secrets
-        from shared.request_context import RequestContext
+        from shared.context import ExecutionContext, Organization
 
-        context = RequestContext(
+        org = Organization(id="org-456", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
             email="test@example.com",
             name="Test User",
-            org_id="org-456",
+            scope="org-456",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-456"
         )
         set_execution_context(context)
 
         try:
             # Mock KeyVaultClient - patch where it's imported IN SDK
-            with patch('sdk.secrets.KeyVaultClient') as mock_kv_class:
+            with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
                 mock_kv = Mock()
                 mock_kv_class.return_value = mock_kv
                 mock_kv.list_secrets.return_value = ["key1", "key2"]
@@ -157,21 +163,24 @@ class TestDefaultOrgScoping:
         """Test that oauth.list_providers() uses context.org_id by default"""
         from unittest.mock import Mock, patch
         from bifrost import oauth
-        from shared.request_context import RequestContext
+        from shared.context import ExecutionContext, Organization
 
-        context = RequestContext(
+        org = Organization(id="org-789", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
             email="test@example.com",
             name="Test User",
-            org_id="org-789",
+            scope="org-789",
+            organization=org,
             is_platform_admin=False,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-789"
         )
         set_execution_context(context)
 
         try:
             # Mock OAuthStorageService - patch where it's imported IN SDK
-            with patch('sdk.oauth.OAuthStorageService') as mock_storage_class:
+            with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
                 from unittest.mock import AsyncMock
                 from shared.models import OAuthConnection
                 from datetime import datetime
@@ -253,23 +262,26 @@ class TestCrossOrgParameterUsage:
         """Test that config.get(org_id='other-org') uses the specified org"""
         from unittest.mock import Mock, patch
         from bifrost import config
-        from shared.request_context import RequestContext
+        from shared.context import ExecutionContext, Organization
         from shared.models import Config, ConfigType
         from datetime import datetime
 
         # User is in org-123
-        context = RequestContext(
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="test-user",
             email="test@example.com",
             name="Test User",
-            org_id="org-123",
+            scope="org-123",
+            organization=org,
             is_platform_admin=True,  # Platform admin can access other orgs
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-123"
         )
         set_execution_context(context)
 
         try:
-            with patch('sdk.config.ConfigRepository') as mock_repo_class:
+            with patch('bifrost.config.ConfigRepository') as mock_repo_class:
                 mock_repo = Mock()
                 mock_repo_class.return_value = mock_repo
                 # Mock get_config (not get_config_value) - return Config model
@@ -296,20 +308,23 @@ class TestCrossOrgParameterUsage:
         """Test that secrets.get(org_id='other-org') uses the specified org"""
         from unittest.mock import Mock, patch
         from bifrost import secrets
-        from shared.request_context import RequestContext
+        from shared.context import ExecutionContext, Organization
 
-        context = RequestContext(
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="admin-user",
             email="admin@example.com",
             name="Admin User",
-            org_id="org-123",
+            scope="org-123",
+            organization=org,
             is_platform_admin=True,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-admin-123"
         )
         set_execution_context(context)
 
         try:
-            with patch('sdk.secrets.KeyVaultClient') as mock_kv_class:
+            with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
                 mock_kv = Mock()
                 mock_kv_class.return_value = mock_kv
                 mock_kv.get_secret.return_value = "other-secret"
@@ -327,23 +342,26 @@ class TestCrossOrgParameterUsage:
         """Test that oauth.get_token(org_id='other-org') uses the specified org"""
         from unittest.mock import Mock, patch, AsyncMock
         from bifrost import oauth
-        from shared.request_context import RequestContext
+        from shared.context import ExecutionContext, Organization
         from shared.models import OAuthConnection
         from datetime import datetime
 
-        context = RequestContext(
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
             user_id="admin-user",
             email="admin@example.com",
             name="Admin User",
-            org_id="org-123",
+            scope="org-123",
+            organization=org,
             is_platform_admin=True,
-            is_function_key=False
+            is_function_key=False,
+            execution_id="test-exec-admin-456"
         )
         set_execution_context(context)
 
         try:
             # Mock OAuthStorageService.get_connection (async method)
-            with patch('sdk.oauth.OAuthStorageService') as mock_storage_class:
+            with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
                 mock_storage = Mock()
                 mock_storage_class.return_value = mock_storage
 

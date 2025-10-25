@@ -361,6 +361,81 @@ class BlobStorageService:
             )
             return None
 
+    def upload_variables(self, execution_id: str, variables: dict[str, Any]) -> str:
+        """
+        Upload execution variables to blob storage
+
+        Args:
+            execution_id: Execution ID (UUID)
+            variables: Dictionary of captured variables
+
+        Returns:
+            Blob path (e.g., "abc-123/variables.json")
+        """
+        blob_path = f"{execution_id}/variables.json"
+
+        try:
+            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            blob_client = container_client.get_blob_client(blob_path)
+
+            # Upload as JSON
+            variables_json = json.dumps(variables, indent=2)
+            blob_client.upload_blob(variables_json, overwrite=True)
+
+            logger.info(
+                f"Uploaded variables to blob storage: {blob_path}",
+                extra={"execution_id": execution_id, "variable_count": len(variables)}
+            )
+
+            return blob_path
+
+        except Exception as e:
+            logger.error(
+                f"Failed to upload variables to blob storage: {str(e)}",
+                extra={"execution_id": execution_id},
+                exc_info=True
+            )
+            raise
+
+    def get_variables(self, execution_id: str) -> dict[str, Any] | None:
+        """
+        Retrieve execution variables from blob storage
+
+        Args:
+            execution_id: Execution ID (UUID)
+
+        Returns:
+            Dictionary of variables or None if not found
+        """
+        blob_path = f"{execution_id}/variables.json"
+
+        try:
+            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            blob_client = container_client.get_blob_client(blob_path)
+
+            if not blob_client.exists():
+                logger.debug(f"Variables blob not found: {blob_path}")
+                return None
+
+            # Download and parse JSON
+            blob_data = blob_client.download_blob().readall()
+            variables = json.loads(blob_data)
+
+            logger.debug(
+                f"Retrieved variables from blob storage: {blob_path}",
+                extra={"execution_id": execution_id, "variable_count": len(variables)}
+            )
+
+            return variables
+
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve variables from blob storage: {str(e)}",
+                extra={"execution_id": execution_id},
+                exc_info=True
+            )
+            return None
+
     def generate_upload_url(
         self,
         file_name: str,
@@ -404,6 +479,8 @@ class BlobStorageService:
 
         # Generate SAS token with write permission
         account_name = self.blob_service_client.account_name
+        if not account_name:
+            raise ValueError("Blob storage account name not available")
 
         # Extract account key from connection string
         # Parse connection string to get account key

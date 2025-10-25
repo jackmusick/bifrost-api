@@ -177,7 +177,7 @@ def build_openapi_spec(
         # Handle Enums differently
         if isinstance(model, type) and issubclass(model, Enum):
             # Generate enum schema manually
-            enum_values = [e.value for e in model]
+            enum_values = [e.value for e in model]  # type: ignore[misc]
             schemas[model.__name__] = {
                 'type': 'string',
                 'enum': enum_values

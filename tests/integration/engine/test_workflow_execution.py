@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shared.context import Caller, Organization, OrganizationContext
+from shared.context import Organization, ExecutionContext
+from shared.context import Caller
 from shared.models import ExecutionStatus
 from shared.registry import WorkflowRegistry
 
@@ -16,7 +17,7 @@ from shared.registry import WorkflowRegistry
 def mock_org():
     """Mock organization for testing"""
     return Organization(
-        org_id="test-org-123",
+        id="test-org-123",
         name="Test Organization",
         is_active=True
     )
@@ -35,14 +36,19 @@ def mock_caller():
 @pytest.fixture
 def mock_context(mock_org, mock_caller):
     """Mock organization context"""
-    return OrganizationContext(
-        org=mock_org,
-        config={
+    return ExecutionContext(
+        user_id=mock_caller.user_id,
+        email=mock_caller.email,
+        name=mock_caller.name,
+        scope=mock_org.id,
+        organization=mock_org,
+        is_platform_admin=False,
+        is_function_key=False,
+        execution_id="test-exec-123",
+        _config={
             "default_license": "O365_E3",
             "welcome_email_template": "welcome_v1"
-        },
-        caller=mock_caller,
-        execution_id="test-exec-123"
+        }
     )
 
 
@@ -88,6 +94,7 @@ class TestWorkflowExecutionEndpoint:
         )
         async def simple_workflow(context, value: int):
             """Returns doubled value"""
+            # Workflow now uses logger directly instead of context methods
             return {"result": value * 2, "org": context.org_id}
 
         # Verify workflow was registered
@@ -98,7 +105,7 @@ class TestWorkflowExecutionEndpoint:
         result = await metadata.function(mock_context, value=21)
 
         assert result["result"] == 42
-        assert result["org"] == "test-org-123"
+        assert result["org"] == "test-org-123"  # Uses scope
 
     @pytest.mark.asyncio
     async def test_workflow_with_validation_error(self, registry, mock_context):
@@ -144,8 +151,7 @@ class TestWorkflowExecutionEndpoint:
         async def track_state(context, step: str):
             """Uses state tracking features"""
             context.save_checkpoint("start", {"step": step})
-            context.info("Processing", {"current_step": step})
-            context.set_variable("last_step", step)
+            # Note: context.info() is removed - use logger directly in actual workflows
             return {"completed": True}
 
         # Execute workflow
@@ -157,9 +163,6 @@ class TestWorkflowExecutionEndpoint:
         # Verify state was tracked
         assert len(mock_context._state_snapshots) == 1
         assert mock_context._state_snapshots[0]["name"] == "start"
-        assert len(mock_context._logs) == 1
-        assert mock_context._logs[0]["message"] == "Processing"
-        assert mock_context.get_variable("last_step") == "validation"
 
 
 class TestExecutionLogger:
@@ -187,8 +190,7 @@ class TestExecutionLogger:
                     user_name="Test User",
                     workflow_name="test_workflow",
                     input_data={"key": "value"},
-                    form_id="form-abc"
-                )
+                    form_id="form-abc")
 
                 # Verify repository was called
                 mock_exec_repo.create_execution.assert_called_once()
@@ -222,8 +224,7 @@ class TestExecutionLogger:
                     user_id="user-789",
                     status=ExecutionStatus.SUCCESS,
                     result={"user_id": "new-user-123"},
-                    duration_ms=1500
-                )
+                    duration_ms=1500)
 
                 # Verify repository was called
                 mock_exec_repo.update_execution.assert_called_once()

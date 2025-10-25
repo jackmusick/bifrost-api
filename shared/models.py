@@ -688,13 +688,25 @@ class WorkflowExecution(BaseModel):
     durationMs: int | None = None
     startedAt: datetime
     completedAt: datetime | None = None
-    logs: list[ExecutionLog] | None = None  # Execution logs (fetched from blob storage)
+    logs: list[dict[str, Any]] | None = None  # Structured logger output (replaces old ExecutionLog format)
+    variables: dict[str, Any] | None = None  # Runtime variables captured from execution scope
 
 
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow"""
+    workflowName: str | None = Field(None, description="Name of the workflow to execute (required if code not provided)")
     inputData: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
     formId: str | None = Field(None, description="Optional form ID that triggered this execution")
+    transient: bool = Field(default=False, description="If true, skip database persistence (for code editor debugging)")
+    code: str | None = Field(None, description="Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by name.")
+    scriptName: str | None = Field(None, description="Optional: Name/identifier for the script (used for logging when code is provided)")
+
+    @model_validator(mode='after')
+    def validate_workflow_or_code(self) -> 'WorkflowExecutionRequest':
+        """Ensure either workflowName or code is provided"""
+        if not self.workflowName and not self.code:
+            raise ValueError("Either 'workflowName' or 'code' must be provided")
+        return self
 
 
 class WorkflowExecutionResponse(BaseModel):
@@ -708,13 +720,16 @@ class WorkflowExecutionResponse(BaseModel):
     durationMs: int | None = None
     startedAt: datetime | None = None
     completedAt: datetime | None = None
+    # Enhanced debugging output for code editor
+    logs: list[dict[str, Any]] | None = None  # Structured logger output
+    variables: dict[str, Any] | None = None  # Runtime variables from execution scope
+    isTransient: bool = False  # Flag for editor executions (no DB persistence)
 
 
 class ExecutionsListResponse(BaseModel):
     """Response model for listing workflow executions with pagination"""
     executions: list[WorkflowExecution] = Field(..., description="List of workflow executions")
-    continuationToken: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded)")
-    hasMore: bool = Field(..., description="Whether more results are available")
+    continuationToken: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded). Presence of token indicates more results available.")
 
 
 class StuckExecutionsResponse(BaseModel):

@@ -8,7 +8,7 @@ import logging
 from shared.repositories.executions import ExecutionRepository
 from shared.repositories.forms import FormRepository
 from shared.repositories.roles import RoleRepository
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def can_user_view_form(context: RequestContext, form_id: str) -> bool:
+def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
     """
     Check if user can view a form.
 
@@ -34,7 +34,7 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     - Inactive forms are hidden from regular users
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         form_id: Form ID (UUID)
 
     Returns:
@@ -59,14 +59,14 @@ def can_user_view_form(context: RequestContext, form_id: str) -> bool:
     return True
 
 
-def can_user_execute_form(context: RequestContext, form_id: str) -> bool:
+def can_user_execute_form(context: ExecutionContext, form_id: str) -> bool:
     """
     Check if user can execute a form.
 
     Same rules as can_user_view_form (if you can view it, you can execute it).
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         form_id: Form ID (UUID)
 
     Returns:
@@ -75,7 +75,7 @@ def can_user_execute_form(context: RequestContext, form_id: str) -> bool:
     return can_user_view_form(context, form_id)
 
 
-def get_user_visible_forms(context: RequestContext) -> list[dict]:
+def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
     """
     Get all forms visible to the user (filtered by permissions).
 
@@ -84,7 +84,7 @@ def get_user_visible_forms(context: RequestContext) -> list[dict]:
     - Regular users: see all active GLOBAL forms + all active forms in their org
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
 
     Returns:
         List of form entities (as dicts for backward compatibility)
@@ -105,7 +105,7 @@ def get_user_visible_forms(context: RequestContext) -> list[dict]:
     return [form.model_dump(mode="json") for form in forms]
 
 
-def can_user_view_execution(context: RequestContext, execution_entity: dict) -> bool:
+def can_user_view_execution(context: ExecutionContext, execution_entity: dict) -> bool:
     """
     Check if user can view an execution.
 
@@ -114,7 +114,7 @@ def can_user_view_execution(context: RequestContext, execution_entity: dict) -> 
     - Regular users: can only view THEIR executions
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         execution_entity: Execution entity dictionary
 
     Returns:
@@ -130,7 +130,7 @@ def can_user_view_execution(context: RequestContext, execution_entity: dict) -> 
     return executed_by == context.user_id
 
 
-def get_user_executions(context: RequestContext, limit: int | None = None) -> list[dict]:
+def get_user_executions(context: ExecutionContext, limit: int | None = None) -> list[dict]:
     """
     Get executions visible to the user.
 
@@ -139,7 +139,7 @@ def get_user_executions(context: RequestContext, limit: int | None = None) -> li
     - Regular users: only THEIR executions
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         limit: Optional limit on number of executions to return
 
     Returns:

@@ -3,7 +3,6 @@ Integration tests for forms with static dataProviderInputs (T022)
 Tests that forms can be saved and validated with data provider inputs
 """
 
-import pytest
 import requests
 
 

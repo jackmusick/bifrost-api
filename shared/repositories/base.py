@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from shared.storage import TableStorageService
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,13 @@ class BaseRepository:
     database swaps easier (e.g., Table Storage → Cosmos DB)
     """
 
-    def __init__(self, table_name: str, context: 'RequestContext | None' = None):
+    def __init__(self, table_name: str, context: 'ExecutionContext | None' = None):
         """
         Initialize repository
 
         Args:
             table_name: Name of the Azure Table to work with
-            context: Optional RequestContext for automatic scoping
+            context: Optional ExecutionContext for automatic scoping
         """
         self.table_name = table_name
         self.context = context
@@ -72,8 +72,8 @@ class BaseRepository:
         filter_query: str,
         select: list[str] | None = None,
         results_per_page: int = 50,
-        continuation_token: dict | None = None
-    ) -> tuple[list[dict], dict | None]:
+        continuation_token: dict | str | None = None
+    ) -> tuple[list[dict], dict | str | None]:
         """
         Query entities with pagination support.
 

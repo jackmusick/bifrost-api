@@ -10,20 +10,19 @@ from typing import TYPE_CHECKING
 from ._context import get_execution_context
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
 
-def require_permission(permission: str) -> 'RequestContext':
+def require_permission(permission: str) -> 'ExecutionContext':
     """
     Check if the current user has the required permission.
 
     Args:
         permission: Permission string to check (e.g., "organizations.create")
 
-    Returns:
-        RequestContext if permission is granted
+    Returns: ExecutionContext if permission is granted
 
     Raises:
         RuntimeError: If no execution context
@@ -35,7 +34,7 @@ def require_permission(permission: str) -> 'RequestContext':
     if context.is_platform_admin:
         return context
 
-    # Check specific permission (when implemented in RequestContext)
+    # Check specific permission (when implemented in ExecutionContext)
     # For now, we'll use role-based checks
     # TODO: Implement granular permission system
 
@@ -47,12 +46,11 @@ def require_permission(permission: str) -> 'RequestContext':
     return context
 
 
-def require_admin() -> 'RequestContext':
+def require_admin() -> 'ExecutionContext':
     """
     Require that the current user is a platform admin.
 
-    Returns:
-        RequestContext if user is admin
+    Returns: ExecutionContext if user is admin
 
     Raises:
         RuntimeError: If no execution context
@@ -69,14 +67,13 @@ def require_admin() -> 'RequestContext':
     return context
 
 
-def get_context() -> 'RequestContext':
+def get_context() -> 'ExecutionContext':
     """
     Get the current execution context.
 
     Alias for get_execution_context() for convenience.
 
-    Returns:
-        RequestContext for the current execution
+    Returns: ExecutionContext for the current execution
 
     Raises:
         RuntimeError: If called outside of a workflow execution context

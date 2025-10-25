@@ -14,7 +14,7 @@ from azure.data.tables import TableClient, UpdateMode
 from azure.core import MatchConditions
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +31,14 @@ class TableStorageService:
     Provides org-scoped query helpers and common CRUD operations
     """
 
-    def __init__(self, table_name: str, connection_string: str | None = None, context: Optional['RequestContext'] = None):
+    def __init__(self, table_name: str, connection_string: str | None = None, context: Optional['ExecutionContext'] = None):
         """
         Initialize Table Storage client
 
         Args:
             table_name: Name of the table to work with
             connection_string: Optional connection string override
-            context: Optional RequestContext for automatic scoping
+            context: Optional ExecutionContext for automatic scoping
         """
         self.table_name = table_name
         self.context = context
@@ -406,8 +406,8 @@ class TableStorageService:
         filter: str | None = None,
         select: list[str] | None = None,
         results_per_page: int = 50,
-        continuation_token: dict | None = None
-    ) -> tuple[list[dict], dict | None]:
+        continuation_token: dict | str | None = None
+    ) -> tuple[list[dict], dict | str | None]:
         """
         Query entities with pagination support.
 
@@ -426,15 +426,24 @@ class TableStorageService:
 
             # Query with pagination
             query_filter = filter if filter else ""
-            pages = self.table_client.query_entities(
+            # Azure SDK accepts both dict and string tokens
+            # Dict format: {"PartitionKey": "...", "RowKey": "..."}
+            # String format: opaque string token
+            token_to_pass: dict | str | None = continuation_token
+
+            logger.info(f"[Pagination Debug] Querying with filter={query_filter}, results_per_page={results_per_page}, token_to_pass={token_to_pass}")
+
+            # Get the paged iterator
+            paged_results = self.table_client.query_entities(
                 query_filter=query_filter,
                 select=select,
                 results_per_page=results_per_page
-            ).by_page(continuation_token=continuation_token)
+            ).by_page(continuation_token=token_to_pass)
 
             # Get first page
-            page = next(pages, None)
+            page = next(paged_results, None)
             if page is None:
+                logger.info("[Pagination Debug] No page returned from iterator")
                 return [], None
 
             # Collect entities from this page
@@ -443,8 +452,22 @@ class TableStorageService:
                 for entity in page
             ]
 
-            # Get continuation token for next page from the pages iterator
-            next_token = pages.continuation_token if hasattr(pages, 'continuation_token') else None
+            logger.info(f"[Pagination Debug] Retrieved {len(entities)} entities from page")
+
+            # Get continuation token for next page
+            # The continuation_token is on the paged_results iterator (not the page itself)
+            next_token_str: str | None = None
+            try:
+                # Azure SDK stores continuation_token on the iterator
+                next_token_str = paged_results.continuation_token  # type: ignore[attr-defined]
+                logger.info(f"[Pagination Debug] Next token from iterator: {next_token_str}")
+            except AttributeError:
+                # Fallback: no more pages
+                next_token_str = None
+                logger.info("[Pagination Debug] No continuation_token attribute on iterator")
+
+            # Convert to dict format for consistency (or keep as string - handler will encode it)
+            next_token: dict | str | None = next_token_str
 
             return entities, next_token
 
@@ -638,15 +661,15 @@ def get_table_storage_service(table_name: str = "Organizations") -> TableStorage
     return _storage_service_cache[table_name]
 
 
-def get_table_service(table_name: str, context: 'RequestContext') -> TableStorageService:
+def get_table_service(table_name: str, context: 'ExecutionContext') -> TableStorageService:
     """
     Create a context-aware TableStorageService instance (not cached).
 
-    Use this factory when you have a RequestContext and want automatic partition key scoping.
+    Use this factory when you have a ExecutionContext and want automatic partition key scoping.
 
     Args:
         table_name: Table name to access
-        context: RequestContext for automatic scoping
+        context: ExecutionContext for automatic scoping
 
     Returns:
         TableStorageService instance with context

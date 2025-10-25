@@ -16,7 +16,8 @@ from shared.registry import get_registry
 # TYPE_CHECKING import for type hints
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
+    from shared.models import DataProviderMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ def compute_cache_key(provider_name: str, inputs: dict[str, Any] | None = None, 
 
 async def get_data_provider_options_handler(
     provider_name: str,
-    context: "RequestContext",
+    context: "ExecutionContext",
     no_cache: bool = False,
     inputs: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any], int]:
@@ -101,7 +102,7 @@ async def get_data_provider_options_handler(
 
     Args:
         provider_name: Name of the data provider
-        context: RequestContext with organization context
+        context: ExecutionContext with organization context
         no_cache: If True, bypass cache
         inputs: Optional input parameter values for the data provider (T024)
 
@@ -148,7 +149,7 @@ async def get_data_provider_options_handler(
         return error.model_dump(), 404
 
     # T025: Validate input parameters against provider parameter definitions
-    validation_errors = validate_data_provider_inputs(provider_metadata, inputs)
+    validation_errors = validate_data_provider_inputs(provider_metadata, inputs)  # type: ignore[arg-type]
     if validation_errors:
         error = ErrorResponse(
             error="BadRequest",

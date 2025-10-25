@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shared.context import Caller, Organization, OrganizationContext
+from shared.context import Organization, ExecutionContext
 from shared.exceptions import FileUploadError
 from shared.handlers.file_uploads_handlers import (
     generate_file_upload_url,
@@ -164,15 +164,16 @@ class TestValidateFileRequest:
 class TestGenerateFileUploadUrl:
     """Tests for generate_file_upload_url handler"""
 
-    def _create_mock_context(self, org_id: str = "org-123", email: str = "user@example.com") -> OrganizationContext:
-        """Helper to create mock OrganizationContext"""
-        org = Organization(org_id=org_id, name="Test Org", is_active=True)
-        caller = Caller(user_id="user-123", email=email, name="Test User")
+    def _create_mock_context(self, org_id: str = "org-123", email: str = "user@example.com") -> ExecutionContext:
+        """Helper to create mock ExecutionContext"""
+        org = Organization(id=org_id, name="Test Org", is_active=True)
 
-        context = MagicMock(spec=OrganizationContext)
-        context.org = org
-        context.caller = caller
+        context = MagicMock(spec=ExecutionContext)
+        context.organization = org
         context.org_id = org_id
+        context.email = email
+        context.user_id = "user-123"
+        context.name = "Test User"
         return context
 
     def _create_blob_service_response(self) -> dict:

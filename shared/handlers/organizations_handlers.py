@@ -20,7 +20,7 @@ from shared.models import (
 from shared.repositories.organizations import OrganizationRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # HTTP handlers and the Bifrost SDK
 
 
-def list_organizations_logic(context: 'RequestContext') -> list[Organization]:
+def list_organizations_logic(context: 'ExecutionContext') -> list[Organization]:
     """
     List all organizations (business logic).
 
@@ -54,7 +54,7 @@ def list_organizations_logic(context: 'RequestContext') -> list[Organization]:
 
 
 def create_organization_logic(
-    context: 'RequestContext',
+    context: 'ExecutionContext',
     name: str,
     domain: str | None = None,
     is_active: bool = True
@@ -75,8 +75,7 @@ def create_organization_logic(
 
     create_request = CreateOrganizationRequest(
         name=name,
-        domain=domain,
-        isActive=is_active
+        domain=domain
     )
 
     org_repo = OrganizationRepository()
@@ -90,7 +89,7 @@ def create_organization_logic(
     return org
 
 
-def get_organization_logic(context: 'RequestContext', org_id: str) -> Organization | None:
+def get_organization_logic(context: 'ExecutionContext', org_id: str) -> Organization | None:
     """
     Get organization by ID (business logic).
 
@@ -113,7 +112,7 @@ def get_organization_logic(context: 'RequestContext', org_id: str) -> Organizati
 
 
 def update_organization_logic(
-    context: 'RequestContext',
+    context: 'ExecutionContext',
     org_id: str,
     **updates
 ) -> Organization | None:
@@ -143,7 +142,7 @@ def update_organization_logic(
     return org
 
 
-def delete_organization_logic(context: 'RequestContext', org_id: str) -> bool:
+def delete_organization_logic(context: 'ExecutionContext', org_id: str) -> bool:
     """
     Soft delete organization (business logic).
 

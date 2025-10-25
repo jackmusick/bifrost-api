@@ -35,7 +35,7 @@ async def get_github_repos(context, token: str, org: str = ""):
     In production, this would make real GitHub API calls.
 
     Args:
-        context: RequestContext with organization and user info
+        context: ExecutionContext with organization and user info
         token: GitHub personal access token
         org: Optional GitHub organization name
 
@@ -95,7 +95,7 @@ async def get_github_branches(context, token: str, repo: str):
     Example data provider for getting repository branches.
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         token: GitHub personal access token
         repo: Repository in format "owner/name"
 
@@ -130,7 +130,7 @@ async def get_filtered_licenses(context, filter: str = "all"):
     Example data provider with optional parameter and default value.
 
     Args:
-        context: RequestContext
+        context: ExecutionContext
         filter: Filter mode ('all', 'available', 'assigned')
 
     Returns:

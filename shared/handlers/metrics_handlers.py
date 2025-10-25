@@ -165,7 +165,7 @@ def get_dashboard_metrics(context: Any) -> dict[str, Any]:
     form counts, and execution statistics.
 
     Args:
-        context: RequestContext with user/org information
+        context: ExecutionContext with user/org information
 
     Returns:
         Dict containing aggregated metrics

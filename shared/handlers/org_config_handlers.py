@@ -213,6 +213,10 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
                 config_value = set_request.secretRef
                 logger.info(f"Using existing secret reference '{config_value}' for config key '{set_request.key}'")
 
+        # Ensure config_value is set
+        if config_value is None:
+            raise ValueError("Either 'value' or 'secretRef' must be provided")
+
         # Set config using repository
         config = config_repo.set_config(
             key=set_request.key,
@@ -225,7 +229,7 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Mask sensitive values in response
         config.value = mask_sensitive_value(
             set_request.key,
-            config_value,
+            config_value or "",
             set_request.type.value
         )
 

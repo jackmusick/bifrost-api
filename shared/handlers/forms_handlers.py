@@ -377,8 +377,7 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
             else:
                 extra_variables[key] = value
 
-        for key, value in extra_variables.items():
-            workflow_context.set_variable(key, value)
+        # Extra variables are no longer injected into context
 
         result = await workflow_func(workflow_context, **workflow_params)
         logger.info(f"Launch workflow {form.launchWorkflowId} completed successfully")
@@ -495,8 +494,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             else:
                 extra_variables[key] = value
 
-        for key, value in extra_variables.items():
-            workflow_context.set_variable(key, value)
+        # Extra variables are no longer injected into context
 
         result = await workflow_func(workflow_context, **workflow_params)
 
@@ -519,9 +517,8 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             error_message=error_message,
             duration_ms=duration_ms,
             state_snapshots=workflow_context._state_snapshots,
-            integration_calls=workflow_context._integration_calls,
-            logs=workflow_context._logs,
-            variables=workflow_context._variables
+            integration_calls=workflow_context._integration_calls
+            # Note: Forms don't capture logs or variables
         )
 
         logger.info(f"Workflow execution completed: {execution_id}")

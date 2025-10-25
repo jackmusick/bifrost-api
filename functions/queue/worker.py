@@ -1,5 +1,5 @@
 """
-Workflow Execution Worker
+Workflow Execution Worker V2 - Refactored to use unified engine
 Processes async workflow executions from Azure Storage Queue
 """
 
@@ -9,17 +9,12 @@ from datetime import datetime
 
 import azure.functions as func
 
-from shared.context import Caller, Organization, OrganizationContext
-from shared.error_handling import WorkflowError
+from shared.context import Caller, Organization
+from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
 from shared.middleware import load_config_for_partition
 from shared.models import ExecutionStatus
-from shared.registry import get_registry
 from shared.storage import get_organization
-from shared.workflow_endpoint_utils import (
-    coerce_parameter_types,
-    separate_workflow_params,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +30,9 @@ bp = func.Blueprint()
 )
 async def workflow_execution_worker(msg: func.QueueMessage) -> None:
     """
-    Process async workflow execution from queue.
+    Process async workflow execution from queue - V2 using unified engine.
 
-    Loads execution context, updates status to RUNNING, executes workflow,
+    Loads execution context, updates status to RUNNING, executes workflow via engine,
     stores result, and updates status to SUCCESS/FAILED.
     """
     execution_id: str = ""
@@ -45,7 +40,6 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
     user_id: str = ""
     start_time = datetime.utcnow()
 
-    # Get execution logger early so it's available in exception handler
     exec_logger = get_execution_logger()
 
     try:
@@ -83,20 +77,14 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         config = {}
 
         if org_id:
-            # Load organization and config
             org_entity = get_organization(org_id)
-
             if org_entity:
-                # Create Organization object
-                # RowKey is in format "org:{uuid}", extract the UUID
                 org_uuid = org_entity['RowKey'].split(':', 1)[1]
                 org = Organization(
-                    org_id=org_uuid,
+                    id=org_uuid,
                     name=org_entity['Name'],
                     is_active=org_entity.get('IsActive', True)
                 )
-
-                # Load organization config
                 config = load_config_for_partition(org_id)
         else:
             # Load GLOBAL configs for platform admin context
@@ -109,93 +97,47 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
             name=user_name
         )
 
-        # Create execution ID for context
-        context = OrganizationContext(
-            org=org,
-            config=config,
-            caller=caller,
-            execution_id=execution_id
-        )
-
         # Hot-reload: Re-discover workspace modules
         from function_app import discover_workspace_modules
         discover_workspace_modules()
 
-        # Get workflow from registry
-        registry = get_registry()
-        workflow_metadata = registry.get_workflow(workflow_name)
-
-        if not workflow_metadata:
-            raise WorkflowError(
-                error_type="WorkflowNotFound",
-                message=f"Workflow '{workflow_name}' not found in registry"
-            )
-
-        # Apply type coercion to input data
-        param_metadata = {param.name: param for param in workflow_metadata.parameters}
-        coerced_data = coerce_parameter_types(parameters, param_metadata)
-
-        # Separate workflow parameters from extra variables
-        workflow_params, extra_variables = separate_workflow_params(
-            coerced_data, workflow_metadata
+        # Build execution request for engine
+        request = ExecutionRequest(
+            execution_id=execution_id,
+            caller=caller,
+            organization=org,
+            config=config,
+            name=workflow_name,  # Always a workflow name for async execution
+            parameters=parameters,
+            transient=False,  # Async executions always write to DB
+            is_platform_admin=False  # Workers don't have platform admin context
         )
 
-        # Inject extra variables into context
-        for key, value in extra_variables.items():
-            context.set_variable(key, value)
+        # Execute via unified engine
+        result = await execute(request)
 
-        # Execute workflow
-        workflow_func = workflow_metadata.function
-        result = await workflow_func(context, **workflow_params)
-
-        # Calculate duration
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        # Update execution with SUCCESS
+        # Update execution with result
         exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
-            status=ExecutionStatus.SUCCESS,
-            result=result,
-            duration_ms=duration_ms,
-            state_snapshots=context._state_snapshots,
-            integration_calls=context._integration_calls,
-            logs=context._logs,
-            variables=context._variables
+            status=result.status,
+            result=result.result,
+            error_message=result.error_message,
+            error_type=result.error_type,
+            duration_ms=result.duration_ms,
+            state_snapshots=result.state_snapshots,
+            integration_calls=result.integration_calls,
+            logs=result.logs if result.logs else None,
+            variables=result.variables if result.variables else None
         )
 
         logger.info(
             f"Async workflow execution completed: {workflow_name}",
             extra={
                 "execution_id": execution_id,
-                "status": "Success",
-                "duration_ms": duration_ms
-            }
-        )
-
-    except WorkflowError as e:
-        # Expected workflow error
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        exec_logger.update_execution(
-            execution_id=execution_id,
-            org_id=org_id,
-            user_id=user_id,
-            status=ExecutionStatus.FAILED,
-            error_message=str(e),
-            error_type=type(e).__name__,
-            duration_ms=duration_ms
-        )
-
-        logger.warning(
-            f"Async workflow execution failed: {workflow_name}",
-            extra={
-                "execution_id": execution_id,
-                "error": str(e),
-                "error_type": type(e).__name__
+                "status": result.status.value,
+                "duration_ms": result.duration_ms
             }
         )
 
@@ -215,7 +157,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         )
 
         logger.error(
-            f"Async workflow execution error: {workflow_name}",
+            f"Async workflow execution error: {execution_id}",
             extra={
                 "execution_id": execution_id,
                 "error": str(e),

@@ -102,7 +102,7 @@ async def update_branding(req: func.HttpRequest) -> func.HttpResponse:
         branding = await update_branding_handler(
             org_id=update_request.orgId or context.org_id,
             primary_color=update_request.primaryColor,
-            updated_by=context.caller.email
+            updated_by=context.email
         )
 
         return func.HttpResponse(
@@ -200,7 +200,7 @@ async def upload_logo(req: func.HttpRequest) -> func.HttpResponse:
             logo_type=logo_type,
             file_data=file_data,
             content_type=content_type,
-            updated_by=context.caller.email
+            updated_by=context.email
         )
 
         return func.HttpResponse(

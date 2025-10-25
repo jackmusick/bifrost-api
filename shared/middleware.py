@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 import azure.functions as func
 
-from .context import Caller, Organization, OrganizationContext
+from .context import Organization, ExecutionContext, Caller
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +52,10 @@ def load_config_for_partition(partition_key: str) -> dict:
 
 def with_org_context(handler: Callable) -> Callable:
     """
-    Decorator to load OrganizationContext from request headers.
+    Decorator to load ExecutionContext from request headers.
 
     Extracts X-Organization-Id header (optional for platform admins), loads
-    organization and config from Table Storage, and creates OrganizationContext
+    organization and config from Table Storage, and creates ExecutionContext
     object to pass to handler.
 
     For platform admins without org context, creates a "global" context with no
@@ -64,7 +64,7 @@ def with_org_context(handler: Callable) -> Callable:
     Usage:
         @bp.route(route="workflows/{name}", methods=["POST"])
         @with_org_context
-        async def execute_workflow(req: func.HttpRequest, context: OrganizationContext):
+        async def execute_workflow(req: func.HttpRequest, context: ExecutionContext):
             # context is automatically loaded and injected
             # context.org may be None for platform admins
             pass
@@ -90,7 +90,7 @@ def with_org_context(handler: Callable) -> Callable:
             else:
                 logger.info(
                     "Global context loaded (no organization)",
-                    extra={"user": context.caller.email}
+                    extra={"user": context.email}
                 )
 
             # Inject context into request object
@@ -133,9 +133,9 @@ def with_org_context(handler: Callable) -> Callable:
 async def load_organization_context(
     org_id: str | None,
     req: func.HttpRequest
-) -> OrganizationContext:
+) -> ExecutionContext:
     """
-    Load OrganizationContext from Table Storage.
+    Load ExecutionContext from Table Storage.
 
     T037: Organization validation is enforced when org_id is provided.
     T055-T056: Uses AuthenticationService to extract caller from authenticated principal.
@@ -147,8 +147,7 @@ async def load_organization_context(
         org_id: Organization ID (optional - None for platform admins)
         req: HTTP request (for authentication and caller extraction)
 
-    Returns:
-        OrganizationContext object
+    Returns: ExecutionContext object
 
     Raises:
         OrganizationNotFoundError: If org_id provided but org doesn't exist or is inactive
@@ -174,7 +173,7 @@ async def load_organization_context(
         # RowKey is in format "org:{uuid}", extract the UUID
         org_uuid = org_entity['RowKey'].split(':', 1)[1]
         org = Organization(
-            org_id=org_uuid,
+            id=org_uuid,
             name=org_entity['Name'],
             is_active=org_entity['IsActive']
         )
@@ -249,7 +248,7 @@ async def load_organization_context(
                     # RowKey is in format "org:{uuid}", extract the UUID
                     org_uuid = org_entity['RowKey'].split(':', 1)[1]
                     org = Organization(
-                        org_id=org_uuid,
+                        id=org_uuid,
                         name=org_entity['Name'],
                         is_active=org_entity['IsActive']
                     )
@@ -279,12 +278,33 @@ async def load_organization_context(
     import uuid
     execution_id = str(uuid.uuid4())
 
+    # Determine if user is platform admin
+    is_platform_admin = isinstance(principal, FunctionKeyPrincipal) or (
+        isinstance(principal, UserPrincipal) and 'PlatformAdmin' in principal.roles
+    )
+
+    # Determine is_function_key
+    is_function_key = isinstance(principal, FunctionKeyPrincipal)
+
+    # Determine scope (explicit "GLOBAL" or org ID)
+    scope = "GLOBAL" if org_id is None else org_id
+
     # Create and return context
-    context = OrganizationContext(
-        org=org,
-        config=config,
-        caller=caller,
-        execution_id=execution_id
+    context = ExecutionContext(
+        # User identity
+        user_id=caller.user_id,
+        email=caller.email,
+        name=caller.name,
+        # Scope
+        scope=scope,
+        organization=org,
+        # Authorization
+        is_platform_admin=is_platform_admin,
+        is_function_key=is_function_key,
+        # Execution
+        execution_id=execution_id,
+        # Config (as keyword arg for dataclass field)
+        _config=config
     )
 
     return context
@@ -348,11 +368,16 @@ def has_workflow_key(handler: Callable) -> Callable:
                 # Load GLOBAL config
                 config = load_config_for_partition("GLOBAL")
 
-                public_context = OrganizationContext(
-                    org=None,  # Public endpoints have no organization context
-                    config=config,
-                    caller=anonymous_caller,
-                    execution_id=str(__import__('uuid').uuid4())
+                public_context = ExecutionContext(
+                    user_id=anonymous_caller.user_id,
+                    email=anonymous_caller.email,
+                    name=anonymous_caller.name,
+                    scope="GLOBAL",
+                    organization=None,
+                    is_platform_admin=False,
+                    is_function_key=False,
+                    execution_id=str(__import__('uuid').uuid4()),
+                    _config=config
                 )
 
                 # Inject context into request
@@ -400,11 +425,16 @@ def has_workflow_key(handler: Callable) -> Callable:
                     # Load GLOBAL config for platform admin context
                     config = load_config_for_partition("GLOBAL")
 
-                    api_context = OrganizationContext(
-                        org=None,  # API keys get global scope
-                        config=config,  # Use GLOBAL config
-                        caller=api_caller,
-                        execution_id=str(__import__('uuid').uuid4())
+                    api_context = ExecutionContext(
+                        user_id=api_caller.user_id,
+                        email=api_caller.email,
+                        name=api_caller.name,
+                        scope="GLOBAL",
+                        organization=None,
+                        is_platform_admin=True,
+                        is_function_key=True,
+                        execution_id=str(__import__('uuid').uuid4()),
+                        _config=config
                     )
 
                     # Inject context into request

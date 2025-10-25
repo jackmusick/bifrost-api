@@ -1,7 +1,7 @@
 """Unit tests for secret management handlers.
 
 Tests business logic in shared/handlers/secrets_handlers.py in isolation,
-mocking all external dependencies (KeyVault, Table Storage, RequestContext).
+mocking all external dependencies (KeyVault, Table Storage, ExecutionContext).
 """
 
 import pytest
@@ -23,7 +23,7 @@ from shared.models import (
     SecretResponse,
     SecretUpdateRequest,
 )
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext, Organization
 
 
 @pytest.fixture
@@ -39,14 +39,17 @@ def mock_kv_manager():
 
 @pytest.fixture
 def mock_request_context():
-    """Create a mock RequestContext."""
-    return RequestContext(
+    """Create a mock ExecutionContext."""
+    org = Organization(id="test-org-id", name="Test Org", is_active=True)
+    return ExecutionContext(
         user_id="test-user-id",
         email="test@example.com",
         name="Test User",
-        org_id="test-org-id",
+        scope="test-org-id",
+        organization=org,
         is_platform_admin=True,
         is_function_key=False,
+        execution_id="test-exec-secrets"
     )
 
 

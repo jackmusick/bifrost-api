@@ -9,11 +9,11 @@ Usage:
     3. At runtime, the actual engine implementation is provided by the container
 
 Example:
-    from bifrost import workflow, param, OrganizationContext
+    from bifrost import workflow, param, ExecutionContext
 
     @workflow(name="my_workflow", description="...")
     @param("user_email", "string", required=True)
-    async def my_workflow(context: OrganizationContext, user_email: str):
+    async def my_workflow(context: ExecutionContext, user_email: str):
         context.info(f"Processing {user_email}")
         return {"success": True}
 """
@@ -29,7 +29,7 @@ from typing import Any
 @dataclass
 class Organization:
     """Organization entity."""
-    org_id: str
+    id: str
     name: str
     is_active: bool
 
@@ -40,28 +40,40 @@ class Caller:
     email: str
     name: str
 
-class OrganizationContext:
+class ExecutionContext:
     """
     Context object passed to all workflows.
 
     Provides access to:
     - Organization information (id, name)
-    - Execution metadata (execution_id, caller)
+    - User information (user_id, email, name)
+    - Execution metadata (execution_id, scope)
     - Configuration (key-value pairs with secret resolution)
     - OAuth connections (pre-authenticated credentials)
     - State tracking (checkpoints, logs, variables)
     """
 
-    org: Organization | None
-    caller: Caller
+    # Core properties
+    user_id: str
+    email: str
+    name: str
+    scope: str
+    organization: Organization | None
+    is_platform_admin: bool
+    is_function_key: bool
     execution_id: str
 
     def __init__(
         self,
-        org: Organization | None,
-        config: dict[str, Any],
-        caller: Caller,
-        execution_id: str
+        user_id: str,
+        email: str,
+        name: str,
+        scope: str,
+        organization: Organization | None,
+        is_platform_admin: bool,
+        is_function_key: bool,
+        execution_id: str,
+        _config: dict[str, Any] | None = None
     ) -> None: ...
 
     # Organization properties
@@ -75,20 +87,25 @@ class OrganizationContext:
         """Organization display name (None for platform admins)."""
         ...
 
-    # Caller properties
+    # Backwards compatibility properties
     @property
     def executed_by(self) -> str:
-        """User ID who triggered this execution."""
+        """User ID who triggered this execution (alias for user_id)."""
         ...
 
     @property
     def executed_by_email(self) -> str:
-        """Email of user who triggered this execution."""
+        """Email of user who triggered this execution (alias for email)."""
         ...
 
     @property
     def executed_by_name(self) -> str:
-        """Display name of user who triggered this execution."""
+        """Display name of user who triggered this execution (alias for name)."""
+        ...
+
+    @property
+    def is_global_scope(self) -> bool:
+        """True if executing in GLOBAL scope (no organization)."""
         ...
 
     # Configuration
@@ -153,75 +170,6 @@ class OrganizationContext:
         Args:
             name: Checkpoint name
             data: Checkpoint data (will be sanitized)
-        """
-        ...
-
-    def set_variable(self, key: str, value: Any) -> None:
-        """
-        Set a workflow variable (persisted in execution record).
-
-        Args:
-            key: Variable name
-            value: Variable value (will be sanitized)
-        """
-        ...
-
-    def get_variable(self, key: str, default: Any = None) -> Any:
-        """Get a workflow variable."""
-        ...
-
-    def info(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log an info-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Examples:
-            context.info("Processing user")
-            context.info("User created", {"user_id": "123", "email": "user@example.com"})
-        """
-        ...
-
-    def warning(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log a warning-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Examples:
-            context.warning("Rate limit approaching")
-            context.warning("OAuth token expired", {"expires_at": "2024-01-01"})
-        """
-        ...
-
-    def error(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log an error-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Examples:
-            context.error("API call failed")
-            context.error("Connection timeout", {"endpoint": "/users", "timeout": 30})
-        """
-        ...
-
-    def debug(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Log a debug-level message.
-
-        Args:
-            message: Log message
-            data: Optional structured data dictionary
-
-        Examples:
-            context.debug("Request details", {"headers": headers, "body": body})
         """
         ...
 

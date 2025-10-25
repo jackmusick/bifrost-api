@@ -18,7 +18,7 @@ from shared.storage import TableStorageService
 from .scoped_repository import ScopedRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class FormRepository(ScopedRepository):
     Supports org-scoped and global forms with automatic fallback.
     """
 
-    def __init__(self, context: 'RequestContext'):
+    def __init__(self, context: 'ExecutionContext'):
         super().__init__("Entities", context)
         self.relationships_service = TableStorageService("Relationships")
 

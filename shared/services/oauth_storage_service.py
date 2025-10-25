@@ -322,8 +322,6 @@ class OAuthStorageService:
             Reconstructed OAuthConnection or None if not found
         """
         metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        client_secret_rowkey = f"config:oauth_{connection_name}_client_secret"
-        oauth_response_rowkey = f"config:oauth_{connection_name}_oauth_response"
 
         try:
             # Fetch metadata
@@ -632,7 +630,7 @@ class OAuthStorageService:
                             client_secret = secret.value
                             logger.info("Successfully retrieved client secret")
                         else:
-                            logger.warning(f"Client secret config found but missing Value field")
+                            logger.warning("Client secret config found but missing Value field")
                     else:
                         logger.warning(f"Client secret config not found for key: {client_secret_key}")
                 except Exception as e:

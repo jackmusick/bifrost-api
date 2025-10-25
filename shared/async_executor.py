@@ -13,7 +13,7 @@ from azure.storage.queue import QueueServiceClient, TextBase64EncodePolicy  # ty
 
 from shared.execution_logger import get_execution_logger
 from shared.models import ExecutionStatus
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def get_queue_client():
 
 
 async def enqueue_workflow_execution(
-    context: RequestContext,
+    context: ExecutionContext,
     workflow_name: str,
     parameters: dict[str, Any],
     form_id: str | None = None

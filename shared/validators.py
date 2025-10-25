@@ -5,7 +5,6 @@ Created for T013-T016
 """
 
 import re
-from typing import Any
 
 from shared.models import FormField, DataProviderInputMode
 

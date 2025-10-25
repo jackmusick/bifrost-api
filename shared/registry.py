@@ -68,6 +68,48 @@ class DataProviderMetadata:
     parameters: list = field(default_factory=list)  # Input parameters from @param decorators (T024)
 
 
+@dataclass
+class FunctionMetadata:
+    """
+    Unified metadata for all registered functions.
+
+    Functions can have multiple "uses" via tags:
+    - "workflow" tag: Can run from /workflows page, can be HTTP endpoint
+    - "data_provider" tag: Can provide dropdown options for forms
+    - Can have BOTH tags for multi-purpose functions
+    """
+    # Identity
+    name: str
+    description: str = ""
+    category: str = "General"
+    tags: list[str] = field(default_factory=list)
+
+    # Execution
+    execution_mode: Literal["sync", "async"] = "async"
+    timeout_seconds: int = 300
+    function: Any = None
+
+    # Parameters
+    parameters: list[WorkflowParameter] = field(default_factory=list)
+
+    # HTTP Endpoint Configuration (for "workflow" tag)
+    endpoint_enabled: bool = False
+    allowed_methods: list[str] = field(default_factory=lambda: ["POST"])
+    disable_global_key: bool = False
+    public_endpoint: bool = False
+
+    # Caching (for "data_provider" tag)
+    cache_ttl_seconds: int = 300
+
+    # Source tracking
+    source: Literal["home", "platform", "workspace"] | None = None
+    source_file_path: str | None = None  # File path for exec() approach
+
+    # Retry/scheduling (future use)
+    retry_policy: dict[str, Any] | None = None
+    schedule: str | None = None
+
+
 class WorkflowRegistry:
     """
     Singleton registry for workflows and data providers
@@ -93,6 +135,7 @@ class WorkflowRegistry:
 
         self._workflows: dict[str, WorkflowMetadata] = {}
         self._data_providers: dict[str, DataProviderMetadata] = {}
+        self._functions: dict[str, FunctionMetadata] = {}  # Unified storage
         self._initialized = True
         logger.info("WorkflowRegistry initialized")
 
@@ -192,13 +235,120 @@ class WorkflowRegistry:
         """Get total number of registered data providers"""
         return len(self._data_providers)
 
+    # ==================== UNIFIED FUNCTION METHODS ====================
+
+    def register_function(self, metadata: FunctionMetadata) -> None:
+        """
+        Register or merge metadata for a function.
+
+        If the function already exists, merges tags and updates fields.
+        This allows multiple decorators on the same function.
+
+        Args:
+            metadata: FunctionMetadata object
+        """
+        with self._lock:
+            # Initialize _functions if it doesn't exist (for old registry instances)
+            if not hasattr(self, '_functions'):
+                self._functions = {}
+
+            if metadata.name in self._functions:
+                # Merge metadata from multiple decorators
+                existing = self._functions[metadata.name]
+
+                # Combine tags (unique)
+                existing.tags = list(set(existing.tags + metadata.tags))
+
+                # Update fields (last decorator wins for conflicts)
+                if metadata.description:
+                    existing.description = metadata.description
+                if metadata.category != "General":
+                    existing.category = metadata.category
+                if metadata.execution_mode != "async":
+                    existing.execution_mode = metadata.execution_mode
+                if metadata.timeout_seconds != 300:
+                    existing.timeout_seconds = metadata.timeout_seconds
+                if metadata.cache_ttl_seconds != 300:
+                    existing.cache_ttl_seconds = metadata.cache_ttl_seconds
+                if metadata.endpoint_enabled:
+                    existing.endpoint_enabled = metadata.endpoint_enabled
+                if metadata.allowed_methods != ["POST"]:
+                    existing.allowed_methods = metadata.allowed_methods
+                if metadata.source:
+                    existing.source = metadata.source
+                if metadata.function:
+                    existing.function = metadata.function
+
+                # Merge parameters (keep existing, add new ones)
+                existing_param_names = {p.name for p in existing.parameters}
+                for param in metadata.parameters:
+                    if param.name not in existing_param_names:
+                        existing.parameters.append(param)
+
+                logger.info(
+                    f"Merged function metadata: {metadata.name} "
+                    f"(tags={existing.tags})"
+                )
+            else:
+                self._functions[metadata.name] = metadata
+                logger.info(
+                    f"Registered function: {metadata.name} "
+                    f"(tags={metadata.tags}, {len(metadata.parameters)} parameters)"
+                )
+
+    def get_function(self, name: str) -> FunctionMetadata | None:
+        """
+        Retrieve function metadata by name.
+
+        Args:
+            name: Function name
+
+        Returns:
+            FunctionMetadata or None if not found
+        """
+        return self._functions.get(name)
+
+    def get_all_functions(self) -> list[FunctionMetadata]:
+        """
+        Get all registered functions.
+
+        Returns:
+            List of FunctionMetadata objects
+        """
+        return list(self._functions.values())
+
+    def has_function(self, name: str) -> bool:
+        """Check if function exists in unified registry"""
+        return name in self._functions
+
+    def get_function_count(self) -> int:
+        """Get total number of registered functions"""
+        return len(self._functions)
+
+    def get_functions_by_tag(self, tag: str) -> list[FunctionMetadata]:
+        """
+        Get all functions with a specific tag.
+
+        Args:
+            tag: Tag to filter by (e.g., "workflow", "data_provider")
+
+        Returns:
+            List of FunctionMetadata objects with the tag
+        """
+        return [f for f in self._functions.values() if tag in f.tags]
+
     # ==================== UTILITY METHODS ====================
 
     def clear_all(self) -> None:
-        """Clear all registered workflows and data providers (for testing)"""
+        """Clear all registered workflows, data providers, and functions (for testing)"""
         with self._lock:
             self._workflows.clear()
             self._data_providers.clear()
+            # Initialize _functions if it doesn't exist (for old registry instances)
+            if not hasattr(self, '_functions'):
+                self._functions = {}
+            else:
+                self._functions.clear()
             logger.info("Registry cleared")
 
     def get_summary(self) -> dict[str, Any]:

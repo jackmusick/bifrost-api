@@ -12,12 +12,12 @@ from typing import TYPE_CHECKING, Any
 from shared.registry import get_registry
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
 
-def list_workflows_logic(context: 'RequestContext') -> list[dict[str, Any]]:
+def list_workflows_logic(context: 'ExecutionContext') -> list[dict[str, Any]]:
     """
     List all available workflows (business logic).
 
@@ -30,7 +30,7 @@ def list_workflows_logic(context: 'RequestContext') -> list[dict[str, Any]]:
     logger.info(f"User {context.user_id} listing workflows")
 
     registry = get_registry()
-    workflows = registry.list_workflows()
+    workflows = registry.get_all_workflows()
 
     # Convert to dicts for serialization
     workflow_list = [
@@ -40,14 +40,14 @@ def list_workflows_logic(context: 'RequestContext') -> list[dict[str, Any]]:
             "parameters": [
                 {
                     "name": p.name,
-                    "type": p.type_hint,
+                    "type": p.type,
                     "required": p.required,
-                    "description": p.description
+                    "description": p.help_text
                 }
                 for p in wf.parameters
             ],
             "executionMode": wf.execution_mode,
-            "requiresPermission": wf.requires_permission
+            "endpointEnabled": wf.endpoint_enabled
         }
         for wf in workflows
     ]
@@ -57,7 +57,7 @@ def list_workflows_logic(context: 'RequestContext') -> list[dict[str, Any]]:
     return workflow_list
 
 
-def get_workflow_status_logic(context: 'RequestContext', execution_id: str) -> dict[str, Any] | None:
+async def get_workflow_status_logic(context: 'ExecutionContext', execution_id: str) -> dict[str, Any] | None:
     """
     Get workflow execution status (business logic).
 
@@ -73,7 +73,7 @@ def get_workflow_status_logic(context: 'RequestContext', execution_id: str) -> d
     logger.info(f"User {context.user_id} getting status for execution {execution_id}")
 
     # Reuse executions logic
-    execution, error = get_execution_handler(context, execution_id)
+    execution, error = await get_execution_handler(context, execution_id)
 
     if error or not execution:
         logger.warning(f"Execution {execution_id} not found or error: {error}")

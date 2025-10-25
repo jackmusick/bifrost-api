@@ -569,46 +569,53 @@ def load_seed_data(azurite_tables):
 
 @pytest.fixture
 def platform_admin_context():
-    """Returns a RequestContext for a platform admin user"""
-    from shared.request_context import RequestContext
+    """Returns a ExecutionContext for a platform admin user"""
+    from shared.context import ExecutionContext
 
-    return RequestContext(
+    return ExecutionContext(
         user_id="admin-user-12345",
         email="admin@test.com",
         name="Test Platform Admin",
-        org_id=None,  # GLOBAL scope
+        scope="GLOBAL",  # GLOBAL scope
+        organization=None,
         is_platform_admin=True,
         is_function_key=False,
+        execution_id="exec-admin-12345",
     )
 
 
 @pytest.fixture
 def org_user_context(test_org):
-    """Returns a RequestContext for an organization user"""
-    from shared.request_context import RequestContext
+    """Returns a ExecutionContext for an organization user"""
+    from shared.context import ExecutionContext, Organization
 
-    return RequestContext(
+    org_id = test_org["org_id"]
+    return ExecutionContext(
         user_id="org-user-67890",
         email="user@test.com",
         name="Test Org User",
-        org_id=test_org["org_id"],
+        scope=org_id,
+        organization=Organization(id=org_id, name=test_org["name"]),
         is_platform_admin=False,
         is_function_key=False,
+        execution_id="exec-org-user-67890",
     )
 
 
 @pytest.fixture
 def function_key_context():
-    """Returns a RequestContext for function key authentication"""
-    from shared.request_context import RequestContext
+    """Returns a ExecutionContext for function key authentication"""
+    from shared.context import ExecutionContext
 
-    return RequestContext(
+    return ExecutionContext(
         user_id="system",
         email="system@local",
         name="System (Function Key)",
-        org_id=None,
+        scope="GLOBAL",
+        organization=None,
         is_platform_admin=True,
         is_function_key=True,
+        execution_id="exec-system-function-key",
     )
 
 

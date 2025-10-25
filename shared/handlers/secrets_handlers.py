@@ -19,7 +19,7 @@ from shared.models import (
     SecretResponse,
     SecretUpdateRequest,
 )
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext, Organization
 from shared.storage import get_table_service
 from shared.validation import check_key_vault_available
 
@@ -237,7 +237,7 @@ async def handle_update_secret(
 
 
 def _find_secret_dependencies(
-    context: RequestContext, secret_name: str, org_id: str
+    context: ExecutionContext, secret_name: str, org_id: str
 ) -> list[dict[str, Any]]:
     """
     Find all dependencies (config references) to a secret.
@@ -255,13 +255,15 @@ def _find_secret_dependencies(
     try:
         # Check GLOBAL configs
         try:
-            global_context = RequestContext(
+            global_context = ExecutionContext(
                 user_id=context.user_id,
                 email=context.email,
                 name=context.name,
-                org_id="GLOBAL",
+                scope="GLOBAL",
+                organization=None,
                 is_platform_admin=context.is_platform_admin,
                 is_function_key=context.is_function_key,
+                execution_id=context.execution_id,
             )
             config_service = get_table_service("Config", global_context)
             global_configs = list(
@@ -288,13 +290,15 @@ def _find_secret_dependencies(
         # Check org-specific configs if the secret is org-scoped
         if org_id != "GLOBAL":
             try:
-                org_context = RequestContext(
+                org_context = ExecutionContext(
                     user_id=context.user_id,
                     email=context.email,
                     name=context.name,
-                    org_id=org_id,
+                    scope=org_id,
+                    organization=Organization(id=org_id, name=""),
                     is_platform_admin=context.is_platform_admin,
                     is_function_key=context.is_function_key,
+                    execution_id=context.execution_id,
                 )
                 config_service = get_table_service("Config", org_context)
                 org_configs = list(
@@ -327,7 +331,7 @@ def _find_secret_dependencies(
 async def handle_delete_secret(
     kv_manager: KeyVaultClient | None,
     secret_name: str,
-    context: RequestContext,
+    context: ExecutionContext,
     user_id: str,
 ) -> SecretResponse:
     """

@@ -14,7 +14,7 @@ from shared.services.oauth_storage_service import OAuthStorageService
 
 if TYPE_CHECKING:
     from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class OAuthRepository:
     OAuth connections are stored in Config table with workflow indexes.
     """
 
-    def __init__(self, context: 'RequestContext | None' = None):
+    def __init__(self, context: 'ExecutionContext | None' = None):
         self.context = context
         self._service = OAuthStorageService()
 

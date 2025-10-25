@@ -7,11 +7,10 @@ from shared.decorators import workflow
 
 
 @workflow(
-    name="workflows.load_customer_licenses",
+    name="workflows_load_customer_licenses",
     description="Load customer license information for form context",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def load_customer_licenses(context):
     """
@@ -26,11 +25,10 @@ async def load_customer_licenses(context):
 
 
 @workflow(
-    name="workflows.check_available_licenses",
+    name="workflows_check_available_licenses",
     description="Check available licenses for form visibility",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def check_available_licenses(context):
     """
@@ -45,11 +43,10 @@ async def check_available_licenses(context):
 
 
 @workflow(
-    name="workflows.check_user_exists",
+    name="workflows_check_user_exists",
     description="Check if user exists in system",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def check_user_exists(context):
     """
@@ -64,11 +61,10 @@ async def check_user_exists(context):
 
 
 @workflow(
-    name="workflows.check_user_permissions",
+    name="workflows_check_user_permissions",
     description="Check user permissions for form access",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def check_user_permissions(context):
     """
@@ -83,11 +79,10 @@ async def check_user_permissions(context):
 
 
 @workflow(
-    name="workflows.process_form_submission",
+    name="workflows_process_form_submission",
     description="Process form submission (test workflow)",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def process_form_submission(context, **params):
     """
@@ -102,11 +97,10 @@ async def process_form_submission(context, **params):
 
 
 @workflow(
-    name="workflows.process_form",
+    name="workflows_process_form",
     description="Generic form processor (test)",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def process_form(context, **params):
     """
@@ -119,11 +113,10 @@ async def process_form(context, **params):
 
 
 @workflow(
-    name="workflows.process_submission",
+    name="workflows_process_submission",
     description="Process submission (test)",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def process_submission(context, **params):
     """
@@ -136,11 +129,10 @@ async def process_submission(context, **params):
 
 
 @workflow(
-    name="workflows.process_simple_form",
+    name="workflows_process_simple_form",
     description="Process simple form (test)",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def process_simple_form(context, **params):
     """
@@ -150,11 +142,10 @@ async def process_simple_form(context, **params):
 
 
 @workflow(
-    name="workflows.process_conditional_form",
+    name="workflows_process_conditional_form",
     description="Process conditional form (test)",
     category="Testing",
-    tags=["test", "forms"],
-    expose_in_forms=True
+    tags=["test", "forms"]
 )
 async def process_conditional_form(context, **params):
     """

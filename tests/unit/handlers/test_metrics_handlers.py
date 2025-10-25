@@ -17,7 +17,7 @@ from shared.handlers.metrics_handlers import (
     get_reverse_timestamp,
     get_workflow_metadata,
 )
-from shared.request_context import RequestContext
+from shared.context import ExecutionContext
 
 
 # ============================================================================
@@ -27,8 +27,8 @@ from shared.request_context import RequestContext
 
 @pytest.fixture
 def mock_context():
-    """Create a mock RequestContext"""
-    context = Mock(spec=RequestContext)
+    """Create a mock ExecutionContext"""
+    context = Mock(spec=ExecutionContext)
     context.user_id = "user-123"
     context.scope = "org-456"
     return context

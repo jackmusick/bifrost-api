@@ -243,11 +243,11 @@ class TestAuthenticationFlow:
         self, mock_org_entity, mock_config_entities
     ):
         """
-        Test that OrganizationContext is properly loaded with function key auth
+        Test that ExecutionContext is properly loaded with function key auth
 
         Even with function key (bypassing user auth), org validation should occur.
         """
-        from shared.context import OrganizationContext
+        from shared.context import ExecutionContext
         from shared.middleware import load_organization_context
 
         # Create request with function key
@@ -258,9 +258,9 @@ class TestAuthenticationFlow:
                 context = await load_organization_context("test-org-123", req)
 
         # Assert context loaded correctly
-        assert isinstance(context, OrganizationContext)
-        assert context.org.org_id == "test-org-123"
-        assert context.org.name == "Test Organization"
+        assert isinstance(context, ExecutionContext)
+        assert context.organization.id == "test-org-123"
+        assert context.organization.name == "Test Organization"
         assert context.has_config("api_endpoint")
         assert context._config["api_endpoint"] == "https://api.example.com"
         assert context._config["features"]["automation"] is True

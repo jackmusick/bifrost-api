@@ -13,7 +13,7 @@ from shared.storage import TableStorageService
 from .base import BaseRepository
 
 if TYPE_CHECKING:
-    from shared.request_context import RequestContext
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class UserRepository(BaseRepository):
     - Reverse: orgperm:{org_id}:{email}
     """
 
-    def __init__(self, context: 'RequestContext | None' = None):
+    def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
         self.relationships_service = TableStorageService("Relationships")
 
