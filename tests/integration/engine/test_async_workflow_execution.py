@@ -150,14 +150,14 @@ def create_mock_queue_message(queue_message):
     return mock_msg
 
 
-async def wait_for_queue_messages(queue_client, expected_count=1, max_attempts=10, delay=1.0):
+async def wait_for_queue_messages(queue_client, expected_count=1, max_attempts=30, delay=1.0):
     """
     Helper to wait for messages to appear in Azure Queue (handles Azurite delays)
 
     Args:
         queue_client: Azure Queue client
         expected_count: Minimum number of messages to wait for
-        max_attempts: Maximum retry attempts (default: 10)
+        max_attempts: Maximum retry attempts (default: 30 for slow CI)
         delay: Delay between attempts in seconds (default: 1.0s)
 
     Returns:
