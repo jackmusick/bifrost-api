@@ -28,8 +28,32 @@ cleanup
 
 # Start Azurite on test ports (in-memory)
 echo "Starting Azurite on test ports (10100-10102)..."
-npx azurite --blobPort 10100 --queuePort 10101 --tablePort 10102 --inMemoryPersistence --silent &
-sleep 15
+npx azurite --blobPort 10100 --queuePort 10101 --tablePort 10102 --inMemoryPersistence > /tmp/azurite-test.log 2>&1 &
+
+# Wait for Azurite services to be ready
+echo "Waiting for Azurite to be ready..."
+AZURITE_READY=false
+for i in {1..60}; do
+    # Check if all three services are successfully listening
+    if grep -q "Azurite Blob service is successfully listening" /tmp/azurite-test.log && \
+       grep -q "Azurite Queue service is successfully listening" /tmp/azurite-test.log && \
+       grep -q "Azurite Table service is successfully listening" /tmp/azurite-test.log; then
+        echo "Azurite is ready!"
+        AZURITE_READY=true
+        break
+    fi
+    if [ $((i % 5)) -eq 0 ]; then
+        echo "Still waiting for Azurite... ($i/60 seconds)"
+    fi
+    sleep 1
+done
+
+if [ "$AZURITE_READY" = false ]; then
+    echo "ERROR: Azurite failed to start within 60 seconds"
+    echo "Azurite log:"
+    cat /tmp/azurite-test.log 2>/dev/null || echo "No log file found"
+    exit 1
+fi
 
 # Start func on port 7777 with test connection string
 echo "Starting func on port 7777..."
@@ -37,13 +61,11 @@ echo "Starting func on port 7777..."
 export AzureWebJobsStorage="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10100/devstoreaccount1;QueueEndpoint=http://localhost:10101/devstoreaccount1;TableEndpoint=http://localhost:10102/devstoreaccount1;"
 export FUNCTIONS_WORKER_RUNTIME="python"
 
-# Show diagnostic info
-echo "=== Test Environment Diagnostics ==="
-echo "Python: $(python --version)"
-echo "AzureWebJobsStorage: ${AzureWebJobsStorage:0:50}..."
-echo "AZURE_KEY_VAULT_URL: $AZURE_KEY_VAULT_URL"
-echo "Azure Identity available: $(python -c 'import azure.identity; print("Yes")' 2>/dev/null || echo "No")"
-echo "===================================="
+# # Show diagnostic info
+# echo "=== Test Environment Diagnostics ==="
+# echo "AzureWebJobsStorage: ${AzureWebJobsStorage:0:50}..."
+# echo "AZURE_KEY_VAULT_URL: $AZURE_KEY_VAULT_URL"
+# echo "===================================="
 
 func start --port 7777 > /tmp/func-test.log 2>&1 &
 FUNC_PID=$!
@@ -51,28 +73,25 @@ FUNC_PID=$!
 # Wait for func to be ready
 echo "Waiting for func to be ready..."
 READY=false
-for i in {1..60}; do
+for i in {1..120}; do
     if curl -s http://localhost:7777/api/openapi/v3.json > /dev/null 2>&1; then
-        echo "Services ready!"
+        echo "Function app initialization complete!"
         READY=true
         break
     fi
 
     if [ $((i % 10)) -eq 0 ]; then
-        echo "Still waiting... ($i/60 seconds)"
+        echo "Still waiting... ($i/120 seconds)"
     fi
     sleep 1
 done
 
 if [ "$READY" = false ]; then
-    echo "ERROR: Azure Functions failed to start within 60 seconds"
+    echo "ERROR: Azure Functions failed to start within 120 seconds"
     echo "Full func log:"
     cat /tmp/func-test.log 2>/dev/null || echo "No log file found"
     exit 1
 fi
-
-echo "Giving the queue a few more seconds..."
-sleep 10
 
 # Run pytest with or without coverage
 if [ "$COVERAGE" = true ]; then
