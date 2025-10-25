@@ -58,6 +58,12 @@ echo "Starting func on port 7777..."
 export AzureWebJobsStorage="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10100/devstoreaccount1;QueueEndpoint=http://localhost:10101/devstoreaccount1;TableEndpoint=http://localhost:10102/devstoreaccount1;"
 export FUNCTIONS_WORKER_RUNTIME="python"
 
+# Create temporary directories for workspace and temp storage
+export BIFROST_WORKSPACE_LOCATION="$(mktemp -d)"
+export BIFROST_TEMP_LOCATION="$(mktemp -d)"
+echo "Created test workspace: $BIFROST_WORKSPACE_LOCATION"
+echo "Created test temp: $BIFROST_TEMP_LOCATION"
+
 # # Show diagnostic info
 # echo "=== Test Environment Diagnostics ==="
 # echo "AzureWebJobsStorage: ${AzureWebJobsStorage:0:50}..."

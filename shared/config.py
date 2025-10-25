@@ -30,8 +30,14 @@ def validate_filesystem_config() -> None:
     if not workspace_location:
         errors.append(
             "FATAL: BIFROST_WORKSPACE_LOCATION environment variable not set.\n"
-            "  This variable is required for user workspace operations.\n"
+            "\n"
+            "  Why this is required:\n"
+            "    This directory stores user code: workflows, scripts, data providers, and uploaded files.\n"
+            "    The platform needs a dedicated filesystem location for sandboxed execution.\n"
+            "\n"
+            "  How to fix:\n"
             "  → Local: Set in local.settings.json (e.g., '/Users/yourname/bifrost-workspace')\n"
+            "  → CI/CD: Export before starting function app: export BIFROST_WORKSPACE_LOCATION=\"$(mktemp -d)\"\n"
             "  → Azure: Set in deployment/azuredeploy.json app settings (e.g., '/mounts/workspace')"
         )
     else:
@@ -58,8 +64,16 @@ def validate_filesystem_config() -> None:
     if not temp_location:
         errors.append(
             "FATAL: BIFROST_TEMP_LOCATION environment variable not set.\n"
-            "  This variable is required for temporary file operations.\n"
+            "\n"
+            "  Why this is required:\n"
+            "    This directory stores temporary files during workflow execution:\n"
+            "    - File uploads before processing\n"
+            "    - Intermediate data transformations\n"
+            "    - Execution artifacts and logs\n"
+            "\n"
+            "  How to fix:\n"
             "  → Local: Set in local.settings.json (e.g., '/Users/yourname/bifrost-temp')\n"
+            "  → CI/CD: Export before starting function app: export BIFROST_TEMP_LOCATION=\"$(mktemp -d)\"\n"
             "  → Azure: Set in deployment/azuredeploy.json app settings (e.g., '/mounts/tmp')"
         )
     else:
@@ -87,16 +101,20 @@ def validate_filesystem_config() -> None:
                 f"  → Azure: Check Azure Files mount configuration in deployment/azuredeploy.json"
             )
 
-    # If any errors, print them and exit
+    # If any errors, log them and exit
     if errors:
-        print("\n" + "="*70)
-        print("CONFIGURATION VALIDATION FAILED")
-        print("="*70)
+        error_msg = "\n" + "="*70 + "\n"
+        error_msg += "CONFIGURATION VALIDATION FAILED\n"
+        error_msg += "="*70 + "\n"
         for error in errors:
-            print(f"\n{error}\n")
-        print("="*70)
-        print("\nApplication cannot start with invalid configuration.")
-        print("Please fix the errors above and restart.\n")
+            error_msg += f"\n{error}\n"
+        error_msg += "="*70 + "\n"
+        error_msg += "Application cannot start with invalid configuration.\n"
+        error_msg += "Please fix the errors above and restart.\n"
+
+        # Log to both logger (for Azure Functions logs) and stderr (for immediate visibility)
+        logger.error(error_msg)
+        print(error_msg, file=sys.stderr)
         sys.exit(1)
 
     logger.info("✓ Filesystem configuration validated successfully")
