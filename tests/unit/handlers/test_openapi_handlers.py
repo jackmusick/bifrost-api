@@ -44,12 +44,12 @@ class TestCollectPydanticModels:
         # Should include at least one shared model
         assert len([n for n in model_names if 'Error' in n or 'Execution' in n]) > 0
 
-    def test_collect_models_includes_data_provider_response(self):
-        """Should include DataProviderListResponse"""
+    def test_collect_models_includes_metadata_response(self):
+        """Should include MetadataResponse which contains data provider metadata"""
         models = collect_pydantic_models()
         model_names = [m.__name__ for m in models]
 
-        assert 'DataProviderListResponse' in model_names
+        assert 'MetadataResponse' in model_names
 
     def test_all_collected_models_are_basemodel_subclasses(self):
         """All collected models should be Pydantic BaseModel subclasses"""

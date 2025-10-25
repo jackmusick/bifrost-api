@@ -17,17 +17,16 @@ class TestWorkspaceServiceInitialization:
 
     def test_get_workspace_path_default(self, mock_filesystem):
         """Should use default workspace path from env"""
-        with patch.dict("os.environ", {"WORKSPACE_PATH": "/workspace"}):
+        with patch.dict("os.environ", {"BIFROST_WORKSPACE_LOCATION": "/workspace"}):
             with patch("shared.services.workspace_service.Path") as mock_path:
                 path_instance = MagicMock()
                 path_instance.exists.return_value = True
-                path_instance.mkdir.return_value = None
                 mock_path.return_value = path_instance
 
                 WorkspaceService()
 
-                # Path should be created
-                path_instance.mkdir.assert_called()
+                # Path should exist (validated at startup)
+                path_instance.exists.assert_called()
 
     def test_get_workspace_path_custom(self, mock_filesystem):
         """Should use custom workspace path if provided"""
@@ -42,17 +41,15 @@ class TestWorkspaceServiceInitialization:
             assert service.workspace_path is not None
 
     def test_ensure_workspace_exists(self, mock_filesystem):
-        """Should create workspace directory if missing"""
+        """Should raise error if workspace directory missing"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             path_instance = MagicMock()
             path_instance.exists.return_value = False
-            path_instance.mkdir.return_value = None
             mock_path.return_value = path_instance
 
-            WorkspaceService("/workspace")
-
-            # mkdir should be called with parents=True, exist_ok=True
-            path_instance.mkdir.assert_called()
+            # Should raise error since workspace doesn't exist
+            with pytest.raises(RuntimeError, match="Workspace directory does not exist"):
+                WorkspaceService("/workspace")
 
 
 class TestWorkspaceServiceFileOperations:
@@ -286,14 +283,13 @@ class TestWorkspaceServiceErrors:
                     service.write_file("write_error.py", b"content")
 
     def test_handles_missing_workspace_directory(self, mock_filesystem):
-        """Should handle workspace directory not found"""
+        """Should raise RuntimeError when workspace directory doesn't exist"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
             workspace.exists.return_value = False
-            workspace.mkdir.side_effect = OSError("Cannot create directory")
             mock_path.return_value = workspace
 
-            with pytest.raises(OSError):
+            with pytest.raises(RuntimeError, match="Workspace directory does not exist"):
                 WorkspaceService()
 
 

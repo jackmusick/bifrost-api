@@ -15,23 +15,18 @@ from shared.models import FileMetadata, FileContentResponse, FileType
 
 def get_base_path() -> Path:
     """
-    Get the base /home directory path.
-
-    In production: Azure Files share mounted at /home
-    In development: Local directory at project root
+    Get the workspace directory path from BIFROST_WORKSPACE_LOCATION env var.
 
     Returns:
-        Path to /home directory
+        Path to workspace directory
     """
-    # Check if running in Azure (production)
-    if os.path.exists("/home") and os.path.ismount("/home"):
-        return Path("/home")
-
-    # Local development - use project root /home directory
-    project_root = Path(__file__).parent.parent.parent
-    local_home = project_root / "home"
-    local_home.mkdir(exist_ok=True)
-    return local_home
+    workspace_loc = os.getenv("BIFROST_WORKSPACE_LOCATION")
+    if not workspace_loc:
+        raise RuntimeError(
+            "BIFROST_WORKSPACE_LOCATION environment variable not set. "
+            "This should have been validated at startup."
+        )
+    return Path(workspace_loc)
 
 
 def validate_and_resolve_path(relative_path: str) -> Path:

@@ -1,9 +1,10 @@
 """
 File management SDK for Bifrost.
 
-Provides Python API for file operations in /home/files/ and /home/tmp/.
+Provides Python API for file operations in workspace/files/ and temp directories.
 """
 
+import os
 import shutil
 from pathlib import Path
 
@@ -14,13 +15,13 @@ class files:
     """
     File management operations.
 
-    Provides safe file access within /home/files/ and /home/tmp/ directories.
+    Provides safe file access within workspace/files/ and temp directories.
     All paths are sandboxed to prevent access outside allowed directories.
     """
 
-    # Allowed base paths for file operations
-    FILES_DIR = Path("/home/files")
-    TMP_DIR = Path("/home/tmp")
+    # Allowed base paths for file operations (loaded from environment)
+    FILES_DIR = Path(os.getenv("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")) / "files"
+    TMP_DIR = Path(os.getenv("BIFROST_TEMP_LOCATION", "/mounts/tmp"))
 
     @staticmethod
     def _resolve_path(path: str, allow_tmp: bool = False) -> Path:
@@ -29,7 +30,7 @@ class files:
 
         Args:
             path: Relative or absolute path
-            allow_tmp: Whether to allow paths in /home/tmp
+            allow_tmp: Whether to allow paths in temp directory
 
         Returns:
             Path: Resolved absolute path
@@ -53,27 +54,29 @@ class files:
         # Check if path is within allowed directories
         try:
             if allow_tmp:
-                # Allow /home/files or /home/tmp
+                # Allow workspace/files or temp directory
                 if not (p.is_relative_to(files.FILES_DIR) or p.is_relative_to(files.TMP_DIR)):
                     raise ValueError(
-                        f"Path must be within /home/files or /home/tmp: {path}"
+                        f"Path must be within workspace files or temp directory: {path}"
                     )
             else:
-                # Only allow /home/files
+                # Only allow workspace/files
                 if not p.is_relative_to(files.FILES_DIR):
-                    raise ValueError(f"Path must be within /home/files: {path}")
+                    raise ValueError(f"Path must be within workspace files directory: {path}")
         except AttributeError:
             # Python < 3.9 doesn't have is_relative_to
             # Fallback to string comparison
             path_str = str(p)
+            files_str = str(files.FILES_DIR)
+            tmp_str = str(files.TMP_DIR)
             if allow_tmp:
-                if not (path_str.startswith("/home/files") or path_str.startswith("/home/tmp")):
+                if not (path_str.startswith(files_str) or path_str.startswith(tmp_str)):
                     raise ValueError(
-                        f"Path must be within /home/files or /home/tmp: {path}"
+                        f"Path must be within workspace files or temp directory: {path}"
                     )
             else:
-                if not path_str.startswith("/home/files"):
-                    raise ValueError(f"Path must be within /home/files: {path}")
+                if not path_str.startswith(files_str):
+                    raise ValueError(f"Path must be within workspace files directory: {path}")
 
         return p
 
@@ -83,7 +86,7 @@ class files:
         Read a text file.
 
         Args:
-            path: File path (relative to /home/files or absolute)
+            path: File path (relative to workspace/files or absolute)
 
         Returns:
             str: File contents
@@ -110,7 +113,7 @@ class files:
         Read a binary file.
 
         Args:
-            path: File path (relative to /home/files or absolute)
+            path: File path (relative to workspace/files or absolute)
 
         Returns:
             bytes: File contents
@@ -137,11 +140,11 @@ class files:
         Write text to a file.
 
         Args:
-            path: File path (relative to /home/files or absolute)
+            path: File path (relative to workspace/files or absolute)
             content: Text content to write
 
         Raises:
-            ValueError: If path is outside /home/files
+            ValueError: If path is outside workspace files directory
             RuntimeError: If no execution context
 
         Example:
@@ -164,11 +167,11 @@ class files:
         Write binary data to a file.
 
         Args:
-            path: File path (relative to /home/files or absolute)
+            path: File path (relative to workspace/files or absolute)
             content: Binary content to write
 
         Raises:
-            ValueError: If path is outside /home/files
+            ValueError: If path is outside workspace files directory
             RuntimeError: If no execution context
 
         Example:

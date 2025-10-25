@@ -13,6 +13,8 @@ from shared.decorators import require_platform_admin, with_request_context
 from shared.middleware import with_org_context
 from shared.models import (
     CreateFormRequest,
+    DataProviderRequest,
+    DataProviderResponse,
     Form,
     FormExecuteRequest,
     FormStartupResponse,
@@ -27,6 +29,8 @@ from shared.handlers.forms_handlers import (
     delete_form_handler,
     execute_form_startup_handler,
     execute_form_handler,
+    get_form_roles_handler,
+    execute_form_data_provider_handler,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,6 +241,88 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
     assert form_id is not None
     request_body = req.get_json()
     result, status_code = await execute_form_handler(form_id, request_body, request_context, workflow_context)
+    return func.HttpResponse(
+        json.dumps(result, default=str),
+        status_code=status_code,
+        mimetype="application/json"
+    )
+
+
+@bp.function_name("forms_get_form_roles")
+@bp.route(route="forms/{formId}/roles", methods=["GET"])
+@openapi_endpoint(
+    path="/forms/{formId}/roles",
+    method="GET",
+    summary="Get roles assigned to a form",
+    description="Get all roles that have access to this form (Platform admin only)",
+    tags=["Forms"],
+    path_params={
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
+@with_request_context
+@require_platform_admin
+async def get_form_roles(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/forms/{formId}/roles - Get roles assigned to form"""
+    request_context = req.context  # type: ignore[attr-defined]
+    form_id = req.route_params.get("formId")
+    assert form_id is not None
+    result, status_code = await get_form_roles_handler(form_id, request_context)
+    return func.HttpResponse(
+        json.dumps(result),
+        status_code=status_code,
+        mimetype="application/json"
+    )
+
+
+@bp.function_name("forms_execute_data_provider")
+@bp.route(route="forms/{formId}/data-providers/{providerName}", methods=["POST"])
+@openapi_endpoint(
+    path="/forms/{formId}/data-providers/{providerName}",
+    method="POST",
+    summary="Execute a data provider in the context of a form",
+    description="Execute a data provider to retrieve options for form fields. User must have access to view the form (enforces form access level rules). This replaces the global /api/data-providers/{providerName} endpoint.",
+    tags=["Forms"],
+    request_model=DataProviderRequest,
+    response_model=DataProviderResponse,
+    path_params={
+        "formId": {
+            "description": "Form ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        },
+        "providerName": {
+            "description": "Data provider name",
+            "schema": {"type": "string"}
+        }
+    }
+)
+@with_request_context
+@with_org_context
+async def execute_form_data_provider(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/forms/{formId}/data-providers/{providerName} - Execute data provider for form"""
+    request_context = req.context  # type: ignore[attr-defined]
+    workflow_context = req.org_context  # type: ignore[attr-defined]
+    form_id = req.route_params.get("formId")
+    provider_name = req.route_params.get("providerName")
+    assert form_id is not None
+    assert provider_name is not None
+
+    # Parse request body for inputs and no_cache flag
+    request_body = req.get_json() if req.get_body() else {}
+    inputs = request_body.get("inputs")
+    no_cache = request_body.get("noCache", False)
+
+    result, status_code = await execute_form_data_provider_handler(
+        form_id=form_id,
+        provider_name=provider_name,
+        request_context=request_context,
+        workflow_context=workflow_context,
+        no_cache=no_cache,
+        inputs=inputs
+    )
     return func.HttpResponse(
         json.dumps(result, default=str),
         status_code=status_code,

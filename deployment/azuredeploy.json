@@ -252,21 +252,29 @@
                         {
                             "name": "WEBSITE_CONTENTSHARE",
                             "value": "[toLower(variables('apiFunctionAppName'))]"
+                        },
+                        {
+                            "name": "BIFROST_WORKSPACE_LOCATION",
+                            "value": "/mounts/workspace"
+                        },
+                        {
+                            "name": "BIFROST_TEMP_LOCATION",
+                            "value": "/mounts/tmp"
                         }
                     ],
                     "azureStorageAccounts": {
-                        "home": {
+                        "workspace": {
                             "type": "AzureFiles",
                             "accountName": "[variables('storageAccountName')]",
                             "shareName": "workspaces",
-                            "mountPath": "/home",
+                            "mountPath": "/mounts/workspace",
                             "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value]"
                         },
                         "tmp": {
                             "type": "AzureFiles",
                             "accountName": "[variables('storageAccountName')]",
                             "shareName": "tmp",
-                            "mountPath": "/tmp",
+                            "mountPath": "/mounts/tmp",
                             "accessKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value]"
                         }
                     },

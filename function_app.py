@@ -24,7 +24,6 @@ from functions.http.executions import bp as executions_bp
 from functions.http.endpoints import bp as endpoints_bp
 from functions.http.editor_files import bp as editor_files_bp
 from functions.http.discovery import bp as discovery_bp
-from functions.http.data_providers import bp as data_providers_bp
 from functions.http.branding import bp as branding_bp
 import importlib.util
 import logging
@@ -73,6 +72,11 @@ if os.getenv('ENABLE_DEBUGGING') == 'true':
     logging.info(
         "🐛 Debugpy listening on port 5678 - attach VS Code debugger anytime")
 
+# ==================== FILESYSTEM CONFIGURATION ====================
+# Validate filesystem configuration before anything else
+from shared.config import validate_filesystem_config
+validate_filesystem_config()
+
 # ==================== IMPORT RESTRICTIONS ====================
 # T006: Install import restrictions BEFORE importing workspace code
 
@@ -86,8 +90,8 @@ def get_workspace_paths():
     Dynamically determine workspace paths.
 
     Returns list of existing workspace directories:
-    - /home: User code (workflows, scripts, files)
-    - /platform: Platform-provided code (SDK, examples, integrations)
+    - BIFROST_WORKSPACE_LOCATION env var: User code (workflows, scripts, files)
+    - ./platform: Platform-provided code (SDK, examples, integrations)
 
     This is a function (not a constant) to support hot-reload scenarios
     where workspace directories might be created after startup.
@@ -95,29 +99,28 @@ def get_workspace_paths():
     paths = []
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
-    # /home - user code directory
-    home_path = base_dir / 'home'
-    if home_path.exists():
-        paths.append(str(home_path))
+    # User workspace from environment variable
+    workspace_loc = os.getenv("BIFROST_WORKSPACE_LOCATION")
+    if workspace_loc:
+        workspace_path = Path(workspace_loc)
+        if workspace_path.exists():
+            paths.append(str(workspace_path))
 
-    # /platform - platform code directory
+    # Platform code directory (always relative to project root)
     platform_path = base_dir / 'platform'
     if platform_path.exists():
         paths.append(str(platform_path))
-
-    # Legacy /workspace support (for backwards compatibility during migration)
-    legacy_workspace = base_dir / 'workspace'
-    if legacy_workspace.exists():
-        paths.append(str(legacy_workspace))
 
     return paths
 
 
 def get_home_path() -> str | None:
-    """Get the /home directory path if it exists."""
-    base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    home_path = base_dir / 'home'
-    return str(home_path) if home_path.exists() else None
+    """Get the user workspace directory path from BIFROST_WORKSPACE_LOCATION."""
+    workspace_loc = os.getenv("BIFROST_WORKSPACE_LOCATION")
+    if workspace_loc:
+        workspace_path = Path(workspace_loc)
+        return str(workspace_path) if workspace_path.exists() else None
+    return None
 
 
 # Add /platform to sys.path so bifrost imports work
@@ -128,14 +131,16 @@ if platform_path.exists() and str(platform_path) not in sys.path:
     sys.path.insert(0, str(platform_path))
     logging.info(f"Added /platform to sys.path: {platform_path}")
 
-# Add /home/.packages to sys.path for user-installed packages
-# This allows users to: pip install --target=/home/.packages <package>
-packages_path = base_dir / 'home' / '.packages'
-# Ensure .packages directory exists so users don't need to restart after first package install
-packages_path.mkdir(parents=True, exist_ok=True)
-if str(packages_path) not in sys.path:
-    sys.path.insert(0, str(packages_path))
-    logging.info(f"Added /home/.packages to sys.path: {packages_path}")
+# Add workspace/.packages to sys.path for user-installed packages
+# This allows users to: pip install --target=<workspace>/.packages <package>
+workspace_loc = os.getenv("BIFROST_WORKSPACE_LOCATION")
+if workspace_loc:
+    packages_path = Path(workspace_loc) / '.packages'
+    # Ensure .packages directory exists so users don't need to restart after first package install
+    packages_path.mkdir(parents=True, exist_ok=True)
+    if str(packages_path) not in sys.path:
+        sys.path.insert(0, str(packages_path))
+        logging.info(f"Added workspace/.packages to sys.path: {packages_path}")
 
 # Install import restrictions to prevent workspace code from importing engine internals
 # /home code has stricter restrictions (only bifrost SDK)
@@ -310,7 +315,6 @@ app.register_functions(endpoints_bp)  # Workflow HTTP endpoints (API key auth)
 app.register_functions(workflow_keys_bp)
 # Scheduled workflows viewer (User Story 5)
 app.register_functions(schedules_bp)
-app.register_functions(data_providers_bp)  # Data provider API endpoints
 # Async workflow execution worker (User Story 4)
 app.register_functions(worker_bp)
 # Poison queue handler for failed executions

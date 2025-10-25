@@ -33,8 +33,8 @@ class TestCanUserViewForm:
         return Mock(spec=TableStorageService)
 
     def test_platform_admin_can_view_any_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Platform admins can view all active forms regardless of scope"""
-        from shared.models import Form, FormSchema
+        """Platform admins can view all active forms regardless of scope or access level"""
+        from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
 
         context = RequestContext(
@@ -57,7 +57,7 @@ class TestCanUserViewForm:
             linkedWorkflow="test_workflow",
             formSchema=FormSchema(fields=[]),
             isActive=True,
-            isPublic=False,
+            accessLevel=FormAccessLevel.ROLE_BASED,
             createdAt=datetime.utcnow(),
             updatedAt=datetime.utcnow(),
             createdBy="user@example.com"
@@ -74,14 +74,14 @@ class TestCanUserViewForm:
         # Platform admin can view active forms from any org
         assert result is True
 
-    def test_regular_user_can_view_global_active_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users can view active global forms"""
-        from shared.models import Form, FormSchema
+    def test_regular_user_can_view_authenticated_access_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users can view active forms with 'authenticated' access level"""
+        from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
 
         form_id = str(uuid.uuid4())
 
-        # Mock FormRepository to return an active global form
+        # Mock FormRepository to return an active form with authenticated access
         mock_form = Form(
             id=form_id,
             orgId="GLOBAL",
@@ -91,7 +91,7 @@ class TestCanUserViewForm:
             formSchema=FormSchema(fields=[]),
             isActive=True,
             isGlobal=True,
-            isPublic=True,
+            accessLevel=FormAccessLevel.AUTHENTICATED,
             createdBy="system",
             createdAt=datetime.utcnow(),
             updatedAt=datetime.utcnow()
@@ -115,14 +115,15 @@ class TestCanUserViewForm:
 
         assert result is True
 
-    def test_regular_user_can_view_org_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users can view active forms in their org"""
-        from shared.models import Form, FormSchema
+    def test_regular_user_can_view_role_based_form_with_assigned_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users can view role-based forms if they have an assigned role"""
+        from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
 
         form_id = str(uuid.uuid4())
+        role_id = str(uuid.uuid4())
 
-        # Mock FormRepository to return an active org form
+        # Mock FormRepository to return an active role-based form
         mock_form = Form(
             id=form_id,
             orgId="org-123",
@@ -132,7 +133,7 @@ class TestCanUserViewForm:
             formSchema=FormSchema(fields=[]),
             isActive=True,
             isGlobal=False,
-            isPublic=False,
+            accessLevel=FormAccessLevel.ROLE_BASED,
             createdBy="system",
             createdAt=datetime.utcnow(),
             updatedAt=datetime.utcnow()
@@ -141,7 +142,13 @@ class TestCanUserViewForm:
         mock_form_repo = Mock()
         mock_form_repo.get_form.return_value = mock_form
 
+        # Mock RoleRepository to return matching role
+        mock_role_repo = Mock()
+        mock_role_repo.get_user_role_ids.return_value = [role_id]
+        mock_role_repo.get_form_role_ids.return_value = [role_id]
+
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -156,9 +163,58 @@ class TestCanUserViewForm:
 
         assert result is True
 
+    def test_regular_user_cannot_view_role_based_form_without_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users cannot view role-based forms if they don't have an assigned role"""
+        from shared.models import Form, FormSchema, FormAccessLevel
+        from datetime import datetime
+
+        form_id = str(uuid.uuid4())
+        form_role_id = str(uuid.uuid4())
+        user_role_id = str(uuid.uuid4())
+
+        # Mock FormRepository to return an active role-based form
+        mock_form = Form(
+            id=form_id,
+            orgId="org-123",
+            name="Restricted Form",
+            description=None,
+            linkedWorkflow="test_workflow",
+            formSchema=FormSchema(fields=[]),
+            isActive=True,
+            isGlobal=False,
+            accessLevel=FormAccessLevel.ROLE_BASED,
+            createdBy="system",
+            createdAt=datetime.utcnow(),
+            updatedAt=datetime.utcnow()
+        )
+
+        mock_form_repo = Mock()
+        mock_form_repo.get_form.return_value = mock_form
+
+        # Mock RoleRepository - user has different role than form requires
+        mock_role_repo = Mock()
+        mock_role_repo.get_user_role_ids.return_value = [user_role_id]
+        mock_role_repo.get_form_role_ids.return_value = [form_role_id]
+
+        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)
+
+        context = RequestContext(
+            user_id="user@example.com",
+            email="user@example.com",
+            name="User",
+            org_id="org-123",
+            is_platform_admin=False,
+            is_function_key=False
+        )
+
+        result = can_user_view_form(context, form_id)
+
+        assert result is False
+
     def test_regular_user_cannot_view_inactive_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users cannot view inactive forms"""
-        from shared.models import Form, FormSchema
+        from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
 
         form_id = str(uuid.uuid4())
@@ -173,7 +229,7 @@ class TestCanUserViewForm:
             formSchema=FormSchema(fields=[]),
             isActive=False,  # INACTIVE
             isGlobal=True,
-            isPublic=True,
+            accessLevel=FormAccessLevel.AUTHENTICATED,
             createdBy="system",
             createdAt=datetime.utcnow(),
             updatedAt=datetime.utcnow()
@@ -235,7 +291,7 @@ class TestGetUserVisibleForms:
 
     def test_platform_admin_sees_forms_in_selected_scope(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Platform admins see all forms in their selected scope (including inactive)"""
-        from shared.models import Form, FormSchema
+        from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
 
         form1_id = str(uuid.uuid4())
@@ -252,7 +308,7 @@ class TestGetUserVisibleForms:
                 formSchema=FormSchema(fields=[]),
                 isActive=True,
                 isGlobal=False,
-                isPublic=False,
+                accessLevel=FormAccessLevel.ROLE_BASED,
                 createdBy="admin",
                 createdAt=datetime.utcnow(),
                 updatedAt=datetime.utcnow()
@@ -266,7 +322,7 @@ class TestGetUserVisibleForms:
                 formSchema=FormSchema(fields=[]),
                 isActive=False,  # INACTIVE but admin can still see it
                 isGlobal=False,
-                isPublic=False,
+                accessLevel=FormAccessLevel.ROLE_BASED,
                 createdBy="admin",
                 createdAt=datetime.utcnow(),
                 updatedAt=datetime.utcnow()
@@ -293,13 +349,14 @@ class TestGetUserVisibleForms:
         assert forms[0]["name"] == "Form 1"
         assert forms[1]["name"] == "Form 2"
 
-    def test_regular_user_sees_global_and_org_forms(self, mock_entities_table, mock_relationships_table, monkeypatch):
-        """Regular users see active forms from BOTH GLOBAL and their org"""
-        from shared.models import Form, FormSchema
+    def test_regular_user_sees_accessible_forms(self, mock_entities_table, mock_relationships_table, monkeypatch):
+        """Regular users see active forms they have access to (authenticated or matching roles)"""
+        from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
 
         global_form_id = str(uuid.uuid4())
         org_form_id = str(uuid.uuid4())
+        role_id = str(uuid.uuid4())
 
         # Mock FormRepository to return both global and org forms (active only)
         mock_forms = [
@@ -312,7 +369,7 @@ class TestGetUserVisibleForms:
                 formSchema=FormSchema(fields=[]),
                 isActive=True,
                 isGlobal=True,
-                isPublic=True,
+                accessLevel=FormAccessLevel.AUTHENTICATED,
                 createdBy="system",
                 createdAt=datetime.utcnow(),
                 updatedAt=datetime.utcnow()
@@ -326,7 +383,7 @@ class TestGetUserVisibleForms:
                 formSchema=FormSchema(fields=[]),
                 isActive=True,
                 isGlobal=False,
-                isPublic=False,
+                accessLevel=FormAccessLevel.ROLE_BASED,
                 createdBy="admin",
                 createdAt=datetime.utcnow(),
                 updatedAt=datetime.utcnow()
@@ -336,7 +393,13 @@ class TestGetUserVisibleForms:
         mock_form_repo = Mock()
         mock_form_repo.list_forms.return_value = mock_forms
 
+        # Mock RoleRepository - user has role matching org form
+        mock_role_repo = Mock()
+        mock_role_repo.get_user_role_ids.return_value = [role_id]
+        mock_role_repo.get_form_role_ids.return_value = [role_id]
+
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -349,7 +412,7 @@ class TestGetUserVisibleForms:
 
         forms = get_user_visible_forms(context)
 
-        # Should see both GLOBAL and org forms (both active in this test)
+        # Should see both authenticated global form and role-based org form
         assert len(forms) == 2
 
 

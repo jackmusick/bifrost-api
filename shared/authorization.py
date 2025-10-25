@@ -30,8 +30,10 @@ def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
 
     Rules:
     - Platform admins: can view all forms (active and inactive)
-    - Regular users: can only view active forms (global forms + their org's forms)
-    - Inactive forms are hidden from regular users
+    - Regular users:
+        - Must be active form
+        - accessLevel="authenticated" → any authenticated user
+        - accessLevel="role_based" (or None) → user must have assigned role
 
     Args:
         context: ExecutionContext
@@ -55,8 +57,20 @@ def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
     if not form.isActive:
         return False
 
-    # If we got the form, user can view it (repository handles scope checking)
-    return True
+    # Check access level (default to role_based if not set)
+    access_level = form.accessLevel or "role_based"
+
+    if access_level == "authenticated":
+        # Any authenticated user can access
+        return True
+    elif access_level == "role_based":
+        # Check role membership
+        user_roles = get_user_role_ids(context.user_id)
+        form_roles = get_form_role_ids(form_id)
+        return any(role in form_roles for role in user_roles)
+    # Future: handle "public" for unauthenticated access
+
+    return False
 
 
 def can_user_execute_form(context: ExecutionContext, form_id: str) -> bool:
@@ -80,8 +94,10 @@ def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
     Get all forms visible to the user (filtered by permissions).
 
     Rules:
-    - Platform admins: see all forms (active and inactive) in context.scope (controlled by X-Organization-Id header)
-    - Regular users: see all active GLOBAL forms + all active forms in their org
+    - Platform admins: see all forms (active and inactive) in context.scope
+    - Regular users: see active forms they have access to based on accessLevel:
+        - authenticated: all active forms with this access level
+        - role_based: only forms where user has an assigned role
 
     Args:
         context: ExecutionContext
@@ -99,10 +115,27 @@ def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
         return [form.model_dump(mode="json") for form in forms]
 
     # Regular user: Get forms with GLOBAL fallback and filter to active only
-    forms = form_repo.list_forms(include_global=True, active_only=True)
+    all_forms = form_repo.list_forms(include_global=True, active_only=True)
+
+    # Get user's role IDs once for efficiency
+    user_role_ids = get_user_role_ids(context.user_id)
+
+    # Filter forms by access level
+    visible_forms = []
+    for form in all_forms:
+        access_level = form.accessLevel or "role_based"
+
+        if access_level == "authenticated":
+            # Any authenticated user can see this form
+            visible_forms.append(form)
+        elif access_level == "role_based":
+            # Check if user has any of the roles assigned to this form
+            form_role_ids = get_form_role_ids(form.id)
+            if any(role_id in form_role_ids for role_id in user_role_ids):
+                visible_forms.append(form)
 
     # Convert Form models to dicts for backward compatibility (JSON-serializable)
-    return [form.model_dump(mode="json") for form in forms]
+    return [form.model_dump(mode="json") for form in visible_forms]
 
 
 def can_user_view_execution(context: ExecutionContext, execution_entity: dict) -> bool:

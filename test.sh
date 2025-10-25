@@ -31,9 +31,9 @@ echo "Starting Azurite on test ports (10100-10102)..."
 npx azurite --blobPort 10100 --queuePort 10101 --tablePort 10102 --inMemoryPersistence > /tmp/azurite-test.log 2>&1 &
 
 # Wait for Azurite services to be ready
-echo "Waiting for Azurite to be ready..."
 AZURITE_READY=false
-for i in {1..60}; do
+echo "Waiting on Azurite..."
+for i in {1..120}; do
     # Check if all three services are successfully listening
     if grep -q "Azurite Blob service is successfully listening" /tmp/azurite-test.log && \
        grep -q "Azurite Queue service is successfully listening" /tmp/azurite-test.log && \
@@ -42,14 +42,11 @@ for i in {1..60}; do
         AZURITE_READY=true
         break
     fi
-    if [ $((i % 5)) -eq 0 ]; then
-        echo "Still waiting for Azurite... ($i/60 seconds)"
-    fi
     sleep 1
 done
 
 if [ "$AZURITE_READY" = false ]; then
-    echo "ERROR: Azurite failed to start within 60 seconds"
+    echo "ERROR: Azurite failed to start within 120 seconds"
     echo "Azurite log:"
     cat /tmp/azurite-test.log 2>/dev/null || echo "No log file found"
     exit 1
@@ -71,8 +68,8 @@ func start --port 7777 > /tmp/func-test.log 2>&1 &
 FUNC_PID=$!
 
 # Wait for func to be ready
-echo "Waiting for func to be ready..."
 READY=false
+echo "Waiting on Azure Functions..."
 for i in {1..120}; do
     if curl -s http://localhost:7777/api/openapi/v3.json > /dev/null 2>&1; then
         echo "Function app initialization complete!"
@@ -80,9 +77,6 @@ for i in {1..120}; do
         break
     fi
 
-    if [ $((i % 10)) -eq 0 ]; then
-        echo "Still waiting... ($i/120 seconds)"
-    fi
     sleep 1
 done
 

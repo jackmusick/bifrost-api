@@ -173,7 +173,8 @@ class TestWorkflowDiscovery:
     """Test that workflows in /home and /platform are discovered"""
 
     def test_workspace_paths_include_home_and_platform(self):
-        """Test that workspace discovery includes both /home and /platform"""
+        """Test that workspace discovery includes both workspace (from env) and /platform"""
+        import os
         from function_app import get_workspace_paths
 
         paths = get_workspace_paths()
@@ -181,13 +182,16 @@ class TestWorkflowDiscovery:
         # Paths might not exist in test environment, but function should return list
         assert isinstance(paths, list)
 
-        # If /home or /platform exist, they should be in the list
-        base_dir = Path(__file__).parent.parent.parent.parent
-        home_path = base_dir / 'home'
-        platform_path = base_dir / 'platform'
+        # Workspace location from environment variable (set by test fixture)
+        workspace_location = os.getenv('BIFROST_WORKSPACE_LOCATION')
+        if workspace_location:
+            workspace_path = Path(workspace_location)
+            if workspace_path.exists():
+                assert str(workspace_path) in paths
 
-        if home_path.exists():
-            assert str(home_path) in paths
+        # Platform path should be in the list if it exists
+        base_dir = Path(__file__).parent.parent.parent.parent
+        platform_path = base_dir / 'platform'
 
         if platform_path.exists():
             assert str(platform_path) in paths

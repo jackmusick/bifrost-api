@@ -54,10 +54,17 @@ TEST_AZURITE_CONNECTION = (
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_test_environment():
+def setup_test_environment(tmp_path_factory):
     """Set up test environment variables once per session"""
     os.environ["AzureWebJobsStorage"] = TEST_AZURITE_CONNECTION
     os.environ["FUNCTIONS_WORKER_RUNTIME"] = "python"
+
+    # Set up workspace and temp locations for tests
+    test_workspace = tmp_path_factory.mktemp("workspace")
+    test_temp = tmp_path_factory.mktemp("temp")
+    os.environ["BIFROST_WORKSPACE_LOCATION"] = str(test_workspace)
+    os.environ["BIFROST_TEMP_LOCATION"] = str(test_temp)
+
     # NOTE: KeyVault env vars intentionally NOT set for integration tests
     # Unit tests mock KeyVault, E2E tests should configure KeyVault separately
     yield

@@ -34,14 +34,6 @@ def collect_pydantic_models() -> list[type[BaseModel]]:
         if isinstance(obj, type) and issubclass(obj, BaseModel):
             models.append(obj)
 
-    # Add Data Provider models (if available)
-    try:
-        from functions.http.data_providers import DataProviderListResponse
-        models.append(DataProviderListResponse)
-    except (ImportError, ModuleNotFoundError):
-        # Data provider module may not be available in all contexts
-        pass
-
     return models
 
 

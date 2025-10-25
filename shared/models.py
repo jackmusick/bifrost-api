@@ -19,6 +19,7 @@ __all__ = [
     'ExecutionStatus',
     'RetryPolicy',
     'FormFieldType',
+    'FormAccessLevel',
     'IntegrationType',
     'UserType',
 
@@ -148,6 +149,9 @@ __all__ = [
     'FileMetadata',
     'FileContentRequest',
     'FileContentResponse',
+    'SearchRequest',
+    'SearchResult',
+    'SearchResponse',
 
     # Common
     'ErrorResponse',
@@ -187,6 +191,13 @@ class RetryPolicy(BaseModel):
     maxAttempts: int = Field(3, ge=1, le=10, description="Total attempts including initial execution")
     backoffSeconds: int = Field(2, ge=1, description="Initial backoff duration in seconds")
     maxBackoffSeconds: int = Field(60, ge=1, description="Maximum backoff cap in seconds")
+
+
+class FormAccessLevel(str, Enum):
+    """Form access control levels"""
+    PUBLIC = "public"  # Future: unauthenticated access
+    AUTHENTICATED = "authenticated"  # Any authenticated user
+    ROLE_BASED = "role_based"  # Only users with assigned roles
 
 
 class FormFieldType(str, Enum):
@@ -601,8 +612,8 @@ class Form(BaseModel):
     formSchema: FormSchema
     isActive: bool = Field(default=True)
     isGlobal: bool = Field(default=False)
-    isPublic: bool = Field(
-        default=False, description="If true, any authenticated user can execute. If false, only users in assigned groups can execute.")
+    accessLevel: FormAccessLevel | None = Field(
+        default=None, description="Access control level. Defaults to 'role_based' if not set.")
     createdBy: str
     createdAt: datetime
     updatedAt: datetime
@@ -623,8 +634,8 @@ class CreateFormRequest(BaseModel):
     linkedWorkflow: str
     formSchema: FormSchema
     isGlobal: bool = Field(default=False)
-    isPublic: bool = Field(
-        default=False, description="If true, any authenticated user can execute")
+    accessLevel: FormAccessLevel = Field(
+        default=FormAccessLevel.ROLE_BASED, description="Access control level")
 
     # NEW MVP fields (T012)
     launchWorkflowId: str | None = Field(
@@ -642,6 +653,7 @@ class UpdateFormRequest(BaseModel):
     linkedWorkflow: str | None = None
     formSchema: FormSchema | None = None
     isActive: bool | None = None
+    accessLevel: FormAccessLevel | None = None
 
     # NEW MVP fields (T012)
     launchWorkflowId: str | None = Field(
@@ -813,6 +825,7 @@ class DataProviderRequest(BaseModel):
     """Request model for data provider endpoint (T009)"""
     orgId: str | None = Field(None, description="Organization ID for org-scoped providers")
     inputs: dict[str, Any] | None = Field(None, description="Input parameter values for data provider")
+    noCache: bool = Field(False, description="Bypass cache and fetch fresh data")
 
 
 class DataProviderOption(BaseModel):

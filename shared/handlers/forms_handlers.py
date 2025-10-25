@@ -543,3 +543,131 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
         logger.error(f"Error submitting form: {str(e)}", exc_info=True)
         error = ErrorResponse(error="InternalServerError", message="Failed to submit form")
         return error.model_dump(), 500
+
+
+async def get_form_roles_handler(form_id: str, request_context) -> tuple[dict, int]:
+    """Get all roles assigned to a form"""
+    from shared.authorization import get_form_role_ids
+
+    logger.info(f"User {request_context.user_id} requesting roles for form {form_id}")
+
+    try:
+        # Check if form exists and user has access
+        form_repo = FormRepository(request_context)
+        form = form_repo.get_form(form_id)
+
+        if not form:
+            logger.warning(f"Form {form_id} not found")
+            error = ErrorResponse(error="NotFound", message="Form not found")
+            return error.model_dump(), 404
+
+        # Only platform admins can view role assignments
+        if not request_context.is_platform_admin:
+            logger.warning(f"User {request_context.user_id} is not authorized to view form roles")
+            error = ErrorResponse(error="Forbidden", message="Only platform admins can view form roles")
+            return error.model_dump(), 403
+
+        # Get assigned role IDs
+        role_ids = get_form_role_ids(form_id)
+
+        logger.info(f"Form {form_id} has {len(role_ids)} assigned roles")
+        return {"roleIds": role_ids}, 200
+
+    except Exception as e:
+        logger.error(f"Error retrieving form roles: {str(e)}", exc_info=True)
+        error = ErrorResponse(error="InternalServerError", message="Failed to retrieve form roles")
+        return error.model_dump(), 500
+
+
+async def execute_form_data_provider_handler(
+    form_id: str,
+    provider_name: str,
+    request_context,
+    workflow_context,
+    no_cache: bool = False,
+    inputs: dict | None = None
+) -> tuple[dict, int]:
+    """
+    Execute a data provider in the context of a form.
+
+    This endpoint replaces the global /api/data-providers/{providerName} endpoint
+    and ensures users can only access data providers through forms they have access to.
+
+    Args:
+        form_id: Form ID (UUID)
+        provider_name: Name of the data provider to execute
+        request_context: Request context with user info
+        workflow_context: Workflow execution context
+        no_cache: If True, bypass cache
+        inputs: Optional input parameter values for the data provider
+
+    Returns:
+        Tuple of (response_dict, status_code)
+
+    Response structure:
+        {
+            "provider": "get_available_licenses",
+            "options": [...],
+            "cached": False,
+            "cache_expires_at": "2025-10-10T12:05:00Z"
+        }
+
+    Status codes:
+        200: Success
+        400: Invalid provider name or parameters
+        403: User doesn't have access to the form
+        404: Form or provider not found
+        500: Provider execution error
+    """
+    from shared.handlers.data_providers_handlers import get_data_provider_options_handler
+
+    logger.info(
+        f"User {request_context.user_id} requesting data provider {provider_name} for form {form_id}"
+    )
+
+    try:
+        # 1. Check if form exists
+        form_repo = FormRepository(request_context)
+        form = form_repo.get_form(form_id)
+
+        if not form:
+            logger.warning(f"Form {form_id} not found")
+            error = ErrorResponse(error="NotFound", message="Form not found")
+            return error.model_dump(), 404
+
+        # 2. Check if user has access to view the form (applies access level rules)
+        if not can_user_view_form(request_context, form_id):
+            logger.warning(
+                f"User {request_context.user_id} does not have access to form {form_id}"
+            )
+            error = ErrorResponse(
+                error="Forbidden",
+                message="You do not have access to this form"
+            )
+            return error.model_dump(), 403
+
+        # 3. Execute the data provider using workflow context (for org scope)
+        logger.info(
+            f"Executing data provider {provider_name} for form {form_id} "
+            f"(user={request_context.user_id}, org={workflow_context.org_id})"
+        )
+
+        result, status_code = await get_data_provider_options_handler(
+            provider_name=provider_name,
+            context=workflow_context,
+            no_cache=no_cache,
+            inputs=inputs
+        )
+
+        return result, status_code
+
+    except Exception as e:
+        logger.error(
+            f"Error executing data provider {provider_name} for form {form_id}: {str(e)}",
+            exc_info=True
+        )
+        error = ErrorResponse(
+            error="InternalServerError",
+            message="Failed to execute data provider"
+        )
+        return error.model_dump(), 500

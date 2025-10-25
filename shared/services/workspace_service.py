@@ -30,12 +30,16 @@ class WorkspaceService:
         Initialize workspace service.
 
         Args:
-            workspace_path: Path to workspace directory (default: WORKSPACE_PATH env var or /workspace)
+            workspace_path: Path to workspace directory (default: BIFROST_WORKSPACE_LOCATION env var)
         """
-        self.workspace_path = Path(workspace_path or os.environ.get('WORKSPACE_PATH', '/workspace'))
+        self.workspace_path = Path(workspace_path or os.environ.get('BIFROST_WORKSPACE_LOCATION', '/mounts/workspace'))
 
-        # Ensure workspace directory exists
-        self.workspace_path.mkdir(parents=True, exist_ok=True)
+        # Workspace directory should already exist (validated at startup)
+        if not self.workspace_path.exists():
+            raise RuntimeError(
+                f"Workspace directory does not exist: {self.workspace_path}. "
+                "This should have been validated at startup."
+            )
 
         logger.info(f"Initialized workspace service at: {self.workspace_path}")
 

@@ -75,7 +75,7 @@ class FormRepository(ScopedRepository):
             "LinkedWorkflow": form_request.linkedWorkflow,
             "FormSchema": json.dumps(form_request.formSchema.model_dump()),
             "IsActive": True,
-            "IsPublic": form_request.isPublic,
+            "AccessLevel": form_request.accessLevel.value if form_request.accessLevel else "role_based",
             "CreatedBy": created_by,
             "CreatedAt": now.isoformat(),
             "UpdatedAt": now.isoformat(),
@@ -92,7 +92,7 @@ class FormRepository(ScopedRepository):
             "FormId": form_id,
             "FormName": form_request.name,  # Display field for list views
             "IsActive": True,  # Display field for filtering
-            "IsPublic": form_request.isPublic,  # Display field
+            "AccessLevel": form_request.accessLevel.value if form_request.accessLevel else "role_based",  # Display field
             "PartitionKey_Original": partition_key,  # Track where form lives
             "CreatedAt": now.isoformat(),
         }
@@ -459,7 +459,7 @@ class FormRepository(ScopedRepository):
             formSchema=cast(FormSchema, form_schema) if form_schema else FormSchema(fields=[]),
             isActive=entity.get("IsActive", True),
             isGlobal=entity.get("PartitionKey") == "GLOBAL",
-            isPublic=entity.get("IsPublic", False),
+            accessLevel=entity.get("AccessLevel"),  # Will default to None if not set
             createdBy=cast(str, entity.get("CreatedBy", "")),
             createdAt=created_at,
             updatedAt=updated_at,
