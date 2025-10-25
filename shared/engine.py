@@ -333,7 +333,7 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
     handler.setLevel(logging.INFO)
 
     # Get or create a logger for this script
-    script_logger = logging.getLogger(f'__main__')
+    script_logger = logging.getLogger('__main__')
     script_logger.addHandler(handler)
     script_logger.setLevel(logging.INFO)
     script_logger.propagate = False  # Don't propagate to root

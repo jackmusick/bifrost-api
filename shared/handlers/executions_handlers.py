@@ -299,11 +299,11 @@ async def list_executions_handler(
             # Try to parse as JSON (for dict-style tokens), otherwise use as string
             try:
                 decoded_token = json.loads(decoded_str)
-                logger.info(f"[Pagination Debug] Parsed as JSON dict")
+                logger.info("[Pagination Debug] Parsed as JSON dict")
             except json.JSONDecodeError:
                 # It's a plain string token from Azure
                 decoded_token = decoded_str
-                logger.info(f"[Pagination Debug] Using as plain string")
+                logger.info("[Pagination Debug] Using as plain string")
         except Exception as e:
             logger.warning(f"Invalid continuation token provided, ignoring: {e}")
             decoded_token = None

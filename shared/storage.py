@@ -438,7 +438,7 @@ class TableStorageService:
                 query_filter=query_filter,
                 select=select,
                 results_per_page=results_per_page
-            ).by_page(continuation_token=token_to_pass)
+            ).by_page(continuation_token=token_to_pass)  # type: ignore[arg-type]
 
             # Get first page
             page = next(paged_results, None)
