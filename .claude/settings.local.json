@@ -16,9 +16,8 @@
     "deny": [],
     "ask": [],
     "additionalDirectories": [
-      "/Users/jack/GitHub/bifrost-client/",
-      "C:\\Users\\JackMusick\\GitHub\\bifrost-client\\",
-      "C:\\Users\\JackMusick\\GitHub"
+      "~/GitHub/bifrost-client/",
+      "~/GitHub/bifrost-docs/"
     ]
   },
   "alwaysThinkingEnabled": false
