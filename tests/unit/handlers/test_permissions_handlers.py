@@ -55,11 +55,13 @@ class TestListUsersSorting:
             "CreatedAt": "2024-03-01T00:00:00"
         }
 
-        with patch('shared.handlers.permissions_handlers.get_table_service') as mock_get_service:
+        with patch('shared.handlers.permissions_handlers.get_async_table_service') as mock_get_service:
             mock_service = Mock()
             mock_get_service.return_value = mock_service
-            # Return in random order to test sorting
-            mock_service.query_entities.return_value = [user_entity1, user_entity3, user_entity2]
+            # Make query_entities async by using an async side effect
+            async def mock_query(*args, **kwargs):
+                return [user_entity1, user_entity3, user_entity2]
+            mock_service.query_entities = mock_query
 
             response = await list_users_handler(mock_context)
 

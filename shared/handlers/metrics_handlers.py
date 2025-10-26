@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from shared.registry import get_registry
-from shared.storage import get_table_service
+from shared.async_storage import get_async_table_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def get_workflow_metadata(registry: Any) -> dict[str, int]:
         }
 
 
-def get_form_count(entities_service: Any) -> int:
+async def get_form_count(entities_service: Any) -> int:
     """
     Get count of active forms from Entities table.
 
@@ -65,16 +65,16 @@ def get_form_count(entities_service: Any) -> int:
         Count of active form entities
     """
     try:
-        form_entities = list(entities_service.query_entities(
+        form_entities = await entities_service.query_entities(
             filter="RowKey ge 'form:' and RowKey lt 'form;' and IsActive eq true"
-        ))
+        )
         return len(form_entities)
     except Exception as e:
         logger.warning(f"Failed to fetch form count: {e}")
         return 0
 
 
-def get_execution_statistics(entities_service: Any, days: int = 30) -> dict[str, Any]:
+async def get_execution_statistics(entities_service: Any, days: int = 30) -> dict[str, Any]:
     """
     Get execution statistics for the last N days.
 
@@ -91,10 +91,10 @@ def get_execution_statistics(entities_service: Any, days: int = 30) -> dict[str,
         reverse_ts_cutoff = get_reverse_timestamp(cutoff_time)
 
         # Query executions (reverse timestamp provides newest first)
-        execution_entities = list(entities_service.query_entities(
+        execution_entities = await entities_service.query_entities(
             filter=f"RowKey ge 'execution:' and RowKey le 'execution:{reverse_ts_cutoff}_~'",
             select=["ExecutionId", "Status", "WorkflowName", "StartedAt", "CompletedAt", "ErrorMessage", "DurationMs"]
-        ))
+        )
 
         # Calculate statistics
         total_executions = len(execution_entities)
@@ -157,7 +157,7 @@ def get_execution_statistics(entities_service: Any, days: int = 30) -> dict[str,
         }
 
 
-def get_dashboard_metrics(context: Any) -> dict[str, Any]:
+async def get_dashboard_metrics(context: Any) -> dict[str, Any]:
     """
     Aggregate all dashboard metrics into a single response.
 
@@ -182,11 +182,11 @@ def get_dashboard_metrics(context: Any) -> dict[str, Any]:
         metrics.update(metadata)
 
         # 2. Get form count
-        entities_service = get_table_service("Entities", context)
-        metrics["formCount"] = get_form_count(entities_service)
+        entities_service = get_async_table_service("Entities", context)
+        metrics["formCount"] = await get_form_count(entities_service)
 
         # 3. Get execution statistics (last 30 days)
-        execution_stats = get_execution_statistics(entities_service, days=30)
+        execution_stats = await get_execution_statistics(entities_service, days=30)
         metrics["executionStats"] = {
             "totalExecutions": execution_stats["totalExecutions"],
             "successCount": execution_stats["successCount"],

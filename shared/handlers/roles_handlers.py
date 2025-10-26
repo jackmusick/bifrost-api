@@ -36,7 +36,7 @@ async def list_roles_handler(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Get all roles using repository
         role_repo = RoleRepository()
-        roles = role_repo.list_roles(org_id=context.org_id or "GLOBAL", active_only=True)
+        roles = await role_repo.list_roles(org_id=context.org_id or "GLOBAL", active_only=True)
 
         # Sort roles by createdAt descending (most recent first)
         roles.sort(key=lambda r: r.createdAt, reverse=True)
@@ -79,7 +79,7 @@ async def create_role_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Create role using repository
         role_repo = RoleRepository()
-        role = role_repo.create_role(
+        role = await role_repo.create_role(
             role_request=create_request,
             org_id=context.org_id or "GLOBAL",
             created_by=context.user_id
@@ -148,7 +148,7 @@ async def update_role_handler(req: func.HttpRequest, role_id: str) -> func.HttpR
 
         # Update role using repository
         role_repo = RoleRepository()
-        role = role_repo.update_role(
+        role = await role_repo.update_role(
             role_id=role_id,
             org_id=context.org_id or "GLOBAL",
             updates=update_request
@@ -201,7 +201,7 @@ async def delete_role_handler(req: func.HttpRequest, role_id: str) -> func.HttpR
     try:
         # Soft delete using repository (idempotent - returns False if not found)
         role_repo = RoleRepository()
-        role_repo.delete_role(role_id, context.org_id or "GLOBAL")
+        await role_repo.delete_role(role_id, context.org_id or "GLOBAL")
 
         logger.info(f"Soft deleted role {role_id}")
 
@@ -233,7 +233,7 @@ async def get_role_users_handler(req: func.HttpRequest, role_id: str) -> func.Ht
     try:
         # Get role users using repository
         role_repo = RoleRepository()
-        user_ids = role_repo.get_role_user_ids(role_id)
+        user_ids = await role_repo.get_role_user_ids(role_id)
 
         logger.info(f"Role {role_id} has {len(user_ids)} users assigned")
 
@@ -273,7 +273,7 @@ async def assign_users_to_role_handler(req: func.HttpRequest, role_id: str) -> f
 
         # Validate role exists
         role_repo = RoleRepository()
-        role = role_repo.get_role(role_id, context.org_id or "GLOBAL")
+        role = await role_repo.get_role(role_id, context.org_id or "GLOBAL")
         if not role:
             error = ErrorResponse(
                 error="NotFound",
@@ -288,7 +288,7 @@ async def assign_users_to_role_handler(req: func.HttpRequest, role_id: str) -> f
         # Validate that all users exist and are not platform admins
         user_repo = UserRepository()
         for user_id in assign_request.userIds:
-            user = user_repo.get_user(user_id)
+            user = await user_repo.get_user(user_id)
             if not user:
                 error = ErrorResponse(
                     error="BadRequest",
@@ -313,7 +313,7 @@ async def assign_users_to_role_handler(req: func.HttpRequest, role_id: str) -> f
                 )
 
         # Assign users using repository (handles dual indexing automatically)
-        role_repo.assign_users_to_role(
+        await role_repo.assign_users_to_role(
             role_id=role_id,
             user_ids=assign_request.userIds,
             assigned_by=context.user_id
@@ -390,7 +390,7 @@ async def remove_user_from_role_handler(req: func.HttpRequest, role_id: str, use
     try:
         # Remove user from role using repository (handles dual indexing automatically, idempotent)
         role_repo = RoleRepository()
-        role_repo.remove_user_from_role(role_id, user_id)
+        await role_repo.remove_user_from_role(role_id, user_id)
 
         logger.info(f"Removed user {user_id} from role {role_id}")
 
@@ -422,7 +422,7 @@ async def get_role_forms_handler(req: func.HttpRequest, role_id: str) -> func.Ht
     try:
         # Get role forms using repository
         role_repo = RoleRepository()
-        form_ids = role_repo.get_role_form_ids(role_id)
+        form_ids = await role_repo.get_role_form_ids(role_id)
 
         logger.info(f"Role {role_id} has access to {len(form_ids)} forms")
 
@@ -462,7 +462,7 @@ async def assign_forms_to_role_handler(req: func.HttpRequest, role_id: str) -> f
 
         # Validate role exists
         role_repo = RoleRepository()
-        role = role_repo.get_role(role_id, context.org_id or "GLOBAL")
+        role = await role_repo.get_role(role_id, context.org_id or "GLOBAL")
         if not role:
             error = ErrorResponse(
                 error="NotFound",
@@ -475,7 +475,7 @@ async def assign_forms_to_role_handler(req: func.HttpRequest, role_id: str) -> f
             )
 
         # Assign forms using repository (handles dual indexing automatically)
-        role_repo.assign_forms_to_role(
+        await role_repo.assign_forms_to_role(
             role_id=role_id,
             form_ids=assign_request.formIds,
             assigned_by=context.user_id
@@ -552,7 +552,7 @@ async def remove_form_from_role_handler(req: func.HttpRequest, role_id: str, for
     try:
         # Remove form from role using repository (handles dual indexing automatically, idempotent)
         role_repo = RoleRepository()
-        role_repo.remove_form_from_role(role_id, form_id)
+        await role_repo.remove_form_from_role(role_id, form_id)
 
         logger.info(f"Removed form {form_id} from role {role_id}")
 

@@ -30,7 +30,7 @@ async def get_stuck_executions_handler(
     execution_repo = ExecutionRepository(context)
 
     # Get stuck executions
-    stuck_executions = execution_repo.get_stuck_executions(
+    stuck_executions = await execution_repo.get_stuck_executions(
         pending_timeout_minutes=10,
         running_timeout_minutes=30
     )
@@ -79,7 +79,7 @@ async def trigger_cleanup_handler(
     execution_repo = ExecutionRepository(context)
 
     # Get stuck executions
-    stuck_executions = execution_repo.get_stuck_executions(
+    stuck_executions = await execution_repo.get_stuck_executions(
         pending_timeout_minutes=10,
         running_timeout_minutes=30
     )
@@ -119,7 +119,7 @@ async def trigger_cleanup_handler(
             )
 
             # Update execution to TIMEOUT status
-            exec_logger.update_execution(
+            await exec_logger.update_execution(
                 execution_id=execution.executionId,
                 org_id=execution.orgId,  # Get org_id from execution (retrieved from status index)
                 user_id=execution.executedBy,

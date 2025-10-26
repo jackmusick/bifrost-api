@@ -11,10 +11,38 @@ from unittest.mock import MagicMock
 import pytest
 
 from shared.async_executor import enqueue_workflow_execution, get_queue_client
+from shared.async_storage import clear_async_storage_cache
 from shared.context import Organization, ExecutionContext
 from shared.decorators import workflow
 from shared.error_handling import WorkflowError
 from shared.registry import WorkflowRegistry
+
+
+@pytest.fixture(scope="function", autouse=True)
+def event_loop():
+    """Create a new event loop for each test and clear storage cache"""
+    # Clear the async storage cache before each test to ensure fresh TableClients
+    clear_async_storage_cache()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    # Properly close the loop after test
+    try:
+        # Cancel all running tasks
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        # Wait for tasks to complete cancellation
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        # Close the loop
+        loop.close()
+    except Exception:
+        pass
+
+    # Clear cache again after test to prevent stale connections
+    clear_async_storage_cache()
 
 
 @pytest.fixture
@@ -74,8 +102,8 @@ def registry():
     WorkflowRegistry._instance = old_instance
 
 
-@pytest.fixture
-async def queue_client():
+@pytest.fixture(scope="function")
+def queue_client():
     """Azure Storage Queue client for async execution"""
     client = get_queue_client()
 

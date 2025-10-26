@@ -4,14 +4,68 @@ Handles branding configuration storage and retrieval
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from shared.models import BrandingSettings, FileUploadResponse
 from shared.blob_storage import get_blob_service
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache for branding lookups to reduce database calls
+# Cache key: org_id, Value: (BrandingSettings, timestamp)
+_branding_cache: dict[str, tuple[BrandingSettings, datetime]] = {}
+_cache_ttl = timedelta(seconds=300)  # Cache branding for 5 minutes
+
+
+def _get_cached_branding(org_id: str) -> BrandingSettings | None:
+    """
+    Get branding from cache if present and not expired.
+
+    Args:
+        org_id: Organization ID
+
+    Returns:
+        Cached BrandingSettings or None if not cached or expired
+    """
+    if org_id in _branding_cache:
+        branding, cached_at = _branding_cache[org_id]
+        age = datetime.utcnow() - cached_at
+
+        if age < _cache_ttl:
+            logger.debug(f"Branding cache hit for {org_id} (age: {age.total_seconds():.1f}s)")
+            return branding
+        else:
+            # Expired - remove from cache
+            del _branding_cache[org_id]
+            logger.debug(f"Branding cache expired for {org_id}")
+
+    return None
+
+
+def _cache_branding(org_id: str, branding: BrandingSettings) -> None:
+    """
+    Cache branding with current timestamp.
+
+    Args:
+        org_id: Organization ID
+        branding: BrandingSettings to cache
+    """
+    _branding_cache[org_id] = (branding, datetime.utcnow())
+    logger.debug(f"Cached branding for {org_id}")
+
+
+def invalidate_branding_cache(org_id: str) -> None:
+    """
+    Invalidate cached branding for an organization.
+
+    Args:
+        org_id: Organization ID
+    """
+    if org_id in _branding_cache:
+        del _branding_cache[org_id]
+        logger.debug(f"Invalidated branding cache for {org_id}")
 
 
 def _transform_blob_url_to_proxy(blob_url: str | None, org_id: str) -> str | None:
@@ -43,6 +97,7 @@ async def get_branding(org_id: str | None) -> BrandingSettings:
     """
     Get branding settings for an organization.
     Falls back to GLOBAL if org-specific branding not found.
+    Uses in-memory cache (5 min TTL) to reduce database calls.
 
     Args:
         org_id: Organization ID to get branding for (None defaults to GLOBAL)
@@ -52,26 +107,37 @@ async def get_branding(org_id: str | None) -> BrandingSettings:
     """
     # Default to GLOBAL if no org_id
     org_id = org_id or "GLOBAL"
-    table_service = TableStorageService("Config")
+
+    # Check cache first
+    cached_branding = _get_cached_branding(org_id)
+    if cached_branding:
+        return cached_branding
+
+    # Cache miss - query database
+    table_service = AsyncTableStorageService("Config")
 
     # Try to get org-specific branding first
     try:
-        entity = table_service.get_entity(partition_key=org_id, row_key="branding")
+        entity = await table_service.get_entity(partition_key=org_id, row_key="branding")
         if entity:
-            return _entity_to_branding(entity)
+            branding = _entity_to_branding(entity)
+            _cache_branding(org_id, branding)
+            return branding
     except Exception:
         pass
 
     # Fall back to GLOBAL branding
     try:
-        entity = table_service.get_entity(partition_key="GLOBAL", row_key="branding")
+        entity = await table_service.get_entity(partition_key="GLOBAL", row_key="branding")
         if entity:
-            return _entity_to_branding(entity)
+            branding = _entity_to_branding(entity)
+            _cache_branding(org_id, branding)  # Cache under requested org_id
+            return branding
     except Exception:
         pass
 
     # Return default branding (all None - frontend handles defaults)
-    return BrandingSettings(
+    default_branding = BrandingSettings(
         orgId=org_id,
         squareLogoUrl=None,
         rectangleLogoUrl=None,
@@ -79,6 +145,8 @@ async def get_branding(org_id: str | None) -> BrandingSettings:
         updatedBy="system",
         updatedAt=datetime.utcnow()
     )
+    _cache_branding(org_id, default_branding)  # Cache default to avoid repeated queries
+    return default_branding
 
 
 async def update_branding(
@@ -88,6 +156,7 @@ async def update_branding(
 ) -> BrandingSettings:
     """
     Update branding settings (color only - use upload_logo for logos).
+    Invalidates cache after update.
 
     Args:
         org_id: Organization ID (None defaults to GLOBAL)
@@ -99,12 +168,12 @@ async def update_branding(
     """
     # Default to GLOBAL if no org_id
     org_id = org_id or "GLOBAL"
-    table_service = TableStorageService("Config")
+    table_service = AsyncTableStorageService("Config")
 
     # Get existing branding or create new
     branding_data = None
     try:
-        entity = table_service.get_entity(partition_key=org_id, row_key="branding")
+        entity = await table_service.get_entity(partition_key=org_id, row_key="branding")
         if entity:
             branding_data = _entity_to_dict(entity)
     except Exception:
@@ -131,7 +200,10 @@ async def update_branding(
         "RowKey": "branding",
         **_branding_to_dict(branding_data)
     }
-    table_service.upsert_entity(entity)
+    await table_service.upsert_entity(entity)
+
+    # Invalidate cache
+    invalidate_branding_cache(org_id)
 
     return BrandingSettings(**branding_data)
 
@@ -145,6 +217,7 @@ async def upload_logo(
 ) -> FileUploadResponse:
     """
     Upload logo file to blob storage and update branding.
+    Invalidates cache after update.
 
     Args:
         org_id: Organization ID (None defaults to GLOBAL)
@@ -159,7 +232,7 @@ async def upload_logo(
     # Default to GLOBAL if no org_id
     org_id = org_id or "GLOBAL"
     blob_service = get_blob_service()
-    table_service = TableStorageService("Config")
+    table_service = AsyncTableStorageService("Config")
 
     # Determine file extension
     ext_map = {
@@ -182,7 +255,7 @@ async def upload_logo(
     # Update branding in Config table
     branding_data = None
     try:
-        entity = table_service.get_entity(partition_key=org_id, row_key="branding")
+        entity = await table_service.get_entity(partition_key=org_id, row_key="branding")
         if entity:
             branding_data = _entity_to_dict(entity)
     except Exception:
@@ -211,7 +284,10 @@ async def upload_logo(
         "RowKey": "branding",
         **_branding_to_dict(branding_data)
     }
-    table_service.upsert_entity(entity)
+    await table_service.upsert_entity(entity)
+
+    # Invalidate cache
+    invalidate_branding_cache(org_id)
 
     return FileUploadResponse(
         upload_url=blob_url,

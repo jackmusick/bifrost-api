@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from shared.models import ExecutionStatus, WorkflowExecution
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 from .base import BaseRepository
 
@@ -41,9 +41,9 @@ class ExecutionRepository(BaseRepository):
 
     def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
-        self.relationships_service = TableStorageService("Relationships")
+        self.relationships_service = AsyncTableStorageService("Relationships")
 
-    def create_execution(
+    async def create_execution(
         self,
         execution_id: str,
         org_id: str | None,
@@ -171,15 +171,15 @@ class ExecutionRepository(BaseRepository):
         # Write all atomically (best effort)
         try:
             # Primary record
-            self.insert(execution_entity)
+            await self.insert(execution_entity)
 
             # Indexes (in order of importance)
-            self.relationships_service.insert_entity(user_index_entity)
-            self.relationships_service.insert_entity(workflow_index_entity)
-            self.relationships_service.insert_entity(status_index_entity)
+            await self.relationships_service.insert_entity(user_index_entity)
+            await self.relationships_service.insert_entity(workflow_index_entity)
+            await self.relationships_service.insert_entity(status_index_entity)
 
             if form_index_entity:
-                self.relationships_service.insert_entity(form_index_entity)
+                await self.relationships_service.insert_entity(form_index_entity)
 
             index_count = 4 if form_id else 3
             logger.info(
@@ -197,7 +197,7 @@ class ExecutionRepository(BaseRepository):
             # TODO: Add cleanup/rollback logic
             raise
 
-    def update_execution(
+    async def update_execution(
         self,
         execution_id: str,
         org_id: str | None,
@@ -232,7 +232,7 @@ class ExecutionRepository(BaseRepository):
 
         # Find primary execution record
         exec_filter = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
-        results = list(self.query(exec_filter))
+        results = await self.query(exec_filter)
 
         if not results:
             raise ValueError(f"Execution {execution_id} not found in partition {partition_key}")
@@ -258,11 +258,11 @@ class ExecutionRepository(BaseRepository):
         if result and not result_in_blob:
             execution_entity["Result"] = json.dumps(result) if isinstance(result, dict) else result
 
-        self.update(execution_entity)
+        await self.update(execution_entity)
 
         # Update user index (so "my executions" table shows correct status!)
         try:
-            user_index = self.relationships_service.get_entity(
+            user_index = await self.relationships_service.get_entity(
                 "GLOBAL",
                 f"userexec:{user_id}:{execution_id}"
             )
@@ -273,13 +273,13 @@ class ExecutionRepository(BaseRepository):
                     user_index["CompletedAt"] = now.isoformat()
                     user_index["DurationMs"] = duration_ms
                 user_index["ErrorMessage"] = error_message
-                self.relationships_service.update_entity(user_index)
+                await self.relationships_service.update_entity(user_index)
         except Exception as e:
             logger.warning(f"Failed to update user index for {execution_id}: {e}")
 
         # Update workflow index
         try:
-            workflow_index = self.relationships_service.get_entity(
+            workflow_index = await self.relationships_service.get_entity(
                 "GLOBAL",
                 f"workflowexec:{workflow_name}:{partition_key}:{execution_id}"
             )
@@ -290,14 +290,14 @@ class ExecutionRepository(BaseRepository):
                     workflow_index["CompletedAt"] = now.isoformat()
                     workflow_index["DurationMs"] = duration_ms
                 workflow_index["ErrorMessage"] = error_message
-                self.relationships_service.update_entity(workflow_index)
+                await self.relationships_service.update_entity(workflow_index)
         except Exception as e:
             logger.warning(f"Failed to update workflow index for {execution_id}: {e}")
 
         # Update form index (if exists)
         if form_id:
             try:
-                form_index = self.relationships_service.get_entity(
+                form_index = await self.relationships_service.get_entity(
                     "GLOBAL",
                     f"formexec:{form_id}:{execution_id}"
                 )
@@ -308,7 +308,7 @@ class ExecutionRepository(BaseRepository):
                         form_index["CompletedAt"] = now.isoformat()
                         form_index["DurationMs"] = duration_ms
                     form_index["ErrorMessage"] = error_message
-                    self.relationships_service.update_entity(form_index)
+                    await self.relationships_service.update_entity(form_index)
             except Exception as e:
                 logger.warning(f"Failed to update form index for {execution_id}: {e}")
 
@@ -317,7 +317,7 @@ class ExecutionRepository(BaseRepository):
             # Delete old status index if it was Pending or Running
             if old_status in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
                 try:
-                    self.relationships_service.delete_entity(
+                    await self.relationships_service.delete_entity(
                         "GLOBAL",
                         f"status:{old_status}:{execution_id}"
                     )
@@ -338,7 +338,7 @@ class ExecutionRepository(BaseRepository):
                     "StartedAt": execution_entity.get("StartedAt"),
                     "UpdatedAt": now.isoformat(),
                 }
-                self.relationships_service.insert_entity(status_index)
+                await self.relationships_service.insert_entity(status_index)
         except Exception as e:
             logger.warning(f"Failed to update status index for {execution_id}: {e}")
 
@@ -349,7 +349,7 @@ class ExecutionRepository(BaseRepository):
 
         return self._entity_to_model(execution_entity)
 
-    def get_execution(self, execution_id: str, org_id: str | None = None) -> WorkflowExecution | None:
+    async def get_execution(self, execution_id: str, org_id: str | None = None) -> WorkflowExecution | None:
         """
         Get full execution by ID
 
@@ -364,20 +364,20 @@ class ExecutionRepository(BaseRepository):
 
         # Query by ExecutionId field
         exec_filter = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
-        results = list(self.query(exec_filter))
+        results = await self.query(exec_filter)
 
         if not results:
             # Try GLOBAL if org_id was provided and failed
             if org_id:
                 exec_filter = f"PartitionKey eq 'GLOBAL' and ExecutionId eq '{execution_id}'"
-                results = list(self.query(exec_filter))
+                results = await self.query(exec_filter)
 
         if results:
             return self._entity_to_model(results[0])
 
         return None
 
-    def list_executions_by_user(
+    async def list_executions_by_user(
         self,
         user_id: str,
         limit: int = 50
@@ -403,7 +403,7 @@ class ExecutionRepository(BaseRepository):
         )
 
         # Use paginated query
-        index_entities, _ = self.relationships_service.query_entities_paged(
+        index_entities, _ = await self.relationships_service.query_entities_paged(
             filter=filter_query,
             results_per_page=limit
         )
@@ -441,7 +441,7 @@ class ExecutionRepository(BaseRepository):
         logger.info(f"Found {len(executions)} executions for user {user_id}")
         return executions
 
-    def list_executions_by_user_paged(
+    async def list_executions_by_user_paged(
         self,
         user_id: str,
         results_per_page: int = 50,
@@ -467,7 +467,7 @@ class ExecutionRepository(BaseRepository):
         )
 
         # Query with pagination
-        index_entities, next_token = self.relationships_service.query_entities_paged(
+        index_entities, next_token = await self.relationships_service.query_entities_paged(
             filter=filter_query,
             results_per_page=results_per_page,
             continuation_token=continuation_token
@@ -506,7 +506,7 @@ class ExecutionRepository(BaseRepository):
         logger.info(f"Found {len(executions)} executions for user {user_id} (paginated)")
         return executions, next_token
 
-    def list_executions_by_workflow(
+    async def list_executions_by_workflow(
         self,
         workflow_name: str,
         org_id: str | None = None,
@@ -533,7 +533,7 @@ class ExecutionRepository(BaseRepository):
             f"RowKey lt 'workflowexec:{workflow_name}:{scope}~'"
         )
 
-        index_entities = list(self.relationships_service.query_entities(filter_query))
+        index_entities = await self.relationships_service.query_entities(filter_query)
 
         executions = []
         for entity in index_entities[:limit]:
@@ -567,7 +567,7 @@ class ExecutionRepository(BaseRepository):
         logger.info(f"Found {len(executions)} executions for workflow {workflow_name}")
         return executions
 
-    def list_executions_by_form(
+    async def list_executions_by_form(
         self,
         form_id: str,
         limit: int = 100
@@ -590,7 +590,7 @@ class ExecutionRepository(BaseRepository):
             f"RowKey lt 'formexec:{form_id}~'"
         )
 
-        index_entities = list(self.relationships_service.query_entities(filter_query))
+        index_entities = await self.relationships_service.query_entities(filter_query)
 
         executions = []
         for entity in index_entities[:limit]:
@@ -624,7 +624,7 @@ class ExecutionRepository(BaseRepository):
         logger.info(f"Found {len(executions)} executions for form {form_id}")
         return executions
 
-    def list_executions_for_org(
+    async def list_executions_for_org(
         self,
         org_id: str,
         limit: int = 100
@@ -646,10 +646,10 @@ class ExecutionRepository(BaseRepository):
             f"RowKey ge 'execution:' and RowKey lt 'execution;'"
         )
 
-        entities = list(self.query(filter_query))
+        entities = await self.query(filter_query)
         return entities[:limit]
 
-    def list_executions(self,
+    async def list_executions(self,
                         org_id: str | None = None,
                         limit: int = 50
     ) -> list[WorkflowExecution]:
@@ -674,7 +674,7 @@ class ExecutionRepository(BaseRepository):
         )
 
         # Use paginated query for better performance
-        entities, _ = self.query_paged(filter_query, results_per_page=limit)
+        entities, _ = await self.query_paged(filter_query, results_per_page=limit)
 
         # Convert to model
         executions = []
@@ -684,7 +684,7 @@ class ExecutionRepository(BaseRepository):
 
         return executions
 
-    def list_executions_paged(
+    async def list_executions_paged(
         self,
         org_id: str | None = None,
         results_per_page: int = 50,
@@ -709,7 +709,7 @@ class ExecutionRepository(BaseRepository):
         )
 
         # Query with pagination
-        entities, next_token = self.query_paged(
+        entities, next_token = await self.query_paged(
             filter_query,
             results_per_page=results_per_page,
             continuation_token=continuation_token
@@ -720,7 +720,7 @@ class ExecutionRepository(BaseRepository):
 
         return executions, next_token
 
-    def get_stuck_executions(
+    async def get_stuck_executions(
         self,
         pending_timeout_minutes: int = 10,
         running_timeout_minutes: int = 30
@@ -754,7 +754,7 @@ class ExecutionRepository(BaseRepository):
             )
 
             try:
-                status_entities = list(self.relationships_service.query_entities(filter_query))
+                status_entities = await self.relationships_service.query_entities(filter_query)
 
                 for entity in status_entities:
                     try:

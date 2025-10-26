@@ -6,7 +6,7 @@ Tests all repository methods with mocked Table Storage service.
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -17,20 +17,20 @@ from shared.repositories.executions import ExecutionRepository
 
 @pytest.fixture
 def mock_table_service():
-    """Mock TableStorageService for Entities table"""
-    return MagicMock()
+    """Mock AsyncTableStorageService for Entities table"""
+    return AsyncMock()
 
 
 @pytest.fixture
 def mock_relationships_service():
-    """Mock TableStorageService for Relationships table"""
-    return MagicMock()
+    """Mock AsyncTableStorageService for Relationships table"""
+    return AsyncMock()
 
 
 @pytest.fixture
 def execution_repo(mock_table_service, mock_relationships_service):
     """ExecutionRepository with mocked services"""
-    with patch('shared.repositories.executions.TableStorageService') as mock_class:
+    with patch('shared.async_storage.AsyncTableStorageService') as mock_class:
         # First call creates Entities service, second creates Relationships service
         mock_class.side_effect = [mock_table_service, mock_relationships_service]
         repo = ExecutionRepository()
@@ -42,7 +42,7 @@ def execution_repo(mock_table_service, mock_relationships_service):
 class TestCreateExecution:
     """Tests for create_execution method"""
 
-    def test_creates_execution_with_all_indexes(self, execution_repo, mock_table_service, mock_relationships_service):
+    async def test_creates_execution_with_all_indexes(self, execution_repo, mock_table_service, mock_relationships_service):
         """Should create primary record and all 4 indexes (user, workflow, form, status)"""
         execution_id = str(uuid4())
         org_id = "org-123"
@@ -53,7 +53,7 @@ class TestCreateExecution:
         form_id = "form-abc"
 
         # Execute
-        result = execution_repo.create_execution(
+        result = await execution_repo.create_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -104,11 +104,11 @@ class TestCreateExecution:
         assert result.executionId == execution_id
         assert result.workflowName == workflow_name
 
-    def test_creates_execution_without_form_id(self, execution_repo, mock_relationships_service):
+    async def test_creates_execution_without_form_id(self, execution_repo, mock_relationships_service):
         """Should create 3 indexes when form_id is None"""
         execution_id = str(uuid4())
 
-        execution_repo.create_execution(
+        await execution_repo.create_execution(
             execution_id=execution_id,
             org_id="org-123",
             user_id="user@example.com",
@@ -121,11 +121,11 @@ class TestCreateExecution:
         # Should create only 3 indexes (user, workflow, status - no form)
         assert mock_relationships_service.insert_entity.call_count == 3
 
-    def test_uses_global_partition_when_org_id_none(self, execution_repo, mock_table_service):
+    async def test_uses_global_partition_when_org_id_none(self, execution_repo, mock_table_service):
         """Should use GLOBAL partition when org_id is None"""
         execution_id = str(uuid4())
 
-        execution_repo.create_execution(
+        await execution_repo.create_execution(
             execution_id=execution_id,
             org_id=None,
             user_id="user@example.com",
@@ -141,7 +141,7 @@ class TestCreateExecution:
 class TestUpdateExecution:
     """Tests for update_execution method"""
 
-    def test_updates_execution_to_success(self, execution_repo, mock_table_service, mock_relationships_service):
+    async def test_updates_execution_to_success(self, execution_repo, mock_table_service, mock_relationships_service):
         """Should update primary record and all indexes to Success status"""
         execution_id = str(uuid4())
         org_id = "org-123"
@@ -170,7 +170,7 @@ class TestUpdateExecution:
         ]
 
         # Execute
-        result = execution_repo.update_execution(
+        result = await execution_repo.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -200,7 +200,7 @@ class TestUpdateExecution:
         assert isinstance(result, WorkflowExecution)
         assert result.status == ExecutionStatus.SUCCESS
 
-    def test_updates_execution_to_pending(self, execution_repo, mock_table_service, mock_relationships_service):
+    async def test_updates_execution_to_pending(self, execution_repo, mock_table_service, mock_relationships_service):
         """Should update status index when changing to Pending and NOT set CompletedAt"""
         execution_id = str(uuid4())
         org_id = "org-123"
@@ -218,7 +218,7 @@ class TestUpdateExecution:
         mock_relationships_service.get_entity.return_value = {}
 
         # Execute
-        execution_repo.update_execution(
+        await execution_repo.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id="user@example.com",
@@ -239,12 +239,12 @@ class TestUpdateExecution:
         status_index = mock_relationships_service.insert_entity.call_args[0][0]
         assert status_index["RowKey"] == f"status:{ExecutionStatus.PENDING.value}:{execution_id}"
 
-    def test_raises_error_when_execution_not_found(self, execution_repo, mock_table_service):
+    async def test_raises_error_when_execution_not_found(self, execution_repo, mock_table_service):
         """Should raise ValueError when execution doesn't exist"""
         mock_table_service.query_entities.return_value = []
 
         with pytest.raises(ValueError, match="not found"):
-            execution_repo.update_execution(
+            await execution_repo.update_execution(
                 execution_id="nonexistent",
                 org_id="org-123",
                 user_id="user@example.com",
@@ -255,7 +255,7 @@ class TestUpdateExecution:
 class TestGetStuckExecutions:
     """Tests for get_stuck_executions method"""
 
-    def test_finds_stuck_pending_executions(self, execution_repo, mock_relationships_service):
+    async def test_finds_stuck_pending_executions(self, execution_repo, mock_relationships_service):
         """Should find executions stuck in Pending status > 10 minutes"""
         now = datetime.utcnow()
         old_time = now - timedelta(minutes=15)  # 15 minutes ago
@@ -281,7 +281,7 @@ class TestGetStuckExecutions:
         mock_relationships_service.query_entities.side_effect = mock_query
 
         # Execute
-        result = execution_repo.get_stuck_executions(
+        result = await execution_repo.get_stuck_executions(
             pending_timeout_minutes=10,
             running_timeout_minutes=30
         )
@@ -292,7 +292,7 @@ class TestGetStuckExecutions:
         assert result[0].status == ExecutionStatus.PENDING
         assert result[0].workflowName == "StuckWorkflow"
 
-    def test_finds_stuck_running_executions(self, execution_repo, mock_relationships_service):
+    async def test_finds_stuck_running_executions(self, execution_repo, mock_relationships_service):
         """Should find executions stuck in Running status > 30 minutes"""
         now = datetime.utcnow()
         old_time = now - timedelta(minutes=35)  # 35 minutes ago
@@ -317,7 +317,7 @@ class TestGetStuckExecutions:
         mock_relationships_service.query_entities.side_effect = mock_query
 
         # Execute
-        result = execution_repo.get_stuck_executions(
+        result = await execution_repo.get_stuck_executions(
             pending_timeout_minutes=10,
             running_timeout_minutes=30
         )
@@ -327,7 +327,7 @@ class TestGetStuckExecutions:
         assert result[0].executionId == "exec-456"
         assert result[0].status == ExecutionStatus.RUNNING
 
-    def test_ignores_recent_executions(self, execution_repo, mock_relationships_service):
+    async def test_ignores_recent_executions(self, execution_repo, mock_relationships_service):
         """Should NOT return executions within timeout threshold"""
         now = datetime.utcnow()
         recent_time = now - timedelta(minutes=5)  # Only 5 minutes ago
@@ -347,7 +347,7 @@ class TestGetStuckExecutions:
         mock_relationships_service.query_entities.return_value = [recent_execution]
 
         # Execute
-        result = execution_repo.get_stuck_executions(
+        result = await execution_repo.get_stuck_executions(
             pending_timeout_minutes=10,
             running_timeout_minutes=30
         )
@@ -355,15 +355,15 @@ class TestGetStuckExecutions:
         # Verify - should be empty
         assert len(result) == 0
 
-    def test_returns_empty_list_when_no_stuck_executions(self, execution_repo, mock_relationships_service):
+    async def test_returns_empty_list_when_no_stuck_executions(self, execution_repo, mock_relationships_service):
         """Should return empty list when no stuck executions"""
         mock_relationships_service.query_entities.return_value = []
 
-        result = execution_repo.get_stuck_executions()
+        result = await execution_repo.get_stuck_executions()
 
         assert result == []
 
-    def test_handles_missing_updated_at(self, execution_repo, mock_relationships_service):
+    async def test_handles_missing_updated_at(self, execution_repo, mock_relationships_service):
         """Should skip executions without UpdatedAt timestamp"""
         execution_without_timestamp = {
             "PartitionKey": "GLOBAL",
@@ -376,16 +376,16 @@ class TestGetStuckExecutions:
 
         mock_relationships_service.query_entities.return_value = [execution_without_timestamp]
 
-        result = execution_repo.get_stuck_executions()
+        result = await execution_repo.get_stuck_executions()
 
         # Should skip this execution
         assert len(result) == 0
 
-    def test_uses_status_index_not_table_scan(self, execution_repo, mock_relationships_service):
+    async def test_uses_status_index_not_table_scan(self, execution_repo, mock_relationships_service):
         """Should query status indexes, NOT scan Entities table"""
         mock_relationships_service.query_entities.return_value = []
 
-        execution_repo.get_stuck_executions()
+        await execution_repo.get_stuck_executions()
 
         # Verify it queries Relationships service (status indexes)
         assert mock_relationships_service.query_entities.called
@@ -408,7 +408,7 @@ class TestGetStuckExecutions:
 class TestListExecutions:
     """Tests for list_executions method"""
 
-    def test_lists_executions_for_org(self, execution_repo, mock_table_service):
+    async def test_lists_executions_for_org(self, execution_repo, mock_table_service):
         """Should list executions scoped to organization"""
         org_id = "org-123"
         execution_id = str(uuid4())
@@ -432,18 +432,18 @@ class TestListExecutions:
         # Mock query_paged to return tuple (entities, continuation_token)
         with patch.object(execution_repo, 'query_paged', return_value=([mock_entity], None)):
             # Execute
-            result = execution_repo.list_executions(org_id=org_id, limit=50)
+            result = await execution_repo.list_executions(org_id=org_id, limit=50)
 
             # Verify result
             assert len(result) == 1
             assert result[0].executionId == execution_id
             assert result[0].workflowName == "TestWorkflow"
 
-    def test_lists_global_executions_when_org_id_none(self, execution_repo, mock_table_service):
+    async def test_lists_global_executions_when_org_id_none(self, execution_repo, mock_table_service):
         """Should use GLOBAL partition when org_id is None"""
         # Mock query_paged to return empty results
         with patch.object(execution_repo, 'query_paged', return_value=([], None)):
-            result = execution_repo.list_executions(org_id=None)
+            result = await execution_repo.list_executions(org_id=None)
 
             # Verify result is empty list
             assert result == []
@@ -452,7 +452,7 @@ class TestListExecutions:
 class TestGetExecution:
     """Tests for get_execution method"""
 
-    def test_gets_execution_by_id(self, execution_repo, mock_table_service):
+    async def test_gets_execution_by_id(self, execution_repo, mock_table_service):
         """Should retrieve execution by ID"""
         execution_id = str(uuid4())
         org_id = "org-123"
@@ -475,22 +475,22 @@ class TestGetExecution:
         mock_table_service.query_entities.return_value = [mock_entity]
 
         # Execute
-        result = execution_repo.get_execution(execution_id, org_id)
+        result = await execution_repo.get_execution(execution_id, org_id)
 
         # Verify
         assert result is not None
         assert result.executionId == execution_id
         assert result.workflowName == "TestWorkflow"
 
-    def test_returns_none_when_not_found(self, execution_repo, mock_table_service):
+    async def test_returns_none_when_not_found(self, execution_repo, mock_table_service):
         """Should return None when execution doesn't exist"""
         mock_table_service.query_entities.return_value = []
 
-        result = execution_repo.get_execution("nonexistent", "org-123")
+        result = await execution_repo.get_execution("nonexistent", "org-123")
 
         assert result is None
 
-    def test_tries_global_partition_when_org_query_fails(self, execution_repo, mock_table_service):
+    async def test_tries_global_partition_when_org_query_fails(self, execution_repo, mock_table_service):
         """Should try GLOBAL partition if org partition returns nothing"""
         execution_id = str(uuid4())
 
@@ -510,7 +510,7 @@ class TestGetExecution:
         # First call (org partition) returns empty, second call (GLOBAL) returns entity
         mock_table_service.query_entities.side_effect = [[], [global_entity]]
 
-        result = execution_repo.get_execution(execution_id, "org-123")
+        result = await execution_repo.get_execution(execution_id, "org-123")
 
         # Should have made 2 queries
         assert mock_table_service.query_entities.call_count == 2

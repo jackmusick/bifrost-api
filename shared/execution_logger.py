@@ -30,7 +30,7 @@ class ExecutionLogger:
         self.blob_service = get_blob_service()
         self.context = context
 
-    def create_execution(
+    async def create_execution(
         self,
         execution_id: str,
         org_id: str | None,
@@ -62,7 +62,7 @@ class ExecutionLogger:
             Created execution entity (as dict for compatibility)
         """
         # Delegate to repository (handles all indexes automatically!)
-        execution_model = self.repository.create_execution(
+        execution_model = await self.repository.create_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -80,7 +80,7 @@ class ExecutionLogger:
         # Return as dict for compatibility with existing code
         return execution_model.model_dump()
 
-    def update_execution(
+    async def update_execution(
         self,
         execution_id: str,
         org_id: str | None,
@@ -159,7 +159,7 @@ class ExecutionLogger:
             )
 
         # Delegate to repository (handles primary record + ALL indexes!)
-        execution_model = self.repository.update_execution(
+        execution_model = await self.repository.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,

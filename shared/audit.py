@@ -107,7 +107,7 @@ class AuditLogger:
             return
 
         try:
-            repository.log_function_key_access(
+            await repository.log_function_key_access(
                 key_id=key_id,
                 key_name=key_name,
                 org_id=org_id,
@@ -157,7 +157,7 @@ class AuditLogger:
             return
 
         try:
-            repository.log_cross_org_access(
+            await repository.log_cross_org_access(
                 user_id=user_id,
                 target_org_id=target_org_id,
                 endpoint=endpoint,
@@ -197,7 +197,7 @@ class AuditLogger:
             return
 
         try:
-            repository.log_import_violation_attempt(
+            await repository.log_import_violation_attempt(
                 blocked_module=blocked_module,
                 workspace_file=workspace_file,
                 stack_trace=stack_trace

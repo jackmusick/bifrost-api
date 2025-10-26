@@ -69,7 +69,7 @@ async def enqueue_workflow_execution(
 
     # Create execution record with PENDING status
     exec_logger = get_execution_logger()
-    exec_logger.create_execution(
+    await exec_logger.create_execution(
         execution_id=execution_id,
         org_id=context.org_id,
         user_id=context.user_id,
@@ -80,7 +80,7 @@ async def enqueue_workflow_execution(
     )
 
     # Update status to PENDING (queued)
-    exec_logger.update_execution(
+    await exec_logger.update_execution(
         execution_id=execution_id,
         org_id=context.org_id,
         user_id=context.user_id,

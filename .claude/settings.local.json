@@ -6,7 +6,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(for file in platform/examples/example_html_table.py platform/examples/data_providers/license_providers.py platform/examples/data_providers/general_providers.py platform/examples/example_webhook_handler.py)",
       "Read(//Users/jack/GitHub/**)",
-      "Bash(./test.sh:*)"
+      "Bash(./test.sh:*)",
+      "Bash(/Users/jack/GitHub/bifrost-api/test.sh)",
+      "Read(//private/tmp/**)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "ask": [],

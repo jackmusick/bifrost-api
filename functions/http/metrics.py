@@ -45,7 +45,7 @@ async def get_metrics(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"User {context.user_id} retrieving dashboard metrics")
 
     try:
-        metrics = get_dashboard_metrics(context)
+        metrics = await get_dashboard_metrics(context)
         return func.HttpResponse(
             json.dumps(metrics),
             status_code=200,

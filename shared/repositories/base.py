@@ -4,11 +4,10 @@ Provides common CRUD operations for all repositories
 """
 
 import logging
-from collections.abc import Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -23,7 +22,7 @@ class BaseRepository:
     Provides low-level database operations that can be used by
     all entity-specific repositories.
 
-    This class abstracts TableStorageService to make future
+    This class abstracts AsyncTableStorageService to make future
     database swaps easier (e.g., Table Storage → Cosmos DB)
     """
 
@@ -37,11 +36,11 @@ class BaseRepository:
         """
         self.table_name = table_name
         self.context = context
-        self._service = TableStorageService(table_name, context=context)
+        self._service = AsyncTableStorageService(table_name, context=context)
 
         logger.debug(f"Initialized {self.__class__.__name__} for table: {table_name}")
 
-    def get_by_id(self, partition_key: str, row_key: str) -> dict | None:
+    async def get_by_id(self, partition_key: str, row_key: str) -> dict | None:
         """
         Get a single entity by partition and row key
 
@@ -52,9 +51,9 @@ class BaseRepository:
         Returns:
             Entity dictionary or None if not found
         """
-        return self._service.get_entity(partition_key, row_key)
+        return await self._service.get_entity(partition_key, row_key)
 
-    def query(self, filter_query: str, select: list[str] | None = None) -> Iterator[dict]:
+    async def query(self, filter_query: str, select: list[str] | None = None) -> list[dict]:
         """
         Query entities with optional filter and column selection
 
@@ -63,11 +62,11 @@ class BaseRepository:
             select: List of properties to select (None = all properties)
 
         Returns:
-            Iterator of entity dictionaries
+            List of entity dictionaries
         """
-        return self._service.query_entities(filter=filter_query, select=select)
+        return await self._service.query_entities(filter=filter_query, select=select)
 
-    def query_paged(
+    async def query_paged(
         self,
         filter_query: str,
         select: list[str] | None = None,
@@ -86,14 +85,14 @@ class BaseRepository:
         Returns:
             Tuple of (list of entities, next continuation token or None)
         """
-        return self._service.query_entities_paged(
+        return await self._service.query_entities_paged(
             filter=filter_query,
             select=select,
             results_per_page=results_per_page,
             continuation_token=continuation_token
         )
 
-    def insert(self, entity: dict) -> dict:
+    async def insert(self, entity: dict) -> dict:
         """
         Insert a new entity
 
@@ -107,9 +106,9 @@ class BaseRepository:
             ResourceExistsError: If entity already exists
             ValueError: If PartitionKey or RowKey missing
         """
-        return self._service.insert_entity(entity)
+        return await self._service.insert_entity(entity)
 
-    def update(self, entity: dict, mode: str = "merge") -> dict:
+    async def update(self, entity: dict, mode: str = "merge") -> dict:
         """
         Update an existing entity
 
@@ -123,9 +122,9 @@ class BaseRepository:
         Raises:
             ResourceNotFoundError: If entity doesn't exist
         """
-        return self._service.update_entity(entity, mode=mode)
+        return await self._service.update_entity(entity, mode=mode)
 
-    def upsert(self, entity: dict, mode: str = "merge") -> dict:
+    async def upsert(self, entity: dict, mode: str = "merge") -> dict:
         """
         Insert or update an entity (creates if doesn't exist)
 
@@ -136,9 +135,9 @@ class BaseRepository:
         Returns:
             The upserted entity
         """
-        return self._service.upsert_entity(entity, mode=mode)
+        return await self._service.upsert_entity(entity, mode=mode)
 
-    def delete(self, partition_key: str, row_key: str) -> bool:
+    async def delete(self, partition_key: str, row_key: str) -> bool:
         """
         Delete an entity
 
@@ -149,7 +148,7 @@ class BaseRepository:
         Returns:
             True if deleted, False if not found
         """
-        return self._service.delete_entity(partition_key, row_key)
+        return await self._service.delete_entity(partition_key, row_key)
 
     def _get_partition_key_for_scope(self, scope: str | None = None) -> str:
         """

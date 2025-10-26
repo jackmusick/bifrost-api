@@ -152,7 +152,7 @@ async def create_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
             "DisableGlobalKey": workflow_key.disableGlobalKey
         }
 
-        repo.create_workflow_key(entity)
+        await repo.create_workflow_key(entity)
 
         logger.info(
             "Created workflow API key",
@@ -252,7 +252,7 @@ async def list_workflow_keys_handler(req: func.HttpRequest) -> func.HttpResponse
 
         # Query Config table for workflow keys using repository
         repo = get_global_config_repository()
-        entities = repo.list_workflow_keys(user_email, workflow_id_filter, include_revoked)
+        entities = await repo.list_workflow_keys(user_email, workflow_id_filter, include_revoked)
 
         # Convert entities to response models
         responses = []
@@ -338,7 +338,7 @@ async def revoke_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
 
         # Get key from Config table using repository
         repo = get_global_config_repository()
-        entity = repo.get_workflow_key_by_id(key_id)
+        entity = await repo.get_workflow_key_by_id(key_id)
 
         if not entity:
             error = ErrorResponse(
@@ -364,7 +364,7 @@ async def revoke_workflow_key_handler(req: func.HttpRequest) -> func.HttpRespons
             )
 
         # Revoke using repository
-        success = repo.revoke_workflow_key(key_id, user_email)
+        success = await repo.revoke_workflow_key(key_id, user_email)
         if not success:
             error = ErrorResponse(
                 error="InternalError",

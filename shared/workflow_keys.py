@@ -48,7 +48,7 @@ def generate_workflow_key(
     return raw_key, workflow_key
 
 
-def validate_workflow_key(
+async def validate_workflow_key(
     connection_str: str,
     api_key: str,
     workflow_id: Optional[str] = None
@@ -78,14 +78,14 @@ def validate_workflow_key(
     try:
         # Use ConfigRepository for validation
         repo = get_global_config_repository()
-        return repo.validate_workflow_key(hashed_key, workflow_id)
+        return await repo.validate_workflow_key(hashed_key, workflow_id)
 
     except Exception:
         # Log the error in a real implementation
         return (False, None)
 
 
-def revoke_workflow_key(
+async def revoke_workflow_key(
     connection_str: str,
     key_id: str,
     revoked_by: str = "system"
@@ -103,14 +103,14 @@ def revoke_workflow_key(
     """
     try:
         repo = get_global_config_repository()
-        return repo.revoke_workflow_key(key_id, revoked_by)
+        return await repo.revoke_workflow_key(key_id, revoked_by)
 
     except Exception:
         # Log error in a real implementation
         return False
 
 
-def list_workflow_keys(
+async def list_workflow_keys(
     connection_str: str,
     user_id: str,
     workflow_id: Optional[str] = None,
@@ -130,7 +130,7 @@ def list_workflow_keys(
     """
     try:
         repo = get_global_config_repository()
-        return repo.list_workflow_keys(user_id, workflow_id, include_revoked)
+        return await repo.list_workflow_keys(user_id, workflow_id, include_revoked)
 
     except Exception:
         # Log error in a real implementation

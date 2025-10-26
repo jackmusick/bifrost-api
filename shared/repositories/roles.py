@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from shared.models import CreateRoleRequest, Role, UpdateRoleRequest, generate_entity_id
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 from .base import BaseRepository
 
@@ -30,9 +30,9 @@ class RoleRepository(BaseRepository):
 
     def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
-        self.relationships_service = TableStorageService("Relationships")
+        self.relationships_service = AsyncTableStorageService("Relationships")
 
-    def create_role(
+    async def create_role(
         self,
         role_request: CreateRoleRequest,
         org_id: str,
@@ -63,13 +63,13 @@ class RoleRepository(BaseRepository):
             "UpdatedAt": now.isoformat(),
         }
 
-        self.insert(role_entity)
+        await self.insert(role_entity)
 
         logger.info(f"Created role {role_id} in org {org_id}: {role_request.name}")
 
         return self._entity_to_model(role_entity, role_id)
 
-    def get_role(self, role_id: str, org_id: str) -> Role | None:
+    async def get_role(self, role_id: str, org_id: str) -> Role | None:
         """
         Get role by ID
 
@@ -80,14 +80,14 @@ class RoleRepository(BaseRepository):
         Returns:
             Role model or None if not found
         """
-        entity = self.get_by_id(org_id, f"role:{role_id}")
+        entity = await self.get_by_id(org_id, f"role:{role_id}")
 
         if entity:
             return self._entity_to_model(entity, role_id)
 
         return None
 
-    def list_roles(self, org_id: str, active_only: bool = True) -> list[Role]:
+    async def list_roles(self, org_id: str, active_only: bool = True) -> list[Role]:
         """
         List all roles for an organization
 
@@ -103,7 +103,7 @@ class RoleRepository(BaseRepository):
         if active_only:
             filter_query += " and IsActive eq true"
 
-        entities = list(self.query(filter_query))
+        entities = await self.query(filter_query)
 
         roles = []
         for entity in entities:
@@ -113,7 +113,7 @@ class RoleRepository(BaseRepository):
         logger.info(f"Found {len(roles)} roles in org {org_id}")
         return roles
 
-    def update_role(
+    async def update_role(
         self,
         role_id: str,
         org_id: str,
@@ -133,7 +133,7 @@ class RoleRepository(BaseRepository):
         Raises:
             ValueError: If role not found
         """
-        entity = self.get_by_id(org_id, f"role:{role_id}")
+        entity = await self.get_by_id(org_id, f"role:{role_id}")
 
         if not entity:
             raise ValueError(f"Role {role_id} not found in organization {org_id}")
@@ -148,12 +148,12 @@ class RoleRepository(BaseRepository):
 
         entity["UpdatedAt"] = now.isoformat()
 
-        self.update(entity)
+        await self.update(entity)
 
         logger.info(f"Updated role {role_id} in org {org_id}")
         return self._entity_to_model(entity, role_id)
 
-    def assign_users_to_role(
+    async def assign_users_to_role(
         self,
         role_id: str,
         user_ids: list[str],
@@ -182,14 +182,14 @@ class RoleRepository(BaseRepository):
             }
 
             try:
-                self.relationships_service.insert_entity(relationship_entity)
+                await self.relationships_service.insert_entity(relationship_entity)
                 logger.debug(f"Assigned user {user_id} to role {role_id}")
             except Exception as e:
                 logger.warning(f"Failed to assign user {user_id} to role {role_id}: {e}")
 
         logger.info(f"Assigned {len(user_ids)} users to role {role_id}")
 
-    def assign_forms_to_role(
+    async def assign_forms_to_role(
         self,
         role_id: str,
         form_ids: list[str],
@@ -218,14 +218,14 @@ class RoleRepository(BaseRepository):
             }
 
             try:
-                self.relationships_service.insert_entity(relationship_entity)
+                await self.relationships_service.insert_entity(relationship_entity)
                 logger.debug(f"Assigned form {form_id} to role {role_id}")
             except Exception as e:
                 logger.warning(f"Failed to assign form {form_id} to role {role_id}: {e}")
 
         logger.info(f"Assigned {len(form_ids)} forms to role {role_id}")
 
-    def get_user_role_ids(self, user_id: str) -> list[str]:
+    async def get_user_role_ids(self, user_id: str) -> list[str]:
         """
         Get all role IDs assigned to a user
 
@@ -241,7 +241,7 @@ class RoleRepository(BaseRepository):
             f"RowKey lt 'userrole:{user_id}~'"
         )
 
-        entities = list(self.relationships_service.query_entities(query_filter))
+        entities = await self.relationships_service.query_entities(query_filter)
 
         # Extract role UUID from RowKey "userrole:{user_id}:{role_uuid}"
         role_ids = [entity["RowKey"].split(":", 2)[2] for entity in entities]
@@ -249,7 +249,7 @@ class RoleRepository(BaseRepository):
         logger.debug(f"Found {len(role_ids)} roles for user {user_id}")
         return role_ids
 
-    def get_form_role_ids(self, form_id: str) -> list[str]:
+    async def get_form_role_ids(self, form_id: str) -> list[str]:
         """
         Get all role IDs that can access a form
 
@@ -265,7 +265,7 @@ class RoleRepository(BaseRepository):
             f"RowKey lt 'formrole:{form_id}~'"
         )
 
-        entities = list(self.relationships_service.query_entities(query_filter))
+        entities = await self.relationships_service.query_entities(query_filter)
 
         # Extract role UUID from RowKey "formrole:{form_id}:{role_uuid}"
         role_ids = [entity["RowKey"].split(":", 2)[2] for entity in entities]
@@ -273,7 +273,7 @@ class RoleRepository(BaseRepository):
         logger.debug(f"Found {len(role_ids)} roles for form {form_id}")
         return role_ids
 
-    def get_role_user_ids(self, role_id: str) -> list[str]:
+    async def get_role_user_ids(self, role_id: str) -> list[str]:
         """
         Get all user IDs assigned to a role (reverse lookup)
 
@@ -285,14 +285,14 @@ class RoleRepository(BaseRepository):
         """
         query_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'userrole:' and RowKey lt 'userrole~' and RoleId eq '{role_id}'"
 
-        entities = list(self.relationships_service.query_entities(query_filter))
+        entities = await self.relationships_service.query_entities(query_filter)
 
         user_ids = [cast(str, entity["UserId"]) for entity in entities if "UserId" in entity and entity["UserId"]]
 
         logger.debug(f"Found {len(user_ids)} users for role {role_id}")
         return user_ids
 
-    def get_role_form_ids(self, role_id: str) -> list[str]:
+    async def get_role_form_ids(self, role_id: str) -> list[str]:
         """
         Get all form IDs assigned to a role (reverse lookup)
 
@@ -304,14 +304,14 @@ class RoleRepository(BaseRepository):
         """
         query_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'formrole:' and RowKey lt 'formrole~' and RoleId eq '{role_id}'"
 
-        entities = list(self.relationships_service.query_entities(query_filter))
+        entities = await self.relationships_service.query_entities(query_filter)
 
         form_ids = [cast(str, entity["FormId"]) for entity in entities if "FormId" in entity and entity["FormId"]]
 
         logger.debug(f"Found {len(form_ids)} forms for role {role_id}")
         return form_ids
 
-    def delete_role(self, role_id: str, org_id: str) -> bool:
+    async def delete_role(self, role_id: str, org_id: str) -> bool:
         """
         Soft delete role (sets IsActive=False)
 
@@ -322,7 +322,7 @@ class RoleRepository(BaseRepository):
         Returns:
             True if deleted, False if not found
         """
-        entity = self.get_by_id(org_id, f"role:{role_id}")
+        entity = await self.get_by_id(org_id, f"role:{role_id}")
 
         if not entity:
             return False
@@ -331,12 +331,12 @@ class RoleRepository(BaseRepository):
         entity["IsActive"] = False
         entity["UpdatedAt"] = datetime.utcnow().isoformat()
 
-        self.update(entity)
+        await self.update(entity)
 
         logger.info(f"Soft deleted role {role_id} in org {org_id}")
         return True
 
-    def remove_user_from_role(self, role_id: str, user_id: str) -> bool:
+    async def remove_user_from_role(self, role_id: str, user_id: str) -> bool:
         """
         Remove user from role assignment
 
@@ -355,14 +355,14 @@ class RoleRepository(BaseRepository):
         deleted = False
 
         try:
-            self.relationships_service.delete_entity("GLOBAL", forward_key)
+            await self.relationships_service.delete_entity("GLOBAL", forward_key)
             deleted = True
             logger.debug(f"Deleted forward user-role index: {forward_key}")
         except Exception as e:
             logger.debug(f"Forward index not found: {forward_key} ({e})")
 
         try:
-            self.relationships_service.delete_entity("GLOBAL", reverse_key)
+            await self.relationships_service.delete_entity("GLOBAL", reverse_key)
             deleted = True
             logger.debug(f"Deleted reverse user-role index: {reverse_key}")
         except Exception as e:
@@ -373,7 +373,7 @@ class RoleRepository(BaseRepository):
 
         return deleted
 
-    def remove_form_from_role(self, role_id: str, form_id: str) -> bool:
+    async def remove_form_from_role(self, role_id: str, form_id: str) -> bool:
         """
         Remove form from role assignment
 
@@ -392,14 +392,14 @@ class RoleRepository(BaseRepository):
         deleted = False
 
         try:
-            self.relationships_service.delete_entity("GLOBAL", forward_key)
+            await self.relationships_service.delete_entity("GLOBAL", forward_key)
             deleted = True
             logger.debug(f"Deleted forward form-role index: {forward_key}")
         except Exception as e:
             logger.debug(f"Forward index not found: {forward_key} ({e})")
 
         try:
-            self.relationships_service.delete_entity("GLOBAL", reverse_key)
+            await self.relationships_service.delete_entity("GLOBAL", reverse_key)
             deleted = True
             logger.debug(f"Deleted reverse form-role index: {reverse_key}")
         except Exception as e:

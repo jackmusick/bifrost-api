@@ -58,7 +58,7 @@ def _cache_user(email: str, user: User) -> None:
     logger.debug(f"Cached user {email}")
 
 
-def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
+async def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
     """
     Ensure user exists in Users table, creating if necessary.
 
@@ -86,7 +86,7 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
     user_repo = UserRepository()
 
     # Check if user exists in database
-    user = user_repo.get_user(email)
+    user = await user_repo.get_user(email)
 
     if user:
         # User exists - cache it
@@ -95,7 +95,7 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
         # Update last login only once per cache TTL (30 seconds)
         # This reduces database calls from every request to once per 30s
         try:
-            user_repo.update_last_login(email)
+            await user_repo.update_last_login(email)
         except Exception as e:
             logger.warning(f"Failed to update last login for {email}: {e}")
         return
@@ -104,7 +104,7 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
     logger.info(f"Auto-creating user {email} (PlatformAdmin={is_platform_admin})")
 
     user_type = UserType.PLATFORM if is_platform_admin else UserType.ORG
-    user = user_repo.create_user(
+    user = await user_repo.create_user(
         email=email,
         display_name=email.split("@")[0],
         user_type=user_type,
@@ -120,7 +120,7 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
     if not is_platform_admin:
         try:
             from shared.user_provisioning import _provision_org_relationship_by_domain
-            org_id = _provision_org_relationship_by_domain(email)
+            org_id = await _provision_org_relationship_by_domain(email)
             if org_id:
                 logger.info(f"Auto-provisioned org relationship for {email} -> {org_id}")
         except ValueError as e:
@@ -128,7 +128,7 @@ def ensure_user_exists_in_db(email: str, is_platform_admin: bool) -> None:
             # Don't raise - user will get proper error when we try to get org_id
 
 
-def get_user_organization(email: str) -> str | None:
+async def get_user_organization(email: str) -> str | None:
     """
     Look up user's organization ID from database.
 
@@ -156,7 +156,7 @@ def get_user_organization(email: str) -> str | None:
 
     try:
         user_repo = UserRepository()
-        org_id = user_repo.get_user_org_id(email)
+        org_id = await user_repo.get_user_org_id(email)
 
         # Cache the result (even if None)
         _org_cache[email] = (org_id, datetime.utcnow())

@@ -55,7 +55,7 @@ class RequestContext:
         return self.org_id or "GLOBAL"
 
 
-def get_request_context(req: func.HttpRequest) -> RequestContext:
+async def get_request_context(req: func.HttpRequest) -> RequestContext:
     """
     Extract unified request context from Azure Functions request.
 
@@ -182,7 +182,7 @@ def get_request_context(req: func.HttpRequest) -> RequestContext:
 
     # Look up user's org in database
     # GetRoles endpoint ensures user is provisioned with org assignment
-    org_id = get_user_organization(email)
+    org_id = await get_user_organization(email)
 
     if not org_id:
         # User authenticated but has no org assignment

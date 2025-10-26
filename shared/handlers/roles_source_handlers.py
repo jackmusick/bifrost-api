@@ -51,7 +51,7 @@ def extract_user_info(request_body: dict) -> tuple[str | None, str | None, str |
     return entra_user_id, user_email, display_name
 
 
-def get_roles_for_user(
+async def get_roles_for_user(
     user_email: str,
     entra_user_id: str | None = None,
     display_name: str | None = None
@@ -79,7 +79,7 @@ def get_roles_for_user(
 
     try:
         # Ensure user is provisioned (handles first user, domain-based join, etc.)
-        result = ensure_user_provisioned(user_email, entra_user_id, display_name)
+        result = await ensure_user_provisioned(user_email, entra_user_id, display_name)
 
         # Return roles based on provisioning result
         response: RolesSourceResponse = {"roles": result.roles}
@@ -93,7 +93,7 @@ def get_roles_for_user(
         raise
 
 
-def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
+async def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
     """
     Handle a complete roles source request from SWA.
 
@@ -133,4 +133,4 @@ def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
         return {"roles": ["anonymous"]}
 
     # Get roles for the user
-    return get_roles_for_user(user_email, entra_user_id, display_name)
+    return await get_roles_for_user(user_email, entra_user_id, display_name)

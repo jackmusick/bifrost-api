@@ -47,7 +47,7 @@ async def _process_poison_message(message_data: dict, dequeue_count: int) -> Non
 
     # Update execution status to FAILED with poison queue error
     exec_logger = get_execution_logger()
-    exec_logger.update_execution(
+    await exec_logger.update_execution(
         execution_id=execution_id,
         org_id=org_id,
         user_id=user_id,

@@ -316,14 +316,14 @@ async def list_executions_handler(
     # Platform admins see all in scope, regular users see only theirs
     if context.is_platform_admin:
         logger.info(f"[Pagination Debug] Querying as platform admin for scope={context.scope}")
-        executions, next_token = execution_repo.list_executions_paged(
+        executions, next_token = await execution_repo.list_executions_paged(
             org_id=context.scope,
             results_per_page=limit,
             continuation_token=decoded_token
         )
     else:
         logger.info(f"[Pagination Debug] Querying as regular user for user_id={context.user_id}")
-        executions, next_token = execution_repo.list_executions_by_user_paged(
+        executions, next_token = await execution_repo.list_executions_by_user_paged(
             user_id=context.user_id,
             results_per_page=limit,
             continuation_token=decoded_token
@@ -387,7 +387,7 @@ async def get_execution_handler(
 
     # Get execution using repository
     exec_repo = ExecutionRepository(context)
-    execution_model = exec_repo.get_execution(execution_id)
+    execution_model = await exec_repo.get_execution(execution_id)
 
     if not execution_model:
         return None, "NotFound"

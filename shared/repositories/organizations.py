@@ -27,7 +27,7 @@ class OrganizationRepository(BaseRepository):
     def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
 
-    def create_organization(
+    async def create_organization(
         self,
         org_request: CreateOrganizationRequest,
         created_by: str
@@ -56,7 +56,7 @@ class OrganizationRepository(BaseRepository):
             "UpdatedAt": now.isoformat(),
         }
 
-        self.insert(org_entity)
+        await self.insert(org_entity)
 
         logger.info(f"Created organization {org_id}: {org_request.name}")
 
@@ -70,7 +70,7 @@ class OrganizationRepository(BaseRepository):
             updatedAt=now,
         )
 
-    def get_organization(self, org_id: str) -> Organization | None:
+    async def get_organization(self, org_id: str) -> Organization | None:
         """
         Get organization by ID
 
@@ -80,14 +80,14 @@ class OrganizationRepository(BaseRepository):
         Returns:
             Organization model or None if not found
         """
-        entity = self.get_by_id("GLOBAL", f"org:{org_id}")
+        entity = await self.get_by_id("GLOBAL", f"org:{org_id}")
 
         if entity:
             return self._entity_to_model(entity, org_id)
 
         return None
 
-    def get_organization_by_domain(self, domain: str) -> Organization | None:
+    async def get_organization_by_domain(self, domain: str) -> Organization | None:
         """
         Get organization by domain (for auto-provisioning)
 
@@ -104,7 +104,7 @@ class OrganizationRepository(BaseRepository):
             f"IsActive eq true"
         )
 
-        results = list(self.query(filter_query))
+        results = await self.query(filter_query)
 
         if results:
             org_id = results[0]["RowKey"].split(":", 1)[1]
@@ -112,7 +112,7 @@ class OrganizationRepository(BaseRepository):
 
         return None
 
-    def list_organizations(self, active_only: bool = True) -> list[Organization]:
+    async def list_organizations(self, active_only: bool = True) -> list[Organization]:
         """
         List all organizations
 
@@ -127,7 +127,7 @@ class OrganizationRepository(BaseRepository):
         if active_only:
             filter_query += " and IsActive eq true"
 
-        entities = list(self.query(filter_query))
+        entities = await self.query(filter_query)
 
         organizations = []
         for entity in entities:
@@ -137,7 +137,7 @@ class OrganizationRepository(BaseRepository):
         logger.info(f"Found {len(organizations)} organizations (active_only={active_only})")
         return organizations
 
-    def update_organization(
+    async def update_organization(
         self,
         org_id: str,
         updates: UpdateOrganizationRequest
@@ -155,7 +155,7 @@ class OrganizationRepository(BaseRepository):
         Raises:
             ValueError: If organization not found
         """
-        entity = self.get_by_id("GLOBAL", f"org:{org_id}")
+        entity = await self.get_by_id("GLOBAL", f"org:{org_id}")
 
         if not entity:
             raise ValueError(f"Organization {org_id} not found")
@@ -173,12 +173,12 @@ class OrganizationRepository(BaseRepository):
 
         entity["UpdatedAt"] = now.isoformat()
 
-        self.update(entity)
+        await self.update(entity)
 
         logger.info(f"Updated organization {org_id}")
         return self._entity_to_model(entity, org_id)
 
-    def soft_delete_organization(self, org_id: str) -> bool:
+    async def soft_delete_organization(self, org_id: str) -> bool:
         """
         Soft delete organization (set IsActive=False)
 
@@ -188,7 +188,7 @@ class OrganizationRepository(BaseRepository):
         Returns:
             True if deleted, False if not found
         """
-        entity = self.get_by_id("GLOBAL", f"org:{org_id}")
+        entity = await self.get_by_id("GLOBAL", f"org:{org_id}")
 
         if not entity:
             return False
@@ -197,12 +197,12 @@ class OrganizationRepository(BaseRepository):
         entity["IsActive"] = False
         entity["UpdatedAt"] = now.isoformat()
 
-        self.update(entity)
+        await self.update(entity)
 
         logger.info(f"Soft deleted organization {org_id}")
         return True
 
-    def delete_organization(self, org_id: str) -> bool:
+    async def delete_organization(self, org_id: str) -> bool:
         """
         Permanently delete organization.
 
@@ -215,7 +215,7 @@ class OrganizationRepository(BaseRepository):
         Returns:
             True if deleted, False if not found
         """
-        entity = self.get_by_id("GLOBAL", f"org:{org_id}")
+        entity = await self.get_by_id("GLOBAL", f"org:{org_id}")
 
         if not entity:
             logger.info(f"Cannot delete organization {org_id}: Not found")
@@ -223,7 +223,7 @@ class OrganizationRepository(BaseRepository):
 
         try:
             # Delete organization record
-            self.delete("GLOBAL", f"org:{org_id}")
+            await self.delete("GLOBAL", f"org:{org_id}")
 
             logger.info(f"Permanently deleted organization {org_id}")
             return True

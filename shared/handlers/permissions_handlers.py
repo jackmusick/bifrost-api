@@ -15,7 +15,7 @@ from shared.models import (
     User,
 )
 from shared.context import ExecutionContext
-from shared.storage import get_table_service
+from shared.async_storage import get_async_table_service
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ async def list_users_handler(
 
     try:
         # Query Entities table for users
-        entities_service = get_table_service("Entities", context)
+        entities_service = get_async_table_service("Entities", context)
 
         # Build filter based on type
         user_type_filter_lower = user_type_filter.lower()
@@ -60,7 +60,7 @@ async def list_users_handler(
         else:
             filter_query = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;'"
 
-        user_entities = list(entities_service.query_entities(filter=filter_query))
+        user_entities = await entities_service.query_entities(filter=filter_query)
 
         # Convert to response models
         users = []
@@ -126,9 +126,9 @@ async def get_user_handler(
 
     try:
         # Get user from Entities table
-        entities_service = get_table_service("Entities", context)
+        entities_service = get_async_table_service("Entities", context)
         try:
-            user_entity = entities_service.get_entity("GLOBAL", f"user:{user_id}")
+            user_entity = await entities_service.get_entity("GLOBAL", f"user:{user_id}")
         except Exception:
             user_entity = None
 
@@ -326,10 +326,10 @@ async def get_user_roles_handler(
     try:
         # Query Relationships table for user-role assignments
         # Row key pattern: userrole:{user_id}:{role_uuid}
-        relationships_service = get_table_service("Relationships", context)
-        user_role_entities = list(relationships_service.query_entities(
+        relationships_service = get_async_table_service("Relationships", context)
+        user_role_entities = await relationships_service.query_entities(
             filter=f"RowKey ge 'userrole:{user_id}:' and RowKey lt 'userrole:{user_id};'"
-        ))
+        )
 
         # Extract role UUIDs from row keys
         role_ids = []
@@ -382,9 +382,9 @@ async def get_user_forms_handler(
 
     try:
         # Get user entity to check type
-        entities_service = get_table_service("Entities", context)
+        entities_service = get_async_table_service("Entities", context)
         try:
-            user_entity = entities_service.get_entity("GLOBAL", f"user:{user_id}")
+            user_entity = await entities_service.get_entity("GLOBAL", f"user:{user_id}")
         except Exception:
             user_entity = None
 
@@ -417,10 +417,10 @@ async def get_user_forms_handler(
 
         # Regular users: Get forms based on role assignments
         # 1. Get user's roles from Relationships table
-        relationships_service = get_table_service("Relationships", context)
-        user_role_entities = list(relationships_service.query_entities(
+        relationships_service = get_async_table_service("Relationships", context)
+        user_role_entities = await relationships_service.query_entities(
             filter=f"RowKey ge 'userrole:{user_id}:' and RowKey lt 'userrole:{user_id};'"
-        ))
+        )
 
         # Extract role UUIDs
         role_ids = []
@@ -446,9 +446,9 @@ async def get_user_forms_handler(
         form_ids_set = set()
 
         for role_id in role_ids:
-            form_role_entities = list(relationships_service.query_entities(
+            form_role_entities = await relationships_service.query_entities(
                 filter=f"RowKey ge 'roleform:{role_id}:' and RowKey lt 'roleform:{role_id};'"
-            ))
+            )
             for entity in form_role_entities:
                 # Extract form UUID from row key
                 parts = entity["RowKey"].split(":", 2)

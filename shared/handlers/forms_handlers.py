@@ -118,7 +118,7 @@ async def list_forms_handler(context, request_context) -> tuple:
     logger.info(f"User {request_context.user_id} listing forms (org: {request_context.org_id or 'GLOBAL'})")
 
     try:
-        forms = get_user_visible_forms(request_context)
+        forms = await get_user_visible_forms(request_context)
         forms.sort(key=lambda f: f["name"])
         logger.info(f"Returning {len(forms)} forms for user {request_context.user_id}")
         return forms, 200
@@ -158,7 +158,7 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
             return error.model_dump(), 400
 
         form_repo = FormRepository(request_context)
-        form = form_repo.create_form(form_request=create_request, created_by=request_context.user_id)
+        form = await form_repo.create_form(form_request=create_request, created_by=request_context.user_id)
         logger.info(f"Created form {form.id} in partition {form.orgId}")
         return form.model_dump(mode="json"), 201
 
@@ -190,7 +190,7 @@ async def get_form_handler(form_id: str, request_context) -> tuple[dict, int]:
 
     try:
         form_repo = FormRepository(request_context)
-        form = form_repo.get_form(form_id)
+        form = await form_repo.get_form(form_id)
 
         if not form:
             logger.warning(f"Form {form_id} not found")
@@ -219,7 +219,7 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
     try:
         update_request = UpdateFormRequest(**request_body)
         form_repo = FormRepository(request_context)
-        existing_form = form_repo.get_form(form_id)
+        existing_form = await form_repo.get_form(form_id)
 
         if not existing_form:
             logger.warning(f"Form {form_id} not found")
@@ -253,7 +253,7 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
             )
             return error.model_dump(), 400
 
-        form = form_repo.update_form(form_id, update_request)
+        form = await form_repo.update_form(form_id, update_request)
 
         if not form:
             logger.warning(f"Form {form_id} not found after update")
@@ -291,7 +291,7 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
 
     try:
         form_repo = FormRepository(request_context)
-        success = form_repo.delete_form(form_id)
+        success = await form_repo.delete_form(form_id)
 
         if success:
             logger.info(f"Soft deleted form {form_id}")
@@ -319,7 +319,7 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
             return error.model_dump(), 403
 
         form_repo = FormRepository(request_context)
-        form = form_repo.get_form(form_id)
+        form = await form_repo.get_form(form_id)
 
         if not form:
             logger.warning(f"Form {form_id} not found")
@@ -425,7 +425,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             return error.model_dump(), 403
 
         form_repo = FormRepository(request_context)
-        form = form_repo.get_form(form_id)
+        form = await form_repo.get_form(form_id)
 
         if not form:
             logger.warning(f"Form {form_id} not found")
@@ -464,7 +464,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
         exec_logger = get_execution_logger()
         start_time = datetime.utcnow()
 
-        exec_logger.create_execution(
+        await exec_logger.create_execution(
             execution_id=execution_id,
             org_id=request_context.org_id,
             user_id=request_context.user_id,
@@ -508,7 +508,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             execution_status = ExecutionStatus.COMPLETED_WITH_ERRORS
             error_message = result.get('error', 'Workflow completed with errors')
 
-        exec_logger.update_execution(
+        await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=request_context.org_id,
             user_id=request_context.user_id,
@@ -554,7 +554,7 @@ async def get_form_roles_handler(form_id: str, request_context) -> tuple[dict, i
     try:
         # Check if form exists and user has access
         form_repo = FormRepository(request_context)
-        form = form_repo.get_form(form_id)
+        form = await form_repo.get_form(form_id)
 
         if not form:
             logger.warning(f"Form {form_id} not found")
@@ -568,7 +568,7 @@ async def get_form_roles_handler(form_id: str, request_context) -> tuple[dict, i
             return error.model_dump(), 403
 
         # Get assigned role IDs
-        role_ids = get_form_role_ids(form_id)
+        role_ids = await get_form_role_ids(form_id)
 
         logger.info(f"Form {form_id} has {len(role_ids)} assigned roles")
         return {"roleIds": role_ids}, 200
@@ -628,7 +628,7 @@ async def execute_form_data_provider_handler(
     try:
         # 1. Check if form exists
         form_repo = FormRepository(request_context)
-        form = form_repo.get_form(form_id)
+        form = await form_repo.get_form(form_id)
 
         if not form:
             logger.warning(f"Form {form_id} not found")

@@ -8,7 +8,7 @@ Provides mocks for:
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.fixture
@@ -209,9 +209,14 @@ def mock_workspace_service():
 
 @pytest.fixture
 def mock_table_service():
-    """Mock TableStorageService for OAuth storage"""
-    with patch("shared.services.oauth_storage_service.TableStorageService") as mock:
-        instance = MagicMock()
+    """Mock AsyncTableStorageService for OAuth storage"""
+    with patch("shared.services.oauth_storage_service.AsyncTableStorageService") as mock:
+        instance = AsyncMock()
+        instance.insert_entity = AsyncMock()  # Async
+        instance.get_entity = AsyncMock()     # Async
+        instance.upsert_entity = AsyncMock()  # Async
+        instance.delete_entity = AsyncMock()  # Async
+        instance.query_entities = AsyncMock() # Async
         mock.return_value = instance
         yield instance
 

@@ -4,7 +4,7 @@ Tests permission checking, form access control, and data visibility filtering
 """
 
 import uuid
-from unittest.mock import Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -16,7 +16,7 @@ from shared.authorization import (
     get_user_visible_forms,
 )
 from shared.request_context import RequestContext
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 
 class TestCanUserViewForm:
@@ -25,14 +25,15 @@ class TestCanUserViewForm:
     @pytest.fixture
     def mock_entities_table(self):
         """Mock Entities table"""
-        return Mock(spec=TableStorageService)
+        return AsyncMock(spec=AsyncTableStorageService)
 
     @pytest.fixture
     def mock_relationships_table(self):
         """Mock Relationships table"""
-        return Mock(spec=TableStorageService)
+        return AsyncMock(spec=AsyncTableStorageService)
 
-    def test_platform_admin_can_view_any_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_platform_admin_can_view_any_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Platform admins can view all active forms regardless of scope or access level"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -64,17 +65,18 @@ class TestCanUserViewForm:
         )
 
         # Mock the repository's get_form method
-        def mock_get_form(repo_self, form_id):
+        async def mock_get_form(repo_self, form_id):
             return mock_form
 
         monkeypatch.setattr("shared.repositories.forms.FormRepository.get_form", mock_get_form)
 
-        result = can_user_view_form(context, form_id)
+        result = await can_user_view_form(context, form_id)
 
         # Platform admin can view active forms from any org
         assert result is True
 
-    def test_regular_user_can_view_authenticated_access_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_regular_user_can_view_authenticated_access_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users can view active forms with 'authenticated' access level"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -97,7 +99,7 @@ class TestCanUserViewForm:
             updatedAt=datetime.utcnow()
         )
 
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = mock_form
 
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
@@ -111,11 +113,12 @@ class TestCanUserViewForm:
             is_function_key=False
         )
 
-        result = can_user_view_form(context, form_id)
+        result = await can_user_view_form(context, form_id)
 
         assert result is True
 
-    def test_regular_user_can_view_role_based_form_with_assigned_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_regular_user_can_view_role_based_form_with_assigned_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users can view role-based forms if they have an assigned role"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -139,11 +142,11 @@ class TestCanUserViewForm:
             updatedAt=datetime.utcnow()
         )
 
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = mock_form
 
         # Mock RoleRepository to return matching role
-        mock_role_repo = Mock()
+        mock_role_repo = AsyncMock()
         mock_role_repo.get_user_role_ids.return_value = [role_id]
         mock_role_repo.get_form_role_ids.return_value = [role_id]
 
@@ -159,11 +162,12 @@ class TestCanUserViewForm:
             is_function_key=False
         )
 
-        result = can_user_view_form(context, form_id)
+        result = await can_user_view_form(context, form_id)
 
         assert result is True
 
-    def test_regular_user_cannot_view_role_based_form_without_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_regular_user_cannot_view_role_based_form_without_role(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users cannot view role-based forms if they don't have an assigned role"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -188,11 +192,11 @@ class TestCanUserViewForm:
             updatedAt=datetime.utcnow()
         )
 
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = mock_form
 
         # Mock RoleRepository - user has different role than form requires
-        mock_role_repo = Mock()
+        mock_role_repo = AsyncMock()
         mock_role_repo.get_user_role_ids.return_value = [user_role_id]
         mock_role_repo.get_form_role_ids.return_value = [form_role_id]
 
@@ -208,11 +212,12 @@ class TestCanUserViewForm:
             is_function_key=False
         )
 
-        result = can_user_view_form(context, form_id)
+        result = await can_user_view_form(context, form_id)
 
         assert result is False
 
-    def test_regular_user_cannot_view_inactive_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_regular_user_cannot_view_inactive_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users cannot view inactive forms"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -235,7 +240,7 @@ class TestCanUserViewForm:
             updatedAt=datetime.utcnow()
         )
 
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = mock_form
 
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
@@ -249,17 +254,18 @@ class TestCanUserViewForm:
             is_function_key=False
         )
 
-        result = can_user_view_form(context, form_id)
+        result = await can_user_view_form(context, form_id)
 
         assert result is False
 
-    def test_regular_user_cannot_view_other_org_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_regular_user_cannot_view_other_org_form(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users cannot view forms from other organizations"""
         form_id = str(uuid.uuid4())
 
         # Mock FormRepository to return None (form not found in user's scope)
         # This simulates the repository's fallback logic not finding the form
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = None
 
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
@@ -273,7 +279,7 @@ class TestCanUserViewForm:
             is_function_key=False
         )
 
-        result = can_user_view_form(context, form_id)
+        result = await can_user_view_form(context, form_id)
 
         assert result is False
 
@@ -283,13 +289,14 @@ class TestGetUserVisibleForms:
 
     @pytest.fixture
     def mock_entities_table(self):
-        return Mock(spec=TableStorageService)
+        return AsyncMock(spec=AsyncTableStorageService)
 
     @pytest.fixture
     def mock_relationships_table(self):
-        return Mock(spec=TableStorageService)
+        return AsyncMock(spec=AsyncTableStorageService)
 
-    def test_platform_admin_sees_forms_in_selected_scope(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_platform_admin_sees_forms_in_selected_scope(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Platform admins see all forms in their selected scope (including inactive)"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -329,7 +336,7 @@ class TestGetUserVisibleForms:
             )
         ]
 
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.list_forms.return_value = mock_forms
 
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
@@ -343,13 +350,14 @@ class TestGetUserVisibleForms:
             is_function_key=False
         )
 
-        forms = get_user_visible_forms(context)
+        forms = await get_user_visible_forms(context)
 
         assert len(forms) == 2
         assert forms[0]["name"] == "Form 1"
         assert forms[1]["name"] == "Form 2"
 
-    def test_regular_user_sees_accessible_forms(self, mock_entities_table, mock_relationships_table, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_regular_user_sees_accessible_forms(self, mock_entities_table, mock_relationships_table, monkeypatch):
         """Regular users see active forms they have access to (authenticated or matching roles)"""
         from shared.models import Form, FormSchema, FormAccessLevel
         from datetime import datetime
@@ -390,11 +398,11 @@ class TestGetUserVisibleForms:
             )
         ]
 
-        mock_form_repo = Mock()
+        mock_form_repo = AsyncMock()
         mock_form_repo.list_forms.return_value = mock_forms
 
         # Mock RoleRepository - user has role matching org form
-        mock_role_repo = Mock()
+        mock_role_repo = AsyncMock()
         mock_role_repo.get_user_role_ids.return_value = [role_id]
         mock_role_repo.get_form_role_ids.return_value = [role_id]
 
@@ -410,7 +418,7 @@ class TestGetUserVisibleForms:
             is_function_key=False
         )
 
-        forms = get_user_visible_forms(context)
+        forms = await get_user_visible_forms(context)
 
         # Should see both authenticated global form and role-based org form
         assert len(forms) == 2
@@ -474,32 +482,34 @@ class TestExecutionVisibility:
 class TestHelperFunctions:
     """Test authorization helper functions"""
 
-    def test_get_user_role_ids(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_get_user_role_ids(self, monkeypatch):
         """Test get_user_role_ids() extracts role UUIDs correctly"""
         role1_id = str(uuid.uuid4())
         role2_id = str(uuid.uuid4())
 
         # Mock RoleRepository
-        mock_role_repo = Mock()
+        mock_role_repo = AsyncMock()
         mock_role_repo.get_user_role_ids.return_value = [role1_id, role2_id]
 
-        role_ids = get_user_role_ids("user@example.com", mock_role_repo)
+        role_ids = await get_user_role_ids("user@example.com", mock_role_repo)
 
         assert len(role_ids) == 2
         assert role1_id in role_ids
         assert role2_id in role_ids
 
-    def test_get_form_role_ids(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_get_form_role_ids(self, monkeypatch):
         """Test get_form_role_ids() extracts role UUIDs correctly"""
         form_id = str(uuid.uuid4())
         role1_id = str(uuid.uuid4())
         role2_id = str(uuid.uuid4())
 
         # Mock RoleRepository
-        mock_role_repo = Mock()
+        mock_role_repo = AsyncMock()
         mock_role_repo.get_form_role_ids.return_value = [role1_id, role2_id]
 
-        role_ids = get_form_role_ids(form_id, mock_role_repo)
+        role_ids = await get_form_role_ids(form_id, mock_role_repo)
 
         assert len(role_ids) == 2
         assert role1_id in role_ids

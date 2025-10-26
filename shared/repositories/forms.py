@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from shared.models import CreateFormRequest, Form, FormSchema, UpdateFormRequest, generate_entity_id
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 from .scoped_repository import ScopedRepository
 
@@ -36,9 +36,9 @@ class FormRepository(ScopedRepository):
 
     def __init__(self, context: 'ExecutionContext'):
         super().__init__("Entities", context)
-        self.relationships_service = TableStorageService("Relationships")
+        self.relationships_service = AsyncTableStorageService("Relationships")
 
-    def create_form(
+    async def create_form(
         self,
         form_request: CreateFormRequest,
         created_by: str
@@ -99,10 +99,10 @@ class FormRepository(ScopedRepository):
 
         try:
             # Write primary record
-            self.insert(form_entity)
+            await self.insert(form_entity)
 
             # Write workflow index
-            self.relationships_service.insert_entity(workflow_index_entity)
+            await self.relationships_service.insert_entity(workflow_index_entity)
 
             logger.info(
                 f"Created form {form_id} in partition {partition_key} "
@@ -116,7 +116,7 @@ class FormRepository(ScopedRepository):
             # TODO: Add cleanup/rollback logic
             raise
 
-    def get_form(self, form_id: str) -> Form | None:
+    async def get_form(self, form_id: str) -> Form | None:
         """
         Get form by ID with org → GLOBAL fallback
 
@@ -126,14 +126,14 @@ class FormRepository(ScopedRepository):
         Returns:
             Form model or None if not found
         """
-        entity = self.get_with_fallback(f"form:{form_id}")
+        entity = await self.get_with_fallback(f"form:{form_id}")
 
         if entity:
             return self._entity_to_model(entity, form_id)
 
         return None
 
-    def list_forms(
+    async def list_forms(
         self,
         active_only: bool = True,
         include_global: bool = True
@@ -152,10 +152,10 @@ class FormRepository(ScopedRepository):
 
         if include_global:
             # Query both org and GLOBAL partitions
-            entities = self.query_with_fallback("form:", additional_filter=additional_filter)
+            entities = await self.query_with_fallback("form:", additional_filter=additional_filter)
         else:
             # Query only org partition
-            entities = self.query_org_only("form:", additional_filter=additional_filter)
+            entities = await self.query_org_only("form:", additional_filter=additional_filter)
 
         forms = []
         for entity in entities:
@@ -169,7 +169,7 @@ class FormRepository(ScopedRepository):
 
         return forms
 
-    def list_forms_by_workflow(
+    async def list_forms_by_workflow(
         self,
         workflow_name: str,
         active_only: bool = True
@@ -196,21 +196,21 @@ class FormRepository(ScopedRepository):
         if active_only:
             filter_query += " and IsActive eq true"
 
-        index_entities = list(self.relationships_service.query_entities(filter_query))
+        index_entities = await self.relationships_service.query_entities(filter_query)
 
         # Fetch full form records
         forms = []
         for index_entity in index_entities:
             form_id = index_entity.get("FormId")
             if form_id:
-                form = self.get_form(form_id)
+                form = await self.get_form(form_id)
                 if form:
                     forms.append(form)
 
         logger.info(f"Found {len(forms)} forms using workflow {workflow_name}")
         return forms
 
-    def update_form(
+    async def update_form(
         self,
         form_id: str,
         updates: UpdateFormRequest
@@ -233,7 +233,7 @@ class FormRepository(ScopedRepository):
             ValueError: If form not found
         """
         # Get existing form
-        form_entity = self.get_with_fallback(f"form:{form_id}")
+        form_entity = await self.get_with_fallback(f"form:{form_id}")
 
         if not form_entity:
             raise ValueError(f"Form {form_id} not found")
@@ -271,14 +271,14 @@ class FormRepository(ScopedRepository):
         form_entity["UpdatedAt"] = now.isoformat()
 
         # Save primary record
-        self.update(form_entity)
+        await self.update(form_entity)
 
         # RE-INDEX if workflow changed
         if new_workflow and new_workflow != old_workflow:
             try:
                 # Delete old workflow index
                 if old_workflow:
-                    self.relationships_service.delete_entity(
+                    await self.relationships_service.delete_entity(
                         "GLOBAL",
                         f"workflowform:{old_workflow}:{form_id}"
                     )
@@ -295,7 +295,7 @@ class FormRepository(ScopedRepository):
                     "PartitionKey_Original": form_entity["PartitionKey"],
                     "UpdatedAt": now.isoformat(),
                 }
-                self.relationships_service.insert_entity(workflow_index_entity)
+                await self.relationships_service.insert_entity(workflow_index_entity)
 
                 logger.info(f"Re-indexed form {form_id}: {old_workflow} → {new_workflow}")
 
@@ -306,7 +306,7 @@ class FormRepository(ScopedRepository):
         # Also update workflow index display fields if form name or active status changed
         elif (updates.name is not None or updates.isActive is not None) and old_workflow:
             try:
-                workflow_index = self.relationships_service.get_entity(
+                workflow_index = await self.relationships_service.get_entity(
                     "GLOBAL",
                     f"workflowform:{old_workflow}:{form_id}"
                 )
@@ -316,7 +316,7 @@ class FormRepository(ScopedRepository):
                     if updates.isActive is not None:
                         workflow_index["IsActive"] = updates.isActive
                     workflow_index["UpdatedAt"] = now.isoformat()
-                    self.relationships_service.update_entity(workflow_index)
+                    await self.relationships_service.update_entity(workflow_index)
                     logger.debug(f"Updated workflow index display fields for form {form_id}")
             except Exception as e:
                 logger.warning(f"Failed to update workflow index display fields: {e}")
@@ -324,7 +324,7 @@ class FormRepository(ScopedRepository):
         logger.info(f"Updated form {form_id}")
         return self._entity_to_model(form_entity, form_id)
 
-    def soft_delete_form(self, form_id: str) -> bool:
+    async def soft_delete_form(self, form_id: str) -> bool:
         """
         Soft delete form (set IsActive=False)
 
@@ -337,7 +337,7 @@ class FormRepository(ScopedRepository):
             True if deleted, False if not found
         """
         # Get existing form
-        form_entity = self.get_with_fallback(f"form:{form_id}")
+        form_entity = await self.get_with_fallback(f"form:{form_id}")
 
         if not form_entity:
             return False
@@ -348,26 +348,26 @@ class FormRepository(ScopedRepository):
         # Soft delete primary record
         form_entity["IsActive"] = False
         form_entity["UpdatedAt"] = now.isoformat()
-        self.update(form_entity)
+        await self.update(form_entity)
 
         # Update workflow index to mark inactive
         if workflow_name:
             try:
-                workflow_index = self.relationships_service.get_entity(
+                workflow_index = await self.relationships_service.get_entity(
                     "GLOBAL",
                     f"workflowform:{workflow_name}:{form_id}"
                 )
                 if workflow_index:
                     workflow_index["IsActive"] = False
                     workflow_index["UpdatedAt"] = now.isoformat()
-                    self.relationships_service.update_entity(workflow_index)
+                    await self.relationships_service.update_entity(workflow_index)
             except Exception as e:
                 logger.warning(f"Failed to update workflow index on soft delete: {e}")
 
         logger.info(f"Soft deleted form {form_id}")
         return True
 
-    def delete_form(self, form_id: str) -> bool:
+    async def delete_form(self, form_id: str) -> bool:
         """
         Permanently delete form.
 
@@ -380,7 +380,7 @@ class FormRepository(ScopedRepository):
             True if deleted, False if not found
         """
         # Find existing form
-        form_entity = self.get_with_fallback(f"form:{form_id}")
+        form_entity = await self.get_with_fallback(f"form:{form_id}")
 
         if not form_entity:
             logger.info(f"Cannot delete form {form_id}: Not found")
@@ -391,11 +391,11 @@ class FormRepository(ScopedRepository):
         try:
             # Delete primary record
             partition_key = form_entity["PartitionKey"]
-            self.delete(partition_key, f"form:{form_id}")
+            await self.delete(partition_key, f"form:{form_id}")
 
             # Delete workflow index if exists
             if workflow_name:
-                self.relationships_service.delete_entity(
+                await self.relationships_service.delete_entity(
                     "GLOBAL",
                     f"workflowform:{workflow_name}:{form_id}"
                 )

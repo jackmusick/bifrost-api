@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # HTTP handlers and the Bifrost SDK
 
 
-def list_organizations_logic(context: 'ExecutionContext') -> list[Organization]:
+async def list_organizations_logic(context: 'ExecutionContext') -> list[Organization]:
     """
     List all organizations (business logic).
 
@@ -43,7 +43,7 @@ def list_organizations_logic(context: 'ExecutionContext') -> list[Organization]:
     logger.info(f"User {context.user_id} listing organizations")
 
     org_repo = OrganizationRepository()
-    orgs = org_repo.list_organizations(active_only=True)
+    orgs = await org_repo.list_organizations(active_only=True)
 
     # Sort by name
     orgs.sort(key=lambda o: o.name)
@@ -53,7 +53,7 @@ def list_organizations_logic(context: 'ExecutionContext') -> list[Organization]:
     return orgs
 
 
-def create_organization_logic(
+async def create_organization_logic(
     context: 'ExecutionContext',
     name: str,
     domain: str | None = None,
@@ -79,7 +79,7 @@ def create_organization_logic(
     )
 
     org_repo = OrganizationRepository()
-    org = org_repo.create_organization(
+    org = await org_repo.create_organization(
         org_request=create_request,
         created_by=context.user_id
     )
@@ -89,7 +89,7 @@ def create_organization_logic(
     return org
 
 
-def get_organization_logic(context: 'ExecutionContext', org_id: str) -> Organization | None:
+async def get_organization_logic(context: 'ExecutionContext', org_id: str) -> Organization | None:
     """
     Get organization by ID (business logic).
 
@@ -103,7 +103,7 @@ def get_organization_logic(context: 'ExecutionContext', org_id: str) -> Organiza
     logger.info(f"User {context.user_id} retrieving organization {org_id}")
 
     org_repo = OrganizationRepository()
-    org = org_repo.get_organization(org_id)
+    org = await org_repo.get_organization(org_id)
 
     if not org:
         logger.warning(f"Organization {org_id} not found")
@@ -111,7 +111,7 @@ def get_organization_logic(context: 'ExecutionContext', org_id: str) -> Organiza
     return org
 
 
-def update_organization_logic(
+async def update_organization_logic(
     context: 'ExecutionContext',
     org_id: str,
     **updates
@@ -132,7 +132,7 @@ def update_organization_logic(
     update_request = UpdateOrganizationRequest(**updates)
 
     org_repo = OrganizationRepository()
-    org = org_repo.update_organization(org_id, update_request)
+    org = await org_repo.update_organization(org_id, update_request)
 
     if org:
         logger.info(f"Updated organization {org_id}")
@@ -142,7 +142,7 @@ def update_organization_logic(
     return org
 
 
-def delete_organization_logic(context: 'ExecutionContext', org_id: str) -> bool:
+async def delete_organization_logic(context: 'ExecutionContext', org_id: str) -> bool:
     """
     Soft delete organization (business logic).
 
@@ -156,7 +156,7 @@ def delete_organization_logic(context: 'ExecutionContext', org_id: str) -> bool:
     logger.info(f"User {context.user_id} deleting organization {org_id}")
 
     org_repo = OrganizationRepository()
-    success = org_repo.delete_organization(org_id)
+    success = await org_repo.delete_organization(org_id)
 
     if success:
         logger.info(f"Soft deleted organization {org_id}")
@@ -180,7 +180,7 @@ async def list_organizations_handler(req: func.HttpRequest) -> func.HttpResponse
 
     try:
         # Call business logic
-        orgs = list_organizations_logic(context)
+        orgs = await list_organizations_logic(context)
 
         # Convert to JSON
         organizations = [org.model_dump(mode="json") for org in orgs]
@@ -217,7 +217,7 @@ async def create_organization_handler(req: func.HttpRequest) -> func.HttpRespons
         create_request = CreateOrganizationRequest(**request_body)
 
         # Call business logic
-        org = create_organization_logic(
+        org = await create_organization_logic(
             context=context,
             **create_request.model_dump()
         )
@@ -278,7 +278,7 @@ async def get_organization_handler(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # Call business logic
-        org = get_organization_logic(context, org_id)
+        org = await get_organization_logic(context, org_id)
 
         if not org:
             error = ErrorResponse(
@@ -326,7 +326,7 @@ async def update_organization_handler(req: func.HttpRequest) -> func.HttpRespons
         update_request = UpdateOrganizationRequest(**request_body)
 
         # Call business logic
-        org = update_organization_logic(
+        org = await update_organization_logic(
             context=context,
             org_id=org_id,
             **update_request.model_dump(exclude_unset=True)
@@ -387,7 +387,7 @@ async def delete_organization_handler(req: func.HttpRequest) -> func.HttpRespons
 
     try:
         # Call business logic
-        success = delete_organization_logic(context, org_id)
+        success = await delete_organization_logic(context, org_id)
 
         if not success:
             error = ErrorResponse(

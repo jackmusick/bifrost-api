@@ -209,7 +209,7 @@ class AuthenticationService:
 
 # ==================== AUTHORIZATION ====================
 
-def is_platform_admin(user_id: str) -> bool:
+async def is_platform_admin(user_id: str) -> bool:
     """
     Check if user is a platform admin.
 
@@ -220,7 +220,7 @@ def is_platform_admin(user_id: str) -> bool:
 
     try:
         user_repo = UserRepository()
-        user = user_repo.get_user(user_id)
+        user = await user_repo.get_user(user_id)
 
         if user:
             return user.isPlatformAdmin and user.userType.value == "PLATFORM"
@@ -231,7 +231,7 @@ def is_platform_admin(user_id: str) -> bool:
         return False
 
 
-def get_user_org_id(user_id: str) -> str | None:
+async def get_user_org_id(user_id: str) -> str | None:
     """
     Get user's organization ID from database.
 
@@ -242,7 +242,7 @@ def get_user_org_id(user_id: str) -> str | None:
 
     try:
         user_repo = UserRepository()
-        org_id = user_repo.get_user_org_id(user_id)
+        org_id = await user_repo.get_user_org_id(user_id)
 
         if org_id:
             logger.debug(f"User {user_id} belongs to org: {org_id}")
@@ -258,7 +258,7 @@ def get_user_org_id(user_id: str) -> str | None:
 
 # ==================== ORGANIZATION CONTEXT ====================
 
-def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpResponse | None]:
+async def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpResponse | None]:
     """
     Get organization context with security enforcement.
 
@@ -290,7 +290,7 @@ def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpRe
 
     # User authentication
     user_id = principal.user_id
-    is_admin = is_platform_admin(user_id)
+    is_admin = await is_platform_admin(user_id)
     provided_org_id = req.headers.get('X-Organization-Id')
 
     # Platform admin logic
@@ -310,7 +310,7 @@ def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.HttpRe
         )
 
     # Derive org from database
-    org_id = get_user_org_id(user_id)
+    org_id = await get_user_org_id(user_id)
     if not org_id:
         return None, "", _error_response(
             404, "NotFound",

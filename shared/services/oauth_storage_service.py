@@ -9,7 +9,7 @@ from datetime import datetime
 
 from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
 from shared.keyvault import KeyVaultClient
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 from shared.secret_naming import generate_oauth_secret_name
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class OAuthStorageService:
         Args:
             connection_string: Optional Azure Storage connection string override
         """
-        self.config_table = TableStorageService("Config", connection_string or None)
+        self.config_table = AsyncTableStorageService("Config", connection_string or None)
 
         logger.info("OAuthStorageService initialized with Config table only")
 
@@ -128,7 +128,7 @@ class OAuthStorageService:
                 "UpdatedAt": now.isoformat(),
                 "UpdatedBy": created_by
             }
-            self.config_table.insert_entity(client_secret_config)
+            await self.config_table.insert_entity(client_secret_config)
             logger.info(f"Stored client_secret config reference for {request.connection_name}")
         else:
             logger.info(f"No client secret provided (PKCE flow) for {request.connection_name}")
@@ -152,7 +152,7 @@ class OAuthStorageService:
             "UpdatedAt": now.isoformat(),
             "UpdatedBy": created_by
         }
-        self.config_table.insert_entity(metadata_config)
+        await self.config_table.insert_entity(metadata_config)
         logger.info(f"Stored metadata config for {request.connection_name}")
 
         return connection
@@ -176,7 +176,7 @@ class OAuthStorageService:
 
         try:
             # First, try org-specific metadata
-            metadata_entity = self.config_table.get_entity(org_id, metadata_rowkey)
+            metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
 
             if metadata_entity:
                 logger.debug(f"Found org-specific OAuth connection metadata: {connection_name} for org {org_id}")
@@ -184,7 +184,7 @@ class OAuthStorageService:
 
             # If not found, try GLOBAL metadata
             if org_id != "GLOBAL":
-                global_metadata_entity = self.config_table.get_entity("GLOBAL", metadata_rowkey)
+                global_metadata_entity = await self.config_table.get_entity("GLOBAL", metadata_rowkey)
 
                 if global_metadata_entity:
                     logger.debug(f"Found GLOBAL OAuth connection metadata: {connection_name}")
@@ -217,7 +217,7 @@ class OAuthStorageService:
             # Note: Azure Table Storage doesn't support startswith/endswith in filter syntax
             # We'll query all configs for org and filter in Python
             org_query_filter = f"PartitionKey eq '{org_id}' and RowKey ge 'config:oauth_' and RowKey lt 'config:oauth~'"
-            org_metadata_entities = list(self.config_table.query_entities(filter=org_query_filter))
+            org_metadata_entities = list(await self.config_table.query_entities(filter=org_query_filter))
 
             # Process org-specific connections (filter for _metadata suffix)
             for metadata_entity in org_metadata_entities:
@@ -230,7 +230,7 @@ class OAuthStorageService:
             # Add GLOBAL connections if requested
             if include_global and org_id != "GLOBAL":
                 global_query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'config:oauth_' and RowKey lt 'config:oauth~'"
-                global_metadata_entities = list(self.config_table.query_entities(filter=global_query_filter))
+                global_metadata_entities = list(await self.config_table.query_entities(filter=global_query_filter))
 
                 for metadata_entity in global_metadata_entities:
                     if metadata_entity['RowKey'].endswith('_metadata'):
@@ -267,7 +267,7 @@ class OAuthStorageService:
         """
         # Retrieve current metadata
         metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        metadata_entity = self.config_table.get_entity(org_id, metadata_rowkey)
+        metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
 
         if not metadata_entity:
             logger.warning(f"OAuth connection not found for update: {connection_name}")
@@ -301,7 +301,7 @@ class OAuthStorageService:
             "UpdatedBy": updated_by
         }
 
-        self.config_table.upsert_entity(metadata_config)
+        await self.config_table.upsert_entity(metadata_config)
         logger.info(f"Updated OAuth connection metadata: {connection_name}")
 
         return await self._load_oauth_connection_from_config(org_id, connection_name)
@@ -325,7 +325,7 @@ class OAuthStorageService:
 
         try:
             # Fetch metadata
-            metadata_entity = self.config_table.get_entity(org_id, metadata_rowkey)
+            metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
             if not metadata_entity:
                 return None
 
@@ -372,7 +372,7 @@ class OAuthStorageService:
             logger.warning(f"Error loading OAuth connection: {e}")
             return None
 
-    def _fetch_config_secret(
+    async def _fetch_config_secret(
         self,
         org_id: str,
         rowkey: str
@@ -388,7 +388,7 @@ class OAuthStorageService:
             Secret reference or None
         """
         try:
-            secret_entity = self.config_table.get_entity(org_id, rowkey)
+            secret_entity = await self.config_table.get_entity(org_id, rowkey)
             return secret_entity.get('Value') if secret_entity else None
         except Exception:
             return None
@@ -436,7 +436,7 @@ class OAuthStorageService:
 
         for config_key in config_keys:
             try:
-                self.config_table.delete_entity(org_id, config_key)
+                await self.config_table.delete_entity(org_id, config_key)
                 logger.debug(f"Deleted config: {config_key}")
             except Exception as e:
                 logger.warning(f"Failed to delete config {config_key}: {e}")
@@ -486,7 +486,7 @@ class OAuthStorageService:
             oauth_response_rowkey = f"config:oauth_{connection_name}_oauth_response"
             existing_config = None
             try:
-                existing_config = self.config_table.get_entity(org_id, oauth_response_rowkey)
+                existing_config = await self.config_table.get_entity(org_id, oauth_response_rowkey)
             except Exception:
                 # No existing config, will create new secret
                 pass
@@ -523,12 +523,12 @@ class OAuthStorageService:
             "UpdatedBy": updated_by
         }
 
-        self.config_table.upsert_entity(oauth_response_config)
+        await self.config_table.upsert_entity(oauth_response_config)
         logger.info(f"Stored OAuth tokens config reference for {connection_name}")
 
         # Update connection metadata to reflect new status
         metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        metadata_entity = self.config_table.get_entity(org_id, metadata_rowkey)
+        metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
 
         if metadata_entity:
             current_metadata = json.loads(metadata_entity['Value'])
@@ -546,7 +546,7 @@ class OAuthStorageService:
                 "UpdatedBy": updated_by
             }
 
-            self.config_table.upsert_entity(metadata_config)
+            await self.config_table.upsert_entity(metadata_config)
 
         return True
 
@@ -569,7 +569,6 @@ class OAuthStorageService:
             True if refreshed successfully, False otherwise
         """
         from shared.services.oauth_provider import OAuthProviderClient
-        from shared.storage import TableStorageService
         import json
 
         try:
@@ -583,9 +582,8 @@ class OAuthStorageService:
 
             # Get OAuth response config to retrieve current tokens
             # Config table uses RowKey: config:oauth_{connection_name}_oauth_response
-            config_service = TableStorageService("Config")
             oauth_response_key = f"config:oauth_{connection_name}_oauth_response"
-            oauth_response_config = config_service.get_entity(
+            oauth_response_config = await self.config_table.get_entity(
                 connection.org_id,
                 oauth_response_key
             )
@@ -617,7 +615,7 @@ class OAuthStorageService:
                     client_secret_key = f"config:{connection.client_secret_ref}"
 
                     logger.info(f"Looking up client secret with key: {client_secret_key}")
-                    client_secret_config = config_service.get_entity(
+                    client_secret_config = await self.config_table.get_entity(
                         connection.org_id,
                         client_secret_key
                     )
@@ -736,7 +734,7 @@ class OAuthStorageService:
             True if updated successfully
         """
         metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        metadata_entity = self.config_table.get_entity(org_id, metadata_rowkey)
+        metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
 
         if not metadata_entity:
             logger.warning(f"OAuth connection not found for status update: {connection_name}")
@@ -762,7 +760,7 @@ class OAuthStorageService:
             "UpdatedAt": datetime.utcnow().isoformat()
         }
 
-        self.config_table.upsert_entity(metadata_config)
+        await self.config_table.upsert_entity(metadata_config)
         logger.info(f"Updated OAuth connection status: {connection_name} -> {status}")
 
         return True
@@ -795,7 +793,7 @@ class OAuthStorageService:
             "UpdatedBy": updated_by
         }
 
-        self.config_table.upsert_entity(metadata_config)
+        await self.config_table.upsert_entity(metadata_config)
 
     def _entity_to_connection(self, entity: dict) -> OAuthConnection:
         """
@@ -1008,7 +1006,7 @@ class OAuthStorageService:
             if trigger_user:
                 job_status_entity["TriggerUser"] = trigger_user
 
-            self.config_table.upsert_entity(job_status_entity)
+            await self.config_table.upsert_entity(job_status_entity)
 
             # Log summary
             logger.info(
@@ -1048,7 +1046,7 @@ class OAuthStorageService:
                 job_status_entity["TriggerUser"] = trigger_user
 
             try:
-                self.config_table.upsert_entity(job_status_entity)
+                await self.config_table.upsert_entity(job_status_entity)
             except Exception:
                 pass
 

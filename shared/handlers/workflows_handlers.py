@@ -148,7 +148,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Create execution record - skip if transient
         if not transient:
             assert workflow_name is not None
-            exec_logger.create_execution(
+            await exec_logger.create_execution(
                 execution_id=execution_id,
                 org_id=context.org_id,
                 user_id=user_id,
@@ -189,7 +189,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Update execution record - skip if transient
         if not transient:
-            exec_logger.update_execution(
+            await exec_logger.update_execution(
                 execution_id=execution_id,
                 org_id=context.org_id,
                 user_id=user_id,
@@ -245,7 +245,7 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Try to update execution record
         if not transient:
             try:
-                exec_logger.update_execution(
+                await exec_logger.update_execution(
                     execution_id=execution_id,
                     org_id=context.org_id,
                     user_id=user_id,

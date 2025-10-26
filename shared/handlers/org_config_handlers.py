@@ -64,7 +64,7 @@ async def get_config_handler(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Get configs using repository
         config_repo = ConfigRepository(context)
-        configs = config_repo.list_config(include_global=False)  # Only get configs for current scope
+        configs = await config_repo.list_config(include_global=False)  # Only get configs for current scope
 
         # Mask sensitive values
         for config in configs:
@@ -125,7 +125,7 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Check if config exists (for status code determination)
         config_repo = ConfigRepository(context)
-        existing_config = config_repo.get_config(set_request.key, fallback_to_global=False)
+        existing_config = await config_repo.get_config(set_request.key, fallback_to_global=False)
         status_code = 200 if existing_config else 201
 
         # Handle secret_ref type with explicit value vs secretRef
@@ -218,7 +218,7 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
             raise ValueError("Either 'value' or 'secretRef' must be provided")
 
         # Set config using repository
-        config = config_repo.set_config(
+        config = await config_repo.set_config(
             key=set_request.key,
             value=config_value,  # Use potentially modified value (secret name)
             config_type=set_request.type,
@@ -344,7 +344,7 @@ async def delete_config_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Delete config using repository (idempotent - no error if key doesn't exist)
         config_repo = ConfigRepository(context)
-        config_repo.delete_config(key)
+        await config_repo.delete_config(key)
         logger.info(f"Deleted config key '{key}' (scope={context.scope})")
 
         return func.HttpResponse(
@@ -381,7 +381,7 @@ async def get_integrations_handler(req: func.HttpRequest) -> func.HttpResponse:
     try:
         # Get integrations using repository
         config_repo = ConfigRepository(context)
-        integrations = config_repo.list_integrations()
+        integrations = await config_repo.list_integrations()
 
         # Convert to JSON response
         integrations_json = [i.model_dump(mode="json") for i in integrations]
@@ -428,11 +428,11 @@ async def set_integration_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Check if integration exists (for status code determination)
         config_repo = ConfigRepository(context)
-        existing_integration = config_repo.get_integration_config(set_request.type, fallback_to_global=False)
+        existing_integration = await config_repo.get_integration_config(set_request.type, fallback_to_global=False)
         status_code = 200 if existing_integration else 201
 
         # Set integration using repository
-        integration = config_repo.set_integration_config(
+        integration = await config_repo.set_integration_config(
             request=set_request,
             updated_by=context.user_id
         )
@@ -512,7 +512,7 @@ async def delete_integration_handler(req: func.HttpRequest) -> func.HttpResponse
     try:
         # Delete integration using repository (idempotent - no error if doesn't exist)
         config_repo = ConfigRepository(context)
-        config_repo.delete_integration(integration_type)  # Pass string directly - repository handles it
+        await config_repo.delete_integration(integration_type)  # Pass string directly - repository handles it
         logger.info(f"Deleted {integration_type} integration for org {org_id}")
 
         return func.HttpResponse(

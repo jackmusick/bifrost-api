@@ -49,7 +49,7 @@ class UserProvisioningResult:
         return roles
 
 
-def ensure_user_provisioned(
+async def ensure_user_provisioned(
     user_email: str,
     entra_user_id: str | None = None,
     display_name: str | None = None
@@ -91,7 +91,7 @@ def ensure_user_provisioned(
 
     # Strategy 1: If we have Entra ID, look up by that first (most reliable)
     if entra_user_id:
-        user = user_repo.get_user_by_entra_id(entra_user_id)
+        user = await user_repo.get_user_by_entra_id(entra_user_id)
 
         if user:
             logger.info(f"Found user by Entra ID: {user.email}")
@@ -105,7 +105,7 @@ def ensure_user_provisioned(
                     f"User profile changed - email: {user.email} -> {user_email}, "
                     f"name: {user.displayName} -> {display_name}"
                 )
-                updated_user = user_repo.update_user_profile(
+                updated_user = await user_repo.update_user_profile(
                     old_email=user.email,
                     new_email=user_email,
                     display_name=display_name or user.displayName
@@ -115,14 +115,14 @@ def ensure_user_provisioned(
 
             # Update last login
             try:
-                user_repo.update_last_login(user.email)
+                await user_repo.update_last_login(user.email)
             except Exception as e:
                 logger.warning(f"Failed to update last login for {user.email}: {e}")
 
             # Get org_id if ORG user
             org_id = None
             if user.userType == UserType.ORG:
-                org_id = user_repo.get_user_org_id(user.email)
+                org_id = await user_repo.get_user_org_id(user.email)
                 logger.info(f"Retrieved org_id for {user.email}: {org_id}")
 
                 # If ORG user has no org assignment, try to auto-provision by domain
@@ -132,7 +132,7 @@ def ensure_user_provisioned(
                         f"Attempting domain-based auto-provisioning."
                     )
                     try:
-                        org_id = _provision_org_relationship_by_domain(user.email)
+                        org_id = await _provision_org_relationship_by_domain(user.email)
                         logger.info(f"Auto-provisioned org relationship for {user.email} -> {org_id}")
                     except ValueError as e:
                         logger.error(f"Failed to auto-provision org relationship: {e}")
@@ -146,7 +146,7 @@ def ensure_user_provisioned(
             )
 
     # Strategy 2: Look up by email
-    user = user_repo.get_user(user_email)
+    user = await user_repo.get_user(user_email)
 
     if user:
         logger.info(f"Found user by email: {user_email}")
@@ -154,18 +154,18 @@ def ensure_user_provisioned(
         # If we have Entra ID but user doesn't, backfill it
         if entra_user_id and not user.entraUserId:
             logger.info(f"Backfilling Entra ID for {user_email}")
-            user_repo.update_user_entra_id(user_email, entra_user_id)
+            await user_repo.update_user_entra_id(user_email, entra_user_id)
 
         # Update last login
         try:
-            user_repo.update_last_login(user_email)
+            await user_repo.update_last_login(user_email)
         except Exception as e:
             logger.warning(f"Failed to update last login for {user_email}: {e}")
 
         # Get org_id if ORG user
         org_id = None
         if user.userType == UserType.ORG:
-            org_id = user_repo.get_user_org_id(user_email)
+            org_id = await user_repo.get_user_org_id(user_email)
             logger.info(f"Retrieved org_id for {user_email}: {org_id}")
 
             # If ORG user has no org assignment, try to auto-provision by domain
@@ -175,7 +175,7 @@ def ensure_user_provisioned(
                     f"Attempting domain-based auto-provisioning."
                 )
                 try:
-                    org_id = _provision_org_relationship_by_domain(user_email)
+                    org_id = await _provision_org_relationship_by_domain(user_email)
                     logger.info(f"Auto-provisioned org relationship for {user_email} -> {org_id}")
                 except ValueError as e:
                     logger.error(f"Failed to auto-provision org relationship: {e}")
@@ -192,18 +192,18 @@ def ensure_user_provisioned(
     logger.info(f"User {user_email} not found, checking provisioning rules")
 
     # Check if ANY users exist using repository
-    has_users = user_repo.has_any_users()
+    has_users = await user_repo.has_any_users()
     is_first_user = not has_users
 
     if is_first_user:
         # First user in system - create as PlatformAdmin
-        return _create_first_platform_admin(user_email, entra_user_id, display_name)
+        return await _create_first_platform_admin(user_email, entra_user_id, display_name)
 
     # Not first user - try domain-based auto-provisioning
-    return _provision_user_by_domain(user_email, entra_user_id, display_name)
+    return await _provision_user_by_domain(user_email, entra_user_id, display_name)
 
 
-def _create_first_platform_admin(
+async def _create_first_platform_admin(
     user_email: str,
     entra_user_id: str | None = None,
     display_name: str | None = None
@@ -213,7 +213,7 @@ def _create_first_platform_admin(
 
     user_repo = UserRepository()
 
-    _ = user_repo.create_user(
+    _ = await user_repo.create_user(
         email=user_email,
         display_name=display_name or user_email.split("@")[0],
         user_type=UserType.PLATFORM,
@@ -228,7 +228,7 @@ def _create_first_platform_admin(
     )
 
 
-def _provision_user_by_domain(
+async def _provision_user_by_domain(
     user_email: str,
     entra_user_id: str | None = None,
     display_name: str | None = None
@@ -246,7 +246,7 @@ def _provision_user_by_domain(
 
     # Query organizations with matching domain using repository
     org_repo = OrganizationRepository()
-    matched_org = org_repo.get_organization_by_domain(user_domain)
+    matched_org = await org_repo.get_organization_by_domain(user_domain)
 
     if not matched_org:
         logger.warning(f"No organization found with domain: {user_domain}")
@@ -259,7 +259,7 @@ def _provision_user_by_domain(
 
     # Create new ORG user
     user_repo = UserRepository()
-    _ = user_repo.create_user(
+    _ = await user_repo.create_user(
         email=user_email,
         display_name=display_name or user_email.split("@")[0],
         user_type=UserType.ORG,
@@ -270,7 +270,7 @@ def _provision_user_by_domain(
     logger.info(f"Auto-created ORG user: {user_email}")
 
     # Create user-org permission relationship (dual-index pattern)
-    user_repo.assign_user_to_org(
+    await user_repo.assign_user_to_org(
         email=user_email,
         org_id=matched_org.id,
         assigned_by="system"
@@ -283,7 +283,7 @@ def _provision_user_by_domain(
     )
 
 
-def _provision_org_relationship_by_domain(user_email: str) -> str:
+async def _provision_org_relationship_by_domain(user_email: str) -> str:
     """
     Create org relationship for existing user by matching email domain.
 
@@ -305,7 +305,7 @@ def _provision_org_relationship_by_domain(user_email: str) -> str:
     user_repo = UserRepository()
 
     # Check if a relationship already exists (even if not found in previous query)
-    existing_org_id = user_repo.get_user_org_id(user_email)
+    existing_org_id = await user_repo.get_user_org_id(user_email)
 
     if existing_org_id:
         logger.info(f"Found existing relationship for {user_email}: {existing_org_id}")
@@ -313,7 +313,7 @@ def _provision_org_relationship_by_domain(user_email: str) -> str:
 
     # Query organizations with matching domain using repository
     org_repo = OrganizationRepository()
-    matched_org = org_repo.get_organization_by_domain(user_domain)
+    matched_org = await org_repo.get_organization_by_domain(user_domain)
 
     if not matched_org:
         logger.warning(f"No organization found with domain: {user_domain}")
@@ -325,7 +325,7 @@ def _provision_org_relationship_by_domain(user_email: str) -> str:
     logger.info(f"Found matching organization: {matched_org.name} with domain {matched_org.domain}")
 
     # Create user-org permission relationship (dual-index pattern handled by repository)
-    user_repo.assign_user_to_org(
+    await user_repo.assign_user_to_org(
         email=user_email,
         org_id=matched_org.id,
         assigned_by="system"
@@ -336,7 +336,7 @@ def _provision_org_relationship_by_domain(user_email: str) -> str:
     return matched_org.id
 
 
-def _get_user_org_id(email: str) -> str | None:
+async def _get_user_org_id(email: str) -> str | None:
     """
     Look up user's organization ID from Relationships table.
 
@@ -344,7 +344,7 @@ def _get_user_org_id(email: str) -> str | None:
     """
     try:
         user_repo = UserRepository()
-        return user_repo.get_user_org_id(email)
+        return await user_repo.get_user_org_id(email)
     except Exception as e:
         logger.error(f"Error looking up user org: {e}")
         return None

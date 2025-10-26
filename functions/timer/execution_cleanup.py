@@ -44,7 +44,7 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
         execution_repo = ExecutionRepository()
 
         # Get all stuck executions
-        stuck_executions = execution_repo.get_stuck_executions(
+        stuck_executions = await execution_repo.get_stuck_executions(
             pending_timeout_minutes=PENDING_TIMEOUT_MINUTES,
             running_timeout_minutes=RUNNING_TIMEOUT_MINUTES
         )
@@ -96,7 +96,7 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
                 ]
 
                 # Update execution to TIMEOUT status with log
-                exec_logger.update_execution(
+                await exec_logger.update_execution(
                     execution_id=execution.executionId,
                     org_id=org_id,
                     user_id=execution.executedBy,

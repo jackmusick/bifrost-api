@@ -29,7 +29,7 @@ class AuditRepository(BaseRepository):
         """Initialize audit repository without context (uses GLOBAL table)"""
         super().__init__("AuditLog", context=None)
 
-    def log_event(self, event_type: str, data: dict[str, Any]) -> None:
+    async def log_event(self, event_type: str, data: dict[str, Any]) -> None:
         """
         Log an audit event to table storage
 
@@ -44,7 +44,7 @@ class AuditRepository(BaseRepository):
         entity = self._create_entity(event_type, now, data)
 
         try:
-            self.insert(entity)
+            await self.insert(entity)
             logger.info(
                 f"Audit event logged: {event_type}",
                 extra={'event_type': event_type, 'partition_key': entity['PartitionKey']}
@@ -56,7 +56,7 @@ class AuditRepository(BaseRepository):
             )
             raise
 
-    def log_function_key_access(
+    async def log_function_key_access(
         self,
         key_id: str,
         key_name: str,
@@ -82,7 +82,7 @@ class AuditRepository(BaseRepository):
             status_code: HTTP response status
             details: Additional context (JSON-serializable)
         """
-        self.log_event(
+        await self.log_event(
             event_type="function_key_access",
             data={
                 "KeyId": key_id,
@@ -97,7 +97,7 @@ class AuditRepository(BaseRepository):
             }
         )
 
-    def log_cross_org_access(
+    async def log_cross_org_access(
         self,
         user_id: str,
         target_org_id: str,
@@ -119,7 +119,7 @@ class AuditRepository(BaseRepository):
             status_code: HTTP response status
             details: Additional context (reason, support ticket, etc.)
         """
-        self.log_event(
+        await self.log_event(
             event_type="cross_org_access",
             data={
                 "UserId": user_id,
@@ -132,7 +132,7 @@ class AuditRepository(BaseRepository):
             }
         )
 
-    def log_import_violation_attempt(
+    async def log_import_violation_attempt(
         self,
         blocked_module: str,
         workspace_file: str,
@@ -146,7 +146,7 @@ class AuditRepository(BaseRepository):
             workspace_file: Source file that attempted import
             stack_trace: Python stack trace (file:line format)
         """
-        self.log_event(
+        await self.log_event(
             event_type="engine_violation_attempt",
             data={
                 "BlockedModule": blocked_module,
@@ -157,7 +157,7 @@ class AuditRepository(BaseRepository):
             }
         )
 
-    def query_by_date_range(
+    async def query_by_date_range(
         self,
         start_date: datetime,
         end_date: datetime,
@@ -188,7 +188,7 @@ class AuditRepository(BaseRepository):
                 filter_query += f" and EventType eq '{event_type}'"
 
             # Query this partition
-            results.extend(list(self.query(filter_query)))
+            results.extend(await self.query(filter_query))
 
             # Move to next day
             from datetime import timedelta

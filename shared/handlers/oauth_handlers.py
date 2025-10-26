@@ -20,7 +20,7 @@ from shared.services.oauth_provider import OAuthProviderClient
 from shared.services.oauth_storage_service import OAuthStorageService
 from shared.services.oauth_test_service import OAuthTestService
 from shared.keyvault import KeyVaultClient
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 from shared.custom_types import get_context, get_route_param
 from shared.handlers.response_helpers import (
     success_response,
@@ -69,9 +69,9 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                 # Get client secret from Key Vault
                 client_secret = None
                 if connection.client_secret_ref:
-                    config_service = TableStorageService("Config")
+                    config_service = AsyncTableStorageService("Config")
                     client_secret_key = f"config:{connection.client_secret_ref}"
-                    client_secret_config = config_service.get_entity(
+                    client_secret_config = await config_service.get_entity(
                         connection.org_id,
                         client_secret_key
                     )
@@ -468,9 +468,9 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         if connection.client_secret_ref:
             try:
                 # Get client secret config entry to retrieve Key Vault secret name
-                config_service = TableStorageService("Config")
+                config_service = AsyncTableStorageService("Config")
                 client_secret_key = f"config:{connection.client_secret_ref}"
-                client_secret_config = config_service.get_entity(
+                client_secret_config = await config_service.get_entity(
                     connection.org_id,
                     client_secret_key
                 )
@@ -626,10 +626,10 @@ async def get_oauth_refresh_job_status_handler(req: func.HttpRequest) -> func.Ht
 
     try:
         # Get job status from Config table
-        config_service = TableStorageService("Config")
+        config_service = AsyncTableStorageService("Config")
 
         try:
-            job_status = config_service.get_entity("SYSTEM", "jobstatus:TokenRefreshJob")
+            job_status = await config_service.get_entity("SYSTEM", "jobstatus:TokenRefreshJob")
 
             if job_status:
                 # Convert to dict and remove Azure Table metadata

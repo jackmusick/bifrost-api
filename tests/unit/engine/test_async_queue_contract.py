@@ -7,7 +7,7 @@ without depending on actual Azure Queue Storage infrastructure.
 
 import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.context import ExecutionContext, Organization
@@ -30,8 +30,8 @@ class TestQueueMessageCreation:
         mock_get_queue_client.return_value = mock_queue_client
 
         mock_exec_logger = MagicMock()
-        mock_exec_logger.create_execution = MagicMock()
-        mock_exec_logger.update_execution = MagicMock()
+        mock_exec_logger.create_execution = AsyncMock()
+        mock_exec_logger.update_execution = AsyncMock()
         mock_get_logger.return_value = mock_exec_logger
 
         # Create execution context
@@ -90,8 +90,8 @@ class TestQueueMessageCreation:
         mock_get_queue_client.return_value = mock_queue_client
 
         mock_exec_logger = MagicMock()
-        mock_exec_logger.create_execution = MagicMock()
-        mock_exec_logger.update_execution = MagicMock()
+        mock_exec_logger.create_execution = AsyncMock()
+        mock_exec_logger.update_execution = AsyncMock()
         mock_get_logger.return_value = mock_exec_logger
 
         org = Organization(id="test-org", name="Test Org", is_active=True)
@@ -137,8 +137,8 @@ class TestQueueMessageCreation:
         mock_get_queue_client.return_value = mock_queue_client
 
         mock_exec_logger = MagicMock()
-        mock_exec_logger.create_execution = MagicMock()
-        mock_exec_logger.update_execution = MagicMock()
+        mock_exec_logger.create_execution = AsyncMock()
+        mock_exec_logger.update_execution = AsyncMock()
         mock_get_logger.return_value = mock_exec_logger
 
         org = Organization(id="test-org", name="Test Org", is_active=True)
@@ -182,8 +182,8 @@ class TestQueueMessageCreation:
         mock_get_queue_client.return_value = mock_queue_client
 
         mock_exec_logger = MagicMock()
-        mock_exec_logger.create_execution = MagicMock()
-        mock_exec_logger.update_execution = MagicMock()
+        mock_exec_logger.create_execution = AsyncMock()
+        mock_exec_logger.update_execution = AsyncMock()
         mock_get_logger.return_value = mock_exec_logger
 
         org = Organization(id="test-org", name="Test Org", is_active=True)
@@ -226,8 +226,8 @@ class TestQueueMessageCreation:
         mock_get_queue_client.return_value = mock_queue_client
 
         mock_exec_logger = MagicMock()
-        mock_exec_logger.create_execution = MagicMock()
-        mock_exec_logger.update_execution = MagicMock()
+        mock_exec_logger.create_execution = AsyncMock()
+        mock_exec_logger.update_execution = AsyncMock()
         mock_get_logger.return_value = mock_exec_logger
 
         org = Organization(id="test-org", name="Test Org", is_active=True)

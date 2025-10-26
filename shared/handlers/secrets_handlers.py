@@ -20,7 +20,7 @@ from shared.models import (
     SecretUpdateRequest,
 )
 from shared.context import ExecutionContext, Organization
-from shared.storage import get_table_service
+from shared.async_storage import get_async_table_service
 from shared.validation import check_key_vault_available
 
 logger = logging.getLogger(__name__)
@@ -236,7 +236,7 @@ async def handle_update_secret(
     return response
 
 
-def _find_secret_dependencies(
+async def _find_secret_dependencies(
     context: ExecutionContext, secret_name: str, org_id: str
 ) -> list[dict[str, Any]]:
     """
@@ -265,11 +265,9 @@ def _find_secret_dependencies(
                 is_function_key=context.is_function_key,
                 execution_id=context.execution_id,
             )
-            config_service = get_table_service("Config", global_context)
-            global_configs = list(
-                config_service.query_entities(
-                    filter="RowKey ge 'config:' and RowKey lt 'config;'"
-                )
+            config_service = get_async_table_service("Config", global_context)
+            global_configs = await config_service.query_entities(
+                filter="RowKey ge 'config:' and RowKey lt 'config;'"
             )
             for config in global_configs:
                 if (
@@ -300,11 +298,9 @@ def _find_secret_dependencies(
                     is_function_key=context.is_function_key,
                     execution_id=context.execution_id,
                 )
-                config_service = get_table_service("Config", org_context)
-                org_configs = list(
-                    config_service.query_entities(
-                        filter="RowKey ge 'config:' and RowKey lt 'config;'"
-                    )
+                config_service = get_async_table_service("Config", org_context)
+                org_configs = await config_service.query_entities(
+                    filter="RowKey ge 'config:' and RowKey lt 'config;'"
                 )
                 for config in org_configs:
                     if (
@@ -372,7 +368,7 @@ async def handle_delete_secret(
     secret_key = parts[1]
 
     # Check for dependencies
-    dependencies = _find_secret_dependencies(context, secret_name, org_id)
+    dependencies = await _find_secret_dependencies(context, secret_name, org_id)
 
     if dependencies:
         dep_list = [f"Config: {dep['key']} ({dep['scope']})" for dep in dependencies]

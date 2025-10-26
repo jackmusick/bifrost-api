@@ -373,7 +373,7 @@ def with_request_context(handler):
     async def wrapper(req: func.HttpRequest):
         try:
             # Get request context
-            context = get_request_context(req)
+            context = await get_request_context(req)
 
             # Safety check: ensure context is not None
             if context is None:

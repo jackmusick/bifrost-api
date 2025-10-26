@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
+async def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
     """
     Check if user can view a form.
 
@@ -44,7 +44,7 @@ def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
     """
     # Get form using repository (handles GLOBAL fallback automatically)
     form_repo = FormRepository(context)
-    form = form_repo.get_form(form_id)
+    form = await form_repo.get_form(form_id)
 
     if not form:
         return False
@@ -65,15 +65,15 @@ def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
         return True
     elif access_level == "role_based":
         # Check role membership
-        user_roles = get_user_role_ids(context.user_id)
-        form_roles = get_form_role_ids(form_id)
+        user_roles = await get_user_role_ids(context.user_id)
+        form_roles = await get_form_role_ids(form_id)
         return any(role in form_roles for role in user_roles)
     # Future: handle "public" for unauthenticated access
 
     return False
 
 
-def can_user_execute_form(context: ExecutionContext, form_id: str) -> bool:
+async def can_user_execute_form(context: ExecutionContext, form_id: str) -> bool:
     """
     Check if user can execute a form.
 
@@ -86,10 +86,10 @@ def can_user_execute_form(context: ExecutionContext, form_id: str) -> bool:
     Returns:
         True if user can execute form, False otherwise
     """
-    return can_user_view_form(context, form_id)
+    return await can_user_view_form(context, form_id)
 
 
-def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
+async def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
     """
     Get all forms visible to the user (filtered by permissions).
 
@@ -110,15 +110,15 @@ def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
     # Platform admin sees all forms (including inactive) in their current scope (set by X-Organization-Id)
     if context.is_platform_admin:
         # Admin can see all forms (active and inactive) in their scope
-        forms = form_repo.list_forms(include_global=False, active_only=False)
+        forms = await form_repo.list_forms(include_global=False, active_only=False)
         # Convert Form models to dicts for backward compatibility (JSON-serializable)
         return [form.model_dump(mode="json") for form in forms]
 
     # Regular user: Get forms with GLOBAL fallback and filter to active only
-    all_forms = form_repo.list_forms(include_global=True, active_only=True)
+    all_forms = await form_repo.list_forms(include_global=True, active_only=True)
 
     # Get user's role IDs once for efficiency
-    user_role_ids = get_user_role_ids(context.user_id)
+    user_role_ids = await get_user_role_ids(context.user_id)
 
     # Filter forms by access level
     visible_forms = []
@@ -130,7 +130,7 @@ def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
             visible_forms.append(form)
         elif access_level == "role_based":
             # Check if user has any of the roles assigned to this form
-            form_role_ids = get_form_role_ids(form.id)
+            form_role_ids = await get_form_role_ids(form.id)
             if any(role_id in form_role_ids for role_id in user_role_ids):
                 visible_forms.append(form)
 
@@ -163,7 +163,7 @@ def can_user_view_execution(context: ExecutionContext, execution_entity: dict) -
     return executed_by == context.user_id
 
 
-def get_user_executions(context: ExecutionContext, limit: int | None = None) -> list[dict]:
+async def get_user_executions(context: ExecutionContext, limit: int | None = None) -> list[dict]:
     """
     Get executions visible to the user.
 
@@ -182,10 +182,10 @@ def get_user_executions(context: ExecutionContext, limit: int | None = None) -> 
 
     if context.is_platform_admin:
         # Platform admin sees all executions in scope
-        executions = exec_repo.list_executions(limit=limit or 1000)
+        executions = await exec_repo.list_executions(limit=limit or 1000)
     else:
         # Regular user sees only their executions (using optimized user index)
-        executions = exec_repo.list_executions_by_user(
+        executions = await exec_repo.list_executions_by_user(
             user_id=context.user_id,
             limit=limit or 50
         )
@@ -194,7 +194,7 @@ def get_user_executions(context: ExecutionContext, limit: int | None = None) -> 
     return [execution.model_dump() for execution in executions]
 
 
-def get_user_role_ids(user_id: str, role_repository: RoleRepository | None = None) -> list[str]:
+async def get_user_role_ids(user_id: str, role_repository: RoleRepository | None = None) -> list[str]:
     """
     Get all role IDs (UUIDs) assigned to a user.
 
@@ -208,10 +208,10 @@ def get_user_role_ids(user_id: str, role_repository: RoleRepository | None = Non
     if role_repository is None:
         role_repository = RoleRepository()
 
-    return role_repository.get_user_role_ids(user_id)
+    return await role_repository.get_user_role_ids(user_id)
 
 
-def get_form_role_ids(form_id: str, role_repository: RoleRepository | None = None) -> list[str]:
+async def get_form_role_ids(form_id: str, role_repository: RoleRepository | None = None) -> list[str]:
     """
     Get all role IDs (UUIDs) that can access a form.
 
@@ -225,4 +225,4 @@ def get_form_role_ids(form_id: str, role_repository: RoleRepository | None = Non
     if role_repository is None:
         role_repository = RoleRepository()
 
-    return role_repository.get_form_role_ids(form_id)
+    return await role_repository.get_form_role_ids(form_id)

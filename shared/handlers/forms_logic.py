@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def list_forms_logic(context: 'ExecutionContext') -> list[Form]:
+async def list_forms_logic(context: 'ExecutionContext') -> list[Form]:
     """
     List all forms for current organization (business logic).
 
@@ -31,14 +31,14 @@ def list_forms_logic(context: 'ExecutionContext') -> list[Form]:
     logger.info(f"User {context.user_id} listing forms for org {context.org_id}")
 
     repo = FormRepository(context)
-    forms = repo.list_forms()
+    forms = await repo.list_forms()
 
     logger.info(f"Returning {len(forms)} forms for org {context.org_id}")
 
     return forms
 
 
-def get_form_logic(context: 'ExecutionContext', form_id: str) -> Form | None:
+async def get_form_logic(context: 'ExecutionContext', form_id: str) -> Form | None:
     """
     Get form by ID (business logic).
 
@@ -52,7 +52,7 @@ def get_form_logic(context: 'ExecutionContext', form_id: str) -> Form | None:
     logger.info(f"User {context.user_id} getting form {form_id}")
 
     repo = FormRepository(context)
-    form = repo.get_form(form_id)
+    form = await repo.get_form(form_id)
 
     if not form:
         logger.warning(f"Form {form_id} not found in org {context.org_id}")

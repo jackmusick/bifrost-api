@@ -13,7 +13,7 @@ from croniter import croniter
 from shared.async_executor import enqueue_workflow_execution
 from shared.registry import get_registry
 from shared.context import ExecutionContext
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 from shared.workflows.cron_parser import calculate_next_run, is_cron_expression_valid
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
     start_time = datetime.utcnow()
     logger.info(f"Schedule processor started at {start_time.isoformat()}")
 
-    config_service = TableStorageService("Config")
+    config_service = AsyncTableStorageService("Config")
     results = {
         "total_schedules": 0,
         "executed": 0,
@@ -86,10 +86,10 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
 
                     # Delete existing schedule state if it exists (clean up old invalid schedules)
                     row_key = f"schedule:{workflow_name}"
-                    existing_schedule = config_service.get_entity("GLOBAL", row_key)
+                    existing_schedule = await config_service.get_entity("GLOBAL", row_key)
                     if existing_schedule:
                         logger.info(f"Removing schedule state for {workflow_name} due to invalid CRON expression")
-                        config_service.delete_entity("GLOBAL", row_key)
+                        await config_service.delete_entity("GLOBAL", row_key)
 
                     continue
 
@@ -115,7 +115,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
 
                 # Get or initialize schedule state in Config table
                 row_key = f"schedule:{workflow_name}"
-                schedule_state = config_service.get_entity("GLOBAL", row_key)
+                schedule_state = await config_service.get_entity("GLOBAL", row_key)
 
                 if not schedule_state:
                     # Initialize new schedule
@@ -133,7 +133,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                         "ExecutionCount": 0,
                         "CreatedAt": now.isoformat()
                     }
-                    config_service.upsert_entity(schedule_entity)
+                    await config_service.upsert_entity(schedule_entity)
                     results["updated"] += 1
                     continue
 
@@ -158,7 +158,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                     schedule_state["WorkflowName"] = workflow_description
                     schedule_state["CronExpression"] = cron_expression
                     schedule_state["NextRunAt"] = next_run_at.isoformat()
-                    config_service.upsert_entity(schedule_state)
+                    await config_service.upsert_entity(schedule_state)
                     results["updated"] += 1
 
                 # Check if it's time to execute
@@ -172,7 +172,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                         schedule_state["NextRunAt"] = new_next_run.isoformat()
 
                         # Try to update with ETag - if another scheduler already claimed it, this will fail
-                        config_service.update_entity_with_etag(schedule_state)
+                        await config_service.update_entity_with_etag(schedule_state)
 
                         logger.info(
                             f"Claimed execution slot for {workflow_name}: next run updated to {new_next_run.isoformat()}"
@@ -235,7 +235,7 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
                         # Use regular upsert since we don't need ETag here (already claimed)
                         # Remove etag to avoid validation issues
                         schedule_state.pop("etag", None)
-                        config_service.upsert_entity(schedule_state)
+                        await config_service.upsert_entity(schedule_state)
 
                         results["executed"] += 1
 

@@ -4,8 +4,9 @@ Tests the dual lookup strategy: Entra ID first, then email
 """
 
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 
 from shared.models import User, UserType
 from shared.user_provisioning import ensure_user_provisioned
@@ -15,7 +16,8 @@ class TestEntraIdLookupStrategy:
     """Test Entra ID lookup takes precedence over email"""
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_lookup_by_entra_id_finds_user(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_lookup_by_entra_id_finds_user(self, mock_repo_class):
         """When Entra ID provided, lookup by Entra ID first"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -30,10 +32,10 @@ class TestEntraIdLookupStrategy:
             createdAt=datetime.utcnow(),
             entraUserId="entra-123"
         )
-        mock_repo.get_user_by_entra_id.return_value = mock_user
-        mock_repo.get_user_org_id.return_value = "org-123"
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=mock_user)
+        mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
 
-        result = ensure_user_provisioned(
+        result = await ensure_user_provisioned(
             user_email="user@example.com",
             entra_user_id="entra-123"
         )
@@ -44,7 +46,8 @@ class TestEntraIdLookupStrategy:
         assert result.was_created is False
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_fallback_to_email_when_entra_not_found(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_fallback_to_email_when_entra_not_found(self, mock_repo_class):
         """If Entra ID lookup fails, fall back to email lookup"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -59,11 +62,13 @@ class TestEntraIdLookupStrategy:
             createdAt=datetime.utcnow(),
             entraUserId=None
         )
-        mock_repo.get_user_by_entra_id.return_value = None
-        mock_repo.get_user.return_value = mock_user
-        mock_repo.get_user_org_id.return_value = "org-123"
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=None)
+        mock_repo.get_user = AsyncMock(return_value=mock_user)
+        mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
+        mock_repo.update_last_login = AsyncMock()
+        mock_repo.update_user_entra_id = AsyncMock()
 
-        result = ensure_user_provisioned(
+        result = await ensure_user_provisioned(
             user_email="user@example.com",
             entra_user_id="entra-123"
         )
@@ -78,7 +83,8 @@ class TestEntraIdBackfill:
     """Test backfilling Entra ID when user found by email"""
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_backfill_entra_id_when_missing(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_backfill_entra_id_when_missing(self, mock_repo_class):
         """When user found by email but no Entra ID, backfill it"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -93,10 +99,12 @@ class TestEntraIdBackfill:
             createdAt=datetime.utcnow(),
             entraUserId=None  # No Entra ID stored
         )
-        mock_repo.get_user_by_entra_id.return_value = None
-        mock_repo.get_user.return_value = mock_user
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=None)
+        mock_repo.get_user = AsyncMock(return_value=mock_user)
+        mock_repo.update_user_entra_id = AsyncMock()
+        mock_repo.update_last_login = AsyncMock()
 
-        ensure_user_provisioned(
+        await ensure_user_provisioned(
             user_email="user@example.com",
             entra_user_id="entra-new-123"
         )
@@ -108,7 +116,8 @@ class TestEntraIdBackfill:
         )
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_no_backfill_when_entra_id_exists(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_no_backfill_when_entra_id_exists(self, mock_repo_class):
         """When user has Entra ID, don't backfill"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -123,10 +132,12 @@ class TestEntraIdBackfill:
             createdAt=datetime.utcnow(),
             entraUserId="entra-existing"
         )
-        mock_repo.get_user_by_entra_id.return_value = None
-        mock_repo.get_user.return_value = mock_user
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=None)
+        mock_repo.get_user = AsyncMock(return_value=mock_user)
+        mock_repo.update_user_entra_id = AsyncMock()
+        mock_repo.update_last_login = AsyncMock()
 
-        ensure_user_provisioned(
+        await ensure_user_provisioned(
             user_email="user@example.com",
             entra_user_id="entra-new-123"
         )
@@ -139,7 +150,8 @@ class TestProfileUpdates:
     """Test profile updates when matched by Entra ID"""
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_update_email_when_changed(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_update_email_when_changed(self, mock_repo_class):
         """When email changes, update user profile"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -164,11 +176,12 @@ class TestProfileUpdates:
             createdAt=datetime.utcnow(),
             entraUserId="entra-123"
         )
-        mock_repo.get_user_by_entra_id.return_value = old_user
-        mock_repo.update_user_profile.return_value = updated_user
-        mock_repo.get_user_org_id.return_value = "org-123"
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=old_user)
+        mock_repo.update_user_profile = AsyncMock(return_value=updated_user)
+        mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
+        mock_repo.update_last_login = AsyncMock()
 
-        ensure_user_provisioned(
+        await ensure_user_provisioned(
             user_email="new@example.com",
             entra_user_id="entra-123",
             display_name="Test User"
@@ -182,7 +195,8 @@ class TestProfileUpdates:
         )
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_update_display_name_when_changed(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_update_display_name_when_changed(self, mock_repo_class):
         """When display name changes, update user profile"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -207,11 +221,12 @@ class TestProfileUpdates:
             createdAt=datetime.utcnow(),
             entraUserId="entra-123"
         )
-        mock_repo.get_user_by_entra_id.return_value = old_user
-        mock_repo.update_user_profile.return_value = updated_user
-        mock_repo.get_user_org_id.return_value = "org-123"
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=old_user)
+        mock_repo.update_user_profile = AsyncMock(return_value=updated_user)
+        mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
+        mock_repo.update_last_login = AsyncMock()
 
-        ensure_user_provisioned(
+        await ensure_user_provisioned(
             user_email="user@example.com",
             entra_user_id="entra-123",
             display_name="New Name"
@@ -225,7 +240,8 @@ class TestProfileUpdates:
         )
 
     @patch("shared.user_provisioning.UserRepository")
-    def test_no_update_when_profile_unchanged(self, mock_repo_class):
+    @pytest.mark.asyncio
+    async def test_no_update_when_profile_unchanged(self, mock_repo_class):
         """When profile unchanged, don't update"""
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
@@ -240,10 +256,11 @@ class TestProfileUpdates:
             createdAt=datetime.utcnow(),
             entraUserId="entra-123"
         )
-        mock_repo.get_user_by_entra_id.return_value = mock_user
-        mock_repo.get_user_org_id.return_value = "org-123"
+        mock_repo.get_user_by_entra_id = AsyncMock(return_value=mock_user)
+        mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
+        mock_repo.update_last_login = AsyncMock()
 
-        ensure_user_provisioned(
+        await ensure_user_provisioned(
             user_email="user@example.com",
             entra_user_id="entra-123",
             display_name="Test User"
@@ -258,16 +275,30 @@ class TestNewUserCreationWithEntraId:
 
     @patch("shared.user_provisioning.OrganizationRepository")
     @patch("shared.user_provisioning.UserRepository")
-    def test_create_first_user_with_entra_id(self, mock_user_repo_class, mock_org_repo_class):
+    @pytest.mark.asyncio
+    async def test_create_first_user_with_entra_id(self, mock_user_repo_class, mock_org_repo_class):
         """First user created with Entra ID stored"""
         mock_user_repo = Mock()
         mock_user_repo_class.return_value = mock_user_repo
 
-        mock_user_repo.get_user_by_entra_id.return_value = None
-        mock_user_repo.get_user.return_value = None
-        mock_user_repo.has_any_users.return_value = False
+        mock_user_repo.get_user_by_entra_id = AsyncMock(return_value=None)
+        mock_user_repo.get_user = AsyncMock(return_value=None)
+        mock_user_repo.has_any_users = AsyncMock(return_value=False)
 
-        result = ensure_user_provisioned(
+        # Mock the create_user to return a user
+        created_user = User(
+            id="first@example.com",
+            email="first@example.com",
+            displayName="First User",
+            userType=UserType.PLATFORM,
+            isPlatformAdmin=True,
+            isActive=True,
+            createdAt=datetime.utcnow(),
+            entraUserId="entra-first"
+        )
+        mock_user_repo.create_user = AsyncMock(return_value=created_user)
+
+        result = await ensure_user_provisioned(
             user_email="first@example.com",
             entra_user_id="entra-first",
             display_name="First User"
@@ -286,7 +317,8 @@ class TestNewUserCreationWithEntraId:
 
     @patch("shared.user_provisioning.OrganizationRepository")
     @patch("shared.user_provisioning.UserRepository")
-    def test_create_org_user_with_entra_id(self, mock_user_repo_class, mock_org_repo_class):
+    @pytest.mark.asyncio
+    async def test_create_org_user_with_entra_id(self, mock_user_repo_class, mock_org_repo_class):
         """New org user created with Entra ID"""
         from shared.models import Organization
 
@@ -305,12 +337,26 @@ class TestNewUserCreationWithEntraId:
             updatedAt=datetime.utcnow()
         )
 
-        mock_user_repo.get_user_by_entra_id.return_value = None
-        mock_user_repo.get_user.return_value = None
-        mock_user_repo.has_any_users.return_value = True
-        mock_org_repo.get_organization_by_domain.return_value = mock_org
+        # Mock the created user
+        created_user = User(
+            id="new@example.com",
+            email="new@example.com",
+            displayName="New User",
+            userType=UserType.ORG,
+            isPlatformAdmin=False,
+            isActive=True,
+            createdAt=datetime.utcnow(),
+            entraUserId="entra-new"
+        )
 
-        result = ensure_user_provisioned(
+        mock_user_repo.get_user_by_entra_id = AsyncMock(return_value=None)
+        mock_user_repo.get_user = AsyncMock(return_value=None)
+        mock_user_repo.has_any_users = AsyncMock(return_value=True)
+        mock_org_repo.get_organization_by_domain = AsyncMock(return_value=mock_org)
+        mock_user_repo.create_user = AsyncMock(return_value=created_user)
+        mock_user_repo.assign_user_to_org = AsyncMock()
+
+        result = await ensure_user_provisioned(
             user_email="new@example.com",
             entra_user_id="entra-new",
             display_name="New User"

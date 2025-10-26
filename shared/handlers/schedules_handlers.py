@@ -13,7 +13,7 @@ from shared.async_executor import enqueue_workflow_execution
 from shared.models import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
 from shared.registry import get_registry
 from shared.context import ExecutionContext
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
     """
     logger.info("Processing all due schedules (manual trigger)")
 
-    config_service = TableStorageService("Config")
+    config_service = AsyncTableStorageService("Config")
     registry = get_registry()
     context: ExecutionContext = req.context  # type: ignore[attr-defined]
 
@@ -67,7 +67,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
 
             # Get schedule state
             row_key = f"schedule:{workflow_name}"
-            schedule_state = config_service.get_entity("GLOBAL", row_key)
+            schedule_state = await config_service.get_entity("GLOBAL", row_key)
 
             if not schedule_state:
                 # Not initialized yet, skip
@@ -115,7 +115,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
                     schedule_state.get("ExecutionCount", 0)
                 ) + 1
                 schedule_state["NextRunAt"] = next_run_at.isoformat()
-                config_service.upsert_entity(schedule_state)
+                await config_service.upsert_entity(schedule_state)
 
                 results["executed"] += 1
 
@@ -175,7 +175,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
     """
     logger.info("Retrieving scheduled workflows")
 
-    config_service = TableStorageService("Config")
+    config_service = AsyncTableStorageService("Config")
     registry = get_registry()
 
     # Get all workflows from registry
@@ -194,7 +194,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
 
             # Get schedule state from storage
             row_key = f"schedule:{workflow_name}"
-            schedule_state = config_service.get_entity("GLOBAL", row_key)
+            schedule_state = await config_service.get_entity("GLOBAL", row_key)
 
             # Build schedule info from metadata and storage state
             next_run_at = None
@@ -329,7 +329,7 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
     """
     logger.info(f"Manually triggering scheduled workflow: {workflow_name}")
 
-    config_service = TableStorageService("Config")
+    config_service = AsyncTableStorageService("Config")
     registry = get_registry()
 
     # Get workflow from registry
@@ -384,7 +384,7 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
 
         # Update schedule state (same as schedule processor)
         row_key = f"schedule:{workflow_name}"
-        schedule_state = config_service.get_entity("GLOBAL", row_key)
+        schedule_state = await config_service.get_entity("GLOBAL", row_key)
 
         if schedule_state:
             now = datetime.utcnow()
@@ -396,7 +396,7 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
                 schedule_state.get("ExecutionCount", 0)
             ) + 1
             schedule_state["NextRunAt"] = next_run_at.isoformat()
-            config_service.upsert_entity(schedule_state)
+            await config_service.upsert_entity(schedule_state)
 
         # Return execution response
         response = WorkflowExecutionResponse(

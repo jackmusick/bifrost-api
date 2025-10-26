@@ -51,7 +51,7 @@ class ScopedRepository(BaseRepository):
         self.org_id = context.org_id or "GLOBAL"
         self.scope = context.scope  # May be different from org_id for admins
 
-    def get_with_fallback(self, row_key: str) -> dict | None:
+    async def get_with_fallback(self, row_key: str) -> dict | None:
         """
         Try org partition first, fallback to GLOBAL if not found
 
@@ -66,14 +66,14 @@ class ScopedRepository(BaseRepository):
 
         Example:
             # User from org "acme-corp" looking up form "abc-123"
-            form = repo.get_with_fallback("form:abc-123")
+            form = await repo.get_with_fallback("form:abc-123")
 
             # Tries:
             # 1. acme-corp/form:abc-123 (org-specific form)
             # 2. GLOBAL/form:abc-123 (global form)
         """
         # Try org-specific first
-        entity = self.get_by_id(self.scope, row_key)
+        entity = await self.get_by_id(self.scope, row_key)
 
         if entity:
             logger.debug(
@@ -83,7 +83,7 @@ class ScopedRepository(BaseRepository):
 
         # Fallback to GLOBAL if not already GLOBAL
         if self.scope != "GLOBAL":
-            entity = self.get_by_id("GLOBAL", row_key)
+            entity = await self.get_by_id("GLOBAL", row_key)
 
             if entity:
                 logger.debug(
@@ -96,7 +96,7 @@ class ScopedRepository(BaseRepository):
         )
         return None
 
-    def query_with_fallback(
+    async def query_with_fallback(
         self,
         row_key_prefix: str,
         additional_filter: str | None = None,
@@ -118,7 +118,7 @@ class ScopedRepository(BaseRepository):
 
         Example:
             # List all forms visible to user in org "acme-corp"
-            forms = repo.query_with_fallback("form:", additional_filter="IsActive eq true")
+            forms = await repo.query_with_fallback("form:", additional_filter="IsActive eq true")
 
             # Returns:
             # - All forms in acme-corp partition
@@ -140,7 +140,7 @@ class ScopedRepository(BaseRepository):
         # Query org partition
         org_filter = f"PartitionKey eq '{self.scope}' and {base_filter}"
 
-        for entity in self.query(org_filter, select=select):
+        for entity in await self.query(org_filter, select=select):
             row_key = entity['RowKey']
             if row_key not in seen_row_keys:
                 results.append(entity)
@@ -150,7 +150,7 @@ class ScopedRepository(BaseRepository):
         if self.scope != "GLOBAL":
             global_filter = f"PartitionKey eq 'GLOBAL' and {base_filter}"
 
-            for entity in self.query(global_filter, select=select):
+            for entity in await self.query(global_filter, select=select):
                 row_key = entity['RowKey']
                 if row_key not in seen_row_keys:
                     results.append(entity)
@@ -163,7 +163,7 @@ class ScopedRepository(BaseRepository):
 
         return results
 
-    def query_org_only(
+    async def query_org_only(
         self,
         row_key_prefix: str,
         additional_filter: str | None = None,
@@ -190,9 +190,9 @@ class ScopedRepository(BaseRepository):
         if additional_filter:
             base_filter = f"{base_filter} and {additional_filter}"
 
-        return list(self.query(base_filter, select=select))
+        return await self.query(base_filter, select=select)
 
-    def query_global_only(
+    async def query_global_only(
         self,
         row_key_prefix: str,
         additional_filter: str | None = None,
@@ -219,4 +219,4 @@ class ScopedRepository(BaseRepository):
         if additional_filter:
             base_filter = f"{base_filter} and {additional_filter}"
 
-        return list(self.query(base_filter, select=select))
+        return await self.query(base_filter, select=select)

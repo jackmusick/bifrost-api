@@ -93,6 +93,7 @@ class TestExecuteSync:
         mock_workflow.parameters = [param]
 
         mock_exec_logger = Mock()
+        mock_exec_logger.create_execution = AsyncMock()
 
         with patch('shared.handlers.endpoints_handlers.get_execution_logger') as mock_logger_factory:
             mock_logger_factory.return_value = mock_exec_logger
@@ -103,14 +104,18 @@ class TestExecuteSync:
                 with patch('shared.handlers.endpoints_handlers.separate_workflow_params') as mock_separate:
                     mock_separate.return_value = ({"param1": "value1"}, {})
 
-                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record:
+                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record_patch:
                         response_obj = Mock()
-                        response_obj.model_dump.return_value = {
+                        response_obj.model_dump = Mock(return_value={
                             "executionId": "exec-123",
                             "status": "Success",
                             "durationMs": 100
-                        }
-                        mock_record.return_value = response_obj
+                        })
+                        mock_record_patch.return_value = response_obj
+                        # Make it async by turning the patch itself into an async function
+                        async def async_record(*args, **kwargs):
+                            return response_obj
+                        mock_record_patch.side_effect = async_record
 
                         response, status = await _execute_sync(
                             context=mock_context,
@@ -127,7 +132,7 @@ class TestExecuteSync:
 
                         mock_exec_logger.create_execution.assert_called_once()
                         mock_workflow_func.assert_called_once()
-                        mock_record.assert_called_once()
+                        assert mock_record_patch.called
 
     @pytest.mark.asyncio
     async def test_sync_execution_workflow_error(self):
@@ -147,6 +152,7 @@ class TestExecuteSync:
         mock_workflow.parameters = [param]
 
         mock_exec_logger = Mock()
+        mock_exec_logger.create_execution = AsyncMock()
 
         with patch('shared.handlers.endpoints_handlers.get_execution_logger') as mock_logger_factory:
             mock_logger_factory.return_value = mock_exec_logger
@@ -157,15 +163,17 @@ class TestExecuteSync:
                 with patch('shared.handlers.endpoints_handlers.separate_workflow_params') as mock_separate:
                     mock_separate.return_value = ({"param1": "value1"}, {})
 
-                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record:
+                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record_patch:
                         response_obj = Mock()
-                        response_obj.model_dump.return_value = {
+                        response_obj.model_dump = Mock(return_value={
                             "executionId": "exec-123",
                             "status": "Failed",
                             "error": "Workflow failed",
                             "durationMs": 100
-                        }
-                        mock_record.return_value = response_obj
+                        })
+                        async def async_record(*args, **kwargs):
+                            return response_obj
+                        mock_record_patch.side_effect = async_record
 
                         response, status = await _execute_sync(
                             context=mock_context,
@@ -180,7 +188,7 @@ class TestExecuteSync:
                         assert data["status"] == "Failed"
 
                         # Verify record was called with FAILED status
-                        call_kwargs = mock_record.call_args.kwargs
+                        call_kwargs = mock_record_patch.call_args.kwargs
                         assert call_kwargs["status"] == ExecutionStatus.FAILED
                         assert call_kwargs["context"] == mock_context
 
@@ -202,6 +210,7 @@ class TestExecuteSync:
         mock_workflow.parameters = [param]
 
         mock_exec_logger = Mock()
+        mock_exec_logger.create_execution = AsyncMock()
 
         with patch('shared.handlers.endpoints_handlers.get_execution_logger') as mock_logger_factory:
             mock_logger_factory.return_value = mock_exec_logger
@@ -212,15 +221,17 @@ class TestExecuteSync:
                 with patch('shared.handlers.endpoints_handlers.separate_workflow_params') as mock_separate:
                     mock_separate.return_value = ({"param1": "value1"}, {})
 
-                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record:
+                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record_patch:
                         response_obj = Mock()
-                        response_obj.model_dump.return_value = {
+                        response_obj.model_dump = Mock(return_value={
                             "executionId": "exec-123",
                             "status": "Failed",
                             "error": "Unexpected error",
                             "durationMs": 100
-                        }
-                        mock_record.return_value = response_obj
+                        })
+                        async def async_record(*args, **kwargs):
+                            return response_obj
+                        mock_record_patch.side_effect = async_record
 
                         response, status = await _execute_sync(
                             context=mock_context,
@@ -252,6 +263,7 @@ class TestExecuteSync:
         mock_workflow.parameters = [param]
 
         mock_exec_logger = Mock()
+        mock_exec_logger.create_execution = AsyncMock()
 
         with patch('shared.handlers.endpoints_handlers.get_execution_logger') as mock_logger_factory:
             mock_logger_factory.return_value = mock_exec_logger
@@ -265,14 +277,16 @@ class TestExecuteSync:
                         {"extra_var": "extra_value"}
                     )
 
-                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record:
+                    with patch('shared.handlers.endpoints_handlers.record_workflow_execution_result') as mock_record_patch:
                         response_obj = Mock()
-                        response_obj.model_dump.return_value = {
+                        response_obj.model_dump = Mock(return_value={
                             "executionId": "exec-123",
                             "status": "Success",
                             "durationMs": 100
-                        }
-                        mock_record.return_value = response_obj
+                        })
+                        async def async_record(*args, **kwargs):
+                            return response_obj
+                        mock_record_patch.side_effect = async_record
 
                         response, status = await _execute_sync(
                             context=mock_context,

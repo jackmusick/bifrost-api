@@ -499,37 +499,41 @@ class TestSecretExceptions:
 class TestFindSecretDependencies:
     """Tests for _find_secret_dependencies helper function."""
 
-    def test_find_no_dependencies(self, mock_request_context):
+    @pytest.mark.asyncio
+    async def test_find_no_dependencies(self, mock_request_context):
         """Test when no dependencies exist."""
         from shared.handlers.secrets_handlers import _find_secret_dependencies
 
-        with patch("shared.handlers.secrets_handlers.get_table_service") as mock_svc:
+        with patch("shared.handlers.secrets_handlers.get_async_table_service") as mock_svc:
             mock_table = MagicMock()
-            mock_table.query_entities.return_value = []
+            # Make query_entities return a coroutine
+            mock_table.query_entities = AsyncMock(return_value=[])
             mock_svc.return_value = mock_table
 
-            dependencies = _find_secret_dependencies(
+            dependencies = await _find_secret_dependencies(
                 mock_request_context, "org-123--api-key", "org-123"
             )
 
             assert dependencies == []
 
-    def test_find_global_dependencies(self, mock_request_context):
+    @pytest.mark.asyncio
+    async def test_find_global_dependencies(self, mock_request_context):
         """Test finding GLOBAL scoped dependencies."""
         from shared.handlers.secrets_handlers import _find_secret_dependencies
 
-        with patch("shared.handlers.secrets_handlers.get_table_service") as mock_svc:
+        with patch("shared.handlers.secrets_handlers.get_async_table_service") as mock_svc:
             mock_table = MagicMock()
-            mock_table.query_entities.return_value = [
+            # Make query_entities return a list with the expected data
+            mock_table.query_entities = AsyncMock(return_value=[
                 {
                     "RowKey": "config:smtp-config",
                     "Type": "SECRET_REF",
                     "Value": "GLOBAL--smtp-password",
                 }
-            ]
+            ])
             mock_svc.return_value = mock_table
 
-            dependencies = _find_secret_dependencies(
+            dependencies = await _find_secret_dependencies(
                 mock_request_context, "GLOBAL--smtp-password", "GLOBAL"
             )
 
@@ -538,28 +542,29 @@ class TestFindSecretDependencies:
             assert dependencies[0]["key"] == "smtp-config"
             assert dependencies[0]["scope"] == "GLOBAL"
 
-    def test_find_org_specific_dependencies(self, mock_request_context):
+    @pytest.mark.asyncio
+    async def test_find_org_specific_dependencies(self, mock_request_context):
         """Test finding org-specific dependencies."""
         from shared.handlers.secrets_handlers import _find_secret_dependencies
 
-        with patch("shared.handlers.secrets_handlers.get_table_service") as mock_svc:
+        with patch("shared.handlers.secrets_handlers.get_async_table_service") as mock_svc:
             # Create separate mocks for GLOBAL and org-specific calls
             global_mock = MagicMock()
-            global_mock.query_entities.return_value = []  # No GLOBAL dependencies
+            global_mock.query_entities = AsyncMock(return_value=[])  # No GLOBAL dependencies
 
             org_mock = MagicMock()
-            org_mock.query_entities.return_value = [
+            org_mock.query_entities = AsyncMock(return_value=[
                 {
                     "RowKey": "config:api-config",
                     "Type": "SECRET_REF",
                     "Value": "org-123--api-key",
                 }
-            ]
+            ])
 
             # Return different mocks based on call order
             mock_svc.side_effect = [global_mock, org_mock]
 
-            dependencies = _find_secret_dependencies(
+            dependencies = await _find_secret_dependencies(
                 mock_request_context, "org-123--api-key", "org-123"
             )
 
@@ -567,15 +572,16 @@ class TestFindSecretDependencies:
             assert dependencies[0]["key"] == "api-config"
             assert dependencies[0]["scope"] == "org-123"
 
-    def test_find_dependencies_handles_errors(self, mock_request_context):
+    @pytest.mark.asyncio
+    async def test_find_dependencies_handles_errors(self, mock_request_context):
         """Test that errors during dependency checking are handled gracefully."""
         from shared.handlers.secrets_handlers import _find_secret_dependencies
 
-        with patch("shared.handlers.secrets_handlers.get_table_service") as mock_svc:
+        with patch("shared.handlers.secrets_handlers.get_async_table_service") as mock_svc:
             mock_svc.side_effect = Exception("Table Storage error")
 
             # Should not raise, just return empty list
-            dependencies = _find_secret_dependencies(
+            dependencies = await _find_secret_dependencies(
                 mock_request_context, "org-123--api-key", "org-123"
             )
 

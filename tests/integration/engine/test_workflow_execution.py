@@ -172,9 +172,16 @@ class TestExecutionLogger:
     async def test_create_execution_dual_indexing(self, mock_table_storage):
         """Test that create_execution uses ExecutionRepository"""
         from shared.execution_logger import ExecutionLogger
+        from unittest.mock import AsyncMock
 
         # Mock ExecutionRepository
         mock_exec_repo = MagicMock()
+        mock_execution = MagicMock()
+        mock_execution.model_dump.return_value = {
+            "execution_id": "test-exec-123",
+            "org_id": "org-456"
+        }
+        mock_exec_repo.create_execution = AsyncMock(return_value=mock_execution)
 
         with patch('shared.execution_logger.ExecutionRepository') as mock_repo_class:
             with patch('shared.execution_logger.get_blob_service') as mock_blob:
@@ -183,7 +190,7 @@ class TestExecutionLogger:
 
                 logger = ExecutionLogger()
 
-                logger.create_execution(
+                await logger.create_execution(
                     execution_id="test-exec-123",
                     org_id="org-456",
                     user_id="user-789",
@@ -207,9 +214,16 @@ class TestExecutionLogger:
     async def test_update_execution_with_result(self):
         """Test updating execution with success result"""
         from shared.execution_logger import ExecutionLogger
+        from unittest.mock import AsyncMock
 
         # Mock ExecutionRepository
         mock_exec_repo = MagicMock()
+        mock_execution = MagicMock()
+        mock_execution.model_dump.return_value = {
+            "execution_id": "test-exec-123",
+            "org_id": "org-456"
+        }
+        mock_exec_repo.update_execution = AsyncMock(return_value=mock_execution)
 
         with patch('shared.execution_logger.ExecutionRepository') as mock_repo_class:
             with patch('shared.execution_logger.get_blob_service') as mock_blob:
@@ -218,7 +232,7 @@ class TestExecutionLogger:
 
                 logger = ExecutionLogger()
 
-                logger.update_execution(
+                await logger.update_execution(
                     execution_id="test-exec-123",
                     org_id="org-456",
                     user_id="user-789",

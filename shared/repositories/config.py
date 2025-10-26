@@ -36,7 +36,7 @@ class ConfigRepository(ScopedRepository):
     def __init__(self, context: 'ExecutionContext'):
         super().__init__("Config", context)
 
-    def get_config(
+    async def get_config(
         self,
         key: str,
         fallback_to_global: bool = True
@@ -54,16 +54,16 @@ class ConfigRepository(ScopedRepository):
         row_key = f"config:{key}"
 
         if fallback_to_global:
-            entity = self.get_with_fallback(row_key)
+            entity = await self.get_with_fallback(row_key)
         else:
-            entity = self.get_by_id(self.scope, row_key)
+            entity = await self.get_by_id(self.scope, row_key)
 
         if entity:
             return self._entity_to_model(entity, key)
 
         return None
 
-    def set_config(
+    async def set_config(
         self,
         key: str,
         value: str,
@@ -96,13 +96,13 @@ class ConfigRepository(ScopedRepository):
             "UpdatedBy": updated_by,
         }
 
-        self.upsert(config_entity)
+        await self.upsert(config_entity)
 
         logger.info(f"Set config {key} in scope {self.scope} (type={config_type.value})")
 
         return self._entity_to_model(config_entity, key)
 
-    def list_config(self, include_global: bool = True) -> list[Config]:
+    async def list_config(self, include_global: bool = True) -> list[Config]:
         """
         List all configuration entries
 
@@ -113,9 +113,9 @@ class ConfigRepository(ScopedRepository):
             List of Config models
         """
         if include_global:
-            entities = self.query_with_fallback("config:")
+            entities = await self.query_with_fallback("config:")
         else:
-            entities = self.query_org_only("config:")
+            entities = await self.query_org_only("config:")
 
         configs = []
         for entity in entities:
@@ -125,7 +125,7 @@ class ConfigRepository(ScopedRepository):
         logger.info(f"Found {len(configs)} config entries")
         return configs
 
-    def delete_config(self, key: str) -> bool:
+    async def delete_config(self, key: str) -> bool:
         """
         Delete configuration entry
 
@@ -135,9 +135,9 @@ class ConfigRepository(ScopedRepository):
         Returns:
             True if deleted, False if not found
         """
-        return self.delete(self.scope, f"config:{key}")
+        return await self.delete(self.scope, f"config:{key}")
 
-    def list_integrations(self) -> list[IntegrationConfig]:
+    async def list_integrations(self) -> list[IntegrationConfig]:
         """
         List all integration configurations for current scope
 
@@ -145,7 +145,7 @@ class ConfigRepository(ScopedRepository):
             List of IntegrationConfig models
         """
         # Query only current scope (integrations are org-specific, not GLOBAL)
-        entities = self.query_org_only("integration:")
+        entities = await self.query_org_only("integration:")
 
         integrations = []
         for entity in entities:
@@ -154,7 +154,7 @@ class ConfigRepository(ScopedRepository):
         logger.info(f"Found {len(integrations)} integration configs")
         return integrations
 
-    def delete_integration(self, integration_type: IntegrationType | str) -> bool:
+    async def delete_integration(self, integration_type: IntegrationType | str) -> bool:
         """
         Delete integration configuration
 
@@ -166,9 +166,9 @@ class ConfigRepository(ScopedRepository):
         """
         # Support both enum and string for flexibility (DELETE should be lenient)
         type_value = integration_type.value if isinstance(integration_type, IntegrationType) else integration_type
-        return self.delete(self.scope, f"integration:{type_value}")
+        return await self.delete(self.scope, f"integration:{type_value}")
 
-    def get_integration_config(
+    async def get_integration_config(
         self,
         integration_type: IntegrationType,
         fallback_to_global: bool = True
@@ -186,16 +186,16 @@ class ConfigRepository(ScopedRepository):
         row_key = f"integration:{integration_type.value}"
 
         if fallback_to_global:
-            entity = self.get_with_fallback(row_key)
+            entity = await self.get_with_fallback(row_key)
         else:
-            entity = self.get_by_id(self.scope, row_key)
+            entity = await self.get_by_id(self.scope, row_key)
 
         if entity:
             return self._entity_to_integration_model(entity)
 
         return None
 
-    def set_integration_config(
+    async def set_integration_config(
         self,
         request: SetIntegrationConfigRequest,
         updated_by: str
@@ -224,7 +224,7 @@ class ConfigRepository(ScopedRepository):
             "UpdatedBy": updated_by,
         }
 
-        self.upsert(config_entity)
+        await self.upsert(config_entity)
 
         logger.info(
             f"Set integration config {request.type.value} in scope {self.scope} "
@@ -298,7 +298,7 @@ class ConfigRepository(ScopedRepository):
 
     # Workflow Key Methods
 
-    def create_workflow_key(self, entity: dict) -> dict:
+    async def create_workflow_key(self, entity: dict) -> dict:
         """
         Create a workflow API key in Config table
 
@@ -310,9 +310,9 @@ class ConfigRepository(ScopedRepository):
         """
         # Ensure PartitionKey is GLOBAL for workflow keys
         entity["PartitionKey"] = "GLOBAL"
-        return self.insert(entity)
+        return await self.insert(entity)
 
-    def get_workflow_key_by_id(self, key_id: str) -> dict | None:
+    async def get_workflow_key_by_id(self, key_id: str) -> dict | None:
         """
         Get workflow key by ID, checking both possible prefixes
 
@@ -323,14 +323,14 @@ class ConfigRepository(ScopedRepository):
             Entity dictionary or None if not found
         """
         # Try workflow-specific prefix first
-        entity = self.get_by_id("GLOBAL", f"workflowkey:{key_id}")
+        entity = await self.get_by_id("GLOBAL", f"workflowkey:{key_id}")
         if entity:
             return entity
 
         # Try global key prefix
-        return self.get_by_id("GLOBAL", f"systemconfig:globalkey:{key_id}")
+        return await self.get_by_id("GLOBAL", f"systemconfig:globalkey:{key_id}")
 
-    def list_workflow_keys(
+    async def list_workflow_keys(
         self,
         created_by: str,
         workflow_id: str | None = None,
@@ -358,17 +358,17 @@ class ConfigRepository(ScopedRepository):
 
         # Query workflow-specific keys
         workflow_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'workflowkey:' and RowKey lt 'workflowkey;' and {base_filter}"
-        results.extend(list(self.query(workflow_filter)))
+        results.extend(await self.query(workflow_filter))
 
         # Query global keys (only if no workflow_id filter)
         if not workflow_id:
             global_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'systemconfig:globalkey:' and RowKey lt 'systemconfig:globalkey;' and {base_filter}"
-            results.extend(list(self.query(global_filter)))
+            results.extend(await self.query(global_filter))
 
         logger.info(f"Found {len(results)} workflow keys for {created_by}")
         return results
 
-    def revoke_workflow_key(self, key_id: str, revoked_by: str) -> bool:
+    async def revoke_workflow_key(self, key_id: str, revoked_by: str) -> bool:
         """
         Revoke a workflow API key
 
@@ -379,7 +379,7 @@ class ConfigRepository(ScopedRepository):
         Returns:
             True if revoked, False if not found
         """
-        entity = self.get_workflow_key_by_id(key_id)
+        entity = await self.get_workflow_key_by_id(key_id)
         if not entity:
             return False
 
@@ -388,12 +388,12 @@ class ConfigRepository(ScopedRepository):
         entity["RevokedAt"] = datetime.utcnow().isoformat()
         entity["RevokedBy"] = revoked_by
 
-        self.update(entity, mode="merge")
+        await self.update(entity, mode="merge")
 
         logger.info(f"Revoked workflow key {key_id} by {revoked_by}")
         return True
 
-    def validate_workflow_key(
+    async def validate_workflow_key(
         self,
         hashed_key: str,
         workflow_id: str | None = None
@@ -414,7 +414,7 @@ class ConfigRepository(ScopedRepository):
                 f"PartitionKey eq 'GLOBAL' and RowKey ge 'workflowkey:' and RowKey lt 'workflowkey;' "
                 f"and HashedKey eq '{hashed_key}' and WorkflowId eq '{workflow_id}' and Revoked eq false"
             )
-            workflow_results = list(self.query(workflow_filter))
+            workflow_results = await self.query(workflow_filter)
 
             if workflow_results:
                 key_entity = workflow_results[0]
@@ -428,7 +428,7 @@ class ConfigRepository(ScopedRepository):
 
                 # Update last used
                 key_entity["LastUsedAt"] = datetime.utcnow().isoformat()
-                self.update(key_entity, mode="merge")
+                await self.update(key_entity, mode="merge")
 
                 key_id = key_entity.get("KeyId", key_entity["RowKey"].split(":", 1)[1])
 
@@ -444,7 +444,7 @@ class ConfigRepository(ScopedRepository):
             f"PartitionKey eq 'GLOBAL' and RowKey ge 'systemconfig:globalkey:' and RowKey lt 'systemconfig:globalkey;' "
             f"and HashedKey eq '{hashed_key}' and Revoked eq false"
         )
-        global_results = list(self.query(global_filter))
+        global_results = await self.query(global_filter)
 
         if not global_results:
             return (False, None)
@@ -457,7 +457,7 @@ class ConfigRepository(ScopedRepository):
 
         # Update last used
         key_entity["LastUsedAt"] = datetime.utcnow().isoformat()
-        self.update(key_entity, mode="merge")
+        await self.update(key_entity, mode="merge")
 
         key_id = key_entity.get("KeyId", key_entity["RowKey"].split(":", 2)[2])
 

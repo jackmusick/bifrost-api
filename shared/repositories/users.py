@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from shared.models import User, UserType
-from shared.storage import TableStorageService
+from shared.async_storage import AsyncTableStorageService
 
 from .base import BaseRepository
 
@@ -30,9 +30,9 @@ class UserRepository(BaseRepository):
 
     def __init__(self, context: 'ExecutionContext | None' = None):
         super().__init__("Entities", context)
-        self.relationships_service = TableStorageService("Relationships")
+        self.relationships_service = AsyncTableStorageService("Relationships")
 
-    def has_any_users(self) -> bool:
+    async def has_any_users(self) -> bool:
         """
         Check if any users exist in the system
 
@@ -42,13 +42,13 @@ class UserRepository(BaseRepository):
         query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;'"
 
         # Use select to only fetch RowKey for efficiency
-        query_result = self._service.query_entities(query_filter, select=["RowKey"])
+        query_result = await self._service.query_entities(query_filter, select=["RowKey"])
 
         # Check if any results exist
         first_user = next(iter(query_result), None)
         return first_user is not None
 
-    def get_user(self, email: str) -> User | None:
+    async def get_user(self, email: str) -> User | None:
         """
         Get user by email
 
@@ -58,14 +58,14 @@ class UserRepository(BaseRepository):
         Returns:
             User model or None if not found
         """
-        entity = self.get_by_id("GLOBAL", f"user:{email}")
+        entity = await self.get_by_id("GLOBAL", f"user:{email}")
 
         if entity:
             return self._entity_to_model(entity)
 
         return None
 
-    def get_user_by_entra_id(self, entra_user_id: str) -> User | None:
+    async def get_user_by_entra_id(self, entra_user_id: str) -> User | None:
         """
         Get user by Entra (Azure AD) user ID
 
@@ -85,14 +85,14 @@ class UserRepository(BaseRepository):
             f"EntraUserId eq '{entra_user_id}'"
         )
 
-        entities = list(self._service.query_entities(query_filter))
+        entities = await self._service.query_entities(query_filter)
 
         if entities:
             return self._entity_to_model(entities[0])
 
         return None
 
-    def create_user(
+    async def create_user(
         self,
         email: str,
         display_name: str,
@@ -132,26 +132,26 @@ class UserRepository(BaseRepository):
             user_entity["EntraUserId"] = entra_user_id
             user_entity["LastEntraIdSync"] = now.isoformat()
 
-        self.insert(user_entity)
+        await self.insert(user_entity)
 
         logger.info(f"Created user {email} (type={user_type}, admin={is_platform_admin}, entra_id={entra_user_id})")
 
         return self._entity_to_model(user_entity)
 
-    def update_last_login(self, email: str) -> None:
+    async def update_last_login(self, email: str) -> None:
         """
         Update user's last login timestamp
 
         Args:
             email: User email
         """
-        entity = self.get_by_id("GLOBAL", f"user:{email}")
+        entity = await self.get_by_id("GLOBAL", f"user:{email}")
 
         if entity:
             entity["LastLogin"] = datetime.utcnow().isoformat()
-            self.update(entity)
+            await self.update(entity)
 
-    def update_user_entra_id(self, email: str, entra_user_id: str) -> None:
+    async def update_user_entra_id(self, email: str, entra_user_id: str) -> None:
         """
         Backfill Entra user ID for existing user
 
@@ -162,16 +162,16 @@ class UserRepository(BaseRepository):
             email: User email
             entra_user_id: Azure AD user object ID (oid claim)
         """
-        entity = self.get_by_id("GLOBAL", f"user:{email}")
+        entity = await self.get_by_id("GLOBAL", f"user:{email}")
 
         if entity:
             now = datetime.utcnow()
             entity["EntraUserId"] = entra_user_id
             entity["LastEntraIdSync"] = now.isoformat()
-            self.update(entity)
+            await self.update(entity)
             logger.info(f"Backfilled Entra ID for {email}: {entra_user_id}")
 
-    def update_user_profile(self, old_email: str, new_email: str, display_name: str) -> User | None:
+    async def update_user_profile(self, old_email: str, new_email: str, display_name: str) -> User | None:
         """
         Update user's email and display name
 
@@ -186,7 +186,7 @@ class UserRepository(BaseRepository):
         Returns:
             Updated User model or None if user not found
         """
-        entity = self.get_by_id("GLOBAL", f"user:{old_email}")
+        entity = await self.get_by_id("GLOBAL", f"user:{old_email}")
 
         if not entity:
             logger.warning(f"Cannot update profile: user {old_email} not found")
@@ -196,7 +196,7 @@ class UserRepository(BaseRepository):
         if old_email == new_email:
             entity["DisplayName"] = display_name
             entity["LastEntraIdSync"] = datetime.utcnow().isoformat()
-            self.update(entity)
+            await self.update(entity)
             logger.info(f"Updated display name for {old_email} to {display_name}")
             return self._entity_to_model(entity)
 
@@ -220,26 +220,26 @@ class UserRepository(BaseRepository):
         }
 
         # Insert new entity
-        self.insert(new_entity)
+        await self.insert(new_entity)
 
         # Delete old entity
-        self._service.delete_entity("GLOBAL", f"user:{old_email}")
+        await self._service.delete_entity("GLOBAL", f"user:{old_email}")
 
         logger.info(f"Migrated user from {old_email} to {new_email}")
 
         # Update relationships if this is an ORG user
-        org_id = self.get_user_org_id(old_email)
+        org_id = await self.get_user_org_id(old_email)
         if org_id:
             logger.info(f"Updating org relationships for migrated user {old_email} -> {new_email}")
             # Delete old relationships
-            self.relationships_service.delete_entity("GLOBAL", f"userperm:{old_email}:{org_id}")
-            self.relationships_service.delete_entity("GLOBAL", f"orgperm:{org_id}:{old_email}")
+            await self.relationships_service.delete_entity("GLOBAL", f"userperm:{old_email}:{org_id}")
+            await self.relationships_service.delete_entity("GLOBAL", f"orgperm:{org_id}:{old_email}")
             # Create new relationships
-            self.assign_user_to_org(new_email, org_id, "system")
+            await self.assign_user_to_org(new_email, org_id, "system")
 
         return self._entity_to_model(new_entity)
 
-    def get_user_org_id(self, email: str) -> str | None:
+    async def get_user_org_id(self, email: str) -> str | None:
         """
         Get user's organization ID from relationships
 
@@ -255,7 +255,7 @@ class UserRepository(BaseRepository):
             f"RowKey lt 'userperm:{email}~'"
         )
 
-        entities = list(self.relationships_service.query_entities(query_filter))
+        entities = await self.relationships_service.query_entities(query_filter)
 
         if entities:
             # Extract org_id from RowKey "userperm:{email}:{org_id}"
@@ -267,7 +267,7 @@ class UserRepository(BaseRepository):
 
         return None
 
-    def assign_user_to_org(self, email: str, org_id: str, assigned_by: str) -> None:
+    async def assign_user_to_org(self, email: str, org_id: str, assigned_by: str) -> None:
         """
         Assign user to organization (dual-index pattern)
 
@@ -303,12 +303,12 @@ class UserRepository(BaseRepository):
         }
 
         # Insert both (dual-index pattern)
-        self.relationships_service.insert_entity(forward_entity)
-        self.relationships_service.insert_entity(reverse_entity)
+        await self.relationships_service.insert_entity(forward_entity)
+        await self.relationships_service.insert_entity(reverse_entity)
 
         logger.info(f"Assigned user {email} to organization {org_id}")
 
-    def list_org_users(self, org_id: str) -> list[str]:
+    async def list_org_users(self, org_id: str) -> list[str]:
         """
         List all users in an organization (emails only)
 
@@ -326,7 +326,7 @@ class UserRepository(BaseRepository):
             f"RowKey lt 'orgperm:{org_id}~'"
         )
 
-        entities = list(self.relationships_service.query_entities(query_filter))
+        entities = await self.relationships_service.query_entities(query_filter)
 
         # Extract email from RowKey "orgperm:{org_id}:{email}"
         user_emails = [entity["RowKey"].split(":", 2)[2] for entity in entities]
@@ -334,7 +334,7 @@ class UserRepository(BaseRepository):
         logger.info(f"Found {len(user_emails)} users in organization {org_id}")
         return user_emails
 
-    def list_org_users_full(self, org_id: str) -> list[User]:
+    async def list_org_users_full(self, org_id: str) -> list[User]:
         """
         List all users in an organization (full User models)
 
@@ -344,11 +344,11 @@ class UserRepository(BaseRepository):
         Returns:
             List of User models
         """
-        user_emails = self.list_org_users(org_id)
+        user_emails = await self.list_org_users(org_id)
 
         users = []
         for email in user_emails:
-            user = self.get_user(email)
+            user = await self.get_user(email)
             if user:
                 users.append(user)
 

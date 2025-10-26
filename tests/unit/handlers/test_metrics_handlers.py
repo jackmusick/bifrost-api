@@ -6,7 +6,7 @@ Uses mocks for registry and table services.
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -48,7 +48,7 @@ def mock_registry():
 @pytest.fixture
 def mock_entities_service():
     """Create a mock table service for entities"""
-    service = MagicMock()
+    service = AsyncMock()
     return service
 
 
@@ -163,38 +163,42 @@ class TestGetWorkflowMetadata:
 class TestGetFormCount:
     """Tests for get_form_count function"""
 
-    def test_successful_form_count(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_successful_form_count(self, mock_entities_service):
         """Test successful form count retrieval"""
         mock_form_1 = {"RowKey": "form:id1", "IsActive": True}
         mock_form_2 = {"RowKey": "form:id2", "IsActive": True}
         mock_entities_service.query_entities.return_value = [mock_form_1, mock_form_2]
 
-        result = get_form_count(mock_entities_service)
+        result = await get_form_count(mock_entities_service)
 
         assert result == 2
         mock_entities_service.query_entities.assert_called_once()
 
-    def test_zero_forms(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_zero_forms(self, mock_entities_service):
         """Test when no forms exist"""
         mock_entities_service.query_entities.return_value = []
 
-        result = get_form_count(mock_entities_service)
+        result = await get_form_count(mock_entities_service)
 
         assert result == 0
 
-    def test_form_count_exception(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_form_count_exception(self, mock_entities_service):
         """Test graceful handling when query fails"""
         mock_entities_service.query_entities.side_effect = Exception("Query error")
 
-        result = get_form_count(mock_entities_service)
+        result = await get_form_count(mock_entities_service)
 
         assert result == 0
 
-    def test_form_count_filter_applied(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_form_count_filter_applied(self, mock_entities_service):
         """Test that correct filter is applied"""
         mock_entities_service.query_entities.return_value = []
 
-        get_form_count(mock_entities_service)
+        await get_form_count(mock_entities_service)
 
         # Verify correct filter is applied
         call_args = mock_entities_service.query_entities.call_args
@@ -209,7 +213,8 @@ class TestGetFormCount:
 class TestGetExecutionStatistics:
     """Tests for get_execution_statistics function"""
 
-    def test_successful_statistics_retrieval(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_successful_statistics_retrieval(self, mock_entities_service):
         """Test successful execution statistics retrieval"""
         now = datetime.utcnow()
         mock_execution_success = {
@@ -233,7 +238,7 @@ class TestGetExecutionStatistics:
             mock_execution_failed
         ]
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert result["totalExecutions"] == 2
         assert result["successCount"] == 1
@@ -242,11 +247,12 @@ class TestGetExecutionStatistics:
         assert result["avgDurationSeconds"] == pytest.approx(3.5)
         assert len(result["recentFailures"]) == 1
 
-    def test_zero_executions(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_zero_executions(self, mock_entities_service):
         """Test statistics with zero executions"""
         mock_entities_service.query_entities.return_value = []
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert result["totalExecutions"] == 0
         assert result["successCount"] == 0
@@ -255,7 +261,8 @@ class TestGetExecutionStatistics:
         assert result["avgDurationSeconds"] == 0.0
         assert result["recentFailures"] == []
 
-    def test_success_rate_calculation(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_success_rate_calculation(self, mock_entities_service):
         """Test correct success rate calculation"""
         executions = [
             {"Status": "Success", "DurationMs": 1000},
@@ -265,11 +272,12 @@ class TestGetExecutionStatistics:
         ]
         mock_entities_service.query_entities.return_value = executions
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert result["successRate"] == 75.0
 
-    def test_running_and_pending_counts(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_running_and_pending_counts(self, mock_entities_service):
         """Test counting of running and pending executions"""
         executions = [
             {"Status": "Success", "DurationMs": 1000},
@@ -279,13 +287,14 @@ class TestGetExecutionStatistics:
         ]
         mock_entities_service.query_entities.return_value = executions
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert result["successCount"] == 1
         assert result["runningCount"] == 2
         assert result["pendingCount"] == 1
 
-    def test_recent_failures_limit(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_recent_failures_limit(self, mock_entities_service):
         """Test that recent failures is limited to 10"""
         now = datetime.utcnow()
         executions = [
@@ -301,11 +310,12 @@ class TestGetExecutionStatistics:
         ]
         mock_entities_service.query_entities.return_value = executions
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert len(result["recentFailures"]) == 10
 
-    def test_recent_failures_structure(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_recent_failures_structure(self, mock_entities_service):
         """Test structure of recent failures"""
         now = datetime.utcnow()
         mock_execution_failed = {
@@ -318,7 +328,7 @@ class TestGetExecutionStatistics:
         }
         mock_entities_service.query_entities.return_value = [mock_execution_failed]
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert len(result["recentFailures"]) == 1
         failure = result["recentFailures"][0]
@@ -327,7 +337,8 @@ class TestGetExecutionStatistics:
         assert failure["errorMessage"] == "Connection timeout"
         assert failure["startedAt"] == now.isoformat()
 
-    def test_missing_started_at_in_failure(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_missing_started_at_in_failure(self, mock_entities_service):
         """Test handling of missing StartedAt in failed execution"""
         mock_execution_failed = {
             "ExecutionId": "exec-123",
@@ -338,31 +349,34 @@ class TestGetExecutionStatistics:
         }
         mock_entities_service.query_entities.return_value = [mock_execution_failed]
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert len(result["recentFailures"]) == 1
         assert result["recentFailures"][0]["startedAt"] is None
 
-    def test_custom_days_parameter(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_custom_days_parameter(self, mock_entities_service):
         """Test using custom days parameter"""
         mock_entities_service.query_entities.return_value = []
 
-        get_execution_statistics(mock_entities_service, days=7)
+        await get_execution_statistics(mock_entities_service, days=7)
 
         # Verify query was called
         mock_entities_service.query_entities.assert_called_once()
 
-    def test_execution_query_exception(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_execution_query_exception(self, mock_entities_service):
         """Test graceful handling when execution query fails"""
         mock_entities_service.query_entities.side_effect = Exception("Query error")
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert result["totalExecutions"] == 0
         assert result["successRate"] == 0.0
         assert result["recentFailures"] == []
 
-    def test_average_duration_calculation(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_average_duration_calculation(self, mock_entities_service):
         """Test average duration calculation with various durations"""
         executions = [
             {"Status": "Success", "DurationMs": 2000},
@@ -372,12 +386,13 @@ class TestGetExecutionStatistics:
         ]
         mock_entities_service.query_entities.return_value = executions
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         # (2000 + 4000 + 6000) / 3 / 1000 = 4.0
         assert result["avgDurationSeconds"] == pytest.approx(4.0)
 
-    def test_execution_with_missing_status(self, mock_entities_service):
+    @pytest.mark.asyncio
+    async def test_execution_with_missing_status(self, mock_entities_service):
         """Test handling execution with missing status"""
         executions = [
             {"ExecutionId": "exec-1", "DurationMs": 1000},  # Missing Status
@@ -385,7 +400,7 @@ class TestGetExecutionStatistics:
         ]
         mock_entities_service.query_entities.return_value = executions
 
-        result = get_execution_statistics(mock_entities_service)
+        result = await get_execution_statistics(mock_entities_service)
 
         assert result["totalExecutions"] == 2
         # First execution has status "Unknown"
@@ -403,11 +418,12 @@ class TestGetExecutionStatistics:
 class TestGetDashboardMetrics:
     """Tests for get_dashboard_metrics function"""
 
+    @pytest.mark.asyncio
     @patch("shared.handlers.metrics_handlers.get_registry")
-    @patch("shared.handlers.metrics_handlers.get_table_service")
-    def test_successful_metrics_aggregation(
+    @patch("shared.handlers.metrics_handlers.get_async_table_service")
+    async def test_successful_metrics_aggregation(
         self,
-        mock_get_table_service,
+        mock_get_async_table_service,
         mock_get_registry,
         mock_context
     ):
@@ -421,17 +437,17 @@ class TestGetDashboardMetrics:
         mock_get_registry.return_value = mock_registry
 
         # Setup table service mock
-        mock_service = MagicMock()
-        mock_get_table_service.return_value = mock_service
+        mock_service = AsyncMock()
+        mock_get_async_table_service.return_value = mock_service
 
         # Mock form query
-        mock_service.query_entities.return_value = [
-            {"RowKey": "form:1"},
-            {"RowKey": "form:2"}
+        mock_service.query_entities.side_effect = [
+            [{"RowKey": "form:1"}, {"RowKey": "form:2"}],
+            []  # For execution statistics query
         ]
 
         # Call handler
-        result = get_dashboard_metrics(mock_context)
+        result = await get_dashboard_metrics(mock_context)
 
         # Verify structure
         assert "workflowCount" in result
@@ -440,11 +456,12 @@ class TestGetDashboardMetrics:
         assert "executionStats" in result
         assert "recentFailures" in result
 
+    @pytest.mark.asyncio
     @patch("shared.handlers.metrics_handlers.get_registry")
-    @patch("shared.handlers.metrics_handlers.get_table_service")
-    def test_metrics_with_registry_failure(
+    @patch("shared.handlers.metrics_handlers.get_async_table_service")
+    async def test_metrics_with_registry_failure(
         self,
-        mock_get_table_service,
+        mock_get_async_table_service,
         mock_get_registry,
         mock_context
     ):
@@ -455,21 +472,22 @@ class TestGetDashboardMetrics:
         mock_get_registry.return_value = mock_registry
 
         # Setup table service mock
-        mock_service = MagicMock()
-        mock_get_table_service.return_value = mock_service
-        mock_service.query_entities.return_value = []
+        mock_service = AsyncMock()
+        mock_get_async_table_service.return_value = mock_service
+        mock_service.query_entities.side_effect = [[], []]
 
-        result = get_dashboard_metrics(mock_context)
+        result = await get_dashboard_metrics(mock_context)
 
         # Should have defaults from failed registry
         assert result["workflowCount"] == 0
         assert result["dataProviderCount"] == 0
 
+    @pytest.mark.asyncio
     @patch("shared.handlers.metrics_handlers.get_registry")
-    @patch("shared.handlers.metrics_handlers.get_table_service")
-    def test_metrics_complete_structure(
+    @patch("shared.handlers.metrics_handlers.get_async_table_service")
+    async def test_metrics_complete_structure(
         self,
-        mock_get_table_service,
+        mock_get_async_table_service,
         mock_get_registry,
         mock_context
     ):
@@ -481,11 +499,11 @@ class TestGetDashboardMetrics:
         }
         mock_get_registry.return_value = mock_registry
 
-        mock_service = MagicMock()
-        mock_get_table_service.return_value = mock_service
-        mock_service.query_entities.return_value = []
+        mock_service = AsyncMock()
+        mock_get_async_table_service.return_value = mock_service
+        mock_service.query_entities.side_effect = [[], []]
 
-        result = get_dashboard_metrics(mock_context)
+        result = await get_dashboard_metrics(mock_context)
 
         # Verify all required fields
         assert result["workflowCount"] == 10
@@ -501,11 +519,12 @@ class TestGetDashboardMetrics:
         assert "avgDurationSeconds" in result["executionStats"]
         assert isinstance(result["recentFailures"], list)
 
+    @pytest.mark.asyncio
     @patch("shared.handlers.metrics_handlers.get_registry")
-    @patch("shared.handlers.metrics_handlers.get_table_service")
-    def test_metrics_exception_propagation(
+    @patch("shared.handlers.metrics_handlers.get_async_table_service")
+    async def test_metrics_exception_propagation(
         self,
-        mock_get_table_service,
+        mock_get_async_table_service,
         mock_get_registry,
         mock_context
     ):
@@ -513,13 +532,14 @@ class TestGetDashboardMetrics:
         mock_get_registry.side_effect = Exception("Critical registry error")
 
         with pytest.raises(Exception, match="Critical registry error"):
-            get_dashboard_metrics(mock_context)
+            await get_dashboard_metrics(mock_context)
 
+    @pytest.mark.asyncio
     @patch("shared.handlers.metrics_handlers.get_registry")
-    @patch("shared.handlers.metrics_handlers.get_table_service")
-    def test_metrics_with_complex_execution_data(
+    @patch("shared.handlers.metrics_handlers.get_async_table_service")
+    async def test_metrics_with_complex_execution_data(
         self,
-        mock_get_table_service,
+        mock_get_async_table_service,
         mock_get_registry,
         mock_context
     ):
@@ -531,8 +551,8 @@ class TestGetDashboardMetrics:
         }
         mock_get_registry.return_value = mock_registry
 
-        mock_service = MagicMock()
-        mock_get_table_service.return_value = mock_service
+        mock_service = AsyncMock()
+        mock_get_async_table_service.return_value = mock_service
 
         # Mock execution entities
         executions = [
@@ -545,7 +565,7 @@ class TestGetDashboardMetrics:
         # First call for forms, second for executions
         mock_service.query_entities.side_effect = [[], executions]
 
-        result = get_dashboard_metrics(mock_context)
+        result = await get_dashboard_metrics(mock_context)
 
         assert result["executionStats"]["totalExecutions"] == 4
         assert result["executionStats"]["successCount"] == 2

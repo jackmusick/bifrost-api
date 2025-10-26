@@ -15,7 +15,7 @@ from .context import Organization, ExecutionContext, Caller
 logger = logging.getLogger(__name__)
 
 
-def load_config_for_partition(partition_key: str) -> dict:
+async def load_config_for_partition(partition_key: str) -> dict:
     """
     Load configuration values for a given partition (org ID or GLOBAL).
 
@@ -27,10 +27,10 @@ def load_config_for_partition(partition_key: str) -> dict:
     Returns:
         Dictionary of config key-value pairs
     """
-    from .storage import get_org_config
+    from .storage import get_org_config_async
 
     config = {}
-    config_entities = get_org_config(partition_key)
+    config_entities = await get_org_config_async(partition_key)
 
     for entity in config_entities:
         # RowKey format: "config:{key}"
@@ -153,7 +153,7 @@ async def load_organization_context(
         OrganizationNotFoundError: If org_id provided but org doesn't exist or is inactive
         AuthenticationError: If authentication fails
     """
-    from .storage import get_organization
+    from .storage import get_organization_async
 
     org = None
     config = {}
@@ -161,7 +161,7 @@ async def load_organization_context(
     # Load organization and config
     if org_id:
         # T037: Validate organization exists and is active
-        org_entity = get_organization(org_id)
+        org_entity = await get_organization_async(org_id)
 
         if not org_entity:
             raise OrganizationNotFoundError(f"Organization {org_id} not found")
@@ -179,11 +179,11 @@ async def load_organization_context(
         )
 
         # Load organization config (all config for this org)
-        config = load_config_for_partition(org_id)
+        config = await load_config_for_partition(org_id)
     else:
         # Load GLOBAL configs for platform admin context
         logger.info("Loading GLOBAL configs for platform admin context")
-        config = load_config_for_partition("GLOBAL")
+        config = await load_config_for_partition("GLOBAL")
 
     # T056: Extract caller from authenticated principal
     # Use authentication service to get principal, then create Caller
@@ -228,7 +228,7 @@ async def load_organization_context(
                 # Import here to avoid circular dependency
                 from shared.user_lookup import get_user_organization
 
-                user_org_id = get_user_organization(principal.email)
+                user_org_id = await get_user_organization(principal.email)
 
                 if user_org_id:
                     org_id = user_org_id
@@ -236,7 +236,7 @@ async def load_organization_context(
 
                     # Re-load organization and config now that we have org_id
                     # T037: Validate organization exists and is active
-                    org_entity = get_organization(org_id)
+                    org_entity = await get_organization_async(org_id)
 
                     if not org_entity:
                         raise OrganizationNotFoundError(f"Organization {org_id} not found")
@@ -254,7 +254,7 @@ async def load_organization_context(
                     )
 
                     # Load organization config (all config for this org)
-                    config = load_config_for_partition(org_id)
+                    config = await load_config_for_partition(org_id)
                 else:
                     # User has no org assignment
                     raise OrganizationNotFoundError(
@@ -366,7 +366,7 @@ def has_workflow_key(handler: Callable) -> Callable:
                 )
 
                 # Load GLOBAL config
-                config = load_config_for_partition("GLOBAL")
+                config = await load_config_for_partition("GLOBAL")
 
                 public_context = ExecutionContext(
                     user_id=anonymous_caller.user_id,
@@ -403,7 +403,7 @@ def has_workflow_key(handler: Callable) -> Callable:
             workflow_id = req.route_params.get('workflowName')
 
             try:
-                is_valid, key_id = validate_workflow_key(connection_str, api_key, workflow_id)
+                is_valid, key_id = await validate_workflow_key(connection_str, api_key, workflow_id)
 
                 if is_valid:
                     # Create global scope context for API key access
@@ -423,7 +423,7 @@ def has_workflow_key(handler: Callable) -> Callable:
                     )
 
                     # Load GLOBAL config for platform admin context
-                    config = load_config_for_partition("GLOBAL")
+                    config = await load_config_for_partition("GLOBAL")
 
                     api_context = ExecutionContext(
                         user_id=api_caller.user_id,

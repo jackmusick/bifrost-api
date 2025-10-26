@@ -14,7 +14,7 @@ from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
 from shared.middleware import load_config_for_partition
 from shared.models import ExecutionStatus
-from shared.storage import get_organization
+from shared.storage import get_organization_async
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         )
 
         # Update status to RUNNING
-        exec_logger.update_execution(
+        await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -77,7 +77,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         config = {}
 
         if org_id:
-            org_entity = get_organization(org_id)
+            org_entity = await get_organization_async(org_id)
             if org_entity:
                 org_uuid = org_entity['RowKey'].split(':', 1)[1]
                 org = Organization(
@@ -85,10 +85,10 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
                     name=org_entity['Name'],
                     is_active=org_entity.get('IsActive', True)
                 )
-                config = load_config_for_partition(org_id)
+                config = await load_config_for_partition(org_id)
         else:
             # Load GLOBAL configs for platform admin context
-            config = load_config_for_partition("GLOBAL")
+            config = await load_config_for_partition("GLOBAL")
 
         # Create Caller from queue message
         caller = Caller(
@@ -117,7 +117,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         result = await execute(request)
 
         # Update execution with result
-        exec_logger.update_execution(
+        await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
@@ -146,7 +146,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-        exec_logger.update_execution(
+        await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
