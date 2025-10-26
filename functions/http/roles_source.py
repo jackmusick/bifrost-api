@@ -13,6 +13,7 @@ Note: This endpoint delegates to shared/handlers/roles_source_handlers.py for al
 role determination logic and to shared/user_provisioning.py for auto-provisioning.
 """
 
+import asyncio
 import json
 import logging
 
@@ -28,7 +29,7 @@ bp = func.Blueprint()
 
 @bp.function_name("get_roles")
 @bp.route(route="GetRoles", methods=["POST"])
-def get_roles(req: func.HttpRequest) -> func.HttpResponse:
+async def get_roles(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/GetRoles
 
@@ -54,8 +55,9 @@ def get_roles(req: func.HttpRequest) -> func.HttpResponse:
         # Log request for debugging (SWA CLI local dev may not populate body correctly)
         logger.info(f"GetRoles request body: {json.dumps(request_body)}")
 
-        # Delegate to handler for business logic
-        response = handle_roles_source_request(request_body)
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, handle_roles_source_request, request_body)
 
         return func.HttpResponse(
             json.dumps(response),

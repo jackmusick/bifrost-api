@@ -4,6 +4,7 @@ Handles file browsing, reading, and writing for browser-based code editor
 Thin wrapper - business logic is in shared.editor.file_operations
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -111,7 +112,9 @@ async def editor_list_files(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"Listing files, path: {path}")
 
-        files = list_directory(path)
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        files = await loop.run_in_executor(None, list_directory, path)
 
         # Convert to JSON
         files_json = [f.model_dump() for f in files]
@@ -183,7 +186,9 @@ async def editor_read_file(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"Reading file, path: {path}")
 
-        response = read_file(path)
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, read_file, path)
 
         return func.HttpResponse(
             body=response.model_dump_json(),
@@ -252,7 +257,11 @@ async def editor_write_file(req: func.HttpRequest) -> func.HttpResponse:
             f"size: {len(write_request.content)} bytes"
         )
 
-        response = write_file(
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            write_file,
             write_request.path,
             write_request.content,
             write_request.encoding,
@@ -332,7 +341,10 @@ async def editor_create_folder(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"Creating folder, path: {path}")
 
         from shared.editor.file_operations import create_folder
-        folder = create_folder(path)
+
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        folder = await loop.run_in_executor(None, create_folder, path)
 
         return func.HttpResponse(
             body=folder.model_dump_json(),
@@ -401,7 +413,10 @@ async def editor_delete_path(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"Deleting path, path: {path}")
 
         from shared.editor.file_operations import delete_path
-        delete_path(path)
+
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, delete_path, path)
 
         return func.HttpResponse(
             status_code=204,
@@ -482,7 +497,10 @@ async def editor_rename_path(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"Renaming path, from: {old_path}, to: {new_path}")
 
         from shared.editor.file_operations import rename_path
-        result = rename_path(old_path, new_path)
+
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, rename_path, old_path, new_path)
 
         return func.HttpResponse(
             body=result.model_dump_json(),
@@ -559,7 +577,9 @@ async def editor_search_files(req: func.HttpRequest) -> func.HttpResponse:
             f"file pattern: {search_request.filePattern}"
         )
 
-        response = search_files(search_request)
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, search_files, search_request)
 
         logger.info(
             f"Search complete, matches: {response.totalMatches}, "

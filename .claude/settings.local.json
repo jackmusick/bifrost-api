@@ -4,7 +4,9 @@
       "Bash(for file in tests/integration/engine/test_async_workflow_execution.py tests/integration/engine/test_workflow_execution.py tests/unit/handlers/test_file_uploads_handlers.py)",
       "Bash(do)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(for file in platform/examples/example_html_table.py platform/examples/data_providers/license_providers.py platform/examples/data_providers/general_providers.py platform/examples/example_webhook_handler.py)"
+      "Bash(for file in platform/examples/example_html_table.py platform/examples/data_providers/license_providers.py platform/examples/data_providers/general_providers.py platform/examples/example_webhook_handler.py)",
+      "Read(//Users/jack/GitHub/**)",
+      "Bash(./test.sh:*)"
     ],
     "deny": [],
     "ask": [],

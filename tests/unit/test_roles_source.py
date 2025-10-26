@@ -20,7 +20,8 @@ class TestGetRoles:
     """Test GetRoles endpoint for SWA role assignment"""
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
-    def test_platform_admin_user(self, mock_provision):
+    @pytest.mark.asyncio
+    async def test_platform_admin_user(self, mock_provision):
         """PlatformAdmin user gets correct roles"""
         # Mock provisioning returns PlatformAdmin
         mock_provision.return_value = UserProvisioningResult(
@@ -36,7 +37,7 @@ class TestGetRoles:
         }
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response
         assert response.status_code == 200
@@ -49,7 +50,8 @@ class TestGetRoles:
         mock_provision.assert_called_once_with("admin@example.com", "admin-id-456", None)
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
-    def test_org_user(self, mock_provision):
+    @pytest.mark.asyncio
+    async def test_org_user(self, mock_provision):
         """OrgUser gets correct roles"""
         # Mock provisioning returns OrgUser
         mock_provision.return_value = UserProvisioningResult(
@@ -65,7 +67,7 @@ class TestGetRoles:
         }
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response
         assert response.status_code == 200
@@ -76,7 +78,8 @@ class TestGetRoles:
         assert "PlatformAdmin" not in body["roles"]
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
-    def test_first_user_creation(self, mock_provision):
+    @pytest.mark.asyncio
+    async def test_first_user_creation(self, mock_provision):
         """First user is auto-promoted to PlatformAdmin"""
         # Mock provisioning creates first user
         mock_provision.return_value = UserProvisioningResult(
@@ -92,7 +95,7 @@ class TestGetRoles:
         }
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response
         assert response.status_code == 200
@@ -101,7 +104,8 @@ class TestGetRoles:
         assert "PlatformAdmin" in body["roles"]
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
-    def test_provisioning_failure_no_domain_match(self, mock_provision):
+    @pytest.mark.asyncio
+    async def test_provisioning_failure_no_domain_match(self, mock_provision):
         """User with no domain match gets anonymous role"""
         # Mock provisioning raises ValueError (no domain match)
         mock_provision.side_effect = ValueError("No organization configured for domain")
@@ -115,7 +119,7 @@ class TestGetRoles:
         }
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response (anonymous)
         assert response.status_code == 200
@@ -123,14 +127,15 @@ class TestGetRoles:
         assert "roles" in body
         assert body["roles"] == ["anonymous"]
 
-    def test_no_user_id_provided(self):
+    @pytest.mark.asyncio
+    async def test_no_user_id_provided(self):
         """Request without userId gets anonymous role"""
         # Create request without userId
         req = Mock(spec=func.HttpRequest)
         req.get_json.return_value = {"identityProvider": "aad"}
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response
         assert response.status_code == 200
@@ -138,14 +143,15 @@ class TestGetRoles:
         assert "roles" in body
         assert body["roles"] == ["anonymous"]
 
-    def test_no_user_email_provided(self):
+    @pytest.mark.asyncio
+    async def test_no_user_email_provided(self):
         """Request without userDetails gets anonymous role"""
         # Create request without userDetails
         req = Mock(spec=func.HttpRequest)
         req.get_json.return_value = {"userId": "user-id", "identityProvider": "aad"}
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response
         assert response.status_code == 200
@@ -154,7 +160,8 @@ class TestGetRoles:
         assert body["roles"] == ["anonymous"]
 
     @patch("shared.handlers.roles_source_handlers.ensure_user_provisioned")
-    def test_error_handling(self, mock_provision):
+    @pytest.mark.asyncio
+    async def test_error_handling(self, mock_provision):
         """Unexpected errors result in anonymous role for safety"""
         # Mock provisioning raises unexpected exception
         mock_provision.side_effect = Exception("Database error")
@@ -168,7 +175,7 @@ class TestGetRoles:
         }
 
         # Call GetRoles
-        response = get_roles(req)
+        response = await get_roles(req)
 
         # Verify response (should return anonymous on error)
         assert response.status_code == 200

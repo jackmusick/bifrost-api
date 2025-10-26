@@ -3,8 +3,8 @@ azure-functions
 azure-data-tables
 azure-identity
 azure-keyvault-secrets
-azure-storage-blob
-azure-storage-queue
+azure-storage-blob==12.27.0
+azure-storage-queue>=12.14.0
 azure-storage-file-share>=12.14.1
 
 # Microsoft Graph and API integrations
@@ -49,4 +49,3 @@ pyjwt[crypto]  # Only used in test fixtures
 
 # Development and debugging
 debugpy>=1.8.0
-azure-storage-blob==12.19.0

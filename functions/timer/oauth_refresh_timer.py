@@ -16,7 +16,7 @@ bp = func.Blueprint()
 
 
 @bp.function_name("oauth_refresh_timer")
-@bp.timer_trigger(schedule="0 */15 * * * *", arg_name="timer", run_on_startup=True)
+@bp.timer_trigger(schedule="0 */15 * * * *", arg_name="timer", run_on_startup=False)
 async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
     """
     Timer trigger that runs every 15 minutes to refresh expiring OAuth tokens
