@@ -5,7 +5,7 @@ Tests config and integration management business logic
 
 import json
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import azure.functions as func
 
@@ -105,7 +105,7 @@ class TestDeleteConfigHandler:
 
         with patch('shared.handlers.org_config_handlers.ConfigRepository') as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.delete_config.return_value = True
+            mock_repo.delete_config = AsyncMock(return_value=True)
 
             response = await delete_config_handler(mock_req)
 
@@ -146,7 +146,7 @@ class TestGetIntegrationsHandler:
 
         with patch('shared.handlers.org_config_handlers.ConfigRepository') as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.list_integrations.return_value = integrations
+            mock_repo.list_integrations = AsyncMock(return_value=integrations)
 
             response = await get_integrations_handler(mock_req)
 
@@ -163,7 +163,7 @@ class TestGetIntegrationsHandler:
 
         with patch('shared.handlers.org_config_handlers.ConfigRepository') as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.list_integrations.return_value = []
+            mock_repo.list_integrations = AsyncMock(return_value=[])
 
             response = await get_integrations_handler(mock_req)
 
@@ -217,7 +217,7 @@ class TestDeleteIntegrationHandler:
 
         with patch('shared.handlers.org_config_handlers.ConfigRepository') as MockRepo:
             mock_repo = MockRepo.return_value
-            mock_repo.delete_integration.return_value = True
+            mock_repo.delete_integration = AsyncMock(return_value=True)
 
             response = await delete_integration_handler(mock_req)
 

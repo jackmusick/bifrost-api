@@ -580,32 +580,6 @@ class OAuthStorageService:
 
             logger.info(f"Refreshing OAuth connection: {connection_name} (flow={connection.oauth_flow_type})")
 
-            # Get OAuth response config to retrieve current tokens
-            # Config table uses RowKey: config:oauth_{connection_name}_oauth_response
-            oauth_response_key = f"config:oauth_{connection_name}_oauth_response"
-            oauth_response_config = await self.config_table.get_entity(
-                connection.org_id,
-                oauth_response_key
-            )
-
-            if not oauth_response_config:
-                logger.error(f"OAuth response config not found: {oauth_response_key}")
-                return False
-
-            # Get Key Vault secret name from config
-            keyvault_secret_name = oauth_response_config.get("Value")
-            if not keyvault_secret_name:
-                logger.error("OAuth response config missing Key Vault secret name")
-                return False
-
-            # Retrieve current OAuth tokens from Key Vault
-            keyvault = KeyVaultClient()
-            assert keyvault._client is not None, "Key Vault client not initialized"
-            secret = keyvault._client.get_secret(keyvault_secret_name)
-            oauth_response_json = secret.value
-            assert oauth_response_json is not None, "OAuth response is None"
-            oauth_response = json.loads(oauth_response_json)
-
             # Get client secret if exists
             client_secret = None
             if connection.client_secret_ref:
@@ -662,6 +636,32 @@ class OAuthStorageService:
             else:
                 # Authorization code flow: use refresh_token
                 logger.info(f"Refreshing authorization_code token for {connection_name}")
+
+                # Get OAuth response config to retrieve current tokens
+                # Config table uses RowKey: config:oauth_{connection_name}_oauth_response
+                oauth_response_key = f"config:oauth_{connection_name}_oauth_response"
+                oauth_response_config = await self.config_table.get_entity(
+                    connection.org_id,
+                    oauth_response_key
+                )
+
+                if not oauth_response_config:
+                    logger.error(f"OAuth response config not found: {oauth_response_key}")
+                    return False
+
+                # Get Key Vault secret name from config
+                keyvault_secret_name = oauth_response_config.get("Value")
+                if not keyvault_secret_name:
+                    logger.error("OAuth response config missing Key Vault secret name")
+                    return False
+
+                # Retrieve current OAuth tokens from Key Vault
+                keyvault = KeyVaultClient()
+                assert keyvault._client is not None, "Key Vault client not initialized"
+                secret = keyvault._client.get_secret(keyvault_secret_name)
+                oauth_response_json = secret.value
+                assert oauth_response_json is not None, "OAuth response is None"
+                oauth_response = json.loads(oauth_response_json)
 
                 refresh_token = oauth_response.get("refresh_token")
 

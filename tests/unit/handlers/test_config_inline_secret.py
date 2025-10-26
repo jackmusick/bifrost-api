@@ -5,7 +5,7 @@ Tests the new functionality for creating secrets when posting config with type=s
 
 import json
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch, MagicMock
 
 import azure.functions as func
 
@@ -34,7 +34,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None  # New config
+            mock_repo.get_config = AsyncMock(return_value=None )  # New config
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()  # Mock the Key Vault client
@@ -56,7 +56,7 @@ class TestInlineSecretCreation:
                 updatedAt=datetime.utcnow(),
                 updatedBy="user-123"
             )
-            mock_repo.set_config.return_value = saved_config
+            mock_repo.set_config = AsyncMock(return_value=saved_config)
 
             # Execute
             response = await set_config_handler(mock_req)
@@ -105,7 +105,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None  # New config
+            mock_repo.get_config = AsyncMock(return_value=None )  # New config
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()
@@ -123,7 +123,7 @@ class TestInlineSecretCreation:
                 updatedAt=datetime.utcnow(),
                 updatedBy="user-123"
             )
-            mock_repo.set_config.return_value = saved_config
+            mock_repo.set_config = AsyncMock(return_value=saved_config)
 
             # Execute
             response = await set_config_handler(mock_req)
@@ -163,7 +163,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None
+            mock_repo.get_config = AsyncMock(return_value=None)
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()
@@ -181,7 +181,7 @@ class TestInlineSecretCreation:
                 updatedAt=datetime.utcnow(),
                 updatedBy="user-123"
             )
-            mock_repo.set_config.return_value = saved_config
+            mock_repo.set_config = AsyncMock(return_value=saved_config)
 
             # Execute
             response = await set_config_handler(mock_req)
@@ -210,7 +210,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None
+            mock_repo.get_config = AsyncMock(return_value=None)
 
             # Mock KeyVaultClient to have a valid client
             mock_kv_instance = MockKV.return_value
@@ -246,7 +246,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None
+            mock_repo.get_config = AsyncMock(return_value=None)
 
             # Mock KeyVaultClient to have a valid client
             mock_kv_instance = MockKV.return_value
@@ -282,7 +282,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None
+            mock_repo.get_config = AsyncMock(return_value=None)
 
             mock_kv = MockKV.return_value
             mock_kv._client = None  # Key Vault not initialized
@@ -331,7 +331,7 @@ class TestInlineSecretCreation:
                 updatedAt=datetime.utcnow(),
                 updatedBy="old-user"
             )
-            mock_repo.get_config.return_value = existing_config
+            mock_repo.get_config = AsyncMock(return_value=existing_config)
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()
@@ -347,7 +347,7 @@ class TestInlineSecretCreation:
                 updatedAt=datetime.utcnow(),
                 updatedBy="user-123"
             )
-            mock_repo.set_config.return_value = updated_config
+            mock_repo.set_config = AsyncMock(return_value=updated_config)
 
             # Execute
             response = await set_config_handler(mock_req)
@@ -387,7 +387,7 @@ class TestInlineSecretCreation:
 
             # Setup mocks
             mock_repo = MockRepo.return_value
-            mock_repo.get_config.return_value = None
+            mock_repo.get_config = AsyncMock(return_value=None)
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()
@@ -405,7 +405,7 @@ class TestInlineSecretCreation:
                 updatedAt=datetime.utcnow(),
                 updatedBy="user-123"
             )
-            mock_repo.set_config.return_value = saved_config
+            mock_repo.set_config = AsyncMock(return_value=saved_config)
 
             # Execute
             response = await set_config_handler(mock_req)

@@ -6,7 +6,7 @@ Tests workflow key generation, listing, and revocation
 import json
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import azure.functions as func
 
@@ -64,7 +64,7 @@ class TestCreateWorkflowKeyHandler:
 
             with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
                 mock_client = mock_table.return_value
-                mock_client.create_workflow_key = Mock()
+                mock_client.create_workflow_key = AsyncMock()
 
                 response = await create_workflow_key_handler(mock_req)
 
@@ -103,7 +103,7 @@ class TestCreateWorkflowKeyHandler:
 
             with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
                 mock_client = mock_table.return_value
-                mock_client.create_workflow_key = Mock()
+                mock_client.create_workflow_key = AsyncMock()
 
                 response = await create_workflow_key_handler(mock_req)
 
@@ -141,7 +141,7 @@ class TestCreateWorkflowKeyHandler:
 
             with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
                 mock_client = mock_table.return_value
-                mock_client.create_workflow_key = Mock()
+                mock_client.create_workflow_key = AsyncMock()
 
                 response = await create_workflow_key_handler(mock_req)
 
@@ -195,7 +195,7 @@ class TestListWorkflowKeysHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.list_workflow_keys.return_value = []
+            mock_client.list_workflow_keys = AsyncMock(return_value=[])
 
             response = await list_workflow_keys_handler(mock_req)
 
@@ -212,7 +212,7 @@ class TestListWorkflowKeysHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.list_workflow_keys.return_value = []
+            mock_client.list_workflow_keys = AsyncMock(return_value=[])
 
             response = await list_workflow_keys_handler(mock_req)
 
@@ -232,7 +232,7 @@ class TestListWorkflowKeysHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.list_workflow_keys.return_value = []
+            mock_client.list_workflow_keys = AsyncMock(return_value=[])
 
             response = await list_workflow_keys_handler(mock_req)
 
@@ -252,7 +252,7 @@ class TestListWorkflowKeysHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.list_workflow_keys.return_value = []
+            mock_client.list_workflow_keys = AsyncMock(return_value=[])
 
             response = await list_workflow_keys_handler(mock_req)
 
@@ -300,8 +300,8 @@ class TestRevokeWorkflowKeyHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_workflow_key_by_id.return_value = entity
-            mock_client.revoke_workflow_key.return_value = True  # Success
+            mock_client.get_workflow_key_by_id = AsyncMock(return_value=entity)
+            mock_client.revoke_workflow_key = AsyncMock(return_value=True )  # Success
 
             response = await revoke_workflow_key_handler(mock_req)
 
@@ -324,7 +324,7 @@ class TestRevokeWorkflowKeyHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_workflow_key_by_id.return_value = None  # Not found
+            mock_client.get_workflow_key_by_id = AsyncMock(return_value=None )  # Not found
 
             response = await revoke_workflow_key_handler(mock_req)
 
@@ -348,7 +348,7 @@ class TestRevokeWorkflowKeyHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_workflow_key_by_id.return_value = entity
+            mock_client.get_workflow_key_by_id = AsyncMock(return_value=entity)
 
             response = await revoke_workflow_key_handler(mock_req)
 
@@ -387,8 +387,8 @@ class TestRevokeWorkflowKeyHandler:
 
         with patch('shared.handlers.workflow_keys_handlers.get_global_config_repository') as mock_table:
             mock_client = mock_table.return_value
-            mock_client.get_workflow_key_by_id.return_value = entity
-            mock_client.revoke_workflow_key.return_value = True
+            mock_client.get_workflow_key_by_id = AsyncMock(return_value=entity)
+            mock_client.revoke_workflow_key = AsyncMock(return_value=True)
 
             response = await revoke_workflow_key_handler(mock_req)
 
