@@ -10,7 +10,8 @@
       "Bash(/Users/jack/GitHub/bifrost-api/test.sh)",
       "Read(//private/tmp/**)",
       "Read(//tmp/**)",
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.cipp.app)"
     ],
     "deny": [],
     "ask": [],

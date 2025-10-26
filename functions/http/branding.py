@@ -31,29 +31,19 @@ bp = func.Blueprint()
     path="/branding",
     method="GET",
     summary="Get branding settings",
-    description="Get branding configuration (org-specific or GLOBAL fallback)",
+    description="Get GLOBAL branding configuration (public endpoint, no auth required)",
     tags=["Branding"],
-    response_model=BrandingSettings,
-    query_params={
-        "orgId": {
-            "description": "Organization ID (defaults to current user's org)",
-            "schema": {"type": "string"},
-            "required": False
-        }
-    }
+    response_model=BrandingSettings
 )
-@with_org_context
 async def get_branding(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Get branding settings for an organization.
+    Get GLOBAL branding settings.
 
-    Falls back to GLOBAL branding if org-specific branding not found.
+    Public endpoint - no authentication required.
+    Always returns GLOBAL branding for the entire platform.
     """
     try:
-        context = req.org_context  # type: ignore[attr-defined]
-        org_id = req.params.get("orgId", context.org_id)
-
-        branding = await get_branding_handler(org_id)
+        branding = await get_branding_handler()
 
         return func.HttpResponse(
             body=branding.model_dump_json(),

@@ -93,59 +93,42 @@ def _transform_blob_url_to_proxy(blob_url: str | None, org_id: str) -> str | Non
     return blob_url
 
 
-async def get_branding(org_id: str | None) -> BrandingSettings:
+async def get_branding() -> BrandingSettings:
     """
-    Get branding settings for an organization.
-    Falls back to GLOBAL if org-specific branding not found.
+    Get GLOBAL branding settings for the platform.
     Uses in-memory cache (5 min TTL) to reduce database calls.
-
-    Args:
-        org_id: Organization ID to get branding for (None defaults to GLOBAL)
 
     Returns:
         BrandingSettings object
     """
-    # Default to GLOBAL if no org_id
-    org_id = org_id or "GLOBAL"
-
     # Check cache first
-    cached_branding = _get_cached_branding(org_id)
+    cached_branding = _get_cached_branding("GLOBAL")
     if cached_branding:
         return cached_branding
 
     # Cache miss - query database
     table_service = AsyncTableStorageService("Config")
 
-    # Try to get org-specific branding first
-    try:
-        entity = await table_service.get_entity(partition_key=org_id, row_key="branding")
-        if entity:
-            branding = _entity_to_branding(entity)
-            _cache_branding(org_id, branding)
-            return branding
-    except Exception:
-        pass
-
-    # Fall back to GLOBAL branding
+    # Get GLOBAL branding
     try:
         entity = await table_service.get_entity(partition_key="GLOBAL", row_key="branding")
         if entity:
             branding = _entity_to_branding(entity)
-            _cache_branding(org_id, branding)  # Cache under requested org_id
+            _cache_branding("GLOBAL", branding)
             return branding
     except Exception:
         pass
 
     # Return default branding (all None - frontend handles defaults)
     default_branding = BrandingSettings(
-        orgId=org_id,
+        orgId="GLOBAL",
         squareLogoUrl=None,
         rectangleLogoUrl=None,
         primaryColor=None,
         updatedBy="system",
         updatedAt=datetime.utcnow()
     )
-    _cache_branding(org_id, default_branding)  # Cache default to avoid repeated queries
+    _cache_branding("GLOBAL", default_branding)  # Cache default to avoid repeated queries
     return default_branding
 
 
