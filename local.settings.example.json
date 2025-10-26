@@ -1,9 +1,11 @@
 {
     "IsEncrypted": false,
     "Values": {
-        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "AzureWebJobsStorage": "DefaultEndpointsProtocol=http;AccountName=account1;AccountKey=key1;BlobEndpoint=http://account1.blob.localhost:10000;QueueEndpoint=http://account1.queue.localhost:10001;TableEndpoint=http://account1.table.localhost:10002;",
         "FUNCTIONS_WORKER_RUNTIME": "python",
-        "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/"
+        "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
+        "BIFROST_WORKSPACE_LOCATION": "/home/vscode/workspace",
+        "BIFROST_TEMP_LOCATION": "/home/vscode/tmp"
     },
     "Host": {
         "CORS": "*",

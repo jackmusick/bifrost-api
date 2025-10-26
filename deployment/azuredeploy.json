@@ -30,23 +30,39 @@
         "functionsStorageAccountType": {
             "type": "string",
             "defaultValue": "Standard_LRS",
-            "allowedValues": ["Standard_LRS", "Standard_GRS"],
+            "allowedValues": [
+                "Standard_LRS",
+                "Standard_GRS"
+            ],
             "metadata": {
                 "description": "Storage account type for Functions runtime"
             }
         },
-        "staticWebAppLocation": {
+        "githubRepository": {
             "type": "string",
-            "defaultValue": "eastus2",
-            "allowedValues": [
-                "eastus2",
-                "westus2",
-                "centralus",
-                "westeurope",
-                "eastasia"
-            ],
             "metadata": {
-                "description": "Location for Static Web App (limited regional availability)"
+                "description": "URL to your GitHub frontend repository"
+            }
+        },
+        "githubToken": {
+            "type": "securestring",
+            "defaultValue": "",
+            "metadata": {
+                "description": "GitHub Personal Access Token for Static Web App deployment (see https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)"
+            }
+        },
+        "entraClientId": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Entra ID Client ID for Static Web App authentication"
+            }
+        },
+        "entraClientSecret": {
+            "type": "securestring",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Entra ID Client Secret for Static Web App authentication"
             }
         }
     },
@@ -278,6 +294,18 @@
             }
         },
         {
+            "type": "Microsoft.Web/sites/extensions",
+            "apiVersion": "2024-04-01",
+            "name": "[concat(variables('apiFunctionAppName'), '/ZipDeploy')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
+            ],
+            "properties": {
+                "packageUri": "https://github.com/jackmusick/bifrost-api/releases/download/latest/api.zip"
+            }
+        },
+        {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
             "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('apiFunctionAppName')), 'Key Vault Secrets User API')]",
@@ -296,7 +324,7 @@
             "type": "Microsoft.Web/staticSites",
             "apiVersion": "2024-04-01",
             "name": "[variables('staticWebAppName')]",
-            "location": "[parameters('staticWebAppLocation')]",
+            "location": "[resourceGroup().location]",
             "sku": {
                 "name": "Standard",
                 "tier": "Standard"
@@ -304,7 +332,30 @@
             "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
             ],
-            "properties": {}
+            "properties": {
+                "repositoryUrl": "[parameters('githubRepository')]",
+                "branch": "main",
+                "repositoryToken": "[parameters('githubToken')]",
+                "buildProperties": {
+                    "appLocation": "/",
+                    "apiLocation": "",
+                    "outputLocation": "/dist"
+                }
+            },
+            "resources": [
+                {
+                    "type": "config",
+                    "apiVersion": "2024-04-01",
+                    "name": "appsettings",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Web/staticSites', variables('staticWebAppName'))]"
+                    ],
+                    "properties": {
+                        "ENTRA_CLIENT_ID": "[parameters('entraClientId')]",
+                        "ENTRA_CLIENT_SECRET": "[parameters('entraClientSecret')]"
+                    }
+                }
+            ]
         },
         {
             "type": "Microsoft.Web/staticSites/linkedBackends",

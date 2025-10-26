@@ -9,8 +9,16 @@
             "version": "20"
         }
     },
-    "postCreateCommand": "pip install -r requirements.txt && npm install -g azure-functions-core-tools@4 azurite --unsafe-perm true",
-    "forwardPorts": [7071, 10000, 10001, 10002],
+    "postCreateCommand": "mkdir /home/vscode/workspace /home/vscode/tmp && pip install -r requirements.txt && npm install -g azure-functions-core-tools@4 azurite --unsafe-perm true",
+    "runArgs": [
+        "--network=host"
+    ],
+    "forwardPorts": [
+        7071,
+        10000,
+        10001,
+        10002
+    ],
     "customizations": {
         "vscode": {
             "extensions": [
