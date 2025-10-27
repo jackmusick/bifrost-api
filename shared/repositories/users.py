@@ -354,6 +354,104 @@ class UserRepository(BaseRepository):
 
         return users
 
+    async def update_user(
+        self,
+        email: str,
+        display_name: str | None = None,
+        is_active: bool | None = None,
+        is_platform_admin: bool | None = None,
+        org_id: str | None = None,
+        updated_by: str = "system"
+    ) -> User | None:
+        """
+        Update user properties
+
+        This method handles role transitions:
+        - Promoting to Platform Admin: Sets isPlatformAdmin=True, userType=PLATFORM, removes org assignments
+        - Demoting to Org User: Sets isPlatformAdmin=False, userType=ORG, requires org_id assignment
+
+        Args:
+            email: User email
+            display_name: New display name (optional)
+            is_active: New active status (optional)
+            is_platform_admin: New platform admin status (optional)
+            org_id: Organization ID (required when demoting to org user)
+            updated_by: User ID who made the update
+
+        Returns:
+            Updated User model or None if user not found
+
+        Raises:
+            ValueError: If demoting to org user without providing org_id
+        """
+        entity = await self.get_by_id("GLOBAL", f"user:{email}")
+
+        if not entity:
+            logger.warning(f"Cannot update user: {email} not found")
+            return None
+
+        current_is_platform_admin = entity.get("IsPlatformAdmin", False)
+
+        # Update fields if provided
+        if display_name is not None:
+            entity["DisplayName"] = display_name
+
+        if is_active is not None:
+            entity["IsActive"] = is_active
+
+        # Handle platform admin role changes
+        if is_platform_admin is not None:
+            # Demoting from platform admin to org user
+            if current_is_platform_admin and not is_platform_admin:
+                if not org_id:
+                    raise ValueError("org_id is required when demoting user to org user")
+
+                logger.info(f"Demoting {email} from Platform Admin to Org User (org: {org_id})")
+                entity["IsPlatformAdmin"] = False
+                entity["UserType"] = UserType.ORG.value
+
+                # Assign to organization
+                await self.assign_user_to_org(email, org_id, updated_by)
+
+            # Promoting from org user to platform admin
+            elif not current_is_platform_admin and is_platform_admin:
+                logger.info(f"Promoting {email} from Org User to Platform Admin")
+                entity["IsPlatformAdmin"] = True
+                entity["UserType"] = UserType.PLATFORM.value
+
+                # Remove existing org assignments
+                old_org_id = await self.get_user_org_id(email)
+                if old_org_id:
+                    logger.info(f"Removing org assignment for promoted user: {old_org_id}")
+                    await self.remove_user_from_org(email, old_org_id)
+
+        await self.update(entity)
+        logger.info(f"Updated user {email}")
+
+        return self._entity_to_model(entity)
+
+    async def remove_user_from_org(self, email: str, org_id: str) -> None:
+        """
+        Remove user from organization (delete dual-index relationships)
+
+        Args:
+            email: User email
+            org_id: Organization ID
+        """
+        # Delete forward relationship (user → org)
+        try:
+            await self.relationships_service.delete_entity("GLOBAL", f"userperm:{email}:{org_id}")
+        except Exception as e:
+            logger.warning(f"Failed to delete forward relationship: {e}")
+
+        # Delete reverse relationship (org → user)
+        try:
+            await self.relationships_service.delete_entity("GLOBAL", f"orgperm:{org_id}:{email}")
+        except Exception as e:
+            logger.warning(f"Failed to delete reverse relationship: {e}")
+
+        logger.info(f"Removed user {email} from organization {org_id}")
+
     def _entity_to_model(self, entity: dict) -> User:
         """
         Convert entity dict to User model

@@ -38,6 +38,8 @@ __all__ = [
 
     # Users & Roles
     'User',
+    'CreateUserRequest',
+    'UpdateUserRequest',
     'Role',
     'CreateRoleRequest',
     'UpdateRoleRequest',
@@ -404,6 +406,38 @@ class User(BaseModel):
         if v and user_type != UserType.PLATFORM:
             raise ValueError("Only PLATFORM users can be admins")
         return v
+
+
+class CreateUserRequest(BaseModel):
+    """Request model for creating a user"""
+    email: str = Field(..., description="User email address")
+    displayName: str = Field(..., min_length=1, max_length=200, description="User display name")
+    isPlatformAdmin: bool = Field(..., description="Whether user is a platform administrator")
+    orgId: str | None = Field(None, description="Organization ID (required if isPlatformAdmin=false)")
+
+    @model_validator(mode='after')
+    def validate_org_requirement(self):
+        """Validate that orgId is provided for non-platform-admin users"""
+        if not self.isPlatformAdmin and not self.orgId:
+            raise ValueError("orgId is required when isPlatformAdmin is false")
+        if self.isPlatformAdmin and self.orgId:
+            raise ValueError("orgId must be null when isPlatformAdmin is true")
+        return self
+
+
+class UpdateUserRequest(BaseModel):
+    """Request model for updating a user"""
+    displayName: str | None = Field(None, min_length=1, max_length=200, description="User display name")
+    isActive: bool | None = Field(None, description="Whether user is active")
+    isPlatformAdmin: bool | None = Field(None, description="Whether user is a platform administrator")
+    orgId: str | None = Field(None, description="Organization ID (required when changing to isPlatformAdmin=false)")
+
+    @model_validator(mode='after')
+    def validate_org_requirement(self):
+        """Validate that orgId is provided when demoting to non-platform-admin"""
+        if self.isPlatformAdmin is False and not self.orgId:
+            raise ValueError("orgId is required when setting isPlatformAdmin to false")
+        return self
 
 
 # ==================== ROLE MODELS ====================

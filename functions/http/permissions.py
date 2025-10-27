@@ -11,12 +11,17 @@ import azure.functions as func
 from shared.custom_types import get_context, get_route_param
 from shared.decorators import require_platform_admin, with_request_context
 from shared.handlers.permissions_handlers import (
+    create_user_handler,
+    delete_user_handler,
     get_user_forms_handler,
     get_user_handler,
     get_user_roles_handler,
     list_users_handler,
+    update_user_handler,
 )
 from shared.models import (
+    CreateUserRequest,
+    UpdateUserRequest,
     User,
     UserFormsResponse,
     UserRolesResponse,
@@ -173,3 +178,101 @@ async def get_user_forms(req: func.HttpRequest) -> func.HttpResponse:
     user_id = get_route_param(req, "userId")
 
     return await get_user_forms_handler(context, user_id)
+
+
+@bp.function_name("permissions_create_user")
+@bp.route(route="users", methods=["POST"])
+@openapi_endpoint(
+    path="/users",
+    method="POST",
+    summary="Create user",
+    description="Create a new user proactively (Platform admin only)",
+    tags=["Users"],
+    request_model=CreateUserRequest,
+    response_model=User
+)
+@with_request_context
+@require_platform_admin
+async def create_user(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/users
+    Create a new user proactively (before first login)
+
+    Business Rules:
+    - isPlatformAdmin=true → User is PLATFORM type (global access)
+    - isPlatformAdmin=false → User is ORG type, orgId is REQUIRED
+
+    Platform admin only endpoint
+    """
+    context = get_context(req)
+    return await create_user_handler(context, req)
+
+
+@bp.function_name("permissions_update_user")
+@bp.route(route="users/{userId}", methods=["PATCH"])
+@openapi_endpoint(
+    path="/users/{userId}",
+    method="PATCH",
+    summary="Update user",
+    description="Update user properties including role transitions (Platform admin only)",
+    tags=["Users"],
+    path_params={
+        "userId": {
+            "description": "User ID (email)",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    },
+    request_model=UpdateUserRequest,
+    response_model=User
+)
+@with_request_context
+@require_platform_admin
+async def update_user(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    PATCH /api/users/{userId}
+    Update user properties including role transitions
+
+    Business Rules:
+    - Promoting to Platform Admin: Removes org assignments
+    - Demoting to Org User: Requires orgId, creates org assignment
+
+    Platform admin only endpoint
+    """
+    context = get_context(req)
+    user_id = get_route_param(req, "userId")
+    return await update_user_handler(context, user_id, req)
+
+
+@bp.function_name("permissions_delete_user")
+@bp.route(route="users/{userId}", methods=["DELETE"])
+@openapi_endpoint(
+    path="/users/{userId}",
+    method="DELETE",
+    summary="Delete user",
+    description="Delete a user from the system (Platform admin only)",
+    tags=["Users"],
+    path_params={
+        "userId": {
+            "description": "User ID (email)",
+            "schema": {"type": "string"},
+            "required": True
+        }
+    }
+)
+@with_request_context
+@require_platform_admin
+async def delete_user(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    DELETE /api/users/{userId}
+    Delete a user from the system
+
+    Business Rules:
+    - Users cannot delete themselves
+    - Cleans up org assignments
+
+    Platform admin only endpoint
+    """
+    context = get_context(req)
+    user_id = get_route_param(req, "userId")
+    return await delete_user_handler(context, user_id)

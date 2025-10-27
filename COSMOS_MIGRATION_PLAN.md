@@ -2,19 +2,30 @@
 
 **Status**: Planning Phase
 **Target**: Full migration from Azure Table Storage to Azure CosmosDB (Serverless)
-**Timeline**: ~5-7 days development
-**Cost Impact**: ~$20-30/month (from ~$0.37/month)
+**Timeline**: Phase 1 (MVP): ~7 days | Phase 2 (Real-Time): ~5 days | Phase 3 (Optimization): ~3 days
+**Cost Impact**: Phase 1: ~$11/month | Phase 2: ~$13/month | Phase 3: Same (~$13/month)
 
 ---
 
 ## Executive Summary
 
-Migrate Bifrost from Azure Table Storage to CosmosDB to achieve:
+Migrate Bifrost from Azure Table Storage to CosmosDB in three phases:
+
+**Phase 1 - Migration MVP** (7 days):
 - **Simpler architecture**: 6 writes per execution → 1 write (removes manual index management)
 - **ACID transactions**: Fixes TODO comments about rollback logic
 - **Rich SQL queries**: Multi-field filtering without manual indexes
 - **Auto-cleanup**: TTL-based deletion of old executions (14-day retention)
-- **Real-time updates**: Change Feed for dashboard (bonus feature)
+
+**Phase 2 - Real-Time Logs** (5 days):
+- **Real-time log streaming**: Logs appear in UI as workflow executes
+- **SignalR integration**: Change Feed → SignalR → instant UI updates
+- **Better debugging**: See variables and state changes in real-time
+
+**Phase 3 - Dashboard Optimization** (3 days):
+- **Pre-aggregated metrics**: Fast dashboard loads (<100ms)
+- **Historical analytics**: Daily rollups for trend analysis
+- **Efficient queries**: Avoid expensive cross-partition scans
 
 ---
 
@@ -46,7 +57,7 @@ Total writes per execution: 6 operations
 6. Update on completion (Primary + 4 indexes = 5 updates)
 ```
 
-### Target State: CosmosDB (Serverless, 2 containers)
+### Target State: CosmosDB (Serverless, 3 containers)
 
 ```
 Database: "bifrost"
@@ -54,32 +65,41 @@ Database: "bifrost"
 Container 1: "entities"
 - Partition Key: /scope (handles "GLOBAL" and "org-{uuid}")
 - TTL: None (permanent data)
-- Document types: user, organization, role, form, oauth_connection, config, branding
+- Document types:
+  • user, organization, role, form, oauth_connection, config, branding
+  • metrics (daily aggregates - Phase 3)
 - Estimated size: ~100MB (slow growth)
 
 Container 2: "executions"
 - Partition Key: /scope
 - TTL: 1209600 seconds (14 days auto-delete)
-- Document types: execution
-- Estimated size: ~2-5GB (steady state with TTL)
+- Document types: execution (metadata only - no logs/variables/result)
+- Estimated size: ~500MB-1GB (steady state with TTL)
 - Optimized indexing for time-series queries
 
-Blob Storage: "execution-data" (unchanged)
-- Results (>32KB)
-- Logs (always)
-- Variables (always)
-- Snapshots (always)
-- Lifecycle: Delete after 14 days (matches TTL)
+Container 3: "execution_data" (Phase 2)
+- Partition Key: /executionId
+- TTL: 1209600 seconds (14 days auto-delete)
+- Document types:
+  • log (individual log entries)
+  • variables (variable snapshots)
+  • result (execution results, even large ones)
+  • state (state snapshots)
+- Enables real-time streaming via Change Feed
+- Estimated size: ~1-2GB (steady state with TTL)
 
-Total writes per execution: 1 operation
-- Single document write to CosmosDB (all fields auto-indexed)
+Blob Storage: "execution-data" (fallback only)
+- Use only for results/logs exceeding CosmosDB 2MB document limit
+- Most executions won't need blob storage anymore
 ```
+
+**Total writes per execution:**
+- Phase 1: 1 operation (execution metadata)
+- Phase 2: 1 + ~10 logs + 1 result + variables = ~15 operations (but streamed in real-time!)
 
 ---
 
-## Document Schema Design
-
-### Unified "scope" Field
+## Unified "scope" Field
 
 All documents use a single `scope` field instead of separate `orgId`/`isGlobal`:
 
@@ -103,655 +123,394 @@ All documents use a single `scope` field instead of separate `orgId`/`isGlobal`:
 **Entities always GLOBAL:**
 - Organizations (always GLOBAL, scope = own ID for consistency)
 
-### Container 1: "entities" Documents
+---
 
-#### User Document
-```json
-{
-  "id": "user-admin@example.com",
-  "type": "user",
-  "scope": "GLOBAL",  // Partition key
-  "email": "admin@example.com",
-  "displayName": "Admin User",
-  "userType": "PLATFORM",
-  "isPlatformAdmin": true,
-  "isActive": true,
-  "lastLogin": "2025-01-26T10:00:00Z",
-  "createdAt": "2024-01-01T00:00:00Z",
-  "entraUserId": "azure-ad-oid-123",
-  "lastEntraIdSync": "2025-01-26T10:00:00Z"
-}
-```
+## Document Schemas
 
-#### Organization Document
-```json
-{
-  "id": "org-123",
-  "type": "organization",
-  "scope": "org-123",  // Partition key = own ID
-  "name": "Acme Corp",
-  "domain": "acme.com",
-  "isActive": true,
-  "createdAt": "2024-01-15T00:00:00Z",
-  "createdBy": "admin@example.com",
-  "updatedAt": "2025-01-26T10:00:00Z"
-}
-```
+### Container 1: "entities"
 
-#### Role Document
-```json
-{
-  "id": "role-abc-123",
-  "type": "role",
-  "scope": "org-123",  // Partition key (roles are org-scoped)
-  "name": "Technician",
-  "description": "Field technician role",
-  "isActive": true,
-  "createdBy": "admin@acme.com",
-  "createdAt": "2024-02-01T00:00:00Z",
-  "updatedAt": "2025-01-26T10:00:00Z"
-}
-```
-
-#### Form Document
-```json
-{
-  "id": "form-xyz-456",
-  "type": "form",
-  "scope": "GLOBAL",  // Can be GLOBAL or org-{uuid}
-  "name": "User Onboarding",
-  "description": "Standard user onboarding form",
-  "linkedWorkflow": "onboard_user",
-  "formSchema": {
-    "fields": [
-      {
-        "name": "email",
-        "label": "Email Address",
-        "type": "email",
-        "required": true
-      }
-    ]
-  },
-  "isActive": true,
-  "isGlobal": true,
-  "accessLevel": "role_based",
-  "createdBy": "admin@example.com",
-  "createdAt": "2024-03-01T00:00:00Z",
-  "updatedAt": "2025-01-26T10:00:00Z",
-  "launchWorkflowId": null,
-  "allowedQueryParams": ["userId"],
-  "defaultLaunchParams": {}
-}
-```
-
-#### Config Document
-```json
-{
-  "id": "config-msgraph-client-secret",
-  "type": "config",
-  "scope": "GLOBAL",  // Can be GLOBAL or org-{uuid}
-  "key": "msgraph_client_secret",
-  "value": null,  // Not stored for secret_ref type
-  "secretRef": "kv-secret-msgraph-client-secret",  // Points to Key Vault
-  "configType": "secret_ref",
-  "description": "Microsoft Graph API client secret",
-  "updatedAt": "2025-01-26T10:00:00Z",
-  "updatedBy": "admin@example.com"
-}
-```
-
-#### OAuth Connection Document
-```json
-{
-  "id": "oauth-msgraph",
-  "type": "oauth_connection",
-  "scope": "GLOBAL",  // Can be GLOBAL or org-{uuid}
-  "connectionName": "msgraph",
-  "description": "Microsoft Graph API connection",
-  "oauthFlowType": "authorization_code",
-  "clientId": "abc-123-def",
-  "clientSecretRef": "oauth_msgraph_client_secret",
-  "oauthResponseRef": "oauth_msgraph_oauth_response",
-  "authorizationUrl": "https://login.microsoftonline.com/.../authorize",
-  "tokenUrl": "https://login.microsoftonline.com/.../token",
-  "scopes": "User.Read Mail.Send",
-  "redirectUri": "/api/oauth/callback/msgraph",
-  "tokenType": "Bearer",
-  "expiresAt": "2025-01-26T11:00:00Z",
-  "status": "completed",
-  "statusMessage": "Connected successfully",
-  "lastRefreshAt": "2025-01-26T10:00:00Z",
-  "lastTestAt": "2025-01-26T09:00:00Z",
-  "createdAt": "2024-04-01T00:00:00Z",
-  "createdBy": "admin@example.com",
-  "updatedAt": "2025-01-26T10:00:00Z"
-}
-```
-
-#### Branding Document
-```json
-{
-  "id": "branding-org-123",
-  "type": "branding",
-  "scope": "org-123",  // Always org-scoped
-  "squareLogoUrl": "https://storage.../logo-square.png",
-  "rectangleLogoUrl": "https://storage.../logo-rect.png",
-  "primaryColor": "#FF5733",
-  "updatedBy": "admin@acme.com",
-  "updatedAt": "2025-01-26T10:00:00Z"
-}
-```
-
-### Container 2: "executions" Documents
-
-#### Execution Document (Small Result - Inline)
+#### Execution Metadata (Phase 1)
 ```json
 {
   "id": "exec-abc-123",
   "type": "execution",
   "scope": "org-123",  // Partition key
-  "executionId": "exec-abc-123",  // Same as id
+  "executionId": "exec-abc-123",
   "workflowName": "create_user",
   "formId": "form-xyz-456",
   "executedBy": "john@acme.com",
   "executedByName": "John Doe",
   "status": "Success",
-  "inputData": {
-    "email": "newuser@acme.com",
-    "name": "New User"
-  },
-  "result": {  // Inline (native JSON object, not string!)
-    "userId": "user-123",
-    "status": "created"
-  },
-  "resultType": "json",
-  "resultInBlob": false,
-  "resultSize": 1024,
-  "errorMessage": null,
+  "inputData": {"email": "newuser@acme.com", "name": "New User"},
   "durationMs": 1234,
   "startedAt": "2025-01-26T10:00:00Z",
   "completedAt": "2025-01-26T10:00:01Z",
-  "logs": null,  // Always in blob
-  "logsBlobPath": "exec-abc-123/logs.json",
-  "variables": null,  // Always in blob
-  "variablesBlobPath": "exec-abc-123/variables.json",
-  "ttl": 1209600,  // Auto-delete after 14 days
-  "_ts": 1706266800  // CosmosDB auto-timestamp
+  "errorMessage": null,
+  "ttl": 1209600  // Auto-delete after 14 days
 }
 ```
 
-#### Execution Document (Large Result - In Blob)
+#### Daily Metrics (Phase 3)
 ```json
 {
-  "id": "exec-def-456",
-  "type": "execution",
+  "id": "metrics-daily-2025-01-26",
+  "type": "metrics",
   "scope": "org-123",
-  "executionId": "exec-def-456",
-  "workflowName": "generate_report",
-  "formId": null,
-  "executedBy": "jane@acme.com",
-  "executedByName": "Jane Smith",
-  "status": "Success",
-  "inputData": {
-    "reportType": "monthly",
-    "month": "2025-01"
+  "date": "2025-01-26",
+  "totalExecutions": 1234,
+  "successCount": 1100,
+  "failedCount": 134,
+  "timeoutCount": 0,
+  "totalDurationMs": 4567890,
+  "avgDurationMs": 3702,
+  "workflows": {
+    "create_user": {
+      "count": 500,
+      "successCount": 490,
+      "failedCount": 10,
+      "avgDurationMs": 1234
+    }
+  }
+}
+```
+
+### Container 3: "execution_data" (Phase 2)
+
+#### Log Entry (Streamed in Real-Time)
+```json
+{
+  "id": "log-001",
+  "executionId": "exec-abc-123",  // Partition key
+  "type": "log",
+  "timestamp": "2025-01-26T10:00:01.234Z",
+  "level": "info",
+  "message": "Processing user creation",
+  "data": {"userId": "123"},
+  "ttl": 1209600
+}
+```
+
+#### Variable Snapshot
+```json
+{
+  "id": "variables-snapshot-v5",
+  "executionId": "exec-abc-123",  // Partition key
+  "type": "variables",
+  "timestamp": "2025-01-26T10:00:05.123Z",
+  "version": 5,  // Increments with each update
+  "variables": {
+    "user": {"email": "new@example.com"},
+    "config": {"retryCount": 3}
   },
-  "result": null,  // NOT stored inline (>32KB)
-  "resultType": "html",
-  "resultInBlob": true,
-  "resultSize": 524288,  // 512KB
-  "resultBlobPath": "exec-def-456/result.html",
-  "errorMessage": null,
-  "durationMs": 45000,
-  "startedAt": "2025-01-26T10:00:00Z",
-  "completedAt": "2025-01-26T10:00:45Z",
-  "logsBlobPath": "exec-def-456/logs.json",
-  "variablesBlobPath": "exec-def-456/variables.json",
-  "snapshotBlobPath": "exec-def-456/snapshot.json",
+  "ttl": 1209600
+}
+```
+
+#### Result (In CosmosDB, Not Blob!)
+```json
+{
+  "id": "result",
+  "executionId": "exec-abc-123",  // Partition key
+  "type": "result",
+  "timestamp": "2025-01-26T10:00:10.000Z",
+  "result": {
+    "userId": "user-123",
+    "status": "created",
+    "details": { /* ...up to 2MB of data... */ }
+  },
+  "resultType": "json",
+  "resultSize": 524288,
   "ttl": 1209600
 }
 ```
 
 ---
 
-## Blob Storage Pattern (Preserved Exactly)
+## Real-Time Streaming Architecture (Phase 2)
 
-### Current Behavior (No Changes)
+### Workflow Engine → CosmosDB → Change Feed → SignalR → UI
 
-**Result Storage Logic** (shared/execution_logger.py):
 ```python
-BLOB_THRESHOLD_BYTES = 32_768  # 32KB
-
-if result is not None:
-    result_json = json.dumps(result) if isinstance(result, dict) else result
-    result_size = len(result_json.encode('utf-8'))
-
-    if result_size > BLOB_THRESHOLD_BYTES:  # > 32KB
-        blob_service.upload_result(execution_id, result)
-        result_in_blob = True
-        result = None  # Don't store inline in DB
-    else:
-        result_in_blob = False  # Store inline in DB
+# 1. Workflow engine logs (during execution)
+async def log_info(message: str, data: dict = None):
+    """Write log to CosmosDB - triggers Change Feed automatically"""
+    await cosmos_client.create_item(
+        container="execution_data",
+        partition_key=execution_id,
+        body={
+            "id": f"log-{uuid.uuid4()}",
+            "executionId": execution_id,
+            "type": "log",
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": "info",
+            "message": message,
+            "data": data,
+            "ttl": 1209600
+        }
+    )
 ```
 
-**Blob Upload** (shared/blob_storage.py):
 ```python
-def upload_result(execution_id: str, result: dict | str) -> str:
-    """
-    Determines file extension based on content type:
-    - dict → result.json (with JSON.dumps, indent=2)
-    - str starting with '<' → result.html
-    - str (other) → result.txt
+# 2. Change Feed processor (Azure Function)
+@app.cosmos_db_trigger(
+    database="bifrost",
+    container="execution_data",
+    lease_container="leases"
+)
+async def on_execution_data_changed(documents: List[Document]):
+    """Push real-time updates to SignalR"""
+    for doc in documents:
+        execution_id = doc['executionId']
 
-    Uploads to: executions/{execution_id}/result.{ext}
-    """
+        if doc['type'] == 'log':
+            # Push log to UI immediately
+            await signalr_output.send({
+                'target': 'executionLog',
+                'arguments': [{
+                    'executionId': execution_id,
+                    'timestamp': doc['timestamp'],
+                    'level': doc['level'],
+                    'message': doc['message']
+                }]
+            })
+
+        elif doc['type'] == 'variables':
+            # Push variable update to UI
+            await signalr_output.send({
+                'target': 'executionVariables',
+                'arguments': [{
+                    'executionId': execution_id,
+                    'variables': doc['variables']
+                }]
+            })
 ```
 
-**Always in Blob** (no size check):
-- Logs → `{execution_id}/logs.json`
-- Variables → `{execution_id}/variables.json`
-- Snapshots → `{execution_id}/snapshot.json`
+```typescript
+// 3. UI (React) - Real-time updates
+useEffect(() => {
+  const connection = new HubConnectionBuilder()
+    .withUrl('/api/signalr')
+    .build()
 
-**Blob Retrieval**:
-```python
-def get_result(execution_id: str) -> dict | str | None:
-    """
-    Tries extensions in order: .json, .html, .txt
-    Returns parsed JSON (dict) or raw string
-    """
+  // Real-time log streaming
+  connection.on('executionLog', (log) => {
+    setLogs(prev => [...prev, log])  // Append instantly!
+  })
+
+  // Real-time variable updates
+  connection.on('executionVariables', (vars) => {
+    setVariables(vars.variables)  // Update instantly!
+  })
+
+  connection.start()
+}, [])
 ```
-
-### Migration: Zero Changes to Blob Logic
-
-✅ **32KB threshold** - unchanged
-✅ **Content type detection** - same HTML detection logic
-✅ **Blob path format** - `{id}/result.{ext}`
-✅ **Retrieval order** - .json → .html → .txt
-✅ **Logs/variables/snapshots** - always in blob
-✅ **`resultInBlob` flag** - preserved in CosmosDB document
-✅ **`resultType` metadata** - preserved (json/html/text)
-
-**Only difference**: CosmosDB stores `result` as native JSON object (not JSON string)
 
 ---
 
-## Query Pattern Comparison
+## Dashboard Architecture (Phase 3)
 
-### Current: Table Storage
-
-```python
-# User's executions (requires index table)
-filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'userexec:{user_id}:' and RowKey lt 'userexec:{user_id}~'"
-user_execs = await relationships_table.query(filter)
-
-# Failed executions for workflow (requires multiple queries + in-memory filter)
-workflow_filter = f"PartitionKey eq 'GLOBAL' and RowKey ge 'workflowexec:{workflow}:' ..."
-workflow_execs = await relationships_table.query(workflow_filter)
-failed = [e for e in workflow_execs if e['Status'] == 'Failed']
-
-# Dashboard metrics (requires scanning + aggregation in code)
-all_execs = await entities_table.query(f"PartitionKey eq '{org_id}' and RowKey ge 'execution:' ...")
-success_count = sum(1 for e in all_execs if e['Status'] == 'Success')
-```
-
-### Target: CosmosDB
+### Problem: Expensive Live Queries
 
 ```sql
--- User's executions (single query, no indexes!)
-SELECT * FROM c
-WHERE c.scope = 'org-123'
-  AND c.type = 'execution'
-  AND c.executedBy = 'user@example.com'
-ORDER BY c.startedAt DESC
-
--- Failed executions for workflow (single query with multiple filters)
-SELECT * FROM c
-WHERE c.scope = 'org-123'
-  AND c.type = 'execution'
-  AND c.status = 'Failed'
-  AND c.workflowName = 'create_user'
-  AND c.startedAt > '2025-01-20'
-ORDER BY c.startedAt DESC
-
--- Dashboard metrics (aggregation in query)
+-- This is SLOW and EXPENSIVE (50K executions × 5 RU = 250K RUs per dashboard load!)
 SELECT
   COUNT(1) as total,
   SUM(c.status = 'Success' ? 1 : 0) as successCount,
-  SUM(c.status = 'Failed' ? 1 : 0) as failedCount,
-  AVG(c.durationMs) as avgDuration
+  SUM(c.status = 'Failed' ? 1 : 0) as failedCount
 FROM c
 WHERE c.scope = 'org-123'
   AND c.type = 'execution'
-  AND c.startedAt > '2025-01-19'
+  AND c.startedAt >= '2024-12-27T00:00:00Z'
 ```
+
+### Solution: Pre-Aggregated Metrics
+
+#### Option A: Change Feed Aggregation (Real-Time)
+```python
+@app.cosmos_db_trigger(container="executions")
+async def aggregate_metrics(documents: List[Document]):
+    """Update daily metrics as executions complete"""
+    for doc in documents:
+        if doc['status'] in ['Success', 'Failed', 'Timeout']:
+            date = doc['completedAt'][:10]  # "2025-01-26"
+            scope = doc['scope']
+
+            # Get today's metrics
+            metrics_id = f"metrics-daily-{date}"
+            metrics = await get_or_create_metrics(scope, metrics_id, date)
+
+            # Increment counters
+            metrics['totalExecutions'] += 1
+            if doc['status'] == 'Success':
+                metrics['successCount'] += 1
+            elif doc['status'] == 'Failed':
+                metrics['failedCount'] += 1
+
+            # Update average duration (incremental)
+            metrics['totalDurationMs'] += doc.get('durationMs', 0)
+            metrics['avgDurationMs'] = metrics['totalDurationMs'] // metrics['totalExecutions']
+
+            await cosmos_client.upsert_item(metrics)
+```
+
+#### Option B: Hourly Rollup (Batch)
+```python
+@app.timer_trigger(schedule="0 0 * * * *")  # Every hour
+async def rollup_metrics(timer):
+    """Roll up last hour's executions into daily metrics"""
+    cutoff = datetime.utcnow() - timedelta(hours=1)
+
+    # Query last hour's completed executions
+    executions = await query_completed_executions(since=cutoff)
+
+    # Group by (scope, date) and aggregate
+    aggregated = aggregate_by_scope_and_date(executions)
+
+    # Update daily metrics
+    for (scope, date), stats in aggregated.items():
+        await update_daily_metrics(scope, date, stats)
+```
+
+#### Fast Dashboard Query
+```sql
+-- Get last 30 days of metrics (30 documents, ~50 RU total!)
+SELECT *
+FROM c
+WHERE c.scope = 'org-123'
+  AND c.type = 'metrics'
+  AND c.date >= '2024-12-27'
+ORDER BY c.date DESC
+```
+
+**Cost savings:**
+- Before: 250,000 RU per dashboard load
+- After: 50 RU per dashboard load
+- **5,000x reduction!**
 
 ---
 
-## Indexing Strategy
+## Migration Phases
 
-### Container: "entities"
+### Phase 1: MVP Migration (Week 1 - 7 days)
 
-```json
-{
-  "indexingMode": "consistent",
-  "automatic": true,
-  "includedPaths": [
-    {"path": "/*"}
-  ],
-  "excludedPaths": [
-    {"path": "/formSchema/*"},  // Don't index large nested schemas
-    {"path": "/_etag/?"}
-  ]
-}
-```
+**Goal**: Replace Table Storage with CosmosDB, keep core functionality identical.
 
-**Auto-indexed fields:**
-- `scope` (partition key, always indexed)
-- `type` (for filtering by entity type)
-- `email`, `displayName`, `name`, `isActive`, etc. (all top-level fields)
+**Day 1: Infrastructure**
+- Create CosmosDB account (serverless)
+- Create `entities` and `executions` containers
+- Configure connection strings
 
-### Container: "executions"
+**Days 2-3: Repository Layer**
+- Create `shared/cosmos_storage.py` (CosmosDB wrapper)
+- Create `shared/repositories/cosmos_*.py` repositories
+- Port all entity repositories to CosmosDB
 
-```json
-{
-  "indexingMode": "consistent",
-  "automatic": true,
-  "includedPaths": [
-    {"path": "/scope/*"},
-    {"path": "/type/*"},
-    {"path": "/status/*"},
-    {"path": "/workflowName/*"},
-    {"path": "/executedBy/*"},
-    {"path": "/startedAt/*"},
-    {"path": "/completedAt/*"},
-    {"path": "/formId/*"}
-  ],
-  "excludedPaths": [
-    {"path": "/inputData/*"},  // Don't index large input objects
-    {"path": "/result/*"},     // Don't index result (often large or in blob)
-    {"path": "/variables/*"},  // Don't index (always in blob anyway)
-    {"path": "/_etag/?"}
-  ]
-}
-```
+**Days 4-5: Handler Updates**
+- Update imports to use Cosmos repositories
+- Convert Table Storage queries to SQL
+- Remove execution index management code
 
-**Optimized for time-series queries:**
-- Status filtering (Success, Failed, Running, etc.)
-- Workflow filtering
-- User filtering
-- Date range queries
-- Form submission queries
+**Day 6: Local Development**
+- Add CosmosDB emulator to docker-compose.yml
+- Update ./test.sh to start emulator
+- Create initialization script
+
+**Day 7: Testing & Validation**
+- Run full test suite
+- Performance benchmarks
+- Deploy to dev environment
+
+**Deliverables:**
+✅ All entities in CosmosDB
+✅ All executions in CosmosDB (metadata only)
+✅ Zero manual index management
+✅ All endpoints return identical data
+✅ Tests passing 100%
+
+**Out of Scope (Phase 1):**
+- ❌ Real-time log streaming (still use blob storage)
+- ❌ SignalR integration
+- ❌ Dashboard optimization (use live queries)
 
 ---
 
-## Migration Steps
+### Phase 2: Real-Time Logs (Week 2 - 5 days)
 
-### Phase 1: Infrastructure Setup (Day 1)
+**Goal**: Stream logs to CosmosDB for real-time UI updates.
 
-**1. Create CosmosDB Account**
-```bash
-az cosmosdb create \
-  --name bifrost-cosmos \
-  --resource-group bifrost-rg \
-  --locations regionName=EastUS \
-  --capabilities EnableServerless
-```
+**Day 1: Container Setup**
+- Create `execution_data` container (partition by executionId)
+- Update indexing policies
 
-**2. Create Database**
-```bash
-az cosmosdb sql database create \
-  --account-name bifrost-cosmos \
-  --name bifrost
-```
+**Day 2: Workflow Engine Integration**
+- Update execution logger to write logs to CosmosDB
+- Stream variables and state snapshots
+- Store results in CosmosDB (if <2MB)
 
-**3. Create Containers**
-```bash
-# Container 1: entities (permanent)
-az cosmosdb sql container create \
-  --account-name bifrost-cosmos \
-  --database-name bifrost \
-  --name entities \
-  --partition-key-path "/scope"
+**Day 3: Change Feed Setup**
+- Create Change Feed Azure Function
+- Integrate SignalR bindings
+- Test log streaming
 
-# Container 2: executions (14-day TTL)
-az cosmosdb sql container create \
-  --account-name bifrost-cosmos \
-  --database-name bifrost \
-  --name executions \
-  --partition-key-path "/scope" \
-  --ttl 1209600
-```
+**Day 4: UI Integration**
+- Update React components for SignalR
+- Real-time log viewer
+- Real-time variable inspector
 
-**4. Configure Connection Strings**
-```bash
-# Add to local.settings.json and Azure App Settings
-CosmosDBConnection="AccountEndpoint=https://bifrost-cosmos.documents.azure.com:443/;AccountKey=..."
-```
+**Day 5: Testing**
+- Integration tests for Change Feed
+- UI testing for real-time updates
+- Performance validation
 
-### Phase 2: Repository Layer (Days 2-3)
+**Deliverables:**
+✅ Logs stream to CosmosDB
+✅ Change Feed → SignalR working
+✅ UI shows real-time logs during execution
+✅ Variables update in real-time
+✅ Blob storage only used for >2MB results
 
-**1. Create CosmosDB Service Layer**
-- File: `shared/cosmos_storage.py`
-- Wrapper around Azure CosmosDB SDK
-- Methods: `create_item`, `read_item`, `query_items`, `replace_item`, `delete_item`
-- Context-aware (auto-applies scope from ExecutionContext)
-
-**2. Create CosmosDB Repository Base**
-- File: `shared/repositories/cosmos_base.py`
-- Base class similar to current `BaseRepository`
-- Methods: `create`, `get_by_id`, `query`, `update`, `delete`
-
-**3. Implement Entity Repositories**
-- `CosmosUserRepository`
-- `CosmosOrganizationRepository`
-- `CosmosRoleRepository`
-- `CosmosFormRepository`
-- `CosmosConfigRepository`
-- `CosmosOAuthRepository`
-- `CosmosBrandingRepository`
-
-**4. Implement Execution Repository**
-- File: `shared/repositories/cosmos_executions.py`
-- Key difference: No index management! Single document writes
-- Methods: `create_execution`, `update_execution`, `get_execution`, `query_executions`
-
-**5. Update ExecutionLogger**
-- File: `shared/execution_logger.py`
-- Change: `self.repository = CosmosExecutionRepository()` (was `ExecutionRepository`)
-- **No changes to blob logic** - stays identical
-
-### Phase 3: Handler Updates (Days 4-5)
-
-**1. Update Repository Imports**
-- Search/replace: `from shared.repositories.xxx import YyyRepository`
-- Replace with: `from shared.repositories.cosmos_xxx import CosmosYyyRepository`
-
-**2. Update Handler Functions**
-- No logic changes, just use new repositories
-- Example: `users_handlers.py`, `forms_handlers.py`, etc.
-
-**3. Remove Index Management Code**
-- Delete: `shared/repositories/executions.py` index logic (5 index writes)
-- Delete: Relationship table queries for executions
-- Keep: Relationship table for user-role, form-role mappings
-
-**4. Update Queries**
-- Convert Table Storage filter syntax to CosmosDB SQL
-- Example: `PartitionKey eq 'org-123' and Status eq 'Failed'`
-- Becomes: `WHERE c.scope = 'org-123' AND c.status = 'Failed'`
-
-### Phase 4: Testing (Day 5)
-
-**1. Update Test Fixtures**
-- Create CosmosDB emulator setup in docker-compose.yml
-- Update `tests/conftest.py` to initialize CosmosDB containers
-- Update seed data scripts
-
-**2. Update Integration Tests**
-- Change: Test setup to use CosmosDB
-- Update: Execution creation/query tests
-- Add: TTL validation tests
-
-**3. Run Full Test Suite**
-```bash
-cd api
-./test.sh  # Should start CosmosDB emulator + run all tests
-```
-
-### Phase 5: Local Development Setup (Day 6)
-
-**1. Update docker-compose.yml**
-```yaml
-services:
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
-    ports:
-      - "10000:10000"  # Blob
-      - "10001:10001"  # Queue
-      - "10002:10002"  # Table
-
-  cosmos-emulator:
-    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator
-    ports:
-      - "8081:8081"
-      - "10251:10251"
-      - "10252:10252"
-      - "10253:10253"
-      - "10254:10254"
-    environment:
-      - AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10
-      - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=true
-    volumes:
-      - cosmos-data:/tmp/cosmos
-```
-
-**2. Update ./test.sh**
-```bash
-#!/bin/bash
-
-# Start dependencies
-docker compose up -d azurite cosmos-emulator
-
-# Wait for Cosmos emulator (~30s startup)
-echo "Waiting for Cosmos emulator..."
-timeout 60 bash -c 'until curl -k https://localhost:8081 2>/dev/null; do sleep 1; done'
-
-# Set environment variables
-export AzureWebJobsStorage="UseDevelopmentStorage=true"
-export CosmosDBConnection="AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv..."
-
-# Initialize CosmosDB (create database + containers)
-python -m shared.init_cosmos
-
-# Run tests
-pytest "$@"
-```
-
-**3. Create Initialization Script**
-- File: `shared/init_cosmos.py`
-- Creates database and containers if not exist
-- Sets up indexing policies
-
-### Phase 6: Deployment (Day 7)
-
-**1. Update Infrastructure (Bicep/ARM)**
-- Add CosmosDB account resource
-- Add connection string to App Settings
-- Keep Table Storage (for gradual migration if needed)
-
-**2. Deploy to Development Environment**
-- Create CosmosDB account
-- Run database initialization
-- Deploy updated Function App
-
-**3. Seed Initial Data**
-```bash
-python seed_data_cosmos.py  # New script for CosmosDB
-```
-
-**4. Validation**
-- Run smoke tests
-- Check dashboard queries
-- Verify execution creation
-- Test TTL cleanup (create old execution, wait 14 days)
-
-**5. Remove Table Storage Code**
-- Delete old repository files
-- Remove Table Storage initialization
-- Clean up unused imports
+**Out of Scope (Phase 2):**
+- ❌ Dashboard optimization (still uses live queries)
 
 ---
 
-## Rollback Plan
+### Phase 3: Dashboard Optimization (Week 3 - 3 days)
 
-**If issues arise during migration:**
+**Goal**: Pre-aggregate metrics for fast dashboard queries.
 
-1. **Keep both implementations for 30 days**
-   - Old: `shared/repositories/*.py` (Table Storage)
-   - New: `shared/repositories/cosmos_*.py` (CosmosDB)
-   - Easy to switch back via imports
+**Day 1: Metrics Schema**
+- Design daily metrics document schema
+- Create aggregation logic
+- Test incremental updates
 
-2. **Feature flag approach**
-   ```python
-   USE_COSMOS = os.getenv("USE_COSMOS_DB", "true") == "true"
+**Day 2: Change Feed Aggregation**
+- Implement metrics Change Feed processor
+- Test real-time metric updates
+- Validate accuracy
 
-   if USE_COSMOS:
-       from shared.repositories.cosmos_executions import CosmosExecutionRepository as ExecutionRepository
-   else:
-       from shared.repositories.executions import ExecutionRepository
-   ```
+**Day 3: Dashboard Updates**
+- Update dashboard to use pre-aggregated metrics
+- Add historical trend charts
+- Performance testing
 
-3. **Data safety**
-   - No data deletion during migration (Table Storage stays intact)
-   - Can replay from Table Storage to CosmosDB if needed
-   - Blob storage unchanged (shared between both)
-
----
-
-## Testing Strategy
-
-### Unit Tests
-- Mock CosmosDB client (similar to current Table Storage mocks)
-- Test repository CRUD operations
-- Test query building and filtering
-- Test TTL handling
-
-### Integration Tests
-- Use CosmosDB emulator (docker)
-- Test execution lifecycle (create → update → query → TTL delete)
-- Test cross-entity queries (user + executions)
-- Test Change Feed triggers
-
-### Performance Tests
-- Benchmark query performance (Table Storage vs CosmosDB)
-- Test RU consumption for common operations
-- Validate 14-day TTL cleanup works correctly
-
-### Migration Tests
-- Convert existing Table Storage test data to CosmosDB format
-- Verify all endpoints return same results
-- Test backward compatibility of API responses
+**Deliverables:**
+✅ Daily metrics pre-aggregated
+✅ Dashboard loads in <100ms
+✅ Historical trend analysis
+✅ 5,000x query cost reduction
 
 ---
 
 ## Cost Analysis
 
-### Current: Table Storage
-```
-Storage:        6GB × $0.045/GB         = $0.27/month
-Transactions:   200K × $0.036/million   = $0.007/month
-Blob Storage:   5GB × $0.018/GB         = $0.09/month
-────────────────────────────────────────────────────
-TOTAL: ~$0.37/month
-```
-
-### Target: CosmosDB Serverless
+### Phase 1: MVP Migration
 
 **Assumptions:**
 - 50,000 executions/month (~1,600/day)
 - 100,000 execution queries/month
-- 50,000 entity queries/month (users, forms, etc.)
-- 6GB total storage (entities + 14 days of executions)
+- 50,000 entity queries/month
+- 6GB total storage
 
 **RU Calculation:**
 ```
@@ -768,103 +527,147 @@ RUs:            36M × $0.25/million     = $9.00/month
 Storage:        6GB × $0.25/GB          = $1.50/month
 Blob Storage:   5GB × $0.018/GB         = $0.09/month
 ────────────────────────────────────────────────────
-TOTAL: ~$10.59/month
+TOTAL Phase 1: ~$10.59/month
 ```
 
-**Cost increase:** $10.22/month (+2,762%)
+### Phase 2: Real-Time Logs
 
-**Value proposition:**
-- Developer time saved: ~2-3 hours/month (no index management)
-- At $100/hr: $200-300/month savings
-- **ROI: 20-30x** return on infrastructure cost
+**Additional RU consumption:**
+```
+Log writes:      50K execs × 10 logs × 5 RU = 2.5M RUs
+Variable writes: 50K execs × 5 updates × 5 RU = 1.25M RUs
+Result writes:   50K × 50 RU = 2.5M RUs
+Log reads:       100K × 10 RU = 1M RUs
+────────────────────────────────────────────────────
+Additional: ~7M RUs = $1.75/month
+```
+
+**Cost:**
+```
+Phase 1 RUs:    36M × $0.25/million     = $9.00/month
+Phase 2 RUs:    7M × $0.25/million      = $1.75/month
+Storage:        8GB × $0.25/GB          = $2.00/month
+Blob (minimal): 1GB × $0.018/GB         = $0.02/month
+────────────────────────────────────────────────────
+TOTAL Phase 2: ~$12.77/month
+```
+
+### Phase 3: Dashboard Optimization
+
+**Metrics aggregation:**
+```
+Metrics writes:  30 orgs × 1/day × 30 days × 10 RU = 9K RUs
+Metrics reads:   1K dashboard loads × 50 RU = 50K RUs
+Dashboard saved: -250K RU per load saved!
+────────────────────────────────────────────────────
+Net savings: ~250M RUs/month if dashboard loaded 1K times
+```
+
+**Cost (same as Phase 2):**
+```
+TOTAL Phase 3: ~$12.77/month (dashboard queries are now cheaper!)
+```
+
+### ROI Calculation
+
+**Monthly cost increase:** $12.77/month (from $0.37/month)
+
+**Value gained:**
+- Developer time saved: ~5 hours/month (no index management)
+- Better debugging: Real-time logs (priceless for complex workflows)
+- Faster queries: Multi-field filtering without custom indexes
+- At $100/hr: **$500/month savings**
+- **ROI: 39x return on infrastructure cost**
+
+---
+
+## Success Criteria
+
+### Phase 1 (MVP)
+✅ All endpoints return identical data to Table Storage version
+✅ Execution creation completes in <500ms
+✅ Execution queries return in <100ms
+✅ TTL cleanup removes 14-day-old executions automatically
+✅ All tests pass (100% success rate)
+✅ Zero TODO comments about rollback/atomicity
+✅ No manual index management code remaining
+
+### Phase 2 (Real-Time)
+✅ Logs appear in UI within 100ms of being written
+✅ Variables update in real-time during execution
+✅ SignalR connection stable (no disconnects)
+✅ Change Feed processing latency <1s
+✅ UI responsive during heavy logging
+
+### Phase 3 (Optimization)
+✅ Dashboard loads in <100ms (vs 2-5s before)
+✅ Historical metrics accurate (matches live queries)
+✅ Metrics update within 1 hour of execution completion
+✅ Query cost reduced by >90%
 
 ---
 
 ## Risk Assessment
 
 ### Low Risk
-✅ **Blob storage unchanged** - Zero risk to existing result/log storage
+✅ **Blob storage preserved** - Zero risk to existing data
 ✅ **API endpoints unchanged** - No client-side changes needed
-✅ **Gradual migration** - Can keep Table Storage as fallback
-✅ **Proven technology** - CosmosDB is mature, well-documented
+✅ **Gradual rollout** - Three phases, can pause at any point
+✅ **Proven technology** - CosmosDB + SignalR are mature
 
 ### Medium Risk
-⚠️ **Query performance** - Need to validate CosmosDB queries are fast enough
-⚠️ **RU consumption** - Monitor costs don't exceed estimates
-⚠️ **TTL timing** - Ensure 14-day cleanup works reliably
+⚠️ **Real-time log volume** (Phase 2) - Could spike RU consumption
+⚠️ **Change Feed latency** (Phase 2) - Possible delays under load
+⚠️ **Metrics accuracy** (Phase 3) - Aggregation logic must be correct
 
 **Mitigation:**
-- Performance testing before production deployment
-- Set up cost alerts in Azure ($20/month threshold)
-- Test TTL with accelerated timeline (1 hour TTL in dev)
-
-### High Risk (None)
-- No data loss risk (Table Storage preserved)
-- No breaking API changes
-- Rollback plan available
+- Phase 1: Validate core migration before proceeding
+- Phase 2: Start with small executions, monitor RU consumption
+- Phase 3: Dual-run metrics (live + aggregated) to validate accuracy
+- Set cost alerts at $25/month threshold
 
 ---
 
-## Success Criteria
+## Rollback Plan
 
-### Functional
-✅ All endpoints return identical data to Table Storage version
-✅ Execution creation completes in <500ms (same as current)
-✅ Execution queries return in <100ms (same or faster)
-✅ TTL cleanup removes 14-day-old executions automatically
-✅ All tests pass (100% success rate)
+**Each phase has independent rollback:**
 
-### Non-Functional
-✅ Monthly cost stays under $25
-✅ RU consumption stays under 50M/month
-✅ No manual index management code remaining
-✅ Zero TODO comments about rollback/atomicity
-✅ Change Feed dashboard updates working (bonus feature)
+**Phase 1:** Keep Table Storage code for 30 days, feature flag to switch back
+**Phase 2:** Disable Change Feed, fall back to blob-only logs
+**Phase 3:** Disable metrics aggregation, use live queries
+
+**Data safety:**
+- No data deletion during migration
+- Table Storage preserved for 90 days post-migration
+- Blob storage unchanged (shared between old/new)
 
 ---
 
-## Post-Migration Cleanup
+## Open Questions & Decisions
 
-### Code Cleanup
-- [ ] Delete `shared/repositories/executions.py` (old Table Storage version)
-- [ ] Delete execution-related code from `shared/repositories/base.py`
-- [ ] Remove `Relationships` table initialization for executions
-- [ ] Clean up imports (remove Table Storage execution repository)
-
-### Documentation Updates
-- [ ] Update README with CosmosDB setup instructions
-- [ ] Update local development guide (Cosmos emulator)
-- [ ] Document query patterns (SQL vs Table Storage filters)
-- [ ] Update cost estimates in project docs
-
-### Monitoring
-- [ ] Set up CosmosDB metrics dashboard (RU consumption, latency)
-- [ ] Configure cost alerts ($20/month threshold)
-- [ ] Monitor TTL cleanup (track execution counts over time)
-- [ ] Add logging for Change Feed processing
-
----
-
-## Open Questions
-
-1. **CRON schedules**: Confirmed they're just workflow metadata (no container needed)
-2. **Relationships table**: Keep for user-role, form-role mappings (not migrating to CosmosDB)
-3. **Config storage**: Migrate to CosmosDB, keep Key Vault for secrets
-4. **Local emulator**: CosmosDB Linux emulator works on Docker
-5. **Real-time updates**: Change Feed is a bonus feature (not required for MVP)
+### Resolved
+✅ **CRON schedules**: Just workflow metadata (no container needed)
+✅ **Relationships table**: Keep for user-role, form-role mappings
+✅ **Config storage**: Migrate to CosmosDB, keep Key Vault for secrets
+✅ **Local emulator**: CosmosDB Linux emulator works on Docker
+✅ **Real-time updates**: Phase 2 feature, optional
+✅ **Dashboard optimization**: Phase 3 feature, optional
+✅ **Logs in CosmosDB**: Yes! Partitioned by executionId for real-time streaming
+✅ **Results in CosmosDB**: Yes! Up to 2MB, overflow to blob only if needed
 
 ---
 
 ## Next Steps
 
-1. **Review this plan** - Get stakeholder approval
-2. **Set up dev environment** - Install CosmosDB emulator locally
-3. **Create prototype** - Build CosmosExecutionRepository and test
-4. **Performance benchmark** - Compare Table Storage vs CosmosDB queries
-5. **Begin migration** - Follow 7-day timeline above
+1. **Approve this plan** - Stakeholder review
+2. **Prototype Phase 1** - Build one repository (executions) end-to-end
+3. **Performance benchmark** - Validate query performance vs Table Storage
+4. **Kickoff Phase 1** - 7-day sprint
+5. **Evaluate** - Decide whether to proceed with Phase 2 & 3
 
 ---
 
 **Prepared by**: Claude Code
 **Date**: 2025-01-26
+**Version**: 2.0 (Updated with Phase 2 & 3)
 **Status**: Ready for Implementation
