@@ -22,7 +22,7 @@ class TestListUsersSorting:
     @pytest.mark.asyncio
     async def test_list_users_sorts_by_last_login(self):
         """Test that users are sorted by lastLogin descending"""
-        mock_context = Mock(user_id="admin-123")
+        mock_context = Mock(user_id="admin-123", scope="GLOBAL")
 
         user_entity1 = {
             "RowKey": "user:old@example.com",
@@ -32,7 +32,9 @@ class TestListUsersSorting:
             "IsPlatformAdmin": False,
             "IsActive": True,
             "LastLogin": "2024-01-01T00:00:00",
-            "CreatedAt": "2024-01-01T00:00:00"
+            "CreatedAt": "2024-01-01T00:00:00",
+            "EntraUserId": None,
+            "LastEntraIdSync": None
         }
         user_entity2 = {
             "RowKey": "user:recent@example.com",
@@ -42,7 +44,9 @@ class TestListUsersSorting:
             "IsPlatformAdmin": False,
             "IsActive": True,
             "LastLogin": "2024-10-19T12:00:00",
-            "CreatedAt": "2024-02-01T00:00:00"
+            "CreatedAt": "2024-02-01T00:00:00",
+            "EntraUserId": None,
+            "LastEntraIdSync": None
         }
         user_entity3 = {
             "RowKey": "user:never@example.com",
@@ -52,21 +56,26 @@ class TestListUsersSorting:
             "IsPlatformAdmin": False,
             "IsActive": True,
             "LastLogin": None,
-            "CreatedAt": "2024-03-01T00:00:00"
+            "CreatedAt": "2024-03-01T00:00:00",
+            "EntraUserId": None,
+            "LastEntraIdSync": None
         }
 
         with patch('shared.handlers.permissions_handlers.get_async_table_service') as mock_get_service:
-            mock_service = Mock()
-            mock_get_service.return_value = mock_service
-            # Make query_entities async by using an async side effect
-            async def mock_query(*args, **kwargs):
+            # Mock service should return user entities for Entities table
+            mock_entities_service = Mock()
+            async def mock_query_entities(filter=None):
                 return [user_entity1, user_entity3, user_entity2]
-            mock_service.query_entities = mock_query
+            mock_entities_service.query_entities = mock_query_entities
+
+            # Only return the entities service (no Relationships service call for global scope)
+            mock_get_service.return_value = mock_entities_service
 
             response = await list_users_handler(mock_context)
 
+            assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.get_body()}"
             data = json.loads(response.get_body())
-            assert len(data) == 3
+            assert len(data) == 3, f"Expected 3 users, got {len(data)}: {data}"
             # Most recent first
             assert data[0]["email"] == "recent@example.com"
             # Oldest second

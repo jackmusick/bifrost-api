@@ -54,8 +54,8 @@ async def list_users_handler(
         entities_service = get_async_table_service("Entities", context)
 
         # Build filter based on scope (from X-Organization-Id header)
-        if context.scope == "GLOBAL":
-            # Global scope: return all users
+        if not hasattr(context, 'scope') or context.scope == "GLOBAL":
+            # Global scope (or no scope): return all users
             filter_query = "PartitionKey eq 'GLOBAL' and RowKey ge 'user:' and RowKey lt 'user;'"
         else:
             # Organization scope: return only org users for this organization
@@ -68,7 +68,7 @@ async def list_users_handler(
 
         # For organization scope, get list of users assigned to this org
         org_user_emails = set()
-        if context.scope != "GLOBAL":
+        if hasattr(context, 'scope') and context.scope != "GLOBAL":
             # Query org-to-user relationships to find users in this org
             relationships_service = get_async_table_service("Relationships", context)
             org_perm_filter = (
@@ -79,31 +79,37 @@ async def list_users_handler(
             org_relationships = await relationships_service.query_entities(filter=org_perm_filter)
             for rel in org_relationships:
                 # Extract user email from "orgperm:orgId:userEmail"
-                user_email = rel["RowKey"].split(":", 2)[2]
-                org_user_emails.add(user_email)
+                parts = rel["RowKey"].split(":", 2)
+                if len(parts) == 3:
+                    user_email = parts[2]
+                    org_user_emails.add(user_email)
 
         # Convert to response models
         users = []
         for entity in user_entities:
-            user_email = entity["Email"]
+            try:
+                user_email = entity["Email"]
 
-            # For organization scope, only include users assigned to this org
-            if context.scope != "GLOBAL" and user_email not in org_user_emails:
+                # For organization scope, only include users assigned to this org
+                if hasattr(context, 'scope') and context.scope != "GLOBAL" and user_email not in org_user_emails:
+                    continue
+
+                user_model = User(
+                    id=entity["RowKey"].split(":", 1)[1],  # Extract email from "user:email"
+                    email=user_email,
+                    displayName=entity["DisplayName"],
+                    userType=entity.get("UserType", "PLATFORM"),
+                    isPlatformAdmin=entity.get("IsPlatformAdmin", False),
+                    isActive=entity.get("IsActive", True),
+                    lastLogin=entity.get("LastLogin"),
+                    createdAt=entity["CreatedAt"],
+                    entraUserId=entity.get("EntraUserId"),
+                    lastEntraIdSync=entity.get("LastEntraIdSync")
+                )
+                users.append(user_model)
+            except Exception as e:
+                logger.warning(f"Failed to convert user entity to model: {str(e)}", exc_info=True)
                 continue
-
-            user_model = User(
-                id=entity["RowKey"].split(":", 1)[1],  # Extract email from "user:email"
-                email=user_email,
-                displayName=entity["DisplayName"],
-                userType=entity.get("UserType", "PLATFORM"),
-                isPlatformAdmin=entity.get("IsPlatformAdmin", False),
-                isActive=entity.get("IsActive", True),
-                lastLogin=entity.get("LastLogin"),
-                createdAt=entity["CreatedAt"],
-                entraUserId=entity.get("EntraUserId"),
-                lastEntraIdSync=entity.get("LastEntraIdSync")
-            )
-            users.append(user_model)
 
         # Sort by lastLogin descending (most recent first), handle None values
         users.sort(key=lambda u: u.lastLogin or datetime.min, reverse=True)
