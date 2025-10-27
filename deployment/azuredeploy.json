@@ -216,16 +216,6 @@
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
                 "functionAppConfig": {
-                    "deployment": {
-                        "storage": {
-                            "type": "blobContainer",
-                            "value": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))).primaryEndpoints.blob, 'deployments')]",
-                            "authentication": {
-                                "type": "StorageAccountConnectionString",
-                                "storageAccountConnectionStringName": "AzureWebJobsStorage"
-                            }
-                        }
-                    },
                     "scaleAndConcurrency": {
                         "instanceMemoryMB": 512,
                         "maximumInstanceCount": 100
@@ -268,10 +258,6 @@
                         {
                             "name": "BIFROST_TEMP_LOCATION",
                             "value": "/mounts/tmp"
-                        },
-                        {
-                            "name": "WEBSITE_RUN_FROM_PACKAGE",
-                            "value": "https://bifrostintegrations.blob.core.windows.net/releases/api/latest.zip"
                         }
                     ],
                     "azureStorageAccounts": {
