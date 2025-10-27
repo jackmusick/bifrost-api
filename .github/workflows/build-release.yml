@@ -66,7 +66,7 @@ jobs:
                   source_dir: .
                   container_name: ${{ secrets.RELEASES_CONTAINER_NAME }}
                   connection_string: ${{ secrets.RELEASES_STORAGE_CONNECTION_STRING }}
-                  extra_args: '--pattern api.zip --destination-path api/${{ github.ref_name }}.zip'
+                  extra_args: '--pattern ${{ github.ref_name }}.zip --destination-path api'
                   overwrite: 'true'
 
             - name: Upload latest.zip to Azure Blob Storage
@@ -75,7 +75,7 @@ jobs:
                   source_dir: .
                   container_name: ${{ secrets.RELEASES_CONTAINER_NAME }}
                   connection_string: ${{ secrets.RELEASES_STORAGE_CONNECTION_STRING }}
-                  extra_args: '--pattern api.zip --destination-path api/latest.zip'
+                  extra_args: '--pattern latest.zip --destination-path api'
                   overwrite: 'true'
 
             - name: Create GitHub Release
