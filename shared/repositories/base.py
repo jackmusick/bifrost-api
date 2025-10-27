@@ -150,6 +150,10 @@ class BaseRepository:
         """
         return await self._service.delete_entity(partition_key, row_key)
 
+    async def close(self):
+        """Close the underlying storage service connection"""
+        await self._service.close()
+
     def _get_partition_key_for_scope(self, scope: str | None = None) -> str:
         """
         Get partition key from scope

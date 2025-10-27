@@ -29,13 +29,22 @@ def event_loop():
     yield loop
     # Properly close the loop after test
     try:
-        # Cancel all running tasks
+        # Cancel all running tasks first
         pending = asyncio.all_tasks(loop)
         for task in pending:
             task.cancel()
         # Wait for tasks to complete cancellation
         if pending:
             loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+        # Close all async storage clients BEFORE closing the loop
+        from shared.async_storage import close_async_storage_cache
+        try:
+            loop.run_until_complete(close_async_storage_cache())
+        except RuntimeError:
+            # Ignore "Event loop is closed" errors during cleanup
+            pass
+
         # Close the loop
         loop.close()
     except Exception:

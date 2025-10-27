@@ -43,6 +43,11 @@ class ExecutionRepository(BaseRepository):
         super().__init__("Entities", context)
         self.relationships_service = AsyncTableStorageService("Relationships")
 
+    async def close(self):
+        """Close underlying storage service connections"""
+        await super().close()
+        await self.relationships_service.close()
+
     async def create_execution(
         self,
         execution_id: str,

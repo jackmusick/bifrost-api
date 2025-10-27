@@ -34,4 +34,5 @@ async def oauth_refresh_timer(timer: func.TimerRequest) -> None:
 
     # Initialize service and run refresh job
     oauth_service = OAuthStorageService()
-    await oauth_service.run_refresh_job(trigger_type="automatic")
+    async with oauth_service.config_table:
+        await oauth_service.run_refresh_job(trigger_type="automatic")

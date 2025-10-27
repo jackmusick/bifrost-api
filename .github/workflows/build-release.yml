@@ -60,7 +60,25 @@ jobs:
               with:
                   name: api-package
 
-            - name: Create Release
+            - name: Upload versioned package to Azure Blob Storage
+              uses: bacongobbler/azure-blob-storage-upload@main
+              with:
+                  source_dir: .
+                  container_name: ${{ secrets.RELEASES_CONTAINER_NAME }}
+                  connection_string: ${{ secrets.RELEASES_STORAGE_CONNECTION_STRING }}
+                  extra_args: '--pattern api.zip --destination-path bifrost-api/${{ github.ref_name }}.zip'
+                  overwrite: 'true'
+
+            - name: Upload latest.zip to Azure Blob Storage
+              uses: bacongobbler/azure-blob-storage-upload@main
+              with:
+                  source_dir: .
+                  container_name: ${{ secrets.RELEASES_CONTAINER_NAME }}
+                  connection_string: ${{ secrets.RELEASES_STORAGE_CONNECTION_STRING }}
+                  extra_args: '--pattern api.zip --destination-path api/latest.zip'
+                  overwrite: 'true'
+
+            - name: Create GitHub Release
               uses: softprops/action-gh-release@v1
               with:
                   files: |
@@ -70,7 +88,13 @@ jobs:
 
                       ### Installation
 
-                      **Zip Deploy (Quick Start):**
+                      **One-Click Deploy:**
+                      [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fjackmusick%2Fbifrost-api%2Fmain%2Fdeployment%2Fazuredeploy.json)
+
+                      The API package is automatically deployed from Azure Blob Storage:
+                      - **Latest**: `https://${{ secrets.RELEASES_STORAGE_ACCOUNT }}.blob.core.windows.net/${{ secrets.RELEASES_CONTAINER_NAME }}/api/latest.zip`
+
+                      **Manual Zip Deploy:**
                       ```bash
                       # Deploy API Function App
                       az functionapp deployment source config-zip \
@@ -78,14 +102,6 @@ jobs:
                         --name <api-app-name> \
                         --src api.zip
                       ```
-
-                      **GitHub Actions (Recommended):**
-                      Use the deployment workflows in `.github/workflows/` with publish profiles.
-
-                      ### Architecture
-                      - API Function App with Azure Files mounts (`/workspace`, `/tmp`)
-                      - Static Web App using API as "bring your own function"
-                      - Azure Key Vault integration for secrets
                   draft: false
                   prerelease: false
               env:

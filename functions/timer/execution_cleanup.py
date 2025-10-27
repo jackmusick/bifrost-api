@@ -36,96 +36,98 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
     """
     logger.info("Starting execution cleanup timer")
 
-    try:
-        # Get execution logger (uses ExecutionRepository internally)
-        exec_logger = get_execution_logger()
+    # Get execution logger (uses ExecutionRepository internally)
+    exec_logger = get_execution_logger()
 
-        # Get execution repository
-        execution_repo = ExecutionRepository()
+    # Get execution repository
+    execution_repo = ExecutionRepository()
 
-        # Get all stuck executions
-        stuck_executions = await execution_repo.get_stuck_executions(
-            pending_timeout_minutes=PENDING_TIMEOUT_MINUTES,
-            running_timeout_minutes=RUNNING_TIMEOUT_MINUTES
-        )
+    # Use context manager to ensure cleanup
+    async with execution_repo._service, execution_repo.relationships_service, exec_logger.repository._service:
+        try:
+            # Get all stuck executions
+            stuck_executions = await execution_repo.get_stuck_executions(
+                pending_timeout_minutes=PENDING_TIMEOUT_MINUTES,
+                running_timeout_minutes=RUNNING_TIMEOUT_MINUTES
+            )
 
-        logger.info(f"Found {len(stuck_executions)} stuck executions to clean up")
+            logger.info(f"Found {len(stuck_executions)} stuck executions to clean up")
 
-        pending_count = 0
-        running_count = 0
+            pending_count = 0
+            running_count = 0
 
-        for execution in stuck_executions:
-            try:
-                # Determine timeout reason based on status
-                if execution.status == ExecutionStatus.PENDING:
-                    timeout_reason = f"Stuck in PENDING status for {PENDING_TIMEOUT_MINUTES}+ minutes. Likely queue processing issue or worker not running."
-                    pending_count += 1
-                elif execution.status == ExecutionStatus.RUNNING:
-                    timeout_reason = f"Stuck in RUNNING status for {RUNNING_TIMEOUT_MINUTES}+ minutes. Likely worker crash or workflow hang."
-                    running_count += 1
-                else:
-                    continue
+            for execution in stuck_executions:
+                try:
+                    # Determine timeout reason based on status
+                    if execution.status == ExecutionStatus.PENDING:
+                        timeout_reason = f"Stuck in PENDING status for {PENDING_TIMEOUT_MINUTES}+ minutes. Likely queue processing issue or worker not running."
+                        pending_count += 1
+                    elif execution.status == ExecutionStatus.RUNNING:
+                        timeout_reason = f"Stuck in RUNNING status for {RUNNING_TIMEOUT_MINUTES}+ minutes. Likely worker crash or workflow hang."
+                        running_count += 1
+                    else:
+                        continue
 
-                logger.warning(
-                    f"Timing out stuck execution: {execution.executionId}",
-                    extra={
-                        "execution_id": execution.executionId,
-                        "workflow_name": execution.workflowName,
-                        "status": execution.status.value,
-                        "started_at": execution.startedAt.isoformat() if execution.startedAt else None,
-                        "timeout_reason": timeout_reason
-                    }
-                )
-
-                # Extract org_id from execution
-                # WorkflowExecution has orgId field from the status index
-                org_id = execution.orgId
-
-                # Create log entry for timeout
-                timeout_log = [
-                    {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "level": "error",
-                        "message": timeout_reason,
-                        "data": {
-                            "timeout_type": "automatic_cleanup",
-                            "original_status": execution.status.value,
-                            "timeout_threshold_minutes": PENDING_TIMEOUT_MINUTES if execution.status == ExecutionStatus.PENDING else RUNNING_TIMEOUT_MINUTES
+                    logger.warning(
+                        f"Timing out stuck execution: {execution.executionId}",
+                        extra={
+                            "execution_id": execution.executionId,
+                            "workflow_name": execution.workflowName,
+                            "status": execution.status.value,
+                            "started_at": execution.startedAt.isoformat() if execution.startedAt else None,
+                            "timeout_reason": timeout_reason
                         }
-                    }
-                ]
+                    )
 
-                # Update execution to TIMEOUT status with log
-                await exec_logger.update_execution(
-                    execution_id=execution.executionId,
-                    org_id=org_id,
-                    user_id=execution.executedBy,
-                    status=ExecutionStatus.TIMEOUT,
-                    error_message=timeout_reason,
-                    error_type="ExecutionTimeout",
-                    logs=timeout_log
-                )
+                    # Extract org_id from execution
+                    # WorkflowExecution has orgId field from the status index
+                    org_id = execution.orgId
 
-            except Exception as e:
-                logger.error(
-                    f"Error processing execution cleanup for {execution.executionId}",
-                    extra={"error": str(e)},
-                    exc_info=True
-                )
-                # Continue processing other executions
+                    # Create log entry for timeout
+                    timeout_log = [
+                        {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "level": "error",
+                            "message": timeout_reason,
+                            "data": {
+                                "timeout_type": "automatic_cleanup",
+                                "original_status": execution.status.value,
+                                "timeout_threshold_minutes": PENDING_TIMEOUT_MINUTES if execution.status == ExecutionStatus.PENDING else RUNNING_TIMEOUT_MINUTES
+                            }
+                        }
+                    ]
 
-        logger.info(
-            "Execution cleanup completed",
-            extra={
-                "pending_timeouts": pending_count,
-                "running_timeouts": running_count,
-                "total_cleaned": pending_count + running_count
-            }
-        )
+                    # Update execution to TIMEOUT status with log
+                    await exec_logger.update_execution(
+                        execution_id=execution.executionId,
+                        org_id=org_id,
+                        user_id=execution.executedBy,
+                        status=ExecutionStatus.TIMEOUT,
+                        error_message=timeout_reason,
+                        error_type="ExecutionTimeout",
+                        logs=timeout_log
+                    )
 
-    except Exception as e:
-        logger.error(
-            "Error in execution cleanup timer",
-            extra={"error": str(e)},
-            exc_info=True
-        )
+                except Exception as e:
+                    logger.error(
+                        f"Error processing execution cleanup for {execution.executionId}",
+                        extra={"error": str(e)},
+                        exc_info=True
+                    )
+                    # Continue processing other executions
+
+            logger.info(
+                "Execution cleanup completed",
+                extra={
+                    "pending_timeouts": pending_count,
+                    "running_timeouts": running_count,
+                    "total_cleaned": pending_count + running_count
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                "Error in execution cleanup timer",
+                extra={"error": str(e)},
+                exc_info=True
+            )

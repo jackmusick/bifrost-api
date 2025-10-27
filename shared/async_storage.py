@@ -51,6 +51,8 @@ class AsyncTableStorageService:
             raise ValueError("AzureWebJobsStorage environment variable not set")
 
         self.connection_string = connection_string
+        self._client: TableClient | None = None
+        self._in_context_manager = False
 
         # Determine scoping strategy
         self.is_scoped = table_name in SCOPED_TABLES
@@ -66,30 +68,48 @@ class AsyncTableStorageService:
     @property
     def table_client(self) -> TableClient:
         """
-        Create a new TableClient for each access.
+        Get or create TableClient instance.
 
-        This ensures each operation gets a fresh client in the current event loop,
-        avoiding issues with event loop closure between pytest async tests.
+        If used within a context manager (async with), reuses the same client.
+        Otherwise, creates a new client for each access to avoid event loop issues.
         """
-        return TableClient.from_connection_string(
-            self.connection_string, self.table_name
-        )
+        if self._in_context_manager:
+            # Reuse client when in context manager
+            if self._client is None:
+                self._client = TableClient.from_connection_string(
+                    self.connection_string, self.table_name
+                )
+            return self._client
+        else:
+            # Create new client for each access to avoid lifecycle issues
+            return TableClient.from_connection_string(
+                self.connection_string, self.table_name
+            )
 
     async def __aenter__(self):
         """Context manager entry - ensure client is ready"""
+        self._in_context_manager = True
         await self.table_client.__aenter__()
         return self
 
     async def __aexit__(self, *args):
         """Context manager exit - cleanup client"""
-        await self.table_client.__aexit__(*args)
+        self._in_context_manager = False
+        if self._client is not None:
+            await self._client.__aexit__(*args)
+            self._client = None
 
     async def close(self):
         """Explicitly close the table client connection"""
-        try:
-            await self.table_client.close()
-        except Exception:
-            pass  # Ignore errors during cleanup
+        if self._client is not None:
+            try:
+                await self._client.close()
+            except Exception as e:
+                # Ignore "Event loop is closed" errors during cleanup
+                if "Event loop is closed" not in str(e):
+                    logger.warning(f"Error closing table client: {e}")
+            finally:
+                self._client = None
 
     async def insert_entity(self, entity: dict) -> dict:
         """
@@ -580,37 +600,43 @@ class AsyncTableStorageService:
             self.connection_string, table1_name
         )
 
-        entity1 = self._serialize_datetime_fields(entity1)
-        await table1_client.create_entity(entity1)
-
-        logger.info(
-            f"Dual-index insert 1/2: {table1_name} "
-            f"PK={entity1['PartitionKey']} RK={entity1['RowKey']}"
-        )
-
         try:
+            entity1 = self._serialize_datetime_fields(entity1)
+            await table1_client.create_entity(entity1)
+
+            logger.info(
+                f"Dual-index insert 1/2: {table1_name} "
+                f"PK={entity1['PartitionKey']} RK={entity1['RowKey']}"
+            )
+
             # Insert into second table
             table2_client = TableClient.from_connection_string(
                 self.connection_string, table2_name
             )
 
-            entity2 = self._serialize_datetime_fields(entity2)
-            await table2_client.create_entity(entity2)
+            try:
+                entity2 = self._serialize_datetime_fields(entity2)
+                await table2_client.create_entity(entity2)
 
-            logger.info(
-                f"Dual-index insert 2/2: {table2_name} "
-                f"PK={entity2['PartitionKey']} RK={entity2['RowKey']}"
-            )
+                logger.info(
+                    f"Dual-index insert 2/2: {table2_name} "
+                    f"PK={entity2['PartitionKey']} RK={entity2['RowKey']}"
+                )
 
-            return (entity1, entity2)
+                return (entity1, entity2)
 
-        except Exception as e:
-            logger.error(
-                f"Dual-index insert failed on second table ({table2_name}): {str(e)}. "
-                f"First table ({table1_name}) was successfully updated. "
-                f"Manual intervention may be required for consistency."
-            )
-            raise
+            except Exception as e:
+                logger.error(
+                    f"Dual-index insert failed on second table ({table2_name}): {str(e)}. "
+                    f"First table ({table1_name}) was successfully updated. "
+                    f"Manual intervention may be required for consistency."
+                )
+                raise
+            finally:
+                await table2_client.close()
+
+        finally:
+            await table1_client.close()
 
     # Datetime serialization helpers
 
@@ -689,13 +715,38 @@ def get_async_table_service(table_name: str, context: 'ExecutionContext') -> Asy
     return AsyncTableStorageService(table_name, context=context)
 
 
+async def close_async_storage_cache() -> None:
+    """
+    Close all cached async storage service clients and clear the cache.
+
+    This should be called between tests to ensure connections are properly
+    closed before the event loop is closed.
+    """
+    global _async_storage_service_cache
+    for service in _async_storage_service_cache.values():
+        try:
+            await service.close()
+        except RuntimeError as e:
+            # Ignore "Event loop is closed" errors - this means cleanup already happened
+            if "Event loop is closed" not in str(e):
+                raise
+        except Exception as e:
+            logger.warning(f"Error closing storage service during cleanup: {e}")
+    _async_storage_service_cache.clear()
+    logger.debug("Closed and cleared async storage service cache")
+
+
 def clear_async_storage_cache() -> None:
     """
-    Clear the global async storage service cache.
+    Clear the global async storage service cache without closing clients.
 
     This should be called between tests to ensure fresh TableClient instances
     are created with the correct event loop.
+
+    WARNING: This does not close existing clients. Use close_async_storage_cache()
+    instead if you need to properly close connections before clearing.
     """
     global _async_storage_service_cache
+    # Just clear references without closing - the clients will be garbage collected
     _async_storage_service_cache.clear()
     logger.debug("Cleared async storage service cache")
