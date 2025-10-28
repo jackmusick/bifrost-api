@@ -9,7 +9,7 @@ import logging
 from shared.blob_storage import get_blob_service
 from shared.context import ExecutionContext
 from shared.exceptions import FileUploadError
-from shared.models import FileUploadRequest, FileUploadResponse
+from shared.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +70,25 @@ def generate_file_upload_url(
         allowed_types=allowed_types,
     )
 
+    # Create file metadata for workflows to access the file
+    # Extract container and path from blob_name returned by generate_upload_url
+    container = "uploads"
+    path = result["blob_name"]  # The safe filename with UUID prefix
+
+    file_metadata = UploadedFileMetadata(
+        name=request.file_name,
+        container=container,
+        path=path,
+        content_type=request.content_type,
+        size=request.file_size,
+    )
+
     # Create response
     response = FileUploadResponse(
         upload_url=result["upload_url"],
         blob_uri=result["blob_uri"],
         expires_at=result["expires_at"],
+        file_metadata=file_metadata,
     )
 
     logger.info(

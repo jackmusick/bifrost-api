@@ -11,7 +11,7 @@ import os
 from azure.core.exceptions import ResourceExistsError
 from azure.data.tables import TableServiceClient
 
-# Table names (consolidated from 14 → 3 tables + SystemLogs)
+# Table names (consolidated from 14 → 3 tables + SystemLogs + ExecutionLogs)
 REQUIRED_TABLES = [
     "Config",        # Consolidated: Config + IntegrationConfig + SystemConfig + OAuth metadata/secrets
                      # PartitionKey: org_id (UUID) or "GLOBAL" or "SYSTEM"
@@ -28,6 +28,11 @@ REQUIRED_TABLES = [
     "SystemLogs",    # Platform-level event logging (not workflow executions)
                      # PartitionKey: event_category (discovery, organization, user, config, secret, form, oauth, execution, system, error)
                      # RowKey: {timestamp}_{eventId} (chronological ordering)
+
+    "ExecutionLogs", # Real-time execution logs for workflows
+                     # PartitionKey: execution_id (UUID) - all logs for one execution in same partition
+                     # RowKey: {iso_timestamp}-{sequence} (chronological ordering with sub-millisecond resolution)
+                     # Each log has ExecutionLogId (UUID) for client-side deduplication
 ]
 
 logger = logging.getLogger(__name__)

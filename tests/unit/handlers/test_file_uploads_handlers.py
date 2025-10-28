@@ -181,7 +181,10 @@ class TestGenerateFileUploadUrl:
         return {
             "upload_url": "https://storage.blob.core.windows.net/uploads/abc-123.pdf?sv=2021-06-08&sig=...",
             "blob_uri": "https://storage.blob.core.windows.net/uploads/abc-123.pdf",
+            "blob_name": "abc-123.pdf",
             "expires_at": "2025-10-19T12:00:00Z",
+            "file_name": "document.pdf",
+            "content_type": "application/pdf",
         }
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
@@ -382,12 +385,18 @@ class TestGenerateFileUploadUrl:
         response1 = {
             "upload_url": "https://storage.blob.core.windows.net/uploads/file1.pdf?sv=2021-06-08&sig=abc",
             "blob_uri": "https://storage.blob.core.windows.net/uploads/file1.pdf",
+            "blob_name": "file1.pdf",
             "expires_at": "2025-10-19T12:00:00Z",
+            "file_name": "file1.pdf",
+            "content_type": "application/pdf",
         }
         response2 = {
             "upload_url": "https://storage.blob.core.windows.net/uploads/file2.zip?sv=2021-06-08&sig=xyz",
             "blob_uri": "https://storage.blob.core.windows.net/uploads/file2.zip",
+            "blob_name": "file2.zip",
             "expires_at": "2025-10-19T12:00:00Z",
+            "file_name": "file2.zip",
+            "content_type": "application/zip",
         }
         mock_service.generate_upload_url.side_effect = [response1, response2]
 

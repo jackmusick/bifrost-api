@@ -166,7 +166,7 @@ class TestSDKFileOperations:
 
         # Simple test: absolute paths outside /home should be rejected
         with pytest.raises(ValueError, match="Path must be within"):
-            files._resolve_path("/etc/passwd")
+            files._resolve_path("/etc/passwd", location="workspace")
 
 
 class TestWorkflowDiscovery:

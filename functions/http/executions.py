@@ -11,7 +11,10 @@ from datetime import datetime
 import azure.functions as func
 
 from shared.decorators import with_request_context
-from shared.handlers.executions_handlers import get_execution_handler, list_executions_handler
+from shared.handlers.executions_handlers import (
+    get_execution_handler,
+    list_executions_handler
+)
 from shared.models import WorkflowExecution, ExecutionsListResponse
 from shared.openapi_decorators import openapi_endpoint
 

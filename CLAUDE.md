@@ -40,6 +40,10 @@ client/
     -   Functions are thin HTTP handlers only
     -   Complex logic, algorithms, business rules go in shared modules
     -   Example: User provisioning logic lives in `shared/user_provisioning.py`
+-   **Local Development**: Set `FUNCTIONS_WORKER_PROCESS_COUNT=10` in `local.settings.json`
+    -   Prevents blocking when workflows are executing
+    -   Production Azure Functions auto-scales across multiple instances (doesn't need this setting)
+    -   Multiple worker processes allow concurrent HTTP requests and queue processing
 
 ### Frontend (TypeScript/React)
 

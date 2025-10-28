@@ -60,7 +60,8 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
             raise ValueError("Request body must be a JSON object")
 
         # Extract fields
-        workflow_name = body.get('workflowName') or req.route_params.get('workflowName')
+        workflow_name = body.get(
+            'workflowName') or req.route_params.get('workflowName')
         form_id = body.get('formId')
         input_data = body.get('inputData', {})
         transient = body.get('transient', False)
@@ -69,7 +70,8 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Validate
         if not workflow_name and not code_base64:
-            raise ValueError("Either 'workflowName' or 'code' must be provided")
+            raise ValueError(
+                "Either 'workflowName' or 'code' must be provided")
 
     except (ValueError, TypeError) as e:
         logger.error(f"Failed to parse request body: {str(e)}")
@@ -266,7 +268,8 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
                     duration_ms=duration_ms
                 )
             except Exception as update_error:
-                logger.error(f"Failed to update execution record: {update_error}")
+                logger.error(
+                    f"Failed to update execution record: {update_error}")
 
         # Return error response
         response = WorkflowExecutionResponse(

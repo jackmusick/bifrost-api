@@ -42,14 +42,17 @@ async def get_discovery_metadata_handler(req: func.HttpRequest) -> func.HttpResp
         200: MetadataResponse with workflows and dataProviders arrays
         500: Internal server error
     """
-    logger.info(f"Metadata endpoint called - headers: {list(req.headers.keys())}")
-    logger.info(f"x-functions-key header present: {'x-functions-key' in req.headers}")
+    logger.info(
+        f"Metadata endpoint called - headers: {list(req.headers.keys())}")
+    logger.info(
+        f"x-functions-key header present: {'x-functions-key' in req.headers}")
 
     try:
-        # Re-scan workspace to pick up new workflows (force_reload=True for hot-reload)
+        # Re-scan workspace to pick up new workflows
         from function_app import discover_workspace_modules
-        logger.info("Triggering workspace re-scan with force_reload before returning metadata")
-        discover_workspace_modules(force_reload=True)
+        logger.info(
+            "Triggering workspace re-scan before returning metadata")
+        discover_workspace_modules()
 
         # Call business logic handler
         metadata = get_discovery_metadata()

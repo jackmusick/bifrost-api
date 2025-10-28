@@ -47,6 +47,12 @@ from shared.queue_init import init_queues
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Suppress aiohttp unclosed client session warnings (common in Azure SDK)
+# These are resource warnings that don't affect functionality
+import warnings
+warnings.filterwarnings("ignore", message="Unclosed client session")
+warnings.filterwarnings("ignore", message="Unclosed connector")
+
 logger.info("="*60)
 logger.info("PRE-IMPORT QUEUE INITIALIZATION")
 logger.info("="*60)
@@ -146,6 +152,13 @@ if workspace_loc:
         sys.path.insert(0, str(packages_path))
         logging.info(f"Added workspace/.packages to sys.path: {packages_path}")
 
+# Add workspace roots to sys.path so imports work like VS Code
+# This allows: from repo.modules.ninjaone import client
+for workspace_root in get_workspace_paths():
+    if str(workspace_root) not in sys.path:
+        sys.path.insert(0, str(workspace_root))
+        logging.info(f"Added workspace root to sys.path: {workspace_root}")
+
 # Install import restrictions to prevent workspace code from importing engine internals
 # /home code has stricter restrictions (only bifrost SDK)
 # /platform code can import from shared.* (needs handlers)
@@ -179,7 +192,7 @@ except Exception as e:
 # T005: Discover workspace modules to register workflows and data providers
 
 
-def discover_workspace_modules(force_reload: bool = False):
+def discover_workspace_modules():
     """
     Dynamically discover and import all Python files in workspace subdirectories.
 
@@ -191,11 +204,10 @@ def discover_workspace_modules(force_reload: bool = False):
     This allows developers to add workflows without restarting the app,
     and supports both production (mounted volumes) and development (local files).
 
+    Always force-reloads all modules to pick up code changes.
+
     No __init__.py files are required - this allows workspace code to be purely
     user/platform code without any framework dependencies.
-
-    Args:
-        force_reload: If True, clears registry and re-imports all modules (for hot-reload)
     """
     discovered_count = 0
 
@@ -210,33 +222,23 @@ def discover_workspace_modules(force_reload: bool = False):
         logging.warning("No workspace paths exist - skipping discovery")
         return
 
-    # If force_reload, clear registry and remove workspace modules from sys.modules
-    if force_reload:
-        from shared.registry import get_registry
-        registry = get_registry()
-        registry.clear_all()
-        logging.info("Cleared registry for hot-reload")
-
-        # Remove all workspace.* modules from sys.modules
-        modules_to_remove = [
-            name for name in sys.modules.keys() if name.startswith('workspace.')]
-        for module_name in modules_to_remove:
-            del sys.modules[module_name]
-        logging.info(
-            f"Removed {len(modules_to_remove)} workspace modules from sys.modules")
+    # Clear registry for hot-reload
+    from shared.registry import get_registry
+    registry = get_registry()
+    registry.clear_all()
+    logging.info("Cleared registry for hot-reload")
 
     print(
         f"[WORKSPACE DISCOVERY] Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
     logging.info(
         f"Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
 
-    # Scan each workspace path
+    # First pass: Scan all workspace paths and collect module names to discover
+    modules_to_discover = []
     for workspace_root in workspace_paths:
         workspace_path = Path(workspace_root)
-
         logging.info(f"Scanning workspace: {workspace_path}")
 
-        # Recursively find all .py files in workspace subdirectories
         for py_file in workspace_path.rglob("*.py"):
             # Skip __init__.py and private files
             if py_file.name.startswith("_"):
@@ -247,47 +249,56 @@ def discover_workspace_modules(force_reload: bool = False):
                 continue
 
             # Calculate module path relative to workspace root
+            # Now that workspace root is in sys.path, imports work like VS Code
             relative_path = py_file.relative_to(workspace_path)
             module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
-            module_name = f"workspace.{'.'.join(module_parts)}"
+            module_name = '.'.join(module_parts)
 
-            # Skip if already imported (prevents duplicate imports from multiple workspace paths)
-            if module_name in sys.modules:
-                logging.debug(f"⊘ Already imported: {module_name}")
-                continue
+            modules_to_discover.append((module_name, py_file, workspace_path))
 
+    # Remove all discovered modules from sys.modules for hot-reload
+    modules_removed = 0
+    for module_name, _, _ in modules_to_discover:
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+            modules_removed += 1
+    if modules_removed > 0:
+        logging.info(f"Removed {modules_removed} workspace modules from sys.modules for hot-reload")
+
+    # Second pass: Import all modules
+    for module_name, py_file, workspace_path in modules_to_discover:
+        try:
+            # Import the module using importlib (this triggers decorators)
+            spec = importlib.util.spec_from_file_location(
+                module_name, py_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+
+                logging.info(
+                    f"✓ Discovered: {module_name} (from {workspace_path})")
+                discovered_count += 1
+
+        except Exception as e:
+            logging.error(
+                f"✗ Failed to import {module_name}: {e}",
+                exc_info=True
+            )
+
+            # Log to system logger for visibility
             try:
-                # Import the module using importlib (this triggers decorators)
-                spec = importlib.util.spec_from_file_location(
-                    module_name, py_file)
-                if spec and spec.loader:
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[module_name] = module
-                    spec.loader.exec_module(module)
-
-                    logging.info(
-                        f"✓ Discovered: {module_name} (from {workspace_path})")
-                    discovered_count += 1
-
-            except Exception as e:
-                logging.error(
-                    f"✗ Failed to import {module_name}: {e}",
-                    exc_info=True
-                )
-
-                # Log to system logger for visibility
-                try:
-                    from shared.system_logger import get_system_logger
-                    system_logger = get_system_logger()
-                    import asyncio
-                    asyncio.create_task(system_logger.log_discovery_failure(
-                        module_name=module_name,
-                        file_path=str(py_file),
-                        error=str(e)
-                    ))
-                except Exception as log_error:
-                    logging.warning(
-                        f"Failed to log discovery failure: {log_error}")
+                from shared.system_logger import get_system_logger
+                system_logger = get_system_logger()
+                import asyncio
+                asyncio.create_task(system_logger.log_discovery_failure(
+                    module_name=module_name,
+                    file_path=str(py_file),
+                    error=str(e)
+                ))
+            except Exception as log_error:
+                logging.warning(
+                    f"Failed to log discovery failure: {log_error}")
 
     logging.info(
         f"Workspace discovery complete: {discovered_count} modules imported")
@@ -308,7 +319,7 @@ def discover_workspace_modules(force_reload: bool = False):
         logging.info(f"Data providers: {', '.join(summary['data_providers'])}")
 
 
-# Discover all workspace modules
+# Discover all workspace modules on startup
 discover_workspace_modules()
 
 # ==================== BLUEPRINT IMPORTS ====================

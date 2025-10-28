@@ -4,7 +4,7 @@ Bifrost Platform SDK
 Provides Python API access to platform features from workflows.
 
 Usage:
-    from bifrost import organizations, workflows, files, forms, executions, roles
+    from bifrost import organizations, workflows, files, storage, forms, executions, roles
     from bifrost import config, secrets, oauth
 
 Example:
@@ -14,8 +14,14 @@ Example:
     # Execute a workflow
     result = workflows.execute("process_order", {"order_id": "12345"})
 
-    # Read a file
-    data = files.read("data/customers.csv")
+    # Cloud storage operations
+    blob_uri = storage.upload("files", "exports/report.csv", data, "text/csv")
+    download_url = storage.generate_url("files", "exports/report.csv", expiry_hours=24)
+    file_data = storage.download("uploads", "user-files/input.xlsx")
+
+    # Local filesystem operations
+    files.write("data/temp.txt", "content", location="temp")
+    data = files.read("data/customers.csv", location="workspace")
 
     # List executions
     recent = executions.list(limit=10)
@@ -45,6 +51,7 @@ from .oauth import oauth
 from .organizations import organizations
 from .roles import roles
 from .secrets import secrets
+from .storage import storage
 from .workflows import workflows
 
 # Import decorators and context from shared module
@@ -70,6 +77,7 @@ __all__ = [
     'organizations',
     'workflows',
     'files',
+    'storage',
     'forms',
     'executions',
     'roles',

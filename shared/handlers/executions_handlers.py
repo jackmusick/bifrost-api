@@ -400,9 +400,27 @@ async def get_execution_handler(
         logger.warning(f"User {context.user_id} denied access to execution {execution_id}")
         return None, "Forbidden"
 
-    # Fetch logs and variables from blob storage (always captured, filter based on permissions)
+    # Fetch logs from ExecutionLogs table (real-time logs)
+    logs = None
+    if context.is_platform_admin:
+        from shared.repositories.execution_logs import get_execution_logs_repository
+        logs_repo = get_execution_logs_repository()
+        log_entities = await logs_repo.get_logs(execution_id=execution_id, limit=5000)
+
+        # Transform to camelCase format expected by UI (matches PubSub format)
+        logs = [
+            {
+                "executionLogId": log["ExecutionLogId"],
+                "timestamp": log["RowKey"].split("-")[0],  # Extract timestamp from RowKey
+                "level": log["Level"],
+                "message": log["Message"],
+                "source": log.get("Source", "workflow")
+            }
+            for log in log_entities
+        ]
+
+    # Fetch variables from blob storage (always captured, filter based on permissions)
     blob_service = get_blob_service()
-    logs = blob_service.get_logs(execution_id) if context.is_platform_admin else None
     variables = blob_service.get_variables(execution_id) if context.is_platform_admin else None
 
     # Fetch result (from blob if no inline result, otherwise use inline)

@@ -202,13 +202,15 @@ class ExecutionLogger:
                 ExecutionStatus.TIMEOUT,
                 ExecutionStatus.COMPLETED_WITH_ERRORS
             ]
-            # Broadcast to execution details page
+            # Broadcast completion status ONLY (logs already streamed in real-time)
+            # Logs are persisted in ExecutionLogs table and available via HTTP API
+            # Client can fetch logs from /api/executions/{id}/logs if needed
             webpubsub_broadcaster.broadcast_execution_update(
                 execution_id=execution_id,
                 status=status.value,
                 executed_by=user_id,
                 scope=scope,
-                latest_logs=logs[-50:] if logs else None,  # Last 50 log entries
+                latest_logs=None,  # Don't re-send logs (already streamed + in Table Storage)
                 is_complete=is_complete
             )
 

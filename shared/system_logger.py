@@ -207,6 +207,37 @@ class SystemLogger:
             }
         )
 
+    async def log_validation_failure(
+        self,
+        item_type: Literal["workflow", "data_provider"],
+        item_name: str,
+        error: str,
+        source: str | None = None
+    ) -> str:
+        """
+        Convenience method for logging validation failures during discovery.
+
+        Args:
+            item_type: Type of item (workflow or data_provider)
+            item_name: Name of the workflow/data provider
+            error: Validation error message
+            source: Source of the item (home, platform, workspace)
+
+        Returns:
+            Event ID
+        """
+        return await self.log(
+            category="discovery",
+            level="error",
+            message=f"Validation failed for {item_type} '{item_name}'",
+            details={
+                "item_type": item_type,
+                "item_name": item_name,
+                "source": source,
+                "error": error
+            }
+        )
+
     async def log_organization_event(
         self,
         action: Literal["create", "update", "delete"],

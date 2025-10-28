@@ -7,6 +7,7 @@ Extracted from functions/discovery.py for unit testability.
 import logging
 from typing import Any
 
+from pydantic import ValidationError
 from shared.models import DataProviderMetadata, MetadataResponse, WorkflowMetadata
 from shared.registry import get_registry
 
@@ -64,6 +65,7 @@ def convert_registry_workflow_to_model(
         disableGlobalKey=registry_workflow.disable_global_key,
         publicEndpoint=registry_workflow.public_endpoint,
         source=registry_workflow.source,
+        sourceFilePath=registry_workflow.source_file_path,
     )
 
 
@@ -105,6 +107,7 @@ def convert_registry_provider_to_model(
         category=registry_provider.category,
         cache_ttl_seconds=registry_provider.cache_ttl_seconds,
         parameters=parameters,
+        sourceFilePath=getattr(registry_provider, 'source_file_path', None),
     )
 
 
@@ -118,6 +121,9 @@ def get_discovery_metadata() -> MetadataResponse:
     3. Converts all registered data providers to Pydantic models
     4. Returns a MetadataResponse object
 
+    Validation errors are caught and logged to system_logger, with offending
+    items skipped from the response.
+
     Returns:
         MetadataResponse with workflows and dataProviders lists
 
@@ -130,15 +136,56 @@ def get_discovery_metadata() -> MetadataResponse:
     registry = get_registry()
 
     # Get all workflows from registry and convert to models
-    workflows = [
-        convert_registry_workflow_to_model(w) for w in registry.get_all_workflows()
-    ]
+    # Skip workflows that fail validation and log to system logger
+    workflows = []
+    for w in registry.get_all_workflows():
+        try:
+            workflow_model = convert_registry_workflow_to_model(w)
+            workflows.append(workflow_model)
+        except ValidationError as e:
+            logger.error(
+                f"Validation failed for workflow '{w.name}': {e}",
+                exc_info=True
+            )
+            # Log to system logger for visibility
+            try:
+                from shared.system_logger import get_system_logger
+                import asyncio
+                system_logger = get_system_logger()
+                asyncio.create_task(system_logger.log_validation_failure(
+                    item_type="workflow",
+                    item_name=w.name,
+                    error=str(e),
+                    source=w.source
+                ))
+            except Exception as log_error:
+                logger.warning(f"Failed to log validation failure: {log_error}")
 
     # Get all data providers from registry and convert to models
-    data_providers = [
-        convert_registry_provider_to_model(dp)
-        for dp in registry.get_all_data_providers()
-    ]
+    # Skip data providers that fail validation and log to system logger
+    data_providers = []
+    for dp in registry.get_all_data_providers():
+        try:
+            provider_model = convert_registry_provider_to_model(dp)
+            data_providers.append(provider_model)
+        except ValidationError as e:
+            logger.error(
+                f"Validation failed for data provider '{dp.name}': {e}",
+                exc_info=True
+            )
+            # Log to system logger for visibility
+            try:
+                from shared.system_logger import get_system_logger
+                import asyncio
+                system_logger = get_system_logger()
+                asyncio.create_task(system_logger.log_validation_failure(
+                    item_type="data_provider",
+                    item_name=dp.name,
+                    error=str(e),
+                    source=getattr(dp, 'source', None)
+                ))
+            except Exception as log_error:
+                logger.warning(f"Failed to log validation failure: {log_error}")
 
     logger.info(
         f"Retrieved metadata: {len(workflows)} workflows, "

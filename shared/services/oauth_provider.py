@@ -161,7 +161,9 @@ class OAuthProviderClient:
 
         for attempt in range(self.max_retries):
             try:
-                async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                # Create connector with proper cleanup settings
+                connector = aiohttp.TCPConnector(force_close=True)
+                async with aiohttp.ClientSession(timeout=self.timeout, connector=connector) as session:
                     async with session.post(
                         token_url,
                         data=payload,

@@ -72,7 +72,7 @@ class AsyncTableStorageService:
         Get or create TableClient instance.
 
         If used within a context manager (async with), reuses the same client.
-        Otherwise, creates a new client for each access and tracks it for cleanup.
+        Otherwise, reuses a single client instance and tracks it for cleanup.
         """
         if self._in_context_manager:
             # Reuse client when in context manager
@@ -82,12 +82,14 @@ class AsyncTableStorageService:
                 )
             return self._client
         else:
-            # Create new client and track it for cleanup
-            client = TableClient.from_connection_string(
-                self.connection_string, self.table_name
-            )
-            self._clients_to_cleanup.append(client)
-            return client
+            # Reuse single client for non-context-manager usage
+            # This prevents creating hundreds of unclosed clients
+            if self._client is None:
+                self._client = TableClient.from_connection_string(
+                    self.connection_string, self.table_name
+                )
+                self._clients_to_cleanup.append(self._client)
+            return self._client
 
     async def __aenter__(self):
         """Context manager entry - ensure client is ready"""
@@ -108,28 +110,44 @@ class AsyncTableStorageService:
         This ensures connections are closed even when not using context manager.
         """
         if self._clients_to_cleanup:
-            import warnings
-
-            warnings.warn(
-                f"AsyncTableStorageService for {self.table_name} has {len(self._clients_to_cleanup)} unclosed clients. "
-                "Consider using 'async with' for proper resource management.",
-                ResourceWarning,
-                stacklevel=2
-            )
-
-            # Close all tracked clients synchronously (best effort)
+            # Try to close clients synchronously (best effort)
+            # This is imperfect but better than leaving connections open
             for client in self._clients_to_cleanup:
                 try:
-                    # Try to close the client if it has a close method
-                    # We can't use async close here since we're in __del__
-                    # Just let the warning inform the user to use context manager
-                    pass
+                    # Access the internal session and close it if possible
+                    if hasattr(client, '_client') and hasattr(client._client, '_client'):
+                        session = client._client._client
+                        if hasattr(session, 'close') and not session.closed:
+                            # Force synchronous close of aiohttp session
+                            import asyncio
+                            try:
+                                loop = asyncio.get_event_loop()
+                                if loop.is_running():
+                                    # Can't await in __del__, so this won't work
+                                    pass
+                                else:
+                                    # Event loop not running, can run sync
+                                    loop.run_until_complete(session.close())
+                            except Exception:
+                                pass
                 except Exception:
                     pass
             self._clients_to_cleanup.clear()
 
     async def close(self):
         """Explicitly close the table client connection"""
+        # Close all tracked clients
+        for client in self._clients_to_cleanup:
+            try:
+                await client.close()
+            except Exception as e:
+                # Ignore "Event loop is closed" errors during cleanup
+                if "Event loop is closed" not in str(e):
+                    logger.warning(f"Error closing table client: {e}")
+
+        self._clients_to_cleanup.clear()
+
+        # Close main client if exists
         if self._client is not None:
             try:
                 await self._client.close()

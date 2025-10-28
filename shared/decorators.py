@@ -120,6 +120,7 @@ def workflow(
             disable_global_key=disable_global_key,
             public_endpoint=public_endpoint,
             source=source,
+            source_file_path=source_file_path,
             parameters=pending_params,
             function=func
         )

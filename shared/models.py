@@ -866,6 +866,7 @@ class WorkflowMetadata(BaseModel):
 
     # Source tracking (for UI filtering)
     source: Literal["home", "platform", "workspace"] | None = Field(None, description="Where the workflow is located")
+    sourceFilePath: str | None = Field(None, description="Full file path to the workflow source code")
 
 
 class DataProviderMetadata(BaseModel):
@@ -875,6 +876,7 @@ class DataProviderMetadata(BaseModel):
     category: str = "General"
     cache_ttl_seconds: int = 300
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
+    sourceFilePath: str | None = Field(None, description="Full file path to the data provider source code")
 
 
 class MetadataResponse(BaseModel):
@@ -1095,11 +1097,20 @@ class FileUploadRequest(BaseModel):
     content_type: str = Field(..., description="MIME type of the file")
     file_size: int = Field(..., description="File size in bytes")
 
+class UploadedFileMetadata(BaseModel):
+    """Metadata for uploaded file that workflows can use to access the file"""
+    name: str = Field(..., description="Original file name")
+    container: str = Field(..., description="Blob storage container name (e.g., 'uploads')")
+    path: str = Field(..., description="Blob path within container")
+    content_type: str = Field(..., description="MIME type of the file")
+    size: int = Field(..., description="File size in bytes")
+
 class FileUploadResponse(BaseModel):
     """Response model for file upload SAS URL generation"""
     upload_url: str = Field(..., description="SAS URL for direct upload to Blob Storage")
     blob_uri: str = Field(..., description="Final blob URI (without SAS token)")
     expires_at: str = Field(..., description="SAS token expiration timestamp (ISO format)")
+    file_metadata: UploadedFileMetadata = Field(..., description="Metadata for accessing the uploaded file in workflows")
 
 
 # ==================== WORKFLOW API KEYS (T004, T032, T033, T034 - User Story 3) ====================

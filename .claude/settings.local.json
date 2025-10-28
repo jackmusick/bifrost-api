@@ -22,7 +22,8 @@
       "Bash(func start)",
       "Bash(for file in forms_handlers.py organizations_handlers.py org_config_handlers.py secrets_handlers.py permissions_handlers.py roles_handlers.py)",
       "Bash(done)",
-      "Read(//Users/jack/Library/Logs/**)"
+      "Read(//Users/jack/Library/Logs/**)",
+      "Read(//Users/jack/.azure-functions-core-tools/**)"
     ],
     "deny": [],
     "ask": [],

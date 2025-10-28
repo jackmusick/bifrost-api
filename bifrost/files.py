@@ -2,11 +2,25 @@
 File management SDK for Bifrost.
 
 Provides Python API for file operations in workspace/files/ and temp directories.
+
+Location Options:
+- "temp": Temporary files (cleared periodically, for execution-scoped data)
+- "workspace": Persistent workspace files (survives across executions)
+
+Usage:
+    from bifrost import files
+
+    # Write to temp (execution-scoped)
+    files.write("temp-data.txt", "content", location="temp")
+
+    # Write to workspace (persistent)
+    files.write("exports/report.csv", data, location="workspace")
 """
 
 import os
 import shutil
 from pathlib import Path
+from typing import Literal
 
 from ._internal import get_context
 
@@ -20,17 +34,17 @@ class files:
     """
 
     # Allowed base paths for file operations (loaded from environment)
-    FILES_DIR = Path(os.getenv("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")) / "files"
-    TMP_DIR = Path(os.getenv("BIFROST_TEMP_LOCATION", "/mounts/tmp"))
+    WORKSPACE_FILES_DIR = Path(os.getenv("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")) / "files"
+    TEMP_FILES_DIR = Path(os.getenv("BIFROST_TEMP_LOCATION", "/mounts/tmp")) / "files"
 
     @staticmethod
-    def _resolve_path(path: str, allow_tmp: bool = False) -> Path:
+    def _resolve_path(path: str, location: Literal["temp", "workspace"]) -> Path:
         """
         Resolve and validate a file path.
 
         Args:
             path: Relative or absolute path
-            allow_tmp: Whether to allow paths in temp directory
+            location: Storage location ("temp" or "workspace")
 
         Returns:
             Path: Resolved absolute path
@@ -38,12 +52,18 @@ class files:
         Raises:
             ValueError: If path is outside allowed directories
         """
+        # Determine base directory based on location
+        if location == "temp":
+            base_dir = files.TEMP_FILES_DIR
+        else:  # workspace
+            base_dir = files.WORKSPACE_FILES_DIR
+
         # Convert to Path object
         p = Path(path)
 
-        # If relative, resolve against FILES_DIR
+        # If relative, resolve against base directory
         if not p.is_absolute():
-            p = files.FILES_DIR / p
+            p = base_dir / p
 
         # Resolve to absolute path (handles .. and symlinks)
         try:
@@ -51,42 +71,26 @@ class files:
         except Exception as e:
             raise ValueError(f"Invalid path: {path}") from e
 
-        # Check if path is within allowed directories
+        # Check if path is within allowed directory
         try:
-            if allow_tmp:
-                # Allow workspace/files or temp directory
-                if not (p.is_relative_to(files.FILES_DIR) or p.is_relative_to(files.TMP_DIR)):
-                    raise ValueError(
-                        f"Path must be within workspace files or temp directory: {path}"
-                    )
-            else:
-                # Only allow workspace/files
-                if not p.is_relative_to(files.FILES_DIR):
-                    raise ValueError(f"Path must be within workspace files directory: {path}")
+            if not p.is_relative_to(base_dir):
+                raise ValueError(f"Path must be within {location} files directory: {path}")
         except AttributeError:
             # Python < 3.9 doesn't have is_relative_to
             # Fallback to string comparison
-            path_str = str(p)
-            files_str = str(files.FILES_DIR)
-            tmp_str = str(files.TMP_DIR)
-            if allow_tmp:
-                if not (path_str.startswith(files_str) or path_str.startswith(tmp_str)):
-                    raise ValueError(
-                        f"Path must be within workspace files or temp directory: {path}"
-                    )
-            else:
-                if not path_str.startswith(files_str):
-                    raise ValueError(f"Path must be within workspace files directory: {path}")
+            if not str(p).startswith(str(base_dir)):
+                raise ValueError(f"Path must be within {location} files directory: {path}")
 
         return p
 
     @staticmethod
-    def read(path: str) -> str:
+    def read(path: str, location: Literal["temp", "workspace"] = "workspace") -> str:
         """
         Read a text file.
 
         Args:
-            path: File path (relative to workspace/files or absolute)
+            path: File path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Returns:
             str: File contents
@@ -98,22 +102,23 @@ class files:
 
         Example:
             >>> from bifrost import files
-            >>> content = files.read("data/customers.csv")
+            >>> content = files.read("data/customers.csv", location="workspace")
         """
         get_context()  # Ensure execution context exists
 
-        file_path = files._resolve_path(path, allow_tmp=True)
+        file_path = files._resolve_path(path, location)
 
         with open(file_path, 'r', encoding='utf-8') as f:
             return f.read()
 
     @staticmethod
-    def read_bytes(path: str) -> bytes:
+    def read_bytes(path: str, location: Literal["temp", "workspace"] = "workspace") -> bytes:
         """
         Read a binary file.
 
         Args:
-            path: File path (relative to workspace/files or absolute)
+            path: File path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Returns:
             bytes: File contents
@@ -125,35 +130,36 @@ class files:
 
         Example:
             >>> from bifrost import files
-            >>> data = files.read_bytes("reports/report.pdf")
+            >>> data = files.read_bytes("reports/report.pdf", location="workspace")
         """
         get_context()  # Ensure execution context exists
 
-        file_path = files._resolve_path(path, allow_tmp=True)
+        file_path = files._resolve_path(path, location)
 
         with open(file_path, 'rb') as f:
             return f.read()
 
     @staticmethod
-    def write(path: str, content: str) -> None:
+    def write(path: str, content: str, location: Literal["temp", "workspace"] = "workspace") -> None:
         """
         Write text to a file.
 
         Args:
-            path: File path (relative to workspace/files or absolute)
+            path: File path (relative or absolute)
             content: Text content to write
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Raises:
-            ValueError: If path is outside workspace files directory
+            ValueError: If path is outside allowed directories
             RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import files
-            >>> files.write("output/report.txt", "Report data")
+            >>> files.write("output/report.txt", "Report data", location="workspace")
         """
         get_context()  # Ensure execution context exists
 
-        file_path = files._resolve_path(path, allow_tmp=False)
+        file_path = files._resolve_path(path, location)
 
         # Create parent directories if needed
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,25 +168,26 @@ class files:
             f.write(content)
 
     @staticmethod
-    def write_bytes(path: str, content: bytes) -> None:
+    def write_bytes(path: str, content: bytes, location: Literal["temp", "workspace"] = "workspace") -> None:
         """
         Write binary data to a file.
 
         Args:
-            path: File path (relative to workspace/files or absolute)
+            path: File path (relative or absolute)
             content: Binary content to write
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Raises:
-            ValueError: If path is outside workspace files directory
+            ValueError: If path is outside allowed directories
             RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import files
-            >>> files.write_bytes("uploads/image.png", image_data)
+            >>> files.write_bytes("uploads/image.png", image_data, location="workspace")
         """
         get_context()  # Ensure execution context exists
 
-        file_path = files._resolve_path(path, allow_tmp=False)
+        file_path = files._resolve_path(path, location)
 
         # Create parent directories if needed
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,12 +196,13 @@ class files:
             f.write(content)
 
     @staticmethod
-    def list(directory: str = "") -> list[str]:
+    def list(directory: str = "", location: Literal["temp", "workspace"] = "workspace") -> list[str]:
         """
         List files in a directory.
 
         Args:
-            directory: Directory path (relative to /home/files, default: root)
+            directory: Directory path (relative, default: root)
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Returns:
             list[str]: List of file and directory names
@@ -206,13 +214,13 @@ class files:
 
         Example:
             >>> from bifrost import files
-            >>> items = files.list("uploads")
+            >>> items = files.list("uploads", location="workspace")
             >>> for item in items:
             ...     print(item)
         """
         get_context()  # Ensure execution context exists
 
-        dir_path = files._resolve_path(directory, allow_tmp=True)
+        dir_path = files._resolve_path(directory, location)
 
         if not dir_path.exists():
             raise FileNotFoundError(f"Directory not found: {directory}")
@@ -223,12 +231,13 @@ class files:
         return [item.name for item in dir_path.iterdir()]
 
     @staticmethod
-    def delete(path: str) -> None:
+    def delete(path: str, location: Literal["temp", "workspace"] = "workspace") -> None:
         """
         Delete a file or directory.
 
         Args:
-            path: File or directory path (relative to /home/files or absolute)
+            path: File or directory path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Raises:
             FileNotFoundError: If file doesn't exist
@@ -237,11 +246,11 @@ class files:
 
         Example:
             >>> from bifrost import files
-            >>> files.delete("temp/old_file.txt")
+            >>> files.delete("temp/old_file.txt", location="temp")
         """
         get_context()  # Ensure execution context exists
 
-        file_path = files._resolve_path(path, allow_tmp=True)
+        file_path = files._resolve_path(path, location)
 
         if not file_path.exists():
             raise FileNotFoundError(f"Path not found: {path}")
@@ -252,12 +261,13 @@ class files:
             file_path.unlink()
 
     @staticmethod
-    def exists(path: str) -> bool:
+    def exists(path: str, location: Literal["temp", "workspace"] = "workspace") -> bool:
         """
         Check if a file or directory exists.
 
         Args:
-            path: File or directory path (relative to /home/files or absolute)
+            path: File or directory path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
 
         Returns:
             bool: True if path exists
@@ -268,13 +278,13 @@ class files:
 
         Example:
             >>> from bifrost import files
-            >>> if files.exists("data/customers.csv"):
-            ...     data = files.read("data/customers.csv")
+            >>> if files.exists("data/customers.csv", location="workspace"):
+            ...     data = files.read("data/customers.csv", location="workspace")
         """
         get_context()  # Ensure execution context exists
 
         try:
-            file_path = files._resolve_path(path, allow_tmp=True)
+            file_path = files._resolve_path(path, location)
             return file_path.exists()
         except ValueError:
             return False

@@ -51,6 +51,7 @@ class WorkflowMetadata:
 
     # Source tracking (home, platform, workspace)
     source: Literal["home", "platform", "workspace"] | None = None
+    source_file_path: str | None = None
 
     # Parameters and function
     parameters: list[WorkflowParameter] = field(default_factory=list)

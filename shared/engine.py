@@ -16,6 +16,7 @@ from shared.context import Caller, ExecutionContext, Organization
 from shared.error_handling import WorkflowError
 from shared.models import ExecutionStatus
 from shared.registry import FunctionMetadata, get_registry
+from shared.repositories.execution_logs import get_execution_logs_repository
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ try:
     from bifrost._context import set_execution_context, clear_execution_context
     BIFROST_CONTEXT_AVAILABLE = True
 except ImportError:
-    logger.warning("Bifrost SDK not available - user workflows cannot use bifrost SDK")
+    logger.warning(
+        "Bifrost SDK not available - user workflows cannot use bifrost SDK")
     BIFROST_CONTEXT_AVAILABLE = False
 
 
@@ -109,7 +111,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     is_script = False
 
     if request.code and request.name:
-        raise ValueError("Cannot provide both code and name - they are mutually exclusive")
+        raise ValueError(
+            "Cannot provide both code and name - they are mutually exclusive")
 
     if request.code:
         # Executing inline script
@@ -121,7 +124,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         registry = get_registry()
         metadata = registry.get_function(request.name)
         if not metadata:
-            raise ValueError(f"Function '{request.name}' not found in registry")
+            raise ValueError(
+                f"Function '{request.name}' not found in registry")
         func = metadata.function
         is_script = False
     else:
@@ -143,14 +147,16 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     # Set bifrost SDK context if available
     if BIFROST_CONTEXT_AVAILABLE:
         set_execution_context(context)
-        logger.debug(f"Set bifrost execution context for execution {request.execution_id}")
+        logger.debug(
+            f"Set bifrost execution context for execution {request.execution_id}")
 
     # Set up stdout/stderr capture
     # Python's logging writes to stderr by default, so we'll capture it naturally
     logger_output: list[dict[str, Any]] = []
     stdout_capture = StringIO()
     stderr_capture = StringIO()
-    captured_logs: list[str] = []  # For captured logging (scripts and workflows)
+    # For captured logging (scripts and workflows)
+    captured_logs: list[str] = []
 
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
@@ -198,10 +204,12 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                         request.parameters,
                         request.organization.id if request.organization else None
                     )
-                    _cache_result(cache_key, result, metadata.cache_ttl_seconds)
+                    _cache_result(cache_key, result,
+                                  metadata.cache_ttl_seconds)
 
         # Process captured logs (from scripts or workflows with platform admin)
-        logger.info(f"Processing {len(captured_logs)} captured logs for execution {request.execution_id}")
+        logger.info(
+            f"Processing {len(captured_logs)} captured logs for execution {request.execution_id}")
         for log_line in captured_logs:
             # Parse format: [LEVEL] message
             level = 'info'
@@ -298,7 +306,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         # Clear bifrost SDK context
         if BIFROST_CONTEXT_AVAILABLE:
             clear_execution_context()
-            logger.debug(f"Cleared bifrost execution context for execution {request.execution_id}")
+            logger.debug(
+                f"Cleared bifrost execution context for execution {request.execution_id}")
 
 
 async def _execute_script(code: str, context: ExecutionContext, name: str) -> tuple[Any, dict[str, Any], list[str]]:
@@ -363,7 +372,8 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
         }
 
         # Script result is success unless exception thrown
-        result = {"status": "completed", "message": "Script executed successfully"}
+        result = {"status": "completed",
+                  "message": "Script executed successfully"}
         return result, captured_variables, script_logs
     finally:
         # Clean up the logger
@@ -406,37 +416,71 @@ async def _execute_workflow_with_trace(
     # Set up logging capture for the workflow
     class WorkflowLogHandler(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
-            # Only capture logs that originate from the workflow's file
+            # Only capture logs that originate from the workflow's file or workspace
             # This prevents capturing Azure SDK, aiohttp, and infrastructure logs
-            if record.pathname != workflow_module_file:
+            # Use basename comparison since dynamically loaded modules may have different path formats
+            import os
+            workflow_basename = os.path.basename(workflow_module_file)
+            record_basename = os.path.basename(record.pathname)
+
+            # Also check if it's from workspace directory (for user workflows)
+            is_workspace_log = 'workspace' in record.pathname or '/repo/' in record.pathname
+            is_workflow_file = record_basename == workflow_basename
+
+            # Don't log from inside the handler to avoid infinite recursion
+            # Just filter and process
+
+            if not (is_workflow_file or is_workspace_log):
                 return
 
             # Format: [LEVEL] message
             log_entry = f"[{record.levelname}] {record.getMessage()}"
             workflow_logs.append(log_entry)
 
-            # Broadcast log in real-time via SignalR (if enabled)
+            # Real-time log processing (if broadcaster enabled)
             if broadcaster and execution_id:
+                import uuid
+                log_id = str(uuid.uuid4())
+                timestamp = datetime.utcnow().isoformat() + "Z"
+
                 log_dict = {
+                    "executionLogId": log_id,
                     "level": record.levelname,
                     "message": record.getMessage(),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": timestamp
                 }
                 log_buffer.append(log_dict)
 
-                # Broadcast immediately (send delta, not entire log history)
+                # Persist and broadcast immediately - direct synchronous calls
+                # This ensures real-time log streaming (not buffered until end)
                 try:
+                    logs_repo = get_execution_logs_repository()
+
+                    # Direct synchronous calls - no async/await
+                    # Synchronous execution is critical for real-time streaming
+                    logs_repo.append_log(
+                        execution_id=execution_id,
+                        level=record.levelname,
+                        message=record.getMessage(),
+                        source="workflow"
+                    )
+
                     broadcaster.broadcast_execution_update(
                         execution_id=execution_id,
                         status="Running",
                         executed_by=context.user_id,
                         scope=context.org_id or "GLOBAL",
-                        latest_logs=[log_dict],  # Send only the new log
+                        latest_logs=[log_dict],
                         is_complete=False
                     )
                 except Exception as e:
-                    # Log broadcast errors but don't fail execution
-                    logger.debug(f"Broadcast error: {e}")
+                    # Log errors but don't fail workflow execution
+                    # Real-time updates are non-critical
+                    logger.error(
+                        f"Failed to persist/broadcast log (non-fatal): {str(e)}",
+                        exc_info=True,
+                        extra={"execution_id": execution_id}
+                    )
 
     # Configure logging for workflows
     handler = WorkflowLogHandler()
@@ -446,40 +490,85 @@ async def _execute_workflow_with_trace(
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 
-    def trace_calls(frame, event, arg):
-        # Track when we enter the workflow function
-        if event == 'call' and frame.f_code.co_name == func_name:
-            return trace_lines
-        return trace_calls
+    def remove_circular_refs(obj, seen=None):
+        """
+        Remove circular references from objects to make them JSON serializable.
 
-    def trace_lines(frame, event, arg):
-        # Capture variables on every line execution within the function
-        if event == 'line' or event == 'return':
-            # Skip parameter names and internal variables
-            param_names = set(parameters.keys()) | {'context', 'self'}
-            for k, v in frame.f_locals.items():
-                if (not k.startswith('_')
-                    and k not in param_names
-                    and not callable(v)
-                    and not isinstance(v, type(sys))):
-                    try:
-                        # Only capture JSON-serializable values
-                        import json
-                        json.dumps(v)
-                        captured_vars[k] = v
-                    except (TypeError, ValueError):
-                        pass
-        return trace_lines
+        Recursively walks through dicts/lists/tuples and replaces circular references
+        with a string marker. Non-serializable objects are converted to string repr.
+        """
+        if seen is None:
+            seen = set()
 
-    old_trace = sys.gettrace()
-    sys.settrace(trace_calls)
+        obj_id = id(obj)
+        if obj_id in seen:
+            return "[Circular Reference]"
+
+        seen = seen.copy()  # Copy seen set for this branch
+        seen.add(obj_id)
+
+        try:
+            if isinstance(obj, dict):
+                return {k: remove_circular_refs(v, seen) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                cleaned = [remove_circular_refs(item, seen) for item in obj]
+                return cleaned if isinstance(obj, list) else tuple(cleaned)
+            elif isinstance(obj, set):
+                return [remove_circular_refs(item, seen) for item in obj]
+            else:
+                # Test if primitive type is JSON serializable
+                import json
+                json.dumps(obj)
+                return obj
+        except (TypeError, ValueError):
+            # Not serializable - return type name
+            return f"<{type(obj).__name__}>"
+
+    # Wrapper to capture local variables after execution using sys.settrace briefly
+    async def execute_and_capture():
+        import inspect
+
+        # Track if we've entered the workflow function
+        entered_workflow = [False]
+
+        # Minimal trace function that only captures on workflow return
+        def trace_workflow(frame, event, arg):
+            # Check if we're entering the workflow function
+            if event == 'call' and frame.f_code.co_name == func_name:
+                entered_workflow[0] = True
+                return trace_workflow  # Continue tracing this function
+
+            # If we're in the workflow and it's returning, capture variables
+            if entered_workflow[0] and event == 'return' and frame.f_code.co_name == func_name:
+                # Capture variables from the workflow frame at return time
+                param_names = set(parameters.keys()) | {'context', 'self'}
+
+                for k, v in frame.f_locals.items():
+                    # Skip parameters, private vars, callables, and modules
+                    if (not k.startswith('_')
+                        and k not in param_names
+                        and not callable(v)
+                        and not isinstance(v, type(sys))):
+                        # Remove circular references to make JSON serializable
+                        cleaned_value = remove_circular_refs(v)
+                        captured_vars[k] = cleaned_value
+
+            return trace_workflow  # Keep tracing active
+
+        # Enable trace only for the workflow execution
+        old_trace = sys.gettrace()
+        sys.settrace(trace_workflow)
+
+        try:
+            result = await func(context, **parameters)
+            return result
+        finally:
+            sys.settrace(old_trace)
 
     try:
-        # Execute the workflow function
-        result = await func(context, **parameters)
+        result = await execute_and_capture()
         return result, captured_vars, workflow_logs
     finally:
-        sys.settrace(old_trace)
         # Clean up the logging handler
         root_logger.removeHandler(handler)
 

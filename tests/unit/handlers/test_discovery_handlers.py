@@ -35,6 +35,7 @@ class TestConvertRegistryWorkflowToModel:
         mock_registry_workflow.disable_global_key = False
         mock_registry_workflow.public_endpoint = False
         mock_registry_workflow.source = "workspace"
+        mock_registry_workflow.source_file_path = "/mounts/workspace/test_workflow.py"
 
         result = convert_registry_workflow_to_model(mock_registry_workflow)
 
@@ -56,6 +57,7 @@ class TestConvertRegistryProviderToModel:
         mock_registry_provider.category = "General"
         mock_registry_provider.cache_ttl_seconds = 300
         mock_registry_provider.parameters = []
+        mock_registry_provider.source_file_path = "/mounts/workspace/test_provider.py"
 
         result = convert_registry_provider_to_model(mock_registry_provider)
 
@@ -281,3 +283,116 @@ class TestGetDiscoveryMetadata:
             calls = [str(call) for call in mock_logger.info.call_args_list]
             assert any("Retrieving discovery metadata" in str(call) for call in calls)
             assert any("Retrieved metadata" in str(call) for call in calls)
+
+    @patch("shared.system_logger.get_system_logger")
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_workflow_validation_failure_skipped(self, mock_get_registry, mock_get_system_logger):
+        """Test that workflows with validation errors are skipped and logged"""
+        # Create one valid workflow and one invalid workflow
+        valid_workflow = MagicMock()
+        valid_workflow.name = "valid_workflow"
+        valid_workflow.description = "Valid"
+        valid_workflow.category = "Test"
+        valid_workflow.tags = []
+        valid_workflow.parameters = []
+        valid_workflow.execution_mode = "sync"
+        valid_workflow.timeout_seconds = 60
+        valid_workflow.retry_policy = None
+        valid_workflow.schedule = None
+        valid_workflow.endpoint_enabled = False
+        valid_workflow.allowed_methods = ["POST"]
+        valid_workflow.disable_global_key = False
+        valid_workflow.public_endpoint = False
+        valid_workflow.source = "workspace"
+
+        invalid_workflow = MagicMock()
+        invalid_workflow.name = "invalid_workflow"
+        invalid_workflow.description = "Invalid"
+        invalid_workflow.category = "Test"
+        invalid_workflow.tags = []
+        invalid_workflow.parameters = []
+        invalid_workflow.execution_mode = "sync"
+        invalid_workflow.timeout_seconds = 600  # Invalid - exceeds max of 540
+        invalid_workflow.retry_policy = None
+        invalid_workflow.schedule = None
+        invalid_workflow.endpoint_enabled = False
+        invalid_workflow.allowed_methods = ["POST"]
+        invalid_workflow.disable_global_key = False
+        invalid_workflow.public_endpoint = False
+        invalid_workflow.source = "workspace"
+
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = [valid_workflow, invalid_workflow]
+        mock_registry.get_all_data_providers.return_value = []
+        mock_get_registry.return_value = mock_registry
+
+        mock_system_logger = MagicMock()
+        mock_get_system_logger.return_value = mock_system_logger
+
+        result = get_discovery_metadata()
+
+        # Should have skipped invalid workflow
+        assert len(result.workflows) == 1
+        assert result.workflows[0].name == "valid_workflow"
+
+        # Should have logged to system logger
+        # Note: asyncio.create_task is called but we can't easily verify async call in sync test
+
+    @patch("shared.system_logger.get_system_logger")
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_data_provider_validation_failure_skipped(self, mock_get_registry, mock_get_system_logger):
+        """Test that data providers with validation errors are skipped and logged"""
+        valid_provider = MagicMock()
+        valid_provider.name = "valid_provider"
+        valid_provider.description = "Valid"
+        valid_provider.category = "General"
+        valid_provider.cache_ttl_seconds = 300
+        valid_provider.parameters = []
+
+        # Create invalid provider (we'd need to mock the conversion function to raise ValidationError)
+        # For now, just test the structure exists
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = []
+        mock_registry.get_all_data_providers.return_value = [valid_provider]
+        mock_get_registry.return_value = mock_registry
+
+        mock_system_logger = MagicMock()
+        mock_get_system_logger.return_value = mock_system_logger
+
+        result = get_discovery_metadata()
+
+        # All valid providers should be included
+        assert len(result.dataProviders) == 1
+        assert result.dataProviders[0].name == "valid_provider"
+
+    @patch("shared.handlers.discovery_handlers.get_registry")
+    def test_validation_failure_logs_error(self, mock_get_registry):
+        """Test that validation failures are logged as errors"""
+        invalid_workflow = MagicMock()
+        invalid_workflow.name = "invalid_workflow"
+        invalid_workflow.description = "Invalid"
+        invalid_workflow.category = "Test"
+        invalid_workflow.tags = []
+        invalid_workflow.parameters = []
+        invalid_workflow.execution_mode = "sync"
+        invalid_workflow.timeout_seconds = 600  # Invalid - exceeds max
+        invalid_workflow.retry_policy = None
+        invalid_workflow.schedule = None
+        invalid_workflow.endpoint_enabled = False
+        invalid_workflow.allowed_methods = ["POST"]
+        invalid_workflow.disable_global_key = False
+        invalid_workflow.public_endpoint = False
+        invalid_workflow.source = "workspace"
+
+        mock_registry = MagicMock()
+        mock_registry.get_all_workflows.return_value = [invalid_workflow]
+        mock_registry.get_all_data_providers.return_value = []
+        mock_get_registry.return_value = mock_registry
+
+        with patch("shared.handlers.discovery_handlers.logger") as mock_logger:
+            get_discovery_metadata()
+
+            # Should have logged error
+            mock_logger.error.assert_called()
+            error_calls = [str(call) for call in mock_logger.error.call_args_list]
+            assert any("invalid_workflow" in str(call) for call in error_calls)

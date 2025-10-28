@@ -58,10 +58,12 @@ class BlobStorageService:
         self.connection_string = connection_string
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
 
-        # Ensure container exists
+        # Ensure containers exist
         self._ensure_container_exists(EXECUTION_CONTAINER)
+        self._ensure_container_exists("uploads")
+        self._ensure_container_exists("files")
 
-        logger.debug(f"BlobStorageService initialized for container: {EXECUTION_CONTAINER}")
+        logger.debug(f"BlobStorageService initialized for containers: {EXECUTION_CONTAINER}, uploads, files")
 
     @staticmethod
     def _make_url_browser_accessible(url: str) -> str:
@@ -514,85 +516,7 @@ class BlobStorageService:
             "content_type": content_type
         }
 
-    def get_blob_metadata(self, blob_uri: str) -> dict:
-        """
-        Retrieve metadata for a blob
-
-        Args:
-            blob_uri: Full URI of the blob
-
-        Returns:
-            Dictionary of blob metadata
-        """
-        try:
-            # Parse blob URI to get container and blob name
-            # URI format: https://account.blob.core.windows.net/container/blob
-            parts = blob_uri.replace('https://', '').replace('http://', '').split('/')
-            if len(parts) < 3:
-                raise ValueError(f"Invalid blob URI: {blob_uri}")
-
-            container_name = parts[1]
-            blob_name = '/'.join(parts[2:])
-
-            container_client = self.blob_service_client.get_container_client(container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-            properties = blob_client.get_blob_properties()
-
-            return {
-                "name": properties.name,
-                "size": properties.size,
-                "content_type": properties.content_settings.content_type,
-                "last_modified": properties.last_modified.isoformat() if properties.last_modified else None,
-                "etag": properties.etag
-            }
-        except Exception as e:
-            logger.error(
-                f"Failed to get blob metadata: {str(e)}",
-                extra={"blob_uri": blob_uri},
-                exc_info=True
-            )
-            return {
-                "error": str(e),
-                "blob_uri": blob_uri
-            }
-
-    def delete_blob(self, blob_uri: str) -> bool:
-        """
-        Delete a blob from storage
-
-        Args:
-            blob_uri: Full URI of the blob to delete
-
-        Returns:
-            True if deletion successful, False otherwise
-        """
-        try:
-            # Parse blob URI to get container and blob name
-            parts = blob_uri.replace('https://', '').replace('http://', '').split('/')
-            if len(parts) < 3:
-                raise ValueError(f"Invalid blob URI: {blob_uri}")
-
-            container_name = parts[1]
-            blob_name = '/'.join(parts[2:])
-
-            container_client = self.blob_service_client.get_container_client(container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-            blob_client.delete_blob()
-
-            logger.info(
-                f"Deleted blob: {blob_uri}",
-                extra={"blob_name": blob_name}
-            )
-            return True
-        except Exception as e:
-            logger.error(
-                f"Failed to delete blob: {str(e)}",
-                extra={"blob_uri": blob_uri},
-                exc_info=True
-            )
-            return False
-
-    async def upload_blob(
+    def upload_blob(
         self,
         container_name: str,
         blob_name: str,
@@ -646,7 +570,7 @@ class BlobStorageService:
             )
             raise
 
-    async def download_blob(self, container_name: str, blob_name: str) -> bytes:
+    def download_blob(self, container_name: str, blob_name: str) -> bytes:
         """
         Download a blob from storage
 
@@ -656,10 +580,18 @@ class BlobStorageService:
 
         Returns:
             Blob data as bytes
+
+        Raises:
+            FileNotFoundError: If blob doesn't exist
+            Exception: For other storage errors
         """
         try:
             container_client = self.blob_service_client.get_container_client(container_name)
             blob_client = container_client.get_blob_client(blob_name)
+
+            # Check if blob exists
+            if not blob_client.exists():
+                raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
 
             # Download blob
             download_stream = blob_client.download_blob()
@@ -676,9 +608,182 @@ class BlobStorageService:
 
             return blob_data
 
+        except FileNotFoundError:
+            raise
         except Exception as e:
             logger.error(
                 f"Failed to download blob: {str(e)}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name
+                },
+                exc_info=True
+            )
+            raise
+
+    def generate_sas_url(
+        self,
+        container_name: str,
+        blob_name: str,
+        expiry_hours: int = 24
+    ) -> str:
+        """
+        Generate a time-limited SAS URL for downloading a blob
+
+        Args:
+            container_name: Name of the container
+            blob_name: Name of the blob (path within container)
+            expiry_hours: URL expiry time in hours (default: 24)
+
+        Returns:
+            SAS URL with read permission and expiry
+
+        Raises:
+            FileNotFoundError: If blob doesn't exist
+            ValueError: If account key is not available
+            Exception: For other storage errors
+        """
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+
+            # Check if blob exists
+            if not blob_client.exists():
+                raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
+
+            # Get account info
+            account_name = self.blob_service_client.account_name
+            if not account_name:
+                raise ValueError("Blob storage account name not available")
+
+            # Extract account key from connection string
+            conn_parts = dict(item.split('=', 1) for item in self.connection_string.split(';') if '=' in item)
+            account_key = conn_parts.get('AccountKey')
+            if not account_key:
+                raise ValueError("Blob storage account key not available in connection string")
+
+            # Generate SAS token with read permission
+            sas_token = generate_blob_sas(
+                account_name=account_name,
+                container_name=container_name,
+                blob_name=blob_name,
+                account_key=account_key,
+                permission=BlobSasPermissions(read=True),
+                expiry=datetime.utcnow() + timedelta(hours=expiry_hours)
+            )
+
+            sas_url = f"{blob_client.url}?{sas_token}"
+
+            logger.info(
+                f"Generated SAS URL for blob: {container_name}/{blob_name}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name,
+                    "expiry_hours": expiry_hours
+                }
+            )
+
+            return self._make_url_browser_accessible(sas_url)
+
+        except (FileNotFoundError, ValueError):
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to generate SAS URL: {str(e)}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name
+                },
+                exc_info=True
+            )
+            raise
+
+    def get_blob_metadata(self, container_name: str, blob_name: str) -> dict[str, Any]:
+        """
+        Get blob metadata by container and path
+
+        Args:
+            container_name: Name of the container
+            blob_name: Name of the blob (path within container)
+
+        Returns:
+            Metadata dict with keys:
+            - name: Blob name
+            - size: Size in bytes
+            - content_type: MIME type
+            - last_modified: Last modified timestamp (ISO 8601)
+            - etag: ETag for versioning
+
+        Raises:
+            FileNotFoundError: If blob doesn't exist
+            Exception: For other storage errors
+        """
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+
+            if not blob_client.exists():
+                raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
+
+            properties = blob_client.get_blob_properties()
+
+            return {
+                "name": properties.name,
+                "size": properties.size,
+                "content_type": properties.content_settings.content_type,
+                "last_modified": properties.last_modified.isoformat() if properties.last_modified else None,
+                "etag": properties.etag
+            }
+
+        except FileNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to get blob metadata: {str(e)}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name
+                },
+                exc_info=True
+            )
+            raise
+
+    def delete_blob(self, container_name: str, blob_name: str) -> bool:
+        """
+        Delete a blob from storage by container and path
+
+        Args:
+            container_name: Name of the container
+            blob_name: Name of the blob (path within container)
+
+        Returns:
+            True if deleted, False if didn't exist
+
+        Raises:
+            Exception: For storage errors other than not found
+        """
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+
+            if not blob_client.exists():
+                logger.debug(f"Blob does not exist: {container_name}/{blob_name}")
+                return False
+
+            blob_client.delete_blob()
+
+            logger.info(
+                f"Deleted blob: {container_name}/{blob_name}",
+                extra={
+                    "container": container_name,
+                    "blob_name": blob_name
+                }
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to delete blob: {str(e)}",
                 extra={
                     "container": container_name,
                     "blob_name": blob_name

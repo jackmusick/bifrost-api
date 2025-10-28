@@ -123,7 +123,10 @@ class WebPubSubBroadcaster:
         is_complete: bool = False
     ):
         """
-        Broadcast execution update to subscribed clients.
+        Broadcast execution update to subscribed clients (async, non-blocking).
+
+        Uses asyncio.to_thread() to prevent blocking the event loop with
+        synchronous HTTP calls to Azure Web PubSub.
 
         Args:
             execution_id: Execution ID
@@ -140,7 +143,7 @@ class WebPubSubBroadcaster:
             logger.debug(f"Broadcast skipped - enabled={self.enabled}, client={self.client is not None}")
             return
 
-        logger.info(f"Broadcasting execution update for {execution_id}")
+        logger.debug(f"Broadcasting execution update for {execution_id}")
 
         try:
             # Prepare message
@@ -162,16 +165,16 @@ class WebPubSubBroadcaster:
                 "data": message
             }
 
-            logger.info(f"Sending to {group_name}: {payload}")
+            logger.debug(f"Sending to {group_name}: {len(latest_logs) if latest_logs else 0} logs")
 
-            # Send message - Web PubSub will wrap it automatically
+            # Synchronous HTTP call
             self.client.send_to_group(
                 group=group_name,
                 message=payload,
                 content_type="application/json"
             )
 
-            logger.info(f"Sent execution update to group {group_name}")
+            logger.debug(f"Sent execution update to group {group_name}")
 
         except Exception as e:
             # Log but don't fail - real-time updates are non-critical
