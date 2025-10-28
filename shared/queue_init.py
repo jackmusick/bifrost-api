@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 # Define all required queues
 REQUIRED_QUEUES = [
     "workflow-executions",
-    "workflow-executions-poison"  # Poison queue for failed messages
+    "workflow-executions-poison",  # Poison queue for failed messages
+    "package-installations",
+    "package-installations-poison",  # Poison queue for failed package installations
 ]
 
 

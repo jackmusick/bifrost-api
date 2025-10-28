@@ -18,6 +18,7 @@ from shared.models import (
     UpdateOrganizationRequest,
 )
 from shared.repositories.organizations import OrganizationRepository
+from shared.system_logger import get_system_logger
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -86,6 +87,16 @@ async def create_organization_logic(
 
     logger.info(f"Created organization {org.id}: {org.name}")
 
+    # Log to system logger
+    system_logger = get_system_logger()
+    await system_logger.log_organization_event(
+        action="create",
+        org_id=org.id,
+        org_name=org.name,
+        executed_by=context.user_id,
+        executed_by_name=context.name or context.user_id
+    )
+
     return org
 
 
@@ -136,6 +147,16 @@ async def update_organization_logic(
 
     if org:
         logger.info(f"Updated organization {org_id}")
+
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_organization_event(
+            action="update",
+            org_id=org.id,
+            org_name=org.name,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
     else:
         logger.warning(f"Organization {org_id} not found for update")
 
@@ -160,6 +181,16 @@ async def delete_organization_logic(context: 'ExecutionContext', org_id: str) ->
 
     if success:
         logger.info(f"Soft deleted organization {org_id}")
+
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_organization_event(
+            action="delete",
+            org_id=org_id,
+            org_name=org_id,  # Use org_id as fallback since we don't have the name after deletion
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
     else:
         logger.warning(f"Organization {org_id} not found for deletion")
 
@@ -255,6 +286,18 @@ async def create_organization_handler(req: func.HttpRequest) -> func.HttpRespons
 
     except Exception as e:
         logger.error(f"Error creating organization: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="organization",
+            level="error",
+            message=f"Failed to create organization: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to create organization"
@@ -364,6 +407,18 @@ async def update_organization_handler(req: func.HttpRequest) -> func.HttpRespons
 
     except Exception as e:
         logger.error(f"Error updating organization: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="organization",
+            level="error",
+            message=f"Failed to update organization {org_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"org_id": org_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to update organization"
@@ -406,6 +461,18 @@ async def delete_organization_handler(req: func.HttpRequest) -> func.HttpRespons
 
     except Exception as e:
         logger.error(f"Error deleting organization: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="organization",
+            level="error",
+            message=f"Failed to delete organization {org_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"org_id": org_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to delete organization"

@@ -16,6 +16,7 @@ from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionResponse
 from shared.registry import get_registry
+from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,9 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
     exec_logger = get_execution_logger()
     start_time = datetime.utcnow()
 
+    # Initialize Web PubSub broadcaster for real-time updates
+    broadcaster = WebPubSubBroadcaster()
+
     try:
         # Create execution record - skip if transient
         if not transient:
@@ -155,8 +159,12 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
                 user_name=context.name,
                 workflow_name=workflow_name,
                 input_data=input_data,
-                form_id=form_id
+                form_id=form_id,
+                webpubsub_broadcaster=broadcaster
             )
+
+            # NOTE: Creation broadcast is handled by create_execution above
+            # Status change broadcasts are handled by update_execution in execution_logger
 
         logger.info(
             f"Starting workflow execution: {workflow_name}",
@@ -181,13 +189,15 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
             name=workflow_name if not is_script else None,
             parameters=input_data,
             transient=transient,
-            is_platform_admin=context.is_platform_admin
+            is_platform_admin=context.is_platform_admin,
+            broadcaster=broadcaster  # Pass SignalR broadcaster for real-time log streaming
         )
 
         # Execute via unified engine
         result = await execute(request)
 
         # Update execution record - skip if transient
+        # NOTE: Broadcasts to both execution details and history are handled by update_execution
         if not transient:
             await exec_logger.update_execution(
                 execution_id=execution_id,
@@ -201,7 +211,8 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
                 state_snapshots=result.state_snapshots,
                 integration_calls=result.integration_calls,
                 logs=result.logs if result.logs else None,
-                variables=result.variables if result.variables else None
+                variables=result.variables if result.variables else None,
+                webpubsub_broadcaster=broadcaster
             )
 
         # Build HTTP response

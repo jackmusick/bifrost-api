@@ -181,22 +181,23 @@ async def get_dashboard_metrics(context: Any) -> dict[str, Any]:
         metadata = get_workflow_metadata(registry)
         metrics.update(metadata)
 
-        # 2. Get form count
-        entities_service = get_async_table_service("Entities", context)
-        metrics["formCount"] = await get_form_count(entities_service)
+        # 2. Get form count and execution statistics
+        # Use async context manager to ensure proper cleanup of TableClient connections
+        async with get_async_table_service("Entities", context) as entities_service:
+            metrics["formCount"] = await get_form_count(entities_service)
 
-        # 3. Get execution statistics (last 30 days)
-        execution_stats = await get_execution_statistics(entities_service, days=30)
-        metrics["executionStats"] = {
-            "totalExecutions": execution_stats["totalExecutions"],
-            "successCount": execution_stats["successCount"],
-            "failedCount": execution_stats["failedCount"],
-            "runningCount": execution_stats["runningCount"],
-            "pendingCount": execution_stats["pendingCount"],
-            "successRate": execution_stats["successRate"],
-            "avgDurationSeconds": execution_stats["avgDurationSeconds"]
-        }
-        metrics["recentFailures"] = execution_stats["recentFailures"]
+            # 3. Get execution statistics (last 30 days)
+            execution_stats = await get_execution_statistics(entities_service, days=30)
+            metrics["executionStats"] = {
+                "totalExecutions": execution_stats["totalExecutions"],
+                "successCount": execution_stats["successCount"],
+                "failedCount": execution_stats["failedCount"],
+                "runningCount": execution_stats["runningCount"],
+                "pendingCount": execution_stats["pendingCount"],
+                "successRate": execution_stats["successRate"],
+                "avgDurationSeconds": execution_stats["avgDurationSeconds"]
+            }
+            metrics["recentFailures"] = execution_stats["recentFailures"]
 
         logger.info(f"Dashboard metrics retrieved for user {context.user_id}")
         return metrics

@@ -18,6 +18,7 @@ from shared.models import (
     ExecutionStatus,
 )
 from shared.repositories.forms import FormRepository
+from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,18 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
         form_repo = FormRepository(request_context)
         form = await form_repo.create_form(form_request=create_request, created_by=request_context.user_id)
         logger.info(f"Created form {form.id} in partition {form.orgId}")
+
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_form_event(
+            action="create",
+            form_id=form.id,
+            form_name=form.name,
+            scope=form.orgId or "GLOBAL",
+            executed_by=request_context.user_id,
+            executed_by_name=request_context.name or request_context.user_id
+        )
+
         return form.model_dump(mode="json"), 201
 
     except ValidationError as e:
@@ -180,6 +193,18 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
 
     except Exception as e:
         logger.error(f"Error creating form: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="form",
+            level="error",
+            message=f"Failed to create form: {str(e)}",
+            executed_by=request_context.user_id,
+            executed_by_name=request_context.name or request_context.user_id,
+            details={"error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(error="InternalServerError", message="Failed to create form")
         return error.model_dump(), 500
 
@@ -261,6 +286,18 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
             return error.model_dump(), 404
 
         logger.info(f"Updated form {form_id}")
+
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_form_event(
+            action="update",
+            form_id=form.id,
+            form_name=form.name,
+            scope=form.orgId or "GLOBAL",
+            executed_by=request_context.user_id,
+            executed_by_name=request_context.name or request_context.user_id
+        )
+
         return form.model_dump(mode="json"), 200
 
     except ValidationError as e:
@@ -281,6 +318,18 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
 
     except Exception as e:
         logger.error(f"Error updating form: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="form",
+            level="error",
+            message=f"Failed to update form {form_id}: {str(e)}",
+            executed_by=request_context.user_id,
+            executed_by_name=request_context.name or request_context.user_id,
+            details={"form_id": form_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(error="InternalServerError", message="Failed to update form")
         return error.model_dump(), 500
 
@@ -291,10 +340,25 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
 
     try:
         form_repo = FormRepository(request_context)
+
+        # Get form details before deletion for logging
+        form = await form_repo.get_form(form_id)
+
         success = await form_repo.delete_form(form_id)
 
-        if success:
+        if success and form:
             logger.info(f"Soft deleted form {form_id}")
+
+            # Log to system logger
+            system_logger = get_system_logger()
+            await system_logger.log_form_event(
+                action="delete",
+                form_id=form.id,
+                form_name=form.name,
+                scope=form.orgId or "GLOBAL",
+                executed_by=request_context.user_id,
+                executed_by_name=request_context.name or request_context.user_id
+            )
         else:
             logger.debug(f"Form {form_id} not found, returning 204")
 
@@ -302,6 +366,18 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
 
     except Exception as e:
         logger.error(f"Error deleting form: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="form",
+            level="error",
+            message=f"Failed to delete form {form_id}: {str(e)}",
+            executed_by=request_context.user_id,
+            executed_by_name=request_context.name or request_context.user_id,
+            details={"form_id": form_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(error="InternalServerError", message="Failed to delete form")
         return error.model_dump(), 500
 

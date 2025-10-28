@@ -11,13 +11,25 @@
       "Read(//private/tmp/**)",
       "Read(//tmp/**)",
       "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:docs.cipp.app)"
+      "WebFetch(domain:docs.cipp.app)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "WebFetch(domain:firebase.google.com)",
+      "Bash(func host status:*)",
+      "WebFetch(domain:www.linkage.io)",
+      "WebFetch(domain:ably.com)",
+      "Read(//Users/jack/.azure-functions-core-tools/Functions/**)",
+      "Bash(func start)",
+      "Bash(for file in forms_handlers.py organizations_handlers.py org_config_handlers.py secrets_handlers.py permissions_handlers.py roles_handlers.py)",
+      "Bash(done)",
+      "Read(//Users/jack/Library/Logs/**)"
     ],
     "deny": [],
     "ask": [],
     "additionalDirectories": [
       "~/GitHub/bifrost-client/",
-      "~/GitHub/bifrost-docs/"
+      "~/GitHub/bifrost-docs/",
+      "~/Sync/Bifrost/workspace"
     ]
   },
   "alwaysThinkingEnabled": false

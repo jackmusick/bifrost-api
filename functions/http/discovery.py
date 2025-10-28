@@ -24,7 +24,7 @@ bp = func.Blueprint()
     path="/discovery",
     method="GET",
     summary="Discover available workflows and data providers",
-    description="Returns metadata for all registered workflows and data providers.",
+    description="Returns metadata for all registered workflows and data providers. Triggers workspace re-scan to pick up new workflows.",
     tags=["Discovery"],
     response_model=MetadataResponse
 )
@@ -36,6 +36,8 @@ async def get_discovery_metadata_handler(req: func.HttpRequest) -> func.HttpResp
 
     Requires authentication (uses request context from SWA/EasyAuth)
 
+    Triggers workspace re-scan to discover new workflows before returning metadata.
+
     Returns:
         200: MetadataResponse with workflows and dataProviders arrays
         500: Internal server error
@@ -44,6 +46,11 @@ async def get_discovery_metadata_handler(req: func.HttpRequest) -> func.HttpResp
     logger.info(f"x-functions-key header present: {'x-functions-key' in req.headers}")
 
     try:
+        # Re-scan workspace to pick up new workflows (force_reload=True for hot-reload)
+        from function_app import discover_workspace_modules
+        logger.info("Triggering workspace re-scan with force_reload before returning metadata")
+        discover_workspace_modules(force_reload=True)
+
         # Call business logic handler
         metadata = get_discovery_metadata()
 

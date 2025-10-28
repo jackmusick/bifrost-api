@@ -22,6 +22,7 @@ from shared.secret_naming import (
     SecretNameTooLongError,
     InvalidSecretComponentError,
 )
+from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +239,16 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
             f"in scope={context.scope}"
         )
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_config_event(
+            action="set",
+            key=set_request.key,
+            scope=context.scope,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps(config.model_dump(mode="json")),
             status_code=status_code,
@@ -347,6 +358,16 @@ async def delete_config_handler(req: func.HttpRequest) -> func.HttpResponse:
         await config_repo.delete_config(key)
         logger.info(f"Deleted config key '{key}' (scope={context.scope})")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_config_event(
+            action="delete",
+            key=key,
+            scope=context.scope,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             status_code=204  # No Content
         )
@@ -441,6 +462,17 @@ async def set_integration_handler(req: func.HttpRequest) -> func.HttpResponse:
             f"{'Updated' if existing_integration else 'Created'} {set_request.type.value} integration for org {org_id}"
         )
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_config_event(
+            action="set",
+            key=set_request.type.value,
+            config_type="integration",
+            scope=context.scope,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps(integration.model_dump(mode="json")),
             status_code=status_code,
@@ -514,6 +546,17 @@ async def delete_integration_handler(req: func.HttpRequest) -> func.HttpResponse
         config_repo = ConfigRepository(context)
         await config_repo.delete_integration(integration_type)  # Pass string directly - repository handles it
         logger.info(f"Deleted {integration_type} integration for org {org_id}")
+
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_config_event(
+            action="delete",
+            key=integration_type,
+            config_type="integration",
+            scope=context.scope,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
 
         return func.HttpResponse(
             status_code=204  # No Content

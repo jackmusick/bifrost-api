@@ -22,6 +22,7 @@ from shared.models import (
 from shared.context import ExecutionContext, Organization
 from shared.async_storage import get_async_table_service
 from shared.validation import check_key_vault_available
+from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,16 @@ async def handle_create_secret(
         },
     )
 
+    # Log to system logger
+    system_logger = get_system_logger()
+    await system_logger.log_secret_event(
+        action="set",
+        key=create_request.secretKey,
+        scope=create_request.orgId,
+        executed_by=user_id,
+        executed_by_name=user_id
+    )
+
     return response
 
 
@@ -231,6 +242,16 @@ async def handle_update_secret(
             "org_id": org_id,
             "updated_by": user_id,
         },
+    )
+
+    # Log to system logger
+    system_logger = get_system_logger()
+    await system_logger.log_secret_event(
+        action="set",
+        key=secret_key,
+        scope=org_id,
+        executed_by=user_id,
+        executed_by_name=user_id
     )
 
     return response
@@ -379,6 +400,16 @@ async def handle_delete_secret(
             + "\n\nPlease remove all references before deleting this secret."
         )
 
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="secret",
+            level="error",
+            message=f"Cannot delete secret '{secret_name}': has dependencies",
+            executed_by=user_id,
+            details={"secret_name": secret_name, "dependencies": dependencies}
+        )
+
         raise SecretHasDependenciesError(error_message, dependencies)
 
     # Delete the secret
@@ -405,6 +436,16 @@ async def handle_delete_secret(
             "org_id": org_id,
             "deleted_by": user_id,
         },
+    )
+
+    # Log to system logger
+    system_logger = get_system_logger()
+    await system_logger.log_secret_event(
+        action="delete",
+        key=secret_key,
+        scope=org_id,
+        executed_by=user_id,
+        executed_by_name=user_id
     )
 
     return response

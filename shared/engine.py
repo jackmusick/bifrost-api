@@ -56,6 +56,9 @@ class ExecutionRequest:
     no_cache: bool = False               # For data providers
     is_platform_admin: bool = False       # For platform admin executions
 
+    # Real-time updates
+    broadcaster: Any = None              # WebPubSubBroadcaster for streaming logs
+
 
 @dataclass
 class ExecutionResult:
@@ -178,17 +181,15 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                 # Execute workflow/data provider
                 assert func is not None
 
-                # For platform admins, use sys.settrace() to capture variables and logs
-                # For regular users, execute function directly (no variable/log capture)
-                if context.is_platform_admin:
-                    result, captured_variables, captured_logs = await _execute_workflow_with_trace(
-                        func,
-                        context,
-                        request.parameters
-                    )
-                else:
-                    result = await func(context, **request.parameters)
-                    captured_variables = None
+                # Always capture logs AND variables for all executions
+                # Filtering based on permissions happens at API response level
+                result, captured_variables, captured_logs = await _execute_workflow_with_trace(
+                    func,
+                    context,
+                    request.parameters,
+                    execution_id=request.execution_id,
+                    broadcaster=request.broadcaster
+                )
 
                 # Cache if data provider
                 if metadata and "data_provider" in metadata.tags:
@@ -200,6 +201,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                     _cache_result(cache_key, result, metadata.cache_ttl_seconds)
 
         # Process captured logs (from scripts or workflows with platform admin)
+        logger.info(f"Processing {len(captured_logs)} captured logs for execution {request.execution_id}")
         for log_line in captured_logs:
             # Parse format: [LEVEL] message
             level = 'info'
@@ -372,20 +374,23 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
 async def _execute_workflow_with_trace(
     func: Any,
     context: ExecutionContext,
-    parameters: dict[str, Any]
+    parameters: dict[str, Any],
+    execution_id: str | None = None,
+    broadcaster: Any = None
 ) -> tuple[Any, dict[str, Any], list[str]]:
     """
     Execute a workflow function with variable capture using sys.settrace().
 
     This is the same approach used for scripts, ensuring consistency.
     Captures all local variables from the function as it executes.
-
-    Only used for platform admins to enable variable capture.
+    Streams logs in real-time via SignalR if broadcaster is provided.
 
     Args:
         func: Workflow function to execute
         context: ExecutionContext
         parameters: Function parameters
+        execution_id: Execution ID for Web PubSub broadcasts
+        broadcaster: WebPubSubBroadcaster for real-time log streaming
 
     Returns:
         Tuple of (result, captured_variables, logs)
@@ -393,18 +398,51 @@ async def _execute_workflow_with_trace(
     captured_vars: dict[str, Any] = {}
     workflow_logs: list[str] = []
     func_name = func.__name__
+    log_buffer: list[dict[str, Any]] = []  # Buffer for SignalR broadcasts
+
+    # Get the workflow's module file path for filtering
+    workflow_module_file = func.__code__.co_filename
 
     # Set up logging capture for the workflow
     class WorkflowLogHandler(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
+            # Only capture logs that originate from the workflow's file
+            # This prevents capturing Azure SDK, aiohttp, and infrastructure logs
+            if record.pathname != workflow_module_file:
+                return
+
             # Format: [LEVEL] message
-            workflow_logs.append(f"[{record.levelname}] {record.getMessage()}")
+            log_entry = f"[{record.levelname}] {record.getMessage()}"
+            workflow_logs.append(log_entry)
+
+            # Broadcast log in real-time via SignalR (if enabled)
+            if broadcaster and execution_id:
+                log_dict = {
+                    "level": record.levelname,
+                    "message": record.getMessage(),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                log_buffer.append(log_dict)
+
+                # Broadcast immediately (send delta, not entire log history)
+                try:
+                    broadcaster.broadcast_execution_update(
+                        execution_id=execution_id,
+                        status="Running",
+                        executed_by=context.user_id,
+                        scope=context.org_id or "GLOBAL",
+                        latest_logs=[log_dict],  # Send only the new log
+                        is_complete=False
+                    )
+                except Exception as e:
+                    # Log broadcast errors but don't fail execution
+                    logger.debug(f"Broadcast error: {e}")
 
     # Configure logging for workflows
     handler = WorkflowLogHandler()
     handler.setLevel(logging.DEBUG)  # Capture all levels
 
-    # Attach to root logger (workflows use logging.info(), etc.)
+    # Attach to root logger since workflows use logging.info() which goes to root
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 

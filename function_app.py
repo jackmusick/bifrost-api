@@ -1,6 +1,8 @@
+from shared.config import validate_filesystem_config
 from shared.import_restrictor import install_import_restrictions
 from functions.queue.poison_queue_handler import bp as poison_queue_handler_bp
 from functions.queue.worker import bp as worker_bp
+from functions.queue.package_worker import bp as package_worker_bp
 from functions.timer.execution_cleanup import bp as execution_cleanup_timer_bp
 from functions.timer.schedule_processor import bp as schedule_processor_bp
 from functions.timer.oauth_refresh_timer import bp as oauth_refresh_timer_bp
@@ -8,6 +10,7 @@ from functions.http.schedules import bp as schedules_bp
 from functions.http.workflow_keys import bp as workflow_keys_bp
 from functions.http.workflows import bp as workflows_bp
 from functions.http.secrets import bp as secrets_bp
+from functions.http.webpubsub import bp as webpubsub_bp
 from functions.http.roles_source import bp as roles_source_bp
 from functions.http.roles import bp as roles_bp
 from functions.http.permissions import bp as permissions_bp
@@ -25,6 +28,8 @@ from functions.http.endpoints import bp as endpoints_bp
 from functions.http.editor_files import bp as editor_files_bp
 from functions.http.discovery import bp as discovery_bp
 from functions.http.branding import bp as branding_bp
+from functions.http.logs import bp as logs_bp
+from functions.http.packages import bp as packages_bp
 import importlib.util
 import logging
 import os
@@ -74,7 +79,6 @@ if os.getenv('ENABLE_DEBUGGING') == 'true':
 
 # ==================== FILESYSTEM CONFIGURATION ====================
 # Validate filesystem configuration before anything else
-from shared.config import validate_filesystem_config
 validate_filesystem_config()
 
 # ==================== IMPORT RESTRICTIONS ====================
@@ -175,7 +179,7 @@ except Exception as e:
 # T005: Discover workspace modules to register workflows and data providers
 
 
-def discover_workspace_modules():
+def discover_workspace_modules(force_reload: bool = False):
     """
     Dynamically discover and import all Python files in workspace subdirectories.
 
@@ -189,6 +193,9 @@ def discover_workspace_modules():
 
     No __init__.py files are required - this allows workspace code to be purely
     user/platform code without any framework dependencies.
+
+    Args:
+        force_reload: If True, clears registry and re-imports all modules (for hot-reload)
     """
     discovered_count = 0
 
@@ -202,6 +209,21 @@ def discover_workspace_modules():
         print("[WORKSPACE DISCOVERY] No workspace paths exist - skipping discovery")
         logging.warning("No workspace paths exist - skipping discovery")
         return
+
+    # If force_reload, clear registry and remove workspace modules from sys.modules
+    if force_reload:
+        from shared.registry import get_registry
+        registry = get_registry()
+        registry.clear_all()
+        logging.info("Cleared registry for hot-reload")
+
+        # Remove all workspace.* modules from sys.modules
+        modules_to_remove = [
+            name for name in sys.modules.keys() if name.startswith('workspace.')]
+        for module_name in modules_to_remove:
+            del sys.modules[module_name]
+        logging.info(
+            f"Removed {len(modules_to_remove)} workspace modules from sys.modules")
 
     print(
         f"[WORKSPACE DISCOVERY] Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
@@ -218,6 +240,10 @@ def discover_workspace_modules():
         for py_file in workspace_path.rglob("*.py"):
             # Skip __init__.py and private files
             if py_file.name.startswith("_"):
+                continue
+
+            # Skip .packages directory (user-installed Python packages)
+            if ".packages" in py_file.parts:
                 continue
 
             # Calculate module path relative to workspace root
@@ -248,6 +274,20 @@ def discover_workspace_modules():
                     f"✗ Failed to import {module_name}: {e}",
                     exc_info=True
                 )
+
+                # Log to system logger for visibility
+                try:
+                    from shared.system_logger import get_system_logger
+                    system_logger = get_system_logger()
+                    import asyncio
+                    asyncio.create_task(system_logger.log_discovery_failure(
+                        module_name=module_name,
+                        file_path=str(py_file),
+                        error=str(e)
+                    ))
+                except Exception as log_error:
+                    logging.warning(
+                        f"Failed to log discovery failure: {log_error}")
 
     logging.info(
         f"Workspace discovery complete: {discovered_count} modules imported")
@@ -297,8 +337,12 @@ app.register_functions(secrets_bp)  # Secret management endpoints
 app.register_functions(health_bp)  # Health monitoring endpoints
 app.register_functions(metrics_bp)  # System metrics endpoints
 app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
+app.register_functions(webpubsub_bp)  # Web PubSub real-time connection negotiation
+app.register_functions(logs_bp)  # System logs viewing (admin-only)
 # Browser-based code editor file operations
 app.register_functions(editor_files_bp)
+# Package management for workspace
+app.register_functions(packages_bp)
 
 if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
     app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer
@@ -317,7 +361,8 @@ app.register_functions(workflow_keys_bp)
 app.register_functions(schedules_bp)
 # Async workflow execution worker (User Story 4)
 app.register_functions(worker_bp)
+# Package installation worker
+app.register_functions(package_worker_bp)
 # Poison queue handler for failed executions
 app.register_functions(poison_queue_handler_bp)
-
 logging.info("Function app initialization complete!")

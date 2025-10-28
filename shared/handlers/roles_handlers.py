@@ -19,6 +19,7 @@ from shared.models import (
 )
 from shared.repositories.roles import RoleRepository
 from shared.repositories.users import UserRepository
+from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,16 @@ async def create_role_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"Created role '{role.name}' with ID {role.id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="create",
+            role_id=role.id,
+            role_name=role.name,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps(role.model_dump(mode="json")),
             status_code=201,
@@ -120,6 +131,18 @@ async def create_role_handler(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.error(f"Error creating role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to create role: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to create role"
@@ -156,6 +179,16 @@ async def update_role_handler(req: func.HttpRequest, role_id: str) -> func.HttpR
 
         logger.info(f"Updated role {role_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="update",
+            role_id=role.id,
+            role_name=role.name,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps(role.model_dump(mode="json")),
             status_code=200,
@@ -177,6 +210,18 @@ async def update_role_handler(req: func.HttpRequest, role_id: str) -> func.HttpR
 
     except Exception as e:
         logger.error(f"Error updating role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to update role {role_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"role_id": role_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to update role"
@@ -205,10 +250,32 @@ async def delete_role_handler(req: func.HttpRequest, role_id: str) -> func.HttpR
 
         logger.info(f"Soft deleted role {role_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="delete",
+            role_id=role_id,
+            role_name=role_id,  # Use role_id as fallback since we don't have the name after deletion
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(status_code=204)
 
     except Exception as e:
         logger.error(f"Error deleting role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to delete role {role_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"role_id": role_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to delete role"
@@ -321,6 +388,17 @@ async def assign_users_to_role_handler(req: func.HttpRequest, role_id: str) -> f
 
         logger.info(f"Assigned {len(assign_request.userIds)} users to role {role_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="assign_users",
+            role_id=role_id,
+            role_name=role.name,
+            details={"user_ids": assign_request.userIds},
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps({"message": f"Assigned {len(assign_request.userIds)} users to role"}),
             status_code=200,
@@ -342,6 +420,18 @@ async def assign_users_to_role_handler(req: func.HttpRequest, role_id: str) -> f
 
     except Exception as e:
         logger.error(f"Error assigning users to role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to assign users to role {role_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"role_id": role_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to assign users to role"
@@ -394,10 +484,33 @@ async def remove_user_from_role_handler(req: func.HttpRequest, role_id: str, use
 
         logger.info(f"Removed user {user_id} from role {role_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="remove_user",
+            role_id=role_id,
+            role_name=role_id,  # Use role_id as fallback
+            details={"user_id": user_id},
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(status_code=204)
 
     except Exception as e:
         logger.error(f"Error removing user from role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to remove user from role {role_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"role_id": role_id, "user_id": user_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to remove user from role"
@@ -483,6 +596,17 @@ async def assign_forms_to_role_handler(req: func.HttpRequest, role_id: str) -> f
 
         logger.info(f"Assigned {len(assign_request.formIds)} forms to role {role_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="assign_forms",
+            role_id=role_id,
+            role_name=role.name,
+            details={"form_ids": assign_request.formIds},
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps({"message": f"Assigned {len(assign_request.formIds)} forms to role"}),
             status_code=200,
@@ -504,6 +628,18 @@ async def assign_forms_to_role_handler(req: func.HttpRequest, role_id: str) -> f
 
     except Exception as e:
         logger.error(f"Error assigning forms to role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to assign forms to role {role_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"role_id": role_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to assign forms to role"
@@ -556,10 +692,33 @@ async def remove_form_from_role_handler(req: func.HttpRequest, role_id: str, for
 
         logger.info(f"Removed form {form_id} from role {role_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_role_event(
+            action="remove_form",
+            role_id=role_id,
+            role_name=role_id,  # Use role_id as fallback
+            details={"form_id": form_id},
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(status_code=204)
 
     except Exception as e:
         logger.error(f"Error removing form from role: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="role",
+            level="error",
+            message=f"Failed to remove form from role {role_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"role_id": role_id, "form_id": form_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to remove form from role"

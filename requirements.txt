@@ -44,3 +44,4 @@ pyjwt[crypto]  # Only used in test fixtures
 
 # Development and debugging
 debugpy>=1.8.0
+azure-messaging-webpubsubservice>=1.3.0

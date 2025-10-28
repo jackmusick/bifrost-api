@@ -76,6 +76,10 @@ __all__ = [
     'StuckExecutionsResponse',
     'CleanupTriggeredResponse',
 
+    # System Logs
+    'SystemLog',
+    'SystemLogsListResponse',
+
     # Metadata
     'WorkflowParameter',
     'WorkflowMetadata',
@@ -154,6 +158,14 @@ __all__ = [
     'SearchRequest',
     'SearchResult',
     'SearchResponse',
+
+    # Package Management
+    'InstallPackageRequest',
+    'PackageInstallResponse',
+    'InstalledPackage',
+    'InstalledPackagesResponse',
+    'PackageUpdate',
+    'PackageUpdatesResponse',
 
     # Common
     'ErrorResponse',
@@ -790,6 +802,26 @@ class CleanupTriggeredResponse(BaseModel):
     pending: int = Field(..., description="Number of pending executions timed out")
     running: int = Field(..., description="Number of running executions timed out")
     failed: int = Field(..., description="Number of executions that failed to clean up")
+
+
+# ==================== SYSTEM LOGS MODELS ====================
+
+class SystemLog(BaseModel):
+    """System log entry (platform events, not workflow executions)"""
+    eventId: str = Field(..., description="Unique event ID (UUID)")
+    timestamp: datetime = Field(..., description="When the event occurred (ISO 8601)")
+    category: Literal["discovery", "organization", "user", "role", "config", "secret", "form", "oauth", "execution", "system", "error"] = Field(..., description="Event category")
+    level: Literal["info", "warning", "error", "critical"] = Field(..., description="Event severity level")
+    message: str = Field(..., description="Human-readable event description")
+    executedBy: str = Field(..., description="User ID or 'System'")
+    executedByName: str = Field(..., description="Display name or 'System'")
+    details: dict[str, Any] | None = Field(None, description="Additional event-specific data")
+
+
+class SystemLogsListResponse(BaseModel):
+    """Response model for listing system logs with pagination"""
+    logs: list[SystemLog] = Field(..., description="List of system log entries")
+    continuationToken: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded)")
 
 
 # ==================== METADATA MODELS ====================
@@ -1834,5 +1866,54 @@ class SearchResponse(BaseModel):
     results: list[SearchResult] = Field(..., description="Array of search results")
     truncated: bool = Field(..., description="Whether results were truncated")
     searchTimeMs: int = Field(..., description="Search duration in milliseconds")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== PACKAGE MANAGEMENT MODELS ====================
+
+class InstallPackageRequest(BaseModel):
+    """Request model for installing a package"""
+    package: str = Field(..., min_length=1, description="Package name to install")
+    version: str | None = Field(None, description="Optional package version (e.g., '2.31.0')")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PackageInstallResponse(BaseModel):
+    """Response model for package installation"""
+    job_id: str = Field(..., description="Job ID for tracking installation progress")
+    status: Literal["queued"] = Field(default="queued", description="Installation status")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InstalledPackage(BaseModel):
+    """Installed package information"""
+    name: str = Field(..., description="Package name")
+    version: str = Field(..., description="Installed version")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InstalledPackagesResponse(BaseModel):
+    """Response model for listing installed packages"""
+    packages: list[InstalledPackage] = Field(..., description="List of installed packages")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PackageUpdate(BaseModel):
+    """Package update information"""
+    name: str = Field(..., description="Package name")
+    current_version: str = Field(..., description="Currently installed version")
+    latest_version: str = Field(..., description="Latest available version")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PackageUpdatesResponse(BaseModel):
+    """Response model for checking package updates"""
+    updates: list[PackageUpdate] = Field(..., description="List of available updates")
 
     model_config = ConfigDict(from_attributes=True)

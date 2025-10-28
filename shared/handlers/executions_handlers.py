@@ -400,12 +400,10 @@ async def get_execution_handler(
         logger.warning(f"User {context.user_id} denied access to execution {execution_id}")
         return None, "Forbidden"
 
-    # Fetch logs from blob storage
+    # Fetch logs and variables from blob storage (always captured, filter based on permissions)
     blob_service = get_blob_service()
-    logs = blob_service.get_logs(execution_id)
-
-    # Fetch variables from blob storage
-    variables = blob_service.get_variables(execution_id)
+    logs = blob_service.get_logs(execution_id) if context.is_platform_admin else None
+    variables = blob_service.get_variables(execution_id) if context.is_platform_admin else None
 
     # Fetch result (from blob if no inline result, otherwise use inline)
     result = None
@@ -425,8 +423,8 @@ async def get_execution_handler(
     # Build response from model (with additional blob data)
     # Use mode='json' to serialize datetime objects to ISO strings
     execution = execution_model.model_dump(mode='json')
-    execution['logs'] = logs
-    execution['variables'] = variables
+    execution['logs'] = logs  # None for non-admins
+    execution['variables'] = variables  # None for non-admins
     execution['result'] = result
     execution['resultType'] = result_type
 

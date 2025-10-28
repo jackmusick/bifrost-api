@@ -30,10 +30,49 @@ bp = func.Blueprint()
 )
 async def workflow_execution_worker(msg: func.QueueMessage) -> None:
     """
-    Process async workflow execution from queue - V2 using unified engine.
+    Process workflow execution messages from queue.
 
-    Loads execution context, updates status to RUNNING, executes workflow via engine,
-    stores result, and updates status to SUCCESS/FAILED.
+    Message format:
+    {
+        "execution_id": "uuid",
+        "workflow_name": "workflow-name",
+        "org_id": "ORG:uuid",
+        "user_id": "uuid",
+        "user_name": "User Name",
+        "user_email": "user@example.com",
+        "parameters": {}
+    }
+    """
+    logger.info("Workflow execution worker invoked")
+    try:
+        # Parse queue message
+        message_body = msg.get_body().decode('utf-8')
+        logger.info(f"Message body: {message_body}")
+        message_data = json.loads(message_body)
+        logger.info(f"Parsed message data: {message_data}")
+
+        await handle_workflow_execution(message_data)
+
+    except Exception as e:
+        logger.error(
+            f"Queue worker error: {str(e)}",
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "message_data": message_data if 'message_data' in locals() else "N/A"
+            },
+            exc_info=True
+        )
+        # Re-raise to let Azure Functions handle retry/poison queue
+        raise
+
+
+async def handle_workflow_execution(message_data: dict) -> None:
+    """
+    Handle workflow execution message.
+
+    Args:
+        message_data: Queue message data containing execution details
     """
     execution_id: str = ""
     org_id: str | None = None
@@ -43,9 +82,6 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
     exec_logger = get_execution_logger()
 
     try:
-        # Parse queue message
-        message_body = msg.get_body().decode('utf-8')
-        message_data = json.loads(message_body)
 
         execution_id = message_data["execution_id"]
         workflow_name = message_data["workflow_name"]
@@ -64,12 +100,17 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
             }
         )
 
-        # Update status to RUNNING
+        # Initialize Web PubSub broadcaster for real-time updates (used throughout)
+        from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+        broadcaster = WebPubSubBroadcaster()
+
+        # Update status to RUNNING - will broadcast to history page
         await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
             user_id=user_id,
-            status=ExecutionStatus.RUNNING
+            status=ExecutionStatus.RUNNING,
+            webpubsub_broadcaster=broadcaster
         )
 
         # Recreate organization context from queue message
@@ -101,7 +142,7 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         from function_app import discover_workspace_modules
         discover_workspace_modules()
 
-        # Build execution request for engine
+        # Build execution request for engine (reuse broadcaster initialized earlier)
         request = ExecutionRequest(
             execution_id=execution_id,
             caller=caller,
@@ -110,13 +151,15 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
             name=workflow_name,  # Always a workflow name for async execution
             parameters=parameters,
             transient=False,  # Async executions always write to DB
-            is_platform_admin=False  # Workers don't have platform admin context
+            is_platform_admin=False,  # Used for API response filtering, not execution behavior
+            broadcaster=broadcaster  # Pass Web PubSub broadcaster for real-time log streaming
         )
 
         # Execute via unified engine
         result = await execute(request)
 
         # Update execution with result
+        # NOTE: Broadcasts to both execution details and history are handled by update_execution
         await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
@@ -129,7 +172,8 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
             state_snapshots=result.state_snapshots,
             integration_calls=result.integration_calls,
             logs=result.logs if result.logs else None,
-            variables=result.variables if result.variables else None
+            variables=result.variables if result.variables else None,
+            webpubsub_broadcaster=broadcaster
         )
 
         logger.info(

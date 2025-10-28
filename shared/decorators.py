@@ -370,7 +370,7 @@ def with_request_context(handler):
     from shared.request_context import get_request_context
 
     @functools.wraps(handler)
-    async def wrapper(req: func.HttpRequest):
+    async def wrapper(req: func.HttpRequest, **kwargs):
         try:
             # Get request context
             context = await get_request_context(req)
@@ -391,8 +391,8 @@ def with_request_context(handler):
                 f"org={context.org_id or 'GLOBAL'}, admin={context.is_platform_admin}"
             )
 
-            # Call handler
-            return await handler(req)
+            # Call handler with additional bindings (e.g., SignalR output binding)
+            return await handler(req, **kwargs)
 
         except ValueError as e:
             # Authentication/context errors
@@ -442,7 +442,7 @@ def require_platform_admin(handler):
     import azure.functions as func
 
     @functools.wraps(handler)
-    async def wrapper(req: func.HttpRequest):
+    async def wrapper(req: func.HttpRequest, **kwargs):
         # Get context (must be injected by @with_request_context)
         context = getattr(req, 'context', None)
 
@@ -468,7 +468,7 @@ def require_platform_admin(handler):
                 mimetype="application/json"
             )
 
-        # Call handler
-        return await handler(req)
+        # Call handler with additional bindings (e.g., SignalR output binding)
+        return await handler(req, **kwargs)
 
     return wrapper

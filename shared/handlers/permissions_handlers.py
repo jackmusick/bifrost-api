@@ -21,6 +21,7 @@ from shared.context import ExecutionContext
 from shared.async_storage import get_async_table_service
 from shared.repositories.users import UserRepository
 from shared.repositories.organizations import OrganizationRepository
+from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
 
@@ -605,6 +606,20 @@ async def create_user_handler(
             f"(type={user_type}, admin={create_request.isPlatformAdmin})"
         )
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_user_event(
+            action="create",
+            user_id=create_request.email,
+            user_email=create_request.email,
+            details={
+                "is_admin": create_request.isPlatformAdmin,
+                "org_id": create_request.orgId
+            },
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps(new_user.model_dump(mode="json")),
             status_code=201,
@@ -613,6 +628,18 @@ async def create_user_handler(
 
     except Exception as e:
         logger.error(f"Error creating user: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="user",
+            level="error",
+            message=f"Failed to create user: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to create user"
@@ -734,6 +761,21 @@ async def update_user_handler(
 
         logger.info(f"Updated user {user_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_user_event(
+            action="update",
+            user_id=user_id,
+            user_email=user_id,
+            details={
+                "is_admin": updated_user.isPlatformAdmin,
+                "user_type": updated_user.userType,
+                "is_active": updated_user.isActive
+            },
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             json.dumps(updated_user.model_dump(mode="json")),
             status_code=200,
@@ -754,6 +796,18 @@ async def update_user_handler(
         )
     except Exception as e:
         logger.error(f"Error updating user: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="user",
+            level="error",
+            message=f"Failed to update user {user_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"user_id": user_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to update user"
@@ -825,12 +879,34 @@ async def delete_user_handler(
 
         logger.info(f"Deleted user {user_id}")
 
+        # Log to system logger
+        system_logger = get_system_logger()
+        await system_logger.log_user_event(
+            action="delete",
+            user_id=user_id,
+            user_email=user_id,
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id
+        )
+
         return func.HttpResponse(
             status_code=204
         )
 
     except Exception as e:
         logger.error(f"Error deleting user: {str(e)}", exc_info=True)
+
+        # Log error to system logger
+        system_logger = get_system_logger()
+        await system_logger.log(
+            category="user",
+            level="error",
+            message=f"Failed to delete user {user_id}: {str(e)}",
+            executed_by=context.user_id,
+            executed_by_name=context.name or context.user_id,
+            details={"user_id": user_id, "error": str(e), "error_type": type(e).__name__}
+        )
+
         error = ErrorResponse(
             error="InternalServerError",
             message="Failed to delete user"

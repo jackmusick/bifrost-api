@@ -74,7 +74,7 @@ def with_org_context(handler: Callable) -> Callable:
         500 Internal Server Error: If context loading fails
     """
     @functools.wraps(handler)
-    async def wrapper(req: func.HttpRequest) -> func.HttpResponse:
+    async def wrapper(req: func.HttpRequest, **kwargs) -> func.HttpResponse:
         # Extract organization ID from header (optional)
         org_id = req.headers.get('X-Organization-Id')
 
@@ -98,8 +98,8 @@ def with_org_context(handler: Callable) -> Callable:
             # with @with_request_context decorator
             req.org_context = context  # type: ignore[attr-defined]
 
-            # Call handler
-            return await handler(req)
+            # Call handler with additional bindings (e.g., SignalR output binding)
+            return await handler(req, **kwargs)
 
         except OrganizationNotFoundError as e:
             logger.warning(f"Organization not found: {org_id}")

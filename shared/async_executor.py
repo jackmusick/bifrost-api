@@ -69,6 +69,11 @@ async def enqueue_workflow_execution(
 
     # Create execution record with PENDING status
     exec_logger = get_execution_logger()
+
+    # Initialize Web PubSub broadcaster for real-time updates
+    from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+    broadcaster = WebPubSubBroadcaster()
+
     await exec_logger.create_execution(
         execution_id=execution_id,
         org_id=context.org_id,
@@ -76,15 +81,17 @@ async def enqueue_workflow_execution(
         user_name=context.name,
         workflow_name=workflow_name,
         input_data=parameters,
-        form_id=form_id
+        form_id=form_id,
+        webpubsub_broadcaster=broadcaster
     )
 
-    # Update status to PENDING (queued)
+    # Update status to PENDING (queued) - will broadcast to history page
     await exec_logger.update_execution(
         execution_id=execution_id,
         org_id=context.org_id,
         user_id=context.user_id,
-        status=ExecutionStatus.PENDING
+        status=ExecutionStatus.PENDING,
+        webpubsub_broadcaster=broadcaster
     )
 
     # Prepare queue message

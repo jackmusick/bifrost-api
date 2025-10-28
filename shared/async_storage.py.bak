@@ -52,8 +52,8 @@ class AsyncTableStorageService:
 
         self.connection_string = connection_string
         self._client: TableClient | None = None
+        self._client_initialized = False
         self._in_context_manager = False
-        self._clients_to_cleanup: list[TableClient] = []
 
         # Determine scoping strategy
         self.is_scoped = table_name in SCOPED_TABLES
@@ -71,66 +71,97 @@ class AsyncTableStorageService:
         """
         Get or create TableClient instance.
 
-        If used within a context manager (async with), reuses the same client.
-        Otherwise, creates a new client for each access and tracks it for cleanup.
+        Creates a singleton client that will be cleaned up when the service is destroyed.
+        This avoids creating/destroying clients for every operation.
         """
-        if self._in_context_manager:
-            # Reuse client when in context manager
-            if self._client is None:
-                self._client = TableClient.from_connection_string(
-                    self.connection_string, self.table_name
-                )
-            return self._client
-        else:
-            # Create new client and track it for cleanup
-            client = TableClient.from_connection_string(
+        if self._client is None:
+            self._client = TableClient.from_connection_string(
                 self.connection_string, self.table_name
             )
-            self._clients_to_cleanup.append(client)
-            return client
+        return self._client
+
+    async def _ensure_client_initialized(self):
+        """Ensure the client session is initialized (called lazily on first use)"""
+        if not self._client_initialized and self._client is not None:
+            await self._client.__aenter__()
+            self._client_initialized = True
+
+    async def _cleanup_client(self):
+        """Clean up the client session"""
+        if self._client_initialized and self._client is not None:
+            try:
+                await self._client.__aexit__(None, None, None)
+            except Exception as e:
+                logger.debug(f"Error closing table client: {e}")
+            finally:
+                self._client_initialized = False
+                self._client = None
+
+    async def _get_client(self):
+        """
+        Get a TableClient that will be automatically cleaned up.
+
+        Usage:
+            async with self._get_client() as client:
+                entity = await client.get_entity(pk, rk)
+
+        Returns a context manager that ensures the client is properly closed.
+        """
+        class _ClientContextManager:
+            def __init__(self, service: 'AsyncTableStorageService'):
+                self.service = service
+                self.client: TableClient | None = None
+
+            async def __aenter__(self):
+                if self.service._in_context_manager:
+                    # Already in context manager, reuse existing client
+                    self.client = self.service.table_client
+                    return self.client
+                else:
+                    # Create new client and ensure it's properly initialized
+                    self.client = TableClient.from_connection_string(
+                        self.service.connection_string,
+                        self.service.table_name
+                    )
+                    await self.client.__aenter__()
+                    return self.client
+
+            async def __aexit__(self, *args):
+                # Only close if we created it (not in parent context manager)
+                if not self.service._in_context_manager and self.client:
+                    await self.client.__aexit__(*args)
+
+        return _ClientContextManager(self)
 
     async def __aenter__(self):
         """Context manager entry - ensure client is ready"""
         self._in_context_manager = True
-        await self.table_client.__aenter__()
+        await self._ensure_client_initialized()
         return self
 
     async def __aexit__(self, *args):
         """Context manager exit - cleanup client"""
         self._in_context_manager = False
-        if self._client is not None:
-            await self._client.__aexit__(*args)
-            self._client = None
+        # Don't cleanup client here - let it persist for reuse
+        # It will be cleaned up when the service is destroyed
 
     def __del__(self):
-        """
-        Cleanup any TableClients that weren't properly closed.
-        This ensures connections are closed even when not using context manager.
-        """
-        if self._clients_to_cleanup:
-            import asyncio
-            import warnings
-
-            warnings.warn(
-                f"AsyncTableStorageService for {self.table_name} has {len(self._clients_to_cleanup)} unclosed clients. "
-                "Consider using 'async with' for proper resource management.",
-                ResourceWarning,
-                stacklevel=2
-            )
-
-            # Close all tracked clients synchronously (best effort)
-            for client in self._clients_to_cleanup:
-                try:
-                    # Try to close the client's session if it exists
-                    if hasattr(client, '_client') and hasattr(client._client, '_conn'):
-                        # This is a sync close - not ideal but prevents leaks
-                        try:
-                            client._client._conn.close()
-                        except:
-                            pass
-                except:
-                    pass
-            self._clients_to_cleanup.clear()
+        """Destructor - ensure client is cleaned up when service is garbage collected"""
+        if self._client_initialized and self._client is not None:
+            # Can't await in __del__, so just close the underlying session if possible
+            try:
+                import asyncio
+                # Try to get the running event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Schedule cleanup
+                    loop.create_task(self._cleanup_client())
+                else:
+                    # Run cleanup synchronously if no loop is running
+                    loop.run_until_complete(self._cleanup_client())
+            except:
+                # Silently ignore errors in destructor
+                pass
 
     async def close(self):
         """Explicitly close the table client connection"""
@@ -457,6 +488,8 @@ class AsyncTableStorageService:
             List of entity dictionaries
         """
         try:
+            await self._ensure_client_initialized()
+
             # Query entities using positional argument for filter
             if filter:
                 entities = self.table_client.query_entities(

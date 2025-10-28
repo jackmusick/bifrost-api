@@ -6,11 +6,14 @@ Large data (logs, results, snapshots) stored in Blob Storage to avoid size limit
 
 import json
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from shared.blob_storage import get_blob_service
 from shared.models import ExecutionStatus
 from shared.repositories.executions import ExecutionRepository
+
+if TYPE_CHECKING:
+    from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,8 @@ class ExecutionLogger:
         user_name: str,
         workflow_name: str,
         input_data: dict[str, Any],
-        form_id: str | None = None
+        form_id: str | None = None,
+        webpubsub_broadcaster: 'WebPubSubBroadcaster | None' = None
     ) -> dict[str, Any]:
         """
         Create execution record with automatic index management.
@@ -77,6 +81,19 @@ class ExecutionLogger:
             extra={"execution_id": execution_id, "org_id": org_id, "workflow": workflow_name}
         )
 
+        # Broadcast new execution to history page (if enabled)
+        if webpubsub_broadcaster:
+            scope = org_id or "GLOBAL"
+            webpubsub_broadcaster.broadcast_execution_to_history(
+                execution_id=execution_id,
+                workflow_name=workflow_name,
+                status=execution_model.status.value,  # Use actual DB status (RUNNING)
+                executed_by=user_id,
+                executed_by_name=user_name,
+                scope=scope,
+                started_at=execution_model.startedAt
+            )
+
         # Return as dict for compatibility with existing code
         return execution_model.model_dump()
 
@@ -94,7 +111,8 @@ class ExecutionLogger:
         state_snapshots: list | None = None,
         integration_calls: list | None = None,
         logs: list | None = None,
-        variables: dict[str, Any] | None = None
+        variables: dict[str, Any] | None = None,
+        webpubsub_broadcaster: 'WebPubSubBroadcaster | None' = None
     ) -> dict[str, Any]:
         """
         Update execution record with results and automatic index updates.
@@ -174,6 +192,38 @@ class ExecutionLogger:
             f"Updated execution {execution_id} via repository (status={status.value}, all indexes updated)",
             extra={"execution_id": execution_id, "status": status.value}
         )
+
+        # Broadcast execution update via Web PubSub (if enabled)
+        if webpubsub_broadcaster:
+            scope = org_id or "GLOBAL"
+            is_complete = status in [
+                ExecutionStatus.SUCCESS,
+                ExecutionStatus.FAILED,
+                ExecutionStatus.TIMEOUT,
+                ExecutionStatus.COMPLETED_WITH_ERRORS
+            ]
+            # Broadcast to execution details page
+            webpubsub_broadcaster.broadcast_execution_update(
+                execution_id=execution_id,
+                status=status.value,
+                executed_by=user_id,
+                scope=scope,
+                latest_logs=logs[-50:] if logs else None,  # Last 50 log entries
+                is_complete=is_complete
+            )
+
+            # Broadcast to history page for ALL status changes (PENDING → RUNNING → completion)
+            webpubsub_broadcaster.broadcast_execution_to_history(
+                execution_id=execution_id,
+                workflow_name=execution_model.workflowName,
+                status=status.value,
+                executed_by=user_id,
+                executed_by_name=execution_model.executedByName,
+                scope=scope,
+                started_at=execution_model.startedAt,
+                completed_at=execution_model.completedAt,
+                duration_ms=duration_ms
+            )
 
         # Return as dict for compatibility
         return execution_model.model_dump()
