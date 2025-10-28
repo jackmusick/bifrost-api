@@ -597,10 +597,15 @@ class OAuthStorageService:
                     if client_secret_config:
                         keyvault_secret_name = client_secret_config.get("Value")
                         if keyvault_secret_name:
+                            from shared.keyvault import KeyVaultClient
                             logger.info(f"Retrieving client secret from Key Vault: {keyvault_secret_name}")
-                            secret = keyvault._client.get_secret(keyvault_secret_name)
-                            client_secret = secret.value
-                            logger.info("Successfully retrieved client secret")
+                            keyvault = KeyVaultClient()
+                            if keyvault._client:
+                                secret = keyvault._client.get_secret(keyvault_secret_name)
+                                client_secret = secret.value
+                                logger.info("Successfully retrieved client secret")
+                            else:
+                                logger.warning("Key Vault client not initialized")
                         else:
                             logger.warning("Client secret config found but missing Value field")
                     else:

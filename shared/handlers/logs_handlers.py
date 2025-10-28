@@ -6,8 +6,7 @@ Provides handlers for listing and retrieving system log entries
 import base64
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime
 
 from azure.data.tables import TableServiceClient
 
@@ -24,7 +23,7 @@ async def list_system_logs_handler(
     limit: int = 50,
     continuation_token: str | None = None,
     connection_string: str | None = None
-) -> tuple[SystemLogsListResponse, int]:
+) -> tuple[SystemLogsListResponse | ErrorResponse, int]:
     """
     List system logs with filtering and pagination.
 
@@ -59,7 +58,7 @@ async def list_system_logs_handler(
                     decoded_token = json.loads(decoded_str)
                 except json.JSONDecodeError:
                     decoded_token = decoded_str
-                logger.debug(f"Using continuation token for pagination")
+                logger.debug("Using continuation token for pagination")
             except Exception as e:
                 logger.warning(f"Invalid continuation token provided, ignoring: {e}")
                 decoded_token = None
@@ -89,16 +88,20 @@ async def list_system_logs_handler(
             except ValueError:
                 logger.warning(f"Invalid end_date format: {end_date}")
 
-        query_filter = " and ".join(filter_parts) if filter_parts else None
-        logger.info(f"Querying system logs with filter: {query_filter}, limit: {limit}")
+        # Build query filter - empty string means no filter in Azure Tables
+        query_filter_str: str = " and ".join(filter_parts) if filter_parts else ""
+        if query_filter_str:
+            logger.info(f"Querying system logs with filter: {query_filter_str}, limit: {limit}")
+        else:
+            logger.info(f"Querying system logs with no filter, limit: {limit}")
 
         # Query Table Storage
         table_service = TableServiceClient.from_connection_string(conn_str)
         table_client = table_service.get_table_client("SystemLogs")
 
-        # Query with pagination
+        # Query with pagination - empty string is treated as "no filter" by Azure Tables
         query_result = table_client.query_entities(
-            query_filter=query_filter,
+            query_filter=query_filter_str,
             results_per_page=limit
         )
 
@@ -113,7 +116,8 @@ async def list_system_logs_handler(
         entities = list(page)
 
         # Get next continuation token from the page iterator
-        next_token = page_iterator.continuation_token
+        # The ItemPaged iterator has continuation_token attribute but it's not in the type stubs
+        next_token = getattr(page_iterator, 'continuation_token', None)
 
         # Parse entities to SystemLog models
         logs = []

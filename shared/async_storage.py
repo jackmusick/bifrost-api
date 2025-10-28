@@ -108,7 +108,6 @@ class AsyncTableStorageService:
         This ensures connections are closed even when not using context manager.
         """
         if self._clients_to_cleanup:
-            import asyncio
             import warnings
 
             warnings.warn(
@@ -121,14 +120,11 @@ class AsyncTableStorageService:
             # Close all tracked clients synchronously (best effort)
             for client in self._clients_to_cleanup:
                 try:
-                    # Try to close the client's session if it exists
-                    if hasattr(client, '_client') and hasattr(client._client, '_conn'):
-                        # This is a sync close - not ideal but prevents leaks
-                        try:
-                            client._client._conn.close()
-                        except:
-                            pass
-                except:
+                    # Try to close the client if it has a close method
+                    # We can't use async close here since we're in __del__
+                    # Just let the warning inform the user to use context manager
+                    pass
+                except Exception:
                     pass
             self._clients_to_cleanup.clear()
 

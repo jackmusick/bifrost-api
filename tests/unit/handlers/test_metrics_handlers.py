@@ -52,6 +52,20 @@ def mock_entities_service():
     return service
 
 
+def make_async_context_manager(mock_service):
+    """Helper to create an async context manager for mocking get_async_table_service"""
+    class AsyncContextManager:
+        async def __aenter__(self):
+            return mock_service
+        async def __aexit__(self, *args):
+            return None
+
+    def create_context_manager(*args, **kwargs):
+        return AsyncContextManager()
+
+    return create_context_manager
+
+
 # ============================================================================
 # Tests for get_reverse_timestamp
 # ============================================================================
@@ -438,7 +452,7 @@ class TestGetDashboardMetrics:
 
         # Setup table service mock
         mock_service = AsyncMock()
-        mock_get_async_table_service.return_value = mock_service
+        mock_get_async_table_service.side_effect = make_async_context_manager(mock_service)
 
         # Mock form query
         mock_service.query_entities.side_effect = [
@@ -473,7 +487,7 @@ class TestGetDashboardMetrics:
 
         # Setup table service mock
         mock_service = AsyncMock()
-        mock_get_async_table_service.return_value = mock_service
+        mock_get_async_table_service.side_effect = make_async_context_manager(mock_service)
         mock_service.query_entities.side_effect = [[], []]
 
         result = await get_dashboard_metrics(mock_context)
@@ -500,7 +514,7 @@ class TestGetDashboardMetrics:
         mock_get_registry.return_value = mock_registry
 
         mock_service = AsyncMock()
-        mock_get_async_table_service.return_value = mock_service
+        mock_get_async_table_service.side_effect = make_async_context_manager(mock_service)
         mock_service.query_entities.side_effect = [[], []]
 
         result = await get_dashboard_metrics(mock_context)
@@ -552,7 +566,7 @@ class TestGetDashboardMetrics:
         mock_get_registry.return_value = mock_registry
 
         mock_service = AsyncMock()
-        mock_get_async_table_service.return_value = mock_service
+        mock_get_async_table_service.side_effect = make_async_context_manager(mock_service)
 
         # Mock execution entities
         executions = [

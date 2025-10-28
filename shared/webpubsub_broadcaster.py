@@ -93,7 +93,7 @@ class WebPubSubBroadcaster:
                     logger.warning(f"Failed to create DefaultAzureCredential: {cred_error}")
                     self.enabled = False
                     return None
-            else:
+            elif self.connection_string:
                 # Use connection string (local dev)
                 logger.info("Initializing Web PubSub with connection string")
                 self._client = WebPubSubServiceClient.from_connection_string(
@@ -101,6 +101,11 @@ class WebPubSubBroadcaster:
                     hub=self.hub_name
                 )
                 logger.info("Web PubSub broadcaster initialized with connection string")
+            else:
+                # Should not reach here, but satisfy type checker
+                logger.warning("Web PubSub not configured (no endpoint or connection string)")
+                self.enabled = False
+                return None
         except Exception as e:
             logger.warning(f"Failed to initialize Web PubSub client: {e}")
             self.enabled = False
@@ -212,7 +217,9 @@ class WebPubSubBroadcaster:
             return
 
         try:
-            message = {
+            # Build message dict with proper typing to allow both str and int values
+            from typing import Any
+            message: dict[str, Any] = {
                 "executionId": execution_id,
                 "workflowName": workflow_name,
                 "status": status,

@@ -95,7 +95,7 @@ class SystemLogger:
         # Ensure table exists
         try:
             table_service = TableServiceClient.from_connection_string(self.connection_string)
-            table_client = table_service.create_table_if_not_exists(self.table_name)
+            table_service.create_table_if_not_exists(self.table_name)
             logger.debug(f"System logs table '{self.table_name}' ready")
         except Exception as e:
             logger.warning(f"Failed to initialize system logs table: {e}")
@@ -173,7 +173,7 @@ class SystemLogger:
             # Don't fail the operation if logging fails
             logger.error(
                 f"Failed to log system event: {e}",
-                extra={"category": category, "message": message},
+                extra={"category": category, "event_message": message},
                 exc_info=True
             )
 

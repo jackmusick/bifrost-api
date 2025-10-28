@@ -76,12 +76,22 @@ async def negotiate(req: func.HttpRequest) -> func.HttpResponse:
                 hub=hub_name,
                 credential=credential
             )
-        else:
+        elif connection_string:
             # Use connection string (local dev)
             logger.info("Creating Web PubSub client with connection string")
             service_client = WebPubSubServiceClient.from_connection_string(
                 connection_string=connection_string,
                 hub=hub_name
+            )
+        else:
+            # Should not reach here due to earlier check, but satisfy type checker
+            return func.HttpResponse(
+                json.dumps({
+                    'error': 'ServiceUnavailable',
+                    'message': 'Real-time updates not configured'
+                }),
+                status_code=503,
+                mimetype='application/json'
             )
 
         # Generate client access token with permissions to join groups
