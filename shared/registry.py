@@ -68,6 +68,10 @@ class DataProviderMetadata:
     function: Any = None  # The actual Python function
     parameters: list = field(default_factory=list)  # Input parameters from @param decorators (T024)
 
+    # Source tracking (home, platform, workspace)
+    source: Literal["home", "platform", "workspace"] | None = None
+    source_file_path: str | None = None
+
 
 @dataclass
 class FunctionMetadata:

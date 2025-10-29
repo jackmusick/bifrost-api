@@ -308,7 +308,9 @@ def data_provider(
             category=category,
             cache_ttl_seconds=cache_ttl_seconds,
             parameters=pending_params,  # T010: Add parameters
-            function=func
+            function=func,
+            source=source,
+            source_file_path=source_file_path
         )
 
         # Store metadata on function

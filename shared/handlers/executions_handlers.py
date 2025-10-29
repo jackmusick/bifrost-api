@@ -357,6 +357,37 @@ async def list_executions_handler(
     return formatted, encoded_token
 
 
+async def _get_and_authorize_execution(
+    context: ExecutionContext,
+    execution_id: str
+) -> tuple[Any | None, str | None]:
+    """
+    Helper to get execution and check authorization.
+
+    Returns:
+        Tuple of (execution_model, error_message)
+    """
+    if not execution_id:
+        return None, "BadRequest"
+
+    # Get execution using repository
+    exec_repo = ExecutionRepository(context)
+    execution_model = await exec_repo.get_execution(execution_id)
+
+    if not execution_model:
+        return None, "NotFound"
+
+    # Convert to entity dict for authorization check
+    entity = execution_model.model_dump()
+
+    # Check if user has permission to view this execution
+    if not can_user_view_execution(context, entity):
+        logger.warning(f"User {context.user_id} denied access to execution {execution_id}")
+        return None, "Forbidden"
+
+    return execution_model, None
+
+
 async def get_execution_handler(
     context: ExecutionContext,
     execution_id: str
@@ -382,23 +413,9 @@ async def get_execution_handler(
     Raises:
         Exception: Any errors during execution retrieval (caller should handle)
     """
-    if not execution_id:
-        return None, "BadRequest"
-
-    # Get execution using repository
-    exec_repo = ExecutionRepository(context)
-    execution_model = await exec_repo.get_execution(execution_id)
-
-    if not execution_model:
-        return None, "NotFound"
-
-    # Convert to entity dict for authorization check
-    entity = execution_model.model_dump()
-
-    # Check if user has permission to view this execution
-    if not can_user_view_execution(context, entity):
-        logger.warning(f"User {context.user_id} denied access to execution {execution_id}")
-        return None, "Forbidden"
+    execution_model, error = await _get_and_authorize_execution(context, execution_id)
+    if error:
+        return None, error
 
     # Fetch logs from ExecutionLogs table (real-time logs)
     logs = None
@@ -447,3 +464,122 @@ async def get_execution_handler(
     execution['resultType'] = result_type
 
     return execution, None
+
+
+# ============================================================================
+# Progressive Loading Handlers
+# ============================================================================
+
+
+async def get_execution_result_handler(
+    context: ExecutionContext,
+    execution_id: str
+) -> tuple[dict | None, str | None]:
+    """
+    Get only the result of an execution (progressive loading).
+
+    Args:
+        context: ExecutionContext
+        execution_id: Execution ID (UUID)
+
+    Returns:
+        Tuple of (result_dict, error_message)
+        result_dict contains: { result, resultType }
+    """
+    execution_model, error = await _get_and_authorize_execution(context, execution_id)
+    if error:
+        return None, error
+
+    # Fetch result (from blob if no inline result, otherwise use inline)
+    blob_service = get_blob_service()
+    result = None
+    result_type = None
+
+    if execution_model.result:
+        # Result is inline
+        result = execution_model.result
+        result_type = determine_result_type(result)
+    else:
+        # Try to fetch from blob storage
+        blob_result = blob_service.get_result(execution_id)
+        if blob_result is not None:
+            result = blob_result
+            result_type = determine_result_type(result)
+
+    return {
+        'result': result,
+        'resultType': result_type
+    }, None
+
+
+async def get_execution_logs_handler(
+    context: ExecutionContext,
+    execution_id: str
+) -> tuple[list | None, str | None]:
+    """
+    Get only the logs of an execution (progressive loading).
+    Platform admin only.
+
+    Args:
+        context: ExecutionContext
+        execution_id: Execution ID (UUID)
+
+    Returns:
+        Tuple of (logs_list, error_message)
+    """
+    execution_model, error = await _get_and_authorize_execution(context, execution_id)
+    if error:
+        return None, error
+
+    # Only platform admins can view logs
+    if not context.is_platform_admin:
+        return None, "Forbidden"
+
+    # Fetch logs from ExecutionLogs table
+    from shared.repositories.execution_logs import get_execution_logs_repository
+    logs_repo = get_execution_logs_repository()
+    log_entities = await logs_repo.get_logs(execution_id=execution_id, limit=5000)
+
+    # Transform to camelCase format expected by UI
+    logs = [
+        {
+            "executionLogId": log["ExecutionLogId"],
+            "timestamp": log["RowKey"].split("-")[0],
+            "level": log["Level"],
+            "message": log["Message"],
+            "source": log.get("Source", "workflow")
+        }
+        for log in log_entities
+    ]
+
+    return logs, None
+
+
+async def get_execution_variables_handler(
+    context: ExecutionContext,
+    execution_id: str
+) -> tuple[dict | None, str | None]:
+    """
+    Get only the variables of an execution (progressive loading).
+    Platform admin only.
+
+    Args:
+        context: ExecutionContext
+        execution_id: Execution ID (UUID)
+
+    Returns:
+        Tuple of (variables_dict, error_message)
+    """
+    execution_model, error = await _get_and_authorize_execution(context, execution_id)
+    if error:
+        return None, error
+
+    # Only platform admins can view variables
+    if not context.is_platform_admin:
+        return None, "Forbidden"
+
+    # Fetch variables from blob storage
+    blob_service = get_blob_service()
+    variables = blob_service.get_variables(execution_id)
+
+    return variables, None

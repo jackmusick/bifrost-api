@@ -13,6 +13,9 @@ import azure.functions as func
 from shared.decorators import with_request_context
 from shared.handlers.executions_handlers import (
     get_execution_handler,
+    get_execution_result_handler,
+    get_execution_logs_handler,
+    get_execution_variables_handler,
     list_executions_handler
 )
 from shared.models import WorkflowExecution, ExecutionsListResponse
@@ -212,6 +215,164 @@ async def get_execution(req: func.HttpRequest) -> func.HttpResponse:
                 'error': 'InternalServerError',
                 'message': str(e)
             }),
+            status_code=500,
+            mimetype='application/json'
+        )
+
+
+# ============================================================================
+# Progressive Loading Endpoints
+# ============================================================================
+
+
+@bp.function_name("executions_get_result")
+@bp.route(route="executions/{executionId}/result", methods=["GET"])
+@openapi_endpoint(
+    path="/executions/{executionId}/result",
+    method="GET",
+    summary="Get execution result only",
+    description="Get only the result of a specific execution (progressive loading). Platform admins can view any execution in their scope. Regular users can only view their own executions.",
+    tags=["Executions"],
+    path_params={
+        "executionId": {
+            "description": "Execution ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
+@with_request_context
+async def get_execution_result(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/executions/{executionId}/result"""
+    request_context = req.context  # type: ignore[attr-defined]
+    execution_id = req.route_params.get("executionId")
+
+    try:
+        result_data, error_msg = await get_execution_result_handler(request_context, execution_id)
+
+        if error_msg:
+            status_codes = {
+                "BadRequest": 400,
+                "NotFound": 404,
+                "Forbidden": 403
+            }
+            return func.HttpResponse(
+                json.dumps({"error": error_msg}),
+                status_code=status_codes.get(error_msg, 500),
+                mimetype='application/json'
+            )
+
+        return func.HttpResponse(
+            json.dumps(result_data, cls=DateTimeEncoder),
+            status_code=200,
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting execution result: {str(e)}", exc_info=True)
+        return func.HttpResponse(
+            json.dumps({'error': 'InternalServerError', 'message': str(e)}),
+            status_code=500,
+            mimetype='application/json'
+        )
+
+
+@bp.function_name("executions_get_logs")
+@bp.route(route="executions/{executionId}/logs", methods=["GET"])
+@openapi_endpoint(
+    path="/executions/{executionId}/logs",
+    method="GET",
+    summary="Get execution logs only",
+    description="Get only the logs of a specific execution (progressive loading). Platform admin only.",
+    tags=["Executions"],
+    path_params={
+        "executionId": {
+            "description": "Execution ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
+@with_request_context
+async def get_execution_logs(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/executions/{executionId}/logs"""
+    request_context = req.context  # type: ignore[attr-defined]
+    execution_id = req.route_params.get("executionId")
+
+    try:
+        logs, error_msg = await get_execution_logs_handler(request_context, execution_id)
+
+        if error_msg:
+            status_codes = {
+                "BadRequest": 400,
+                "NotFound": 404,
+                "Forbidden": 403
+            }
+            return func.HttpResponse(
+                json.dumps({"error": error_msg}),
+                status_code=status_codes.get(error_msg, 500),
+                mimetype='application/json'
+            )
+
+        return func.HttpResponse(
+            json.dumps(logs, cls=DateTimeEncoder),
+            status_code=200,
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting execution logs: {str(e)}", exc_info=True)
+        return func.HttpResponse(
+            json.dumps({'error': 'InternalServerError', 'message': str(e)}),
+            status_code=500,
+            mimetype='application/json'
+        )
+
+
+@bp.function_name("executions_get_variables")
+@bp.route(route="executions/{executionId}/variables", methods=["GET"])
+@openapi_endpoint(
+    path="/executions/{executionId}/variables",
+    method="GET",
+    summary="Get execution variables only",
+    description="Get only the variables of a specific execution (progressive loading). Platform admin only.",
+    tags=["Executions"],
+    path_params={
+        "executionId": {
+            "description": "Execution ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
+@with_request_context
+async def get_execution_variables(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/executions/{executionId}/variables"""
+    request_context = req.context  # type: ignore[attr-defined]
+    execution_id = req.route_params.get("executionId")
+
+    try:
+        variables, error_msg = await get_execution_variables_handler(request_context, execution_id)
+
+        if error_msg:
+            status_codes = {
+                "BadRequest": 400,
+                "NotFound": 404,
+                "Forbidden": 403
+            }
+            return func.HttpResponse(
+                json.dumps({"error": error_msg}),
+                status_code=status_codes.get(error_msg, 500),
+                mimetype='application/json'
+            )
+
+        return func.HttpResponse(
+            json.dumps(variables or {}, cls=DateTimeEncoder),
+            status_code=200,
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting execution variables: {str(e)}", exc_info=True)
+        return func.HttpResponse(
+            json.dumps({'error': 'InternalServerError', 'message': str(e)}),
             status_code=500,
             mimetype='application/json'
         )
