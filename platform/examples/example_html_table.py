@@ -285,11 +285,7 @@ async def html_table_example(
     </div>
 </div>"""
 
-    context.save_checkpoint("table_generated", {
-        "row_count": row_count,
-        "total_amount": total_amount,
-        "theme": theme
-    })
+    # Note: save_checkpoint() has been removed - no longer needed
 
     logger.info(
         f"HTML table generated successfully with total amount: ${total_amount:,.2f}")

@@ -108,71 +108,6 @@ class ExecutionContext:
         """True if executing in GLOBAL scope (no organization)."""
         ...
 
-    # Configuration
-    def get_config(self, key: str, default: Any = None) -> Any:
-        """
-        Get configuration value with automatic secret resolution.
-
-        Args:
-            key: Configuration key
-            default: Default value if key not found
-
-        Returns:
-            Configuration value (with secrets resolved from Key Vault)
-        """
-        ...
-
-    def has_config(self, key: str) -> bool:
-        """Check if configuration key exists."""
-        ...
-
-    # OAuth connections
-    async def get_oauth_connection(self, connection_name: str) -> OAuthCredentials:
-        """
-        Get OAuth credentials for a connection.
-
-        Retrieves OAuth credentials from storage and Key Vault.
-        Works with both org-scoped and GLOBAL contexts.
-
-        Args:
-            connection_name: Name of the OAuth connection
-
-        Returns:
-            OAuthCredentials object with access_token and metadata
-
-        Raises:
-            ValueError: If connection not found or not authorized
-        """
-        ...
-
-    async def get_secret(self, key: str) -> str:
-        """
-        Get secret from Azure Key Vault.
-
-        Args:
-            key: Secret key
-
-        Returns:
-            Secret value
-
-        Raises:
-            KeyError: If secret not found
-        """
-        ...
-
-    # State tracking
-    def save_checkpoint(self, name: str, data: dict[str, Any]) -> None:
-        """
-        Save a state checkpoint during workflow execution.
-
-        Useful for debugging and understanding execution flow.
-
-        Args:
-            name: Checkpoint name
-            data: Checkpoint data (will be sanitized)
-        """
-        ...
-
     async def finalize_execution(self) -> dict[str, Any]:
         """Get final execution state for persistence."""
         ...
@@ -342,92 +277,116 @@ class OAuthCredentials:
 # ==================== SDK MODULES ====================
 
 class config:
-    """Configuration management SDK."""
-    @staticmethod
-    def get(key: str, default: Any = None) -> Any: ...
-    @staticmethod
-    def set(key: str, value: Any) -> None: ...
+    """
+    Configuration management SDK.
 
-class executions:
-    """Execution history SDK."""
-    @staticmethod
-    def list(workflow_name: str | None = None, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]: ...
-    @staticmethod
-    def get(execution_id: str) -> dict[str, Any]: ...
-    @staticmethod
-    def delete(execution_id: str) -> None: ...
+    Provides access to organization-scoped configuration with automatic
+    secret resolution from Azure Key Vault.
 
-class files:
-    """File operations SDK."""
-    @staticmethod
-    def write(path: str, content: str | bytes) -> None: ...
-    @staticmethod
-    def read(path: str) -> str | bytes: ...
-    @staticmethod
-    def delete(path: str) -> None: ...
-    @staticmethod
-    def list_dir(path: str) -> list[str]: ...
+    Example:
+        from bifrost import config
 
-class forms:
-    """Form management SDK."""
-    @staticmethod
-    def create(name: str, fields: list[dict]) -> dict: ...
-    @staticmethod
-    def get(form_id: str) -> dict: ...
-    @staticmethod
-    def update(form_id: str, **kwargs) -> dict: ...
-    @staticmethod
-    def delete(form_id: str) -> None: ...
-    @staticmethod
-    def submit(form_id: str, data: dict) -> str: ...
+        # Get config value
+        api_key = config.get("api_key")
 
-class oauth:
-    """OAuth connection management SDK."""
-    @staticmethod
-    def get_connection(connection_name: str) -> OAuthCredentials: ...
-    @staticmethod
-    def create_connection(name: str, provider: str, scopes: list[str]) -> dict: ...
-    @staticmethod
-    def delete_connection(connection_name: str) -> None: ...
+        # Get with default
+        timeout = config.get("timeout", default=30)
 
-class organizations:
-    """Organization management SDK."""
+        # Check if exists
+        if config.has("api_key"):
+            ...
+    """
     @staticmethod
-    def get(org_id: str) -> dict: ...
-    @staticmethod
-    def list() -> list[dict]: ...
-    @staticmethod
-    def create(name: str) -> dict: ...
-    @staticmethod
-    def update(org_id: str, **kwargs) -> dict: ...
-    @staticmethod
-    def delete(org_id: str) -> None: ...
+    def get(key: str, default: Any = None) -> Any:
+        """
+        Get configuration value with automatic secret resolution.
 
-class roles:
-    """Role and permission management SDK."""
+        Args:
+            key: Configuration key
+            default: Default value if key not found
+
+        Returns:
+            Configuration value (with secret resolved if secret_ref type)
+
+        Raises:
+            KeyError: If secret reference cannot be resolved
+            RuntimeError: If no execution context available
+        """
+        ...
+
     @staticmethod
-    def get_roles(user_id: str) -> list[str]: ...
-    @staticmethod
-    def assign_role(user_id: str, role: str) -> None: ...
-    @staticmethod
-    def revoke_role(user_id: str, role: str) -> None: ...
+    def has(key: str) -> bool:
+        """
+        Check if configuration key exists.
+
+        Args:
+            key: Configuration key
+
+        Returns:
+            True if key exists, False otherwise
+        """
+        ...
 
 class secrets:
-    """Secret management SDK."""
-    @staticmethod
-    def get(key: str) -> str: ...
-    @staticmethod
-    def set(key: str, value: str) -> None: ...
-    @staticmethod
-    def delete(key: str) -> None: ...
+    """
+    Secret management SDK.
 
-class workflows:
-    """Workflow management SDK."""
+    Provides access to Azure Key Vault secrets scoped to organization.
+
+    Example:
+        from bifrost import secrets
+
+        # Get secret
+        api_key = await secrets.get("api_key")
+    """
     @staticmethod
-    def get(workflow_name: str) -> dict: ...
+    async def get(key: str) -> str:
+        """
+        Get secret from Azure Key Vault.
+
+        Args:
+            key: Secret key
+
+        Returns:
+            Secret value
+
+        Raises:
+            KeyError: If secret not found
+            RuntimeError: If no execution context available
+        """
+        ...
+
+class oauth:
+    """
+    OAuth connection management SDK.
+
+    Provides access to OAuth credentials with automatic token resolution
+    from Azure Key Vault.
+
+    Example:
+        from bifrost import oauth
+
+        # Get connection
+        creds = await oauth.get_connection("HaloPSA")
+
+        # Use in API request
+        headers = {"Authorization": creds.get_auth_header()}
+        response = requests.get("https://api.example.com/data", headers=headers)
+    """
     @staticmethod
-    def list() -> list[dict]: ...
-    @staticmethod
-    def trigger(workflow_name: str, parameters: dict) -> str: ...
-    @staticmethod
-    def get_status(execution_id: str) -> str: ...
+    async def get_connection(connection_name: str) -> OAuthCredentials:
+        """
+        Get OAuth credentials for a connection.
+
+        Args:
+            connection_name: Name of the OAuth connection
+
+        Returns:
+            OAuthCredentials object with access_token and metadata
+
+        Raises:
+            ValueError: If connection not found or not authorized
+            KeyError: If credentials cannot be resolved from Key Vault
+            RuntimeError: If no execution context available
+        """
+        ...

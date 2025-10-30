@@ -149,20 +149,16 @@ class TestWorkflowExecutionEndpoint:
             category="test"
         )
         async def track_state(context, step: str):
-            """Uses state tracking features"""
-            context.save_checkpoint("start", {"step": step})
-            # Note: context.info() is removed - use logger directly in actual workflows
-            return {"completed": True}
+            """Simple test workflow without deprecated save_checkpoint"""
+            # Note: save_checkpoint() has been removed - no longer needed
+            return {"completed": True, "step": step}
 
         # Execute workflow
         metadata = registry.get_workflow("state_test_workflow")
         result = await metadata.function(mock_context, step="validation")
 
         assert result["completed"] is True
-
-        # Verify state was tracked
-        assert len(mock_context._state_snapshots) == 1
-        assert mock_context._state_snapshots[0]["name"] == "start"
+        assert result["step"] == "validation"
 
 
 class TestExecutionLogger:

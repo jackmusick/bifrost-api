@@ -305,8 +305,7 @@ class TestAsyncWorkflowLifecycle:
             # Access organization info
             org_id = context.org_id
 
-            # Save checkpoint
-            context.save_checkpoint("action_complete", {"status": "done"})
+            # Note: save_checkpoint() has been removed
 
             return {
                 "org_id": org_id,

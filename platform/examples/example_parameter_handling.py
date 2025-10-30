@@ -56,11 +56,7 @@ async def test_workflow(context: ExecutionContext, name: str, count: int = 1) ->
         # Log each greeting
         logger.info(f"Generated greeting: {greeting}")
 
-    # Save a checkpoint
-    context.save_checkpoint("greetings_generated", {
-        "count": len(greetings),
-        "name": name
-    })
+    # Note: save_checkpoint() has been removed - no longer needed
 
     return {
         "greetings": greetings,
