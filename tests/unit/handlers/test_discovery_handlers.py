@@ -104,6 +104,7 @@ class TestGetDiscoveryMetadata:
         mock_workflow.disable_global_key = False
         mock_workflow.public_endpoint = False
         mock_workflow.source = "workspace"
+        mock_workflow.source_file_path = "/mounts/workspace/test_workflow.py"
 
         # Create mock provider
         mock_provider = MagicMock()
@@ -112,6 +113,7 @@ class TestGetDiscoveryMetadata:
         mock_provider.category = "General"
         mock_provider.cache_ttl_seconds = 300
         mock_provider.parameters = []
+        mock_provider.source_file_path = "/mounts/workspace/test_provider.py"
 
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = [mock_workflow]
@@ -147,6 +149,7 @@ class TestGetDiscoveryMetadata:
             mock_workflow.disable_global_key = False
             mock_workflow.public_endpoint = False
             mock_workflow.source = "workspace"
+            mock_workflow.source_file_path = f"/mounts/workspace/workflow_{i}.py"
             workflows.append(mock_workflow)
 
         # Create multiple provider mocks
@@ -158,6 +161,7 @@ class TestGetDiscoveryMetadata:
             mock_provider.category = "General"
             mock_provider.cache_ttl_seconds = 300
             mock_provider.parameters = []
+            mock_provider.source_file_path = f"/mounts/workspace/provider_{i}.py"
             providers.append(mock_provider)
 
         mock_registry = MagicMock()
@@ -192,6 +196,7 @@ class TestGetDiscoveryMetadata:
         mock_workflow.disable_global_key = False
         mock_workflow.public_endpoint = False
         mock_workflow.source = "workspace"
+        mock_workflow.source_file_path = "/mounts/workspace/test.py"
 
         mock_provider = MagicMock()
         mock_provider.name = "test"
@@ -199,6 +204,7 @@ class TestGetDiscoveryMetadata:
         mock_provider.category = "General"
         mock_provider.cache_ttl_seconds = 300
         mock_provider.parameters = []
+        mock_provider.source_file_path = "/mounts/workspace/test_provider.py"
 
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = [mock_workflow]
@@ -304,6 +310,7 @@ class TestGetDiscoveryMetadata:
         valid_workflow.disable_global_key = False
         valid_workflow.public_endpoint = False
         valid_workflow.source = "workspace"
+        valid_workflow.source_file_path = "/mounts/workspace/valid_workflow.py"
 
         invalid_workflow = MagicMock()
         invalid_workflow.name = "invalid_workflow"
@@ -320,6 +327,7 @@ class TestGetDiscoveryMetadata:
         invalid_workflow.disable_global_key = False
         invalid_workflow.public_endpoint = False
         invalid_workflow.source = "workspace"
+        invalid_workflow.source_file_path = "/mounts/workspace/invalid_workflow.py"
 
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = [valid_workflow, invalid_workflow]
@@ -348,6 +356,7 @@ class TestGetDiscoveryMetadata:
         valid_provider.category = "General"
         valid_provider.cache_ttl_seconds = 300
         valid_provider.parameters = []
+        valid_provider.source_file_path = "/mounts/workspace/valid_provider.py"
 
         # Create invalid provider (we'd need to mock the conversion function to raise ValidationError)
         # For now, just test the structure exists
@@ -368,6 +377,8 @@ class TestGetDiscoveryMetadata:
     @patch("shared.handlers.discovery_handlers.get_registry")
     def test_validation_failure_logs_error(self, mock_get_registry):
         """Test that validation failures are logged as errors"""
+        import warnings
+
         invalid_workflow = MagicMock()
         invalid_workflow.name = "invalid_workflow"
         invalid_workflow.description = "Invalid"
@@ -383,16 +394,20 @@ class TestGetDiscoveryMetadata:
         invalid_workflow.disable_global_key = False
         invalid_workflow.public_endpoint = False
         invalid_workflow.source = "workspace"
+        invalid_workflow.source_file_path = "/mounts/workspace/invalid_workflow2.py"
 
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = [invalid_workflow]
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
 
-        with patch("shared.handlers.discovery_handlers.logger") as mock_logger:
-            get_discovery_metadata()
+        # Suppress RuntimeWarning about unawaited coroutine from fire-and-forget system logger
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*coroutine.*never awaited")
+            with patch("shared.handlers.discovery_handlers.logger") as mock_logger:
+                get_discovery_metadata()
 
-            # Should have logged error
-            mock_logger.error.assert_called()
-            error_calls = [str(call) for call in mock_logger.error.call_args_list]
-            assert any("invalid_workflow" in str(call) for call in error_calls)
+                # Should have logged error
+                mock_logger.error.assert_called()
+                error_calls = [str(call) for call in mock_logger.error.call_args_list]
+                assert any("invalid_workflow" in str(call) for call in error_calls)

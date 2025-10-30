@@ -10,6 +10,7 @@ Indexes maintained:
 5. Status index: status:{status}:{execution_id} (Relationships table) - for cleanup queries
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -175,20 +176,24 @@ class ExecutionRepository(BaseRepository):
 
         # Write all atomically (best effort)
         try:
-            # Primary record
+            # Primary record (must be first)
             await self.insert(execution_entity)
 
-            # Indexes (in order of importance)
-            await self.relationships_service.insert_entity(user_index_entity)
-            await self.relationships_service.insert_entity(workflow_index_entity)
-            await self.relationships_service.insert_entity(status_index_entity)
+            # Indexes in parallel (independent operations)
+            index_tasks = [
+                self.relationships_service.insert_entity(user_index_entity),
+                self.relationships_service.insert_entity(workflow_index_entity),
+                self.relationships_service.insert_entity(status_index_entity),
+            ]
 
             if form_index_entity:
-                await self.relationships_service.insert_entity(form_index_entity)
+                index_tasks.append(self.relationships_service.insert_entity(form_index_entity))
+
+            await asyncio.gather(*index_tasks)
 
             index_count = 4 if form_id else 3
             logger.info(
-                f"Created execution {execution_id} with {index_count} indexes "
+                f"Created execution {execution_id} with {index_count} indexes in parallel "
                 f"(workflow={workflow_name}, user={user_id}, form={form_id})"
             )
 
@@ -265,57 +270,53 @@ class ExecutionRepository(BaseRepository):
 
         await self.update(execution_entity)
 
-        # Update user index (so "my executions" table shows correct status!)
-        try:
-            user_index = await self.relationships_service.get_entity(
-                "GLOBAL",
-                f"userexec:{user_id}:{execution_id}"
-            )
-            if user_index:
-                user_index["Status"] = status.value
-                # Only set CompletedAt for terminal statuses
-                if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
-                    user_index["CompletedAt"] = now.isoformat()
-                    user_index["DurationMs"] = duration_ms
-                user_index["ErrorMessage"] = error_message
-                await self.relationships_service.update_entity(user_index)
-        except Exception as e:
-            logger.warning(f"Failed to update user index for {execution_id}: {e}")
-
-        # Update workflow index
-        try:
-            workflow_index = await self.relationships_service.get_entity(
-                "GLOBAL",
-                f"workflowexec:{workflow_name}:{partition_key}:{execution_id}"
-            )
-            if workflow_index:
-                workflow_index["Status"] = status.value
-                # Only set CompletedAt for terminal statuses
-                if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
-                    workflow_index["CompletedAt"] = now.isoformat()
-                    workflow_index["DurationMs"] = duration_ms
-                workflow_index["ErrorMessage"] = error_message
-                await self.relationships_service.update_entity(workflow_index)
-        except Exception as e:
-            logger.warning(f"Failed to update workflow index for {execution_id}: {e}")
-
-        # Update form index (if exists)
+        # Fetch all indexes in parallel
+        fetch_tasks = [
+            self.relationships_service.get_entity("GLOBAL", f"userexec:{user_id}:{execution_id}"),
+            self.relationships_service.get_entity("GLOBAL", f"workflowexec:{workflow_name}:{partition_key}:{execution_id}"),
+        ]
         if form_id:
-            try:
-                form_index = await self.relationships_service.get_entity(
-                    "GLOBAL",
-                    f"formexec:{form_id}:{execution_id}"
-                )
-                if form_index:
-                    form_index["Status"] = status.value
-                    # Only set CompletedAt for terminal statuses
-                    if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
-                        form_index["CompletedAt"] = now.isoformat()
-                        form_index["DurationMs"] = duration_ms
-                    form_index["ErrorMessage"] = error_message
-                    await self.relationships_service.update_entity(form_index)
-            except Exception as e:
-                logger.warning(f"Failed to update form index for {execution_id}: {e}")
+            fetch_tasks.append(self.relationships_service.get_entity("GLOBAL", f"formexec:{form_id}:{execution_id}"))
+
+        fetch_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        user_index = fetch_results[0] if not isinstance(fetch_results[0], Exception) else None
+        workflow_index = fetch_results[1] if not isinstance(fetch_results[1], Exception) else None
+        form_index = fetch_results[2] if form_id and len(fetch_results) > 2 and not isinstance(fetch_results[2], Exception) else None
+
+        # Update indexes in parallel
+        update_tasks = []
+
+        if user_index:
+            user_index["Status"] = status.value
+            if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                user_index["CompletedAt"] = now.isoformat()
+                user_index["DurationMs"] = duration_ms
+            user_index["ErrorMessage"] = error_message
+            update_tasks.append(self.relationships_service.update_entity(user_index))
+
+        if workflow_index:
+            workflow_index["Status"] = status.value
+            if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                workflow_index["CompletedAt"] = now.isoformat()
+                workflow_index["DurationMs"] = duration_ms
+            workflow_index["ErrorMessage"] = error_message
+            update_tasks.append(self.relationships_service.update_entity(workflow_index))
+
+        if form_index:
+            form_index["Status"] = status.value
+            if status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+                form_index["CompletedAt"] = now.isoformat()
+                form_index["DurationMs"] = duration_ms
+            form_index["ErrorMessage"] = error_message
+            update_tasks.append(self.relationships_service.update_entity(form_index))
+
+        # Execute all updates in parallel
+        if update_tasks:
+            update_results = await asyncio.gather(*update_tasks, return_exceptions=True)
+            for i, result in enumerate(update_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Failed to update index {i} for {execution_id}: {result}")
 
         # Update status index - delete old status, create new if Pending/Running
         try:

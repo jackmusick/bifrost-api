@@ -11,23 +11,19 @@ import sys
 import importlib.util
 
 
-def _import_bifrost_module(module_name):
-    """Import a module from the bifrost directory"""
-    api_base = Path(__file__).parent.parent.parent.parent
-    bifrost_path = api_base / 'bifrost'
-    module_path = bifrost_path / f'{module_name}.py'
-
-    spec = importlib.util.spec_from_file_location(f'bifrost.{module_name}', module_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[f'bifrost.{module_name}'] = module
-    spec.loader.exec_module(module)
-    return module
+# Import bifrost context functions directly
+# This ensures we use the same ContextVar instance that storage module uses
+from bifrost._context import set_execution_context, clear_execution_context
 
 
-# Import context module
-_context_module = _import_bifrost_module('_context')
-set_execution_context = _context_module.set_execution_context
-clear_execution_context = _context_module.clear_execution_context
+@pytest.fixture(autouse=True, scope="function")
+def ensure_clean_context():
+    """Ensure each test starts with a clean execution context"""
+    # Clear before test
+    clear_execution_context()
+    yield
+    # Clear after test
+    clear_execution_context()
 
 
 @pytest.fixture
@@ -216,13 +212,17 @@ class TestStorageSDK:
         # Clear any existing context
         clear_execution_context()
 
-        with pytest.raises(RuntimeError, match="No execution context"):
-            storage_module.storage.upload(
-                container="files",
-                path="tests/test.txt",
-                data=b"test",
-                content_type="text/plain"
-            )
+        try:
+            with pytest.raises(RuntimeError, match="No execution context"):
+                storage_module.storage.upload(
+                    container="files",
+                    path="tests/test.txt",
+                    data=b"test",
+                    content_type="text/plain"
+                )
+        finally:
+            # Don't leave the context cleared for other tests
+            clear_execution_context()
 
     def test_binary_content_upload_download(self, test_context, storage_module):
         """Test uploading and downloading binary content"""

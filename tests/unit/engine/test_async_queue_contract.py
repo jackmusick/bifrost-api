@@ -26,8 +26,13 @@ class TestQueueMessageCreation:
 
         # Setup mocks
         mock_queue_client = MagicMock()
-        mock_queue_client.send_message = MagicMock()
-        mock_get_queue_client.return_value = mock_queue_client
+        mock_queue_client.send_message = AsyncMock()
+
+        # Mock context manager protocol
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_queue_client)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=False)
+        mock_get_queue_client.return_value = mock_context_manager
 
         mock_exec_logger = MagicMock()
         mock_exec_logger.create_execution = AsyncMock()
@@ -86,8 +91,13 @@ class TestQueueMessageCreation:
 
         # Setup mocks
         mock_queue_client = MagicMock()
-        mock_queue_client.send_message = MagicMock()
-        mock_get_queue_client.return_value = mock_queue_client
+        mock_queue_client.send_message = AsyncMock()
+
+        # Mock context manager protocol
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_queue_client)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=False)
+        mock_get_queue_client.return_value = mock_context_manager
 
         mock_exec_logger = MagicMock()
         mock_exec_logger.create_execution = AsyncMock()
@@ -133,8 +143,13 @@ class TestQueueMessageCreation:
 
         # Setup mocks
         mock_queue_client = MagicMock()
-        mock_queue_client.send_message = MagicMock()
-        mock_get_queue_client.return_value = mock_queue_client
+        mock_queue_client.send_message = AsyncMock()
+
+        # Mock context manager protocol
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_queue_client)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=False)
+        mock_get_queue_client.return_value = mock_context_manager
 
         mock_exec_logger = MagicMock()
         mock_exec_logger.create_execution = AsyncMock()
@@ -178,8 +193,13 @@ class TestQueueMessageCreation:
 
         # Setup mocks
         mock_queue_client = MagicMock()
-        mock_queue_client.send_message = MagicMock()
-        mock_get_queue_client.return_value = mock_queue_client
+        mock_queue_client.send_message = AsyncMock()
+
+        # Mock context manager protocol
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_queue_client)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=False)
+        mock_get_queue_client.return_value = mock_context_manager
 
         mock_exec_logger = MagicMock()
         mock_exec_logger.create_execution = AsyncMock()
@@ -222,8 +242,13 @@ class TestQueueMessageCreation:
 
         # Setup mocks
         mock_queue_client = MagicMock()
-        mock_queue_client.send_message = MagicMock()
-        mock_get_queue_client.return_value = mock_queue_client
+        mock_queue_client.send_message = AsyncMock()
+
+        # Mock context manager protocol
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_queue_client)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=False)
+        mock_get_queue_client.return_value = mock_context_manager
 
         mock_exec_logger = MagicMock()
         mock_exec_logger.create_execution = AsyncMock()

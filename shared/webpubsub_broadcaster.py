@@ -5,6 +5,7 @@ Provides helpers for broadcasting real-time execution updates to connected clien
 via Azure Web PubSub - the SIMPLE way that actually works!
 """
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -113,7 +114,7 @@ class WebPubSubBroadcaster:
 
         return self._client
 
-    def broadcast_execution_update(
+    async def broadcast_execution_update(
         self,
         execution_id: str,
         status: str,
@@ -167,8 +168,9 @@ class WebPubSubBroadcaster:
 
             logger.debug(f"Sending to {group_name}: {len(latest_logs) if latest_logs else 0} logs")
 
-            # Synchronous HTTP call
-            self.client.send_to_group(
+            # Run sync HTTP call in thread pool to avoid blocking event loop
+            await asyncio.to_thread(
+                self.client.send_to_group,
                 group=group_name,
                 message=payload,
                 content_type="application/json"
@@ -183,7 +185,7 @@ class WebPubSubBroadcaster:
                 extra={"execution_id": execution_id}
             )
 
-    def broadcast_execution_to_history(
+    async def broadcast_execution_to_history(
         self,
         execution_id: str,
         workflow_name: str,
@@ -242,7 +244,9 @@ class WebPubSubBroadcaster:
 
             logger.info(f"Sending history update to {group_name}: {execution_id} ({status})")
 
-            self.client.send_to_group(
+            # Run sync HTTP call in thread pool to avoid blocking event loop
+            await asyncio.to_thread(
+                self.client.send_to_group,
                 group=group_name,
                 message={
                     "target": "executionHistoryUpdate",

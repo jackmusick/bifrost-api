@@ -8,8 +8,7 @@ import json
 import logging
 from datetime import datetime
 
-from azure.data.tables import TableServiceClient
-
+from shared.async_storage import AsyncTableStorageService
 from shared.models import SystemLog, SystemLogsListResponse, ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -95,29 +94,15 @@ async def list_system_logs_handler(
         else:
             logger.info(f"Querying system logs with no filter, limit: {limit}")
 
-        # Query Table Storage
-        table_service = TableServiceClient.from_connection_string(conn_str)
-        table_client = table_service.get_table_client("SystemLogs")
+        # Query Table Storage using async service
+        service = AsyncTableStorageService("SystemLogs", connection_string=conn_str)
 
-        # Query with pagination - empty string is treated as "no filter" by Azure Tables
-        query_result = table_client.query_entities(
-            query_filter=query_filter_str,
-            results_per_page=limit
+        # Query with pagination
+        entities, next_token = await service.query_entities_paged(
+            filter=query_filter_str if query_filter_str else None,
+            results_per_page=limit,
+            continuation_token=decoded_token
         )
-
-        # Get page of results
-        if decoded_token:
-            page_iterator = query_result.by_page(continuation_token=decoded_token)
-        else:
-            page_iterator = query_result.by_page()
-
-        # Fetch page
-        page = next(page_iterator)
-        entities = list(page)
-
-        # Get next continuation token from the page iterator
-        # The ItemPaged iterator has continuation_token attribute but it's not in the type stubs
-        next_token = getattr(page_iterator, 'continuation_token', None)
 
         # Parse entities to SystemLog models
         logs = []
@@ -201,12 +186,17 @@ async def get_system_log_handler(
         # Get connection string
         conn_str = connection_string or os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
 
-        # Query Table Storage
-        table_service = TableServiceClient.from_connection_string(conn_str)
-        table_client = table_service.get_table_client("SystemLogs")
+        # Query Table Storage using async service
+        service = AsyncTableStorageService("SystemLogs", connection_string=conn_str)
 
         # Get entity
-        entity = table_client.get_entity(partition_key=category, row_key=row_key)
+        entity = await service.get_entity(partition_key=category, row_key=row_key)
+
+        # Handle not found case
+        if entity is None:
+            logger.warning(f"System log not found: {category}/{row_key}")
+            error = ErrorResponse(error="NotFound", message="System log not found")
+            return error, 404
 
         # Parse details JSON
         details = None

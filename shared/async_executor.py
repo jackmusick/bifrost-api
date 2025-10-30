@@ -9,7 +9,8 @@ import os
 import uuid
 from typing import Any
 
-from azure.storage.queue import QueueServiceClient, TextBase64EncodePolicy  # type: ignore[import-untyped]
+from azure.storage.queue.aio import QueueServiceClient  # type: ignore[import-untyped]
+from azure.storage.queue import TextBase64EncodePolicy  # type: ignore[import-untyped]
 
 from shared.execution_logger import get_execution_logger
 from shared.models import ExecutionStatus
@@ -20,27 +21,46 @@ logger = logging.getLogger(__name__)
 QUEUE_NAME = "workflow-executions"
 
 
+class QueueClientContextManager:
+    """Async context manager for Azure Storage Queue client"""
+
+    def __init__(self, connection_str: str):
+        self.connection_str = connection_str
+        self.queue_service = None
+        self.queue_client = None
+
+    async def __aenter__(self):
+        """Create and return queue client"""
+        self.queue_service = QueueServiceClient.from_connection_string(self.connection_str)
+
+        # Use TextBase64EncodePolicy for proper Azure Functions queue compatibility
+        self.queue_client = self.queue_service.get_queue_client(
+            QUEUE_NAME,
+            message_encode_policy=TextBase64EncodePolicy()
+        )
+
+        # Auto-create queue if it doesn't exist
+        try:
+            await self.queue_client.create_queue()
+            logger.info(f"Created queue: {QUEUE_NAME}")
+        except Exception as e:
+            # Queue might already exist, that's fine
+            if "QueueAlreadyExists" not in str(e):
+                logger.debug(f"Queue {QUEUE_NAME} status: {e}")
+
+        return self.queue_client
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Close queue client properly"""
+        if self.queue_client:
+            await self.queue_client.close()
+        return False
+
+
 def get_queue_client():
-    """Get Azure Storage Queue client for workflow executions"""
+    """Get Azure Storage Queue client context manager for workflow executions"""
     connection_str = os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
-    queue_service = QueueServiceClient.from_connection_string(connection_str)
-
-    # Use TextBase64EncodePolicy for proper Azure Functions queue compatibility
-    queue_client = queue_service.get_queue_client(
-        QUEUE_NAME,
-        message_encode_policy=TextBase64EncodePolicy()
-    )
-
-    # Auto-create queue if it doesn't exist
-    try:
-        queue_client.create_queue()
-        logger.info(f"Created queue: {QUEUE_NAME}")
-    except Exception as e:
-        # Queue might already exist, that's fine
-        if "QueueAlreadyExists" not in str(e):
-            logger.debug(f"Queue {QUEUE_NAME} status: {e}")
-
-    return queue_client
+    return QueueClientContextManager(connection_str)
 
 
 async def enqueue_workflow_execution(
@@ -106,9 +126,9 @@ async def enqueue_workflow_execution(
         "form_id": form_id
     }
 
-    # Enqueue message
-    queue_client = get_queue_client()
-    queue_client.send_message(json.dumps(message))
+    # Enqueue message with automatic cleanup
+    async with get_queue_client() as queue_client:
+        await queue_client.send_message(json.dumps(message))
 
     logger.info(
         f"Enqueued async workflow execution: {workflow_name}",

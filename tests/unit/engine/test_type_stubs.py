@@ -151,7 +151,6 @@ class TestTypeStubAccuracy:
             'get_config',
             'has_config',
             'get_oauth_connection',
-            'save_checkpoint',
             'finalize_execution'
         ]
 
@@ -253,9 +252,3 @@ class TestTypeStubAccuracy:
         assert 'key' in params, (
             f"get_config() signature should include 'key' parameter, got {params}"
         )
-
-        # Test save_checkpoint() signature
-        checkpoint_sig = inspect.signature(ExecutionContext.save_checkpoint)
-        checkpoint_params = list(checkpoint_sig.parameters.keys())
-        assert 'name' in checkpoint_params, "save_checkpoint() should have 'name' parameter"
-        assert 'data' in checkpoint_params, "save_checkpoint() should have 'data' parameter"

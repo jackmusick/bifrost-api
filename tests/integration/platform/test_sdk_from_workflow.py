@@ -8,27 +8,9 @@ import pytest
 from pathlib import Path
 import sys
 
-# Import context functions - need to import after sys.path is modified
-# So we import inside an __import__ block or use absolute paths from api/
-import importlib.util
-
-def _import_bifrost_module(module_name):
-    """Import a module from the bifrost directory"""
-    api_base = Path(__file__).parent.parent.parent.parent
-    bifrost_path = api_base / 'bifrost'
-    module_path = bifrost_path / f'{module_name}.py'
-
-    spec = importlib.util.spec_from_file_location(f'bifrost.{module_name}', module_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[f'bifrost.{module_name}'] = module
-    spec.loader.exec_module(module)
-    return module
-
-# Import context module
-_context_module = _import_bifrost_module('_context')
-set_execution_context = _context_module.set_execution_context
-clear_execution_context = _context_module.clear_execution_context
-get_execution_context = _context_module.get_execution_context
+# Import bifrost context functions directly
+# This ensures we use the same ContextVar instance that storage module uses
+from bifrost._context import set_execution_context, clear_execution_context, get_execution_context
 
 
 @pytest.fixture

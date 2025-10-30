@@ -334,25 +334,6 @@ class UserRepository(BaseRepository):
         logger.info(f"Found {len(user_emails)} users in organization {org_id}")
         return user_emails
 
-    async def list_org_users_full(self, org_id: str) -> list[User]:
-        """
-        List all users in an organization (full User models)
-
-        Args:
-            org_id: Organization ID
-
-        Returns:
-            List of User models
-        """
-        user_emails = await self.list_org_users(org_id)
-
-        users = []
-        for email in user_emails:
-            user = await self.get_user(email)
-            if user:
-                users.append(user)
-
-        return users
 
     async def update_user(
         self,

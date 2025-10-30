@@ -16,6 +16,9 @@ from unittest.mock import patch
 import azure.functions as func
 import pytest
 
+# Suppress aiohttp cleanup warnings from HttpRequest objects during pytest garbage collection
+pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning:_pytest.stash")
+
 
 @pytest.mark.asyncio
 class TestAuthenticationFlow:

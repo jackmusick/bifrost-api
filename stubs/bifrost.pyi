@@ -108,6 +108,18 @@ class ExecutionContext:
         """True if executing in GLOBAL scope (no organization)."""
         ...
 
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get configuration value with automatic secret resolution."""
+        ...
+
+    def has_config(self, key: str) -> bool:
+        """Check if configuration key exists."""
+        ...
+
+    async def get_oauth_connection(self, connection_name: str) -> OAuthCredentials:
+        """Get OAuth credentials for a connection."""
+        ...
+
     async def finalize_execution(self) -> dict[str, Any]:
         """Get final execution state for persistence."""
         ...
@@ -355,6 +367,34 @@ class secrets:
             RuntimeError: If no execution context available
         """
         ...
+
+class executions:
+    """Execution history operations SDK."""
+    ...
+
+class files:
+    """Local filesystem operations SDK."""
+    ...
+
+class forms:
+    """Form management SDK."""
+    ...
+
+class organizations:
+    """Organization management SDK."""
+    ...
+
+class roles:
+    """Role and permission management SDK."""
+    ...
+
+class storage:
+    """Cloud storage operations SDK (Azure Blob Storage)."""
+    ...
+
+class workflows:
+    """Workflow execution SDK."""
+    ...
 
 class oauth:
     """

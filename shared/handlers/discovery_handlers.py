@@ -152,12 +152,15 @@ def get_discovery_metadata() -> MetadataResponse:
                 from shared.system_logger import get_system_logger
                 import asyncio
                 system_logger = get_system_logger()
-                asyncio.create_task(system_logger.log_validation_failure(
+                # Create task and keep reference to avoid "coroutine never awaited" warning
+                task = asyncio.create_task(system_logger.log_validation_failure(
                     item_type="workflow",
                     item_name=w.name,
                     error=str(e),
                     source=w.source
                 ))
+                # Suppress exceptions in fire-and-forget task
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             except Exception as log_error:
                 logger.warning(f"Failed to log validation failure: {log_error}")
 
@@ -178,12 +181,15 @@ def get_discovery_metadata() -> MetadataResponse:
                 from shared.system_logger import get_system_logger
                 import asyncio
                 system_logger = get_system_logger()
-                asyncio.create_task(system_logger.log_validation_failure(
+                # Create task and keep reference to avoid "coroutine never awaited" warning
+                task = asyncio.create_task(system_logger.log_validation_failure(
                     item_type="data_provider",
                     item_name=dp.name,
                     error=str(e),
                     source=getattr(dp, 'source', None)
                 ))
+                # Suppress exceptions in fire-and-forget task
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             except Exception as log_error:
                 logger.warning(f"Failed to log validation failure: {log_error}")
 

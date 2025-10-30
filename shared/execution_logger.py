@@ -84,7 +84,7 @@ class ExecutionLogger:
         # Broadcast new execution to history page (if enabled)
         if webpubsub_broadcaster:
             scope = org_id or "GLOBAL"
-            webpubsub_broadcaster.broadcast_execution_to_history(
+            await webpubsub_broadcaster.broadcast_execution_to_history(
                 execution_id=execution_id,
                 workflow_name=workflow_name,
                 status=execution_model.status.value,  # Use actual DB status (RUNNING)
@@ -205,7 +205,7 @@ class ExecutionLogger:
             # Broadcast completion status ONLY (logs already streamed in real-time)
             # Logs are persisted in ExecutionLogs table and available via HTTP API
             # Client can fetch logs from /api/executions/{id}/logs if needed
-            webpubsub_broadcaster.broadcast_execution_update(
+            await webpubsub_broadcaster.broadcast_execution_update(
                 execution_id=execution_id,
                 status=status.value,
                 executed_by=user_id,
@@ -215,7 +215,7 @@ class ExecutionLogger:
             )
 
             # Broadcast to history page for ALL status changes (PENDING → RUNNING → completion)
-            webpubsub_broadcaster.broadcast_execution_to_history(
+            await webpubsub_broadcaster.broadcast_execution_to_history(
                 execution_id=execution_id,
                 workflow_name=execution_model.workflowName,
                 status=status.value,

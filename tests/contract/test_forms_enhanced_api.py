@@ -18,6 +18,7 @@ from shared.models import (
     FormField,
     FormFieldType,
     FormSchema,
+    UploadedFileMetadata,
 )
 
 
@@ -64,22 +65,31 @@ class TestFileUploadAPI:
         response = FileUploadResponse(
             upload_url="https://storage.blob.core.windows.net/uploads/file.pdf?sas_token=xyz",
             blob_uri="https://storage.blob.core.windows.net/uploads/file.pdf",
-            expires_at="2024-01-01T13:00:00Z"
+            expires_at="2024-01-01T13:00:00Z",
+            file_metadata=UploadedFileMetadata(
+                name="file.pdf",
+                container="uploads",
+                path="file.pdf",
+                content_type="application/pdf",
+                size=1024
+            )
         )
         assert "sas_token" in response.upload_url
         assert response.blob_uri == "https://storage.blob.core.windows.net/uploads/file.pdf"
         assert response.expires_at == "2024-01-01T13:00:00Z"
+        assert response.file_metadata.name == "file.pdf"
+        assert response.file_metadata.container == "uploads"
 
     def test_file_upload_response_missing_fields(self):
         """Test that all FileUploadResponse fields are required"""
         with pytest.raises(ValidationError) as exc_info:
             FileUploadResponse(
                 upload_url="https://storage.blob.core.windows.net/uploads/file.pdf"
-                # Missing: blob_uri, expires_at
+                # Missing: blob_uri, expires_at, file_metadata
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"blob_uri", "expires_at"}
+        required_fields = {"blob_uri", "expires_at", "file_metadata"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
 
