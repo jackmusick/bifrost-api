@@ -210,7 +210,6 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
                 error_message=result.error_message,
                 error_type=result.error_type,
                 duration_ms=result.duration_ms,
-                state_snapshots=result.state_snapshots,
                 integration_calls=result.integration_calls,
                 logs=result.logs if result.logs else None,
                 variables=result.variables if result.variables else None,

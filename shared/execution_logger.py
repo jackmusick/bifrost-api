@@ -108,7 +108,6 @@ class ExecutionLogger:
         error_type: str | None = None,
         error_details: dict[str, Any] | None = None,
         duration_ms: int | None = None,
-        state_snapshots: list | None = None,
         integration_calls: list | None = None,
         logs: list | None = None,
         variables: dict[str, Any] | None = None,
@@ -130,7 +129,6 @@ class ExecutionLogger:
             error_type: Error type (if failed)
             error_details: Error details (if failed)
             duration_ms: Duration in milliseconds
-            state_snapshots: State checkpoints
             integration_calls: Integration call tracking
             logs: Workflow logs
             variables: Workflow variables
@@ -159,13 +157,6 @@ class ExecutionLogger:
             self.blob_service.upload_logs(execution_id, logs)
             logger.info(
                 f"Stored logs in blob storage ({len(logs)} entries)",
-                extra={"execution_id": execution_id}
-            )
-
-        if state_snapshots:
-            self.blob_service.upload_snapshot(execution_id, state_snapshots)
-            logger.info(
-                "Stored snapshots in blob storage",
                 extra={"execution_id": execution_id}
             )
 

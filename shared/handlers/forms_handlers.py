@@ -592,7 +592,6 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             result=result,
             error_message=error_message,
             duration_ms=duration_ms,
-            state_snapshots=workflow_context._state_snapshots,
             integration_calls=workflow_context._integration_calls
             # Note: Forms don't capture logs or variables
         )

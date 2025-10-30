@@ -73,7 +73,6 @@ class ExecutionResult:
     # Captured data
     logs: list[dict[str, Any]] = field(default_factory=list)
     variables: dict[str, Any] | None = None  # Only for inline scripts
-    state_snapshots: list[dict[str, Any]] = field(default_factory=list)
     integration_calls: list[dict[str, Any]] = field(default_factory=list)
 
     # Error details
@@ -252,7 +251,6 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             duration_ms=duration_ms,
             logs=logger_output,
             variables=captured_variables,
-            state_snapshots=context._state_snapshots,
             integration_calls=context._integration_calls
         )
 
@@ -268,7 +266,6 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             duration_ms=duration_ms,
             logs=logger_output,
             variables=None,
-            state_snapshots=context._state_snapshots,
             integration_calls=context._integration_calls,
             error_message=str(e),
             error_type=type(e).__name__
@@ -296,7 +293,6 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             duration_ms=duration_ms,
             logs=logger_output,
             variables=None,
-            state_snapshots=context._state_snapshots,
             integration_calls=context._integration_calls,
             error_message=str(e),
             error_type=type(e).__name__
@@ -465,14 +461,31 @@ async def _execute_workflow_with_trace(
                         source="workflow"
                     )
 
-                    broadcaster.broadcast_execution_update(
-                        execution_id=execution_id,
-                        status="Running",
-                        executed_by=context.user_id,
-                        scope=context.org_id or "GLOBAL",
-                        latest_logs=[log_dict],
-                        is_complete=False
-                    )
+                    # Fire off async broadcast in background thread (non-blocking)
+                    # Using threading.Thread instead of ThreadPoolExecutor to avoid blocking
+                    import asyncio
+                    import threading
+
+                    def run_broadcast():
+                        """Run async broadcast in separate thread with its own event loop"""
+                        try:
+                            asyncio.run(
+                                broadcaster.broadcast_execution_update(
+                                    execution_id=execution_id,
+                                    status="Running",
+                                    executed_by=context.user_id,
+                                    scope=context.org_id or "GLOBAL",
+                                    latest_logs=[log_dict],
+                                    is_complete=False
+                                )
+                            )
+                        except Exception:
+                            # Silently ignore errors in background thread
+                            pass
+
+                    # Start daemon thread (won't block program exit)
+                    thread = threading.Thread(target=run_broadcast, daemon=True)
+                    thread.start()
                 except Exception as e:
                     # Log errors but don't fail workflow execution
                     # Real-time updates are non-critical
@@ -670,7 +683,6 @@ def _build_cached_result(
         duration_ms=duration_ms,
         logs=[],
         variables=None,
-        state_snapshots=[],
         integration_calls=[],
         cached=True,
         cache_expires_at=cached_entry['expires_at'].isoformat() + "Z"
