@@ -337,12 +337,12 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
 
     # Configure logging for scripts
     handler = ScriptLogHandler()
-    handler.setLevel(logging.INFO)
+    handler.setLevel(logging.DEBUG)  # Capture all levels including DEBUG
 
     # Get or create a logger for this script
     script_logger = logging.getLogger('__main__')
     script_logger.addHandler(handler)
-    script_logger.setLevel(logging.INFO)
+    script_logger.setLevel(logging.DEBUG)  # Set logger level to capture DEBUG messages
     script_logger.propagate = False  # Don't propagate to root
 
     try:
@@ -501,6 +501,7 @@ async def _execute_workflow_with_trace(
 
     # Attach to root logger since workflows use logging.info() which goes to root
     root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # Set logger level to capture DEBUG messages
     root_logger.addHandler(handler)
 
     def remove_circular_refs(obj, seen=None):

@@ -1,8 +1,17 @@
 """
 Workflow Execution Worker V2 - Refactored to use unified engine
-Processes async workflow executions from Azure Storage Queue
+Processes async workflow executions from Azure Storage Queue with cancellation support
+
+CANCELLATION BEHAVIOR:
+- Cooperative cancellation is implemented using asyncio.CancelledError
+- Cancellation only works at 'await' points in async code
+- Blocking operations (time.sleep, long computations, synchronous I/O) CANNOT be cancelled
+- Workflows should use 'await asyncio.sleep()' instead of 'time.sleep()' for cancellable delays
+- Long-running synchronous operations will complete before cancellation takes effect
+- If workflow code doesn't have await points, it cannot be cancelled until completion
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -14,6 +23,8 @@ from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
 from shared.middleware import load_config_for_partition
 from shared.models import ExecutionStatus
+from shared.registry import get_registry
+from shared.repositories.executions import ExecutionRepository
 from shared.storage import get_organization_async
 
 logger = logging.getLogger(__name__)
@@ -104,6 +115,27 @@ async def handle_workflow_execution(message_data: dict) -> None:
         from shared.webpubsub_broadcaster import WebPubSubBroadcaster
         broadcaster = WebPubSubBroadcaster()
 
+        # Check if execution was already cancelled before we started
+        exec_repo_check = ExecutionRepository()
+        try:
+            current_status = await exec_repo_check.get_execution_status(execution_id, org_id)
+
+            if current_status == ExecutionStatus.CANCELLING.value:
+                logger.info(f"Execution {execution_id} was already cancelled before starting")
+
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.CANCELLED,
+                    error_message="Execution was cancelled before it could start",
+                    duration_ms=0,
+                    webpubsub_broadcaster=broadcaster
+                )
+                return
+        finally:
+            await exec_repo_check.close()
+
         # Update status to RUNNING - will broadcast to history page
         await exec_logger.update_execution(
             execution_id=execution_id,
@@ -142,6 +174,11 @@ async def handle_workflow_execution(message_data: dict) -> None:
         from function_app import discover_workspace_modules
         discover_workspace_modules()
 
+        # Get workflow metadata for timeout
+        registry = get_registry()
+        metadata = registry.get_function(workflow_name)
+        timeout_seconds = metadata.timeout_seconds if metadata else 1800  # Default 30 min
+
         # Build execution request for engine (reuse broadcaster initialized earlier)
         request = ExecutionRequest(
             execution_id=execution_id,
@@ -155,34 +192,97 @@ async def handle_workflow_execution(message_data: dict) -> None:
             broadcaster=broadcaster  # Pass Web PubSub broadcaster for real-time log streaming
         )
 
-        # Execute via unified engine
-        result = await execute(request)
+        # Create execution task (not awaiting directly - monitoring loop will wait for it)
+        execution_task = asyncio.create_task(execute(request))
 
-        # Update execution with result
-        # NOTE: Broadcasts to both execution details and history are handled by update_execution
-        await exec_logger.update_execution(
-            execution_id=execution_id,
-            org_id=org_id,
-            user_id=user_id,
-            status=result.status,
-            result=result.result,
-            error_message=result.error_message,
-            error_type=result.error_type,
-            duration_ms=result.duration_ms,
-            integration_calls=result.integration_calls,
-            logs=result.logs if result.logs else None,
-            variables=result.variables if result.variables else None,
-            webpubsub_broadcaster=broadcaster
-        )
+        # Monitoring loop for cancellation and timeout
+        check_interval = 1.0  # Check every second
+        execution_repo = ExecutionRepository()
 
-        logger.info(
-            f"Async workflow execution completed: {workflow_name}",
-            extra={
-                "execution_id": execution_id,
-                "status": result.status.value,
-                "duration_ms": result.duration_ms
-            }
-        )
+        try:
+            while not execution_task.done():
+                # Check for user-initiated cancellation
+                current_status = await execution_repo.get_execution_status(execution_id, org_id)
+
+                if current_status == ExecutionStatus.CANCELLING.value:
+                    logger.info(f"Cancellation requested for execution {execution_id}")
+                    execution_task.cancel()
+
+                    await exec_logger.update_execution(
+                        execution_id=execution_id,
+                        org_id=org_id,
+                        user_id=user_id,
+                        status=ExecutionStatus.CANCELLED,
+                        error_message="Execution cancelled by user",
+                        duration_ms=int((datetime.utcnow() - start_time).total_seconds() * 1000),
+                        webpubsub_broadcaster=broadcaster
+                    )
+
+                    logger.info(f"Execution {execution_id} cancelled successfully")
+                    return
+
+                # Check for timeout
+                elapsed_seconds = (datetime.utcnow() - start_time).total_seconds()
+                if elapsed_seconds > timeout_seconds:
+                    logger.warning(
+                        f"Execution {execution_id} exceeded timeout of {timeout_seconds}s"
+                    )
+                    execution_task.cancel()
+
+                    await exec_logger.update_execution(
+                        execution_id=execution_id,
+                        org_id=org_id,
+                        user_id=user_id,
+                        status=ExecutionStatus.TIMEOUT,
+                        error_message=f"Execution exceeded timeout of {timeout_seconds} seconds",
+                        error_type="TimeoutError",
+                        duration_ms=int(elapsed_seconds * 1000),
+                        webpubsub_broadcaster=broadcaster
+                    )
+
+                    logger.info(f"Execution {execution_id} timed out")
+                    return
+
+                # Sleep before next check
+                await asyncio.sleep(check_interval)
+
+            # Execution completed normally - get the result
+            result = await execution_task
+
+            # Update execution with result
+            # NOTE: Broadcasts to both execution details and history are handled by update_execution
+            await exec_logger.update_execution(
+                execution_id=execution_id,
+                org_id=org_id,
+                user_id=user_id,
+                status=result.status,
+                result=result.result,
+                error_message=result.error_message,
+                error_type=result.error_type,
+                duration_ms=result.duration_ms,
+                integration_calls=result.integration_calls,
+                logs=result.logs if result.logs else None,
+                variables=result.variables if result.variables else None,
+                webpubsub_broadcaster=broadcaster
+            )
+
+            logger.info(
+                f"Async workflow execution completed: {workflow_name}",
+                extra={
+                    "execution_id": execution_id,
+                    "status": result.status.value,
+                    "duration_ms": result.duration_ms
+                }
+            )
+
+        except asyncio.CancelledError:
+            # Task was cancelled (either by user or timeout - already handled above)
+            logger.info(f"Execution task {execution_id} was cancelled")
+            raise
+
+        finally:
+            # Ensure repository connections are closed
+            await execution_repo.close()
 
     except Exception as e:
         # Unexpected error

@@ -16,7 +16,8 @@ from shared.handlers.executions_handlers import (
     get_execution_result_handler,
     get_execution_logs_handler,
     get_execution_variables_handler,
-    list_executions_handler
+    list_executions_handler,
+    cancel_execution_handler
 )
 from shared.models import WorkflowExecution, ExecutionsListResponse
 from shared.openapi_decorators import openapi_endpoint
@@ -282,7 +283,7 @@ async def get_execution_result(req: func.HttpRequest) -> func.HttpResponse:
     path="/executions/{executionId}/logs",
     method="GET",
     summary="Get execution logs only",
-    description="Get only the logs of a specific execution (progressive loading). Platform admin only.",
+    description="Get only the logs of a specific execution (progressive loading). All users can view logs for executions they have access to. Regular users see INFO/WARNING/ERROR/CRITICAL logs only. Platform admins see all logs including DEBUG.",
     tags=["Executions"],
     path_params={
         "executionId": {
@@ -371,6 +372,65 @@ async def get_execution_variables(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.error(f"Error getting execution variables: {str(e)}", exc_info=True)
+        return func.HttpResponse(
+            json.dumps({'error': 'InternalServerError', 'message': str(e)}),
+            status_code=500,
+            mimetype='application/json'
+        )
+
+
+@bp.function_name("executions_cancel")
+@bp.route(route="executions/{executionId}/cancel", methods=["POST"])
+@openapi_endpoint(
+    path="/executions/{executionId}/cancel",
+    method="POST",
+    summary="Cancel execution",
+    description="Cancel a pending or running execution. Platform admins can cancel any execution in their scope. Regular users can only cancel their own executions.",
+    tags=["Executions"],
+    response_model=WorkflowExecution,
+    path_params={
+        "executionId": {
+            "description": "Execution ID (UUID)",
+            "schema": {"type": "string", "format": "uuid"}
+        }
+    }
+)
+@with_request_context
+async def cancel_execution(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/executions/{executionId}/cancel"""
+    request_context = req.context  # type: ignore[attr-defined]
+    execution_id = req.route_params.get("executionId")
+
+    try:
+        execution, error_msg = await cancel_execution_handler(request_context, execution_id)
+
+        if error_msg:
+            status_codes = {
+                "BadRequest": 400,
+                "NotFound": 404,
+                "Forbidden": 403
+            }
+
+            error_messages = {
+                "BadRequest": f"Cannot cancel execution {execution_id} - it may not be in a cancellable state (must be Pending or Running)",
+                "NotFound": f"Execution {execution_id} not found",
+                "Forbidden": "You do not have permission to cancel this execution"
+            }
+
+            return func.HttpResponse(
+                json.dumps({"error": error_msg, "message": error_messages.get(error_msg, error_msg)}),
+                status_code=status_codes.get(error_msg, 500),
+                mimetype='application/json'
+            )
+
+        return func.HttpResponse(
+            json.dumps(execution, cls=DateTimeEncoder),
+            status_code=200,
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        logger.error(f"Error cancelling execution: {str(e)}", exc_info=True)
         return func.HttpResponse(
             json.dumps({'error': 'InternalServerError', 'message': str(e)}),
             status_code=500,

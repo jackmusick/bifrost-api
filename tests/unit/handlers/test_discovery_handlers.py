@@ -319,7 +319,7 @@ class TestGetDiscoveryMetadata:
         invalid_workflow.tags = []
         invalid_workflow.parameters = []
         invalid_workflow.execution_mode = "sync"
-        invalid_workflow.timeout_seconds = 600  # Invalid - exceeds max of 540
+        invalid_workflow.timeout_seconds = 8000  # Invalid - exceeds max of 7200 (2 hours)
         invalid_workflow.retry_policy = None
         invalid_workflow.schedule = None
         invalid_workflow.endpoint_enabled = False
@@ -386,7 +386,7 @@ class TestGetDiscoveryMetadata:
         invalid_workflow.tags = []
         invalid_workflow.parameters = []
         invalid_workflow.execution_mode = "sync"
-        invalid_workflow.timeout_seconds = 600  # Invalid - exceeds max
+        invalid_workflow.timeout_seconds = 8000  # Invalid - exceeds max of 7200 (2 hours)
         invalid_workflow.retry_policy = None
         invalid_workflow.schedule = None
         invalid_workflow.endpoint_enabled = False

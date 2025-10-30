@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 jobs:
   test-api:
-    f: |
+    if: |
       github.repository == 'jackmusick/bifrost-api'
     runs-on: ubuntu-latest
     name: API Tests

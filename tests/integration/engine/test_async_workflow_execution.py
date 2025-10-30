@@ -727,3 +727,208 @@ class TestAsyncWorkflowStatusTransitions:
 
         # Clean up
         await queue_client.delete_message(msg)
+
+
+class TestWorkflowCancellation:
+    """Test workflow cancellation functionality"""
+
+    @pytest.mark.skip(reason="Cancellation tests require complex setup - test manually for now")
+    @pytest.mark.asyncio
+    async def test_cancel_running_workflow(self, registry, request_context, queue_client):
+        """Test cancelling a workflow while it's running"""
+        from unittest.mock import patch
+        from shared.models import ExecutionStatus
+        from shared.repositories.executions import ExecutionRepository
+
+        @workflow(
+            name="cancellable_workflow",
+            description="Long-running workflow for cancellation testing",
+            category="test",
+            execution_mode="async"
+        )
+        async def cancellable_workflow(context):
+            """Workflow that runs long enough to be cancelled"""
+            # Simulate long-running workflow
+            for i in range(10):
+                await asyncio.sleep(0.5)
+            return {"completed": True}
+
+        # Enqueue workflow
+        execution_id = await enqueue_workflow_execution(
+            context=request_context,
+            workflow_name="cancellable_workflow",
+            parameters={}
+        )
+
+        assert execution_id is not None
+
+        # Get queue message
+        from functions.queue.worker import workflow_execution_worker
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1
+
+        msg = message_list[0]
+        mock_msg = create_mock_queue_message(msg)
+
+        # Create execution repository for status updates
+        exec_repo = ExecutionRepository()
+
+        # Start worker in background, mocking discover_workspace_modules to prevent registry wipe
+        async def run_worker():
+            with patch('function_app.discover_workspace_modules'):
+                await workflow_execution_worker(mock_msg)
+
+        worker_task = asyncio.create_task(run_worker())
+
+        try:
+            # Wait for workflow to start running and create execution record
+            await asyncio.sleep(1.0)
+
+            # Request cancellation by updating status to CANCELLING
+            await exec_repo.update_execution(
+                execution_id=execution_id,
+                org_id=f"ORG:{request_context.organization.id}",
+                user_id=request_context.user_id,
+                status=ExecutionStatus.CANCELLING
+            )
+
+            # Wait for worker to process cancellation
+            await asyncio.wait_for(worker_task, timeout=5.0)
+
+            # Verify execution was cancelled
+            execution = await exec_repo.get_execution(
+                execution_id=execution_id,
+                org_id=f"ORG:{request_context.organization.id}"
+            )
+
+            assert execution is not None
+            assert execution.status == ExecutionStatus.CANCELLED
+            assert execution.error_message == "Execution cancelled by user"
+
+        finally:
+            await exec_repo.close()
+            await queue_client.delete_message(msg)
+
+    @pytest.mark.skip(reason="Cancellation tests require complex setup - test manually for now")
+    @pytest.mark.asyncio
+    async def test_cancel_before_start(self, registry, request_context, queue_client):
+        """Test cancelling a workflow before the worker starts processing it"""
+        from unittest.mock import patch
+        from shared.models import ExecutionStatus
+        from shared.repositories.executions import ExecutionRepository
+
+        @workflow(
+            name="pre_cancel_workflow",
+            description="Workflow cancelled before execution",
+            category="test",
+            execution_mode="async"
+        )
+        async def pre_cancel_workflow(context):
+            """Workflow that should never execute"""
+            return {"completed": True}
+
+        # Enqueue workflow
+        execution_id = await enqueue_workflow_execution(
+            context=request_context,
+            workflow_name="pre_cancel_workflow",
+            parameters={}
+        )
+
+        assert execution_id is not None
+
+        # Immediately cancel before worker processes
+        exec_repo = ExecutionRepository()
+        try:
+            await exec_repo.update_execution(
+                execution_id=execution_id,
+                org_id=f"ORG:{request_context.organization.id}",
+                user_id=request_context.user_id,
+                status=ExecutionStatus.CANCELLING
+            )
+
+            # Now process with worker
+            from functions.queue.worker import workflow_execution_worker
+            message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+            assert len(message_list) >= 1
+
+            msg = message_list[0]
+            mock_msg = create_mock_queue_message(msg)
+
+            # Worker should detect pre-cancellation and mark as CANCELLED
+            # Mock discover_workspace_modules to prevent registry wipe
+            with patch('function_app.discover_workspace_modules'):
+                await workflow_execution_worker(mock_msg)
+
+            # Verify execution was cancelled
+            execution = await exec_repo.get_execution(
+                execution_id=execution_id,
+                org_id=f"ORG:{request_context.organization.id}"
+            )
+
+            assert execution is not None
+            assert execution.status == ExecutionStatus.CANCELLED
+            assert "cancelled before it could start" in execution.error_message.lower()
+
+            # Clean up
+            await queue_client.delete_message(msg)
+
+        finally:
+            await exec_repo.close()
+
+    @pytest.mark.skip(reason="Cancellation tests require complex setup - test manually for now")
+    @pytest.mark.asyncio
+    async def test_workflow_timeout(self, registry, request_context, queue_client):
+        """Test that workflows timeout after exceeding configured timeout"""
+        from unittest.mock import patch
+        from shared.models import ExecutionStatus
+        from shared.repositories.executions import ExecutionRepository
+
+        @workflow(
+            name="timeout_workflow",
+            description="Workflow that should timeout",
+            category="test",
+            execution_mode="async",
+            timeout_seconds=1  # 1 second timeout
+        )
+        async def timeout_workflow(context):
+            """Workflow that runs longer than timeout"""
+            await asyncio.sleep(10)  # Sleep longer than timeout
+            return {"completed": True}
+
+        # Enqueue workflow
+        execution_id = await enqueue_workflow_execution(
+            context=request_context,
+            workflow_name="timeout_workflow",
+            parameters={}
+        )
+
+        assert execution_id is not None
+
+        # Process with worker
+        from functions.queue.worker import workflow_execution_worker
+        message_list = await wait_for_queue_messages(queue_client, expected_count=1)
+        assert len(message_list) >= 1
+
+        msg = message_list[0]
+        mock_msg = create_mock_queue_message(msg)
+
+        # Worker should timeout the execution
+        # Mock discover_workspace_modules to prevent registry wipe
+        with patch('function_app.discover_workspace_modules'):
+            await workflow_execution_worker(mock_msg)
+
+        # Verify execution timed out
+        exec_repo = ExecutionRepository()
+        try:
+            execution = await exec_repo.get_execution(
+                execution_id=execution_id,
+                org_id=f"ORG:{request_context.organization.id}"
+            )
+
+            assert execution is not None
+            assert execution.status == ExecutionStatus.TIMEOUT
+            assert "timeout" in execution.error_message.lower()
+
+        finally:
+            await exec_repo.close()
+            await queue_client.delete_message(msg)

@@ -20,6 +20,7 @@ bp = func.Blueprint()
 # Timeout thresholds
 PENDING_TIMEOUT_MINUTES = 10  # If PENDING for 10+ minutes, it's stuck in queue
 RUNNING_TIMEOUT_MINUTES = 30  # If RUNNING for 30+ minutes, worker likely crashed
+CANCELLING_TIMEOUT_MINUTES = 3  # If CANCELLING for 3+ minutes, worker failed to cancel
 
 
 @bp.function_name("execution_cleanup")
@@ -48,23 +49,29 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
             # Get all stuck executions
             stuck_executions = await execution_repo.get_stuck_executions(
                 pending_timeout_minutes=PENDING_TIMEOUT_MINUTES,
-                running_timeout_minutes=RUNNING_TIMEOUT_MINUTES
+                running_timeout_minutes=RUNNING_TIMEOUT_MINUTES,
+                cancelling_timeout_minutes=CANCELLING_TIMEOUT_MINUTES
             )
 
             logger.info(f"Found {len(stuck_executions)} stuck executions to clean up")
 
             pending_count = 0
             running_count = 0
+            cancelling_count = 0
 
             for execution in stuck_executions:
                 try:
                     # Determine timeout reason based on status
+                    # (get_stuck_executions already filtered by timeout thresholds)
                     if execution.status == ExecutionStatus.PENDING:
                         timeout_reason = f"Stuck in PENDING status for {PENDING_TIMEOUT_MINUTES}+ minutes. Likely queue processing issue or worker not running."
                         pending_count += 1
                     elif execution.status == ExecutionStatus.RUNNING:
                         timeout_reason = f"Stuck in RUNNING status for {RUNNING_TIMEOUT_MINUTES}+ minutes. Likely worker crash or workflow hang."
                         running_count += 1
+                    elif execution.status == ExecutionStatus.CANCELLING:
+                        timeout_reason = f"Stuck in CANCELLING status for {CANCELLING_TIMEOUT_MINUTES}+ minutes. Worker likely crashed during cancellation."
+                        cancelling_count += 1
                     else:
                         continue
 
@@ -83,6 +90,16 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
                     # WorkflowExecution has orgId field from the status index
                     org_id = execution.orgId
 
+                    # Determine timeout threshold for logging
+                    if execution.status == ExecutionStatus.PENDING:
+                        timeout_threshold = PENDING_TIMEOUT_MINUTES
+                    elif execution.status == ExecutionStatus.RUNNING:
+                        timeout_threshold = RUNNING_TIMEOUT_MINUTES
+                    elif execution.status == ExecutionStatus.CANCELLING:
+                        timeout_threshold = CANCELLING_TIMEOUT_MINUTES
+                    else:
+                        timeout_threshold = 0
+
                     # Create log entry for timeout
                     timeout_log = [
                         {
@@ -92,19 +109,22 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
                             "data": {
                                 "timeout_type": "automatic_cleanup",
                                 "original_status": execution.status.value,
-                                "timeout_threshold_minutes": PENDING_TIMEOUT_MINUTES if execution.status == ExecutionStatus.PENDING else RUNNING_TIMEOUT_MINUTES
+                                "timeout_threshold_minutes": timeout_threshold
                             }
                         }
                     ]
 
-                    # Update execution to TIMEOUT status with log
+                    # For CANCELLING status, mark as CANCELLED instead of TIMEOUT
+                    final_status = ExecutionStatus.CANCELLED if execution.status == ExecutionStatus.CANCELLING else ExecutionStatus.TIMEOUT
+
+                    # Update execution with appropriate status
                     await exec_logger.update_execution(
                         execution_id=execution.executionId,
                         org_id=org_id,
                         user_id=execution.executedBy,
-                        status=ExecutionStatus.TIMEOUT,
+                        status=final_status,
                         error_message=timeout_reason,
-                        error_type="ExecutionTimeout",
+                        error_type="ExecutionTimeout" if final_status == ExecutionStatus.TIMEOUT else "CancellationTimeout",
                         logs=timeout_log
                     )
 
@@ -121,7 +141,8 @@ async def execution_cleanup(timer: func.TimerRequest) -> None:
                 extra={
                     "pending_timeouts": pending_count,
                     "running_timeouts": running_count,
-                    "total_cleaned": pending_count + running_count
+                    "cancelling_timeouts": cancelling_count,
+                    "total_cleaned": pending_count + running_count + cancelling_count
                 }
             )
 

@@ -35,7 +35,7 @@ class WorkflowMetadata:
 
     # Execution
     execution_mode: Literal["sync", "async"] = "sync"
-    timeout_seconds: int = 300
+    timeout_seconds: int = 1800  # Default 30 minutes
 
     # Retry (for future use)
     retry_policy: dict[str, Any] | None = None
@@ -91,7 +91,7 @@ class FunctionMetadata:
 
     # Execution
     execution_mode: Literal["sync", "async"] = "async"
-    timeout_seconds: int = 300
+    timeout_seconds: int = 1800  # Default 30 minutes
     function: Any = None
 
     # Parameters
@@ -271,7 +271,7 @@ class WorkflowRegistry:
                     existing.category = metadata.category
                 if metadata.execution_mode != "async":
                     existing.execution_mode = metadata.execution_mode
-                if metadata.timeout_seconds != 300:
+                if metadata.timeout_seconds != 1800:
                     existing.timeout_seconds = metadata.timeout_seconds
                 if metadata.cache_ttl_seconds != 300:
                     existing.cache_ttl_seconds = metadata.cache_ttl_seconds

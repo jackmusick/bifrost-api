@@ -198,6 +198,8 @@ class ExecutionStatus(str, Enum):
     FAILED = "Failed"
     TIMEOUT = "Timeout"
     COMPLETED_WITH_ERRORS = "CompletedWithErrors"
+    CANCELLING = "Cancelling"
+    CANCELLED = "Cancelled"
 
 
 class RetryPolicy(BaseModel):
@@ -852,7 +854,7 @@ class WorkflowMetadata(BaseModel):
 
     # Execution configuration
     executionMode: Literal["sync", "async"] = Field("sync", description="Execution mode")
-    timeoutSeconds: int = Field(300, ge=1, le=540, description="Max execution time in seconds (max 9 minutes)")
+    timeoutSeconds: int = Field(1800, ge=1, le=7200, description="Max execution time in seconds (default 30 min, max 2 hours)")
 
     # Retry and scheduling (for future use)
     retryPolicy: RetryPolicy | None = Field(None, description="Retry configuration")

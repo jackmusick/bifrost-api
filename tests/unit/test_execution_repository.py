@@ -344,15 +344,22 @@ class TestGetStuckExecutions:
             "UpdatedAt": recent_time.isoformat()
         }
 
-        mock_relationships_service.query_entities.return_value = [recent_execution]
+        # Return the execution only for Pending status query, empty for Running and Cancelling
+        def query_side_effect(filter_query):
+            if "status:Pending:" in filter_query:
+                return [recent_execution]
+            return []
+
+        mock_relationships_service.query_entities.side_effect = query_side_effect
 
         # Execute
         result = await execution_repo.get_stuck_executions(
             pending_timeout_minutes=10,
-            running_timeout_minutes=30
+            running_timeout_minutes=30,
+            cancelling_timeout_minutes=3
         )
 
-        # Verify - should be empty
+        # Verify - should be empty (recent executions not old enough to be stuck)
         assert len(result) == 0
 
     async def test_returns_empty_list_when_no_stuck_executions(self, execution_repo, mock_relationships_service):
@@ -392,7 +399,7 @@ class TestGetStuckExecutions:
 
         # Verify query filters use status index pattern
         call_args = mock_relationships_service.query_entities.call_args_list
-        assert len(call_args) == 2  # One for Pending, one for Running
+        assert len(call_args) == 3  # One for Pending, one for Running, one for Cancelling
 
         # Check first query is for Pending status
         first_filter = call_args[0][0][0]

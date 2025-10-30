@@ -11,6 +11,7 @@ from shared.authorization import can_user_view_execution
 from shared.blob_storage import get_blob_service
 from shared.repositories.executions import ExecutionRepository
 from shared.context import ExecutionContext
+from shared.models import ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -428,7 +429,7 @@ async def get_execution_handler(
         logs = [
             {
                 "executionLogId": log["ExecutionLogId"],
-                "timestamp": log["RowKey"].split("-")[0],  # Extract timestamp from RowKey
+                "timestamp": log["RowKey"].rsplit("-", 1)[0],  # Extract timestamp from RowKey (split from right, remove sequence)
                 "level": log["Level"],
                 "message": log["Message"],
                 "source": log.get("Source", "workflow")
@@ -518,7 +519,10 @@ async def get_execution_logs_handler(
 ) -> tuple[list | None, str | None]:
     """
     Get only the logs of an execution (progressive loading).
-    Platform admin only.
+
+    All users can view logs for executions they have access to.
+    Regular users see INFO/WARNING/ERROR/CRITICAL logs only.
+    Platform admins see all logs including DEBUG.
 
     Args:
         context: ExecutionContext
@@ -531,25 +535,23 @@ async def get_execution_logs_handler(
     if error:
         return None, error
 
-    # Only platform admins can view logs
-    if not context.is_platform_admin:
-        return None, "Forbidden"
-
     # Fetch logs from ExecutionLogs table
     from shared.repositories.execution_logs import get_execution_logs_repository
     logs_repo = get_execution_logs_repository()
     log_entities = await logs_repo.get_logs(execution_id=execution_id, limit=5000)
 
     # Transform to camelCase format expected by UI
+    # Filter out DEBUG logs for non-admin users
     logs = [
         {
             "executionLogId": log["ExecutionLogId"],
-            "timestamp": log["RowKey"].split("-")[0],
+            "timestamp": log["RowKey"].rsplit("-", 1)[0],  # Extract timestamp from RowKey (split from right, remove sequence)
             "level": log["Level"],
             "message": log["Message"],
             "source": log.get("Source", "workflow")
         }
         for log in log_entities
+        if context.is_platform_admin or log["Level"] != "DEBUG"  # Non-admins don't see DEBUG logs
     ]
 
     return logs, None
@@ -583,3 +585,67 @@ async def get_execution_variables_handler(
     variables = blob_service.get_variables(execution_id)
 
     return variables, None
+
+
+async def cancel_execution_handler(
+    context: ExecutionContext,
+    execution_id: str
+) -> tuple[dict | None, str | None]:
+    """
+    Cancel a pending or running execution.
+
+    Rules:
+    - Platform admins: can cancel any execution in their scope
+    - Regular users: can only cancel their own executions
+    - Can only cancel executions in PENDING or RUNNING status
+
+    Args:
+        context: ExecutionContext
+        execution_id: Execution ID (UUID)
+
+    Returns:
+        Tuple of (execution_dict, error_message)
+        - If successful: (execution_dict, None)
+        - If execution not found: (None, "NotFound")
+        - If permission denied: (None, "Forbidden")
+        - If invalid status: (None, "BadRequest")
+        - If invalid ID: (None, "BadRequest")
+
+    Raises:
+        Exception: Any errors during cancellation (caller should handle)
+    """
+    from datetime import datetime
+
+    execution_model, error = await _get_and_authorize_execution(context, execution_id)
+    if error:
+        return None, error
+
+    # Check if execution can be cancelled
+    if execution_model.status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+        logger.warning(
+            f"Cannot cancel execution {execution_id} with status {execution_model.status.value}"
+        )
+        return None, "BadRequest"
+
+    # Update status to CANCELLING
+    exec_repo = ExecutionRepository(context)
+
+    try:
+        updated_execution = await exec_repo.update_execution(
+            execution_id=execution_id,
+            org_id=execution_model.orgId,
+            user_id=execution_model.executedBy,
+            status=ExecutionStatus.CANCELLING
+        )
+
+        logger.info(
+            f"Execution {execution_id} marked as CANCELLING by user {context.user_id}"
+        )
+
+        # Return updated execution
+        execution_dict = updated_execution.model_dump(mode='json')
+        return execution_dict, None
+
+    except Exception as e:
+        logger.error(f"Error cancelling execution {execution_id}: {str(e)}", exc_info=True)
+        raise

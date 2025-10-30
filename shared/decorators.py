@@ -25,7 +25,7 @@ def workflow(
 
     # Execution
     execution_mode: Literal["sync", "async"] = "sync",
-    timeout_seconds: int = 300,
+    timeout_seconds: int = 1800,  # Default 30 minutes
 
     # Retry
     retry_policy: dict[str, Any] | None = None,
@@ -66,7 +66,7 @@ def workflow(
         category: Category for organization (default: "General")
         tags: Optional list of tags for filtering
         execution_mode: "sync" | "async" (default: "sync")
-        timeout_seconds: Max execution time in seconds (default: 300)
+        timeout_seconds: Max execution time in seconds (default: 1800, max: 7200)
         retry_policy: Dict with retry config (e.g., {"max_attempts": 3, "backoff": 2})
         schedule: Cron expression for scheduled workflows (e.g., "0 9 * * *")
         endpoint_enabled: Whether to expose as HTTP endpoint at /api/endpoints/{name} (default: False)
@@ -327,7 +327,7 @@ def data_provider(
             category=category,
             tags=['data_provider'],  # Just this tag
             execution_mode='async',  # Data providers are always async
-            timeout_seconds=300,
+            timeout_seconds=1800,  # Default 30 minutes
             function=func,
             parameters=pending_params,
             cache_ttl_seconds=cache_ttl_seconds,

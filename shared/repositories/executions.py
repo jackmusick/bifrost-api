@@ -318,10 +318,10 @@ class ExecutionRepository(BaseRepository):
                 if isinstance(result, Exception):
                     logger.warning(f"Failed to update index {i} for {execution_id}: {result}")
 
-        # Update status index - delete old status, create new if Pending/Running
+        # Update status index - delete old status, create new if Pending/Running/Cancelling
         try:
-            # Delete old status index if it was Pending or Running
-            if old_status in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
+            # Delete old status index if it was Pending, Running, or Cancelling
+            if old_status in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value, ExecutionStatus.CANCELLING.value]:
                 try:
                     await self.relationships_service.delete_entity(
                         "GLOBAL",
@@ -330,8 +330,8 @@ class ExecutionRepository(BaseRepository):
                 except Exception:
                     pass  # Might not exist, that's okay
 
-            # Create new status index only for Pending/Running
-            if status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+            # Create new status index only for Pending/Running/Cancelling
+            if status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING]:
                 status_index = {
                     "PartitionKey": "GLOBAL",
                     "RowKey": f"status:{status.value}:{execution_id}",
@@ -380,6 +380,34 @@ class ExecutionRepository(BaseRepository):
 
         if results:
             return self._entity_to_model(results[0])
+
+        return None
+
+    async def get_execution_status(self, execution_id: str, org_id: str | None = None) -> str | None:
+        """
+        Get only the status of an execution (lightweight query for monitoring)
+
+        Args:
+            execution_id: Execution ID
+            org_id: Organization ID (optional, will search GLOBAL if not provided)
+
+        Returns:
+            Status string ("Pending", "Running", "Cancelling", etc.) or None if not found
+        """
+        partition_key = org_id or "GLOBAL"
+
+        # Query by ExecutionId field, but only select Status
+        exec_filter = f"PartitionKey eq '{partition_key}' and ExecutionId eq '{execution_id}'"
+        results = await self.query(exec_filter)
+
+        if not results:
+            # Try GLOBAL if org_id was provided and failed
+            if org_id:
+                exec_filter = f"PartitionKey eq 'GLOBAL' and ExecutionId eq '{execution_id}'"
+                results = await self.query(exec_filter)
+
+        if results:
+            return results[0].get("Status")
 
         return None
 
@@ -729,17 +757,19 @@ class ExecutionRepository(BaseRepository):
     async def get_stuck_executions(
         self,
         pending_timeout_minutes: int = 10,
-        running_timeout_minutes: int = 30
+        running_timeout_minutes: int = 30,
+        cancelling_timeout_minutes: int = 3
     ) -> list[WorkflowExecution]:
         """
-        Get executions stuck in Pending or Running status.
+        Get executions stuck in Pending, Running, or Cancelling status.
 
         Uses status index in Relationships table for efficient queries.
-        Only queries Pending and Running status indexes (no full table scan).
+        Only queries Pending, Running, and Cancelling status indexes (no full table scan).
 
         Args:
             pending_timeout_minutes: Timeout for Pending status (default: 10)
             running_timeout_minutes: Timeout for Running status (default: 30)
+            cancelling_timeout_minutes: Timeout for Cancelling status (default: 3)
 
         Returns:
             List of stuck executions with display fields populated
@@ -747,10 +777,11 @@ class ExecutionRepository(BaseRepository):
         now = datetime.utcnow()
         stuck_executions: list[WorkflowExecution] = []
 
-        # Query status indexes for Pending and Running executions
+        # Query status indexes for Pending, Running, and Cancelling executions
         for status_value, timeout_minutes in [
             (ExecutionStatus.PENDING.value, pending_timeout_minutes),
-            (ExecutionStatus.RUNNING.value, running_timeout_minutes)
+            (ExecutionStatus.RUNNING.value, running_timeout_minutes),
+            (ExecutionStatus.CANCELLING.value, cancelling_timeout_minutes)
         ]:
             # Query status index using range query
             filter_query = (
