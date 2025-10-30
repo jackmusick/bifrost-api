@@ -7,7 +7,7 @@ Mocks file system operations to test in isolation.
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from shared.services.workspace_service import WorkspaceService, get_workspace_service
 
@@ -94,7 +94,7 @@ class TestWorkspaceServiceFileOperations:
 
             assert len(files) >= 0
 
-    def test_read_workflow_file(self, mock_filesystem):
+    async def test_read_workflow_file(self, mock_filesystem):
         """Should read workflow file contents"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
@@ -113,11 +113,11 @@ class TestWorkspaceServiceFileOperations:
             service = WorkspaceService()
             # We need to mock the division operator
             with patch.object(Path, '__truediv__', return_value=file_path):
-                content = service.read_file("workflow.py")
+                content = await service.read_file("workflow.py")
 
             assert isinstance(content, bytes)
 
-    def test_write_workflow_file(self, mock_filesystem):
+    async def test_write_workflow_file(self, mock_filesystem):
         """Should write file to workspace"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
@@ -133,17 +133,22 @@ class TestWorkspaceServiceFileOperations:
             file_path.is_file.return_value = False
             file_path.parent = MagicMock()
             file_path.parent.mkdir.return_value = None
-            file_path.write_bytes.return_value = None
-            file_path.stat.return_value = MagicMock(st_size=100, st_mtime=1000000000)
 
             service = WorkspaceService()
-            with patch.object(Path, '__truediv__', return_value=file_path):
-                result = service.write_file("new_workflow.py", b"new content")
+
+            # Mock aiofiles operations with AsyncMock
+            mock_file = AsyncMock()
+            mock_file.write = AsyncMock(return_value=None)
+
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.open', return_value=mock_file), \
+                 patch('aiofiles.os.stat', return_value=MagicMock(st_size=100, st_mtime=1000000000)):
+                result = await service.write_file("new_workflow.py", b"new content")
 
             assert result is not None
             assert "path" in result
 
-    def test_delete_workflow_file(self, mock_filesystem):
+    async def test_delete_workflow_file(self, mock_filesystem):
         """Should delete file from workspace"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             # Setup workspace
@@ -157,11 +162,11 @@ class TestWorkspaceServiceFileOperations:
             file_path = workspace / "workflow.py"
             file_path.exists.return_value = True
             file_path.is_file.return_value = True
-            file_path.unlink.return_value = None
 
             service = WorkspaceService()
-            with patch.object(Path, '__truediv__', return_value=file_path):
-                service.delete_file("workflow.py")
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.os.unlink', return_value=None):
+                await service.delete_file("workflow.py")
 
             # Should not raise exception
 
@@ -224,7 +229,7 @@ class TestWorkspaceServiceValidation:
 class TestWorkspaceServiceErrors:
     """Test error handling"""
 
-    def test_handles_missing_file(self, mock_filesystem):
+    async def test_handles_missing_file(self, mock_filesystem):
         """Should handle file not found"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -240,9 +245,9 @@ class TestWorkspaceServiceErrors:
 
             with pytest.raises(FileNotFoundError):
                 with patch.object(Path, '__truediv__', return_value=file_path):
-                    service.read_file("missing.py")
+                    await service.read_file("missing.py")
 
-    def test_handles_file_read_errors(self, mock_filesystem):
+    async def test_handles_file_read_errors(self, mock_filesystem):
         """Should handle file read failures"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -254,15 +259,20 @@ class TestWorkspaceServiceErrors:
             file_path = workspace / "error.py"
             file_path.exists.return_value = True
             file_path.is_file.return_value = True
-            file_path.read_bytes.side_effect = OSError("Read error")
 
             service = WorkspaceService()
 
-            with pytest.raises(OSError):
-                with patch.object(Path, '__truediv__', return_value=file_path):
-                    service.read_file("error.py")
+            # Mock aiofiles.open to raise OSError
+            mock_file = MagicMock()
+            mock_file.__aenter__ = MagicMock(side_effect=OSError("Read error"))
+            mock_file.__aexit__ = MagicMock(return_value=None)
 
-    def test_handles_file_write_errors(self, mock_filesystem):
+            with pytest.raises(OSError):
+                with patch.object(Path, '__truediv__', return_value=file_path), \
+                     patch('aiofiles.open', return_value=mock_file):
+                    await service.read_file("error.py")
+
+    async def test_handles_file_write_errors(self, mock_filesystem):
         """Should handle file write failures"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -280,7 +290,7 @@ class TestWorkspaceServiceErrors:
 
             with pytest.raises(OSError):
                 with patch.object(Path, '__truediv__', return_value=file_path):
-                    service.write_file("write_error.py", b"content")
+                    await service.write_file("write_error.py", b"content")
 
     def test_handles_missing_workspace_directory(self, mock_filesystem):
         """Should raise RuntimeError when workspace directory doesn't exist"""
@@ -319,7 +329,7 @@ class TestWorkspaceServiceDirectories:
 
             # Should not raise exception
 
-    def test_delete_directory_recursive(self, mock_filesystem):
+    async def test_delete_directory_recursive(self, mock_filesystem):
         """Should delete directory recursively"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -336,11 +346,11 @@ class TestWorkspaceServiceDirectories:
 
             with patch("shutil.rmtree") as mock_rmtree:
                 with patch.object(Path, '__truediv__', return_value=dir_path):
-                    service.delete_directory("old_dir", recursive=True)
+                    await service.delete_directory("old_dir", recursive=True)
 
                 mock_rmtree.assert_called()
 
-    def test_delete_empty_directory(self, mock_filesystem):
+    async def test_delete_empty_directory(self, mock_filesystem):
         """Should delete empty directory without recursive flag"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -352,14 +362,14 @@ class TestWorkspaceServiceDirectories:
             dir_path = workspace / "empty_dir"
             dir_path.exists.return_value = True
             dir_path.is_dir.return_value = True
-            dir_path.rmdir.return_value = None
 
             service = WorkspaceService()
 
-            with patch.object(Path, '__truediv__', return_value=dir_path):
-                service.delete_directory("empty_dir", recursive=False)
+            with patch.object(Path, '__truediv__', return_value=dir_path), \
+                 patch('aiofiles.os.rmdir', return_value=None) as mock_rmdir:
+                await service.delete_directory("empty_dir", recursive=False)
 
-            dir_path.rmdir.assert_called()
+            mock_rmdir.assert_called()
 
 
 # ====================  Singleton Tests ====================
@@ -484,7 +494,7 @@ class TestWorkspaceServiceAdditionalCoverage:
             assert any(f["name"] == "file1.py" for f in files)
             assert any(f["name"] == "subdir" for f in files)
 
-    def test_read_file_returns_bytes(self, mock_filesystem):
+    async def test_read_file_returns_bytes(self, mock_filesystem):
         """Should return file content as bytes"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -497,17 +507,26 @@ class TestWorkspaceServiceAdditionalCoverage:
             file_path.exists.return_value = True
             file_path.is_file.return_value = True
             test_bytes = b"\x00\x01\x02\x03"
-            file_path.read_bytes.return_value = test_bytes
 
             service = WorkspaceService()
 
-            with patch.object(Path, '__truediv__', return_value=file_path):
-                content = service.read_file("data.bin")
+            # Mock aiofiles.open - context manager returns a mock with read() returning test bytes
+            async def mock_read():
+                return test_bytes
+
+            mock_file = MagicMock()
+            mock_file.__aenter__ = AsyncMock(return_value=mock_file)
+            mock_file.__aexit__ = AsyncMock(return_value=None)
+            mock_file.read = mock_read
+
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.open', return_value=mock_file):
+                content = await service.read_file("data.bin")
 
             assert content == test_bytes
             assert isinstance(content, bytes)
 
-    def test_write_file_creates_parents(self, mock_filesystem):
+    async def test_write_file_creates_parents(self, mock_filesystem):
         """Should create parent directories if needed"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -519,20 +538,24 @@ class TestWorkspaceServiceAdditionalCoverage:
             file_path = workspace / "nested/path/file.py"
             file_path.parent = MagicMock()
             file_path.parent.mkdir.return_value = None
-            file_path.write_bytes.return_value = None
-            file_path.stat.return_value = MagicMock(st_size=50, st_mtime=1000000000)
 
             service = WorkspaceService()
 
-            with patch.object(Path, '__truediv__', return_value=file_path):
-                result = service.write_file("nested/path/file.py", b"content")
+            # Mock aiofiles operations with AsyncMock
+            mock_file = AsyncMock()
+            mock_file.write = AsyncMock(return_value=None)
+
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.open', return_value=mock_file), \
+                 patch('aiofiles.os.stat', return_value=MagicMock(st_size=50, st_mtime=1000000000)):
+                result = await service.write_file("nested/path/file.py", b"content")
 
             # Parent should be created
             file_path.parent.mkdir.assert_called()
             assert "path" in result
             assert result["size"] == 50
 
-    def test_delete_file_not_a_file(self, mock_filesystem):
+    async def test_delete_file_not_a_file(self, mock_filesystem):
         """Should reject deleting non-files"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -549,7 +572,7 @@ class TestWorkspaceServiceAdditionalCoverage:
 
             with pytest.raises(ValueError):
                 with patch.object(Path, '__truediv__', return_value=file_path):
-                    service.delete_file("not_a_file")
+                    await service.delete_file("not_a_file")
 
     def test_list_files_with_relative_path(self, mock_filesystem):
         """Should list files from relative path"""
@@ -596,7 +619,7 @@ class TestWorkspaceServiceAdditionalCoverage:
                 with patch.object(Path, '__truediv__', return_value=dir_path):
                     service.create_directory("existing")
 
-    def test_delete_directory_not_found(self, mock_filesystem):
+    async def test_delete_directory_not_found(self, mock_filesystem):
         """Should reject deleting non-existent directory"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -612,9 +635,9 @@ class TestWorkspaceServiceAdditionalCoverage:
 
             with pytest.raises(FileNotFoundError):
                 with patch.object(Path, '__truediv__', return_value=dir_path):
-                    service.delete_directory("missing_dir")
+                    await service.delete_directory("missing_dir")
 
-    def test_delete_directory_not_a_directory(self, mock_filesystem):
+    async def test_delete_directory_not_a_directory(self, mock_filesystem):
         """Should reject deleting non-directories"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -631,4 +654,4 @@ class TestWorkspaceServiceAdditionalCoverage:
 
             with pytest.raises(ValueError):
                 with patch.object(Path, '__truediv__', return_value=file_path):
-                    service.delete_directory("file.txt")
+                    await service.delete_directory("file.txt")
