@@ -9,6 +9,8 @@ from typing import List
 import hashlib
 import os
 from datetime import datetime, UTC
+import aiofiles
+import aiofiles.os
 
 from shared.models import FileMetadata, FileContentResponse, FileType
 
@@ -118,7 +120,7 @@ def list_directory(relative_path: str = "") -> List[FileMetadata]:
     return results
 
 
-def read_file(relative_path: str) -> FileContentResponse:
+async def read_file(relative_path: str) -> FileContentResponse:
     """
     Read file content with metadata.
     Automatically detects binary files and returns them base64 encoded.
@@ -143,21 +145,21 @@ def read_file(relative_path: str) -> FileContentResponse:
         raise ValueError(f"Not a file: {relative_path}")
 
     # Get file stats
-    stat = file_path.stat()
+    stat = await aiofiles.os.stat(file_path)
 
     # Try to read as UTF-8 text first
     encoding = "utf-8"
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+            content = await f.read()
         content_bytes = content.encode('utf-8')
     except UnicodeDecodeError:
         # File is binary, read as bytes and encode to base64
         encoding = "base64"
         try:
             import base64
-            with open(file_path, 'rb') as f:
-                binary_content = f.read()
+            async with aiofiles.open(file_path, 'rb') as f:
+                binary_content = await f.read()
             content = base64.b64encode(binary_content).decode('ascii')
             content_bytes = binary_content
         except PermissionError:
@@ -185,7 +187,7 @@ def read_file(relative_path: str) -> FileContentResponse:
     )
 
 
-def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> FileContentResponse:
+async def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> FileContentResponse:
     """
     Write file content atomically.
 
@@ -217,29 +219,29 @@ def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> Fil
             # Decode base64 and write as binary
             import base64
             binary_content = base64.b64decode(content)
-            with open(temp_path, 'wb') as f:
-                f.write(binary_content)
+            async with aiofiles.open(temp_path, 'wb') as f:
+                await f.write(binary_content)
             # For etag calculation
             content_bytes = binary_content
         else:
             # Write as UTF-8 text
-            with open(temp_path, 'w', encoding='utf-8') as f:
-                f.write(content)
+            async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+                await f.write(content)
             content_bytes = content.encode('utf-8')
 
         # Atomic rename (overwrites existing file)
-        temp_path.replace(file_path)
+        await aiofiles.os.replace(temp_path, file_path)
     except PermissionError:
         if temp_path.exists():
-            temp_path.unlink()
+            await aiofiles.os.unlink(temp_path)
         raise PermissionError(f"Permission denied: {relative_path}")
     except Exception as e:
         if temp_path.exists():
-            temp_path.unlink()
+            await aiofiles.os.unlink(temp_path)
         raise ValueError(f"Error writing file: {str(e)}")
 
     # Get updated file stats
-    stat = file_path.stat()
+    stat = await aiofiles.os.stat(file_path)
 
     # Generate etag from content
     etag = hashlib.md5(content_bytes).hexdigest()
@@ -300,7 +302,7 @@ def create_folder(relative_path: str) -> FileMetadata:
     )
 
 
-def delete_path(relative_path: str) -> None:
+async def delete_path(relative_path: str) -> None:
     """
     Delete a file or folder.
 
@@ -321,17 +323,18 @@ def delete_path(relative_path: str) -> None:
         if path.is_dir():
             # Remove directory and all contents
             import shutil
-            shutil.rmtree(path)
+            # shutil operations are not async, but they're fast for local filesystems
+            await aiofiles.os.wrap(shutil.rmtree)(path)
         else:
             # Remove file
-            path.unlink()
+            await aiofiles.os.unlink(path)
     except PermissionError:
         raise PermissionError(f"Permission denied: {relative_path}")
     except Exception as e:
         raise ValueError(f"Error deleting path: {str(e)}")
 
 
-def rename_path(old_path: str, new_path: str) -> FileMetadata:
+async def rename_path(old_path: str, new_path: str) -> FileMetadata:
     """
     Rename or move a file or folder.
 
@@ -360,14 +363,14 @@ def rename_path(old_path: str, new_path: str) -> FileMetadata:
     new_resolved.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        old_resolved.rename(new_resolved)
+        await aiofiles.os.rename(old_resolved, new_resolved)
     except PermissionError:
         raise PermissionError(f"Permission denied: {old_path}")
     except Exception as e:
         raise ValueError(f"Error renaming path: {str(e)}")
 
     # Get stats of renamed item
-    stat = new_resolved.stat()
+    stat = await aiofiles.os.stat(new_resolved)
     modified = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
 
     file_type = FileType.FOLDER if new_resolved.is_dir() else FileType.FILE

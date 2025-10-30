@@ -10,6 +10,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import aiofiles
+import aiofiles.os
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +82,7 @@ class WorkspaceService:
         logger.debug(f"Listed {len(items)} items from workspace")
         return items
 
-    def read_file(self, file_path: str) -> bytes:
+    async def read_file(self, file_path: str) -> bytes:
         """
         Read file content from workspace.
 
@@ -98,12 +100,14 @@ class WorkspaceService:
         if not full_path.is_file():
             raise ValueError(f"Path is not a file: {file_path}")
 
-        content = full_path.read_bytes()
+        async with aiofiles.open(full_path, 'rb') as f:
+            content = await f.read()
+
         logger.debug(f"Read {len(content)} bytes from {file_path}")
 
         return content
 
-    def write_file(self, file_path: str, content: bytes) -> dict[str, Any]:
+    async def write_file(self, file_path: str, content: bytes) -> dict[str, Any]:
         """
         Write file content to workspace.
         Creates parent directories if needed.
@@ -121,10 +125,11 @@ class WorkspaceService:
         full_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write file
-        full_path.write_bytes(content)
+        async with aiofiles.open(full_path, 'wb') as f:
+            await f.write(content)
 
         # Get file stats
-        stat = full_path.stat()
+        stat = await aiofiles.os.stat(full_path)
 
         logger.info(f"Wrote {len(content)} bytes to {file_path}")
 
@@ -134,7 +139,7 @@ class WorkspaceService:
             'lastModified': datetime.fromtimestamp(stat.st_mtime).isoformat()
         }
 
-    def delete_file(self, file_path: str) -> None:
+    async def delete_file(self, file_path: str) -> None:
         """
         Delete file from workspace.
 
@@ -149,7 +154,7 @@ class WorkspaceService:
         if not full_path.is_file():
             raise ValueError(f"Path is not a file: {file_path}")
 
-        full_path.unlink()
+        await aiofiles.os.unlink(full_path)
         logger.info(f"Deleted file: {file_path}")
 
     def create_directory(self, directory_path: str) -> None:
@@ -167,7 +172,7 @@ class WorkspaceService:
         full_path.mkdir(parents=True, exist_ok=False)
         logger.info(f"Created directory: {directory_path}")
 
-    def delete_directory(self, directory_path: str, recursive: bool = True) -> None:
+    async def delete_directory(self, directory_path: str, recursive: bool = True) -> None:
         """
         Delete directory from workspace.
 
@@ -185,9 +190,9 @@ class WorkspaceService:
 
         if recursive:
             import shutil
-            shutil.rmtree(full_path)
+            await aiofiles.os.wrap(shutil.rmtree)(full_path)
         else:
-            full_path.rmdir()  # Only works if empty
+            await aiofiles.os.rmdir(full_path)  # Only works if empty
 
         logger.info(f"Deleted directory: {directory_path}")
 

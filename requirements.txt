@@ -8,6 +8,7 @@ azure-storage-queue>=12.14.0
 
 # HTTP and async
 aiohttp
+aiofiles
 requests
 httpx
 

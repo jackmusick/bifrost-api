@@ -122,9 +122,9 @@ class TestFileOperations:
         with pytest.raises(ValueError, match="Not a directory"):
             list_directory("workflows/sync_users.py")
 
-    def test_read_file_success(self, temp_home):
+    async def test_read_file_success(self, temp_home):
         """Test reading file content"""
-        response = read_file("workflows/sync_users.py")
+        response = await read_file("workflows/sync_users.py")
 
         assert response.path == "workflows/sync_users.py"
         assert "import bifrost" in response.content
@@ -134,22 +134,22 @@ class TestFileOperations:
         assert len(response.etag) > 0
         assert response.modified is not None
 
-    def test_read_file_not_found(self, temp_home):
+    async def test_read_file_not_found(self, temp_home):
         """Test reading non-existent file"""
         with pytest.raises(FileNotFoundError):
-            read_file("workflows/non_existent.py")
+            await read_file("workflows/non_existent.py")
 
-    def test_read_file_directory(self, temp_home):
+    async def test_read_file_directory(self, temp_home):
         """Test reading a directory (not a file) raises error"""
         with pytest.raises(ValueError, match="Not a file"):
-            read_file("workflows")
+            await read_file("workflows")
 
-    def test_write_file_new(self, temp_home):
+    async def test_write_file_new(self, temp_home):
         """Test writing a new file"""
         home_path = temp_home["home_path"]
 
         content = "import bifrost\n\ndef run(context):\n    context.info('New workflow')"
-        response = write_file("workflows/new_workflow.py", content)
+        response = await write_file("workflows/new_workflow.py", content)
 
         assert response.path == "workflows/new_workflow.py"
         assert response.content == content
@@ -162,17 +162,17 @@ class TestFileOperations:
         assert file_path.exists()
         assert file_path.read_text() == content
 
-    def test_write_file_update_existing(self, temp_home):
+    async def test_write_file_update_existing(self, temp_home):
         """Test updating an existing file"""
         home_path = temp_home["home_path"]
 
         # Read original content
-        original = read_file("workflows/sync_users.py")
+        original = await read_file("workflows/sync_users.py")
         original_etag = original.etag
 
         # Write new content
         new_content = "import bifrost\n\ndef run(context):\n    context.info('Updated')"
-        response = write_file("workflows/sync_users.py", new_content)
+        response = await write_file("workflows/sync_users.py", new_content)
 
         assert response.content == new_content
         assert response.etag != original_etag  # ETag should change
@@ -181,12 +181,12 @@ class TestFileOperations:
         file_path = home_path / "workflows" / "sync_users.py"
         assert file_path.read_text() == new_content
 
-    def test_write_file_creates_parent_directory(self, temp_home):
+    async def test_write_file_creates_parent_directory(self, temp_home):
         """Test writing file creates parent directories"""
         home_path = temp_home["home_path"]
 
         content = "test content"
-        response = write_file("new_folder/subfolder/test.py", content)
+        response = await write_file("new_folder/subfolder/test.py", content)
 
         assert response.path == "new_folder/subfolder/test.py"
 
@@ -195,13 +195,13 @@ class TestFileOperations:
         assert file_path.exists()
         assert file_path.read_text() == content
 
-    def test_write_file_atomic(self, temp_home):
+    async def test_write_file_atomic(self, temp_home):
         """Test atomic write behavior"""
         home_path = temp_home["home_path"]
 
         # Write file
         content = "test content"
-        write_file("workflows/atomic_test.py", content)
+        await write_file("workflows/atomic_test.py", content)
 
         # Verify temp file doesn't exist after write
         file_path = home_path / "workflows" / "atomic_test.py"
@@ -210,10 +210,10 @@ class TestFileOperations:
         assert file_path.exists()
         assert not temp_path.exists()  # Temp file should be removed
 
-    def test_write_file_rejects_non_utf8_encoding(self, temp_home):
+    async def test_write_file_rejects_non_utf8_encoding(self, temp_home):
         """Test write_file rejects non-UTF-8 encoding"""
         with pytest.raises(ValueError, match="Only UTF-8 and base64 encodings are supported"):
-            write_file("workflows/test.py", "content", encoding="latin-1")
+            await write_file("workflows/test.py", "content", encoding="latin-1")
 
 
 class TestBifrostTypesEndpoint:

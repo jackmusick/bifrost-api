@@ -4,7 +4,6 @@ Handles file browsing, reading, and writing for browser-based code editor
 Thin wrapper - business logic is in shared.editor.file_operations
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -112,9 +111,9 @@ async def editor_list_files(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"Listing files, path: {path}")
 
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        files = await loop.run_in_executor(None, list_directory, path)
+        # list_directory is synchronous (stat operations are fast for local disk)
+        # Only file read/write operations are async
+        files = list_directory(path)
 
         # Convert to JSON
         files_json = [f.model_dump() for f in files]
@@ -186,9 +185,8 @@ async def editor_read_file(req: func.HttpRequest) -> func.HttpResponse:
 
         logger.info(f"Reading file, path: {path}")
 
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, read_file, path)
+        # read_file is now async
+        response = await read_file(path)
 
         return func.HttpResponse(
             body=response.model_dump_json(),
@@ -257,11 +255,8 @@ async def editor_write_file(req: func.HttpRequest) -> func.HttpResponse:
             f"size: {len(write_request.content)} bytes"
         )
 
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            write_file,
+        # write_file is now async
+        response = await write_file(
             write_request.path,
             write_request.content,
             write_request.encoding,
