@@ -49,14 +49,16 @@ class BlobStorageService:
             connection_string = os.environ.get("AzureWebJobsStorage")
 
         if not connection_string:
-            raise ValueError("AzureWebJobsStorage environment variable not set")
+            raise ValueError(
+                "AzureWebJobsStorage environment variable not set")
 
         # Expand UseDevelopmentStorage=true shorthand for blob storage
         if connection_string == "UseDevelopmentStorage=true":
-            connection_string = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+            connection_string = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10000/devstoreaccount1;QueueEndpoint=http://localhost:10001/devstoreaccount1;TableEndpoint=http://localhost:10002/devstoreaccount1;"
 
         self.connection_string = connection_string
-        self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        self.blob_service_client = BlobServiceClient.from_connection_string(
+            connection_string)
         self._initialized_containers: set[str] = set()
 
         logger.debug("BlobStorageService initialized")
@@ -90,7 +92,8 @@ class BlobStorageService:
         if container_name in self._initialized_containers:
             return self.blob_service_client.get_container_client(container_name)
 
-        container_client = self.blob_service_client.get_container_client(container_name)
+        container_client = self.blob_service_client.get_container_client(
+            container_name)
 
         # Get or create a lock for this specific container
         async with _container_locks_lock:
@@ -113,12 +116,14 @@ class BlobStorageService:
                 except ResourceExistsError:
                     # Race condition: container was created between exists() and create_container()
                     # This should be rare now with locks, but keeping for safety
-                    logger.debug(f"Blob container already exists (race condition): {container_name}")
+                    logger.debug(
+                        f"Blob container already exists (race condition): {container_name}")
                 except Exception as e:
                     logger.error(f"Failed to create container: {str(e)}")
                     raise
             else:
-                logger.debug(f"Blob container already exists: {container_name}")
+                logger.debug(
+                    f"Blob container already exists: {container_name}")
 
             # Mark as initialized
             self._initialized_containers.add(container_name)
@@ -140,7 +145,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload as JSON
@@ -176,7 +182,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             exists = await blob_client.exists()
@@ -230,7 +237,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload content
@@ -270,7 +278,8 @@ class BlobStorageService:
             blob_path = f"{execution_id}/result.{ext}"
 
             try:
-                container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+                container_client = self.blob_service_client.get_container_client(
+                    EXECUTION_CONTAINER)
                 blob_client = container_client.get_blob_client(blob_path)
 
                 exists = await blob_client.exists()
@@ -297,7 +306,8 @@ class BlobStorageService:
             except Exception as e:
                 logger.error(
                     f"Failed to retrieve result from blob storage: {str(e)}",
-                    extra={"execution_id": execution_id, "blob_path": blob_path},
+                    extra={"execution_id": execution_id,
+                           "blob_path": blob_path},
                     exc_info=True
                 )
                 continue
@@ -320,7 +330,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload as JSON
@@ -356,7 +367,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             exists = await blob_client.exists()
@@ -399,7 +411,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload as JSON
@@ -408,7 +421,8 @@ class BlobStorageService:
 
             logger.info(
                 f"Uploaded variables to blob storage: {blob_path}",
-                extra={"execution_id": execution_id, "variable_count": len(variables)}
+                extra={"execution_id": execution_id,
+                       "variable_count": len(variables)}
             )
 
             return blob_path
@@ -435,7 +449,8 @@ class BlobStorageService:
 
         try:
             await self._ensure_container_exists(EXECUTION_CONTAINER)
-            container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
+            container_client = self.blob_service_client.get_container_client(
+                EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             exists = await blob_client.exists()
@@ -450,7 +465,8 @@ class BlobStorageService:
 
             logger.debug(
                 f"Retrieved variables from blob storage: {blob_path}",
-                extra={"execution_id": execution_id, "variable_count": len(variables)}
+                extra={"execution_id": execution_id,
+                       "variable_count": len(variables)}
             )
 
             return variables
@@ -493,7 +509,8 @@ class BlobStorageService:
 
         # Validate file size
         if file_size and file_size > max_size_bytes:
-            raise ValueError(f"File exceeds maximum size of {max_size_bytes/1024/1024} MB")
+            raise ValueError(
+                f"File exceeds maximum size of {max_size_bytes/1024/1024} MB")
 
         # Generate unique blob name with original filename preserved
         safe_filename = uuid.uuid4().hex + '_' + file_name
@@ -502,7 +519,8 @@ class BlobStorageService:
 
         # Ensure container exists
         await self._ensure_container_exists(container_name)
-        container_client = self.blob_service_client.get_container_client(container_name)
+        container_client = self.blob_service_client.get_container_client(
+            container_name)
         blob_client = container_client.get_blob_client(blob_name)
 
         # Generate SAS token with write permission
@@ -512,7 +530,8 @@ class BlobStorageService:
 
         # Extract account key from connection string
         # Parse connection string to get account key
-        conn_parts = dict(item.split('=', 1) for item in self.connection_string.split(';') if '=' in item)
+        conn_parts = dict(item.split('=', 1)
+                          for item in self.connection_string.split(';') if '=' in item)
         account_key = conn_parts.get('AccountKey')
 
         sas_token = generate_blob_sas(
@@ -564,7 +583,8 @@ class BlobStorageService:
         try:
             # Ensure container exists
             await self._ensure_container_exists(container_name)
-            container_client = self.blob_service_client.get_container_client(container_name)
+            container_client = self.blob_service_client.get_container_client(
+                container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Upload with content type
@@ -614,13 +634,15 @@ class BlobStorageService:
         """
         try:
             await self._ensure_container_exists(container_name)
-            container_client = self.blob_service_client.get_container_client(container_name)
+            container_client = self.blob_service_client.get_container_client(
+                container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Check if blob exists
             exists = await blob_client.exists()
             if not exists:
-                raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
+                raise FileNotFoundError(
+                    f"Blob not found: {container_name}/{blob_name}")
 
             # Download blob
             download_stream = await blob_client.download_blob()
@@ -674,13 +696,15 @@ class BlobStorageService:
         """
         try:
             await self._ensure_container_exists(container_name)
-            container_client = self.blob_service_client.get_container_client(container_name)
+            container_client = self.blob_service_client.get_container_client(
+                container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Check if blob exists
             exists = await blob_client.exists()
             if not exists:
-                raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
+                raise FileNotFoundError(
+                    f"Blob not found: {container_name}/{blob_name}")
 
             # Get account info
             account_name = self.blob_service_client.account_name
@@ -688,10 +712,12 @@ class BlobStorageService:
                 raise ValueError("Blob storage account name not available")
 
             # Extract account key from connection string
-            conn_parts = dict(item.split('=', 1) for item in self.connection_string.split(';') if '=' in item)
+            conn_parts = dict(item.split('=', 1)
+                              for item in self.connection_string.split(';') if '=' in item)
             account_key = conn_parts.get('AccountKey')
             if not account_key:
-                raise ValueError("Blob storage account key not available in connection string")
+                raise ValueError(
+                    "Blob storage account key not available in connection string")
 
             # Generate SAS token with read permission
             sas_token = generate_blob_sas(
@@ -751,12 +777,14 @@ class BlobStorageService:
         """
         try:
             await self._ensure_container_exists(container_name)
-            container_client = self.blob_service_client.get_container_client(container_name)
+            container_client = self.blob_service_client.get_container_client(
+                container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             exists = await blob_client.exists()
             if not exists:
-                raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
+                raise FileNotFoundError(
+                    f"Blob not found: {container_name}/{blob_name}")
 
             properties = await blob_client.get_blob_properties()
 
@@ -797,12 +825,14 @@ class BlobStorageService:
         """
         try:
             await self._ensure_container_exists(container_name)
-            container_client = self.blob_service_client.get_container_client(container_name)
+            container_client = self.blob_service_client.get_container_client(
+                container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             exists = await blob_client.exists()
             if not exists:
-                logger.debug(f"Blob does not exist: {container_name}/{blob_name}")
+                logger.debug(
+                    f"Blob does not exist: {container_name}/{blob_name}")
                 return False
 
             await blob_client.delete_blob()

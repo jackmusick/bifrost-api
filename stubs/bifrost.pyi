@@ -72,8 +72,7 @@ class ExecutionContext:
         organization: Organization | None,
         is_platform_admin: bool,
         is_function_key: bool,
-        execution_id: str,
-        _config: dict[str, Any] | None = None
+        execution_id: str
     ) -> None: ...
 
     # Organization properties
@@ -106,18 +105,6 @@ class ExecutionContext:
     @property
     def is_global_scope(self) -> bool:
         """True if executing in GLOBAL scope (no organization)."""
-        ...
-
-    def get_config(self, key: str, default: Any = None) -> Any:
-        """Get configuration value with automatic secret resolution."""
-        ...
-
-    def has_config(self, key: str) -> bool:
-        """Check if configuration key exists."""
-        ...
-
-    async def get_oauth_connection(self, connection_name: str) -> OAuthCredentials:
-        """Get OAuth credentials for a connection."""
         ...
 
     async def finalize_execution(self) -> dict[str, Any]:
@@ -398,35 +385,127 @@ class workflows:
 
 class oauth:
     """
-    OAuth connection management SDK.
+    OAuth token management SDK.
 
-    Provides access to OAuth credentials with automatic token resolution
-    from Azure Key Vault.
+    Provides access to OAuth tokens with automatic resolution from Azure Key Vault.
 
     Example:
         from bifrost import oauth
 
-        # Get connection
-        creds = await oauth.get_connection("HaloPSA")
+        # Get token
+        token = await oauth.get_token("microsoft")
+        if token:
+            access_token = token["access_token"]
+            # Use the token for API calls
 
-        # Use in API request
-        headers = {"Authorization": creds.get_auth_header()}
-        response = requests.get("https://api.example.com/data", headers=headers)
+        # List configured providers
+        providers = await oauth.list_providers()
+
+        # Set a token (admin only)
+        await oauth.set_token("microsoft", {
+            "access_token": "ya29.xxx",
+            "refresh_token": "1//xxx",
+            "expires_at": 1234567890,
+            "token_type": "Bearer"
+        })
+
+        # Delete a token (admin only)
+        await oauth.delete_token("microsoft")
+
+        # Refresh a token
+        new_token = await oauth.refresh_token("microsoft")
     """
     @staticmethod
-    async def get_connection(connection_name: str) -> OAuthCredentials:
+    async def get_token(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
         """
-        Get OAuth credentials for a connection.
+        Get OAuth token for a provider.
 
         Args:
-            connection_name: Name of the OAuth connection
+            provider: OAuth provider name (e.g., "microsoft", "google")
+            org_id: Organization ID (defaults to current org from context)
 
         Returns:
-            OAuthCredentials object with access_token and metadata
+            dict | None: OAuth token data (access_token, refresh_token, expires_at, etc.)
+                        or None if not found
 
         Raises:
-            ValueError: If connection not found or not authorized
-            KeyError: If credentials cannot be resolved from Key Vault
-            RuntimeError: If no execution context available
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def set_token(
+        provider: str,
+        token_data: dict[str, Any],
+        org_id: str | None = None
+    ) -> None:
+        """
+        Set OAuth token for a provider.
+
+        Requires: Permission to manage OAuth tokens (typically admin)
+
+        Args:
+            provider: OAuth provider name (e.g., "microsoft", "google")
+            token_data: OAuth token data (access_token, refresh_token, expires_at, etc.)
+            org_id: Organization ID (defaults to current org from context)
+
+        Raises:
+            PermissionError: If user lacks permission
+            RuntimeError: If no execution context
+            ValueError: If token_data is invalid
+        """
+        ...
+
+    @staticmethod
+    async def list_providers(org_id: str | None = None) -> list[str]:
+        """
+        List all OAuth providers with stored tokens.
+
+        Args:
+            org_id: Organization ID (defaults to current org from context)
+
+        Returns:
+            list[str]: List of provider names
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def delete_token(provider: str, org_id: str | None = None) -> bool:
+        """
+        Delete OAuth token for a provider.
+
+        Requires: Permission to manage OAuth tokens (typically admin)
+
+        Args:
+            provider: OAuth provider name (e.g., "microsoft", "google")
+            org_id: Organization ID (defaults to current org from context)
+
+        Returns:
+            bool: True if deleted, False if not found
+
+        Raises:
+            PermissionError: If user lacks permission
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def refresh_token(provider: str, org_id: str | None = None) -> dict[str, Any]:
+        """
+        Refresh OAuth token for a provider.
+
+        Args:
+            provider: OAuth provider name (e.g., "microsoft", "google")
+            org_id: Organization ID (defaults to current org from context)
+
+        Returns:
+            dict: New OAuth token data
+
+        Raises:
+            RuntimeError: If no execution context or refresh fails
+            ValueError: If provider not found or refresh token invalid
         """
         ...
