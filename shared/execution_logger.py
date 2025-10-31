@@ -103,7 +103,7 @@ class ExecutionLogger:
         org_id: str | None,
         user_id: str,
         status: ExecutionStatus,
-        result: dict[str, Any] | str | None = None,
+        result: dict[str, Any] | list[Any] | str | None = None,
         error_message: str | None = None,
         error_type: str | None = None,
         error_details: dict[str, Any] | None = None,
@@ -124,7 +124,7 @@ class ExecutionLogger:
             org_id: Organization ID (None for GLOBAL scope)
             user_id: User ID
             status: Execution status
-            result: Workflow result (dict or str - if success)
+            result: Workflow result (dict, list, or str - if success)
             error_message: Error message (if failed)
             error_type: Error type (if failed)
             error_details: Error details (if failed)
@@ -139,7 +139,8 @@ class ExecutionLogger:
         # Handle result storage (blob for large, table for small)
         result_in_blob = False
         if result is not None:
-            result_json = json.dumps(result) if isinstance(result, dict) else result
+            # Convert result to JSON string if it's not already a string
+            result_json = result if isinstance(result, str) else json.dumps(result)
             result_size = len(result_json.encode('utf-8'))
 
             if result_size > BLOB_THRESHOLD_BYTES:

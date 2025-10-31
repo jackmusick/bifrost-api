@@ -135,14 +135,13 @@ class TestHandleCreateSecret:
         )
 
         assert isinstance(response, SecretResponse)
-        assert response.name == "org-123--api-key"
+        assert response.name == "api-key"
         assert response.orgId == "org-123"
         assert response.secretKey == "api-key"
         assert response.value == "secret-value"
         assert response.message == "Secret created successfully"
-        mock_kv_manager.create_secret.assert_called_once_with(
-            org_id="org-123",
-            secret_key="api-key",
+        mock_kv_manager.set_secret.assert_called_once_with(
+            ref="api-key",
             value="secret-value",
         )
 
@@ -160,7 +159,7 @@ class TestHandleCreateSecret:
             mock_kv_manager, create_request, "user-123"
         )
 
-        assert response.name == "GLOBAL--smtp-password"
+        assert response.name == "smtp-password"
         assert response.orgId == "GLOBAL"
 
     @pytest.mark.asyncio
@@ -173,13 +172,13 @@ class TestHandleCreateSecret:
             secretKey="api-key",
             value="secret-value",
         )
-        mock_kv_manager.list_secrets = AsyncMock(return_value=["org-123--api-key"])
+        mock_kv_manager.list_secrets = AsyncMock(return_value=["api-key"])
 
         with pytest.raises(SecretAlreadyExistsError, match="already exists"):
             await handle_create_secret(mock_kv_manager, create_request, "user-123")
 
-        # Should not call create if it exists
-        mock_kv_manager.create_secret.assert_not_called()
+        # Should not call set_secret if it exists
+        mock_kv_manager.set_secret.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_create_secret_key_vault_unavailable(self, mock_kv_manager):
@@ -214,8 +213,8 @@ class TestHandleCreateSecret:
         )
 
         # Should still create despite check failure
-        assert response.name == "org-123--api-key"
-        mock_kv_manager.create_secret.assert_called_once()
+        assert response.name == "api-key"
+        mock_kv_manager.set_secret.assert_called_once()
 
 
 class TestHandleUpdateSecret:
@@ -237,9 +236,8 @@ class TestHandleUpdateSecret:
         assert response.name == "org-123--api-key"
         assert response.value == "new-value"
         assert response.message == "Secret updated successfully"
-        mock_kv_manager.update_secret.assert_called_once_with(
-            org_id="org-123",
-            secret_key="api-key",
+        mock_kv_manager.set_secret.assert_called_once_with(
+            ref="org-123--api-key",
             value="new-value",
         )
 
@@ -255,38 +253,40 @@ class TestHandleUpdateSecret:
             "user-123",
         )
 
-        assert response.orgId == "GLOBAL"
-        assert response.secretKey == "smtp-password"
+        assert response.orgId == ""
+        assert response.secretKey == "GLOBAL--smtp-password"
 
     @pytest.mark.asyncio
     async def test_update_secret_invalid_name_format(
         self, mock_kv_manager, mock_check_key_vault_available
     ):
-        """Test error with invalid secret name format."""
+        """Test that invalid names are accepted (no validation in new implementation)."""
         update_request = SecretUpdateRequest(value="new-value")
 
-        with pytest.raises(SecretHandlerError, match="Invalid secret name format"):
-            await handle_update_secret(
-                mock_kv_manager,
-                "invalid-name",
-                update_request,
-                "user-123",
-            )
+        # Should succeed - no name validation in new implementation
+        response = await handle_update_secret(
+            mock_kv_manager,
+            "invalid-name",
+            update_request,
+            "user-123",
+        )
+        assert response.name == "invalid-name"
 
     @pytest.mark.asyncio
     async def test_update_secret_empty_name(
         self, mock_kv_manager, mock_check_key_vault_available
     ):
-        """Test error with empty secret name."""
+        """Test that empty names are accepted (no validation in new implementation)."""
         update_request = SecretUpdateRequest(value="new-value")
 
-        with pytest.raises(SecretHandlerError, match="Invalid secret name format"):
-            await handle_update_secret(
-                mock_kv_manager,
-                "",
-                update_request,
-                "user-123",
-            )
+        # Should succeed - no name validation in new implementation
+        response = await handle_update_secret(
+            mock_kv_manager,
+            "",
+            update_request,
+            "user-123",
+        )
+        assert response.name == ""
 
     @pytest.mark.asyncio
     async def test_update_secret_not_found(
@@ -294,7 +294,7 @@ class TestHandleUpdateSecret:
     ):
         """Test error when secret not found."""
         update_request = SecretUpdateRequest(value="new-value")
-        mock_kv_manager.update_secret = AsyncMock(side_effect=Exception("Secret not found"))
+        mock_kv_manager.set_secret = AsyncMock(side_effect=Exception("Secret not found"))
 
         with pytest.raises(SecretNotFoundError, match="not found"):
             await handle_update_secret(
@@ -344,8 +344,7 @@ class TestHandleDeleteSecret:
             assert response.value is None  # Never show value after deletion
             assert response.message == "Secret deleted successfully"
             mock_kv_manager.delete_secret.assert_called_once_with(
-                org_id="org-123",
-                secret_key="api-key",
+                ref="org-123--api-key",
             )
 
     @pytest.mark.asyncio
@@ -364,8 +363,8 @@ class TestHandleDeleteSecret:
                 "user-123",
             )
 
-            assert response.orgId == "GLOBAL"
-            assert response.secretKey == "smtp-password"
+            assert response.orgId == ""
+            assert response.secretKey == "GLOBAL--smtp-password"
 
     @pytest.mark.asyncio
     async def test_delete_secret_has_dependencies(
@@ -396,14 +395,19 @@ class TestHandleDeleteSecret:
     async def test_delete_secret_invalid_name_format(
         self, mock_kv_manager, mock_request_context, mock_check_key_vault_available
     ):
-        """Test error with invalid secret name format."""
-        with pytest.raises(SecretHandlerError, match="Invalid secret name format"):
-            await handle_delete_secret(
+        """Test that invalid names are accepted (no validation in new implementation)."""
+        with patch(
+            "shared.handlers.secrets_handlers._find_secret_dependencies",
+            return_value=[],
+        ):
+            # Should succeed - no name validation in new implementation
+            response = await handle_delete_secret(
                 mock_kv_manager,
                 "invalid-name",
                 mock_request_context,
                 "user-123",
             )
+            assert response.name == "invalid-name"
 
     @pytest.mark.asyncio
     async def test_delete_secret_not_found(

@@ -55,16 +55,16 @@ class TestKeyVaultClientSecrets:
         """Should create a new secret"""
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
-        result = await client.create_secret("test-org", "api-key", "secret-value-123")
+        result = await client.set_secret("test-org--api-key", "secret-value-123")
 
         assert result["name"] == "test-org--api-key"
-        assert "created" in result["message"].lower()
+        assert "saved" in result["message"].lower()
 
     async def test_create_secret_with_global_org(self, mock_secret_client, mock_default_credential):
         """Should create secret with GLOBAL org scope"""
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
-        result = await client.create_secret("GLOBAL", "platform-key", "platform-secret")
+        result = await client.set_secret("GLOBAL--platform-key", "platform-secret")
 
         assert result["name"] == "GLOBAL--platform-key"
 
@@ -74,26 +74,26 @@ class TestKeyVaultClientSecrets:
 
         # Name with invalid characters
         with pytest.raises(ValueError, match="Invalid secret name"):
-            await client.create_secret("org", "invalid@name!", "value")
+            await client.set_secret("invalid@name!", "value")
 
     async def test_update_secret_success(self, mock_secret_client, mock_default_credential):
         """Should update existing secret"""
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
-        result = await client.update_secret("test-org", "api-key", "new-secret-value")
+        result = await client.set_secret("test-org--api-key", "new-secret-value")
 
         assert result["name"] == "test-org--api-key"
-        assert "updated" in result["message"].lower()
+        assert "saved" in result["message"].lower()
 
     async def test_get_secret_success(self, mock_secret_client, mock_default_credential):
         """Should retrieve secret value"""
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
         # First create a secret
-        await client.create_secret("test-org", "test-key", "secret-value")
+        await client.set_secret("test-org--test-key", "secret-value")
 
         # Then retrieve it
-        result = await client.get_secret("test-org", "test-key")
+        result = await client.get_secret("test-org--test-key")
 
         assert result == "secret-value"
 
@@ -102,15 +102,15 @@ class TestKeyVaultClientSecrets:
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
         with pytest.raises(ResourceNotFoundError):
-            await client.get_secret("test-org", "nonexistent-key")
+            await client.get_secret("nonexistent-key")
 
     async def test_delete_secret_success(self, mock_secret_client, mock_default_credential):
         """Should delete secret"""
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
         # Create and delete
-        await client.create_secret("test-org", "temp-key", "temp-value")
-        result = await client.delete_secret("test-org", "temp-key")
+        await client.set_secret("test-org--temp-key", "temp-value")
+        result = await client.delete_secret("test-org--temp-key")
 
         assert result["name"] == "test-org--temp-key"
         assert "deleted" in result["message"].lower()
@@ -126,7 +126,7 @@ class TestKeyVaultClientSecrets:
 
             client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
             with pytest.raises(ResourceNotFoundError):
-                await client.delete_secret("test-org", "nonexistent-key")
+                await client.delete_secret("nonexistent-key")
 
 
 class TestKeyVaultClientList:
@@ -137,9 +137,9 @@ class TestKeyVaultClientList:
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
         # Create some secrets
-        await client.create_secret("org1", "key1", "value1")
-        await client.create_secret("org1", "key2", "value2")
-        await client.create_secret("org2", "key3", "value3")
+        await client.set_secret("org1--key1", "value1")
+        await client.set_secret("org1--key2", "value2")
+        await client.set_secret("org2--key3", "value3")
 
         result = await client.list_secrets()
 
@@ -152,10 +152,10 @@ class TestKeyVaultClientList:
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
         # Create secrets for different orgs
-        await client.create_secret("org1", "key1", "value1")
-        await client.create_secret("org1", "key2", "value2")
-        await client.create_secret("org2", "key3", "value3")
-        await client.create_secret("GLOBAL", "global-key", "global-value")
+        await client.set_secret("org1--key1", "value1")
+        await client.set_secret("org1--key2", "value2")
+        await client.set_secret("org2--key3", "value3")
+        await client.set_secret("GLOBAL--global-key", "global-value")
 
         # List org1 secrets (should include GLOBAL)
         result = await client.list_secrets(org_id="org1")
@@ -251,7 +251,7 @@ class TestKeyVaultClientErrorHandling:
 
             client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
             with pytest.raises(HttpResponseError):
-                await client.create_secret("test-org", "key", "value")
+                await client.set_secret("test-org--key", "value")
 
     async def test_get_secret_connection_error(self, mock_secret_client, mock_default_credential):
         """Should handle connection errors"""
@@ -261,7 +261,7 @@ class TestKeyVaultClientErrorHandling:
         mock_secret_client["instance"].get_secret.side_effect = ResourceNotFoundError("Not found")
 
         with pytest.raises(ResourceNotFoundError):
-            await client.get_secret("test-org", "key")
+            await client.get_secret("test-org--key")
 
 
 class TestKeyVaultClientHealthCheck:
@@ -272,7 +272,7 @@ class TestKeyVaultClientHealthCheck:
         client = KeyVaultClient(vault_url="https://test-vault.vault.azure.net/")
 
         # Add a secret for testing
-        await client.create_secret("test-org", "health-check", "value")
+        await client.set_secret("test-org--health-check", "value")
 
         result = await client.health_check()
 

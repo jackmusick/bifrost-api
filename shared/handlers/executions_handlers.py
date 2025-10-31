@@ -61,7 +61,7 @@ def determine_result_type(result: Any) -> str | None:
     Determine result type for frontend rendering.
 
     Args:
-        result: Result data (dict, str, or None)
+        result: Result data (dict, list, str, or None)
 
     Returns:
         'json', 'html', 'text', or None
@@ -69,7 +69,7 @@ def determine_result_type(result: Any) -> str | None:
     if result is None:
         return None
 
-    if isinstance(result, dict):
+    if isinstance(result, (dict, list)):
         return 'json'
 
     if isinstance(result, str):

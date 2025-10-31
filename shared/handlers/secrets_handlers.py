@@ -105,7 +105,7 @@ async def handle_create_secret(
 
     Args:
         kv_manager: Initialized KeyVaultClient instance
-        create_request: Request containing org_id, secret_key, and value
+        create_request: Request containing secretKey (direct name) and value
         user_id: User ID for audit logging
 
     Returns:
@@ -122,8 +122,8 @@ async def handle_create_secret(
 
     assert kv_manager is not None, "kv_manager must be set when available"
 
-    # Build secret name
-    secret_name = f"{create_request.orgId}--{create_request.secretKey}"
+    # Use secretKey directly as the Key Vault secret name
+    secret_name = create_request.secretKey
 
     # Check if secret already exists
     try:
@@ -138,18 +138,17 @@ async def handle_create_secret(
     except Exception as e:
         logger.warning(f"Could not check for existing secret: {e}")
 
-    # Create the secret
-    await kv_manager.create_secret(
-        org_id=create_request.orgId,
-        secret_key=create_request.secretKey,
+    # Create the secret using direct ref
+    await kv_manager.set_secret(
+        ref=secret_name,
         value=create_request.value,
     )
 
     # Build response
     response = SecretResponse(
         name=secret_name,
-        orgId=create_request.orgId,
-        secretKey=create_request.secretKey,
+        orgId=create_request.orgId or "",
+        secretKey=secret_name,
         value=create_request.value,  # Show value immediately after creation
         message="Secret created successfully",
     )
@@ -167,8 +166,8 @@ async def handle_create_secret(
     system_logger = get_system_logger()
     await system_logger.log_secret_event(
         action="set",
-        key=create_request.secretKey,
-        scope=create_request.orgId,
+        key=secret_name,
+        scope=create_request.orgId or "GLOBAL",
         executed_by=user_id,
         executed_by_name=user_id
     )
@@ -185,9 +184,11 @@ async def handle_update_secret(
     """
     Update an existing secret in Azure Key Vault.
 
+    Always creates a new version - never reuses the same ref.
+
     Args:
         kv_manager: Initialized KeyVaultClient instance
-        secret_name: Full secret name (e.g., 'org-123--api-key')
+        secret_name: Secret ref/name to update
         update_request: Request containing new value
         user_id: User ID for audit logging
 
@@ -195,7 +196,7 @@ async def handle_update_secret(
         SecretResponse with updated secret details
 
     Raises:
-        SecretHandlerError: If Key Vault is unavailable or name format invalid
+        SecretHandlerError: If Key Vault is unavailable
         SecretNotFoundError: If secret does not exist
     """
     # Check if Key Vault is available
@@ -205,21 +206,11 @@ async def handle_update_secret(
 
     assert kv_manager is not None, "kv_manager must be set when available"
 
-    # Validate secret name format
-    if not secret_name or "--" not in secret_name:
-        raise SecretHandlerError(
-            "Invalid secret name format. Expected: 'org-id--secret-key' or 'GLOBAL--secret-key'"
-        )
-
-    # Parse org_id and secret_key from name
-    parts = secret_name.split("--", 1)
-    org_id = parts[0]
-    secret_key = parts[1]
-
-    # Update the secret
+    # Update the secret (creates new version)
     try:
-        await kv_manager.update_secret(
-            org_id=org_id, secret_key=secret_key, value=update_request.value
+        await kv_manager.set_secret(
+            ref=secret_name,
+            value=update_request.value
         )
     except Exception as e:
         if "not found" in str(e).lower():
@@ -229,8 +220,8 @@ async def handle_update_secret(
     # Build response
     response = SecretResponse(
         name=secret_name,
-        orgId=org_id,
-        secretKey=secret_key,
+        orgId="",  # No org parsing
+        secretKey=secret_name,
         value=update_request.value,  # Show value immediately after update
         message="Secret updated successfully",
     )
@@ -239,7 +230,6 @@ async def handle_update_secret(
         f"Updated secret {secret_name}",
         extra={
             "secret_name": secret_name,
-            "org_id": org_id,
             "updated_by": user_id,
         },
     )
@@ -248,8 +238,8 @@ async def handle_update_secret(
     system_logger = get_system_logger()
     await system_logger.log_secret_event(
         action="set",
-        key=secret_key,
-        scope=org_id,
+        key=secret_name,
+        scope="",  # No scope parsing
         executed_by=user_id,
         executed_by_name=user_id
     )
@@ -358,7 +348,7 @@ async def handle_delete_secret(
 
     Args:
         kv_manager: Initialized KeyVaultClient instance
-        secret_name: Full secret name (e.g., 'org-123--api-key')
+        secret_name: Secret ref/name to delete
         context: Request context for platform admin operations
         user_id: User ID for audit logging
 
@@ -366,7 +356,7 @@ async def handle_delete_secret(
         SecretResponse with deletion confirmation
 
     Raises:
-        SecretHandlerError: If Key Vault unavailable or name format invalid
+        SecretHandlerError: If Key Vault unavailable
         SecretNotFoundError: If secret does not exist
         SecretHasDependenciesError: If secret is referenced in configs
     """
@@ -377,19 +367,8 @@ async def handle_delete_secret(
 
     assert kv_manager is not None, "kv_manager must be set when available"
 
-    # Validate secret name format
-    if not secret_name or "--" not in secret_name:
-        raise SecretHandlerError(
-            "Invalid secret name format. Expected: 'org-id--secret-key' or 'GLOBAL--secret-key'"
-        )
-
-    # Parse org_id and secret_key from name
-    parts = secret_name.split("--", 1)
-    org_id = parts[0]
-    secret_key = parts[1]
-
-    # Check for dependencies
-    dependencies = await _find_secret_dependencies(context, secret_name, org_id)
+    # Check for dependencies (search for this exact secret name in configs/oauth)
+    dependencies = await _find_secret_dependencies(context, secret_name, "")
 
     if dependencies:
         dep_list = [f"Config: {dep['key']} ({dep['scope']})" for dep in dependencies]
@@ -414,7 +393,7 @@ async def handle_delete_secret(
 
     # Delete the secret
     try:
-        await kv_manager.delete_secret(org_id=org_id, secret_key=secret_key)
+        await kv_manager.delete_secret(ref=secret_name)
     except Exception as e:
         if "not found" in str(e).lower():
             raise SecretNotFoundError(f"Secret '{secret_name}' not found")
@@ -423,8 +402,8 @@ async def handle_delete_secret(
     # Build response
     response = SecretResponse(
         name=secret_name,
-        orgId=org_id,
-        secretKey=secret_key,
+        orgId="",  # No org parsing
+        secretKey=secret_name,
         value=None,  # Never show value after deletion
         message="Secret deleted successfully",
     )
@@ -433,7 +412,6 @@ async def handle_delete_secret(
         f"Deleted secret {secret_name}",
         extra={
             "secret_name": secret_name,
-            "org_id": org_id,
             "deleted_by": user_id,
         },
     )
@@ -442,8 +420,8 @@ async def handle_delete_secret(
     system_logger = get_system_logger()
     await system_logger.log_secret_event(
         action="delete",
-        key=secret_key,
-        scope=org_id,
+        key=secret_name,
+        scope="",  # No scope parsing
         executed_by=user_id,
         executed_by_name=user_id
     )

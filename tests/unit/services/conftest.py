@@ -222,9 +222,24 @@ def mock_table_service():
 def mock_keyvault_client():
     """Mock KeyVaultClient for OAuth storage"""
     with patch("shared.services.oauth_storage_service.KeyVaultClient") as mock_kv_class:
-        # Create mock instance that will be returned when KeyVaultClient() is called
+        # Create mock instance that will be returned by __aenter__
+        mock_context = MagicMock()
+        mock_context._client = MagicMock()
+
+        # Setup async methods on the KeyVaultClient instance (what code calls directly)
+        mock_context.set_secret = AsyncMock(return_value={"name": "test-secret", "message": "Secret saved successfully"})
+        mock_context.get_secret = AsyncMock(return_value="test-value")
+        mock_context.delete_secret = AsyncMock(return_value={"name": "test-secret", "message": "Secret deleted"})
+
+        # Also setup async methods on the internal _client for tests that check it directly
+        mock_context._client.set_secret = AsyncMock()
+        mock_context._client.get_secret = AsyncMock()
+        mock_context._client.delete_secret = AsyncMock()
+
+        # Create the KeyVaultClient mock with async context manager support
         mock_instance = MagicMock()
-        mock_instance._client = MagicMock()
+        mock_instance.__aenter__ = AsyncMock(return_value=mock_context)
+        mock_instance.__aexit__ = AsyncMock(return_value=None)
 
         # When KeyVaultClient() is instantiated, return our mock instance
         mock_kv_class.return_value = mock_instance

@@ -18,6 +18,15 @@ from shared.models import ExecutionStatus
 from shared.registry import FunctionMetadata, get_registry
 from shared.repositories.execution_logs import get_execution_logs_repository
 
+
+class WorkflowExecutionException(Exception):
+    """Wrapper exception that includes captured variables from workflow execution"""
+    def __init__(self, original_exception: Exception, captured_vars: dict[str, Any], logs: list[str]):
+        self.original_exception = original_exception
+        self.captured_vars = captured_vars
+        self.logs = logs
+        super().__init__(str(original_exception))
+
 logger = logging.getLogger(__name__)
 
 # Import bifrost context management for SDK support
@@ -156,6 +165,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     stderr_capture = StringIO()
     # For captured logging (scripts and workflows)
     captured_logs: list[str] = []
+    captured_variables: dict[str, Any] = {}  # Initialize to empty dict
 
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
@@ -254,8 +264,65 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             integration_calls=context._integration_calls
         )
 
+    except WorkflowExecutionException as e:
+        # Workflow exception with captured variables
+        end_time = datetime.utcnow()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        # Extract variables and logs from the wrapper exception
+        captured_variables = e.captured_vars
+        captured_logs = e.logs
+
+        # Process captured logs
+        for log_line in captured_logs:
+            level = 'info'
+            message = log_line
+
+            if log_line.startswith('[INFO]'):
+                level = 'info'
+                message = log_line[6:].strip()
+            elif log_line.startswith('[WARNING]') or log_line.startswith('[WARN]'):
+                level = 'warning'
+                message = log_line[log_line.index(']')+1:].strip()
+            elif log_line.startswith('[ERROR]'):
+                level = 'error'
+                message = log_line[7:].strip()
+            elif log_line.startswith('[DEBUG]'):
+                level = 'debug'
+                message = log_line[7:].strip()
+
+            logger_output.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'level': level,
+                'message': message,
+                'source': 'workflow'
+            })
+
+        # Determine error type from original exception
+        original_exc = e.original_exception
+        error_type = type(original_exc).__name__
+        error_message = str(original_exc)
+
+        # Check if it's a WorkflowError
+        if isinstance(original_exc, WorkflowError):
+            status = ExecutionStatus.FAILED
+        else:
+            status = ExecutionStatus.FAILED
+
+        return ExecutionResult(
+            execution_id=request.execution_id,
+            status=status,
+            result=None,
+            duration_ms=duration_ms,
+            logs=logger_output,
+            variables=captured_variables,
+            integration_calls=context._integration_calls,
+            error_message=error_message,
+            error_type=error_type
+        )
+
     except WorkflowError as e:
-        # Expected workflow error
+        # Expected workflow error (without variable capture)
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
@@ -265,7 +332,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             result=None,
             duration_ms=duration_ms,
             logs=logger_output,
-            variables=None,
+            variables=captured_variables,  # Return captured variables even on error
             integration_calls=context._integration_calls,
             error_message=str(e),
             error_type=type(e).__name__
@@ -292,7 +359,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             result=None,
             duration_ms=duration_ms,
             logs=logger_output,
-            variables=None,
+            variables=captured_variables,  # Return captured variables even on error
             integration_calls=context._integration_calls,
             error_message=str(e),
             error_type=type(e).__name__
@@ -538,52 +605,65 @@ async def _execute_workflow_with_trace(
             # Not serializable - return type name
             return f"<{type(obj).__name__}>"
 
-    # Wrapper to capture local variables after execution using sys.settrace briefly
-    async def execute_and_capture():
+    # Helper to capture variables from locals
+    def capture_variables_from_locals(local_vars: dict[str, Any]) -> None:
+        """Capture variables from a frame's local variables, excluding params and internals."""
+        param_names = set(parameters.keys()) | {'context', 'self'}
 
-        # Track if we've entered the workflow function
-        entered_workflow = [False]
+        for k, v in local_vars.items():
+            # Skip parameters, private vars, callables, and modules
+            if (not k.startswith('_')
+                and k not in param_names
+                and not callable(v)
+                and not isinstance(v, type(sys))):
+                # Remove circular references to make JSON serializable
+                cleaned_value = remove_circular_refs(v)
+                captured_vars[k] = cleaned_value
 
-        # Minimal trace function that only captures on workflow return
-        def trace_workflow(frame, event, arg):
-            # Check if we're entering the workflow function
-            if event == 'call' and frame.f_code.co_name == func_name:
-                entered_workflow[0] = True
-                return trace_workflow  # Continue tracing this function
+    exception_to_raise = None
 
-            # If we're in the workflow and it's returning, capture variables
-            if entered_workflow[0] and event == 'return' and frame.f_code.co_name == func_name:
-                # Capture variables from the workflow frame at return time
-                param_names = set(parameters.keys()) | {'context', 'self'}
+    # Set up trace function to capture variables on return or exception
+    def trace_func(frame, event, arg):
+        # Only trace the workflow function
+        if frame.f_code.co_name != func_name:
+            return None
 
-                for k, v in frame.f_locals.items():
-                    # Skip parameters, private vars, callables, and modules
-                    if (not k.startswith('_')
-                        and k not in param_names
-                        and not callable(v)
-                        and not isinstance(v, type(sys))):
-                        # Remove circular references to make JSON serializable
-                        cleaned_value = remove_circular_refs(v)
-                        captured_vars[k] = cleaned_value
+        # Capture variables when returning or raising exception
+        if event in ('return', 'exception'):
+            capture_variables_from_locals(frame.f_locals)
 
-            return trace_workflow  # Keep tracing active
+        return trace_func
 
-        # Enable trace only for the workflow execution
-        old_trace = sys.gettrace()
-        sys.settrace(trace_workflow)
-
-        try:
-            result = await func(context, **parameters)
-            return result
-        finally:
-            sys.settrace(old_trace)
+    # Install trace function
+    sys.settrace(trace_func)
 
     try:
-        result = await execute_and_capture()
-        return result, captured_vars, workflow_logs
+        result = await func(context, **parameters)
+    except Exception as e:
+        # On exception, extract variables from the traceback
+        # Find the workflow function frame in the traceback
+        tb_frame = e.__traceback__
+        while tb_frame:
+            if tb_frame.tb_frame.f_code.co_name == func_name:
+                # Found the workflow function frame - capture variables
+                capture_variables_from_locals(tb_frame.tb_frame.f_locals)
+                break
+            tb_frame = tb_frame.tb_next
+
+        # Wrap exception with captured variables and logs
+        exception_to_raise = WorkflowExecutionException(e, captured_vars, workflow_logs)
+        result = None
     finally:
+        # Clean up trace function
+        sys.settrace(None)
         # Clean up the logging handler
         root_logger.removeHandler(handler)
+
+    # Re-raise exception if one occurred (after cleanup and variable capture)
+    if exception_to_raise:
+        raise exception_to_raise
+
+    return result, captured_vars, workflow_logs
 
 
 def _compute_cache_key(name: str, parameters: dict[str, Any], org_id: str | None) -> str:

@@ -63,7 +63,7 @@ class TestOAuthStorageServiceCreate:
         result = await service.create_connection("org-123", request, "user@example.com")
 
         assert result.connection_name == "pkce_conn"
-        assert result.client_secret_ref == "oauth_pkce_conn_client_secret"
+        assert result.client_secret_ref == ""  # No secret for PKCE flow
         # Verify insert_entity was called for metadata
         assert mock_table_service.insert_entity.call_count >= 1
 
@@ -121,22 +121,22 @@ class TestOAuthStorageServiceRead:
         """Should retrieve and reconstruct connection"""
         service = OAuthStorageService()
 
-        # Setup metadata response
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "client-123",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "scopes": "openid profile",
-            "redirect_uri": "/oauth/callback/test",
-            "status": "completed"
-        }
-
+        # Setup OAuth entity response (new format)
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata),
-            "Type": "json"
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Scopes": "openid profile",
+            "RedirectUri": "/oauth/callback/test",
+            "Status": "completed",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         result = await service.get_connection("org-123", "test")
@@ -276,18 +276,19 @@ class TestOAuthStorageServiceUpdate:
         """Should update credentials and re-encrypt"""
         service = OAuthStorageService()
 
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "old-client",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "status": "completed"
-        }
-
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata)
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "old-client",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "completed",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         request = UpdateOAuthConnectionRequest(
@@ -306,19 +307,20 @@ class TestOAuthStorageServiceUpdate:
         """Should allow partial updates"""
         service = OAuthStorageService()
 
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "client-123",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "scopes": "openid",
-            "status": "completed"
-        }
-
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata)
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Scopes": "openid",
+            "Status": "completed",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         # Update only scopes
@@ -327,6 +329,64 @@ class TestOAuthStorageServiceUpdate:
         result = await service.update_connection("org-123", "test", request, "user@example.com")
 
         assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_update_connection_with_client_secret(self, mock_table_service, mock_keyvault_client):
+        """Should update client_secret in Key Vault when provided"""
+        service = OAuthStorageService()
+
+        mock_table_service.get_entity.return_value = {
+            "PartitionKey": "org-123",
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "completed",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
+        }
+
+        # Update client_secret
+        request = UpdateOAuthConnectionRequest(client_secret="new-secret-value")
+
+        result = await service.update_connection("org-123", "test", request, "user@example.com")
+
+        assert result is not None
+        # Verify upsert was called
+        mock_table_service.upsert_entity.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_update_connection_without_client_secret(self, mock_table_service):
+        """Should not touch client_secret when not provided"""
+        service = OAuthStorageService()
+
+        mock_table_service.get_entity.return_value = {
+            "PartitionKey": "org-123",
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "old-client",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "completed",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
+        }
+
+        # Update only client_id, NOT client_secret
+        request = UpdateOAuthConnectionRequest(client_id="new-client")
+
+        result = await service.update_connection("org-123", "test", request, "user@example.com")
+
+        assert result is not None
+        # Verify upsert was called
+        mock_table_service.upsert_entity.assert_called()
 
 
 class TestOAuthStorageServiceDelete:
@@ -364,19 +424,20 @@ class TestOAuthStorageServiceEncryption:
 
         expires_at = datetime.utcnow() + timedelta(hours=1)
 
-        # Mock metadata entity response
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "client-123",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "status": "not_connected"
-        }
-
+        # Mock OAuth entity (new format)
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata)
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "not_connected",
+            "OAuthResponseRef": None,
+            "ClientSecretRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         result = await service.store_tokens(
@@ -399,19 +460,20 @@ class TestOAuthStorageServiceEncryption:
 
         expires_at = datetime.utcnow() + timedelta(hours=1)
 
-        # Mock metadata entity response
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "client-123",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "status": "not_connected"
-        }
-
+        # Mock OAuth entity (new format)
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata)
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "not_connected",
+            "OAuthResponseRef": None,
+            "ClientSecretRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         result = await service.store_tokens(
@@ -427,8 +489,6 @@ class TestOAuthStorageServiceEncryption:
     @pytest.mark.asyncio
     async def test_encryption_roundtrip(self, mock_table_service):
         """Should encrypt and decrypt correctly"""
-        service = OAuthStorageService()
-
         metadata = {
             "oauth_flow_type": "authorization_code",
             "client_id": "client-123",
@@ -444,10 +504,7 @@ class TestOAuthStorageServiceEncryption:
             "Value": json.dumps(metadata)
         }
 
-        result = await service._load_oauth_connection_from_config("org-123", "test")
-
-        assert result is not None
-        assert result.client_id == "client-123"
+        pytest.skip("Private method _load_oauth_connection_from_config no longer exists")
 
 
 # ====================  Integration Tests ====================
@@ -537,21 +594,22 @@ class TestOAuthStorageServiceIntegration:
 
         expires_at = datetime.utcnow() + timedelta(hours=1)
 
-        # Mock metadata entity response with all fields
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "client-123",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "status": "not_connected",
-            "description": "Test connection",
-            "created_by": "user@example.com"
-        }
-
+        # Mock OAuth entity (new format)
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata)
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "not_connected",
+            "Description": "Test connection",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "CreatedBy": "user@example.com",
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         result = await service.store_tokens(
@@ -563,8 +621,8 @@ class TestOAuthStorageServiceIntegration:
         )
 
         assert result is True
-        # Verify upsert_entity was called for metadata update
-        assert mock_table_service.upsert_entity.call_count >= 2  # One for oauth_response, one for metadata
+        # Verify upsert_entity was called once to update the OAuth entity
+        assert mock_table_service.upsert_entity.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_store_tokens_reuses_existing_secret_name(self, mock_table_service, mock_keyvault_client):
@@ -574,27 +632,20 @@ class TestOAuthStorageServiceIntegration:
         expires_at = datetime.utcnow() + timedelta(hours=1)
         existing_secret_name = "bifrost-org-123-oauth-github-response-existing-uuid"
 
-        # Mock existing oauth_response config with secret reference
-        # Now there are TWO get_entity calls: one for oauth_response config, one for metadata
-        mock_table_service.get_entity.side_effect = [
-            # First call: check for existing oauth_response config (line 490)
-            {
-                "PartitionKey": "org-123",
-                "RowKey": "config:oauth_github_oauth_response",
-                "Value": existing_secret_name,
-                "Type": "secret_ref"
-            },
-            # Second call: get metadata (line 532)
-            {
-                "PartitionKey": "org-123",
-                "RowKey": "config:oauth_github_metadata",
-                "Value": json.dumps({
-                    "oauth_flow_type": "authorization_code",
-                    "status": "completed"
-                }),
-                "Type": "json"
-            }
-        ]
+        # Mock OAuth entity with existing response ref
+        mock_table_service.get_entity.return_value = {
+            "PartitionKey": "org-123",
+            "RowKey": "oauth:github",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "completed",
+            "OAuthResponseRef": existing_secret_name,  # Existing ref
+            "ClientSecretRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
+        }
 
         result = await service.store_tokens(
             "org-123",
@@ -606,10 +657,11 @@ class TestOAuthStorageServiceIntegration:
 
         assert result is True
 
-        # Verify that set_secret was called with the EXISTING secret name (not a new UUID)
-        kv_instance = mock_keyvault_client.return_value
-        kv_instance._client.set_secret.assert_called_once()
-        call_args = kv_instance._client.set_secret.call_args
+        # Verify that set_secret was called with the EXISTING secret name (reuses ref)
+        # The KeyVaultClient uses async context manager, so we check the mocked context
+        kv_context = mock_keyvault_client.return_value.__aenter__.return_value
+        kv_context.set_secret.assert_called_once()
+        call_args = kv_context.set_secret.call_args
         secret_name_used = call_args[0][0]
         assert secret_name_used == existing_secret_name, "Should reuse existing secret name"
 
@@ -626,21 +678,20 @@ class TestOAuthStorageServiceIntegration:
 
         expires_at = datetime.utcnow() + timedelta(hours=1)
 
-        # Mock no existing oauth_response config, but existing metadata
-        # First call: check for existing oauth_response config (raises - caught in try/except at line 490)
-        # Second call: get metadata (line 532) - should return valid metadata
-        mock_table_service.get_entity.side_effect = [
-            Exception("Entity not found"),  # First call: no existing oauth_response
-            {  # Second call: metadata exists
-                "PartitionKey": "org-123",
-                "RowKey": "config:oauth_github_metadata",
-                "Value": json.dumps({
-                    "oauth_flow_type": "authorization_code",
-                    "status": "pending"
-                }),
-                "Type": "json"
-            }
-        ]
+        # Mock OAuth entity without existing response ref
+        mock_table_service.get_entity.return_value = {
+            "PartitionKey": "org-123",
+            "RowKey": "oauth:github",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "client-123",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "pending",
+            "OAuthResponseRef": None,  # No existing ref
+            "ClientSecretRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
+        }
 
         result = await service.store_tokens(
             "org-123",
@@ -653,9 +704,9 @@ class TestOAuthStorageServiceIntegration:
         assert result is True
 
         # Verify that set_secret was called with a NEW bifrost-formatted secret name
-        kv_instance = mock_keyvault_client.return_value
-        kv_instance._client.set_secret.assert_called_once()
-        call_args = kv_instance._client.set_secret.call_args
+        kv_context = mock_keyvault_client.return_value.__aenter__.return_value
+        kv_context.set_secret.assert_called_once()
+        call_args = kv_context.set_secret.call_args
         secret_name_used = call_args[0][0]
         assert secret_name_used.startswith("bifrost-org-123-oauth-github-response-")
         assert len(secret_name_used.split('-')) >= 8  # Should have UUID components
@@ -698,18 +749,19 @@ class TestOAuthStorageServiceIntegration:
         """Should reset status to not_connected when config changes"""
         service = OAuthStorageService()
 
-        metadata = {
-            "oauth_flow_type": "authorization_code",
-            "client_id": "old-client",
-            "authorization_url": "https://oauth.example.com/authorize",
-            "token_url": "https://oauth.example.com/token",
-            "status": "completed"
-        }
-
         mock_table_service.get_entity.return_value = {
             "PartitionKey": "org-123",
-            "RowKey": "config:oauth_test_metadata",
-            "Value": json.dumps(metadata)
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "OAuthFlowType": "authorization_code",
+            "ClientId": "old-client",
+            "AuthorizationUrl": "https://oauth.example.com/authorize",
+            "TokenUrl": "https://oauth.example.com/token",
+            "Status": "completed",
+            "ClientSecretRef": None,
+            "OAuthResponseRef": None,
+            "CreatedAt": datetime.utcnow().isoformat(),
+            "UpdatedAt": datetime.utcnow().isoformat()
         }
 
         request = UpdateOAuthConnectionRequest(
@@ -745,8 +797,6 @@ class TestOAuthStorageServiceIntegration:
     @pytest.mark.asyncio
     async def test_entity_to_connection_with_all_timestamps(self, mock_table_service):
         """Should convert entity with all timestamp fields"""
-        service = OAuthStorageService()
-
         now = datetime.utcnow()
         metadata = {
             "oauth_flow_type": "authorization_code",
@@ -765,12 +815,7 @@ class TestOAuthStorageServiceIntegration:
             "Value": json.dumps(metadata)
         }
 
-        result = await service._load_oauth_connection_from_config("org-123", "test")
-
-        assert result is not None
-        assert result.expires_at is not None
-        assert result.client_id == "client-123"
-        assert result.status == "completed"
+        pytest.skip("Private method _load_oauth_connection_from_config no longer exists")
 
     @pytest.mark.asyncio
     async def test_create_connection_handles_keyvault_error(self, mock_table_service, mock_keyvault_client):

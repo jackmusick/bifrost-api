@@ -49,38 +49,41 @@ class oauth:
             ...     # Use the token for API calls
         """
         import json
+        import logging
 
+        logger = logging.getLogger(__name__)
         context = get_context()
-        target_org = org_id or context.org_id
+        target_org = org_id or context.scope  # Use scope instead of org_id (scope is always a string)
 
         storage = OAuthStorageService()
 
         # Get connection using async method
         connection = await storage.get_connection(target_org, provider)
 
-        if not connection or connection.status != "completed":
+        if not connection:
+            logger.warning(f"OAuth connection '{provider}' not found for org '{target_org}'")
             return None
 
-        # Retrieve OAuth response from Key Vault
-        try:
-            async with KeyVaultClient() as kv:
-                oauth_response_ref = connection.oauth_response_ref
-                # oauth_response_ref contains the Key Vault secret name
-                secret_value = await kv.get_secret(target_org, oauth_response_ref.replace(f"oauth_{provider}_oauth_response", ""))
-                if not secret_value:
-                    # Try alternate pattern
-                    keyvault_secret_name = f"{target_org}--oauth-{provider}-response"
-                    # Extract just the secret name part (after org--)
-                    parts = keyvault_secret_name.split("--", 1)
-                    if len(parts) == 2:
-                        secret_value = await kv.get_secret(target_org, parts[1])
+        if connection.status != "completed":
+            logger.warning(f"OAuth connection '{provider}' status is '{connection.status}', not 'completed'")
+            return None
 
+        # Retrieve OAuth response from Key Vault using direct ref
+        try:
+            if not connection.oauth_response_ref:
+                logger.warning(f"OAuth connection '{provider}' has no oauth_response_ref")
+                return None
+
+            async with KeyVaultClient() as kv:
+                secret_value = await kv.get_secret(connection.oauth_response_ref)
                 if secret_value:
                     return json.loads(secret_value)
-        except Exception:
-            pass
-
-        return None
+                else:
+                    logger.warning(f"OAuth connection '{provider}' token secret is empty")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to retrieve OAuth token for '{provider}': {e}", exc_info=True)
+            return None
 
     @staticmethod
     async def set_token(
@@ -113,7 +116,7 @@ class oauth:
             ... })
         """
         context = require_permission("oauth.write")
-        target_org = org_id or context.org_id
+        target_org = org_id or context.scope  # Use scope instead of org_id (scope is always a string)
 
         storage = OAuthStorageService()
         await storage.store_tokens(
@@ -144,7 +147,7 @@ class oauth:
             ...     print(f"OAuth configured for: {provider}")
         """
         context = get_context()
-        target_org = org_id or context.org_id
+        target_org = org_id or context.scope  # Use scope instead of org_id (scope is always a string)
 
         storage = OAuthStorageService()
 
@@ -177,7 +180,7 @@ class oauth:
             >>> await oauth.delete_token("microsoft")
         """
         context = require_permission("oauth.delete")
-        target_org = org_id or context.org_id
+        target_org = org_id or context.scope  # Use scope instead of org_id (scope is always a string)
 
         storage = OAuthStorageService()
         return await storage.delete_connection(target_org, provider)
@@ -204,7 +207,7 @@ class oauth:
             >>> access_token = new_token["access_token"]
         """
         context = get_context()
-        target_org = org_id or context.org_id
+        target_org = org_id or context.scope  # Use scope instead of org_id (scope is always a string)
 
         storage = OAuthStorageService()
         new_token = await storage.refresh_token(provider, target_org)

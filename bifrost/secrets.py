@@ -34,7 +34,7 @@ class secrets:
         Get decrypted secret value.
 
         Args:
-            key: Secret key
+            key: Secret ref/name (full Key Vault secret name)
             org_id: Organization ID (defaults to current org from context)
 
         Returns:
@@ -45,20 +45,19 @@ class secrets:
 
         Example:
             >>> from bifrost import secrets
-            >>> api_key = secrets.get("stripe_api_key")
+            >>> api_key = await secrets.get("bifrost-global-api-stripe-abc123")
             >>> if api_key:
             ...     # Use the API key
             ...     pass
         """
-        context = get_context()
-        target_org = org_id or context.org_id
+        _context = get_context()  # Validates execution context exists
 
         try:
             async with KeyVaultClient() as kv_client:
-                secret_value = await kv_client.get_secret(target_org, key)
+                secret_value = await kv_client.get_secret(key)
                 return secret_value
         except Exception as e:
-            logger.warning(f"Failed to get secret {key} for org {target_org}: {e}")
+            logger.warning(f"Failed to get secret {key}: {e}")
             return None
 
     @staticmethod
@@ -69,9 +68,9 @@ class secrets:
         Requires: Permission to manage secrets (typically admin)
 
         Args:
-            key: Secret key
+            key: Secret ref/name (full Key Vault secret name)
             value: Secret value (will be encrypted)
-            org_id: Organization ID (defaults to current org from context)
+            org_id: (deprecated - not used)
 
         Raises:
             PermissionError: If user lacks permission
@@ -79,14 +78,13 @@ class secrets:
 
         Example:
             >>> from bifrost import secrets
-            >>> secrets.set("stripe_api_key", "sk_live_xxxxx")
+            >>> await secrets.set("bifrost-global-api-stripe-abc123", "sk_live_xxxxx")
         """
         context = require_permission("secrets.write")
-        target_org = org_id or context.org_id
 
         async with KeyVaultClient() as kv_client:
-            await kv_client.create_secret(target_org, key, value)
-        logger.info(f"Set secret {key} for org {target_org} by user {context.user_id}")
+            await kv_client.set_secret(key, value)
+        logger.info(f"Set secret {key} by user {context.user_id}")
 
     @staticmethod
     async def list(org_id: str | None = None) -> list[str]:
@@ -94,7 +92,7 @@ class secrets:
         List all secret keys (NOT values - keys only for security).
 
         Args:
-            org_id: Organization ID (defaults to current org from context)
+            org_id: Organization ID to filter by (optional)
 
         Returns:
             list[str]: List of secret keys
@@ -104,12 +102,12 @@ class secrets:
 
         Example:
             >>> from bifrost import secrets
-            >>> keys = secrets.list()
+            >>> keys = await secrets.list()
             >>> for key in keys:
             ...     print(f"Secret exists: {key}")
         """
         context = get_context()
-        target_org = org_id or context.org_id
+        target_org = org_id or context.scope
 
         async with KeyVaultClient() as kv_client:
             secret_keys = await kv_client.list_secrets(target_org)
@@ -123,8 +121,8 @@ class secrets:
         Requires: Permission to manage secrets (typically admin)
 
         Args:
-            key: Secret key
-            org_id: Organization ID (defaults to current org from context)
+            key: Secret ref/name (full Key Vault secret name)
+            org_id: (deprecated - not used)
 
         Returns:
             bool: True if deleted, False if not found
@@ -135,16 +133,15 @@ class secrets:
 
         Example:
             >>> from bifrost import secrets
-            >>> secrets.delete("old_api_key")
+            >>> await secrets.delete("bifrost-global-api-old-abc123")
         """
         context = require_permission("secrets.delete")
-        target_org = org_id or context.org_id
 
         try:
             async with KeyVaultClient() as kv_client:
-                await kv_client.delete_secret(target_org, key)
-            logger.info(f"Deleted secret {key} for org {target_org} by user {context.user_id}")
+                await kv_client.delete_secret(key)
+            logger.info(f"Deleted secret {key} by user {context.user_id}")
             return True
         except Exception as e:
-            logger.warning(f"Failed to delete secret {key} for org {target_org}: {e}")
+            logger.warning(f"Failed to delete secret {key}: {e}")
             return False

@@ -25,7 +25,9 @@
       "Read(//Users/jack/Library/Logs/**)",
       "Read(//Users/jack/.azure-functions-core-tools/**)",
       "Bash(for file in bifrost/config.py bifrost/secrets.py bifrost/organizations.py bifrost/roles.py bifrost/executions.py bifrost/oauth.py bifrost/forms.py)",
-      "Bash(do echo \"=== $file ===\")"
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(while read f)",
+      "Bash(do base=\"$f%.md\")"
     ],
     "deny": [],
     "ask": [],

@@ -48,9 +48,9 @@ class OAuthStorageService:
         Create a new OAuth connection
 
         Process:
-        1. Create OAuthConnection entity in OAuthConnections table
-        2. Store client_secret in Config table (Type="secret_ref")
-        3. Store metadata in Config table (Type="json")
+        1. Create OAuth entity with oauth: prefix
+        2. Store client_secret in Key Vault (if provided)
+        3. Store metadata in OAuth entity with direct refs
 
         Args:
             org_id: Organization ID or "GLOBAL"
@@ -65,52 +65,19 @@ class OAuthStorageService:
         """
         now = datetime.utcnow()
 
-        # Generate config references
-        client_secret_ref = f"oauth_{request.connection_name}_client_secret"
-        oauth_response_ref = f"oauth_{request.connection_name}_oauth_response"
-
-        # Create OAuth connection model
-        # Note: redirect_uri should point to the UI callback page, not the API
-        connection = OAuthConnection(
-            org_id=org_id,
-            connection_name=request.connection_name,
-            description=request.description,
-            oauth_flow_type=request.oauth_flow_type,
-            client_id=request.client_id,
-            client_secret_ref=client_secret_ref,
-            oauth_response_ref=oauth_response_ref,
-            authorization_url=request.authorization_url,
-            token_url=request.token_url,
-            scopes=request.scopes,
-            redirect_uri=f"/oauth/callback/{request.connection_name}",  # UI route, not /api/
-            status="not_connected",
-            created_by=created_by,
-            created_at=now,
-            updated_at=now,
-            expires_at=None
-        )
-
-        # Convert to Table Storage entity
-        entity = connection.model_dump()
-        entity["PartitionKey"] = org_id
-        entity["RowKey"] = request.connection_name
-
-        # Store client_secret in Key Vault and Config table (Type="secret_ref") if provided
-        # Value is the Key Vault secret name
-        # Note: Client secret is optional for PKCE flow
+        # Generate Key Vault secret names
+        client_secret_ref = None
         if request.client_secret:
             try:
-                keyvault = KeyVaultClient()
-                assert keyvault._client is not None, "KeyVault client is None"
-                # Generate secret name using new bifrost_{scope}_oauth_{name}_{type}_{uuid} convention
-                keyvault_secret_name = generate_oauth_secret_name(
-                    org_id,
-                    request.connection_name,
-                    "client-secret"
-                )
-
-                keyvault._client.set_secret(keyvault_secret_name, request.client_secret)
-                logger.info(f"Stored client_secret in Key Vault: {keyvault_secret_name}")
+                async with KeyVaultClient() as keyvault:
+                    # Generate full KV secret name using bifrost_{scope}_oauth_{name}_{type}_{uuid}
+                    client_secret_ref = generate_oauth_secret_name(
+                        org_id,
+                        request.connection_name,
+                        "client-secret"
+                    )
+                    await keyvault.set_secret(client_secret_ref, request.client_secret)
+                    logger.info(f"Stored client_secret in Key Vault: {client_secret_ref}")
             except ValueError as e:
                 # KeyVault not configured (e.g., in test environment)
                 logger.warning(f"KeyVault not available for client_secret storage: {e}")
@@ -118,42 +85,51 @@ class OAuthStorageService:
             except Exception as e:
                 logger.error(f"Failed to store client_secret in Key Vault: {e}")
                 raise
-
-            client_secret_config = {
-                "PartitionKey": org_id,
-                "RowKey": f"config:oauth_{request.connection_name}_client_secret",
-                "Value": keyvault_secret_name,
-                "Type": "secret_ref",
-                "Description": f"OAuth client secret for {request.connection_name}",
-                "UpdatedAt": now.isoformat(),
-                "UpdatedBy": created_by
-            }
-            await self.config_table.insert_entity(client_secret_config)
-            logger.info(f"Stored client_secret config reference for {request.connection_name}")
         else:
             logger.info(f"No client secret provided (PKCE flow) for {request.connection_name}")
 
-        # Store metadata in Config table (Type="json")
-        metadata = {
-            "oauth_flow_type": request.oauth_flow_type,
-            "client_id": request.client_id,
-            "authorization_url": request.authorization_url,
-            "token_url": request.token_url,
-            "scopes": request.scopes,
-            "redirect_uri": connection.redirect_uri,
-            "status": connection.status
-        }
-        metadata_config = {
+        # Store OAuth entity with oauth: prefix
+        oauth_entity = {
             "PartitionKey": org_id,
-            "RowKey": f"config:oauth_{request.connection_name}_metadata",
-            "Value": json.dumps(metadata),
-            "Type": "json",
-            "Description": f"OAuth metadata for {request.connection_name}",
-            "UpdatedAt": now.isoformat(),
-            "UpdatedBy": created_by
+            "RowKey": f"oauth:{request.connection_name}",
+            "Type": "oauth",
+            "Description": request.description or f"OAuth connection: {request.connection_name}",
+            "OAuthFlowType": request.oauth_flow_type,
+            "ClientId": request.client_id,
+            "ClientSecretRef": client_secret_ref,  # Full KV secret name or None
+            "OAuthResponseRef": None,  # Will be set when tokens are stored
+            "AuthorizationUrl": request.authorization_url,
+            "TokenUrl": request.token_url,
+            "Scopes": request.scopes,
+            "RedirectUri": f"/oauth/callback/{request.connection_name}",
+            "Status": "not_connected",
+            "CreatedBy": created_by,
+            "CreatedAt": now.isoformat(),
+            "UpdatedAt": now.isoformat()
         }
-        await self.config_table.insert_entity(metadata_config)
-        logger.info(f"Stored metadata config for {request.connection_name}")
+
+        await self.config_table.insert_entity(oauth_entity)
+        logger.info(f"Created OAuth connection: {request.connection_name}")
+
+        # Create OAuth connection model
+        connection = OAuthConnection(
+            org_id=org_id,
+            connection_name=request.connection_name,
+            description=request.description,
+            oauth_flow_type=request.oauth_flow_type,
+            client_id=request.client_id,
+            client_secret_ref=client_secret_ref or "",
+            oauth_response_ref="",
+            authorization_url=request.authorization_url,
+            token_url=request.token_url,
+            scopes=request.scopes,
+            redirect_uri=f"/oauth/callback/{request.connection_name}",
+            status="not_connected",
+            created_by=created_by,
+            created_at=now,
+            updated_at=now,
+            expires_at=None
+        )
 
         return connection
 
@@ -172,23 +148,23 @@ class OAuthStorageService:
         Returns:
             OAuthConnection or None if not found
         """
-        metadata_rowkey = f"config:oauth_{connection_name}_metadata"
+        oauth_rowkey = f"oauth:{connection_name}"
 
         try:
-            # First, try org-specific metadata
-            metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
+            # First, try org-specific OAuth entity
+            oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
 
-            if metadata_entity:
-                logger.debug(f"Found org-specific OAuth connection metadata: {connection_name} for org {org_id}")
-                return await self._load_oauth_connection_from_config(org_id, connection_name)
+            if oauth_entity:
+                logger.debug(f"Found org-specific OAuth connection: {connection_name} for org {org_id}")
+                return self._entity_to_oauth_connection(oauth_entity)
 
-            # If not found, try GLOBAL metadata
+            # If not found, try GLOBAL
             if org_id != "GLOBAL":
-                global_metadata_entity = await self.config_table.get_entity("GLOBAL", metadata_rowkey)
+                global_oauth_entity = await self.config_table.get_entity("GLOBAL", oauth_rowkey)
 
-                if global_metadata_entity:
-                    logger.debug(f"Found GLOBAL OAuth connection metadata: {connection_name}")
-                    return await self._load_oauth_connection_from_config("GLOBAL", connection_name)
+                if global_oauth_entity:
+                    logger.debug(f"Found GLOBAL OAuth connection: {connection_name}")
+                    return self._entity_to_oauth_connection(global_oauth_entity)
         except Exception as e:
             logger.warning(f"Error retrieving OAuth connection: {e}")
 
@@ -213,31 +189,25 @@ class OAuthStorageService:
         connections = []
 
         try:
-            # Query metadata configs for org
-            # Note: Azure Table Storage doesn't support startswith/endswith in filter syntax
-            # We'll query all configs for org and filter in Python
-            org_query_filter = f"PartitionKey eq '{org_id}' and RowKey ge 'config:oauth_' and RowKey lt 'config:oauth~'"
-            org_metadata_entities = list(await self.config_table.query_entities(filter=org_query_filter))
+            # Query OAuth entities for org
+            org_query_filter = f"PartitionKey eq '{org_id}' and RowKey ge 'oauth:' and RowKey lt 'oauth;'"
+            org_oauth_entities = list(await self.config_table.query_entities(filter=org_query_filter))
 
-            # Process org-specific connections (filter for _metadata suffix)
-            for metadata_entity in org_metadata_entities:
-                if metadata_entity['RowKey'].endswith('_metadata'):
-                    connection_name = metadata_entity['RowKey'].replace('config:oauth_', '').replace('_metadata', '')
-                    connection = await self._load_oauth_connection_from_config(org_id, connection_name)
-                    if connection:
-                        connections.append(connection)
+            # Process org-specific connections
+            for oauth_entity in org_oauth_entities:
+                connection = self._entity_to_oauth_connection(oauth_entity)
+                if connection:
+                    connections.append(connection)
 
             # Add GLOBAL connections if requested
             if include_global and org_id != "GLOBAL":
-                global_query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'config:oauth_' and RowKey lt 'config:oauth~'"
-                global_metadata_entities = list(await self.config_table.query_entities(filter=global_query_filter))
+                global_query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'oauth:' and RowKey lt 'oauth;'"
+                global_oauth_entities = list(await self.config_table.query_entities(filter=global_query_filter))
 
-                for metadata_entity in global_metadata_entities:
-                    if metadata_entity['RowKey'].endswith('_metadata'):
-                        connection_name = metadata_entity['RowKey'].replace('config:oauth_', '').replace('_metadata', '')
-                        connection = await self._load_oauth_connection_from_config("GLOBAL", connection_name)
-                        if connection:
-                            connections.append(connection)
+                for oauth_entity in global_oauth_entities:
+                    connection = self._entity_to_oauth_connection(oauth_entity)
+                    if connection:
+                        connections.append(connection)
 
             logger.info(f"Listed {len(connections)} OAuth connections for org {org_id} (include_global={include_global})")
 
@@ -265,132 +235,144 @@ class OAuthStorageService:
         Returns:
             Updated OAuthConnection or None if not found
         """
-        # Retrieve current metadata
-        metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
+        # Retrieve current OAuth entity
+        oauth_rowkey = f"oauth:{connection_name}"
+        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
 
-        if not metadata_entity:
+        if not oauth_entity:
             logger.warning(f"OAuth connection not found for update: {connection_name}")
             return None
 
-        # Retrieve and parse current metadata
-        current_metadata = json.loads(metadata_entity['Value'])
-
         # Update fields if provided
         if request.client_id is not None:
-            current_metadata['client_id'] = request.client_id
+            oauth_entity['ClientId'] = request.client_id
         if request.authorization_url is not None:
-            current_metadata['authorization_url'] = request.authorization_url
+            oauth_entity['AuthorizationUrl'] = request.authorization_url
         if request.token_url is not None:
-            current_metadata['token_url'] = request.token_url
+            oauth_entity['TokenUrl'] = request.token_url
         if request.scopes is not None:
-            current_metadata['scopes'] = request.scopes
+            oauth_entity['Scopes'] = request.scopes
+
+        # Update client_secret if provided - version the existing ref
+        if request.client_secret is not None:
+            try:
+                async with KeyVaultClient() as keyvault:
+                    # Get existing ref or generate new one if none exists
+                    client_secret_ref = oauth_entity.get('ClientSecretRef')
+
+                    if not client_secret_ref:
+                        # First time setting client secret - generate new ref
+                        client_secret_ref = generate_oauth_secret_name(
+                            org_id,
+                            connection_name,
+                            "client-secret"
+                        )
+                        oauth_entity['ClientSecretRef'] = client_secret_ref
+                        logger.info(f"Creating new client_secret in Key Vault: {client_secret_ref}")
+                    else:
+                        # Reuse existing ref - this creates a new version in Key Vault
+                        logger.info(f"Updating client_secret (new version) in Key Vault: {client_secret_ref}")
+
+                    await keyvault.set_secret(client_secret_ref, request.client_secret)
+            except ValueError as e:
+                # KeyVault not configured (e.g., in test environment)
+                logger.warning(f"KeyVault not available for client_secret update: {e}")
+                logger.warning("Client secret will not be persisted - OAuth connection may not work in production")
+            except Exception as e:
+                logger.error(f"Failed to update client_secret in Key Vault: {e}")
+                raise
 
         # Mark as not connected if significant changes occurred
         if request.client_id or request.client_secret or request.authorization_url or request.token_url:
-            current_metadata['status'] = 'not_connected'
+            oauth_entity['Status'] = 'not_connected'
 
-        # Update metadata config
-        metadata_config = {
-            "PartitionKey": org_id,
-            "RowKey": metadata_rowkey,
-            "Value": json.dumps(current_metadata),
-            "Type": "json",
-            "Description": f"OAuth metadata for {connection_name}",
-            "UpdatedAt": datetime.utcnow().isoformat(),
-            "UpdatedBy": updated_by
-        }
+        # Update timestamps
+        oauth_entity['UpdatedAt'] = datetime.utcnow().isoformat()
+        oauth_entity['UpdatedBy'] = updated_by
 
-        await self.config_table.upsert_entity(metadata_config)
-        logger.info(f"Updated OAuth connection metadata: {connection_name}")
+        await self.config_table.upsert_entity(oauth_entity)
+        logger.info(f"Updated OAuth connection: {connection_name}")
 
-        return await self._load_oauth_connection_from_config(org_id, connection_name)
+        return self._entity_to_oauth_connection(oauth_entity)
 
-    async def _load_oauth_connection_from_config(
-        self,
-        org_id: str,
-        connection_name: str
-    ) -> OAuthConnection | None:
+    def _entity_to_oauth_connection(self, entity: dict) -> OAuthConnection | None:
         """
-        Reconstruct OAuthConnection from Config table entries
+        Convert Table Storage entity to OAuthConnection model
 
         Args:
-            org_id: Organization ID
-            connection_name: Connection name
+            entity: OAuth entity from Table Storage
 
         Returns:
-            Reconstructed OAuthConnection or None if not found
+            OAuthConnection model or None if conversion fails
         """
-        metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-
         try:
-            # Fetch metadata
-            metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
-            if not metadata_entity:
-                return None
+            # Parse datetime fields
+            created_at_str = entity.get("CreatedAt")
+            created_at = datetime.utcnow()
+            if created_at_str and isinstance(created_at_str, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                except (ValueError, AttributeError, TypeError):
+                    pass
+            elif isinstance(created_at_str, datetime):
+                created_at = created_at_str
 
-            metadata = json.loads(metadata_entity['Value'])
+            updated_at_str = entity.get("UpdatedAt")
+            updated_at = created_at
+            if updated_at_str and isinstance(updated_at_str, str):
+                try:
+                    updated_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+                except (ValueError, AttributeError, TypeError):
+                    pass
+            elif isinstance(updated_at_str, datetime):
+                updated_at = updated_at_str
 
-            # Use short reference names (not Key Vault secret names)
-            # These are used to construct the config table RowKeys
-            client_secret_ref = f"oauth_{connection_name}_client_secret"
-            oauth_response_ref = f"oauth_{connection_name}_oauth_response"
-
-            now = datetime.utcnow()
-
-            # Parse expires_at from metadata if available
-            expires_at_str = metadata.get('expires_at')
             expires_at = None
-            if expires_at_str:
+            expires_at_str = entity.get("ExpiresAt")
+            if expires_at_str and isinstance(expires_at_str, str):
                 try:
                     expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     pass
+            elif isinstance(expires_at_str, datetime):
+                expires_at = expires_at_str
 
-            # Reconstruct OAuthConnection
+            # Extract connection name from RowKey (remove "oauth:" prefix)
+            connection_name = entity["RowKey"].replace("oauth:", "", 1)
+
+            # Get oauth_flow_type, default to authorization_code if not set
+            oauth_flow_type = entity.get("OAuthFlowType", "authorization_code")
+
+            # Get URLs - use None instead of empty string for optional authorization_url
+            authorization_url = entity.get("AuthorizationUrl") or None
+            token_url = entity.get("TokenUrl")
+
+            # Token URL is required, must be https
+            if not token_url or not token_url.startswith("https://"):
+                logger.warning(f"Invalid or missing token_url for OAuth connection {connection_name}, skipping")
+                return None
+
             return OAuthConnection(
-                org_id=org_id,
+                org_id=entity["PartitionKey"],
                 connection_name=connection_name,
-                description=metadata.get('description'),
-                oauth_flow_type=metadata.get('oauth_flow_type', 'standard'),
-                client_id=metadata['client_id'],
-                client_secret_ref=client_secret_ref,
-                oauth_response_ref=oauth_response_ref,
-                authorization_url=metadata['authorization_url'],
-                token_url=metadata['token_url'],
-                scopes=metadata.get('scopes', ''),
-                redirect_uri=metadata.get('redirect_uri', f"/oauth/callback/{connection_name}"),
-                status=metadata.get('status', 'not_connected'),
-                status_message=metadata.get('status_message'),
+                description=entity.get("Description"),
+                oauth_flow_type=oauth_flow_type,
+                client_id=entity.get("ClientId", ""),
+                client_secret_ref=entity.get("ClientSecretRef") or "",
+                oauth_response_ref=entity.get("OAuthResponseRef") or "",
+                authorization_url=authorization_url,
+                token_url=token_url,
+                scopes=entity.get("Scopes", ""),
+                redirect_uri=entity.get("RedirectUri", f"/oauth/callback/{connection_name}"),
+                status=entity.get("Status", "not_connected"),
+                status_message=entity.get("StatusMessage"),
                 expires_at=expires_at,
-                created_at=now,  # Default to current time
-                created_by=metadata.get('created_by', 'system'),
-                updated_at=now
+                created_at=created_at,
+                created_by=entity.get("CreatedBy", "system"),
+                updated_at=updated_at
             )
-
         except Exception as e:
-            logger.warning(f"Error loading OAuth connection: {e}")
-            return None
-
-    async def _fetch_config_secret(
-        self,
-        org_id: str,
-        rowkey: str
-    ) -> str | None:
-        """
-        Fetch secret reference from Config table
-
-        Args:
-            org_id: Organization ID
-            rowkey: Row key to look up
-
-        Returns:
-            Secret reference or None
-        """
-        try:
-            secret_entity = await self.config_table.get_entity(org_id, rowkey)
-            return secret_entity.get('Value') if secret_entity else None
-        except Exception:
+            logger.error(f"Failed to convert OAuth entity to model: {e}", exc_info=True)
             return None
 
     async def delete_connection(
@@ -399,7 +381,7 @@ class OAuthStorageService:
         connection_name: str
     ) -> bool:
         """
-        Delete an OAuth connection and its associated configs
+        Delete an OAuth connection and its associated secrets
 
         Args:
             org_id: Organization ID
@@ -408,39 +390,45 @@ class OAuthStorageService:
         Returns:
             True if deleted, False if not found
         """
-        # Delete secrets from Key Vault
+        # Get the OAuth entity to find secret refs
+        oauth_rowkey = f"oauth:{connection_name}"
+        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+
+        if not oauth_entity:
+            logger.warning(f"OAuth connection not found for deletion: {connection_name}")
+            return False
+
+        # Delete secrets from Key Vault using direct refs
         try:
             async with KeyVaultClient() as keyvault:
-                secret_keys = [
-                    f"oauth-{connection_name}-client-secret",
-                    f"oauth-{connection_name}-response"
-                ]
+                client_secret_ref = oauth_entity.get("ClientSecretRef")
+                oauth_response_ref = oauth_entity.get("OAuthResponseRef")
 
-                for secret_key in secret_keys:
+                if client_secret_ref:
                     try:
-                        await keyvault.delete_secret(org_id, secret_key)
-                        logger.debug(f"Deleted Key Vault secret: {org_id}--{secret_key}")
+                        await keyvault.delete_secret(client_secret_ref)
+                        logger.debug(f"Deleted Key Vault secret: {client_secret_ref}")
                     except Exception as e:
-                        logger.debug(f"Could not delete Key Vault secret {org_id}--{secret_key}: {e}")
+                        logger.debug(f"Could not delete Key Vault secret {client_secret_ref}: {e}")
+
+                if oauth_response_ref:
+                    try:
+                        await keyvault.delete_secret(oauth_response_ref)
+                        logger.debug(f"Deleted Key Vault secret: {oauth_response_ref}")
+                    except Exception as e:
+                        logger.debug(f"Could not delete Key Vault secret {oauth_response_ref}: {e}")
         except ValueError as e:
             logger.warning(f"KeyVault not available for secret deletion: {e}")
             logger.debug("Skipping Key Vault secret cleanup")
 
-        # Delete associated configs
-        config_keys = [
-            f"config:oauth_{connection_name}_client_secret",
-            f"config:oauth_{connection_name}_oauth_response",
-            f"config:oauth_{connection_name}_metadata"
-        ]
+        # Delete OAuth entity
+        try:
+            await self.config_table.delete_entity(org_id, oauth_rowkey)
+            logger.debug(f"Deleted OAuth entity: {oauth_rowkey}")
+        except Exception as e:
+            logger.warning(f"Failed to delete OAuth entity {oauth_rowkey}: {e}")
 
-        for config_key in config_keys:
-            try:
-                await self.config_table.delete_entity(org_id, config_key)
-                logger.debug(f"Deleted config: {config_key}")
-            except Exception as e:
-                logger.warning(f"Failed to delete config {config_key}: {e}")
-
-        logger.info(f"Deleted OAuth connection and configs: {connection_name}")
+        logger.info(f"Deleted OAuth connection: {connection_name}")
         return True
 
     async def store_tokens(
@@ -454,7 +442,7 @@ class OAuthStorageService:
         updated_by: str = "system"
     ) -> bool:
         """
-        Store OAuth tokens in Config table
+        Store OAuth tokens directly in OAuth entity
 
         Args:
             org_id: Organization ID
@@ -476,76 +464,50 @@ class OAuthStorageService:
             "expires_at": expires_at.isoformat()
         }
 
+        # Get OAuth entity to check for existing response ref
+        oauth_rowkey = f"oauth:{connection_name}"
+        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+
+        if not oauth_entity:
+            logger.error(f"OAuth connection not found: {connection_name}")
+            return False
+
         # Store OAuth response JSON in Key Vault
+        oauth_response_ref = oauth_entity.get("OAuthResponseRef")
+
         try:
-            keyvault = KeyVaultClient()
-            assert keyvault._client is not None, "KeyVault client is None"
+            async with KeyVaultClient() as keyvault:
+                if oauth_response_ref:
+                    # Reuse existing ref (creates new version in Key Vault)
+                    await keyvault.set_secret(oauth_response_ref, json.dumps(oauth_response))
+                    logger.info(f"Updated existing OAuth token secret: {oauth_response_ref}")
+                else:
+                    # Generate new secret ref
+                    oauth_response_ref = generate_oauth_secret_name(
+                        org_id,
+                        connection_name,
+                        "response"
+                    )
+                    await keyvault.set_secret(oauth_response_ref, json.dumps(oauth_response))
+                    logger.info(f"Created new OAuth token secret: {oauth_response_ref}")
 
-            # Check if we have an existing oauth_response config to reuse the secret name
-            oauth_response_rowkey = f"config:oauth_{connection_name}_oauth_response"
-            existing_config = None
-            try:
-                existing_config = await self.config_table.get_entity(org_id, oauth_response_rowkey)
-            except Exception:
-                # No existing config, will create new secret
-                pass
-
-            if existing_config and existing_config.get('Type') == 'secret_ref':
-                # Reuse existing secret name (creates new version in Key Vault)
-                keyvault_secret_name = existing_config['Value']
-                logger.info(f"Updating existing OAuth token secret '{keyvault_secret_name}' for {connection_name}")
-            else:
-                # Generate new secret name using bifrost-{scope}-oauth-{name}-{type}-{uuid} convention
-                keyvault_secret_name = generate_oauth_secret_name(
-                    org_id,
-                    connection_name,
-                    "response"
-                )
-                logger.info(f"Creating new OAuth token secret for {connection_name}")
-
-            keyvault._client.set_secret(keyvault_secret_name, json.dumps(oauth_response))
-            logger.info(f"Stored OAuth tokens in Key Vault: {keyvault_secret_name}")
+                    # Update entity with new ref
+                    oauth_entity["OAuthResponseRef"] = oauth_response_ref
         except ValueError as e:
             logger.warning(f"KeyVault not available for OAuth token storage: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to store OAuth tokens in Key Vault: {e}")
             raise
 
-        # Store in Config table (Type="secret_ref")
-        oauth_response_config = {
-            "PartitionKey": org_id,
-            "RowKey": f"config:oauth_{connection_name}_oauth_response",
-            "Value": keyvault_secret_name,
-            "Type": "secret_ref",
-            "Description": f"OAuth tokens for {connection_name}",
-            "UpdatedAt": datetime.utcnow().isoformat(),
-            "UpdatedBy": updated_by
-        }
+        # Update OAuth entity with new status and expiration
+        oauth_entity["Status"] = "completed"
+        oauth_entity["ExpiresAt"] = expires_at.isoformat()
+        oauth_entity["UpdatedAt"] = datetime.utcnow().isoformat()
+        oauth_entity["UpdatedBy"] = updated_by
 
-        await self.config_table.upsert_entity(oauth_response_config)
-        logger.info(f"Stored OAuth tokens config reference for {connection_name}")
-
-        # Update connection metadata to reflect new status
-        metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
-
-        if metadata_entity:
-            current_metadata = json.loads(metadata_entity['Value'])
-            current_metadata['status'] = 'completed'
-            current_metadata['expires_at'] = expires_at.isoformat()
-            current_metadata['last_refresh_at'] = datetime.utcnow().isoformat()
-
-            metadata_config = {
-                "PartitionKey": org_id,
-                "RowKey": metadata_rowkey,
-                "Value": json.dumps(current_metadata),
-                "Type": "json",
-                "Description": f"OAuth metadata for {connection_name}",
-                "UpdatedAt": datetime.utcnow().isoformat(),
-                "UpdatedBy": updated_by
-            }
-
-            await self.config_table.upsert_entity(metadata_config)
+        await self.config_table.upsert_entity(oauth_entity)
+        logger.info(f"Updated OAuth connection status to completed: {connection_name}")
 
         return True
 
@@ -579,35 +541,13 @@ class OAuthStorageService:
 
             logger.info(f"Refreshing OAuth connection: {connection_name} (flow={connection.oauth_flow_type})")
 
-            # Get client secret if exists
+            # Get client secret if exists using direct ref
             client_secret = None
             if connection.client_secret_ref:
                 try:
-                    # client_secret_ref is the short name like "oauth_{name}_client_secret"
-                    # Config table RowKey is "config:oauth_{name}_client_secret"
-                    client_secret_key = f"config:{connection.client_secret_ref}"
-
-                    logger.info(f"Looking up client secret with key: {client_secret_key}")
-                    client_secret_config = await self.config_table.get_entity(
-                        connection.org_id,
-                        client_secret_key
-                    )
-
-                    if client_secret_config:
-                        keyvault_secret_name = client_secret_config.get("Value")
-                        if keyvault_secret_name:
-                            from shared.keyvault import KeyVaultClient
-                            logger.info(f"Retrieving client secret from Key Vault: {keyvault_secret_name}")
-                            async with KeyVaultClient() as keyvault:
-                                # Extract just the secret key (without org prefix)
-                                parts = keyvault_secret_name.split("--", 1)
-                                secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
-                                client_secret = await keyvault.get_secret(connection.org_id, secret_key)
-                                logger.info("Successfully retrieved client secret")
-                        else:
-                            logger.warning("Client secret config found but missing Value field")
-                    else:
-                        logger.warning(f"Client secret config not found for key: {client_secret_key}")
+                    async with KeyVaultClient() as keyvault:
+                        client_secret = await keyvault.get_secret(connection.client_secret_ref)
+                        logger.info("Successfully retrieved client secret")
                 except Exception as e:
                     logger.error(f"Could not retrieve client_secret: {e}", exc_info=True)
 
@@ -640,30 +580,13 @@ class OAuthStorageService:
                 # Authorization code flow: use refresh_token
                 logger.info(f"Refreshing authorization_code token for {connection_name}")
 
-                # Get OAuth response config to retrieve current tokens
-                # Config table uses RowKey: config:oauth_{connection_name}_oauth_response
-                oauth_response_key = f"config:oauth_{connection_name}_oauth_response"
-                oauth_response_config = await self.config_table.get_entity(
-                    connection.org_id,
-                    oauth_response_key
-                )
-
-                if not oauth_response_config:
-                    logger.error(f"OAuth response config not found: {oauth_response_key}")
+                # Get OAuth response from Key Vault using direct ref
+                if not connection.oauth_response_ref:
+                    logger.error(f"No oauth_response_ref found for {connection_name}")
                     return False
 
-                # Get Key Vault secret name from config
-                keyvault_secret_name = oauth_response_config.get("Value")
-                if not keyvault_secret_name:
-                    logger.error("OAuth response config missing Key Vault secret name")
-                    return False
-
-                # Retrieve current OAuth tokens from Key Vault
                 async with KeyVaultClient() as keyvault:
-                    # Extract just the secret key (without org prefix)
-                    parts = keyvault_secret_name.split("--", 1)
-                    secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
-                    oauth_response_json = await keyvault.get_secret(connection.org_id, secret_key)
+                    oauth_response_json = await keyvault.get_secret(connection.oauth_response_ref)
                     assert oauth_response_json is not None, "OAuth response is None"
                     oauth_response = json.loads(oauth_response_json)
 
@@ -699,14 +622,6 @@ class OAuthStorageService:
                 updated_by="system"
             )
 
-            # Update connection status
-            await self.update_connection_status(
-                org_id=connection.org_id,
-                connection_name=connection_name,
-                status="completed",
-                status_message="Token refreshed successfully"
-            )
-
             logger.info(f"Successfully refreshed token for {connection_name}")
             return True
 
@@ -737,131 +652,24 @@ class OAuthStorageService:
         Returns:
             True if updated successfully
         """
-        metadata_rowkey = f"config:oauth_{connection_name}_metadata"
-        metadata_entity = await self.config_table.get_entity(org_id, metadata_rowkey)
+        oauth_rowkey = f"oauth:{connection_name}"
+        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
 
-        if not metadata_entity:
+        if not oauth_entity:
             logger.warning(f"OAuth connection not found for status update: {connection_name}")
             return False
 
-        current_metadata = json.loads(metadata_entity['Value'])
-
-        current_metadata['status'] = status
+        oauth_entity['Status'] = status
         if status_message is not None:
-            current_metadata['status_message'] = status_message
+            oauth_entity['StatusMessage'] = status_message
         if expires_at is not None:
-            current_metadata['expires_at'] = expires_at.isoformat()
-        if last_refresh_at is not None:
-            current_metadata['last_refresh_at'] = last_refresh_at.isoformat()
-        current_metadata['updated_at'] = datetime.utcnow().isoformat()
+            oauth_entity['ExpiresAt'] = expires_at.isoformat()
+        oauth_entity['UpdatedAt'] = datetime.utcnow().isoformat()
 
-        metadata_config = {
-            "PartitionKey": org_id,
-            "RowKey": metadata_rowkey,
-            "Value": json.dumps(current_metadata),
-            "Type": "json",
-            "Description": f"OAuth metadata for {connection_name}",
-            "UpdatedAt": datetime.utcnow().isoformat()
-        }
-
-        await self.config_table.upsert_entity(metadata_config)
+        await self.config_table.upsert_entity(oauth_entity)
         logger.info(f"Updated OAuth connection status: {connection_name} -> {status}")
 
         return True
-
-    async def _update_metadata_config(
-        self,
-        org_id: str,
-        connection_name: str,
-        entity: dict,
-        updated_by: str
-    ):
-        """Update metadata config when connection details change"""
-        metadata = {
-            "oauth_flow_type": entity["oauth_flow_type"],
-            "client_id": entity["client_id"],
-            "authorization_url": entity["authorization_url"],
-            "token_url": entity["token_url"],
-            "scopes": entity["scopes"],
-            "redirect_uri": entity["redirect_uri"],
-            "status": entity["status"]
-        }
-
-        metadata_config = {
-            "PartitionKey": org_id,
-            "RowKey": f"config:oauth_{connection_name}_metadata",
-            "Value": json.dumps(metadata),
-            "Type": "json",
-            "Description": f"OAuth metadata for {connection_name}",
-            "UpdatedAt": datetime.utcnow().isoformat(),
-            "UpdatedBy": updated_by
-        }
-
-        await self.config_table.upsert_entity(metadata_config)
-
-    def _entity_to_connection(self, entity: dict) -> OAuthConnection:
-        """
-        Convert Table Storage entity to OAuthConnection model
-
-        Args:
-            entity: Entity from Table Storage
-
-        Returns:
-            OAuthConnection model
-        """
-        # Parse datetime fields
-        created_at = entity.get("created_at")
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-
-        updated_at = entity.get("updated_at")
-        if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-        elif updated_at is None:
-            # Default to created_at if updated_at is missing
-            updated_at = created_at if created_at else datetime.utcnow()
-
-        expires_at = entity.get("expires_at")
-        if expires_at and isinstance(expires_at, str):
-            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-
-        last_refresh_at = entity.get("last_refresh_at")
-        if last_refresh_at and isinstance(last_refresh_at, str):
-            last_refresh_at = datetime.fromisoformat(last_refresh_at.replace("Z", "+00:00"))
-
-        last_test_at = entity.get("last_test_at")
-        if last_test_at and isinstance(last_test_at, str):
-            last_test_at = datetime.fromisoformat(last_test_at.replace("Z", "+00:00"))
-
-        # Parse required fields with assertions for type safety
-        client_secret_ref = entity.get("client_secret_ref")
-        assert client_secret_ref is not None, "client_secret_ref is required"
-        oauth_response_ref = entity.get("oauth_response_ref")
-        assert oauth_response_ref is not None, "oauth_response_ref is required"
-        assert created_at is not None, "created_at is required"
-
-        return OAuthConnection(
-            org_id=entity["PartitionKey"],
-            connection_name=entity["RowKey"],
-            description=entity.get("description"),
-            oauth_flow_type=entity["oauth_flow_type"],
-            client_id=entity["client_id"],
-            client_secret_ref=client_secret_ref,
-            oauth_response_ref=oauth_response_ref,
-            authorization_url=entity["authorization_url"],
-            token_url=entity["token_url"],
-            scopes=entity.get("scopes", ""),
-            redirect_uri=entity["redirect_uri"],
-            token_type=entity.get("token_type", "Bearer"),
-            expires_at=expires_at,
-            status=entity["status"],
-            status_message=entity.get("status_message"),
-            last_refresh_at=last_refresh_at,
-            last_test_at=last_test_at,
-            created_at=created_at,
-            created_by=entity["created_by"],
-            updated_at=updated_at
-        )
 
     async def run_refresh_job(
         self,

@@ -146,8 +146,8 @@ class ConfigResolver:
                 }
             )
 
-            # Get secret from Key Vault (with org → global fallback)
-            secret_value = await self.keyvault_client.get_secret(org_id, secret_ref)
+            # Get secret from Key Vault (secret_ref is already the full reference)
+            secret_value = await self.keyvault_client.get_secret(secret_ref)
 
             # Log successful resolution (without value)
             logger.info(

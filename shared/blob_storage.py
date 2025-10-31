@@ -211,13 +211,13 @@ class BlobStorageService:
             )
             return None
 
-    async def upload_result(self, execution_id: str, result: dict[str, Any] | str) -> str:
+    async def upload_result(self, execution_id: str, result: dict[str, Any] | list[Any] | str) -> str:
         """
         Upload execution result to blob storage
 
         Args:
             execution_id: Execution ID (UUID)
-            result: Result data (dict for JSON, str for HTML/text)
+            result: Result data (dict/list for JSON, str for HTML/text)
 
         Returns:
             Blob path (e.g., "abc-123/result.json" or "abc-123/result.html")
@@ -259,7 +259,7 @@ class BlobStorageService:
             )
             raise
 
-    async def get_result(self, execution_id: str) -> dict[str, Any] | str | None:
+    async def get_result(self, execution_id: str) -> dict[str, Any] | list[Any] | str | None:
         """
         Retrieve execution result from blob storage
 
@@ -269,7 +269,7 @@ class BlobStorageService:
             execution_id: Execution ID (UUID)
 
         Returns:
-            Result data (dict for JSON, str for HTML/text) or None if not found
+            Result data (dict/list for JSON, str for HTML/text) or None if not found
         """
         await self._ensure_container_exists(EXECUTION_CONTAINER)
 

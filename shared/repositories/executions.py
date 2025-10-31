@@ -213,7 +213,7 @@ class ExecutionRepository(BaseRepository):
         org_id: str | None,
         user_id: str,
         status: ExecutionStatus,
-        result: dict | str | None = None,
+        result: dict | list | str | None = None,
         error_message: str | None = None,
         duration_ms: int | None = None,
         result_in_blob: bool = False
@@ -229,7 +229,7 @@ class ExecutionRepository(BaseRepository):
             org_id: Organization ID
             user_id: User ID (for index lookup)
             status: New execution status
-            result: Execution result (dict or string)
+            result: Execution result (dict, list, or string)
             error_message: Error message if failed
             duration_ms: Duration in milliseconds
             result_in_blob: Whether result is stored in blob storage
@@ -266,7 +266,9 @@ class ExecutionRepository(BaseRepository):
         execution_entity["ResultInBlob"] = result_in_blob
 
         if result and not result_in_blob:
-            execution_entity["Result"] = json.dumps(result) if isinstance(result, dict) else result
+            # Convert result to JSON string if it's not already a string
+            # Table Storage only supports primitive types (string, int, bool, etc.)
+            execution_entity["Result"] = result if isinstance(result, str) else json.dumps(result)
 
         await self.update(execution_entity)
 

@@ -174,3 +174,43 @@ class OAuthRepository:
         return await self._service.update_connection_status(
             org_id, connection_name, status, status_message
         )
+
+    async def refresh_token(
+        self,
+        connection_name: str,
+        org_id: str
+    ) -> bool:
+        """
+        Refresh OAuth access token
+
+        Args:
+            connection_name: Connection name
+            org_id: Organization ID
+
+        Returns:
+            True if refreshed successfully
+        """
+        return await self._service.refresh_token(org_id, connection_name)
+
+    async def run_refresh_job(
+        self,
+        trigger_type: str = "automatic",
+        trigger_user: str | None = None,
+        refresh_threshold_minutes: int | None = None
+    ) -> dict:
+        """
+        Run OAuth token refresh job
+
+        Args:
+            trigger_type: Type of trigger ("automatic" or "manual")
+            trigger_user: Email of user who triggered (for manual)
+            refresh_threshold_minutes: Override threshold in minutes
+
+        Returns:
+            Dictionary with job results
+        """
+        return await self._service.run_refresh_job(
+            trigger_type=trigger_type,
+            trigger_user=trigger_user,
+            refresh_threshold_minutes=refresh_threshold_minutes
+        )

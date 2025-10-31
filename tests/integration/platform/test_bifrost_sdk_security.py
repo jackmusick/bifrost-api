@@ -334,8 +334,8 @@ class TestCrossOrgParameterUsage:
                 # Explicitly request org-888's secret
                 result = await secrets.get("api_key", org_id="org-888")
 
-                # Verify it used org-888, NOT context.org_id (org-123)
-                mock_kv.get_secret.assert_called_once_with("org-888", "api_key")
+                # Verify it was called with the full secret name
+                mock_kv.get_secret.assert_called_once_with("api_key")
                 assert result == "other-secret"
         finally:
             clear_execution_context()

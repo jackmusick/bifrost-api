@@ -719,7 +719,7 @@ class FormExecuteRequest(BaseModel):
 
 class FormStartupResponse(BaseModel):
     """Response model for form startup/launch workflow execution"""
-    result: dict[str, Any] | str | None = Field(None, description="Workflow execution result")
+    result: dict[str, Any] | list[Any] | str | None = Field(None, description="Workflow execution result")
 
 
 # ==================== WORKFLOW EXECUTION MODELS ====================
@@ -742,7 +742,7 @@ class WorkflowExecution(BaseModel):
     executedByName: str  # Display name of user who executed
     status: ExecutionStatus
     inputData: dict[str, Any]
-    result: dict[str, Any] | str | None = None  # Can be dict (JSON) or str (HTML/text)
+    result: dict[str, Any] | list[Any] | str | None = None  # Can be dict/list (JSON) or str (HTML/text)
     resultType: Literal['json', 'html', 'text'] | None = None  # How to render result
     errorMessage: str | None = None
     durationMs: int | None = None
@@ -773,7 +773,7 @@ class WorkflowExecutionResponse(BaseModel):
     """Response model for workflow execution"""
     executionId: str
     status: ExecutionStatus
-    result: dict[str, Any] | str | None = None  # Can be dict (JSON) or str (HTML/text)
+    result: dict[str, Any] | list[Any] | str | None = None  # Can be dict/list (JSON) or str (HTML/text)
     error: str | None = None
     errorType: str | None = None
     details: dict[str, Any] | None = None

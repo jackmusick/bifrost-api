@@ -17,8 +17,8 @@ from shared.models import (
     UpdateOAuthConnectionRequest,
 )
 from shared.services.oauth_provider import OAuthProviderClient
-from shared.services.oauth_storage_service import OAuthStorageService
 from shared.services.oauth_test_service import OAuthTestService
+from shared.repositories.oauth import OAuthRepository
 from shared.keyvault import KeyVaultClient
 from shared.async_storage import AsyncTableStorageService
 from shared.custom_types import get_context, get_route_param
@@ -45,17 +45,17 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
         request_body = req.get_json()
         create_request = CreateOAuthConnectionRequest(**request_body)
 
-        oauth_service = OAuthStorageService()
+        oauth_repo = OAuthRepository()
 
         # Check if connection already exists
-        existing = await oauth_service.get_connection(org_id, create_request.connection_name)
+        existing = await oauth_repo.get_connection(create_request.connection_name, org_id)
         if existing:
             return conflict("OAuth connection", create_request.connection_name)
 
         # Create connection
-        connection = await oauth_service.create_connection(
-            org_id=org_id,
+        connection = await oauth_repo.create_connection(
             request=create_request,
+            org_id=org_id,
             created_by=context.user_id
         )
 
@@ -69,21 +69,8 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                 # Get client secret from Key Vault
                 client_secret = None
                 if connection.client_secret_ref:
-                    config_service = AsyncTableStorageService("Config")
-                    client_secret_key = f"config:{connection.client_secret_ref}"
-                    client_secret_config = await config_service.get_entity(
-                        connection.org_id,
-                        client_secret_key
-                    )
-
-                    if client_secret_config:
-                        keyvault_secret_name = client_secret_config.get("Value")
-                        if keyvault_secret_name:
-                            async with KeyVaultClient() as keyvault:
-                                # Extract just the secret name (without org prefix)
-                                parts = keyvault_secret_name.split("--", 1)
-                                secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
-                                client_secret = await keyvault.get_secret(connection.org_id, secret_key)
+                    async with KeyVaultClient() as keyvault:
+                        client_secret = await keyvault.get_secret(connection.client_secret_ref)
 
                 if not client_secret:
                     raise ValueError("Client credentials flow requires client_secret")
@@ -100,17 +87,17 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                 if not success:
                     error_msg = result.get("error_description", result.get("error", "Token acquisition failed"))
                     logger.error(f"Failed to acquire client credentials token: {error_msg}")
-                    await oauth_service.update_connection_status(
-                        org_id=org_id,
+                    await oauth_repo.update_status(
                         connection_name=create_request.connection_name,
+                        org_id=org_id,
                         status="failed",
                         status_message=f"Failed to acquire initial token: {error_msg}"
                     )
                 else:
                     # Store tokens
-                    await oauth_service.store_tokens(
-                        org_id=connection.org_id,
+                    await oauth_repo.store_tokens(
                         connection_name=connection.connection_name,
+                        org_id=connection.org_id,
                         access_token=result["access_token"],
                         refresh_token=None,  # Client credentials doesn't use refresh tokens
                         expires_at=result["expires_at"],
@@ -119,9 +106,9 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                     )
 
                     # Update status to completed
-                    await oauth_service.update_connection_status(
-                        org_id=org_id,
+                    await oauth_repo.update_status(
                         connection_name=create_request.connection_name,
+                        org_id=org_id,
                         status="completed",
                         status_message="Client credentials token acquired successfully"
                     )
@@ -129,20 +116,20 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                     logger.info(f"Client credentials token acquired for {create_request.connection_name}")
 
                     # Re-fetch connection to get updated status
-                    updated_connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+                    updated_connection = await oauth_repo.get_connection(create_request.connection_name, org_id)
                     if updated_connection:
                         connection = updated_connection
 
             except Exception as e:
                 logger.error(f"Error acquiring client credentials token: {str(e)}", exc_info=True)
-                await oauth_service.update_connection_status(
+                await oauth_repo.update_status(
                     org_id=org_id,
                     connection_name=create_request.connection_name,
                     status="failed",
                     status_message=f"Failed to acquire initial token: {str(e)}"
                 )
                 # Re-fetch connection to get updated status
-                updated_connection = await oauth_service.get_connection(org_id, create_request.connection_name)
+                updated_connection = await oauth_repo.get_connection(org_id, create_request.connection_name)
                 if updated_connection:
                     connection = updated_connection
 
@@ -172,8 +159,8 @@ async def list_oauth_connections_handler(req: func.HttpRequest) -> func.HttpResp
     logger.info(f"User {context.email} listing OAuth connections for org {org_id}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connections = await oauth_service.list_connections(org_id)
+        oauth_repo = OAuthRepository()
+        connections = await oauth_repo.list_connections(org_id)
 
         details = [conn.to_detail() for conn in connections]
         return success_response([d.model_dump(mode="json") for d in details])
@@ -192,8 +179,8 @@ async def get_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRespon
     logger.info(f"User {context.email} getting OAuth connection: {name}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
@@ -218,16 +205,16 @@ async def update_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
         request_body = req.get_json()
         update_request = UpdateOAuthConnectionRequest(**request_body)
 
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
 
         # Update connection
-        updated = await oauth_service.update_connection(
-            org_id=org_id,
+        updated = await oauth_repo.update_connection(
             connection_name=name,
+            org_id=org_id,
             request=update_request,
             updated_by=context.user_id
         )
@@ -260,13 +247,13 @@ async def delete_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
     logger.info(f"User {context.email} deleting OAuth connection: {name}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
 
-        await oauth_service.delete_connection(org_id, name)
+        await oauth_repo.delete_connection(name, org_id)
         logger.info(f"Deleted OAuth connection: {name}")
 
         return func.HttpResponse(status_code=204)
@@ -285,8 +272,8 @@ async def authorize_oauth_connection_handler(req: func.HttpRequest) -> func.Http
     logger.info(f"User {context.email} authorizing OAuth connection: {name}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
@@ -322,9 +309,9 @@ async def authorize_oauth_connection_handler(req: func.HttpRequest) -> func.Http
         authorization_url = f"{connection.authorization_url}?{urlencode(auth_params)}"
 
         # Update connection status to waiting_callback
-        await oauth_service.update_connection_status(
-            org_id=org_id,
+        await oauth_repo.update_status(
             connection_name=name,
+            org_id=org_id,
             status="waiting_callback",
             status_message=f"Waiting for OAuth callback (state: {state})"
         )
@@ -352,16 +339,16 @@ async def cancel_oauth_authorization_handler(req: func.HttpRequest) -> func.Http
     logger.info(f"User {context.email} canceling OAuth authorization: {name}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
 
         # Reset to not_connected status
-        await oauth_service.update_connection_status(
-            org_id=org_id,
+        await oauth_repo.update_status(
             connection_name=name,
+            org_id=org_id,
             status="not_connected",
             status_message="Authorization canceled by user"
         )
@@ -384,14 +371,14 @@ async def refresh_oauth_token_handler(req: func.HttpRequest) -> func.HttpRespons
     logger.info(f"User {context.email} refreshing OAuth token: {name}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
 
         # Refresh token
-        success = await oauth_service.refresh_token(org_id, name)
+        success = await oauth_repo.refresh_token(name, org_id)
         if not success:
             return bad_request("Failed to refresh token")
 
@@ -425,12 +412,12 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # Create services
-        oauth_service = OAuthStorageService()
+        oauth_repo = OAuthRepository()
         oauth_provider = OAuthProviderClient()
         oauth_test = OAuthTestService()
 
         # Try to find connection (check GLOBAL first for simplicity)
-        connection = await oauth_service.get_connection("GLOBAL", connection_name)
+        connection = await oauth_repo.get_connection(connection_name, "GLOBAL")
 
         if not connection:
             # Try other orgs if needed (for now, just fail)
@@ -445,9 +432,9 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Exchange code for tokens
         logger.info(f"Exchanging authorization code for tokens: {connection_name}")
 
-        await oauth_service.update_connection_status(
-            org_id=connection.org_id,
+        await oauth_repo.update_status(
             connection_name=connection_name,
+            org_id=connection.org_id,
             status="testing",
             status_message="Exchanging authorization code for access token"
         )
@@ -468,26 +455,11 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         client_secret = None
         if connection.client_secret_ref:
             try:
-                # Get client secret config entry to retrieve Key Vault secret name
-                config_service = AsyncTableStorageService("Config")
-                client_secret_key = f"config:{connection.client_secret_ref}"
-                client_secret_config = await config_service.get_entity(
-                    connection.org_id,
-                    client_secret_key
-                )
-
-                if client_secret_config:
-                    keyvault_secret_name = client_secret_config.get("Value")
-                    if keyvault_secret_name:
-                        try:
-                            async with KeyVaultClient() as keyvault:
-                                # Extract just the secret name (without org prefix)
-                                parts = keyvault_secret_name.split("--", 1)
-                                secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
-                                client_secret = await keyvault.get_secret(connection.org_id, secret_key)
-                            logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
-                        except ValueError as e:
-                            logger.warning(f"KeyVault not available for client_secret retrieval: {e}")
+                async with KeyVaultClient() as keyvault:
+                    client_secret = await keyvault.get_secret(connection.client_secret_ref)
+                logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
+            except ValueError as e:
+                logger.warning(f"KeyVault not available for client_secret retrieval: {e}")
             except Exception as e:
                 logger.warning(f"Failed to retrieve client_secret from Key Vault: {e}")
 
@@ -503,7 +475,7 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
             error_msg = result.get("error_description", result.get("error", "Token exchange failed"))
             logger.error(f"Token exchange failed: {error_msg}")
 
-            await oauth_service.update_connection_status(
+            await oauth_repo.update_status(
                 org_id=connection.org_id,
                 connection_name=connection_name,
                 status="failed",
@@ -530,9 +502,9 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Store tokens
-        await oauth_service.store_tokens(
-            org_id=connection.org_id,
+        await oauth_repo.store_tokens(
             connection_name=connection_name,
+            org_id=connection.org_id,
             access_token=result["access_token"],
             refresh_token=result.get("refresh_token"),
             expires_at=result["expires_at"],
@@ -542,9 +514,9 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
 
         # Update final status
         final_status = "completed" if test_success else "failed"
-        await oauth_service.update_connection_status(
-            org_id=connection.org_id,
+        await oauth_repo.update_status(
             connection_name=connection_name,
+            org_id=connection.org_id,
             status=final_status,
             status_message=test_message
         )
@@ -596,8 +568,8 @@ async def get_oauth_credentials_handler(req: func.HttpRequest) -> func.HttpRespo
     logger.info(f"User {context.email} getting OAuth credentials: {name}")
 
     try:
-        oauth_service = OAuthStorageService()
-        connection = await oauth_service.get_connection(org_id, name)
+        oauth_repo = OAuthRepository()
+        connection = await oauth_repo.get_connection(name, org_id)
 
         if not connection:
             return not_found("OAuth connection", name)
@@ -660,8 +632,8 @@ async def trigger_oauth_refresh_job_handler(req: func.HttpRequest) -> func.HttpR
 
     try:
         # Initialize service and run refresh job
-        oauth_service = OAuthStorageService()
-        results = await oauth_service.run_refresh_job(
+        oauth_repo = OAuthRepository()
+        results = await oauth_repo.run_refresh_job(
             trigger_type="manual",
             trigger_user=context.email
         )

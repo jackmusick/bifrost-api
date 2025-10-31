@@ -65,89 +65,73 @@ class KeyVaultClient:
         else:
             raise ValueError("AZURE_KEY_VAULT_URL environment variable is required")
 
-    async def create_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
+    async def set_secret(self, ref: str, value: str) -> dict[str, str]:
         """
-        Create a new secret in Key Vault.
+        Set a secret in Key Vault (creates new secret or new version if exists).
 
         Args:
-            org_id: Organization identifier or "GLOBAL" for platform-wide
-            secret_key: Secret key/name
+            ref: Full secret name/reference (e.g., "bifrost-global-api-key-uuid")
             value: Secret value to store
 
         Returns:
-            Dict with secret name and creation confirmation
+            Dict with secret name and confirmation
 
         Raises:
             ValueError: If secret name is invalid
-            HttpResponseError: If secret already exists or permission denied
+            HttpResponseError: If permission denied
         """
-        secret_name = self._build_secret_name(org_id, secret_key)
-
         # Validate secret name against Key Vault naming rules
-        if not self._is_valid_secret_name(secret_name):
+        if not self._is_valid_secret_name(ref):
             raise ValueError(
-                f"Invalid secret name: {secret_name}. "
+                f"Invalid secret name: {ref}. "
                 "Names must contain only alphanumeric characters and hyphens"
             )
 
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            await self._client.set_secret(secret_name, value)
-            logger.info(f"Created secret: {secret_name}")
+            await self._client.set_secret(ref, value)
+            logger.info(f"Set secret: {ref}")
             return {
-                "name": secret_name,
-                "message": "Secret created successfully"
+                "name": ref,
+                "message": "Secret saved successfully"
             }
         except HttpResponseError as e:
             if e.status_code == 403:
                 raise HttpResponseError(
-                    "Permission denied: Insufficient permissions to create secrets in Key Vault"
+                    "Permission denied: Insufficient permissions to manage secrets in Key Vault"
                 ) from e
             raise
 
-    async def update_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
+    async def get_secret(self, ref: str) -> str:
         """
-        Update an existing secret in Key Vault.
-
-        Note: set_secret will create a new version if the secret exists.
+        Get a secret value from Key Vault by full reference.
 
         Args:
-            org_id: Organization identifier or "GLOBAL" for platform-wide
-            secret_key: Secret key/name
-            value: New secret value
+            ref: Full secret name/reference (e.g., "bifrost-global-api-key-uuid")
 
         Returns:
-            Dict with secret name and update confirmation
+            Secret value as string
 
         Raises:
-            HttpResponseError: If permission denied
+            ResourceNotFoundError: If secret doesn't exist
         """
-        secret_name = self._build_secret_name(org_id, secret_key)
-
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            await self._client.set_secret(secret_name, value)
-            logger.info(f"Updated secret: {secret_name}")
-            return {
-                "name": secret_name,
-                "message": "Secret updated successfully"
-            }
-        except HttpResponseError as e:
-            if e.status_code == 403:
-                raise HttpResponseError(
-                    "Permission denied: Insufficient permissions to update secrets in Key Vault"
-                ) from e
-            raise
+            secret = await self._client.get_secret(ref)
+            logger.info(f"Retrieved secret: {ref}")
+            assert secret.value is not None, "Secret value is None"
+            return secret.value
+        except ResourceNotFoundError:
+            raise ResourceNotFoundError(f"Secret not found: {ref}") from None
 
-    async def delete_secret(self, org_id: str, secret_key: str) -> dict[str, str]:
+    async def delete_secret(self, ref: str) -> dict[str, str]:
         """
-        Delete a secret from Key Vault.
+        Delete a secret from Key Vault by full reference.
 
         Note: Deletion initiates a soft-delete (recoverable for 90 days by default).
 
         Args:
-            org_id: Organization identifier or "GLOBAL" for platform-wide
-            secret_key: Secret key/name
+            ref: Full secret name/reference (e.g., "bifrost-global-api-key-uuid")
 
         Returns:
             Dict with secret name and deletion confirmation
@@ -156,49 +140,22 @@ class KeyVaultClient:
             ResourceNotFoundError: If secret doesn't exist
             HttpResponseError: If permission denied
         """
-        secret_name = self._build_secret_name(org_id, secret_key)
-
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            await self._client.delete_secret(secret_name)
-            logger.info(f"Deleted secret: {secret_name}")
+            await self._client.delete_secret(ref)
+            logger.info(f"Deleted secret: {ref}")
             return {
-                "name": secret_name,
+                "name": ref,
                 "message": "Secret deleted successfully (soft-delete, recoverable for 90 days)"
             }
         except ResourceNotFoundError:
-            raise ResourceNotFoundError(f"Secret not found: {secret_name}") from None
+            raise ResourceNotFoundError(f"Secret not found: {ref}") from None
         except HttpResponseError as e:
             if e.status_code == 403:
                 raise HttpResponseError(
                     "Permission denied: Insufficient permissions to delete secrets in Key Vault"
                 ) from e
             raise
-
-    async def get_secret(self, org_id: str, secret_key: str) -> str:
-        """
-        Get a secret value from Key Vault.
-
-        Args:
-            org_id: Organization identifier or "GLOBAL" for platform-wide
-            secret_key: Secret key/name
-
-        Returns:
-            Secret value as string
-
-        Raises:
-            ResourceNotFoundError: If secret doesn't exist
-        """
-        secret_name = self._build_secret_name(org_id, secret_key)
-
-        try:
-            assert self._client is not None, "Key Vault client not initialized"
-            secret = await self._client.get_secret(secret_name)
-            logger.info(f"Retrieved secret: {secret_name}")
-            assert secret.value is not None, "Secret value is None"
-            return secret.value
-        except ResourceNotFoundError:
-            raise ResourceNotFoundError(f"Secret not found: {secret_name}") from None
 
     async def list_secrets(self, org_id: str | None = None) -> list[str]:
         """
