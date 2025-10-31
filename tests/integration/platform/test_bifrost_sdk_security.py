@@ -342,7 +342,7 @@ class TestCrossOrgParameterUsage:
 
     async def test_oauth_get_token_with_explicit_org_id(self):
         """Test that oauth.get_token(org_id='other-org') uses the specified org"""
-        from unittest.mock import AsyncMock, Mock, patch, AsyncMock
+        from unittest.mock import AsyncMock, Mock, patch
         from bifrost import oauth
         from shared.context import ExecutionContext, Organization
         from shared.models import OAuthConnection

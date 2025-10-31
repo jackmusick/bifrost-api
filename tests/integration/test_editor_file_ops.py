@@ -246,8 +246,11 @@ class TestBifrostTypesEndpoint:
         assert "def param(" in content
         assert "def data_provider(" in content
         assert "class OAuthCredentials" in content
-        assert "def get_config(" in content
-        assert "def get_oauth_connection(" in content
+        # Check for SDK modules (now class-based)
+        assert "class config:" in content
+        assert "class oauth:" in content
+        assert "def get(" in content  # config.get and oauth.get_token methods
+        assert "@staticmethod" in content  # SDK methods use staticmethod
 
     def test_bifrost_pyi_is_valid_python_syntax(self):
         """Test that bifrost.pyi is valid Python syntax"""
