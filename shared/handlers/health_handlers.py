@@ -48,7 +48,7 @@ def check_api_health() -> HealthCheck:
     )
 
 
-def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[HealthCheck, HealthStatus]:
+async def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[HealthCheck, HealthStatus]:
     """
     Check Key Vault health and return health check result with status update.
 
@@ -75,7 +75,7 @@ def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[HealthC
         ), "degraded"
 
     try:
-        health_result = kv_manager.health_check()
+        health_result = await kv_manager.health_check()
         kv_status = health_result.get("status", "unhealthy")
         kv_healthy = kv_status == "healthy"
 
@@ -109,7 +109,7 @@ def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[HealthC
         ), "degraded"
 
 
-def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> GeneralHealthResponse:
+async def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> GeneralHealthResponse:
     """
     Perform a comprehensive general health check.
 
@@ -128,7 +128,7 @@ def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> Genera
     checks.append(check_api_health())
 
     # Check 2: Key Vault health
-    kv_check, kv_status = check_keyvault_health(kv_manager)
+    kv_check, kv_status = await check_keyvault_health(kv_manager)
     checks.append(kv_check)
 
     # Update overall status if Key Vault has issues
@@ -153,7 +153,7 @@ def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> Genera
     return response
 
 
-def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) -> KeyVaultHealthResponse:
+async def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) -> KeyVaultHealthResponse:
     """
     Perform a detailed Key Vault health check.
 
@@ -184,7 +184,7 @@ def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) -> KeyVa
 
     try:
         # Perform health check
-        health_result = kv_manager.health_check()
+        health_result = await kv_manager.health_check()
 
         # Extract results
         status = health_result.get("status", "unhealthy")

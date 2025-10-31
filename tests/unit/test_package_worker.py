@@ -2,7 +2,6 @@
 Unit tests for package installation worker
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

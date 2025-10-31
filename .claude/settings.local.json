@@ -23,7 +23,9 @@
       "Bash(for file in forms_handlers.py organizations_handlers.py org_config_handlers.py secrets_handlers.py permissions_handlers.py roles_handlers.py)",
       "Bash(done)",
       "Read(//Users/jack/Library/Logs/**)",
-      "Read(//Users/jack/.azure-functions-core-tools/**)"
+      "Read(//Users/jack/.azure-functions-core-tools/**)",
+      "Bash(for file in bifrost/config.py bifrost/secrets.py bifrost/organizations.py bifrost/roles.py bifrost/executions.py bifrost/oauth.py bifrost/forms.py)",
+      "Bash(do echo \"=== $file ===\")"
     ],
     "deny": [],
     "ask": [],

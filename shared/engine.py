@@ -540,7 +540,6 @@ async def _execute_workflow_with_trace(
 
     # Wrapper to capture local variables after execution using sys.settrace briefly
     async def execute_and_capture():
-        import inspect
 
         # Track if we've entered the workflow function
         entered_workflow = [False]

@@ -51,14 +51,14 @@ def mock_secret_client():
         # In-memory secret storage for testing
         secrets_store = {}
 
-        def mock_set_secret(name, value):
+        async def mock_set_secret(name, value):
             secrets_store[name] = value
             secret_obj = MagicMock()
             secret_obj.name = name
             secret_obj.value = value
             return secret_obj
 
-        def mock_get_secret(name):
+        async def mock_get_secret(name):
             if name not in secrets_store:
                 from azure.core.exceptions import ResourceNotFoundError
                 raise ResourceNotFoundError(f"Secret not found: {name}")
@@ -67,27 +67,26 @@ def mock_secret_client():
             secret_obj.value = secrets_store[name]
             return secret_obj
 
-        def mock_list_properties():
+        async def mock_list_properties():
             props_list = []
             for name in secrets_store:
                 prop = MagicMock()
                 prop.name = name
                 props_list.append(prop)
-            return props_list
+            # Return async generator
+            for prop in props_list:
+                yield prop
 
-        def mock_begin_delete_secret(name):
-            poller = MagicMock()
-            def wait_func():
-                if name in secrets_store:
-                    del secrets_store[name]
-            poller.wait = wait_func
-            return poller
+        async def mock_delete_secret(name):
+            if name in secrets_store:
+                del secrets_store[name]
+            return MagicMock()
 
-        # Attach methods to mock
-        mock_instance.set_secret = mock_set_secret
-        mock_instance.get_secret = mock_get_secret
+        # Attach async methods to mock
+        mock_instance.set_secret = AsyncMock(side_effect=mock_set_secret)
+        mock_instance.get_secret = AsyncMock(side_effect=mock_get_secret)
         mock_instance.list_properties_of_secrets = mock_list_properties
-        mock_instance.begin_delete_secret = mock_begin_delete_secret
+        mock_instance.delete_secret = AsyncMock(side_effect=mock_delete_secret)
 
         # Store secrets dictionary for test access
         mock_instance._secrets_store = secrets_store
@@ -194,11 +193,9 @@ def mock_workspace_service():
         def mock_list_files(directory_path=""):
             return sample_files
 
-        def mock_read_file(file_path):
-            return b"Sample file content"
-
+        # Use AsyncMock for async method
         service.list_files = mock_list_files
-        service.read_file = mock_read_file
+        service.read_file = AsyncMock(return_value=b"Sample file content")
 
         mock.return_value = service
         yield {"service": service, "mock": mock}

@@ -13,7 +13,7 @@ Tests cover:
 import pytest
 import zipfile
 from io import BytesIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from shared.services.zip_service import (
     create_workspace_zip,
@@ -25,9 +25,9 @@ from shared.services.zip_service import (
 class TestCreateWorkspaceZip:
     """Test creating full workspace ZIP archives"""
 
-    def test_create_workspace_zip_success(self, mock_workspace_service):
+    async def test_create_workspace_zip_success(self, mock_workspace_service):
         """Should create ZIP archive with all workspace files"""
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         # Result should be BytesIO buffer
         assert isinstance(result, BytesIO)
@@ -42,22 +42,22 @@ class TestCreateWorkspaceZip:
             assert "file2.py" in names
             assert "subdir/file3.json" in names
 
-    def test_create_workspace_zip_with_directory_path(self, mock_workspace_service):
+    async def test_create_workspace_zip_with_directory_path(self, mock_workspace_service):
         """Should support starting from specific directory"""
-        result = create_workspace_zip(directory_path="subdir")
+        result = await create_workspace_zip(directory_path="subdir")
 
         assert isinstance(result, BytesIO)
         # Verify list_files was called (it's a function not a mock)
         assert result.tell() == 0
 
-    def test_create_workspace_zip_rewound_buffer(self, mock_workspace_service):
+    async def test_create_workspace_zip_rewound_buffer(self, mock_workspace_service):
         """Should return buffer rewound to position 0"""
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         # Buffer should be at position 0 for reading
         assert result.tell() == 0
 
-    def test_create_workspace_zip_skips_directories(self, mock_workspace_service):
+    async def test_create_workspace_zip_skips_directories(self, mock_workspace_service):
         """Should skip directory entries in listing"""
         mock_workspace_service["service"].list_files.return_value = [
             {"path": "file1.txt", "isDirectory": False, "size": 1024},
@@ -65,7 +65,7 @@ class TestCreateWorkspaceZip:
             {"path": "file2.py", "isDirectory": False, "size": 2048},
         ]
 
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         result.seek(0)
         with zipfile.ZipFile(result, 'r') as zf:
@@ -75,52 +75,52 @@ class TestCreateWorkspaceZip:
             assert "file2.py" in names
             assert "subdir" not in names
 
-    def test_create_workspace_zip_empty_workspace(self):
+    async def test_create_workspace_zip_empty_workspace(self):
         """Should handle empty workspace"""
         with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.return_value = []
             mock_get_ws.return_value = mock_service
 
-            result = create_workspace_zip()
+            result = await create_workspace_zip()
 
             assert isinstance(result, BytesIO)
             result.seek(0)
             with zipfile.ZipFile(result, 'r') as zf:
                 assert len(zf.namelist()) == 0
 
-    def test_create_workspace_zip_file_content(self):
+    async def test_create_workspace_zip_file_content(self):
         """Should include correct file content in ZIP"""
         with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
             mock_service.list_files.return_value = [
                 {"path": "file1.txt", "isDirectory": False, "size": 1024},
             ]
-            mock_service.read_file.return_value = b"Test content"
+            mock_service.read_file = AsyncMock(return_value=b"Test content")
             mock_get_ws.return_value = mock_service
 
-            result = create_workspace_zip()
+            result = await create_workspace_zip()
 
             result.seek(0)
             with zipfile.ZipFile(result, 'r') as zf:
                 content = zf.read("file1.txt")
                 assert content == b"Test content"
 
-    def test_create_workspace_zip_skips_unreadable_files(self, mock_workspace_service):
+    async def test_create_workspace_zip_skips_unreadable_files(self, mock_workspace_service):
         """Should skip files that fail to read"""
         mock_workspace_service["service"].list_files.return_value = [
             {"path": "file1.txt", "isDirectory": False, "size": 1024},
             {"path": "file2.py", "isDirectory": False, "size": 2048},
         ]
 
-        def read_with_error(path):
+        async def read_with_error(path):
             if path == "file2.py":
                 raise Exception("Permission denied")
             return b"Content of file1"
 
         mock_workspace_service["service"].read_file = read_with_error
 
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         result.seek(0)
         with zipfile.ZipFile(result, 'r') as zf:
@@ -129,7 +129,7 @@ class TestCreateWorkspaceZip:
             assert "file1.txt" in names
             assert "file2.py" not in names
 
-    def test_create_workspace_zip_deflate_compression(self, mock_workspace_service):
+    async def test_create_workspace_zip_deflate_compression(self, mock_workspace_service):
         """Should use DEFLATE compression"""
         mock_workspace_service["service"].list_files.return_value = [
             {"path": "file.txt", "isDirectory": False, "size": 10000},
@@ -137,7 +137,7 @@ class TestCreateWorkspaceZip:
         # Large content for compression to have effect
         mock_workspace_service["service"].read_file.return_value = b"x" * 10000
 
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         result.seek(0)
         with zipfile.ZipFile(result, 'r') as zf:
@@ -145,7 +145,7 @@ class TestCreateWorkspaceZip:
             info = zf.infolist()[0]
             assert info.compress_type == zipfile.ZIP_DEFLATED
 
-    def test_create_workspace_zip_preserves_paths(self):
+    async def test_create_workspace_zip_preserves_paths(self):
         """Should preserve file paths in ZIP"""
         with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
@@ -154,10 +154,10 @@ class TestCreateWorkspaceZip:
                 {"path": "config/settings.yaml", "isDirectory": False},
                 {"path": "src/utils/helpers.py", "isDirectory": False},
             ]
-            mock_service.read_file.return_value = b"content"
+            mock_service.read_file = AsyncMock(return_value=b"content")
             mock_get_ws.return_value = mock_service
 
-            result = create_workspace_zip()
+            result = await create_workspace_zip()
 
             result.seek(0)
             with zipfile.ZipFile(result, 'r') as zf:
@@ -170,11 +170,11 @@ class TestCreateWorkspaceZip:
 class TestCreateSelectiveZip:
     """Test creating selective ZIP archives"""
 
-    def test_create_selective_zip_success(self, mock_workspace_service):
+    async def test_create_selective_zip_success(self, mock_workspace_service):
         """Should create ZIP with selected files"""
         file_paths = ["file1.txt", "file2.py"]
 
-        result = create_selective_zip(file_paths)
+        result = await create_selective_zip(file_paths)
 
         assert isinstance(result, BytesIO)
         result.seek(0)
@@ -183,34 +183,34 @@ class TestCreateSelectiveZip:
             assert "file1.txt" in names
             assert "file2.py" in names
 
-    def test_create_selective_zip_empty_list(self, mock_workspace_service):
+    async def test_create_selective_zip_empty_list(self, mock_workspace_service):
         """Should handle empty file list"""
-        result = create_selective_zip([])
+        result = await create_selective_zip([])
 
         assert isinstance(result, BytesIO)
         result.seek(0)
         with zipfile.ZipFile(result, 'r') as zf:
             assert len(zf.namelist()) == 0
 
-    def test_create_selective_zip_single_file(self, mock_workspace_service):
+    async def test_create_selective_zip_single_file(self, mock_workspace_service):
         """Should handle single file"""
-        result = create_selective_zip(["file1.txt"])
+        result = await create_selective_zip(["file1.txt"])
 
         result.seek(0)
         with zipfile.ZipFile(result, 'r') as zf:
             assert len(zf.namelist()) == 1
             assert "file1.txt" in zf.namelist()
 
-    def test_create_selective_zip_skips_unreadable_files(self, mock_workspace_service):
+    async def test_create_selective_zip_skips_unreadable_files(self, mock_workspace_service):
         """Should skip files that fail to read"""
-        def read_with_error(path):
+        async def read_with_error(path):
             if path == "file2.py":
                 raise Exception("File not found")
             return b"Content"
 
         mock_workspace_service["service"].read_file = read_with_error
 
-        result = create_selective_zip(["file1.txt", "file2.py"])
+        result = await create_selective_zip(["file1.txt", "file2.py"])
 
         result.seek(0)
         with zipfile.ZipFile(result, 'r') as zf:
@@ -218,9 +218,9 @@ class TestCreateSelectiveZip:
             assert "file1.txt" in names
             assert "file2.py" not in names
 
-    def test_create_selective_zip_rewound(self, mock_workspace_service):
+    async def test_create_selective_zip_rewound(self, mock_workspace_service):
         """Should return buffer rewound to position 0"""
-        result = create_selective_zip(["file1.txt"])
+        result = await create_selective_zip(["file1.txt"])
 
         assert result.tell() == 0
 
@@ -285,7 +285,7 @@ class TestEstimateWorkspaceSize:
 class TestZipServiceErrorHandling:
     """Test error handling in ZIP service"""
 
-    def test_create_workspace_zip_workspace_service_error(self):
+    async def test_create_workspace_zip_workspace_service_error(self):
         """Should raise error when workspace service fails"""
         with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
@@ -293,9 +293,9 @@ class TestZipServiceErrorHandling:
             mock_get_ws.return_value = mock_service
 
             with pytest.raises(Exception, match="Service error"):
-                create_workspace_zip()
+                await create_workspace_zip()
 
-    def test_create_selective_zip_workspace_service_error(self):
+    async def test_create_selective_zip_workspace_service_error(self):
         """Should raise error when workspace service fails"""
         with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
@@ -305,7 +305,7 @@ class TestZipServiceErrorHandling:
 
             # create_selective_zip catches exceptions and logs them, it doesn't re-raise
             # Instead it skips the file
-            result = create_selective_zip(["file1.txt"])
+            result = await create_selective_zip(["file1.txt"])
 
             # Should still return a ZIP (just empty since file was skipped)
             assert isinstance(result, BytesIO)
@@ -314,9 +314,9 @@ class TestZipServiceErrorHandling:
 class TestZipServiceBufferManagement:
     """Test buffer management and resource cleanup"""
 
-    def test_zip_buffer_is_seekable(self, mock_workspace_service):
+    async def test_zip_buffer_is_seekable(self, mock_workspace_service):
         """ZIP buffer should be seekable"""
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         # Should be able to seek
         result.seek(0)
@@ -328,18 +328,18 @@ class TestZipServiceBufferManagement:
         result.seek(0)
         assert result.tell() == 0
 
-    def test_zip_buffer_size(self, mock_workspace_service):
+    async def test_zip_buffer_size(self, mock_workspace_service):
         """ZIP buffer should have reasonable size"""
-        result = create_workspace_zip()
+        result = await create_workspace_zip()
 
         # Get size
         size = result.getbuffer().nbytes
         assert size > 0
 
-    def test_multiple_zip_creations_independent(self, mock_workspace_service):
+    async def test_multiple_zip_creations_independent(self, mock_workspace_service):
         """Multiple ZIP creations should be independent"""
-        zip1 = create_workspace_zip()
-        zip2 = create_workspace_zip()
+        zip1 = await create_workspace_zip()
+        zip2 = await create_workspace_zip()
 
         # Should be different objects
         assert zip1 is not zip2
@@ -360,7 +360,7 @@ class TestZipServiceBufferManagement:
 class TestZipServiceIntegration:
     """Integration tests for ZIP service"""
 
-    def test_full_workflow_create_read_verify(self):
+    async def test_full_workflow_create_read_verify(self):
         """Should create, read, and verify ZIP contents"""
         with patch("shared.services.zip_service.get_workspace_service") as mock_get_ws:
             mock_service = MagicMock()
@@ -369,14 +369,14 @@ class TestZipServiceIntegration:
                 {"path": "data.txt", "isDirectory": False},
             ]
 
-            mock_service.read_file.side_effect = [
+            mock_service.read_file = AsyncMock(side_effect=[
                 b'{"setting": "value"}',
                 b"some data"
-            ]
+            ])
             mock_get_ws.return_value = mock_service
 
             # Create ZIP
-            zip_buffer = create_workspace_zip()
+            zip_buffer = await create_workspace_zip()
 
             # Read and verify
             zip_buffer.seek(0)

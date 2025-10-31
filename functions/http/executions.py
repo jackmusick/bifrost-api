@@ -247,6 +247,13 @@ async def get_execution_result(req: func.HttpRequest) -> func.HttpResponse:
     request_context = req.context  # type: ignore[attr-defined]
     execution_id = req.route_params.get("executionId")
 
+    if not execution_id:
+        return func.HttpResponse(
+            json.dumps({"error": "BadRequest", "message": "Execution ID is required"}),
+            status_code=400,
+            mimetype='application/json'
+        )
+
     try:
         result_data, error_msg = await get_execution_result_handler(request_context, execution_id)
 
@@ -297,6 +304,13 @@ async def get_execution_logs(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/executions/{executionId}/logs"""
     request_context = req.context  # type: ignore[attr-defined]
     execution_id = req.route_params.get("executionId")
+
+    if not execution_id:
+        return func.HttpResponse(
+            json.dumps({"error": "BadRequest", "message": "Execution ID is required"}),
+            status_code=400,
+            mimetype='application/json'
+        )
 
     try:
         logs, error_msg = await get_execution_logs_handler(request_context, execution_id)
@@ -349,6 +363,13 @@ async def get_execution_variables(req: func.HttpRequest) -> func.HttpResponse:
     request_context = req.context  # type: ignore[attr-defined]
     execution_id = req.route_params.get("executionId")
 
+    if not execution_id:
+        return func.HttpResponse(
+            json.dumps({"error": "BadRequest", "message": "Execution ID is required"}),
+            status_code=400,
+            mimetype='application/json'
+        )
+
     try:
         variables, error_msg = await get_execution_variables_handler(request_context, execution_id)
 
@@ -400,6 +421,13 @@ async def cancel_execution(req: func.HttpRequest) -> func.HttpResponse:
     """POST /api/executions/{executionId}/cancel"""
     request_context = req.context  # type: ignore[attr-defined]
     execution_id = req.route_params.get("executionId")
+
+    if not execution_id:
+        return func.HttpResponse(
+            json.dumps({"error": "BadRequest", "message": "Execution ID is required"}),
+            status_code=400,
+            mimetype='application/json'
+        )
 
     try:
         execution, error_msg = await cancel_execution_handler(request_context, execution_id)

@@ -11,6 +11,7 @@ aiohttp
 aiofiles
 requests
 httpx
+nest-asyncio>=1.5.6
 
 # Data processing and validation
 pydantic

@@ -3,6 +3,8 @@ Azure Key Vault client wrapper for secret management with full CRUD operations.
 
 This module provides comprehensive secret management capabilities including
 create, read, update, delete, and list operations for the client API.
+
+All methods are async and must be called with await.
 """
 
 import logging
@@ -14,15 +16,15 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
+from azure.identity.aio import DefaultAzureCredential
+from azure.keyvault.secrets.aio import SecretClient
 
 logger = logging.getLogger(__name__)
 
 
 class KeyVaultClient:
     """
-    Manager for Azure Key Vault with full CRUD operations.
+    Async manager for Azure Key Vault with full CRUD operations.
 
     Features:
     - DefaultAzureCredential for automatic authentication
@@ -30,6 +32,8 @@ class KeyVaultClient:
     - Org-scoped and global secret naming convention
     - Comprehensive error handling with actionable messages
     - Health check capabilities
+
+    All methods are async and must be awaited.
     """
 
     def __init__(self, vault_url: str | None = None):
@@ -61,7 +65,7 @@ class KeyVaultClient:
         else:
             raise ValueError("AZURE_KEY_VAULT_URL environment variable is required")
 
-    def create_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
+    async def create_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
         """
         Create a new secret in Key Vault.
 
@@ -88,7 +92,7 @@ class KeyVaultClient:
 
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            self._client.set_secret(secret_name, value)
+            await self._client.set_secret(secret_name, value)
             logger.info(f"Created secret: {secret_name}")
             return {
                 "name": secret_name,
@@ -101,7 +105,7 @@ class KeyVaultClient:
                 ) from e
             raise
 
-    def update_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
+    async def update_secret(self, org_id: str, secret_key: str, value: str) -> dict[str, str]:
         """
         Update an existing secret in Key Vault.
 
@@ -122,7 +126,7 @@ class KeyVaultClient:
 
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            self._client.set_secret(secret_name, value)
+            await self._client.set_secret(secret_name, value)
             logger.info(f"Updated secret: {secret_name}")
             return {
                 "name": secret_name,
@@ -135,7 +139,7 @@ class KeyVaultClient:
                 ) from e
             raise
 
-    def delete_secret(self, org_id: str, secret_key: str) -> dict[str, str]:
+    async def delete_secret(self, org_id: str, secret_key: str) -> dict[str, str]:
         """
         Delete a secret from Key Vault.
 
@@ -156,8 +160,7 @@ class KeyVaultClient:
 
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            deleted_secret = self._client.begin_delete_secret(secret_name)
-            deleted_secret.wait()  # Wait for deletion to complete
+            await self._client.delete_secret(secret_name)
             logger.info(f"Deleted secret: {secret_name}")
             return {
                 "name": secret_name,
@@ -172,7 +175,7 @@ class KeyVaultClient:
                 ) from e
             raise
 
-    def get_secret(self, org_id: str, secret_key: str) -> str:
+    async def get_secret(self, org_id: str, secret_key: str) -> str:
         """
         Get a secret value from Key Vault.
 
@@ -190,14 +193,14 @@ class KeyVaultClient:
 
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            secret = self._client.get_secret(secret_name)
+            secret = await self._client.get_secret(secret_name)
             logger.info(f"Retrieved secret: {secret_name}")
             assert secret.value is not None, "Secret value is None"
             return secret.value
         except ResourceNotFoundError:
             raise ResourceNotFoundError(f"Secret not found: {secret_name}") from None
 
-    def list_secrets(self, org_id: str | None = None) -> list[str]:
+    async def list_secrets(self, org_id: str | None = None) -> list[str]:
         """
         List all secrets in Key Vault, optionally filtered by organization.
 
@@ -215,7 +218,7 @@ class KeyVaultClient:
         try:
             assert self._client is not None, "Key Vault client not initialized"
             secret_properties = self._client.list_properties_of_secrets()
-            secret_names = [prop.name for prop in secret_properties if prop.name is not None]
+            secret_names = [prop.name async for prop in secret_properties if prop.name is not None]
 
             # Filter by org if specified
             if org_id:
@@ -235,7 +238,7 @@ class KeyVaultClient:
                 return []
             raise
 
-    def health_check(self) -> dict:
+    async def health_check(self) -> dict:
         """
         Perform a comprehensive health check on Key Vault connectivity and permissions.
 
@@ -265,7 +268,7 @@ class KeyVaultClient:
         # Test 1: Connection + List secrets
         try:
             assert self._client is not None, "Key Vault client not initialized"
-            secrets_list = list(self._client.list_properties_of_secrets())
+            secrets_list = [prop async for prop in self._client.list_properties_of_secrets()]
             result["can_connect"] = True
             result["can_list_secrets"] = True
             result["secret_count"] = len(secrets_list)
@@ -278,7 +281,7 @@ class KeyVaultClient:
                     first_secret_name = secrets_list[0].name
                     assert first_secret_name is not None, "Secret name is None"
                     assert self._client is not None, "Key Vault client not initialized"
-                    self._client.get_secret(first_secret_name)
+                    await self._client.get_secret(first_secret_name)
                     result["can_get_secrets"] = True
                     logger.info("Key Vault get secret permission verified")
                 except HttpResponseError as e:
@@ -333,6 +336,21 @@ class KeyVaultClient:
             result["error"] = f"Unexpected error: {str(e)}"
             result["status"] = "unhealthy"
             return result
+
+    async def close(self):
+        """Close the Key Vault client and release resources."""
+        if self._client:
+            await self._client.close()
+        if self._credential:
+            await self._credential.close()
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
 
     @staticmethod
     def _build_secret_name(org_id: str, secret_key: str) -> str:

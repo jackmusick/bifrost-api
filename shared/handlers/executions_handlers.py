@@ -415,7 +415,7 @@ async def get_execution_handler(
         Exception: Any errors during execution retrieval (caller should handle)
     """
     execution_model, error = await _get_and_authorize_execution(context, execution_id)
-    if error:
+    if error or not execution_model:
         return None, error
 
     # Fetch logs from ExecutionLogs table (real-time logs)
@@ -439,7 +439,7 @@ async def get_execution_handler(
 
     # Fetch variables from blob storage (always captured, filter based on permissions)
     blob_service = get_blob_service()
-    variables = blob_service.get_variables(execution_id) if context.is_platform_admin else None
+    variables = await blob_service.get_variables(execution_id) if context.is_platform_admin else None
 
     # Fetch result (from blob if no inline result, otherwise use inline)
     result = None
@@ -451,7 +451,7 @@ async def get_execution_handler(
         result_type = determine_result_type(result)
     else:
         # Try to fetch from blob storage (result may be there if it was large)
-        blob_result = blob_service.get_result(execution_id)
+        blob_result = await blob_service.get_result(execution_id)
         if blob_result is not None:
             result = blob_result
             result_type = determine_result_type(result)
@@ -488,7 +488,7 @@ async def get_execution_result_handler(
         result_dict contains: { result, resultType }
     """
     execution_model, error = await _get_and_authorize_execution(context, execution_id)
-    if error:
+    if error or not execution_model:
         return None, error
 
     # Fetch result (from blob if no inline result, otherwise use inline)
@@ -502,7 +502,7 @@ async def get_execution_result_handler(
         result_type = determine_result_type(result)
     else:
         # Try to fetch from blob storage
-        blob_result = blob_service.get_result(execution_id)
+        blob_result = await blob_service.get_result(execution_id)
         if blob_result is not None:
             result = blob_result
             result_type = determine_result_type(result)
@@ -532,7 +532,7 @@ async def get_execution_logs_handler(
         Tuple of (logs_list, error_message)
     """
     execution_model, error = await _get_and_authorize_execution(context, execution_id)
-    if error:
+    if error or not execution_model:
         return None, error
 
     # Fetch logs from ExecutionLogs table
@@ -573,7 +573,7 @@ async def get_execution_variables_handler(
         Tuple of (variables_dict, error_message)
     """
     execution_model, error = await _get_and_authorize_execution(context, execution_id)
-    if error:
+    if error or not execution_model:
         return None, error
 
     # Only platform admins can view variables
@@ -582,7 +582,7 @@ async def get_execution_variables_handler(
 
     # Fetch variables from blob storage
     blob_service = get_blob_service()
-    variables = blob_service.get_variables(execution_id)
+    variables = await blob_service.get_variables(execution_id)
 
     return variables, None
 
@@ -614,10 +614,8 @@ async def cancel_execution_handler(
     Raises:
         Exception: Any errors during cancellation (caller should handle)
     """
-    from datetime import datetime
-
     execution_model, error = await _get_and_authorize_execution(context, execution_id)
-    if error:
+    if error or not execution_model:
         return None, error
 
     # Check if execution can be cancelled

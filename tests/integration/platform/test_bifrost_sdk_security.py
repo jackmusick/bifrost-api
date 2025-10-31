@@ -27,7 +27,7 @@ class TestSDKContextProtection:
     UNIQUE TO: New config, secrets, oauth modules
     """
 
-    def test_config_requires_context(self):
+    async def test_config_requires_context(self):
         """Test that config SDK requires execution context"""
         from bifrost import config
 
@@ -36,25 +36,25 @@ class TestSDKContextProtection:
 
         # Should raise RuntimeError
         with pytest.raises(RuntimeError, match="No execution context found"):
-            config.get("test_key")
+            await config.get("test_key")
 
-    def test_secrets_requires_context(self):
+    async def test_secrets_requires_context(self):
         """Test that secrets SDK requires execution context"""
         from bifrost import secrets
 
         clear_execution_context()
 
         with pytest.raises(RuntimeError, match="No execution context found"):
-            secrets.get("test_key")
+            await secrets.get("test_key")
 
-    def test_oauth_requires_context(self):
+    async def test_oauth_requires_context(self):
         """Test that oauth SDK requires execution context"""
         from bifrost import oauth
 
         clear_execution_context()
 
         with pytest.raises(RuntimeError, match="No execution context found"):
-            oauth.get_token("microsoft")
+            await oauth.get_token("microsoft")
 
 
 class TestDefaultOrgScoping:
@@ -68,9 +68,9 @@ class TestDefaultOrgScoping:
     that the SDK correctly passes the context org_id to those layers.
     """
 
-    def test_config_list_defaults_to_current_org(self):
+    async def test_config_list_defaults_to_current_org(self):
         """Test that config.list() uses context.org_id by default"""
-        from unittest.mock import Mock, patch
+        from unittest.mock import AsyncMock, Mock, patch
         from bifrost import config
         from shared.context import ExecutionContext, Organization
 
@@ -98,7 +98,7 @@ class TestDefaultOrgScoping:
                 mock_repo_class.return_value = mock_repo
 
                 # Return list of Config models (actual return type)
-                mock_repo.list_config.return_value = [
+                mock_repo.list_config = AsyncMock(return_value=[
                     Config(
                         key="key1",
                         value="value1",
@@ -108,10 +108,10 @@ class TestDefaultOrgScoping:
                         updatedAt=datetime.utcnow(),
                         updatedBy="test-user"
                     )
-                ]
+                ])
 
                 # Call list() without org_id
-                result = config.list()
+                result = await config.list()
 
                 # Verify it called list_config with include_global=True
                 mock_repo.list_config.assert_called_once_with(include_global=True)
@@ -122,9 +122,9 @@ class TestDefaultOrgScoping:
         finally:
             clear_execution_context()
 
-    def test_secrets_list_defaults_to_current_org(self):
+    async def test_secrets_list_defaults_to_current_org(self):
         """Test that secrets.list() uses context.org_id by default"""
-        from unittest.mock import Mock, patch
+        from unittest.mock import AsyncMock, Mock, patch
         from bifrost import secrets
         from shared.context import ExecutionContext, Organization
 
@@ -145,11 +145,12 @@ class TestDefaultOrgScoping:
             # Mock KeyVaultClient - patch where it's imported IN SDK
             with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
                 mock_kv = Mock()
-                mock_kv_class.return_value = mock_kv
-                mock_kv.list_secrets.return_value = ["key1", "key2"]
+                mock_kv_class.return_value.__aenter__ = AsyncMock(return_value=mock_kv)
+                mock_kv_class.return_value.__aexit__ = AsyncMock(return_value=None)
+                mock_kv.list_secrets = AsyncMock(return_value=["key1", "key2"])
 
                 # Call list() without org_id
-                result = secrets.list()
+                result = await secrets.list()
 
                 # Verify it used context.org_id ("org-456")
                 mock_kv.list_secrets.assert_called_once_with("org-456")
@@ -159,9 +160,9 @@ class TestDefaultOrgScoping:
         finally:
             clear_execution_context()
 
-    def test_oauth_list_defaults_to_current_org(self):
+    async def test_oauth_list_defaults_to_current_org(self):
         """Test that oauth.list_providers() uses context.org_id by default"""
-        from unittest.mock import Mock, patch
+        from unittest.mock import AsyncMock, Mock, patch
         from bifrost import oauth
         from shared.context import ExecutionContext, Organization
 
@@ -233,7 +234,7 @@ class TestDefaultOrgScoping:
                 mock_storage.list_connections = AsyncMock(side_effect=mock_list_connections)
 
                 # Call list_providers() without org_id
-                result = oauth.list_providers()
+                result = await oauth.list_providers()
 
                 # Verify it called list_connections with correct org_id
                 mock_storage.list_connections.assert_called_once()
@@ -258,9 +259,9 @@ class TestCrossOrgParameterUsage:
     verify the SDK correctly passes the org_id parameter through.
     """
 
-    def test_config_get_with_explicit_org_id(self):
+    async def test_config_get_with_explicit_org_id(self):
         """Test that config.get(org_id='other-org') uses the specified org"""
-        from unittest.mock import Mock, patch
+        from unittest.mock import AsyncMock, Mock, patch
         from bifrost import config
         from shared.context import ExecutionContext, Organization
         from shared.models import Config, ConfigType
@@ -285,7 +286,7 @@ class TestCrossOrgParameterUsage:
                 mock_repo = Mock()
                 mock_repo_class.return_value = mock_repo
                 # Mock get_config (not get_config_value) - return Config model
-                mock_repo.get_config.return_value = Config(
+                mock_repo.get_config = AsyncMock(return_value=Config(
                     key="test_key",
                     value="other-value",
                     type=ConfigType.STRING,
@@ -293,10 +294,10 @@ class TestCrossOrgParameterUsage:
                     orgId="org-999",
                     updatedAt=datetime.utcnow(),
                     updatedBy="test-user"
-                )
+                ))
 
                 # Explicitly request org-999's config
-                result = config.get("test_key", org_id="org-999")
+                result = await config.get("test_key", org_id="org-999")
 
                 # Verify it called get_config with fallback_to_global=True
                 mock_repo.get_config.assert_called_once_with("test_key", fallback_to_global=True)
@@ -304,9 +305,9 @@ class TestCrossOrgParameterUsage:
         finally:
             clear_execution_context()
 
-    def test_secrets_get_with_explicit_org_id(self):
+    async def test_secrets_get_with_explicit_org_id(self):
         """Test that secrets.get(org_id='other-org') uses the specified org"""
-        from unittest.mock import Mock, patch
+        from unittest.mock import AsyncMock, Mock, patch
         from bifrost import secrets
         from shared.context import ExecutionContext, Organization
 
@@ -326,11 +327,12 @@ class TestCrossOrgParameterUsage:
         try:
             with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
                 mock_kv = Mock()
-                mock_kv_class.return_value = mock_kv
-                mock_kv.get_secret.return_value = "other-secret"
+                mock_kv_class.return_value.__aenter__ = AsyncMock(return_value=mock_kv)
+                mock_kv_class.return_value.__aexit__ = AsyncMock(return_value=None)
+                mock_kv.get_secret = AsyncMock(return_value="other-secret")
 
                 # Explicitly request org-888's secret
-                result = secrets.get("api_key", org_id="org-888")
+                result = await secrets.get("api_key", org_id="org-888")
 
                 # Verify it used org-888, NOT context.org_id (org-123)
                 mock_kv.get_secret.assert_called_once_with("org-888", "api_key")
@@ -338,9 +340,9 @@ class TestCrossOrgParameterUsage:
         finally:
             clear_execution_context()
 
-    def test_oauth_get_token_with_explicit_org_id(self):
+    async def test_oauth_get_token_with_explicit_org_id(self):
         """Test that oauth.get_token(org_id='other-org') uses the specified org"""
-        from unittest.mock import Mock, patch, AsyncMock
+        from unittest.mock import AsyncMock, Mock, patch, AsyncMock
         from bifrost import oauth
         from shared.context import ExecutionContext, Organization
         from shared.models import OAuthConnection
@@ -388,13 +390,14 @@ class TestCrossOrgParameterUsage:
                 mock_storage.get_connection = AsyncMock(return_value=mock_connection)
 
                 # Mock KeyVaultClient instantiated inside oauth.get_token
-                with patch('shared.keyvault.KeyVaultClient') as mock_kv_class:
+                with patch('bifrost.oauth.KeyVaultClient') as mock_kv_class:
                     mock_kv = Mock()
-                    mock_kv_class.return_value = mock_kv
-                    mock_kv.get_secret.return_value = '{"access_token": "xxx", "token_type": "Bearer"}'
+                    mock_kv_class.return_value.__aenter__ = AsyncMock(return_value=mock_kv)
+                    mock_kv_class.return_value.__aexit__ = AsyncMock(return_value=None)
+                    mock_kv.get_secret = AsyncMock(return_value='{"access_token": "xxx", "token_type": "Bearer"}')
 
                     # Explicitly request org-777's token
-                    result = oauth.get_token("microsoft", org_id="org-777")
+                    result = await oauth.get_token("microsoft", org_id="org-777")
 
                     # Verify it called get_connection with org-777
                     mock_storage.get_connection.assert_called_once_with("org-777", "microsoft")

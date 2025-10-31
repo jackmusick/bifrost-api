@@ -2,6 +2,8 @@
 Execution history SDK for Bifrost.
 
 Provides Python API for execution history operations (list, get, delete).
+
+All methods are async and must be called with await.
 """
 
 from typing import Any
@@ -17,10 +19,12 @@ class executions:
     Execution history operations.
 
     Allows workflows to query execution history and clean up old executions.
+
+    All methods are async and must be awaited.
     """
 
     @staticmethod
-    def list(
+    async def list(
         workflow_name: str | None = None,
         status: str | None = None,
         start_date: str | None = None,
@@ -48,16 +52,14 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> recent = executions.list(limit=10)
-            >>> failed = executions.list(status="Failed")
-            >>> workflow_execs = executions.list(workflow_name="create_customer")
+            >>> recent = await executions.list(limit=10)
+            >>> failed = await executions.list(status="Failed")
+            >>> workflow_execs = await executions.list(workflow_name="create_customer")
         """
-        import asyncio
-
         context = get_context()
 
         # Use the handler to get filtered executions
-        execs, _ = asyncio.run(list_executions_handler(
+        execs, _ = await list_executions_handler(
             context=context,
             workflow_name=workflow_name,
             status=status,
@@ -65,12 +67,12 @@ class executions:
             end_date=end_date,
             limit=limit,
             continuation_token=None
-        ))
+        )
 
         return execs
 
     @staticmethod
-    def get(execution_id: str) -> dict[str, Any]:
+    async def get(execution_id: str) -> dict[str, Any]:
         """
         Get execution details by ID.
 
@@ -89,15 +91,13 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> exec_details = executions.get("exec-123")
+            >>> exec_details = await executions.get("exec-123")
             >>> print(exec_details["status"])
             >>> print(exec_details["result"])
         """
-        import asyncio
-
         context = get_context()
 
-        execution, error = asyncio.run(get_execution_handler(context, execution_id))
+        execution, error = await get_execution_handler(context, execution_id)
 
         if error:
             if error == "NotFound":
@@ -110,7 +110,7 @@ class executions:
         return execution or {}
 
     @staticmethod
-    def delete(execution_id: str) -> None:
+    async def delete(execution_id: str) -> None:
         """
         Delete an execution from history.
 
@@ -127,14 +127,12 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> executions.delete("exec-123")
+            >>> await executions.delete("exec-123")
         """
-        import asyncio
-
         context = get_context()
 
         # Get execution to verify access
-        execution, error = asyncio.run(get_execution_handler(context, execution_id))
+        execution, error = await get_execution_handler(context, execution_id)
 
         if error:
             if error == "NotFound":
@@ -149,4 +147,4 @@ class executions:
 
         # Delete the execution
         repo = ExecutionRepository(context)
-        repo.delete_execution(execution_id, execution.get("orgId"))
+        await repo.delete_execution(execution_id, execution.get("orgId"))

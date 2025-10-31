@@ -3,25 +3,26 @@ Blob Storage Service for Bifrost Integrations
 Handles large execution data (logs, results, snapshots) that exceed Table Storage limits
 """
 
+import asyncio
 import json
 import logging
 import os
-import threading
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
 from azure.core.exceptions import ResourceExistsError
-from azure.storage.blob import BlobServiceClient, BlobSasPermissions, ContainerClient, ContentSettings, generate_blob_sas
+from azure.storage.blob.aio import BlobServiceClient, ContainerClient
+from azure.storage.blob import BlobSasPermissions, ContentSettings, generate_blob_sas
 
 logger = logging.getLogger(__name__)
 
 # Container for execution-related data
 EXECUTION_CONTAINER = "execution-data"
 
-# Lock for thread-safe container creation
-_container_locks: dict[str, threading.Lock] = {}
-_container_locks_lock = threading.Lock()
+# Lock for async-safe container creation
+_container_locks: dict[str, asyncio.Lock] = {}
+_container_locks_lock = asyncio.Lock()
 
 
 class BlobStorageService:
@@ -42,8 +43,7 @@ class BlobStorageService:
             connection_string: Optional connection string override (uses AzureWebJobsStorage if not provided)
 
         Note:
-            Container creation uses try/except pattern instead of exists() check
-            to avoid SDK logging benign "ContainerAlreadyExists" warnings.
+            Container creation is done lazily on first access.
         """
         if connection_string is None:
             connection_string = os.environ.get("AzureWebJobsStorage")
@@ -57,13 +57,9 @@ class BlobStorageService:
 
         self.connection_string = connection_string
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        self._initialized_containers: set[str] = set()
 
-        # Ensure containers exist
-        self._ensure_container_exists(EXECUTION_CONTAINER)
-        self._ensure_container_exists("uploads")
-        self._ensure_container_exists("files")
-
-        logger.debug(f"BlobStorageService initialized for containers: {EXECUTION_CONTAINER}, uploads, files")
+        logger.debug("BlobStorageService initialized")
 
     @staticmethod
     def _make_url_browser_accessible(url: str) -> str:
@@ -79,10 +75,10 @@ class BlobStorageService:
         # Replace azurite Docker hostname with localhost for browser access
         return url.replace('azurite:10000', 'localhost:10000')
 
-    def _ensure_container_exists(self, container_name: str) -> ContainerClient:
+    async def _ensure_container_exists(self, container_name: str) -> ContainerClient:
         """
         Ensure blob container exists, create if it doesn't.
-        Thread-safe to handle concurrent initialization.
+        Async-safe to handle concurrent initialization.
 
         Args:
             container_name: Name of the container
@@ -90,20 +86,29 @@ class BlobStorageService:
         Returns:
             ContainerClient instance
         """
+        # Skip if already initialized
+        if container_name in self._initialized_containers:
+            return self.blob_service_client.get_container_client(container_name)
+
         container_client = self.blob_service_client.get_container_client(container_name)
 
         # Get or create a lock for this specific container
-        with _container_locks_lock:
+        async with _container_locks_lock:
             if container_name not in _container_locks:
-                _container_locks[container_name] = threading.Lock()
+                _container_locks[container_name] = asyncio.Lock()
             container_lock = _container_locks[container_name]
 
         # Use the container-specific lock to prevent race conditions
-        with container_lock:
+        async with container_lock:
+            # Check if already initialized by another coroutine
+            if container_name in self._initialized_containers:
+                return container_client
+
             # Check if container exists first to avoid 409 warnings in logs
-            if not container_client.exists():
+            exists = await container_client.exists()
+            if not exists:
                 try:
-                    container_client.create_container()
+                    await container_client.create_container()
                     logger.info(f"Created blob container: {container_name}")
                 except ResourceExistsError:
                     # Race condition: container was created between exists() and create_container()
@@ -115,9 +120,12 @@ class BlobStorageService:
             else:
                 logger.debug(f"Blob container already exists: {container_name}")
 
+            # Mark as initialized
+            self._initialized_containers.add(container_name)
+
         return container_client
 
-    def upload_logs(self, execution_id: str, logs: list[dict[str, Any]]) -> str:
+    async def upload_logs(self, execution_id: str, logs: list[dict[str, Any]]) -> str:
         """
         Upload execution logs to blob storage
 
@@ -131,12 +139,13 @@ class BlobStorageService:
         blob_path = f"{execution_id}/logs.json"
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload as JSON
             logs_json = json.dumps(logs, indent=2)
-            blob_client.upload_blob(logs_json, overwrite=True)
+            await blob_client.upload_blob(logs_json, overwrite=True)
 
             logger.info(
                 f"Uploaded logs to blob storage: {blob_path}",
@@ -153,7 +162,7 @@ class BlobStorageService:
             )
             raise
 
-    def get_logs(self, execution_id: str) -> list[dict[str, Any]] | None:
+    async def get_logs(self, execution_id: str) -> list[dict[str, Any]] | None:
         """
         Retrieve execution logs from blob storage
 
@@ -166,15 +175,18 @@ class BlobStorageService:
         blob_path = f"{execution_id}/logs.json"
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 logger.debug(f"Logs blob not found: {blob_path}")
                 return None
 
             # Download and parse JSON
-            blob_data = blob_client.download_blob().readall()
+            download_stream = await blob_client.download_blob()
+            blob_data = await download_stream.readall()
             logs = json.loads(blob_data)
 
             logger.debug(
@@ -192,7 +204,7 @@ class BlobStorageService:
             )
             return None
 
-    def upload_result(self, execution_id: str, result: dict[str, Any] | str) -> str:
+    async def upload_result(self, execution_id: str, result: dict[str, Any] | str) -> str:
         """
         Upload execution result to blob storage
 
@@ -217,11 +229,12 @@ class BlobStorageService:
             content = json.dumps(result, indent=2)
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload content
-            blob_client.upload_blob(content, overwrite=True)
+            await blob_client.upload_blob(content, overwrite=True)
 
             logger.info(
                 f"Uploaded result to blob storage: {blob_path}",
@@ -238,7 +251,7 @@ class BlobStorageService:
             )
             raise
 
-    def get_result(self, execution_id: str) -> dict[str, Any] | str | None:
+    async def get_result(self, execution_id: str) -> dict[str, Any] | str | None:
         """
         Retrieve execution result from blob storage
 
@@ -250,6 +263,8 @@ class BlobStorageService:
         Returns:
             Result data (dict for JSON, str for HTML/text) or None if not found
         """
+        await self._ensure_container_exists(EXECUTION_CONTAINER)
+
         # Try different file types
         for ext in ['json', 'html', 'txt']:
             blob_path = f"{execution_id}/result.{ext}"
@@ -258,11 +273,13 @@ class BlobStorageService:
                 container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
                 blob_client = container_client.get_blob_client(blob_path)
 
-                if not blob_client.exists():
+                exists = await blob_client.exists()
+                if not exists:
                     continue
 
                 # Download content
-                blob_data = blob_client.download_blob().readall()
+                download_stream = await blob_client.download_blob()
+                blob_data = await download_stream.readall()
 
                 # Parse based on extension
                 if ext == 'json':
@@ -288,7 +305,7 @@ class BlobStorageService:
         logger.debug(f"Result blob not found for execution: {execution_id}")
         return None
 
-    def upload_snapshot(self, execution_id: str, snapshot: list[dict[str, Any]]) -> str:
+    async def upload_snapshot(self, execution_id: str, snapshot: list[dict[str, Any]]) -> str:
         """
         Upload state snapshot to blob storage
 
@@ -302,12 +319,13 @@ class BlobStorageService:
         blob_path = f"{execution_id}/snapshot.json"
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload as JSON
             snapshot_json = json.dumps(snapshot, indent=2)
-            blob_client.upload_blob(snapshot_json, overwrite=True)
+            await blob_client.upload_blob(snapshot_json, overwrite=True)
 
             logger.info(
                 f"Uploaded snapshot to blob storage: {blob_path}",
@@ -324,7 +342,7 @@ class BlobStorageService:
             )
             raise
 
-    def get_snapshot(self, execution_id: str) -> list[dict[str, Any]] | None:
+    async def get_snapshot(self, execution_id: str) -> list[dict[str, Any]] | None:
         """
         Retrieve state snapshot from blob storage
 
@@ -337,15 +355,18 @@ class BlobStorageService:
         blob_path = f"{execution_id}/snapshot.json"
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 logger.debug(f"Snapshot blob not found: {blob_path}")
                 return None
 
             # Download and parse JSON
-            blob_data = blob_client.download_blob().readall()
+            download_stream = await blob_client.download_blob()
+            blob_data = await download_stream.readall()
             snapshot = json.loads(blob_data)
 
             logger.debug(
@@ -363,7 +384,7 @@ class BlobStorageService:
             )
             return None
 
-    def upload_variables(self, execution_id: str, variables: dict[str, Any]) -> str:
+    async def upload_variables(self, execution_id: str, variables: dict[str, Any]) -> str:
         """
         Upload execution variables to blob storage
 
@@ -377,12 +398,13 @@ class BlobStorageService:
         blob_path = f"{execution_id}/variables.json"
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
             # Upload as JSON
             variables_json = json.dumps(variables, indent=2)
-            blob_client.upload_blob(variables_json, overwrite=True)
+            await blob_client.upload_blob(variables_json, overwrite=True)
 
             logger.info(
                 f"Uploaded variables to blob storage: {blob_path}",
@@ -399,7 +421,7 @@ class BlobStorageService:
             )
             raise
 
-    def get_variables(self, execution_id: str) -> dict[str, Any] | None:
+    async def get_variables(self, execution_id: str) -> dict[str, Any] | None:
         """
         Retrieve execution variables from blob storage
 
@@ -412,15 +434,18 @@ class BlobStorageService:
         blob_path = f"{execution_id}/variables.json"
 
         try:
+            await self._ensure_container_exists(EXECUTION_CONTAINER)
             container_client = self.blob_service_client.get_container_client(EXECUTION_CONTAINER)
             blob_client = container_client.get_blob_client(blob_path)
 
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 logger.debug(f"Variables blob not found: {blob_path}")
                 return None
 
             # Download and parse JSON
-            blob_data = blob_client.download_blob().readall()
+            download_stream = await blob_client.download_blob()
+            blob_data = await download_stream.readall()
             variables = json.loads(blob_data)
 
             logger.debug(
@@ -438,7 +463,7 @@ class BlobStorageService:
             )
             return None
 
-    def generate_upload_url(
+    async def generate_upload_url(
         self,
         file_name: str,
         content_type: str,
@@ -476,7 +501,8 @@ class BlobStorageService:
         blob_name = safe_filename
 
         # Ensure container exists
-        container_client = self._ensure_container_exists(container_name)
+        await self._ensure_container_exists(container_name)
+        container_client = self.blob_service_client.get_container_client(container_name)
         blob_client = container_client.get_blob_client(blob_name)
 
         # Generate SAS token with write permission
@@ -516,7 +542,7 @@ class BlobStorageService:
             "content_type": content_type
         }
 
-    def upload_blob(
+    async def upload_blob(
         self,
         container_name: str,
         blob_name: str,
@@ -537,11 +563,12 @@ class BlobStorageService:
         """
         try:
             # Ensure container exists
-            container_client = self._ensure_container_exists(container_name)
+            await self._ensure_container_exists(container_name)
+            container_client = self.blob_service_client.get_container_client(container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Upload with content type
-            blob_client.upload_blob(
+            await blob_client.upload_blob(
                 data,
                 overwrite=True,
                 content_settings=ContentSettings(content_type=content_type)
@@ -570,7 +597,7 @@ class BlobStorageService:
             )
             raise
 
-    def download_blob(self, container_name: str, blob_name: str) -> bytes:
+    async def download_blob(self, container_name: str, blob_name: str) -> bytes:
         """
         Download a blob from storage
 
@@ -586,16 +613,18 @@ class BlobStorageService:
             Exception: For other storage errors
         """
         try:
+            await self._ensure_container_exists(container_name)
             container_client = self.blob_service_client.get_container_client(container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Check if blob exists
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
 
             # Download blob
-            download_stream = blob_client.download_blob()
-            blob_data = download_stream.readall()
+            download_stream = await blob_client.download_blob()
+            blob_data = await download_stream.readall()
 
             logger.info(
                 f"Downloaded blob from storage: {container_name}/{blob_name}",
@@ -621,7 +650,7 @@ class BlobStorageService:
             )
             raise
 
-    def generate_sas_url(
+    async def generate_sas_url(
         self,
         container_name: str,
         blob_name: str,
@@ -644,11 +673,13 @@ class BlobStorageService:
             Exception: For other storage errors
         """
         try:
+            await self._ensure_container_exists(container_name)
             container_client = self.blob_service_client.get_container_client(container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Check if blob exists
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
 
             # Get account info
@@ -698,7 +729,7 @@ class BlobStorageService:
             )
             raise
 
-    def get_blob_metadata(self, container_name: str, blob_name: str) -> dict[str, Any]:
+    async def get_blob_metadata(self, container_name: str, blob_name: str) -> dict[str, Any]:
         """
         Get blob metadata by container and path
 
@@ -719,13 +750,15 @@ class BlobStorageService:
             Exception: For other storage errors
         """
         try:
+            await self._ensure_container_exists(container_name)
             container_client = self.blob_service_client.get_container_client(container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 raise FileNotFoundError(f"Blob not found: {container_name}/{blob_name}")
 
-            properties = blob_client.get_blob_properties()
+            properties = await blob_client.get_blob_properties()
 
             return {
                 "name": properties.name,
@@ -748,7 +781,7 @@ class BlobStorageService:
             )
             raise
 
-    def delete_blob(self, container_name: str, blob_name: str) -> bool:
+    async def delete_blob(self, container_name: str, blob_name: str) -> bool:
         """
         Delete a blob from storage by container and path
 
@@ -763,14 +796,16 @@ class BlobStorageService:
             Exception: For storage errors other than not found
         """
         try:
+            await self._ensure_container_exists(container_name)
             container_client = self.blob_service_client.get_container_client(container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
-            if not blob_client.exists():
+            exists = await blob_client.exists()
+            if not exists:
                 logger.debug(f"Blob does not exist: {container_name}/{blob_name}")
                 return False
 
-            blob_client.delete_blob()
+            await blob_client.delete_blob()
 
             logger.info(
                 f"Deleted blob: {container_name}/{blob_name}",
@@ -793,17 +828,18 @@ class BlobStorageService:
             raise
 
 
-# Singleton instance with thread-safe initialization
-_blob_storage_service = None
-_blob_storage_service_lock = threading.Lock()
+# Singleton instance
+_blob_storage_service: BlobStorageService | None = None
 
 
 def get_blob_service() -> BlobStorageService:
-    """Get thread-safe singleton BlobStorageService instance."""
+    """
+    Get singleton BlobStorageService instance.
+
+    Note: The BlobServiceClient initialization is synchronous, but all I/O operations
+    are async. Container creation happens lazily on first async access.
+    """
     global _blob_storage_service
     if _blob_storage_service is None:
-        with _blob_storage_service_lock:
-            # Double-check pattern to prevent race condition
-            if _blob_storage_service is None:
-                _blob_storage_service = BlobStorageService()
+        _blob_storage_service = BlobStorageService()
     return _blob_storage_service

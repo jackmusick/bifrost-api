@@ -410,19 +410,18 @@ class OAuthStorageService:
         """
         # Delete secrets from Key Vault
         try:
-            keyvault = KeyVaultClient()
-            assert keyvault._client is not None, "KeyVault client is None"
-            keyvault_secret_names = [
-                f"{org_id}--oauth-{connection_name}-client-secret",
-                f"{org_id}--oauth-{connection_name}-response"
-            ]
+            async with KeyVaultClient() as keyvault:
+                secret_keys = [
+                    f"oauth-{connection_name}-client-secret",
+                    f"oauth-{connection_name}-response"
+                ]
 
-            for secret_name in keyvault_secret_names:
-                try:
-                    keyvault._client.begin_delete_secret(secret_name).wait()
-                    logger.debug(f"Deleted Key Vault secret: {secret_name}")
-                except Exception as e:
-                    logger.debug(f"Could not delete Key Vault secret {secret_name}: {e}")
+                for secret_key in secret_keys:
+                    try:
+                        await keyvault.delete_secret(org_id, secret_key)
+                        logger.debug(f"Deleted Key Vault secret: {org_id}--{secret_key}")
+                    except Exception as e:
+                        logger.debug(f"Could not delete Key Vault secret {org_id}--{secret_key}: {e}")
         except ValueError as e:
             logger.warning(f"KeyVault not available for secret deletion: {e}")
             logger.debug("Skipping Key Vault secret cleanup")
@@ -599,13 +598,12 @@ class OAuthStorageService:
                         if keyvault_secret_name:
                             from shared.keyvault import KeyVaultClient
                             logger.info(f"Retrieving client secret from Key Vault: {keyvault_secret_name}")
-                            keyvault = KeyVaultClient()
-                            if keyvault._client:
-                                secret = keyvault._client.get_secret(keyvault_secret_name)
-                                client_secret = secret.value
+                            async with KeyVaultClient() as keyvault:
+                                # Extract just the secret key (without org prefix)
+                                parts = keyvault_secret_name.split("--", 1)
+                                secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
+                                client_secret = await keyvault.get_secret(connection.org_id, secret_key)
                                 logger.info("Successfully retrieved client secret")
-                            else:
-                                logger.warning("Key Vault client not initialized")
                         else:
                             logger.warning("Client secret config found but missing Value field")
                     else:
@@ -661,12 +659,13 @@ class OAuthStorageService:
                     return False
 
                 # Retrieve current OAuth tokens from Key Vault
-                keyvault = KeyVaultClient()
-                assert keyvault._client is not None, "Key Vault client not initialized"
-                secret = keyvault._client.get_secret(keyvault_secret_name)
-                oauth_response_json = secret.value
-                assert oauth_response_json is not None, "OAuth response is None"
-                oauth_response = json.loads(oauth_response_json)
+                async with KeyVaultClient() as keyvault:
+                    # Extract just the secret key (without org prefix)
+                    parts = keyvault_secret_name.split("--", 1)
+                    secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
+                    oauth_response_json = await keyvault.get_secret(connection.org_id, secret_key)
+                    assert oauth_response_json is not None, "OAuth response is None"
+                    oauth_response = json.loads(oauth_response_json)
 
                 refresh_token = oauth_response.get("refresh_token")
 

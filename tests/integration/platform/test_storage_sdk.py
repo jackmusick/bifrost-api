@@ -6,9 +6,6 @@ from Azure Blob Storage.
 """
 
 import pytest
-from pathlib import Path
-import sys
-import importlib.util
 
 
 # Import bifrost context functions directly
@@ -17,12 +14,24 @@ from bifrost._context import set_execution_context, clear_execution_context
 
 
 @pytest.fixture(autouse=True, scope="function")
-def ensure_clean_context():
-    """Ensure each test starts with a clean execution context"""
-    # Clear before test
+async def ensure_clean_context_and_blob_client():
+    """Ensure each test starts with a clean execution context and blob client"""
+    import shared.blob_storage
+
+    # Clear context before test
     clear_execution_context()
+
+    # Close and reset blob service singleton before test to get fresh client with new event loop
+    if shared.blob_storage._blob_storage_service:
+        try:
+            await shared.blob_storage._blob_storage_service.blob_service_client.close()
+        except Exception:
+            pass  # Ignore errors during cleanup
+        shared.blob_storage._blob_storage_service = None
+
     yield
-    # Clear after test
+
+    # Clear context after test
     clear_execution_context()
 
 
@@ -55,7 +64,7 @@ def storage_module():
 class TestStorageSDK:
     """Test suite for storage SDK operations"""
 
-    def test_upload_and_download(self, test_context, storage_module):
+    async def test_upload_and_download(self, test_context, storage_module):
         """Test uploading and downloading a file"""
         # Set context
         set_execution_context(test_context)
@@ -67,7 +76,7 @@ class TestStorageSDK:
             path = "tests/storage_test.txt"
 
             # Upload file
-            blob_uri = storage_module.storage.upload(
+            blob_uri = await storage_module.storage.upload(
                 container=container,
                 path=path,
                 data=test_data,
@@ -79,7 +88,7 @@ class TestStorageSDK:
             assert path in blob_uri
 
             # Download file
-            downloaded_data = storage_module.storage.download(
+            downloaded_data = await storage_module.storage.download(
                 container=container,
                 path=path
             )
@@ -87,12 +96,12 @@ class TestStorageSDK:
             assert downloaded_data == test_data
 
             # Clean up
-            storage_module.storage.delete(container, path)
+            await storage_module.storage.delete(container, path)
 
         finally:
             clear_execution_context()
 
-    def test_get_metadata(self, test_context, storage_module):
+    async def test_get_metadata(self, test_context, storage_module):
         """Test getting blob metadata"""
         set_execution_context(test_context)
 
@@ -102,7 +111,7 @@ class TestStorageSDK:
             container = "files"
             path = "tests/metadata_test.txt"
 
-            storage_module.storage.upload(
+            await storage_module.storage.upload(
                 container=container,
                 path=path,
                 data=test_data,
@@ -110,7 +119,7 @@ class TestStorageSDK:
             )
 
             # Get metadata
-            metadata = storage_module.storage.get_metadata(container, path)
+            metadata = await storage_module.storage.get_metadata(container, path)
 
             assert metadata is not None
             assert "name" in metadata
@@ -122,12 +131,12 @@ class TestStorageSDK:
             assert "etag" in metadata
 
             # Clean up
-            storage_module.storage.delete(container, path)
+            await storage_module.storage.delete(container, path)
 
         finally:
             clear_execution_context()
 
-    def test_generate_sas_url(self, test_context, storage_module):
+    async def test_generate_sas_url(self, test_context, storage_module):
         """Test generating SAS URL for download"""
         set_execution_context(test_context)
 
@@ -137,7 +146,7 @@ class TestStorageSDK:
             container = "files"
             path = "tests/sas_test.txt"
 
-            storage_module.storage.upload(
+            await storage_module.storage.upload(
                 container=container,
                 path=path,
                 data=test_data,
@@ -145,7 +154,7 @@ class TestStorageSDK:
             )
 
             # Generate SAS URL
-            sas_url = storage_module.storage.generate_url(
+            sas_url = await storage_module.storage.generate_url(
                 container=container,
                 path=path,
                 expiry_hours=1
@@ -157,17 +166,17 @@ class TestStorageSDK:
             assert "?" in sas_url  # SAS token query string
 
             # Clean up
-            storage_module.storage.delete(container, path)
+            await storage_module.storage.delete(container, path)
 
         finally:
             clear_execution_context()
 
-    def test_delete_nonexistent_file(self, test_context, storage_module):
+    async def test_delete_nonexistent_file(self, test_context, storage_module):
         """Test deleting a file that doesn't exist returns False"""
         set_execution_context(test_context)
 
         try:
-            result = storage_module.storage.delete(
+            result = await storage_module.storage.delete(
                 container="files",
                 path="tests/nonexistent_file.txt"
             )
@@ -177,13 +186,13 @@ class TestStorageSDK:
         finally:
             clear_execution_context()
 
-    def test_download_nonexistent_file(self, test_context, storage_module):
+    async def test_download_nonexistent_file(self, test_context, storage_module):
         """Test downloading a file that doesn't exist raises FileNotFoundError"""
         set_execution_context(test_context)
 
         try:
             with pytest.raises(FileNotFoundError):
-                storage_module.storage.download(
+                await storage_module.storage.download(
                     container="files",
                     path="tests/nonexistent_file.txt"
                 )
@@ -191,13 +200,13 @@ class TestStorageSDK:
         finally:
             clear_execution_context()
 
-    def test_invalid_data_type(self, test_context, storage_module):
+    async def test_invalid_data_type(self, test_context, storage_module):
         """Test uploading non-bytes data raises ValueError"""
         set_execution_context(test_context)
 
         try:
             with pytest.raises(ValueError, match="data must be bytes"):
-                storage_module.storage.upload(
+                await storage_module.storage.upload(
                     container="files",
                     path="tests/invalid.txt",
                     data="This is a string, not bytes",  # Wrong type
@@ -207,14 +216,14 @@ class TestStorageSDK:
         finally:
             clear_execution_context()
 
-    def test_missing_execution_context(self, storage_module):
+    async def test_missing_execution_context(self, storage_module):
         """Test that operations require execution context"""
         # Clear any existing context
         clear_execution_context()
 
         try:
             with pytest.raises(RuntimeError, match="No execution context"):
-                storage_module.storage.upload(
+                await storage_module.storage.upload(
                     container="files",
                     path="tests/test.txt",
                     data=b"test",
@@ -224,7 +233,7 @@ class TestStorageSDK:
             # Don't leave the context cleared for other tests
             clear_execution_context()
 
-    def test_binary_content_upload_download(self, test_context, storage_module):
+    async def test_binary_content_upload_download(self, test_context, storage_module):
         """Test uploading and downloading binary content"""
         set_execution_context(test_context)
 
@@ -235,7 +244,7 @@ class TestStorageSDK:
             path = "tests/binary_test.png"
 
             # Upload
-            blob_uri = storage_module.storage.upload(
+            blob_uri = await storage_module.storage.upload(
                 container=container,
                 path=path,
                 data=test_data,
@@ -245,18 +254,18 @@ class TestStorageSDK:
             assert blob_uri is not None
 
             # Download
-            downloaded_data = storage_module.storage.download(container, path)
+            downloaded_data = await storage_module.storage.download(container, path)
 
             assert downloaded_data == test_data
             assert len(downloaded_data) == len(test_data)
 
             # Clean up
-            storage_module.storage.delete(container, path)
+            await storage_module.storage.delete(container, path)
 
         finally:
             clear_execution_context()
 
-    def test_csv_workflow_pattern(self, test_context, storage_module):
+    async def test_csv_workflow_pattern(self, test_context, storage_module):
         """Test the CSV export workflow pattern (like ninjaone_device_export)"""
         set_execution_context(test_context)
 
@@ -267,7 +276,7 @@ class TestStorageSDK:
             blob_path = f"test-exports/{filename}"
 
             # Upload CSV
-            blob_uri = storage_module.storage.upload(
+            blob_uri = await storage_module.storage.upload(
                 container="files",
                 path=blob_path,
                 data=csv_content.encode("utf-8"),
@@ -277,7 +286,7 @@ class TestStorageSDK:
             assert blob_uri is not None
 
             # Generate download URL (7 day expiry like in ninjaone workflow)
-            download_url = storage_module.storage.generate_url(
+            download_url = await storage_module.storage.generate_url(
                 container="files",
                 path=blob_path,
                 expiry_hours=24 * 7
@@ -287,11 +296,11 @@ class TestStorageSDK:
             assert "?" in download_url  # Has SAS token
 
             # Verify file can be downloaded
-            downloaded = storage_module.storage.download("files", blob_path)
+            downloaded = await storage_module.storage.download("files", blob_path)
             assert downloaded.decode("utf-8") == csv_content
 
             # Clean up
-            storage_module.storage.delete("files", blob_path)
+            await storage_module.storage.delete("files", blob_path)
 
         finally:
             clear_execution_context()

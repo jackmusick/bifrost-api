@@ -4,6 +4,7 @@ Handles file browsing, reading, and writing for browser-based code editor
 Thin wrapper - business logic is in shared.editor.file_operations
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -493,9 +494,8 @@ async def editor_rename_path(req: func.HttpRequest) -> func.HttpResponse:
 
         from shared.editor.file_operations import rename_path
 
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, rename_path, old_path, new_path)
+        # rename_path is async, call it directly
+        result = await rename_path(old_path, new_path)
 
         return func.HttpResponse(
             body=result.model_dump_json(),

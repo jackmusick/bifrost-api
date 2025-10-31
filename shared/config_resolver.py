@@ -43,7 +43,7 @@ class ConfigResolver:
                 logger.warning(f"Failed to initialize KeyVaultClient: {e}. Secret references will not be available.")
                 self.keyvault_client = None
 
-    def get_config(
+    async def get_config(
         self,
         org_id: str,
         key: str,
@@ -96,7 +96,7 @@ class ConfigResolver:
             # If type is secret_ref, resolve from Key Vault
             if config_type == ConfigType.SECRET_REF.value or config_type == "secret_ref":
                 assert config_value is not None, f"secret_ref value is None for key '{key}'"
-                return self._resolve_secret_ref(org_id, key, config_value)
+                return await self._resolve_secret_ref(org_id, key, config_value)
 
             # Otherwise return plain value
             logger.debug(f"Retrieved plain config value: {key} (type: {config_type})")
@@ -107,7 +107,7 @@ class ConfigResolver:
         logger.debug(f"Retrieved config value: {key}")
         return config_entry
 
-    def _resolve_secret_ref(self, org_id: str, config_key: str, secret_ref: str) -> str:
+    async def _resolve_secret_ref(self, org_id: str, config_key: str, secret_ref: str) -> str:
         """
         Resolve a secret reference from Key Vault.
 
@@ -147,7 +147,7 @@ class ConfigResolver:
             )
 
             # Get secret from Key Vault (with org → global fallback)
-            secret_value = self.keyvault_client.get_secret(org_id, secret_ref)
+            secret_value = await self.keyvault_client.get_secret(org_id, secret_ref)
 
             # Log successful resolution (without value)
             logger.info(

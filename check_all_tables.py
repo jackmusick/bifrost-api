@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Check all table contents"""
 import asyncio
-import os
 import json
 from azure.data.tables import TableServiceClient
 
@@ -30,7 +29,7 @@ async def check_tables():
 
             if entities and len(entities) > 0:
                 # Show first few entities
-                print(f"  Sample entities:")
+                print("  Sample entities:")
                 for entity in entities[:3]:
                     pk = entity.get('PartitionKey', 'N/A')
                     rk = entity.get('RowKey', 'N/A')

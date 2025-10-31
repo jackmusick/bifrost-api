@@ -14,7 +14,7 @@ from shared.models import FileUploadRequest, FileUploadResponse, UploadedFileMet
 logger = logging.getLogger(__name__)
 
 
-def generate_file_upload_url(
+async def generate_file_upload_url(
     form_id: str,
     request: FileUploadRequest,
     context: ExecutionContext,
@@ -62,7 +62,7 @@ def generate_file_upload_url(
 
     # Generate SAS URL for upload
     # This creates a secure, time-limited URL for direct upload
-    result = blob_service.generate_upload_url(
+    result = await blob_service.generate_upload_url(
         file_name=request.file_name,
         content_type=request.content_type,
         file_size=request.file_size,

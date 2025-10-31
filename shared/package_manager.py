@@ -220,7 +220,7 @@ class WorkspacePackageManager:
         # Append to requirements.txt if requested and package is new or version changed
         if append_to_requirements and (not existing or version):
             await self._append_to_requirements(package_name, version)
-            await log(f"✓ Updated requirements.txt")
+            await log("✓ Updated requirements.txt")
 
     async def install_requirements_streaming(
         self,

@@ -3,42 +3,45 @@ Bifrost Platform SDK
 
 Provides Python API access to platform features from workflows.
 
+All methods interacting with Azure services (storage, secrets, config, organizations,
+roles, executions, forms, oauth) are async and must be called with await.
+
 Usage:
     from bifrost import organizations, workflows, files, storage, forms, executions, roles
     from bifrost import config, secrets, oauth
 
 Example:
-    # Create an organization
-    org = organizations.create("Acme Corp", domain="acme.com")
+    # Create an organization (async)
+    org = await organizations.create("Acme Corp", domain="acme.com")
 
     # Execute a workflow
     result = workflows.execute("process_order", {"order_id": "12345"})
 
-    # Cloud storage operations
-    blob_uri = storage.upload("files", "exports/report.csv", data, "text/csv")
-    download_url = storage.generate_url("files", "exports/report.csv", expiry_hours=24)
-    file_data = storage.download("uploads", "user-files/input.xlsx")
+    # Cloud storage operations (async)
+    blob_uri = await storage.upload("files", "exports/report.csv", data, "text/csv")
+    download_url = await storage.generate_url("files", "exports/report.csv", expiry_hours=24)
+    file_data = await storage.download("uploads", "user-files/input.xlsx")
 
-    # Local filesystem operations
-    files.write("data/temp.txt", "content", location="temp")
-    data = files.read("data/customers.csv", location="workspace")
+    # Local filesystem operations (async with aiofiles)
+    await files.write("data/temp.txt", "content", location="temp")
+    data = await files.read("data/customers.csv", location="workspace")
 
-    # List executions
-    recent = executions.list(limit=10)
+    # List executions (async)
+    recent = await executions.list(limit=10)
 
-    # Create a role
-    role = roles.create("Manager", permissions=["users.read", "users.write"])
+    # Create a role (async)
+    role = await roles.create("Manager", permissions=["users.read", "users.write"])
 
-    # Manage configuration
-    config.set("api_url", "https://api.example.com")
-    url = config.get("api_url")
+    # Manage configuration (async)
+    await config.set("api_url", "https://api.example.com")
+    url = await config.get("api_url")
 
-    # Manage secrets
-    secrets.set("api_key", "sk_live_xxxxx")
-    key = secrets.get("api_key")
+    # Manage secrets (async)
+    await secrets.set("api_key", "sk_live_xxxxx")
+    key = await secrets.get("api_key")
 
-    # Manage OAuth tokens
-    token = oauth.get_token("microsoft")
+    # Manage OAuth tokens (async)
+    token = await oauth.get_token("microsoft")
 """
 
 from dataclasses import dataclass

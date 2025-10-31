@@ -84,7 +84,7 @@ async def general_health(req: func.HttpRequest) -> func.HttpResponse:
     response_model=None  # Will be inferred from handler
 )
 @require_auth
-def keyvault_health(req: func.HttpRequest) -> func.HttpResponse:
+async def keyvault_health(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/health/keyvault
 
@@ -127,7 +127,7 @@ def keyvault_health(req: func.HttpRequest) -> func.HttpResponse:
 
         # Perform health check (get KV manager on demand)
         kv_manager = get_kv_manager()
-        response = perform_keyvault_health_check(kv_manager)
+        response = await perform_keyvault_health_check(kv_manager)
 
         return func.HttpResponse(
             json.dumps(response.model_dump(mode="json")),

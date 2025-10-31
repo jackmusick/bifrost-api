@@ -30,10 +30,10 @@ from shared.context import ExecutionContext, Organization
 def mock_kv_manager():
     """Create a mock KeyVaultClient."""
     manager = AsyncMock()
-    manager.list_secrets = MagicMock()
-    manager.create_secret = MagicMock()
-    manager.update_secret = MagicMock()
-    manager.delete_secret = MagicMock()
+    manager.list_secrets = AsyncMock()
+    manager.create_secret = AsyncMock()
+    manager.update_secret = AsyncMock()
+    manager.delete_secret = AsyncMock()
     return manager
 
 
@@ -68,7 +68,7 @@ class TestHandleListSecrets:
     async def test_list_secrets_success(self, mock_kv_manager, mock_check_key_vault_available):
         """Test successfully listing secrets."""
         secret_names = ["org-123--api-key", "GLOBAL--smtp-password"]
-        mock_kv_manager.list_secrets.return_value = secret_names
+        mock_kv_manager.list_secrets = AsyncMock(return_value=secret_names)
 
         response = await handle_list_secrets(mock_kv_manager, org_id="org-123")
 
@@ -82,7 +82,7 @@ class TestHandleListSecrets:
     async def test_list_secrets_no_org_filter(self, mock_kv_manager, mock_check_key_vault_available):
         """Test listing secrets without org filter."""
         secret_names = ["org-123--api-key", "GLOBAL--smtp-password", "org-456--db-pass"]
-        mock_kv_manager.list_secrets.return_value = secret_names
+        mock_kv_manager.list_secrets = AsyncMock(return_value=secret_names)
 
         response = await handle_list_secrets(mock_kv_manager, org_id=None)
 
@@ -94,7 +94,7 @@ class TestHandleListSecrets:
     @pytest.mark.asyncio
     async def test_list_secrets_empty(self, mock_kv_manager, mock_check_key_vault_available):
         """Test listing when no secrets exist."""
-        mock_kv_manager.list_secrets.return_value = []
+        mock_kv_manager.list_secrets = AsyncMock(return_value=[])
 
         response = await handle_list_secrets(mock_kv_manager)
 
@@ -128,7 +128,7 @@ class TestHandleCreateSecret:
             secretKey="api-key",
             value="secret-value",
         )
-        mock_kv_manager.list_secrets.return_value = []
+        mock_kv_manager.list_secrets = AsyncMock(return_value=[])
 
         response = await handle_create_secret(
             mock_kv_manager, create_request, "user-123"
@@ -154,7 +154,7 @@ class TestHandleCreateSecret:
             secretKey="smtp-password",
             value="secure-value",
         )
-        mock_kv_manager.list_secrets.return_value = []
+        mock_kv_manager.list_secrets = AsyncMock(return_value=[])
 
         response = await handle_create_secret(
             mock_kv_manager, create_request, "user-123"
@@ -173,7 +173,7 @@ class TestHandleCreateSecret:
             secretKey="api-key",
             value="secret-value",
         )
-        mock_kv_manager.list_secrets.return_value = ["org-123--api-key"]
+        mock_kv_manager.list_secrets = AsyncMock(return_value=["org-123--api-key"])
 
         with pytest.raises(SecretAlreadyExistsError, match="already exists"):
             await handle_create_secret(mock_kv_manager, create_request, "user-123")
@@ -294,7 +294,7 @@ class TestHandleUpdateSecret:
     ):
         """Test error when secret not found."""
         update_request = SecretUpdateRequest(value="new-value")
-        mock_kv_manager.update_secret.side_effect = Exception("Secret not found")
+        mock_kv_manager.update_secret = AsyncMock(side_effect=Exception("Secret not found"))
 
         with pytest.raises(SecretNotFoundError, match="not found"):
             await handle_update_secret(
@@ -410,7 +410,7 @@ class TestHandleDeleteSecret:
         self, mock_kv_manager, mock_request_context, mock_check_key_vault_available
     ):
         """Test error when secret not found."""
-        mock_kv_manager.delete_secret.side_effect = Exception("Secret not found")
+        mock_kv_manager.delete_secret = AsyncMock(side_effect=Exception("Secret not found"))
 
         with patch(
             "shared.handlers.secrets_handlers._find_secret_dependencies",

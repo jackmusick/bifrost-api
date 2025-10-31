@@ -2,6 +2,8 @@
 Organization management SDK for Bifrost.
 
 Provides Python API for organization operations from workflows.
+
+All methods are async and must be called with await.
 """
 
 from __future__ import annotations
@@ -25,10 +27,11 @@ class organizations:
     Organization management operations.
 
     All methods enforce permissions via the execution context.
+    All methods are async and must be awaited.
     """
 
     @staticmethod
-    def create(name: str, domain: str | None = None, is_active: bool = True) -> Organization:
+    async def create(name: str, domain: str | None = None, is_active: bool = True) -> Organization:
         """
         Create a new organization.
 
@@ -49,11 +52,11 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> org = organizations.create("Acme Corp", domain="acme.com")
+            >>> org = await organizations.create("Acme Corp", domain="acme.com")
         """
         context = require_admin()
 
-        return create_organization_logic(
+        return await create_organization_logic(
             context=context,
             name=name,
             domain=domain,
@@ -61,7 +64,7 @@ class organizations:
         )
 
     @staticmethod
-    def get(org_id: str) -> Organization:
+    async def get(org_id: str) -> Organization:
         """
         Get organization by ID.
 
@@ -77,12 +80,12 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> org = organizations.get("org-123")
+            >>> org = await organizations.get("org-123")
             >>> print(org.name)
         """
         context = get_context()
 
-        org = get_organization_logic(context, org_id)
+        org = await get_organization_logic(context, org_id)
 
         if not org:
             raise ValueError(f"Organization not found: {org_id}")
@@ -90,7 +93,7 @@ class organizations:
         return org
 
     @staticmethod
-    def list() -> list[Organization]:
+    async def list() -> list[Organization]:
         """
         List all organizations.
 
@@ -105,16 +108,16 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> orgs = organizations.list()
+            >>> orgs = await organizations.list()
             >>> for org in orgs:
             ...     print(f"{org.name}: {org.domain}")
         """
         context = require_admin()
 
-        return list_organizations_logic(context)
+        return await list_organizations_logic(context)
 
     @staticmethod
-    def update(org_id: str, **updates: Any) -> Organization:
+    async def update(org_id: str, **updates: Any) -> Organization:
         """
         Update an organization.
 
@@ -134,11 +137,11 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> org = organizations.update("org-123", name="New Name")
+            >>> org = await organizations.update("org-123", name="New Name")
         """
         context = require_admin()
 
-        org = update_organization_logic(
+        org = await update_organization_logic(
             context=context,
             org_id=org_id,
             **updates
@@ -150,7 +153,7 @@ class organizations:
         return org
 
     @staticmethod
-    def delete(org_id: str) -> bool:
+    async def delete(org_id: str) -> bool:
         """
         Delete an organization.
 
@@ -169,8 +172,8 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> deleted = organizations.delete("org-123")
+            >>> deleted = await organizations.delete("org-123")
         """
         context = require_admin()
 
-        return delete_organization_logic(context, org_id)
+        return await delete_organization_logic(context, org_id)

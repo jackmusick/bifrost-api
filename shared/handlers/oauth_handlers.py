@@ -79,10 +79,11 @@ async def create_oauth_connection_handler(req: func.HttpRequest) -> func.HttpRes
                     if client_secret_config:
                         keyvault_secret_name = client_secret_config.get("Value")
                         if keyvault_secret_name:
-                            keyvault = KeyVaultClient()
-                            assert keyvault._client is not None, "Key Vault client not initialized"
-                            secret = keyvault._client.get_secret(keyvault_secret_name)
-                            client_secret = secret.value
+                            async with KeyVaultClient() as keyvault:
+                                # Extract just the secret name (without org prefix)
+                                parts = keyvault_secret_name.split("--", 1)
+                                secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
+                                client_secret = await keyvault.get_secret(connection.org_id, secret_key)
 
                 if not client_secret:
                     raise ValueError("Client credentials flow requires client_secret")
@@ -479,10 +480,11 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
                     keyvault_secret_name = client_secret_config.get("Value")
                     if keyvault_secret_name:
                         try:
-                            keyvault = KeyVaultClient()
-                            assert keyvault._client is not None, "Key Vault client not initialized"
-                            secret = keyvault._client.get_secret(keyvault_secret_name)
-                            client_secret = secret.value
+                            async with KeyVaultClient() as keyvault:
+                                # Extract just the secret name (without org prefix)
+                                parts = keyvault_secret_name.split("--", 1)
+                                secret_key = parts[1] if len(parts) == 2 else keyvault_secret_name
+                                client_secret = await keyvault.get_secret(connection.org_id, secret_key)
                             logger.info(f"Retrieved client_secret from Key Vault for {connection_name}")
                         except ValueError as e:
                             logger.warning(f"KeyVault not available for client_secret retrieval: {e}")

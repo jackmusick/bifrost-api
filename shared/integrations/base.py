@@ -44,9 +44,9 @@ class BaseIntegration(ABC):
         """
         pass
 
-    # Helper methods for accessing context
+    # Helper methods for accessing config and secrets
 
-    def get_config(self, key: str, default: Any = None) -> Any:
+    async def get_config(self, key: str, default: Any = None) -> Any:
         """
         Get organization-specific configuration value.
 
@@ -57,7 +57,8 @@ class BaseIntegration(ABC):
         Returns:
             Configuration value or default
         """
-        return self.context.get_config(key, default)
+        from bifrost import config
+        return await config.get(key, default=default)
 
     async def get_secret(self, key: str) -> str:
         """
@@ -72,4 +73,8 @@ class BaseIntegration(ABC):
         Raises:
             KeyError: If secret not found
         """
-        return await self.context.get_secret(key)
+        from bifrost import secrets
+        secret = await secrets.get(key)
+        if secret is None:
+            raise KeyError(f"Secret not found: {key}")
+        return secret

@@ -3,6 +3,8 @@ Secrets SDK for Bifrost.
 
 Provides Python API for secrets management (get, set, list, delete).
 Secrets are encrypted at rest in Azure Key Vault.
+
+All methods are async and must be called with await.
 """
 
 from __future__ import annotations
@@ -22,10 +24,12 @@ class secrets:
 
     Allows workflows to securely store and retrieve encrypted secrets.
     Secrets are encrypted at rest in Azure Key Vault and scoped to organizations.
+
+    All methods are async and must be awaited.
     """
 
     @staticmethod
-    def get(key: str, org_id: str | None = None) -> str | None:
+    async def get(key: str, org_id: str | None = None) -> str | None:
         """
         Get decrypted secret value.
 
@@ -50,15 +54,15 @@ class secrets:
         target_org = org_id or context.org_id
 
         try:
-            kv_client = KeyVaultClient()
-            secret_value = kv_client.get_secret(target_org, key)
-            return secret_value
+            async with KeyVaultClient() as kv_client:
+                secret_value = await kv_client.get_secret(target_org, key)
+                return secret_value
         except Exception as e:
             logger.warning(f"Failed to get secret {key} for org {target_org}: {e}")
             return None
 
     @staticmethod
-    def set(key: str, value: str, org_id: str | None = None) -> None:
+    async def set(key: str, value: str, org_id: str | None = None) -> None:
         """
         Set encrypted secret value.
 
@@ -80,12 +84,12 @@ class secrets:
         context = require_permission("secrets.write")
         target_org = org_id or context.org_id
 
-        kv_client = KeyVaultClient()
-        kv_client.create_secret(target_org, key, value)
+        async with KeyVaultClient() as kv_client:
+            await kv_client.create_secret(target_org, key, value)
         logger.info(f"Set secret {key} for org {target_org} by user {context.user_id}")
 
     @staticmethod
-    def list(org_id: str | None = None) -> list[str]:
+    async def list(org_id: str | None = None) -> list[str]:
         """
         List all secret keys (NOT values - keys only for security).
 
@@ -107,12 +111,12 @@ class secrets:
         context = get_context()
         target_org = org_id or context.org_id
 
-        kv_client = KeyVaultClient()
-        secret_keys = kv_client.list_secrets(target_org)
-        return secret_keys
+        async with KeyVaultClient() as kv_client:
+            secret_keys = await kv_client.list_secrets(target_org)
+            return secret_keys
 
     @staticmethod
-    def delete(key: str, org_id: str | None = None) -> bool:
+    async def delete(key: str, org_id: str | None = None) -> bool:
         """
         Delete secret.
 
@@ -137,8 +141,8 @@ class secrets:
         target_org = org_id or context.org_id
 
         try:
-            kv_client = KeyVaultClient()
-            kv_client.delete_secret(target_org, key)
+            async with KeyVaultClient() as kv_client:
+                await kv_client.delete_secret(target_org, key)
             logger.info(f"Deleted secret {key} for org {target_org} by user {context.user_id}")
             return True
         except Exception as e:

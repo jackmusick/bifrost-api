@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """Check execution structure"""
-import asyncio
-import os
 import json
 from azure.data.tables import TableServiceClient
 

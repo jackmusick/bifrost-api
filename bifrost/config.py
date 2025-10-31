@@ -2,6 +2,8 @@
 Configuration SDK for Bifrost.
 
 Provides Python API for configuration management (get, set, list, delete).
+
+All methods are async and must be called with await.
 """
 
 from __future__ import annotations
@@ -18,10 +20,12 @@ class config:
     Configuration management operations.
 
     Allows workflows to read and write configuration values scoped to organizations.
+
+    All methods are async and must be awaited.
     """
 
     @staticmethod
-    def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
+    async def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
         """
         Get configuration value.
 
@@ -48,7 +52,7 @@ class config:
 
         # Get config using the repository's actual method
         # Note: Repository is already scoped to target_org via context
-        config = repo.get_config(key, fallback_to_global=True)
+        config = await repo.get_config(key, fallback_to_global=True)
 
         if config:
             return config.value
@@ -56,7 +60,7 @@ class config:
         return default
 
     @staticmethod
-    def set(key: str, value: Any, org_id: str | None = None) -> None:
+    async def set(key: str, value: Any, org_id: str | None = None) -> None:
         """
         Set configuration value.
 
@@ -98,7 +102,7 @@ class config:
             config_type = ConfigType.string
             str_value = str(value)
 
-        repo.set_config(
+        await repo.set_config(
             key=key,
             value=str_value,
             config_type=config_type,
@@ -106,7 +110,7 @@ class config:
         )
 
     @staticmethod
-    def list(org_id: str | None = None) -> dict[str, Any]:
+    async def list(org_id: str | None = None) -> dict[str, Any]:
         """
         List all configuration key-value pairs.
 
@@ -130,7 +134,7 @@ class config:
         repo = ConfigRepository(context)
 
         # list_config returns list of Config models
-        configs = repo.list_config(include_global=True)
+        configs = await repo.list_config(include_global=True)
 
         # Convert to dict[str, Any] as advertised in docstring
         config_dict = {}
@@ -155,7 +159,7 @@ class config:
         return config_dict
 
     @staticmethod
-    def delete(key: str, org_id: str | None = None) -> bool:
+    async def delete(key: str, org_id: str | None = None) -> bool:
         """
         Delete configuration value.
 
@@ -176,4 +180,4 @@ class config:
         context = get_context()
 
         repo = ConfigRepository(context)
-        return repo.delete_config(key)
+        return await repo.delete_config(key)

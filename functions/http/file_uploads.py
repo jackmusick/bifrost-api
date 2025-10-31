@@ -89,7 +89,7 @@ async def generate_file_upload_url(req: func.HttpRequest) -> func.HttpResponse:
         upload_request = FileUploadRequest(**request_data)
 
         # Delegate to handler
-        response = generate_url_handler(
+        response = await generate_url_handler(
             form_id=form_id,
             request=upload_request,
             context=context,

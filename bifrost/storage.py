@@ -12,8 +12,8 @@ Containers:
 Usage:
     from bifrost import storage
 
-    # Upload a file
-    blob_uri = storage.upload(
+    # Upload a file (must be called with await)
+    blob_uri = await storage.upload(
         container="files",
         path="exports/report.csv",
         data=csv_content.encode("utf-8"),
@@ -21,27 +21,27 @@ Usage:
     )
 
     # Generate downloadable URL (24 hour expiry by default)
-    download_url = storage.generate_url(
+    download_url = await storage.generate_url(
         container="files",
         path="exports/report.csv",
         expiry_hours=24
     )
 
     # Download a file
-    file_data = storage.download(
+    file_data = await storage.download(
         container="uploads",
         path="user-files/input.xlsx"
     )
 
     # Get metadata
-    metadata = storage.get_metadata(
+    metadata = await storage.get_metadata(
         container="files",
         path="exports/report.csv"
     )
     # Returns: {name, size, content_type, last_modified, etag}
 
     # Delete a file
-    storage.delete(
+    await storage.delete(
         container="files",
         path="exports/old-report.csv"
     )
@@ -62,7 +62,7 @@ class storage:
     """
 
     @staticmethod
-    def download(container: str, path: str) -> bytes:
+    async def download(container: str, path: str) -> bytes:
         """
         Download a blob from storage.
 
@@ -79,7 +79,7 @@ class storage:
             Exception: For storage errors
 
         Example:
-            file_data = storage.download("uploads", "user-files/input.xlsx")
+            file_data = await storage.download("uploads", "user-files/input.xlsx")
             text_content = file_data.decode("utf-8")
         """
         # Validate execution context
@@ -89,10 +89,10 @@ class storage:
         blob_service = get_blob_service()
 
         # Download blob
-        return blob_service.download_blob(container, path)
+        return await blob_service.download_blob(container, path)
 
     @staticmethod
-    def upload(
+    async def upload(
         container: str,
         path: str,
         data: bytes,
@@ -116,7 +116,7 @@ class storage:
 
         Example:
             csv_data = "Name,Value\\nTest,123".encode("utf-8")
-            blob_uri = storage.upload(
+            blob_uri = await storage.upload(
                 container="files",
                 path="exports/report.csv",
                 data=csv_data,
@@ -134,10 +134,10 @@ class storage:
         blob_service = get_blob_service()
 
         # Upload blob
-        return blob_service.upload_blob(container, path, data, content_type)
+        return await blob_service.upload_blob(container, path, data, content_type)
 
     @staticmethod
-    def generate_url(
+    async def generate_url(
         container: str,
         path: str,
         expiry_hours: int = 24
@@ -160,7 +160,7 @@ class storage:
 
         Example:
             # Generate 7-day download link
-            download_url = storage.generate_url(
+            download_url = await storage.generate_url(
                 container="files",
                 path="exports/report.csv",
                 expiry_hours=24 * 7
@@ -177,10 +177,10 @@ class storage:
         blob_service = get_blob_service()
 
         # Generate SAS URL
-        return blob_service.generate_sas_url(container, path, expiry_hours)
+        return await blob_service.generate_sas_url(container, path, expiry_hours)
 
     @staticmethod
-    def get_metadata(container: str, path: str) -> dict[str, Any]:
+    async def get_metadata(container: str, path: str) -> dict[str, Any]:
         """
         Get blob metadata.
 
@@ -202,7 +202,7 @@ class storage:
             Exception: For storage errors
 
         Example:
-            metadata = storage.get_metadata("files", "exports/report.csv")
+            metadata = await storage.get_metadata("files", "exports/report.csv")
             print(f"File size: {metadata['size']} bytes")
             print(f"Modified: {metadata['last_modified']}")
         """
@@ -213,10 +213,10 @@ class storage:
         blob_service = get_blob_service()
 
         # Get metadata
-        return blob_service.get_blob_metadata(container, path)
+        return await blob_service.get_blob_metadata(container, path)
 
     @staticmethod
-    def delete(container: str, path: str) -> bool:
+    async def delete(container: str, path: str) -> bool:
         """
         Delete a blob from storage.
 
@@ -232,7 +232,7 @@ class storage:
             Exception: For storage errors
 
         Example:
-            storage.delete("files", "exports/old-report.csv")
+            await storage.delete("files", "exports/old-report.csv")
         """
         # Validate execution context
         get_context()
@@ -241,4 +241,4 @@ class storage:
         blob_service = get_blob_service()
 
         # Delete blob
-        return blob_service.delete_blob(container, path)
+        return await blob_service.delete_blob(container, path)

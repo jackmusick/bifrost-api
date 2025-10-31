@@ -117,7 +117,8 @@ class AsyncTableStorageService:
                     # Access the internal session and close it if possible
                     if hasattr(client, '_client') and hasattr(client._client, '_client'):
                         session = client._client._client
-                        if hasattr(session, 'close') and not session.closed:
+                        # Use getattr to safely check if session is closed
+                        if hasattr(session, 'close') and not getattr(session, 'closed', True):
                             # Force synchronous close of aiohttp session
                             import asyncio
                             try:

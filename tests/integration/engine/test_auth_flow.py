@@ -264,7 +264,7 @@ class TestAuthenticationFlow:
         assert isinstance(context, ExecutionContext)
         assert context.organization.id == "test-org-123"
         assert context.organization.name == "Test Organization"
-        assert context.has_config("api_endpoint")
+        assert "api_endpoint" in context._config
         assert context._config["api_endpoint"] == "https://api.example.com"
         assert context._config["features"]["automation"] is True
 

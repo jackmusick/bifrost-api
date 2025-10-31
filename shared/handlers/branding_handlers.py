@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from shared.models import BrandingSettings, FileUploadResponse
+from shared.models import BrandingSettings, FileUploadResponse, UploadedFileMetadata
 from shared.blob_storage import get_blob_service
 from shared.async_storage import AsyncTableStorageService
 
@@ -272,10 +272,20 @@ async def upload_logo(
     # Invalidate cache
     invalidate_branding_cache(org_id)
 
+    # Create file metadata for the uploaded logo
+    file_metadata = UploadedFileMetadata(
+        name=f"{logo_type}-logo.{extension}",
+        container="branding",
+        path=blob_name,
+        content_type=content_type,
+        size=len(file_data)
+    )
+
     return FileUploadResponse(
         upload_url=blob_url,
         blob_uri=blob_url,
-        expires_at=datetime.utcnow().isoformat()  # No expiration for direct upload
+        expires_at=datetime.utcnow().isoformat(),  # No expiration for direct upload
+        file_metadata=file_metadata
     )
 
 

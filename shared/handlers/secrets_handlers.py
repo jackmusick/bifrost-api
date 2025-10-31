@@ -77,7 +77,7 @@ async def handle_list_secrets(
     assert kv_manager is not None, "kv_manager must be set when available"
 
     # List secrets with optional org filter
-    secret_names = kv_manager.list_secrets(org_id=org_id)
+    secret_names = await kv_manager.list_secrets(org_id=org_id)
 
     # Build response
     response = SecretListResponse(
@@ -127,7 +127,7 @@ async def handle_create_secret(
 
     # Check if secret already exists
     try:
-        existing_secrets = kv_manager.list_secrets()
+        existing_secrets = await kv_manager.list_secrets()
         if secret_name in existing_secrets:
             logger.warning(f"Secret {secret_name} already exists")
             raise SecretAlreadyExistsError(
@@ -139,7 +139,7 @@ async def handle_create_secret(
         logger.warning(f"Could not check for existing secret: {e}")
 
     # Create the secret
-    kv_manager.create_secret(
+    await kv_manager.create_secret(
         org_id=create_request.orgId,
         secret_key=create_request.secretKey,
         value=create_request.value,
@@ -218,7 +218,7 @@ async def handle_update_secret(
 
     # Update the secret
     try:
-        kv_manager.update_secret(
+        await kv_manager.update_secret(
             org_id=org_id, secret_key=secret_key, value=update_request.value
         )
     except Exception as e:
@@ -414,7 +414,7 @@ async def handle_delete_secret(
 
     # Delete the secret
     try:
-        kv_manager.delete_secret(org_id=org_id, secret_key=secret_key)
+        await kv_manager.delete_secret(org_id=org_id, secret_key=secret_key)
     except Exception as e:
         if "not found" in str(e).lower():
             raise SecretNotFoundError(f"Secret '{secret_name}' not found")

@@ -2,6 +2,8 @@
 Roles management SDK for Bifrost.
 
 Provides Python API for role operations (CRUD + user/form assignments).
+
+All methods are async and must be called with await.
 """
 
 from __future__ import annotations
@@ -19,10 +21,11 @@ class roles:
     Role management operations.
 
     Provides CRUD operations for roles and user/form assignments.
+    All methods are async and must be awaited.
     """
 
     @staticmethod
-    def create(name: str, description: str = "", permissions: list[str] | None = None) -> Role:
+    async def create(name: str, description: str = "", permissions: list[str] | None = None) -> Role:
         """
         Create a new role.
 
@@ -58,14 +61,14 @@ class roles:
             permissions=permissions or []
         )
 
-        return repo.create_role(
+        return await repo.create_role(
             role_request=role_request,
             org_id=context.org_id,
             created_by=context.user_id
         )
 
     @staticmethod
-    def get(role_id: str) -> Role:
+    async def get(role_id: str) -> Role:
         """
         Get role by ID.
 
@@ -87,7 +90,7 @@ class roles:
         context = get_context()
         repo = RoleRepository(context)
 
-        role = repo.get_role(role_id, context.org_id)
+        role = await repo.get_role(role_id, context.org_id)
 
         if not role:
             raise ValueError(f"Role not found: {role_id}")
@@ -95,7 +98,7 @@ class roles:
         return role
 
     @staticmethod
-    def list() -> list[Role]:
+    async def list() -> list[Role]:
         """
         List all roles in the current organization.
 
@@ -114,10 +117,10 @@ class roles:
         context = get_context()
         repo = RoleRepository(context)
 
-        return repo.list_roles(context.org_id, active_only=True)
+        return await repo.list_roles(context.org_id, active_only=True)
 
     @staticmethod
-    def update(role_id: str, **updates: Any) -> Role:
+    async def update(role_id: str, **updates: Any) -> Role:
         """
         Update a role.
 
@@ -148,7 +151,7 @@ class roles:
 
         update_request = UpdateRoleRequest(**updates)
 
-        updated_role = repo.update_role(
+        updated_role = await repo.update_role(
             role_id=role_id,
             role_update=update_request,
             org_id=context.org_id,
@@ -161,7 +164,7 @@ class roles:
         return updated_role
 
     @staticmethod
-    def delete(role_id: str) -> None:
+    async def delete(role_id: str) -> None:
         """
         Delete a role.
 
@@ -182,13 +185,13 @@ class roles:
         context = require_permission("roles.delete")
         repo = RoleRepository(context)
 
-        success = repo.delete_role(role_id, context.org_id)
+        success = await repo.delete_role(role_id, context.org_id)
 
         if not success:
             raise ValueError(f"Role not found: {role_id}")
 
     @staticmethod
-    def list_users(role_id: str) -> list[str]:
+    async def list_users(role_id: str) -> list[str]:
         """
         List all user IDs assigned to a role.
 
@@ -212,14 +215,14 @@ class roles:
         repo = RoleRepository(context)
 
         # Verify role exists
-        role = repo.get_role(role_id, context.org_id)
+        role = await repo.get_role(role_id, context.org_id)
         if not role:
             raise ValueError(f"Role not found: {role_id}")
 
-        return repo.get_role_user_ids(role_id)
+        return await repo.get_role_user_ids(role_id)
 
     @staticmethod
-    def list_forms(role_id: str) -> list[str]:
+    async def list_forms(role_id: str) -> list[str]:
         """
         List all form IDs assigned to a role.
 
@@ -243,14 +246,14 @@ class roles:
         repo = RoleRepository(context)
 
         # Verify role exists
-        role = repo.get_role(role_id, context.org_id)
+        role = await repo.get_role(role_id, context.org_id)
         if not role:
             raise ValueError(f"Role not found: {role_id}")
 
-        return repo.get_role_form_ids(role_id)
+        return await repo.get_role_form_ids(role_id)
 
     @staticmethod
-    def assign_users(role_id: str, user_ids: list[str]) -> None:
+    async def assign_users(role_id: str, user_ids: list[str]) -> None:
         """
         Assign users to a role.
 
@@ -273,11 +276,11 @@ class roles:
         repo = RoleRepository(context)
 
         # Verify role exists
-        role = repo.get_role(role_id, context.org_id)
+        role = await repo.get_role(role_id, context.org_id)
         if not role:
             raise ValueError(f"Role not found: {role_id}")
 
-        repo.assign_users_to_role(
+        await repo.assign_users_to_role(
             role_id=role_id,
             user_ids=user_ids,
             org_id=context.org_id,
@@ -285,7 +288,7 @@ class roles:
         )
 
     @staticmethod
-    def assign_forms(role_id: str, form_ids: list[str]) -> None:
+    async def assign_forms(role_id: str, form_ids: list[str]) -> None:
         """
         Assign forms to a role.
 
@@ -308,11 +311,11 @@ class roles:
         repo = RoleRepository(context)
 
         # Verify role exists
-        role = repo.get_role(role_id, context.org_id)
+        role = await repo.get_role(role_id, context.org_id)
         if not role:
             raise ValueError(f"Role not found: {role_id}")
 
-        repo.assign_forms_to_role(
+        await repo.assign_forms_to_role(
             role_id=role_id,
             form_ids=form_ids,
             org_id=context.org_id,

@@ -15,7 +15,7 @@ from shared.services.workspace_service import get_workspace_service
 logger = logging.getLogger(__name__)
 
 
-def create_workspace_zip(directory_path: str = '') -> BytesIO:
+async def create_workspace_zip(directory_path: str = '') -> BytesIO:
     """
     Create in-memory ZIP archive of workspace files.
 
@@ -50,7 +50,7 @@ def create_workspace_zip(directory_path: str = '') -> BytesIO:
 
                 try:
                     # Read file content
-                    content = workspace_service.read_file(file_path)
+                    content = await workspace_service.read_file(file_path)
 
                     # Add to ZIP with original path
                     zip_file.writestr(file_path, content)
@@ -74,7 +74,7 @@ def create_workspace_zip(directory_path: str = '') -> BytesIO:
         raise
 
 
-def create_selective_zip(file_paths: list[str]) -> BytesIO:
+async def create_selective_zip(file_paths: list[str]) -> BytesIO:
     """
     Create in-memory ZIP archive of specific files.
 
@@ -96,7 +96,7 @@ def create_selective_zip(file_paths: list[str]) -> BytesIO:
             for file_path in file_paths:
                 try:
                     # Read file content
-                    content = workspace_service.read_file(file_path)
+                    content = await workspace_service.read_file(file_path)
 
                     # Add to ZIP with original path
                     zip_file.writestr(file_path, content)

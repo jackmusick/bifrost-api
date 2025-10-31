@@ -3,7 +3,7 @@ Unit tests for file upload handlers
 Tests upload URL generation logic with mocked dependencies
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -188,12 +188,12 @@ class TestGenerateFileUploadUrl:
         }
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
-    def test_successful_url_generation(self, mock_get_blob_service):
+    async def test_successful_url_generation(self, mock_get_blob_service):
         """Test successful SAS URL generation"""
         # Setup
         mock_service = MagicMock()
         mock_get_blob_service.return_value = mock_service
-        mock_service.generate_upload_url.return_value = self._create_blob_service_response()
+        mock_service.generate_upload_url = AsyncMock(return_value=self._create_blob_service_response())
 
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -203,7 +203,7 @@ class TestGenerateFileUploadUrl:
         )
 
         # Execute
-        response = generate_file_upload_url(
+        response = await generate_file_upload_url(
             form_id="form-123",
             request=request,
             context=context,
@@ -225,12 +225,12 @@ class TestGenerateFileUploadUrl:
         )
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
-    def test_custom_max_size_bytes(self, mock_get_blob_service):
+    async def test_custom_max_size_bytes(self, mock_get_blob_service):
         """Test custom max_size_bytes parameter is passed through"""
         # Setup
         mock_service = MagicMock()
         mock_get_blob_service.return_value = mock_service
-        mock_service.generate_upload_url.return_value = self._create_blob_service_response()
+        mock_service.generate_upload_url = AsyncMock(return_value=self._create_blob_service_response())
 
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -241,7 +241,7 @@ class TestGenerateFileUploadUrl:
         custom_max = 1024 * 1024 * 1024  # 1GB
 
         # Execute
-        generate_file_upload_url(
+        await generate_file_upload_url(
             form_id="form-123",
             request=request,
             context=context,
@@ -254,12 +254,12 @@ class TestGenerateFileUploadUrl:
         assert call_kwargs["max_size_bytes"] == custom_max
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
-    def test_allowed_types_passed_through(self, mock_get_blob_service):
+    async def test_allowed_types_passed_through(self, mock_get_blob_service):
         """Test allowed_types parameter is passed through"""
         # Setup
         mock_service = MagicMock()
         mock_get_blob_service.return_value = mock_service
-        mock_service.generate_upload_url.return_value = self._create_blob_service_response()
+        mock_service.generate_upload_url = AsyncMock(return_value=self._create_blob_service_response())
 
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -270,7 +270,7 @@ class TestGenerateFileUploadUrl:
         allowed_types = ["image/png", "image/jpeg", "image/gif"]
 
         # Execute
-        generate_file_upload_url(
+        await generate_file_upload_url(
             form_id="form-123",
             request=request,
             context=context,
@@ -282,7 +282,7 @@ class TestGenerateFileUploadUrl:
         call_kwargs = mock_service.generate_upload_url.call_args[1]
         assert call_kwargs["allowed_types"] == allowed_types
 
-    def test_invalid_file_name_raises_error(self):
+    async def test_invalid_file_name_raises_error(self):
         """Test error handling for invalid file_name"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -292,7 +292,7 @@ class TestGenerateFileUploadUrl:
         )
 
         with pytest.raises(FileUploadError) as exc_info:
-            generate_file_upload_url(
+            await generate_file_upload_url(
                 form_id="form-123",
                 request=request,
                 context=context,
@@ -300,7 +300,7 @@ class TestGenerateFileUploadUrl:
 
         assert "file_name cannot be empty" in exc_info.value.message
 
-    def test_invalid_content_type_raises_error(self):
+    async def test_invalid_content_type_raises_error(self):
         """Test error handling for invalid content_type"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -310,7 +310,7 @@ class TestGenerateFileUploadUrl:
         )
 
         with pytest.raises(FileUploadError) as exc_info:
-            generate_file_upload_url(
+            await generate_file_upload_url(
                 form_id="form-123",
                 request=request,
                 context=context,
@@ -318,7 +318,7 @@ class TestGenerateFileUploadUrl:
 
         assert "content_type cannot be empty" in exc_info.value.message
 
-    def test_invalid_file_size_raises_error(self):
+    async def test_invalid_file_size_raises_error(self):
         """Test error handling for invalid file_size"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -328,7 +328,7 @@ class TestGenerateFileUploadUrl:
         )
 
         with pytest.raises(FileUploadError) as exc_info:
-            generate_file_upload_url(
+            await generate_file_upload_url(
                 form_id="form-123",
                 request=request,
                 context=context,
@@ -336,7 +336,7 @@ class TestGenerateFileUploadUrl:
 
         assert "file_size must be greater than 0" in exc_info.value.message
 
-    def test_file_size_exceeds_default_max(self):
+    async def test_file_size_exceeds_default_max(self):
         """Test error when file_size exceeds default 100MB limit"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -346,7 +346,7 @@ class TestGenerateFileUploadUrl:
         )
 
         with pytest.raises(FileUploadError) as exc_info:
-            generate_file_upload_url(
+            await generate_file_upload_url(
                 form_id="form-123",
                 request=request,
                 context=context,
@@ -354,7 +354,7 @@ class TestGenerateFileUploadUrl:
 
         assert "file_size exceeds maximum" in exc_info.value.message
 
-    def test_content_type_not_allowed(self):
+    async def test_content_type_not_allowed(self):
         """Test error when content_type not in allowed_types"""
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -365,7 +365,7 @@ class TestGenerateFileUploadUrl:
         allowed_types = ["image/png", "image/jpeg"]
 
         with pytest.raises(FileUploadError) as exc_info:
-            generate_file_upload_url(
+            await generate_file_upload_url(
                 form_id="form-123",
                 request=request,
                 context=context,
@@ -375,7 +375,7 @@ class TestGenerateFileUploadUrl:
         assert "not in allowed types" in exc_info.value.message
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
-    def test_multiple_file_uploads_independently(self, mock_get_blob_service):
+    async def test_multiple_file_uploads_independently(self, mock_get_blob_service):
         """Test multiple file uploads work independently"""
         # Setup
         mock_service = MagicMock()
@@ -398,7 +398,7 @@ class TestGenerateFileUploadUrl:
             "file_name": "file2.zip",
             "content_type": "application/zip",
         }
-        mock_service.generate_upload_url.side_effect = [response1, response2]
+        mock_service.generate_upload_url = AsyncMock(side_effect=[response1, response2])
 
         context = self._create_mock_context()
 
@@ -408,7 +408,7 @@ class TestGenerateFileUploadUrl:
             content_type="application/pdf",
             file_size=1024000,
         )
-        result1 = generate_file_upload_url(form_id="form-1", request=request1, context=context)
+        result1 = await generate_file_upload_url(form_id="form-1", request=request1, context=context)
 
         # Second upload
         request2 = FileUploadRequest(
@@ -416,7 +416,7 @@ class TestGenerateFileUploadUrl:
             content_type="application/zip",
             file_size=5 * 1024 * 1024,
         )
-        result2 = generate_file_upload_url(form_id="form-2", request=request2, context=context)
+        result2 = await generate_file_upload_url(form_id="form-2", request=request2, context=context)
 
         # Verify both results are correct
         assert result1.blob_uri == "https://storage.blob.core.windows.net/uploads/file1.pdf"
@@ -424,7 +424,7 @@ class TestGenerateFileUploadUrl:
         assert mock_service.generate_upload_url.call_count == 2
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
-    def test_blob_service_exception_propagates(self, mock_get_blob_service):
+    async def test_blob_service_exception_propagates(self, mock_get_blob_service):
         """Test that exceptions from BlobStorageService propagate"""
         # Setup
         mock_service = MagicMock()
@@ -440,19 +440,19 @@ class TestGenerateFileUploadUrl:
 
         # Execute and verify exception propagates
         with pytest.raises(Exception, match="Blob service error"):
-            generate_file_upload_url(
+            await generate_file_upload_url(
                 form_id="form-123",
                 request=request,
                 context=context,
             )
 
     @patch("shared.handlers.file_uploads_handlers.get_blob_service")
-    def test_response_model_serialization(self, mock_get_blob_service):
+    async def test_response_model_serialization(self, mock_get_blob_service):
         """Test that FileUploadResponse is properly serialized"""
         # Setup
         mock_service = MagicMock()
         mock_get_blob_service.return_value = mock_service
-        mock_service.generate_upload_url.return_value = self._create_blob_service_response()
+        mock_service.generate_upload_url = AsyncMock(return_value=self._create_blob_service_response())
 
         context = self._create_mock_context()
         request = FileUploadRequest(
@@ -462,7 +462,7 @@ class TestGenerateFileUploadUrl:
         )
 
         # Execute
-        response = generate_file_upload_url(
+        response = await generate_file_upload_url(
             form_id="form-123",
             request=request,
             context=context,

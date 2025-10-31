@@ -280,9 +280,19 @@ class ExecutionRepository(BaseRepository):
 
         fetch_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
-        user_index = fetch_results[0] if not isinstance(fetch_results[0], Exception) else None
-        workflow_index = fetch_results[1] if not isinstance(fetch_results[1], Exception) else None
-        form_index = fetch_results[2] if form_id and len(fetch_results) > 2 and not isinstance(fetch_results[2], Exception) else None
+        # Type narrow the results - gather with return_exceptions=True returns dict | Exception
+        # Use explicit None assignment and conditional assignment to satisfy type checker
+        user_index: dict | None = None
+        if not isinstance(fetch_results[0], Exception):
+            user_index = cast(dict, fetch_results[0])
+
+        workflow_index: dict | None = None
+        if not isinstance(fetch_results[1], Exception):
+            workflow_index = cast(dict, fetch_results[1])
+
+        form_index: dict | None = None
+        if form_id and len(fetch_results) > 2 and not isinstance(fetch_results[2], Exception):
+            form_index = cast(dict, fetch_results[2])
 
         # Update indexes in parallel
         update_tasks = []
@@ -313,7 +323,7 @@ class ExecutionRepository(BaseRepository):
 
         # Execute all updates in parallel
         if update_tasks:
-            update_results = await asyncio.gather(*update_tasks, return_exceptions=True)
+            update_results: list = await asyncio.gather(*update_tasks, return_exceptions=True)
             for i, result in enumerate(update_results):
                 if isinstance(result, Exception):
                     logger.warning(f"Failed to update index {i} for {execution_id}: {result}")

@@ -6,7 +6,6 @@ Tests that user workflows can import and use the bifrost SDK.
 
 import pytest
 from pathlib import Path
-import sys
 
 # Import bifrost context functions directly
 # This ensures we use the same ContextVar instance that storage module uses
@@ -127,7 +126,7 @@ class TestSDKUsageFromWorkflow:
         finally:
             clear_execution_context()
 
-    def test_sdk_without_context_raises_error(self):
+    async def test_sdk_without_context_raises_error(self):
         """Test that SDK raises clear error when used without context"""
         from bifrost import organizations
 
@@ -136,7 +135,7 @@ class TestSDKUsageFromWorkflow:
 
         # Attempting to use SDK should raise RuntimeError
         with pytest.raises(RuntimeError, match="No execution context found"):
-            organizations.list()
+            await organizations.list()
 
 
 class TestSDKFileOperations:
@@ -246,4 +245,4 @@ class TestEndToEndSDKUsage:
 
         # 5. After context cleared, SDK should raise error
         with pytest.raises(RuntimeError):
-            organizations.list()
+            await organizations.list()

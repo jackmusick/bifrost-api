@@ -144,7 +144,7 @@ class ExecutionLogger:
 
             if result_size > BLOB_THRESHOLD_BYTES:
                 # Store in blob storage
-                self.blob_service.upload_result(execution_id, result)
+                await self.blob_service.upload_result(execution_id, result)
                 result_in_blob = True
                 result = None  # Don't store inline
                 logger.info(
@@ -154,14 +154,14 @@ class ExecutionLogger:
 
         # Store large data in blob storage
         if logs:
-            self.blob_service.upload_logs(execution_id, logs)
+            await self.blob_service.upload_logs(execution_id, logs)
             logger.info(
                 f"Stored logs in blob storage ({len(logs)} entries)",
                 extra={"execution_id": execution_id}
             )
 
         if variables:
-            self.blob_service.upload_variables(execution_id, variables)
+            await self.blob_service.upload_variables(execution_id, variables)
             logger.info(
                 f"Stored variables in blob storage ({len(variables)} variables)",
                 extra={"execution_id": execution_id}
