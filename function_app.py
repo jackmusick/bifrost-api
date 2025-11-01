@@ -39,6 +39,11 @@ from pathlib import Path
 import azure.functions as func
 
 # ==================== EARLY INITIALIZATION ====================
+# CRITICAL: Expand Azurite connection string BEFORE any Azure SDK imports
+# The Queue Storage SDK doesn't recognize "UseDevelopmentStorage=true" shorthand
+if os.environ.get("AzureWebJobsStorage") == "UseDevelopmentStorage=true":
+    os.environ["AzureWebJobsStorage"] = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10000/devstoreaccount1;QueueEndpoint=http://localhost:10001/devstoreaccount1;TableEndpoint=http://localhost:10002/devstoreaccount1;"
+
 # CRITICAL: Initialize queues BEFORE importing queue blueprints
 # Queue triggers bind immediately when imported, so queues must exist first
 from shared.init_tables import init_tables

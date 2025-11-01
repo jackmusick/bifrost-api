@@ -52,10 +52,6 @@ class BlobStorageService:
             raise ValueError(
                 "AzureWebJobsStorage environment variable not set")
 
-        # Expand UseDevelopmentStorage=true shorthand for blob storage
-        if connection_string == "UseDevelopmentStorage=true":
-            connection_string = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10000/devstoreaccount1;QueueEndpoint=http://localhost:10001/devstoreaccount1;TableEndpoint=http://localhost:10002/devstoreaccount1;"
-
         self.connection_string = connection_string
         self.blob_service_client = BlobServiceClient.from_connection_string(
             connection_string)

@@ -408,10 +408,23 @@ class TestOAuthStorageServiceDelete:
         """Should delete secrets from Key Vault"""
         service = OAuthStorageService()
 
+        # Mock OAuth entity with secret refs
+        mock_table_service.get_entity.return_value = {
+            "PartitionKey": "org-123",
+            "RowKey": "oauth:test",
+            "Type": "oauth",
+            "ClientSecretRef": "bifrost-org-123-oauth-test-secret-abc",
+            "OAuthResponseRef": "bifrost-org-123-oauth-test-response-xyz"
+        }
+
         await service.delete_connection("org-123", "test")
 
-        # KeyVault should attempt deletion
-        assert mock_keyvault_client.return_value.begin_delete_secret.called or True
+        # Verify table entity was deleted
+        assert mock_table_service.delete_entity.called
+
+        # Verify KeyVault delete was called for both secrets
+        kv_context = mock_keyvault_client.return_value.__aenter__.return_value
+        assert kv_context.delete_secret.call_count == 2
 
 
 class TestOAuthStorageServiceEncryption:
@@ -453,6 +466,10 @@ class TestOAuthStorageServiceEncryption:
         assert result is True
         mock_table_service.upsert_entity.assert_called()
 
+        # Verify KeyVault was called
+        kv_context = mock_keyvault_client.return_value.__aenter__.return_value
+        kv_context.set_secret.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_store_tokens_without_refresh_token(self, mock_table_service, mock_keyvault_client):
         """Should store tokens without refresh token"""
@@ -485,6 +502,10 @@ class TestOAuthStorageServiceEncryption:
         )
 
         assert result is True
+
+        # Verify KeyVault was called
+        kv_context = mock_keyvault_client.return_value.__aenter__.return_value
+        kv_context.set_secret.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_encryption_roundtrip(self, mock_table_service):

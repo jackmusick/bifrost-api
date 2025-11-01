@@ -27,7 +27,8 @@
       "Bash(for file in bifrost/config.py bifrost/secrets.py bifrost/organizations.py bifrost/roles.py bifrost/executions.py bifrost/oauth.py bifrost/forms.py)",
       "Bash(do echo \"=== $file ===\")",
       "Bash(while read f)",
-      "Bash(do base=\"$f%.md\")"
+      "Bash(do base=\"$f%.md\")",
+      "Bash(src/lib/api-client.ts)"
     ],
     "deny": [],
     "ask": [],

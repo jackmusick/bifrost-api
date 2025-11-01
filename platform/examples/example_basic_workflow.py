@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
     name="simple_greeting",
     description="Simple greeting workflow",
     category="testing",
-    tags=["test", "greeting"],
-    execution_mode="sync"
+    tags=["test", "greeting"]
+    # execution_mode defaults to "async" (will return 202 when executed)
 )
 @param("name", type="string", label="Name", required=True, help_text="Name to greet")
 @param("greeting_type", type="string", label="Greeting Type", required=False, default_value="Hello", help_text="Type of greeting")

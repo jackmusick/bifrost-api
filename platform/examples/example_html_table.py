@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
     name="html_table_example",
     description="Generate a pretty HTML table with sample data",
     category="examples",
-    tags=["example", "html", "reporting"],
-    execution_mode="sync"
+    tags=["example", "html", "reporting"]
+    # execution_mode defaults to "async" (will return 202 when executed)
 )
 @param("title", type="string", label="Table Title", required=False, default_value="Sample Data Report", help_text="Title for the HTML table")
 @param("row_count", type="int", label="Number of Rows", required=False, default_value=5, help_text="Number of data rows to generate (1-50)")

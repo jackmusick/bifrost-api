@@ -24,7 +24,7 @@ def workflow(
     tags: list[str] | None = None,
 
     # Execution
-    execution_mode: Literal["sync", "async"] = "sync",
+    execution_mode: Literal["sync", "async"] | None = None,
     timeout_seconds: int = 1800,  # Default 30 minutes
 
     # Retry
@@ -65,7 +65,12 @@ def workflow(
         description: Human-readable description
         category: Category for organization (default: "General")
         tags: Optional list of tags for filtering
-        execution_mode: "sync" | "async" (default: "sync")
+        execution_mode: "sync" | "async" | None (default: None)
+            - None (default): Auto-select based on endpoint_enabled
+              * "sync" if endpoint_enabled=True (webhooks need immediate response)
+              * "async" if endpoint_enabled=False (better scalability)
+            - "sync": Execute synchronously, return result immediately
+            - "async": Enqueue for async execution, return 202 + execution_id
         timeout_seconds: Max execution time in seconds (default: 1800, max: 7200)
         retry_policy: Dict with retry config (e.g., {"max_attempts": 3, "backoff": 2})
         schedule: Cron expression for scheduled workflows (e.g., "0 9 * * *")
@@ -81,6 +86,17 @@ def workflow(
         tags = []
     if allowed_methods is None:
         allowed_methods = ["POST"]
+
+    # Apply execution mode defaults
+    if execution_mode is not None:
+        # Explicit value provided, use it
+        pass
+    elif endpoint_enabled:
+        # Endpoints default to sync (webhooks need immediate response)
+        execution_mode = "sync"
+    else:
+        # Regular workflows default to async (better scalability)
+        execution_mode = "async"
 
     def decorator(func: Callable) -> Callable:
         # Extract function signature

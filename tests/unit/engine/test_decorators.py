@@ -39,7 +39,7 @@ class TestWorkflowDecorator:
         assert workflow_meta.description == "Test workflow"
         assert workflow_meta.category == "General"
         assert workflow_meta.tags == []
-        assert workflow_meta.execution_mode == "sync"
+        assert workflow_meta.execution_mode == "async"  # New default
 
     def test_workflow_decorator_full_options(self, registry):
         """Test workflow decorator with all options"""
@@ -55,7 +55,7 @@ class TestWorkflowDecorator:
         workflow_meta = registry.get_workflow("user_onboarding")
         assert workflow_meta.category == "user_management"
         assert workflow_meta.tags == ["m365", "user"]
-        assert workflow_meta.execution_mode == "sync"
+        assert workflow_meta.execution_mode == "async"  # New default
 
         # Verify function still callable
         result = onboard_user(None, "John", "Doe")
@@ -73,6 +73,35 @@ class TestWorkflowDecorator:
 
         workflow_meta = registry.get_workflow("utility_workflow")
         assert workflow_meta.execution_mode == "async"
+
+    def test_workflow_endpoint_defaults_to_sync(self, registry):
+        """Test that workflows with endpoint_enabled default to sync"""
+        @workflow(
+            name="webhook_workflow",
+            description="Webhook endpoint",
+            endpoint_enabled=True
+        )
+        def webhook_func():
+            return "webhook"
+
+        workflow_meta = registry.get_workflow("webhook_workflow")
+        assert workflow_meta.execution_mode == "sync"  # Auto-defaults to sync
+        assert workflow_meta.endpoint_enabled is True
+
+    def test_workflow_endpoint_explicit_async_override(self, registry):
+        """Test that explicit async overrides endpoint default"""
+        @workflow(
+            name="async_webhook",
+            description="Async webhook",
+            endpoint_enabled=True,
+            execution_mode="async"
+        )
+        def async_webhook_func():
+            return "async webhook"
+
+        workflow_meta = registry.get_workflow("async_webhook")
+        assert workflow_meta.execution_mode == "async"  # Explicit wins
+        assert workflow_meta.endpoint_enabled is True
 
     def test_workflow_function_metadata_preserved(self, registry):
         """Test that function metadata is preserved"""

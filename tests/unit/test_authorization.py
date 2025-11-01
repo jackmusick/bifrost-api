@@ -4,7 +4,7 @@ Tests permission checking, form access control, and data visibility filtering
 """
 
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -398,13 +398,13 @@ class TestGetUserVisibleForms:
             )
         ]
 
-        mock_form_repo = AsyncMock()
-        mock_form_repo.list_forms.return_value = mock_forms
+        mock_form_repo = MagicMock()
+        mock_form_repo.list_forms = AsyncMock(return_value=mock_forms)
 
         # Mock RoleRepository - user has role matching org form
-        mock_role_repo = AsyncMock()
-        mock_role_repo.get_user_role_ids.return_value = [role_id]
-        mock_role_repo.get_form_role_ids.return_value = [role_id]
+        mock_role_repo = MagicMock()
+        mock_role_repo.get_user_role_ids = AsyncMock(return_value=[role_id])
+        mock_role_repo.get_form_role_ids = AsyncMock(return_value=[role_id])
 
         monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
         monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)

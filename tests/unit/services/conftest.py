@@ -8,7 +8,7 @@ Provides mocks for:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 
 @pytest.fixture
@@ -181,7 +181,8 @@ def temp_test_dir(tmp_path):
 def mock_workspace_service():
     """Mock WorkspaceService for zip service tests"""
     with patch("shared.services.zip_service.get_workspace_service") as mock:
-        service = MagicMock()
+        # Use Mock instead of MagicMock to prevent MagicProxy issues with AsyncMock
+        service = Mock(spec=['list_files', 'read_file'])
 
         # Sample files for listing
         sample_files = [
@@ -222,24 +223,31 @@ def mock_table_service():
 def mock_keyvault_client():
     """Mock KeyVaultClient for OAuth storage"""
     with patch("shared.services.oauth_storage_service.KeyVaultClient") as mock_kv_class:
-        # Create mock instance that will be returned by __aenter__
-        mock_context = MagicMock()
-        mock_context._client = MagicMock()
+        # Create async mock methods
+        set_secret_mock = AsyncMock(return_value={"name": "test-secret", "message": "Secret saved successfully"})
+        get_secret_mock = AsyncMock(return_value="test-value")
+        delete_secret_mock = AsyncMock(return_value={"name": "test-secret", "message": "Secret deleted"})
 
-        # Setup async methods on the KeyVaultClient instance (what code calls directly)
-        mock_context.set_secret = AsyncMock(return_value={"name": "test-secret", "message": "Secret saved successfully"})
-        mock_context.get_secret = AsyncMock(return_value="test-value")
-        mock_context.delete_secret = AsyncMock(return_value={"name": "test-secret", "message": "Secret deleted"})
+        # Create client mock without assigning AsyncMock to avoid warnings
+        client_mock = Mock(
+            set_secret=AsyncMock(),
+            get_secret=AsyncMock(),
+            delete_secret=AsyncMock()
+        )
 
-        # Also setup async methods on the internal _client for tests that check it directly
-        mock_context._client.set_secret = AsyncMock()
-        mock_context._client.get_secret = AsyncMock()
-        mock_context._client.delete_secret = AsyncMock()
+        # Create mock context using **kwargs to avoid dynamic setattr
+        mock_context = Mock(
+            set_secret=set_secret_mock,
+            get_secret=get_secret_mock,
+            delete_secret=delete_secret_mock,
+            _client=client_mock
+        )
 
         # Create the KeyVaultClient mock with async context manager support
-        mock_instance = MagicMock()
-        mock_instance.__aenter__ = AsyncMock(return_value=mock_context)
-        mock_instance.__aexit__ = AsyncMock(return_value=None)
+        aenter_mock = AsyncMock(return_value=mock_context)
+        aexit_mock = AsyncMock(return_value=None)
+
+        mock_instance = Mock(__aenter__=aenter_mock, __aexit__=aexit_mock)
 
         # When KeyVaultClient() is instantiated, return our mock instance
         mock_kv_class.return_value = mock_instance

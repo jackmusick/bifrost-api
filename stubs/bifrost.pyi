@@ -118,7 +118,7 @@ def workflow(
     description: str,
     category: str = "General",
     tags: list[str] | None = None,
-    execution_mode: str = "sync",
+    execution_mode: str | None = None,  # Auto: "sync" if endpoint_enabled else "async"
     timeout_seconds: int = 300,
     max_duration_seconds: int = 300,
     retry_policy: dict[str, Any] | None = None,
@@ -136,7 +136,7 @@ def workflow(
         description: User-friendly description
         category: Category for grouping (default: "General")
         tags: Optional tags for filtering
-        execution_mode: "sync" or "async"
+        execution_mode: "sync", "async", or None (auto-select based on endpoint_enabled)
         timeout_seconds: Max execution time
         requires_org: Whether workflow requires org context
         expose_in_forms: Whether workflow can be triggered from forms

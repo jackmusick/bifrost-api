@@ -520,7 +520,7 @@ class TestAsyncWorkflowConfiguration:
         metadata = registry.get_workflow("sync_default")
 
         assert metadata is not None
-        assert metadata.execution_mode == "sync"
+        assert metadata.execution_mode == "async"  # New default
 
 
 class TestAsyncWorkflowQueueManagement:

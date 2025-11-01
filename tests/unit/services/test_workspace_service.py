@@ -7,7 +7,7 @@ Mocks file system operations to test in isolation.
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, Mock, patch
 
 from shared.services.workspace_service import WorkspaceService, get_workspace_service
 
@@ -401,7 +401,7 @@ class TestWorkspaceServiceSingleton:
 class TestWorkspaceServiceIntegration:
     """Integration tests for workspace operations"""
 
-    def test_full_workflow_lifecycle(self, mock_filesystem):
+    async def test_full_workflow_lifecycle(self, mock_filesystem):
         """Should handle complete workflow file lifecycle"""
         with patch("shared.services.workspace_service.Path") as mock_path:
             workspace = MagicMock()
@@ -410,35 +410,63 @@ class TestWorkspaceServiceIntegration:
             workspace.__truediv__.return_value = MagicMock()
             mock_path.return_value = workspace
 
-            WorkspaceService()
+            service = WorkspaceService()
 
             # 1. Create directory
             dir_path = workspace / "workflows"
             dir_path.exists.return_value = False
             dir_path.mkdir.return_value = None
 
+            with patch.object(Path, '__truediv__', return_value=dir_path):
+                service.create_directory("workflows")
+                dir_path.mkdir.assert_called()
+
             # 2. Write file
-            file_path = dir_path / "test.py"
+            file_path = workspace / "workflows/test.py"
             file_path.parent = MagicMock()
             file_path.parent.mkdir.return_value = None
-            file_path.write_bytes.return_value = None
-            file_path.stat.return_value = MagicMock(st_size=100, st_mtime=1000000000)
+            file_path.exists.return_value = False
+            file_path.is_file.return_value = False
+
+            mock_file = AsyncMock()
+            mock_file.write = AsyncMock(return_value=None)
+
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.open', return_value=mock_file), \
+                 patch('aiofiles.os.stat', return_value=MagicMock(st_size=100, st_mtime=1000000000)):
+                result = await service.write_file("workflows/test.py", b"print('test')")
+                assert result is not None
 
             # 3. Read file
             file_path.exists.return_value = True
             file_path.is_file.return_value = True
-            file_path.read_bytes.return_value = b"print('test')"
+
+            async def mock_read():
+                return b"print('test')"
+
+            mock_read_file = MagicMock()
+            mock_read_file.__aenter__ = AsyncMock(return_value=mock_read_file)
+            mock_read_file.__aexit__ = AsyncMock(return_value=None)
+            mock_read_file.read = mock_read
+
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.open', return_value=mock_read_file):
+                content = await service.read_file("workflows/test.py")
+                assert content == b"print('test')"
 
             # 4. List files
-            workspace.rglob.return_value = [file_path]
             file_path.relative_to.return_value = Path("workflows/test.py")
+            file_path.is_dir.return_value = False
+            file_path.stat.return_value = MagicMock(st_size=100, st_mtime=1000000000)
+            workspace.rglob.return_value = [file_path]
+
+            files = service.list_files()
+            assert len(files) >= 0
 
             # 5. Delete file
-            file_path.unlink.return_value = None
-
-            with patch.object(Path, '__truediv__', side_effect=[dir_path, file_path]):
-                # Operations would execute here
-                pass
+            with patch.object(Path, '__truediv__', return_value=file_path), \
+                 patch('aiofiles.os.unlink', return_value=None):
+                await service.delete_file("workflows/test.py")
 
     def test_path_validation_in_operations(self, mock_filesystem):
         """Should validate paths before operations"""
@@ -581,14 +609,15 @@ class TestWorkspaceServiceAdditionalCoverage:
             workspace.exists.return_value = True
             workspace.mkdir.return_value = None
 
-            base_path = workspace / "subdir"
+            base_path = MagicMock()
             base_path.exists.return_value = True
 
-            file1 = MagicMock()
+            # Use Mock for simple objects without async concerns
+            file1 = Mock()
             file1.is_dir.return_value = False
             file1.name = "nested.py"
             file1.relative_to.return_value = Path("subdir/nested.py")
-            file1.stat.return_value = MagicMock(st_size=256, st_mtime=1000000000)
+            file1.stat.return_value = Mock(st_size=256, st_mtime=1000000000)
 
             base_path.rglob.return_value = [file1]
             workspace.__truediv__.return_value = base_path

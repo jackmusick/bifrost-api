@@ -489,12 +489,12 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
 
 async def execute_form_handler(form_id: str, request_body: dict, request_context, workflow_context) -> tuple[dict, int]:
     """Execute a form and run the linked workflow"""
-    from shared.execution_logger import get_execution_logger
-    from shared.registry import get_registry
+    from shared.handlers.workflows_handlers import execute_workflow_internal
 
     logger.info(f"User {request_context.user_id} submitting form {form_id}")
 
     try:
+        # Form-specific permission checks
         if not can_user_execute_form(request_context, form_id):
             logger.warning(f"User {request_context.user_id} denied access to execute form {form_id}")
             error = ErrorResponse(error="Forbidden", message="You don't have permission to execute this form")
@@ -523,91 +523,17 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
         form_data = request_body.get("form_data", {})
         logger.info(f"Executing workflow {linked_workflow} with form data: {form_data}")
 
-        from function_app import discover_workspace_modules
-        discover_workspace_modules()
-
-        registry = get_registry()
-        workflow_metadata = registry.get_workflow(linked_workflow)
-
-        if not workflow_metadata:
-            logger.error(f"Workflow '{linked_workflow}' not found in registry")
-            error = ErrorResponse(error="NotFound", message=f"Workflow '{linked_workflow}' not found")
-            return error.model_dump(), 404
-
-        workflow_func = workflow_metadata.function
-        execution_id = workflow_context.execution_id
-
-        exec_logger = get_execution_logger()
-        start_time = datetime.utcnow()
-
-        await exec_logger.create_execution(
-            execution_id=execution_id,
-            org_id=request_context.org_id,
-            user_id=request_context.user_id,
-            user_name=request_context.name,
+        # Delegate to shared workflow execution logic
+        # This handles async/sync execution, queueing, engine execution, etc.
+        response_dict, status_code = await execute_workflow_internal(
+            context=workflow_context,
             workflow_name=linked_workflow,
-            input_data=form_data,
-            form_id=form_id
+            parameters=form_data,
+            form_id=form_id,
+            transient=False
         )
 
-        logger.info(
-            f"Starting workflow execution: {linked_workflow}",
-            extra={
-                "execution_id": execution_id,
-                "org_id": request_context.org_id,
-                "user_id": request_context.user_id,
-                "workflow_name": linked_workflow
-            }
-        )
-
-        defined_params = {param.name for param in workflow_metadata.parameters}
-        workflow_params = {}
-        extra_variables = {}
-
-        for key, value in form_data.items():
-            if key in defined_params:
-                workflow_params[key] = value
-            else:
-                extra_variables[key] = value
-
-        # Extra variables are no longer injected into context
-
-        result = await workflow_func(workflow_context, **workflow_params)
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        execution_status = ExecutionStatus.SUCCESS
-        error_message = None
-
-        if isinstance(result, dict) and result.get('success') is False:
-            execution_status = ExecutionStatus.COMPLETED_WITH_ERRORS
-            error_message = result.get('error', 'Workflow completed with errors')
-
-        await exec_logger.update_execution(
-            execution_id=execution_id,
-            org_id=request_context.org_id,
-            user_id=request_context.user_id,
-            status=execution_status,
-            result=result,
-            error_message=error_message,
-            duration_ms=duration_ms,
-            integration_calls=workflow_context._integration_calls
-            # Note: Forms don't capture logs or variables
-        )
-
-        logger.info(f"Workflow execution completed: {execution_id}")
-
-        execution_result = {
-            "executionId": execution_id,
-            "status": execution_status.value,
-            "result": result,
-            "durationMs": duration_ms,
-            "startedAt": start_time.isoformat(),
-            "completedAt": end_time.isoformat()
-        }
-
-        return execution_result, 200
+        return response_dict, status_code
 
     except ValueError as e:
         logger.error(f"Error parsing request: {str(e)}")
