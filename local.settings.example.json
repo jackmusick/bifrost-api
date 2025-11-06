@@ -5,7 +5,8 @@
         "FUNCTIONS_WORKER_RUNTIME": "python",
         "AZURE_KEY_VAULT_URL": "https://your-keyvault.vault.azure.net/",
         "BIFROST_WORKSPACE_LOCATION": "/home/vscode/workspace",
-        "BIFROST_TEMP_LOCATION": "/home/vscode/tmp"
+        "BIFROST_TEMP_LOCATION": "/home/vscode/tmp",
+        "FUNCTIONS_WORKER_PROCESS_COUNT": "10"
     },
     "Host": {
         "CORS": "*",

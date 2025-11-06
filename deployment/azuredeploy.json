@@ -237,6 +237,16 @@
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('apiHostingPlanName'))]",
                 "functionAppConfig": {
+                    "deployment": {
+                        "storage": {
+                            "type": "blobContainer",
+                            "value": "[concat('https://', variables('storageAccountName'), '.blob.core.windows.net/deployments')]",
+                            "authentication": {
+                                "type": "StorageAccountConnectionString",
+                                "storageAccountConnectionStringName": "AzureWebJobsStorage"
+                            }
+                        }
+                    },
                     "scaleAndConcurrency": {
                         "instanceMemoryMB": 512,
                         "maximumInstanceCount": 100
