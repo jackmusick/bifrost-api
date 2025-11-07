@@ -15,7 +15,12 @@ RUN apt-get update && \
 COPY requirements.txt /
 RUN pip install -r /requirements.txt
 
-COPY . /home/site/wwwroot
+# Copy Azure Functions app code
+COPY function_app.py host.json bifrost.py /home/site/wwwroot/
+COPY bifrost/ /home/site/wwwroot/bifrost/
+COPY shared/ /home/site/wwwroot/shared/
+COPY functions/ /home/site/wwwroot/functions/
+COPY platform/ /home/site/wwwroot/platform/
 
 # For local run - create a known key ('test') for x-functions-key
 RUN mkdir -p /azure-functions-host/Secrets/

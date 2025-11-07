@@ -1,0 +1,132 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and push Docker image
+  build-and-push:
+    if: |
+      github.repository == 'jackmusick/bifrost-api'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Version tags (for all releases including pre-releases)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Branch and PR tags (for CI)
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha
+            # Latest tag (only on stable releases, excludes pre-releases like v1.0.0-alpha)
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') && startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          # Push on: main branch pushes, or version tags
+          # Don't push on: PRs
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # Generate and attach bifrost.pyi to releases (only on version tags)
+  create-release:
+    if: |
+      github.repository == 'jackmusick/bifrost-api' &&
+      startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Copy type stubs
+        run: |
+          if [ -f "stubs/bifrost.pyi" ]; then
+            cp stubs/bifrost.pyi bifrost.pyi
+          else
+            echo "Error: bifrost.pyi not found in stubs/"
+            exit 1
+          fi
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          files: |
+            bifrost.pyi
+            stubs/DISTRIBUTION.md
+          body: |
+            ## Bifrost API ${{ steps.get_version.outputs.version }}
+
+            ### Docker Images
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.get_version.outputs.version }}
+            docker pull ghcr.io/${{ github.repository }}:latest
+            ```
+
+            ### Type Stubs for IDEs
+            Download `bifrost.pyi` from the assets below and place it in your workspace directory for IDE autocomplete and type checking support.
+
+            See `DISTRIBUTION.md` for instructions.
+
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

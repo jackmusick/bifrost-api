@@ -1,42 +1,43 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(for file in tests/integration/engine/test_async_workflow_execution.py tests/integration/engine/test_workflow_execution.py tests/unit/handlers/test_file_uploads_handlers.py)",
-      "Bash(do)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(for file in platform/examples/example_html_table.py platform/examples/data_providers/license_providers.py platform/examples/data_providers/general_providers.py platform/examples/example_webhook_handler.py)",
-      "Read(//Users/jack/GitHub/**)",
-      "Bash(./test.sh:*)",
-      "Bash(/Users/jack/GitHub/bifrost-api/test.sh)",
-      "Read(//private/tmp/**)",
-      "Read(//tmp/**)",
-      "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:docs.cipp.app)",
-      "mcp__context7__resolve-library-id",
-      "mcp__context7__get-library-docs",
-      "WebFetch(domain:firebase.google.com)",
-      "Bash(func host status:*)",
-      "WebFetch(domain:www.linkage.io)",
-      "WebFetch(domain:ably.com)",
-      "Read(//Users/jack/.azure-functions-core-tools/Functions/**)",
-      "Bash(func start)",
-      "Bash(for file in forms_handlers.py organizations_handlers.py org_config_handlers.py secrets_handlers.py permissions_handlers.py roles_handlers.py)",
-      "Bash(done)",
-      "Read(//Users/jack/Library/Logs/**)",
-      "Read(//Users/jack/.azure-functions-core-tools/**)",
-      "Bash(for file in bifrost/config.py bifrost/secrets.py bifrost/organizations.py bifrost/roles.py bifrost/executions.py bifrost/oauth.py bifrost/forms.py)",
-      "Bash(do echo \"=== $file ===\")",
-      "Bash(while read f)",
-      "Bash(do base=\"$f%.md\")",
-      "Bash(src/lib/api-client.ts)"
-    ],
-    "deny": [],
-    "ask": [],
-    "additionalDirectories": [
-      "~/GitHub/bifrost-client/",
-      "~/GitHub/bifrost-docs/",
-      "~/Sync/Bifrost/workspace"
-    ]
-  },
-  "alwaysThinkingEnabled": false
+    "permissions": {
+        "allow": [
+            "Bash(for file in tests/integration/engine/test_async_workflow_execution.py tests/integration/engine/test_workflow_execution.py tests/unit/handlers/test_file_uploads_handlers.py)",
+            "Bash(do)",
+            "WebFetch(domain:raw.githubusercontent.com)",
+            "Bash(for file in platform/examples/example_html_table.py platform/examples/data_providers/license_providers.py platform/examples/data_providers/general_providers.py platform/examples/example_webhook_handler.py)",
+            "Read(//Users/jack/GitHub/**)",
+            "Bash(./test.sh:*)",
+            "Bash(/Users/jack/GitHub/bifrost-api/test.sh)",
+            "Read(//private/tmp/**)",
+            "Read(//tmp/**)",
+            "WebFetch(domain:pypi.org)",
+            "WebFetch(domain:docs.cipp.app)",
+            "mcp__context7__resolve-library-id",
+            "mcp__context7__get-library-docs",
+            "WebFetch(domain:firebase.google.com)",
+            "Bash(func host status:*)",
+            "WebFetch(domain:www.linkage.io)",
+            "WebFetch(domain:ably.com)",
+            "Read(//Users/jack/.azure-functions-core-tools/Functions/**)",
+            "Bash(func start)",
+            "Bash(for file in forms_handlers.py organizations_handlers.py org_config_handlers.py secrets_handlers.py permissions_handlers.py roles_handlers.py)",
+            "Bash(done)",
+            "Read(//Users/jack/Library/Logs/**)",
+            "Read(//Users/jack/.azure-functions-core-tools/**)",
+            "Bash(for file in bifrost/config.py bifrost/secrets.py bifrost/organizations.py bifrost/roles.py bifrost/executions.py bifrost/oauth.py bifrost/forms.py)",
+            "Bash(do echo \"=== $file ===\")",
+            "Bash(while read f)",
+            "Bash(do base=\"$f%.md\")",
+            "Bash(src/lib/api-client.ts)"
+        ],
+        "deny": [],
+        "ask": [],
+        "additionalDirectories": [
+            "~/GitHub/bifrost-client/",
+            "~/GitHub/bifrost-docs/",
+            "~/Sync/Bifrost/workspace",
+            "~/GitHub/bifrost-workspace"
+        ]
+    },
+    "alwaysThinkingEnabled": false
 }

@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# CI/CD
+.github/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local development
+local.settings.json
+.env
+.env.local
+
+# Test files
+api/tests/
+*.test.py
+test_*.py
+
+# Azure Functions
+.azure/
+.azurite/
+azurite/
+
+# Workspace
+api/workspace/
+api/tmp/
+
+# Node modules (if any)
+node_modules/
