@@ -170,10 +170,6 @@ async def handle_workflow_execution(message_data: dict) -> None:
             name=user_name
         )
 
-        # Hot-reload: Re-discover workspace modules
-        from function_app import discover_workspace_modules
-        discover_workspace_modules()
-
         # Get workflow metadata for timeout
         registry = get_registry()
         metadata = registry.get_function(workflow_name)

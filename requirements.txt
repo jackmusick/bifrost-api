@@ -46,4 +46,5 @@ pyjwt[crypto]  # Only used in test fixtures
 
 # Development and debugging
 debugpy>=1.8.0
+watchdog>=3.0.0  # File system event monitoring for hot-reload
 azure-messaging-webpubsubservice>=1.3.0

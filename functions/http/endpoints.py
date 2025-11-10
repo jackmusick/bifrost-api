@@ -86,10 +86,6 @@ async def execute_workflow_endpoint(req: func.HttpRequest) -> func.HttpResponse:
         # Get HTTP method
         http_method = req.method.upper()
 
-        # Hot-reload: Re-discover workspace modules (force_reload=True by default)
-        from function_app import discover_workspace_modules
-        discover_workspace_modules()
-
     except Exception as e:
         logger.error(f"Pre-execution error: {str(e)}", exc_info=True)
         error = ErrorResponse(

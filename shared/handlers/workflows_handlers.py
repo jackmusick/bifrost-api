@@ -14,7 +14,7 @@ import azure.functions as func
 from shared.context import Caller
 from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
-from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionResponse
+from shared.models import ErrorResponse, ExecutionStatus
 from shared.registry import get_registry
 from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
@@ -43,11 +43,6 @@ async def execute_workflow_internal(
     Returns:
         tuple of (response_dict, status_code)
     """
-    from function_app import discover_workspace_modules
-
-    # Hot-reload workspace modules
-    discover_workspace_modules()
-
     user_id = context.user_id
 
     # Determine execution mode
@@ -284,6 +279,9 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=400,
                     mimetype="application/json"
                 )
+
+        # At this point, workflow_name must be set (either from body/route params or defaulted to "script")
+        assert workflow_name is not None, "workflow_name should be set"
 
     except (ValueError, TypeError) as e:
         logger.error(f"Failed to parse request body: {str(e)}")

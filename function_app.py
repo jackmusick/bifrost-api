@@ -31,7 +31,6 @@ from functions.http.branding import bp as branding_bp
 from functions.http.logs import bp as logs_bp
 from functions.http.packages import bp as packages_bp
 import importlib.util
-import logging
 import os
 import sys
 from pathlib import Path
@@ -49,33 +48,30 @@ if os.environ.get("AzureWebJobsStorage") == "UseDevelopmentStorage=true":
 from shared.init_tables import init_tables
 from shared.queue_init import init_queues
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Suppress aiohttp unclosed client session warnings (common in Azure SDK)
 # These are resource warnings that don't affect functionality
 import warnings
 warnings.filterwarnings("ignore", message="Unclosed client session")
 warnings.filterwarnings("ignore", message="Unclosed connector")
 
-logger.info("="*60)
-logger.info("PRE-IMPORT QUEUE INITIALIZATION")
-logger.info("="*60)
+print("="*60)
+print("PRE-IMPORT QUEUE INITIALIZATION")
+print("="*60)
 
 try:
     queue_results = init_queues()
     if queue_results["created"]:
-        logger.info(f"✓ Created {len(queue_results['created'])} queues")
+        print(f"✓ Created {len(queue_results['created'])} queues")
     if queue_results["already_exists"]:
-        logger.info(
+        print(
             f"✓ {len(queue_results['already_exists'])} queues already exist")
     if queue_results["failed"]:
-        logger.error(
+        print(
             f"✗ Failed to create {len(queue_results['failed'])} queues")
 except Exception as e:
-    logger.error(f"Queue initialization failed: {e}", exc_info=True)
+    print(f"Queue initialization failed: {e}")
 
-logger.info("="*60 + "\n")
+print("="*60 + "\n")
 
 # Now safe to import queue blueprints
 # ruff: noqa: E402
@@ -85,8 +81,7 @@ logger.info("="*60 + "\n")
 if os.getenv('ENABLE_DEBUGGING') == 'true':
     import debugpy
     debugpy.listen(("0.0.0.0", 5678))
-    logging.info(
-        "🐛 Debugpy listening on port 5678 - attach VS Code debugger anytime")
+    print("🐛 Debugpy listening on port 5678 - attach VS Code debugger anytime")
 
 # ==================== FILESYSTEM CONFIGURATION ====================
 # Validate filesystem configuration before anything else
@@ -100,7 +95,7 @@ validate_filesystem_config()
 # User workspace: ./workspace (local development)
 
 
-def get_workspace_paths():
+def get_workspace_paths() -> list[str]:
     """
     Dynamically determine workspace paths.
 
@@ -111,12 +106,12 @@ def get_workspace_paths():
     This is a function (not a constant) to support hot-reload scenarios
     where workspace directories might be created after startup.
     """
-    paths = []
+    paths: list[str] = []
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
     # User workspace from environment variable
     workspace_loc = os.getenv("BIFROST_WORKSPACE_LOCATION")
-    if workspace_loc:
+    if workspace_loc and isinstance(workspace_loc, str):
         workspace_path = Path(workspace_loc)
         if workspace_path.exists():
             paths.append(str(workspace_path))
@@ -144,7 +139,7 @@ base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 platform_path = base_dir / 'platform'
 if platform_path.exists() and str(platform_path) not in sys.path:
     sys.path.insert(0, str(platform_path))
-    logging.info(f"Added /platform to sys.path: {platform_path}")
+    print(f"Added /platform to sys.path: {platform_path}")
 
 # Add workspace/.packages to sys.path for user-installed packages
 # This allows users to: pip install --target=<workspace>/.packages <package>
@@ -155,14 +150,14 @@ if workspace_loc:
     packages_path.mkdir(parents=True, exist_ok=True)
     if str(packages_path) not in sys.path:
         sys.path.insert(0, str(packages_path))
-        logging.info(f"Added workspace/.packages to sys.path: {packages_path}")
+        print(f"Added workspace/.packages to sys.path: {packages_path}")
 
 # Add workspace roots to sys.path so imports work like VS Code
 # This allows: from repo.modules.ninjaone import client
 for workspace_root in get_workspace_paths():
     if str(workspace_root) not in sys.path:
         sys.path.insert(0, str(workspace_root))
-        logging.info(f"Added workspace root to sys.path: {workspace_root}")
+        print(f"Added workspace root to sys.path: {workspace_root}")
 
 # Install import restrictions to prevent workspace code from importing engine internals
 # /home code has stricter restrictions (only bifrost SDK)
@@ -173,20 +168,20 @@ install_import_restrictions(get_workspace_paths(), home_path=get_home_path())
 # T007: Initialize Azure Table Storage tables at startup
 
 try:
-    logging.info("Initializing Azure Table Storage tables...")
+    print("Initializing Azure Table Storage tables...")
     results = init_tables()
 
     if results["created"]:
-        logging.info(
+        print(
             f"Created {len(results['created'])} tables: {', '.join(results['created'])}")
     if results["already_exists"]:
-        logging.info(f"{len(results['already_exists'])} tables already exist")
+        print(f"{len(results['already_exists'])} tables already exist")
     if results["failed"]:
-        logging.warning(
+        print(
             f"Failed to create {len(results['failed'])} tables - some features may not work")
 
 except Exception as e:
-    logging.warning(
+    print(
         f"Table initialization failed: {e} - continuing without table initialization")
 
 # ==================== QUEUE INITIALIZATION ====================
@@ -224,25 +219,25 @@ def discover_workspace_modules():
 
     if not workspace_paths:
         print("[WORKSPACE DISCOVERY] No workspace paths exist - skipping discovery")
-        logging.warning("No workspace paths exist - skipping discovery")
+        print("No workspace paths exist - skipping discovery")
         return
 
     # Clear registry for hot-reload
     from shared.registry import get_registry
     registry = get_registry()
     registry.clear_all()
-    logging.info("Cleared registry for hot-reload")
+    print("Cleared registry for hot-reload")
 
     print(
         f"[WORKSPACE DISCOVERY] Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
-    logging.info(
+    print(
         f"Starting dynamic workspace discovery in {len(workspace_paths)} location(s)")
 
     # First pass: Scan all workspace paths and collect module names to discover
     modules_to_discover = []
     for workspace_root in workspace_paths:
         workspace_path = Path(workspace_root)
-        logging.info(f"Scanning workspace: {workspace_path}")
+        print(f"Scanning workspace: {workspace_path}")
 
         for py_file in workspace_path.rglob("*.py"):
             # Skip __init__.py and private files
@@ -268,7 +263,8 @@ def discover_workspace_modules():
             del sys.modules[module_name]
             modules_removed += 1
     if modules_removed > 0:
-        logging.info(f"Removed {modules_removed} workspace modules from sys.modules for hot-reload")
+        print(
+            f"Removed {modules_removed} workspace modules from sys.modules for hot-reload")
 
     # Second pass: Import all modules
     for module_name, py_file, workspace_path in modules_to_discover:
@@ -281,14 +277,13 @@ def discover_workspace_modules():
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
 
-                logging.info(
+                print(
                     f"✓ Discovered: {module_name} (from {workspace_path})")
                 discovered_count += 1
 
         except Exception as e:
-            logging.error(
-                f"✗ Failed to import {module_name}: {e}",
-                exc_info=True
+            print(
+                f"✗ Failed to import {module_name}: {e}"
             )
 
             # Log to system logger for visibility
@@ -302,10 +297,10 @@ def discover_workspace_modules():
                     error=str(e)
                 ))
             except Exception as log_error:
-                logging.warning(
+                print(
                     f"Failed to log discovery failure: {log_error}")
 
-    logging.info(
+    print(
         f"Workspace discovery complete: {discovered_count} modules imported")
 
     # Log registry summary
@@ -313,19 +308,68 @@ def discover_workspace_modules():
     registry = get_registry()
     summary = registry.get_summary()
 
-    logging.info(
+    print(
         f"Registry contains: {summary['workflows_count']} workflows, "
         f"{summary['data_providers_count']} data providers"
     )
 
     if summary.get('workflows'):
-        logging.info(f"Workflows: {', '.join(summary['workflows'])}")
+        print(f"Workflows: {', '.join(summary['workflows'])}")
     if summary.get('data_providers'):
-        logging.info(f"Data providers: {', '.join(summary['data_providers'])}")
+        print(f"Data providers: {', '.join(summary['data_providers'])}")
+
+
+def reload_single_module(file_path: Path):
+    """
+    Reload a single workspace module.
+
+    Used by the file watcher to hot-reload individual files when they change.
+
+    Args:
+        file_path: Path to the Python file to reload
+    """
+    try:
+        # Determine module name from file path
+        module_name = file_path.stem
+
+        # Remove from sys.modules if already imported
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+            print(f"🔄 Removed {module_name} from sys.modules")
+
+        # Re-import the module
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+            print(f"✓ Reloaded: {module_name} from {file_path}")
+
+    except Exception as e:
+        print(
+            f"✗ Failed to reload {file_path.name}: {e}")
 
 
 # Discover all workspace modules on startup
 discover_workspace_modules()
+
+# Start file watcher for hot-reload
+print("=" * 60)
+print("FILE WATCHER INITIALIZATION")
+print("=" * 60)
+print("🔧 Attempting to start workspace file watcher...")
+try:
+    from shared.file_watcher import start_workspace_watcher
+    print("✓ File watcher module imported successfully")
+    # type: ignore[arg-type]
+    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
+    print(f"📁 Workspace paths to watch: {workspace_paths}")
+    start_workspace_watcher(workspace_paths, reload_single_module)
+    print("✓ File watcher initialization completed")
+except Exception as e:
+    print(f"❌ Failed to start workspace file watcher: {e}")
+    print(
+        "⚠️  Hot-reload will not work until this is resolved. Install watchdog: pip install watchdog>=3.0.0")
 
 # ==================== BLUEPRINT IMPORTS ====================
 # API Management Blueprints
@@ -353,7 +397,8 @@ app.register_functions(secrets_bp)  # Secret management endpoints
 app.register_functions(health_bp)  # Health monitoring endpoints
 app.register_functions(metrics_bp)  # System metrics endpoints
 app.register_functions(oauth_api_bp)  # OAuth connection management endpoints
-app.register_functions(webpubsub_bp)  # Web PubSub real-time connection negotiation
+# Web PubSub real-time connection negotiation
+app.register_functions(webpubsub_bp)
 app.register_functions(logs_bp)  # System logs viewing (admin-only)
 # Browser-based code editor file operations
 app.register_functions(editor_files_bp)
@@ -381,4 +426,4 @@ app.register_functions(worker_bp)
 app.register_functions(package_worker_bp)
 # Poison queue handler for failed executions
 app.register_functions(poison_queue_handler_bp)
-logging.info("Function app initialization complete!")
+print("Function app initialization complete!")

@@ -53,10 +53,6 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
 
     async with config_service:
         try:
-            # Hot-reload workspace to discover any new workflows with schedules
-            from function_app import discover_workspace_modules
-            discover_workspace_modules()
-
             # Get all workflows from registry
             registry = get_registry()
             all_workflows = registry.get_all_workflows()

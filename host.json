@@ -4,11 +4,8 @@
     "logging": {
         "logLevel": {
             "default": "Information",
-            "Host": "Warning",
             "Function": "Information",
-            "Host.Aggregator": "Warning",
-            "Azure": "Error",
-            "Microsoft.Azure.SignalR": "Information"
+            "Azure": "Error"
         },
         "applicationInsights": {
             "samplingSettings": {

@@ -325,14 +325,14 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('apiFunctionAppName')), 'Key Vault Secrets User API')]",
+            "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('apiFunctionAppName')), 'Key Vault Secrets Officer API')]",
             "scope": "[concat('Microsoft.KeyVault/vaults', '/', variables('keyVaultName'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
                 "[resourceId('Microsoft.Web/sites', variables('apiFunctionAppName'))]"
             ],
             "properties": {
-                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6')]",
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/b86a8fe4-44ce-4948-aee5-eccb2c155cd7')]",
                 "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('apiFunctionAppName')), '2024-11-01', 'Full').identity.principalId]",
                 "principalType": "ServicePrincipal"
             }

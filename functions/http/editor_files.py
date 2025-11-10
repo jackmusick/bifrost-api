@@ -7,7 +7,6 @@ Thin wrapper - business logic is in shared.editor.file_operations
 import asyncio
 import json
 import logging
-import os
 
 import azure.functions as func
 
@@ -30,58 +29,6 @@ logger = logging.getLogger(__name__)
 
 # Create blueprint for editor file endpoints
 bp = func.Blueprint()
-
-
-@bp.route(route="editor/types/bifrost", methods=["GET"])
-@bp.function_name("editor_bifrost_types")
-@openapi_endpoint(
-    path="/editor/types/bifrost",
-    method="GET",
-    summary="Get bifrost SDK type hints",
-    description="Serve bifrost SDK type stub file for Monaco Editor autocomplete and type checking",
-    tags=["Editor"],
-)
-async def editor_bifrost_types(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Serve bifrost SDK type stub file for Monaco Editor.
-    Provides autocomplete and type hints for workflow development.
-    """
-    try:
-        # Path to the type stub file
-        stubs_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "stubs",
-            "bifrost.pyi"
-        )
-
-        with open(stubs_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        return func.HttpResponse(
-            content,
-            mimetype="text/plain",
-            headers={
-                "Content-Type": "text/x-python",
-                "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
-            }
-        )
-
-    except FileNotFoundError:
-        logger.error(f"Type stub file not found at: {stubs_path}")
-        return func.HttpResponse(
-            "Type stub file not found",
-            status_code=404
-        )
-    except Exception as e:
-        logger.error(f"Error serving type stub: {str(e)}", exc_info=True)
-        return func.HttpResponse(
-            body=json.dumps({
-                "error": "InternalServerError",
-                "message": f"Failed to serve type stub: {str(e)}",
-            }),
-            status_code=500,
-            mimetype="application/json",
-        )
 
 
 @bp.route(route="editor/files", methods=["GET"])
@@ -256,12 +203,68 @@ async def editor_write_file(req: func.HttpRequest) -> func.HttpResponse:
             f"size: {len(write_request.content)} bytes"
         )
 
-        # write_file is now async
+        # Check for conflicts if client provided expected_etag
+        if write_request.expected_etag:
+            from shared.editor.file_operations import validate_and_resolve_path
+
+            file_path = validate_and_resolve_path(write_request.path)
+
+            # Check if file exists
+            if not file_path.exists():
+                # File was deleted on server
+                from shared.models import FileConflictResponse
+                conflict = FileConflictResponse(
+                    reason="path_not_found",
+                    message="File path no longer exists"
+                )
+                return func.HttpResponse(
+                    body=conflict.model_dump_json(),
+                    status_code=409,
+                    mimetype="application/json",
+                )
+
+            # File exists - check if etag matches
+            try:
+                current_file = await read_file(write_request.path)
+                if current_file.etag != write_request.expected_etag:
+                    # Content changed on server
+                    from shared.models import FileConflictResponse
+                    conflict = FileConflictResponse(
+                        reason="content_changed",
+                        message="File content has changed on the server"
+                    )
+                    return func.HttpResponse(
+                        body=conflict.model_dump_json(),
+                        status_code=409,
+                        mimetype="application/json",
+                    )
+            except Exception as e:
+                # If we can't read the file for comparison, log and proceed with write
+                logger.warning(f"Could not read file for etag comparison: {e}")
+
+        # No conflict detected - proceed with write
         response = await write_file(
             write_request.path,
             write_request.content,
             write_request.encoding,
         )
+
+        # Trigger immediate module reload for Python files (eliminates watcher lag)
+        if write_request.path.endswith('.py'):
+            try:
+                from pathlib import Path
+                from function_app import reload_single_module
+                from shared.editor.file_operations import validate_and_resolve_path
+
+                # Get absolute path to the file
+                file_path = validate_and_resolve_path(write_request.path)
+
+                # Trigger reload (don't wait for filesystem watcher)
+                reload_single_module(Path(file_path))
+                logger.info(f"Triggered immediate module reload for {write_request.path}")
+            except Exception as e:
+                # Log warning but don't fail the save
+                logger.warning(f"Failed to trigger reload after save: {e}", exc_info=True)
 
         return func.HttpResponse(
             body=response.model_dump_json(),

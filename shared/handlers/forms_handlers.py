@@ -4,7 +4,6 @@ Provides pure async handlers for form CRUD and execution operations
 """
 
 import logging
-from datetime import datetime
 
 import azure.functions as func
 from pydantic import ValidationError
@@ -15,7 +14,6 @@ from shared.models import (
     CreateFormRequest,
     ErrorResponse,
     UpdateFormRequest,
-    ExecutionStatus,
 )
 from shared.repositories.forms import FormRepository
 from shared.system_logger import get_system_logger
@@ -430,9 +428,6 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
                 input_data[param_name] = param_value
 
         logger.info(f"Executing launch workflow {form.launchWorkflowId} with merged input data: {input_data}")
-
-        from function_app import discover_workspace_modules
-        discover_workspace_modules()
 
         registry = get_registry()
         workflow_metadata = registry.get_workflow(form.launchWorkflowId)

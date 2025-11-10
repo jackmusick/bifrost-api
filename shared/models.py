@@ -155,6 +155,7 @@ __all__ = [
     'FileMetadata',
     'FileContentRequest',
     'FileContentResponse',
+    'FileConflictResponse',
     'SearchRequest',
     'SearchResult',
     'SearchResponse',
@@ -1832,6 +1833,7 @@ class FileContentRequest(BaseModel):
     path: str = Field(..., description="Relative path from /home/repo")
     content: str = Field(..., description="File content (plain text or base64 encoded)")
     encoding: str = Field(default="utf-8", description="Content encoding (utf-8 or base64)")
+    expected_etag: str | None = Field(default=None, description="Expected ETag for conflict detection (optional)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1844,6 +1846,14 @@ class FileContentResponse(BaseModel):
     size: int = Field(..., description="Content size in bytes")
     etag: str = Field(..., description="ETag for change detection")
     modified: str = Field(..., description="Last modified timestamp (ISO 8601)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileConflictResponse(BaseModel):
+    """Response when file write encounters a conflict"""
+    reason: Literal["content_changed", "path_not_found"] = Field(..., description="Type of conflict")
+    message: str = Field(..., description="Human-readable conflict description")
 
     model_config = ConfigDict(from_attributes=True)
 

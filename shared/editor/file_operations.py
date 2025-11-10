@@ -208,36 +208,30 @@ async def write_file(relative_path: str, content: str, encoding: str = "utf-8") 
 
     file_path = validate_and_resolve_path(relative_path)
 
-    # Ensure parent directory exists
-    file_path.parent.mkdir(parents=True, exist_ok=True)
+    # Ensure parent directory exists (use pathlib, not aiofiles - mkdir is not I/O bound)
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        raise ValueError(f"Failed to create parent directory {file_path.parent}: {str(e)}")
 
-    # Atomic write: write to temp file → rename
-    temp_path = file_path.with_suffix(file_path.suffix + ".tmp")
-
+    # Direct write (simpler, no temp file issues)
     try:
         if encoding == "base64":
             # Decode base64 and write as binary
             import base64
             binary_content = base64.b64decode(content)
-            async with aiofiles.open(temp_path, 'wb') as f:
+            async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(binary_content)
             # For etag calculation
             content_bytes = binary_content
         else:
             # Write as UTF-8 text
-            async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
                 await f.write(content)
             content_bytes = content.encode('utf-8')
-
-        # Atomic rename (overwrites existing file)
-        await aiofiles.os.replace(temp_path, file_path)
     except PermissionError:
-        if temp_path.exists():
-            await aiofiles.os.unlink(temp_path)
         raise PermissionError(f"Permission denied: {relative_path}")
     except Exception as e:
-        if temp_path.exists():
-            await aiofiles.os.unlink(temp_path)
         raise ValueError(f"Error writing file: {str(e)}")
 
     # Get updated file stats

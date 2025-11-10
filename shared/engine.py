@@ -4,6 +4,7 @@ Single source of truth for all code execution (workflows, scripts, data provider
 """
 
 import logging
+import os
 import sys
 from contextlib import redirect_stdout, redirect_stderr
 from dataclasses import dataclass, field
@@ -482,7 +483,6 @@ async def _execute_workflow_with_trace(
             # Only capture logs that originate from the workflow's file or workspace
             # This prevents capturing Azure SDK, aiohttp, and infrastructure logs
             # Use basename comparison since dynamically loaded modules may have different path formats
-            import os
             workflow_basename = os.path.basename(workflow_module_file)
             record_basename = os.path.basename(record.pathname)
 
@@ -634,8 +634,19 @@ async def _execute_workflow_with_trace(
 
         return trace_func
 
-    # Install trace function
-    sys.settrace(trace_func)
+    # Install trace function (chain with existing trace if present, e.g., debugpy)
+    existing_trace = sys.gettrace()
+
+    def chained_trace_func(frame, event, arg):
+        # Call our trace function first
+        trace_func(frame, event, arg)
+
+        # Then call the existing trace function (e.g., debugpy)
+        if existing_trace:
+            return existing_trace(frame, event, arg)
+        return chained_trace_func
+
+    sys.settrace(chained_trace_func if existing_trace else trace_func)
 
     try:
         result = await func(context, **parameters)
@@ -654,8 +665,8 @@ async def _execute_workflow_with_trace(
         exception_to_raise = WorkflowExecutionException(e, captured_vars, workflow_logs)
         result = None
     finally:
-        # Clean up trace function
-        sys.settrace(None)
+        # Restore original trace function (e.g., debugpy)
+        sys.settrace(existing_trace)
         # Clean up the logging handler
         root_logger.removeHandler(handler)
 
