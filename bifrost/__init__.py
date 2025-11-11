@@ -60,6 +60,7 @@ from .workflows import workflows
 # Import decorators and context from shared module
 from shared.decorators import workflow, param, data_provider
 from shared.context import ExecutionContext, Organization
+from shared.errors import UserError, WorkflowError, ValidationError, IntegrationError, ConfigurationError
 from shared.models import (
     ExecutionStatus,
     OAuthCredentials,
@@ -98,6 +99,11 @@ __all__ = [
     'ConfigType',
     'FormFieldType',
     'IntegrationType',
+    'UserError',
+    'WorkflowError',
+    'ValidationError',
+    'IntegrationError',
+    'ConfigurationError',
 ]
 
 __version__ = '1.0.0'

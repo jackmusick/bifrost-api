@@ -870,6 +870,7 @@ class WorkflowMetadata(BaseModel):
     # Source tracking (for UI filtering)
     source: Literal["home", "platform", "workspace"] | None = Field(None, description="Where the workflow is located")
     sourceFilePath: str | None = Field(None, description="Full file path to the workflow source code")
+    relativeFilePath: str | None = Field(None, description="Workspace-relative file path (e.g., 'workflows/my_workflow.py')")
 
 
 class DataProviderMetadata(BaseModel):
@@ -880,6 +881,7 @@ class DataProviderMetadata(BaseModel):
     cache_ttl_seconds: int = 300
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
     sourceFilePath: str | None = Field(None, description="Full file path to the data provider source code")
+    relativeFilePath: str | None = Field(None, description="Workspace-relative file path (e.g., 'data_providers/my_provider.py')")
 
 
 class MetadataResponse(BaseModel):

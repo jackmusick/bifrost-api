@@ -273,6 +273,33 @@ class OAuthCredentials:
         """Get Authorization header value (e.g., 'Bearer token...')."""
         ...
 
+# ==================== ERRORS ====================
+
+class UserError(Exception):
+    """
+    Exception that displays its message to end users.
+
+    Use this for validation errors, business logic failures, or any error
+    that users should see and understand.
+    """
+    ...
+
+class WorkflowError(Exception):
+    """Base class for workflow-related errors."""
+    ...
+
+class ValidationError(WorkflowError):
+    """Raised when workflow input validation fails."""
+    ...
+
+class IntegrationError(WorkflowError):
+    """Raised when integration with external service fails."""
+    ...
+
+class ConfigurationError(WorkflowError):
+    """Raised when workflow configuration is invalid."""
+    ...
+
 # ==================== SDK MODULES ====================
 
 class config:

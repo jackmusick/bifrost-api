@@ -10,9 +10,55 @@ import pytest
 from shared.handlers.discovery_handlers import (
     convert_registry_provider_to_model,
     convert_registry_workflow_to_model,
+    extract_relative_path,
     get_discovery_metadata,
 )
 from shared.models import DataProviderMetadata, MetadataResponse, WorkflowMetadata
+
+
+class TestExtractRelativePath:
+    """Tests for extract_relative_path"""
+
+    def test_extract_from_home(self):
+        """Test extracting path after /home/"""
+        path = "/mounts/home/workflows/test_workflow.py"
+        result = extract_relative_path(path)
+        assert result == "workflows/test_workflow.py"
+
+    def test_extract_from_platform(self):
+        """Test extracting path after /platform/"""
+        path = "/mounts/platform/examples/example_workflow.py"
+        result = extract_relative_path(path)
+        assert result == "examples/example_workflow.py"
+
+    def test_extract_from_workspace(self):
+        """Test extracting path after /workspace/"""
+        path = "/mounts/workspace/repo/workflows/test.py"
+        result = extract_relative_path(path)
+        assert result == "repo/workflows/test.py"
+
+    def test_no_marker_returns_none(self):
+        """Test that paths without markers return None"""
+        path = "/some/other/path/file.py"
+        result = extract_relative_path(path)
+        assert result is None
+
+    def test_none_input_returns_none(self):
+        """Test that None input returns None"""
+        result = extract_relative_path(None)
+        assert result is None
+
+    def test_empty_string_returns_none(self):
+        """Test that empty string returns None"""
+        result = extract_relative_path("")
+        assert result is None
+
+    def test_first_marker_wins(self):
+        """Test that first marker takes precedence"""
+        # If path has multiple markers, use the first one found
+        path = "/mounts/home/nested/workspace/file.py"
+        result = extract_relative_path(path)
+        assert result == "nested/workspace/file.py"
 
 
 class TestConvertRegistryWorkflowToModel:
@@ -44,6 +90,8 @@ class TestConvertRegistryWorkflowToModel:
         assert result.description == "Test description"
         assert result.category == "Test"
         assert result.tags == ["test"]
+        assert result.sourceFilePath == "/mounts/workspace/test_workflow.py"
+        assert result.relativeFilePath == "test_workflow.py"
 
 
 class TestConvertRegistryProviderToModel:
@@ -66,6 +114,8 @@ class TestConvertRegistryProviderToModel:
         assert result.description == "Test provider"
         assert result.category == "General"
         assert result.cache_ttl_seconds == 300
+        assert result.sourceFilePath == "/mounts/workspace/test_provider.py"
+        assert result.relativeFilePath == "test_provider.py"
 
 
 class TestGetDiscoveryMetadata:

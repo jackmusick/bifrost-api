@@ -15,18 +15,10 @@ from typing import Any
 
 from shared.context import Caller, ExecutionContext, Organization
 from shared.error_handling import WorkflowError
+from shared.errors import UserError, WorkflowExecutionException
 from shared.models import ExecutionStatus
 from shared.registry import FunctionMetadata, get_registry
 from shared.repositories.execution_logs import get_execution_logs_repository
-
-
-class WorkflowExecutionException(Exception):
-    """Wrapper exception that includes captured variables from workflow execution"""
-    def __init__(self, original_exception: Exception, captured_vars: dict[str, Any], logs: list[str]):
-        self.original_exception = original_exception
-        self.captured_vars = captured_vars
-        self.logs = logs
-        super().__init__(str(original_exception))
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +229,9 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             elif log_line.startswith('[DEBUG]'):
                 level = 'debug'
                 message = log_line[7:].strip()
+            elif log_line.startswith('[TRACEBACK]'):
+                level = 'traceback'
+                message = log_line[11:].strip()
 
             logger_output.append({
                 'timestamp': datetime.utcnow().isoformat(),
@@ -304,6 +299,34 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         error_type = type(original_exc).__name__
         error_message = str(original_exc)
 
+        # Add traceback to logs
+        import traceback
+        if isinstance(original_exc, UserError):
+            # UserError: Show message only (user-facing)
+            logger_output.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'level': 'error',
+                'message': str(original_exc),
+                'source': 'workflow'
+            })
+        else:
+            # Other exceptions: Add full traceback
+            logger_output.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'level': 'error',
+                'message': f"Execution error: {request.name or 'workflow'}",
+                'source': 'workflow'
+            })
+            tb_lines = traceback.format_exception(type(original_exc), original_exc, original_exc.__traceback__)
+            for line in ''.join(tb_lines).split('\n'):
+                if line.strip():
+                    logger_output.append({
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'level': 'error',
+                        'message': line,
+                        'source': 'workflow'
+                    })
+
         # Check if it's a WorkflowError
         if isinstance(original_exc, WorkflowError):
             status = ExecutionStatus.FAILED
@@ -326,6 +349,24 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         # Expected workflow error (without variable capture)
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        # Add traceback to logs
+        import traceback
+        logger_output.append({
+            'timestamp': datetime.utcnow().isoformat(),
+            'level': 'error',
+            'message': f"Workflow error: {request.name or 'workflow'}",
+            'source': 'workflow'
+        })
+        tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+        for line in ''.join(tb_lines).split('\n'):
+            if line.strip():
+                logger_output.append({
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'level': 'error',
+                    'message': line,
+                    'source': 'workflow'
+                })
 
         return ExecutionResult(
             execution_id=request.execution_id,
@@ -353,6 +394,34 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             },
             exc_info=True
         )
+
+        # Add traceback to logs
+        import traceback
+        if isinstance(e, UserError):
+            # UserError: Show message only (user-facing)
+            logger_output.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'level': 'error',
+                'message': str(e),
+                'source': 'script' if request.code else 'workflow'
+            })
+        else:
+            # Other exceptions: Add full traceback
+            logger_output.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'level': 'error',
+                'message': f"Execution error: {request.name or 'script'}",
+                'source': 'script' if request.code else 'workflow'
+            })
+            tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+            for line in ''.join(tb_lines).split('\n'):
+                if line.strip():
+                    logger_output.append({
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'level': 'error',
+                        'message': line,
+                        'source': 'script' if request.code else 'workflow'
+                    })
 
         return ExecutionResult(
             execution_id=request.execution_id,
@@ -413,6 +482,8 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
     script_logger.setLevel(logging.DEBUG)  # Set logger level to capture DEBUG messages
     script_logger.propagate = False  # Don't propagate to root
 
+    captured_variables = {}
+
     try:
         # Create execution namespace with bifrost SDK access
         exec_globals = {
@@ -439,6 +510,42 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
         result = {"status": "completed",
                   "message": "Script executed successfully"}
         return result, captured_variables, script_logs
+
+    except Exception as e:
+        # Capture variables even on error
+        captured_variables = {
+            k: v for k, v in exec_globals.items()
+            if not k.startswith('__')
+            and not callable(v)
+            and not isinstance(v, type(sys))
+            and not isinstance(v, logging.Logger)
+            and k not in ['context', 'logging']
+        }
+
+        # Format traceback for logs
+        import traceback
+        tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+        formatted_traceback = ''.join(tb_lines)
+
+        # Add traceback to logs
+        # For UserError, show the actual message (user-facing)
+        if isinstance(e, UserError):
+            script_logs.append(f"[ERROR] {str(e)}")
+        else:
+            # For other exceptions, log generic error for users, traceback for admins
+            script_logs.append(f"[ERROR] An error occurred during execution")
+            # Add full traceback with TRACEBACK level (only visible to admins)
+            for line in formatted_traceback.split('\n'):
+                if line.strip():
+                    script_logs.append(f"[TRACEBACK] {line}")
+
+        # Return error result (execution completed with error)
+        result = {
+            "status": "failed",
+            "error": str(e) if isinstance(e, UserError) else "An error occurred during execution"
+        }
+        return result, captured_variables, script_logs
+
     finally:
         # Clean up the logger
         script_logger.removeHandler(handler)
@@ -480,6 +587,9 @@ async def _execute_workflow_with_trace(
     # Set up logging capture for the workflow
     class WorkflowLogHandler(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
+            # Always capture TRACEBACK level (admin-only error details)
+            is_traceback = record.levelname == "TRACEBACK"
+
             # Only capture logs that originate from the workflow's file or workspace
             # This prevents capturing Azure SDK, aiohttp, and infrastructure logs
             # Use basename comparison since dynamically loaded modules may have different path formats
@@ -493,7 +603,7 @@ async def _execute_workflow_with_trace(
             # Don't log from inside the handler to avoid infinite recursion
             # Just filter and process
 
-            if not (is_workflow_file or is_workspace_log):
+            if not (is_traceback or is_workflow_file or is_workspace_log):
                 return
 
             # Format: [LEVEL] message
@@ -660,6 +770,27 @@ async def _execute_workflow_with_trace(
                 capture_variables_from_locals(tb_frame.tb_frame.f_locals)
                 break
             tb_frame = tb_frame.tb_next
+
+        # Log the error through the logger so it gets streamed in real-time
+        workflow_logger = logging.getLogger(func.__module__)
+        if isinstance(e, UserError):
+            # UserError: Log just the message (user-facing) as ERROR
+            workflow_logger.error(str(e))
+        else:
+            # Other exceptions: Log user-facing error, then traceback at TRACEBACK level
+            # First log a generic user-facing error message
+            workflow_logger.error("An error occurred during execution")
+
+            # Then log the full traceback with custom TRACEBACK level (only visible to admins)
+            import traceback
+            # Add custom TRACEBACK level (between ERROR=40 and CRITICAL=50)
+            TRACEBACK = 45
+            logging.addLevelName(TRACEBACK, "TRACEBACK")
+
+            tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+            for line in ''.join(tb_lines).split('\n'):
+                if line.strip():
+                    workflow_logger.log(TRACEBACK, line)
 
         # Wrap exception with captured variables and logs
         exception_to_raise = WorkflowExecutionException(e, captured_vars, workflow_logs)

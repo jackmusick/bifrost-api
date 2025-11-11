@@ -541,7 +541,7 @@ async def get_execution_logs_handler(
     log_entities = await logs_repo.get_logs(execution_id=execution_id, limit=5000)
 
     # Transform to camelCase format expected by UI
-    # Filter out DEBUG logs for non-admin users
+    # Filter out DEBUG logs and TRACEBACK logs for non-admin users
     logs = [
         {
             "executionLogId": log["ExecutionLogId"],
@@ -551,7 +551,7 @@ async def get_execution_logs_handler(
             "source": log.get("Source", "workflow")
         }
         for log in log_entities
-        if context.is_platform_admin or log["Level"] != "DEBUG"  # Non-admins don't see DEBUG logs
+        if context.is_platform_admin or log["Level"] not in ["DEBUG", "TRACEBACK"]  # Non-admins don't see DEBUG or TRACEBACK logs
     ]
 
     return logs, None

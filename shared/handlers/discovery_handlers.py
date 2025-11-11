@@ -14,6 +14,28 @@ from shared.registry import get_registry
 logger = logging.getLogger(__name__)
 
 
+def extract_relative_path(source_file_path: str | None) -> str | None:
+    """
+    Extract workspace-relative file path from absolute path.
+
+    Args:
+        source_file_path: Absolute file path (e.g., /path/to/workspace/repo/workflows/my_workflow.py)
+
+    Returns:
+        Relative path after /home/, /platform/, or /workspace/ (e.g., workflows/my_workflow.py)
+        Returns None if source_file_path is None or no marker found
+    """
+    if not source_file_path:
+        return None
+
+    # Extract everything after /home/, /platform/, or /workspace/
+    for marker in ['/home/', '/platform/', '/workspace/']:
+        if marker in source_file_path:
+            return source_file_path.split(marker, 1)[1]
+
+    return None
+
+
 def convert_registry_workflow_to_model(
     registry_workflow: Any,
 ) -> WorkflowMetadata:
@@ -66,6 +88,7 @@ def convert_registry_workflow_to_model(
         publicEndpoint=registry_workflow.public_endpoint,
         source=registry_workflow.source,
         sourceFilePath=registry_workflow.source_file_path,
+        relativeFilePath=extract_relative_path(registry_workflow.source_file_path),
     )
 
 
@@ -101,13 +124,15 @@ def convert_registry_provider_to_model(
                 param_dict["description"] = p.description
             parameters.append(param_dict)
 
+    source_file_path = getattr(registry_provider, 'source_file_path', None)
     return DataProviderMetadata(
         name=registry_provider.name,
         description=registry_provider.description,
         category=registry_provider.category,
         cache_ttl_seconds=registry_provider.cache_ttl_seconds,
         parameters=parameters,
-        sourceFilePath=getattr(registry_provider, 'source_file_path', None),
+        sourceFilePath=source_file_path,
+        relativeFilePath=extract_relative_path(source_file_path),
     )
 
 

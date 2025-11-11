@@ -13,6 +13,7 @@ import azure.functions as func
 
 from shared.context import Caller
 from shared.engine import ExecutionRequest, execute
+from shared.errors import UserError
 from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus
 from shared.registry import get_registry
@@ -164,8 +165,18 @@ async def execute_workflow_internal(
         if result.status == ExecutionStatus.SUCCESS:
             response_dict["result"] = result.result
         elif result.error_message:
-            response_dict["error"] = result.error_message
-            response_dict["errorType"] = result.error_type
+            # Filter error details based on user role and error type
+            if context.is_platform_admin:
+                # Admins see full technical details
+                response_dict["error"] = result.error_message
+                response_dict["errorType"] = result.error_type
+            else:
+                # Regular users: Check if it's a UserError (show message) or generic error (hide details)
+                # We need to check the error_type to determine if it was a UserError
+                if result.error_type == "UserError":
+                    response_dict["error"] = result.error_message
+                else:
+                    response_dict["error"] = "An error occurred during execution"
 
         # Include logs/variables for platform admins
         if context.is_platform_admin:
@@ -173,6 +184,14 @@ async def execute_workflow_internal(
                 response_dict["logs"] = result.logs
             if result.variables:
                 response_dict["variables"] = result.variables
+        else:
+            # Regular users: Filter logs to exclude DEBUG and TRACEBACK levels
+            if result.logs:
+                filtered_logs = [
+                    log for log in result.logs
+                    if log.get('level') not in ['debug', 'traceback']
+                ]
+                response_dict["logs"] = filtered_logs
 
         return response_dict, 200
 
