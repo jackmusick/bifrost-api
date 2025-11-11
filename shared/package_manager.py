@@ -288,8 +288,6 @@ class WorkspacePackageManager:
             await log("✗ Installation failed")
             raise Exception("Package installation failed")
 
-        await log("✓ Installation complete")
-
     async def _append_to_requirements(self, package_name: str, version: Optional[str] = None):
         """
         Append a package to requirements.txt if it's not already there.

@@ -155,12 +155,15 @@ async def list_oauth_connections_handler(req: func.HttpRequest) -> func.HttpResp
     """List all OAuth connections for an organization."""
     context = get_context(req)
     org_id = context.scope
+    is_global_scope = (org_id == "GLOBAL")
 
     logger.info(f"User {context.email} listing OAuth connections for org {org_id}")
 
     try:
         oauth_repo = OAuthRepository()
-        connections = await oauth_repo.list_connections(org_id)
+        # Only include GLOBAL connections when viewing GLOBAL scope
+        # When viewing a specific org, only show that org's connections
+        connections = await oauth_repo.list_connections(org_id, include_global=is_global_scope)
 
         details = [conn.to_detail() for conn in connections]
         return success_response([d.model_dump(mode="json") for d in details])
