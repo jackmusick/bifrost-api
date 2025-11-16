@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
-from shared.models import Config, ConfigType, IntegrationConfig, IntegrationType, SetIntegrationConfigRequest
+from shared.models import Config, ConfigType, GitHubConfigEntity, IntegrationConfig, IntegrationType, SetIntegrationConfigRequest
 
 from .scoped_repository import ScopedRepository
 
@@ -462,6 +462,109 @@ class ConfigRepository(ScopedRepository):
         key_id = key_entity.get("KeyId", key_entity["RowKey"].split(":", 2)[2])
 
         return (True, key_id)
+
+    # GitHub Integration Methods
+
+    async def get_github_config(self) -> GitHubConfigEntity | None:
+        """
+        Get GitHub integration configuration
+
+        Returns:
+            GitHubConfigEntity or None if not configured
+        """
+        entity = await self.get_by_id(self.scope, "github")
+
+        if not entity:
+            return None
+
+        return self._entity_to_github_config(entity)
+
+    async def save_github_config(
+        self,
+        config: GitHubConfigEntity,
+        updated_by: str = "system"
+    ) -> GitHubConfigEntity:
+        """
+        Save GitHub integration configuration
+
+        Args:
+            config: GitHub configuration to save
+            updated_by: User ID making the change
+
+        Returns:
+            Saved GitHubConfigEntity
+        """
+
+        now = datetime.utcnow()
+
+        github_entity = {
+            "PartitionKey": self.scope,
+            "RowKey": "github",
+            "Status": config.status,
+            "SecretRef": config.secret_ref,
+            "RepoUrl": config.repo_url,
+            "ProductionBranch": config.production_branch,
+            "UpdatedAt": now.isoformat(),
+            "UpdatedBy": updated_by,
+        }
+
+        await self.upsert(github_entity)
+
+        logger.info(f"Saved GitHub config in scope {self.scope} (status={config.status})")
+
+        return self._entity_to_github_config(github_entity)
+
+    async def update_github_status(
+        self,
+        status: str,
+        updated_by: str = "system"
+    ) -> GitHubConfigEntity | None:
+        """
+        Update GitHub integration status
+
+        Args:
+            status: New status value
+            updated_by: User ID making the change
+
+        Returns:
+            Updated GitHubConfigEntity or None if not found
+        """
+        entity = await self.get_by_id(self.scope, "github")
+
+        if not entity:
+            return None
+
+        entity["Status"] = status
+        entity["UpdatedAt"] = datetime.utcnow().isoformat()
+        entity["UpdatedBy"] = updated_by
+
+        await self.update(entity, mode="merge")
+
+        logger.info(f"Updated GitHub status to {status} in scope {self.scope}")
+
+        return self._entity_to_github_config(entity)
+
+    def _entity_to_github_config(self, entity: dict) -> GitHubConfigEntity:
+        """
+        Convert entity dict to GitHubConfigEntity model
+
+        Args:
+            entity: Entity dictionary from table storage
+
+        Returns:
+            GitHubConfigEntity model
+        """
+        # Parse datetime field
+        updated_at = self._parse_datetime(entity.get("UpdatedAt"), datetime.utcnow())
+
+        return GitHubConfigEntity(
+            status=entity.get("Status", "disconnected"),
+            secret_ref=entity.get("SecretRef"),
+            repo_url=entity.get("RepoUrl"),
+            production_branch=entity.get("ProductionBranch"),
+            updated_at=updated_at,
+            updated_by=entity.get("UpdatedBy"),
+        )
 
 
 def get_global_config_repository() -> ConfigRepository:

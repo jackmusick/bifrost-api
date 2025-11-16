@@ -30,6 +30,7 @@ from functions.http.discovery import bp as discovery_bp
 from functions.http.branding import bp as branding_bp
 from functions.http.logs import bp as logs_bp
 from functions.http.packages import bp as packages_bp
+from functions.http.github_integration import bp as github_integration_bp
 import importlib.util
 import os
 import sys
@@ -404,6 +405,8 @@ app.register_functions(logs_bp)  # System logs viewing (admin-only)
 app.register_functions(editor_files_bp)
 # Package management for workspace
 app.register_functions(packages_bp)
+# GitHub integration for workspace sync
+app.register_functions(github_integration_bp)
 
 if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
     app.register_functions(oauth_refresh_timer_bp)  # OAuth token refresh timer

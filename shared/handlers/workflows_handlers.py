@@ -13,7 +13,6 @@ import azure.functions as func
 
 from shared.context import Caller
 from shared.engine import ExecutionRequest, execute
-from shared.errors import UserError
 from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus
 from shared.registry import get_registry

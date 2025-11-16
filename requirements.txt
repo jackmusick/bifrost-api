@@ -31,7 +31,9 @@ openpyxl  # Excel
 python-docx  # Word documents
 
 # Git integration for workspace sync
-gitpython
+dulwich>=0.21.0  # Pure Python Git implementation
+merge3  # Required by Dulwich for three-way merge with conflict markers
+PyGithub  # GitHub API for repo/branch listing
 
 # Utilities
 python-dotenv

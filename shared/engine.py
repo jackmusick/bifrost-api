@@ -533,7 +533,7 @@ async def _execute_script(code: str, context: ExecutionContext, name: str) -> tu
             script_logs.append(f"[ERROR] {str(e)}")
         else:
             # For other exceptions, log generic error for users, traceback for admins
-            script_logs.append(f"[ERROR] An error occurred during execution")
+            script_logs.append("[ERROR] An error occurred during execution")
             # Add full traceback with TRACEBACK level (only visible to admins)
             for line in formatted_traceback.split('\n'):
                 if line.strip():

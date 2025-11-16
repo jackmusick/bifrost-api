@@ -30,7 +30,8 @@
       "Bash(do base=\"$f%.md\")",
       "Bash(src/lib/api-client.ts)",
       "Bash(pyright:*)",
-      "WebFetch(domain:stackoverflow.com)"
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:openapi-ts.dev)"
     ],
     "deny": [],
     "ask": [],
