@@ -68,7 +68,7 @@ class TestCanUserViewForm:
         async def mock_get_form(repo_self, form_id):
             return mock_form
 
-        monkeypatch.setattr("shared.repositories.forms.FormRepository.get_form", mock_get_form)
+        monkeypatch.setattr("shared.repositories.forms_file.FormsFileRepository.get_form", mock_get_form)
 
         result = await can_user_view_form(context, form_id)
 
@@ -102,7 +102,7 @@ class TestCanUserViewForm:
         mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = mock_form
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -150,7 +150,7 @@ class TestCanUserViewForm:
         mock_role_repo.get_user_role_ids.return_value = [role_id]
         mock_role_repo.get_form_role_ids.return_value = [role_id]
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
         monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)
 
         context = RequestContext(
@@ -200,7 +200,7 @@ class TestCanUserViewForm:
         mock_role_repo.get_user_role_ids.return_value = [user_role_id]
         mock_role_repo.get_form_role_ids.return_value = [form_role_id]
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
         monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)
 
         context = RequestContext(
@@ -243,7 +243,7 @@ class TestCanUserViewForm:
         mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = mock_form
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -268,7 +268,7 @@ class TestCanUserViewForm:
         mock_form_repo = AsyncMock()
         mock_form_repo.get_form.return_value = None
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="user@example.com",
@@ -339,7 +339,7 @@ class TestGetUserVisibleForms:
         mock_form_repo = AsyncMock()
         mock_form_repo.list_forms.return_value = mock_forms
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
 
         context = RequestContext(
             user_id="admin@example.com",
@@ -406,7 +406,7 @@ class TestGetUserVisibleForms:
         mock_role_repo.get_user_role_ids = AsyncMock(return_value=[role_id])
         mock_role_repo.get_form_role_ids = AsyncMock(return_value=[role_id])
 
-        monkeypatch.setattr("shared.authorization.FormRepository", lambda context: mock_form_repo)
+        monkeypatch.setattr("shared.authorization.FormsFileRepository", lambda context: mock_form_repo)
         monkeypatch.setattr("shared.authorization.RoleRepository", lambda: mock_role_repo)
 
         context = RequestContext(

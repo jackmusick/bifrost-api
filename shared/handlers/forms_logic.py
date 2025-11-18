@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from shared.models import Form
-from shared.repositories.forms import FormRepository
+from shared.repositories.forms_file import FormsFileRepository
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -30,7 +30,7 @@ async def list_forms_logic(context: 'ExecutionContext') -> list[Form]:
     """
     logger.info(f"User {context.user_id} listing forms for org {context.org_id}")
 
-    repo = FormRepository(context)
+    repo = FormsFileRepository(context)
     forms = await repo.list_forms()
 
     logger.info(f"Returning {len(forms)} forms for org {context.org_id}")
@@ -51,7 +51,7 @@ async def get_form_logic(context: 'ExecutionContext', form_id: str) -> Form | No
     """
     logger.info(f"User {context.user_id} getting form {form_id}")
 
-    repo = FormRepository(context)
+    repo = FormsFileRepository(context)
     form = await repo.get_form(form_id)
 
     if not form:

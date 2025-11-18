@@ -6,7 +6,7 @@ Provides permission checking and form access control
 import logging
 
 from shared.repositories.executions import ExecutionRepository
-from shared.repositories.forms import FormRepository
+from shared.repositories.forms_file import FormsFileRepository
 from shared.repositories.roles import RoleRepository
 from shared.context import ExecutionContext
 
@@ -43,7 +43,7 @@ async def can_user_view_form(context: ExecutionContext, form_id: str) -> bool:
         True if user can view form, False otherwise
     """
     # Get form using repository (handles GLOBAL fallback automatically)
-    form_repo = FormRepository(context)
+    form_repo = FormsFileRepository(context)
     form = await form_repo.get_form(form_id)
 
     if not form:
@@ -105,12 +105,12 @@ async def get_user_visible_forms(context: ExecutionContext) -> list[dict]:
     Returns:
         List of form entities (as dicts for backward compatibility)
     """
-    form_repo = FormRepository(context)
+    form_repo = FormsFileRepository(context)
 
     # Platform admin sees all forms (including inactive) in their current scope (set by X-Organization-Id)
     if context.is_platform_admin:
-        # Admin can see all forms (active and inactive) in their scope
-        forms = await form_repo.list_forms(include_global=False, active_only=False)
+        # Admin can see all forms (active and inactive) in their scope, including GLOBAL forms
+        forms = await form_repo.list_forms(include_global=True, active_only=False)
         # Convert Form models to dicts for backward compatibility (JSON-serializable)
         return [form.model_dump(mode="json") for form in forms]
 

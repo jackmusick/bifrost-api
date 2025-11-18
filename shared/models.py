@@ -912,10 +912,25 @@ class DataProviderMetadata(BaseModel):
     relativeFilePath: str | None = Field(None, description="Workspace-relative file path (e.g., 'data_providers/my_provider.py')")
 
 
+class FormDiscoveryMetadata(BaseModel):
+    """Lightweight form metadata for discovery endpoint"""
+    id: str
+    name: str
+    linkedWorkflow: str
+    orgId: str
+    isActive: bool
+    isGlobal: bool
+    accessLevel: FormAccessLevel | None = None
+    createdAt: datetime
+    updatedAt: datetime
+    launchWorkflowId: str | None = None
+
+
 class MetadataResponse(BaseModel):
     """Response model for /admin/workflow endpoint"""
     workflows: list[WorkflowMetadata] = Field(default_factory=list)
     dataProviders: list[DataProviderMetadata] = Field(default_factory=list)
+    forms: list[FormDiscoveryMetadata] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -7,7 +7,7 @@ from .audit import AuditRepository
 from .base import BaseRepository
 from .config import ConfigRepository
 from .executions import ExecutionRepository
-from .forms import FormRepository
+from .forms_file import FormsFileRepository
 from .oauth import OAuthRepository
 from .organizations import OrganizationRepository
 from .roles import RoleRepository
@@ -19,7 +19,7 @@ __all__ = [
     "BaseRepository",
     "ScopedRepository",
     "ExecutionRepository",
-    "FormRepository",
+    "FormsFileRepository",
     "OrganizationRepository",
     "UserRepository",
     "RoleRepository",

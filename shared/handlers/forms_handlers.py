@@ -15,7 +15,7 @@ from shared.models import (
     ErrorResponse,
     UpdateFormRequest,
 )
-from shared.repositories.forms import FormRepository
+from shared.repositories.forms_file import FormsFileRepository
 from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,52 @@ async def list_forms_handler(context, request_context) -> tuple:
     logger.info(f"User {request_context.user_id} listing forms (org: {request_context.org_id or 'GLOBAL'})")
 
     try:
+        from shared.registry import get_registry
+
         forms = await get_user_visible_forms(request_context)
+        registry = get_registry()
+
+        # Enrich forms with validation info (missing required params)
+        for form in forms:
+            linked_workflow = form.get("linkedWorkflow")
+            logger.info(f"Validating form '{form.get('name')}' linked to workflow '{linked_workflow}'")
+
+            if not linked_workflow:
+                form["missingRequiredParams"] = []
+                logger.info(f"Form '{form.get('name')}' has no linked workflow - marking as valid")
+                continue
+
+            # Get workflow metadata
+            workflow_metadata = registry.get_workflow(linked_workflow)
+            logger.info(f"Found workflow metadata: {workflow_metadata is not None}")
+
+            if not workflow_metadata or not workflow_metadata.parameters:
+                form["missingRequiredParams"] = []
+                logger.info(f"Workflow '{linked_workflow}' not found or has no parameters - marking as valid")
+                continue
+
+            # Get required parameter names
+            required_params = [
+                p.name for p in workflow_metadata.parameters if p.required
+            ]
+
+            # Get form field names
+            field_names = set(
+                field.get("name")
+                for field in form.get("formSchema", {}).get("fields", [])
+                if field.get("name")
+            )
+
+            logger.info(f"Required params: {required_params}, Form fields: {field_names}")
+
+            # Find missing required parameters
+            missing = [p for p in required_params if p not in field_names]
+            form["missingRequiredParams"] = missing
+
+            logger.info(
+                f"Form '{form.get('name')}' validation: missing={missing}, valid={len(missing) == 0}"
+            )
+
         forms.sort(key=lambda f: f["name"])
         logger.info(f"Returning {len(forms)} forms for user {request_context.user_id}")
         return forms, 200
@@ -156,7 +201,7 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
             )
             return error.model_dump(), 400
 
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         form = await form_repo.create_form(form_request=create_request, created_by=request_context.user_id)
         logger.info(f"Created form {form.id} in partition {form.orgId}")
 
@@ -212,7 +257,7 @@ async def get_form_handler(form_id: str, request_context) -> tuple[dict, int]:
     logger.info(f"User {request_context.user_id} retrieving form {form_id}")
 
     try:
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         form = await form_repo.get_form(form_id)
 
         if not form:
@@ -241,7 +286,7 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
 
     try:
         update_request = UpdateFormRequest(**request_body)
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         existing_form = await form_repo.get_form(form_id)
 
         if not existing_form:
@@ -337,7 +382,7 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
     logger.info(f"User {request_context.user_id} deleting form {form_id}")
 
     try:
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
 
         # Get form details before deletion for logging
         form = await form_repo.get_form(form_id)
@@ -392,7 +437,7 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
             error = ErrorResponse(error="Forbidden", message="You don't have permission to access this form")
             return error.model_dump(), 403
 
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         form = await form_repo.get_form(form_id)
 
         if not form:
@@ -495,7 +540,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             error = ErrorResponse(error="Forbidden", message="You don't have permission to execute this form")
             return error.model_dump(), 403
 
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         form = await form_repo.get_form(form_id)
 
         if not form:
@@ -549,7 +594,7 @@ async def get_form_roles_handler(form_id: str, request_context) -> tuple[dict, i
 
     try:
         # Check if form exists and user has access
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         form = await form_repo.get_form(form_id)
 
         if not form:
@@ -623,7 +668,7 @@ async def execute_form_data_provider_handler(
 
     try:
         # 1. Check if form exists
-        form_repo = FormRepository(request_context)
+        form_repo = FormsFileRepository(request_context)
         form = await form_repo.get_form(form_id)
 
         if not form:

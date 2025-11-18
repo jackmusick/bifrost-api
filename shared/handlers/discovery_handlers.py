@@ -5,11 +5,15 @@ Extracted from functions/discovery.py for unit testability.
 """
 
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from pydantic import ValidationError
-from shared.models import DataProviderMetadata, MetadataResponse, WorkflowMetadata
+from shared.models import DataProviderMetadata, FormDiscoveryMetadata, MetadataResponse, WorkflowMetadata
 from shared.registry import get_registry
+from shared.forms_registry import get_forms_registry
+
+if TYPE_CHECKING:
+    from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +140,7 @@ def convert_registry_provider_to_model(
     )
 
 
-def get_discovery_metadata() -> MetadataResponse:
+async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> MetadataResponse:
     """
     Retrieve discovery metadata for all registered workflows and data providers.
 
@@ -144,13 +148,17 @@ def get_discovery_metadata() -> MetadataResponse:
     1. Gets the registry singleton
     2. Converts all registered workflows to Pydantic models
     3. Converts all registered data providers to Pydantic models
-    4. Returns a MetadataResponse object
+    4. Filters forms based on user permissions
+    5. Returns a MetadataResponse object
 
     Validation errors are caught and logged to system_logger, with offending
     items skipped from the response.
 
+    Args:
+        context: Optional ExecutionContext for permission filtering
+
     Returns:
-        MetadataResponse with workflows and dataProviders lists
+        MetadataResponse with workflows, dataProviders, and forms lists
 
     Raises:
         Exception: If registry access fails (logged and propagated)
@@ -218,15 +226,69 @@ def get_discovery_metadata() -> MetadataResponse:
             except Exception as log_error:
                 logger.warning(f"Failed to log validation failure: {log_error}")
 
+    # Get all forms from registry and filter based on permissions
+    forms = []
+    if context:
+        # Use authorization logic to get filtered forms
+        from shared.authorization import get_user_visible_forms
+        user_forms_dicts = await get_user_visible_forms(context)
+
+        # Convert dicts to FormDiscoveryMetadata models
+        for form_dict in user_forms_dicts:
+            try:
+                form_model = FormDiscoveryMetadata(
+                    id=form_dict['id'],
+                    name=form_dict['name'],
+                    linkedWorkflow=form_dict['linkedWorkflow'],
+                    orgId=form_dict['orgId'],
+                    isActive=form_dict['isActive'],
+                    isGlobal=form_dict.get('isGlobal', False),
+                    accessLevel=form_dict.get('accessLevel'),
+                    createdAt=form_dict['createdAt'],
+                    updatedAt=form_dict['updatedAt'],
+                    launchWorkflowId=form_dict.get('launchWorkflowId')
+                )
+                forms.append(form_model)
+            except (ValidationError, KeyError) as e:
+                logger.error(
+                    f"Validation failed for form '{form_dict.get('name', 'unknown')}': {e}",
+                    exc_info=True
+                )
+    else:
+        # No context provided - return all forms (backward compatibility for tests)
+        forms_registry = get_forms_registry()
+        for form_metadata in forms_registry.get_all_metadata():
+            try:
+                form_model = FormDiscoveryMetadata(
+                    id=form_metadata.id,
+                    name=form_metadata.name,
+                    linkedWorkflow=form_metadata.linkedWorkflow,
+                    orgId=form_metadata.orgId,
+                    isActive=form_metadata.isActive,
+                    isGlobal=form_metadata.isGlobal,
+                    accessLevel=form_metadata.accessLevel,
+                    createdAt=form_metadata.createdAt,
+                    updatedAt=form_metadata.updatedAt,
+                    launchWorkflowId=form_metadata.launchWorkflowId
+                )
+                forms.append(form_model)
+            except ValidationError as e:
+                logger.error(
+                    f"Validation failed for form '{form_metadata.name}': {e}",
+                    exc_info=True
+                )
+
     logger.info(
         f"Retrieved metadata: {len(workflows)} workflows, "
-        f"{len(data_providers)} data providers"
+        f"{len(data_providers)} data providers, "
+        f"{len(forms)} forms"
     )
 
     # Build and return response
     response = MetadataResponse(
         workflows=workflows,
         dataProviders=data_providers,
+        forms=forms,
     )
 
     return response

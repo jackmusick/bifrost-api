@@ -54,8 +54,12 @@ async def get_discovery_metadata_handler(req: func.HttpRequest) -> func.HttpResp
             "Triggering workspace re-scan before returning metadata")
         discover_workspace_modules()
 
-        # Call business logic handler
-        metadata = get_discovery_metadata()
+        # Get execution context for permission filtering
+        from shared.context import get_execution_context
+        context = get_execution_context(req)
+
+        # Call business logic handler with context for permission filtering
+        metadata = await get_discovery_metadata(context)
 
         logger.info(
             f"Returning metadata: {len(metadata.workflows)} workflows, "
@@ -63,7 +67,7 @@ async def get_discovery_metadata_handler(req: func.HttpRequest) -> func.HttpResp
         )
 
         return func.HttpResponse(
-            json.dumps(metadata.model_dump(by_alias=True, exclude_none=True)),
+            json.dumps(metadata.model_dump(mode="json", by_alias=True, exclude_none=True)),
             status_code=200,
             mimetype="application/json"
         )

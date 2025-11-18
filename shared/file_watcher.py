@@ -16,16 +16,21 @@ from watchdog.observers import Observer as WatchdogObserver
 
 
 class WorkspaceFileHandler(FileSystemEventHandler):
-    """Handles file system events for workspace Python files."""
+    """Handles file system events for workspace Python files and forms."""
 
     def __init__(self, workspace_paths: list[Path]):
         self.workspace_paths = workspace_paths
         self._processing_lock = threading.Lock()
         self._reload_func = None
+        self._form_reload_func = None
 
     def set_reload_function(self, reload_func):
         """Set the function to call when a module needs reloading."""
         self._reload_func = reload_func
+
+    def set_form_reload_function(self, form_reload_func):
+        """Set the function to call when a form file needs reloading."""
+        self._form_reload_func = form_reload_func
 
     def on_modified(self, event: FileSystemEvent):
         """Called when a file is modified."""
@@ -33,7 +38,13 @@ class WorkspaceFileHandler(FileSystemEventHandler):
             return
 
         file_path = Path(str(event.src_path))
-        if file_path.suffix == '.py' and not file_path.name.startswith('_'):
+
+        # Handle form files
+        if file_path.name.endswith('.form.json'):
+            print(f"📝 Form file modified: {file_path.name}")
+            self._reload_form(file_path)
+        # Handle Python files
+        elif file_path.suffix == '.py' and not file_path.name.startswith('_'):
             print(f"📝 Workspace file modified: {file_path.name}")
             self._reload_module(file_path)
 
@@ -43,7 +54,13 @@ class WorkspaceFileHandler(FileSystemEventHandler):
             return
 
         file_path = Path(str(event.src_path))
-        if file_path.suffix == '.py' and not file_path.name.startswith('_'):
+
+        # Handle form files
+        if file_path.name.endswith('.form.json'):
+            print(f"✨ New form file detected: {file_path.name}")
+            self._reload_form(file_path)
+        # Handle Python files
+        elif file_path.suffix == '.py' and not file_path.name.startswith('_'):
             print(f"✨ New workspace file detected: {file_path.name}")
             self._reload_module(file_path)
 
@@ -53,7 +70,13 @@ class WorkspaceFileHandler(FileSystemEventHandler):
             return
 
         file_path = Path(str(event.src_path))
-        if file_path.suffix == '.py':
+
+        # Handle form files
+        if file_path.name.endswith('.form.json'):
+            print(f"🗑️  Form file deleted: {file_path.name}")
+            self._unregister_form(file_path)
+        # Handle Python files
+        elif file_path.suffix == '.py':
             print(f"🗑️  Workspace file deleted: {file_path.name}")
             self._unregister_module(file_path)
 
@@ -65,6 +88,15 @@ class WorkspaceFileHandler(FileSystemEventHandler):
                     self._reload_func(file_path)
                 except Exception as e:
                     print(f"Failed to reload {file_path.name}: {e}")
+
+    def _reload_form(self, file_path: Path):
+        """Reload a single form."""
+        with self._processing_lock:
+            if self._form_reload_func:
+                try:
+                    self._form_reload_func(file_path)
+                except Exception as e:
+                    print(f"Failed to reload form {file_path.name}: {e}")
 
     def _unregister_module(self, file_path: Path):
         """Unregister a deleted module."""
@@ -87,6 +119,26 @@ class WorkspaceFileHandler(FileSystemEventHandler):
                 print(
                     f"Module {module_name} was registered as workflow, needs cleanup")
 
+    def _unregister_form(self, file_path: Path):
+        """Unregister a deleted form."""
+        with self._processing_lock:
+            from shared.forms_registry import get_forms_registry
+            import json
+
+            try:
+                # Try to read the form ID from the file if it still exists
+                # (in case this is called during move operations)
+                if file_path.exists():
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        form_id = data.get('id')
+                        if form_id:
+                            forms_registry = get_forms_registry()
+                            forms_registry.remove_form(form_id)
+                            print(f"Removed form {form_id} from registry")
+            except Exception as e:
+                print(f"Could not unregister form from {file_path.name}: {e}")
+
 
 class WorkspaceWatcher:
     """Watches workspace directories for file changes."""
@@ -99,6 +151,10 @@ class WorkspaceWatcher:
     def set_reload_function(self, reload_func):
         """Set the function to call when a module needs reloading."""
         self.handler.set_reload_function(reload_func)
+
+    def set_form_reload_function(self, form_reload_func):
+        """Set the function to call when a form file needs reloading."""
+        self.handler.set_form_reload_function(form_reload_func)
 
     def start(self):
         """Start watching workspace directories."""

@@ -26,7 +26,7 @@ from functions.http.execution_cleanup import bp as execution_cleanup_http_bp
 from functions.http.executions import bp as executions_bp
 from functions.http.endpoints import bp as endpoints_bp
 from functions.http.editor_files import bp as editor_files_bp
-from functions.http.discovery import bp as discovery_bp
+from functions.http.data_providers import bp as data_providers_bp
 from functions.http.branding import bp as branding_bp
 from functions.http.logs import bp as logs_bp
 from functions.http.packages import bp as packages_bp
@@ -354,19 +354,59 @@ def reload_single_module(file_path: Path):
 # Discover all workspace modules on startup
 discover_workspace_modules()
 
-# Start file watcher for hot-reload
+# ==================== FORMS REGISTRY INITIALIZATION ====================
+# Load all forms from workspace into registry
+print("=" * 60)
+print("FORMS REGISTRY INITIALIZATION")
+print("=" * 60)
+print("🔧 Initializing forms registry...")
+try:
+    from shared.forms_registry import get_forms_registry
+
+    forms_registry = get_forms_registry()
+    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
+
+    # Load all forms from workspace
+    forms_registry.load_all_forms(workspace_paths)
+
+    form_count = forms_registry.get_form_count()
+    print(f"✓ Forms registry initialized: {form_count} forms loaded")
+except Exception as e:
+    print(f"✗ Failed to initialize forms registry: {e}")
+
+# ==================== FILE WATCHER INITIALIZATION ====================
+# Start file watcher for hot-reload (both workflows and forms)
 print("=" * 60)
 print("FILE WATCHER INITIALIZATION")
 print("=" * 60)
 print("🔧 Attempting to start workspace file watcher...")
 try:
-    from shared.file_watcher import start_workspace_watcher
+    from shared.forms_registry import get_forms_registry
+    import asyncio
+
     print("✓ File watcher module imported successfully")
-    # type: ignore[arg-type]
     workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
     print(f"📁 Workspace paths to watch: {workspace_paths}")
-    start_workspace_watcher(workspace_paths, reload_single_module)
-    print("✓ File watcher initialization completed")
+
+    # Define form reload function
+    def reload_form_file(file_path: Path):
+        """Reload a single form file when it changes."""
+        try:
+            forms_registry = get_forms_registry()
+            asyncio.run(forms_registry.reload_form(file_path))
+        except Exception as e:
+            print(f"Failed to reload form {file_path.name}: {e}")
+
+    # Start watcher with both reload functions
+    from shared.file_watcher import _watcher
+    if _watcher is None:
+        from shared.file_watcher import WorkspaceWatcher
+        _watcher = WorkspaceWatcher(workspace_paths)
+        _watcher.set_reload_function(reload_single_module)
+        _watcher.set_form_reload_function(reload_form_file)
+        _watcher.start()
+
+    print("✓ File watcher initialization completed (workflows + forms)")
 except Exception as e:
     print(f"❌ Failed to start workspace file watcher: {e}")
     print(
@@ -416,8 +456,8 @@ if (os.getenv('AZURE_FUNCTIONS_ENVIRONMENT') != 'Testing'):
     app.register_functions(execution_cleanup_timer_bp)
 
 # Register blueprints - Workflow Engine (unified in functions/)
-app.register_functions(discovery_bp)  # Workflow and data provider discovery
-app.register_functions(workflows_bp)  # Workflow execution
+app.register_functions(workflows_bp)  # Workflow list and execution
+app.register_functions(data_providers_bp)  # Data providers list
 app.register_functions(endpoints_bp)  # Workflow HTTP endpoints (API key auth)
 # Workflow API key management (User Story 3)
 app.register_functions(workflow_keys_bp)

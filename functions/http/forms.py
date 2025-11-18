@@ -45,13 +45,23 @@ bp = func.Blueprint()
     path="/forms",
     method="GET",
     summary="List forms",
-    description="List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles).",
+    description="List all forms visible to the user. Platform admins see all forms in their org scope. Regular users see only forms they can access (public forms + forms assigned to their roles). Triggers forms re-scan to pick up new forms.",
     tags=["Forms"],
     response_model=list[Form]
 )
 @with_request_context
 async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/forms - List all forms visible to the user"""
+    # Re-scan workspace to pick up new forms (matches workflow list behavior)
+    from function_app import get_workspace_paths
+    from shared.forms_registry import get_forms_registry
+    from pathlib import Path
+
+    logger.info("Triggering forms registry reload before returning forms")
+    forms_registry = get_forms_registry()
+    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
+    forms_registry.load_all_forms(workspace_paths)
+
     context = req.context  # type: ignore[attr-defined]
     result, status_code = await list_forms_handler(req, context)
     return func.HttpResponse(
