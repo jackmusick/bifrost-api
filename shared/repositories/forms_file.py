@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 
 import aiofiles
 
-from shared.forms_registry import FormMetadata, get_forms_registry
-from shared.models import CreateFormRequest, Form, FormAccessLevel, UpdateFormRequest, generate_entity_id
+from shared.forms_registry import get_forms_registry
+from shared.models import CreateFormRequest, Form, UpdateFormRequest, generate_entity_id
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -113,22 +113,9 @@ class FormsFileRepository:
             f"(workflow={form_request.linkedWorkflow}, isGlobal={form_request.isGlobal})"
         )
 
-        # Add to registry cache
-        access_level = FormAccessLevel(form_data['accessLevel']) if form_data.get('accessLevel') else None
-        metadata = FormMetadata(
-            id=form_id,
-            name=form_request.name,
-            linkedWorkflow=form_request.linkedWorkflow,
-            orgId=org_id,
-            isActive=True,
-            isGlobal=form_request.isGlobal,
-            accessLevel=access_level,
-            filePath=str(file_path),
-            createdAt=now,
-            updatedAt=now,
-            launchWorkflowId=form_request.launchWorkflowId
-        )
-        await self.registry.add_form(metadata)
+        # Reload form from disk into registry (ensures it's loaded from file system)
+        # This is important for multi-worker scenarios where the registry is per-process
+        await self.registry.reload_form(file_path)
 
         # Return full form
         form = await self.registry.get_form_full(form_id)
@@ -148,8 +135,34 @@ class FormsFileRepository:
         """
         # Check metadata first (fast)
         metadata = await self.registry.get_form_metadata(form_id)
+
+        # If not in registry, try to find and load from filesystem
+        # This handles multi-worker scenarios where a form was created in another process
         if not metadata:
-            return None
+            logger.debug(f"Form {form_id} not in registry, scanning filesystem...")
+            form_file = None
+            for pattern in ["*.form.json", ".archived/*.form.json"]:
+                matches = list(self.workspace_location.rglob(pattern))
+                for file_path in matches:
+                    try:
+                        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                            content = await f.read()
+                            data = json.loads(content)
+                            if data.get('id') == form_id:
+                                form_file = file_path
+                                break
+                    except Exception:
+                        continue
+                if form_file:
+                    break
+
+            if form_file:
+                logger.info(f"Found form {form_id} on filesystem, loading into registry...")
+                await self.registry.reload_form(form_file)
+                metadata = await self.registry.get_form_metadata(form_id)
+
+            if not metadata:
+                return None
 
         # Apply org scope filtering (skip for platform admins)
         if not self.context.is_platform_admin:

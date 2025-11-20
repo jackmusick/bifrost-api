@@ -325,7 +325,7 @@ def create_folder(relative_path: str) -> FileMetadata:
     )
 
 
-async def delete_path(relative_path: str) -> None:
+def delete_path(relative_path: str) -> None:
     """
     Delete a file or folder.
 
@@ -346,11 +346,10 @@ async def delete_path(relative_path: str) -> None:
         if path.is_dir():
             # Remove directory and all contents
             import shutil
-            # shutil operations are not async, but they're fast for local filesystems
-            await aiofiles.os.wrap(shutil.rmtree)(path)
+            shutil.rmtree(path)
         else:
             # Remove file
-            await aiofiles.os.unlink(path)
+            path.unlink()
     except PermissionError:
         raise PermissionError(f"Permission denied: {relative_path}")
     except Exception as e:

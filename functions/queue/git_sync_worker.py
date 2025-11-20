@@ -175,7 +175,13 @@ async def handle_git_sync(message_data: dict) -> None:
             )
             return  # Don't raise - conflicts are expected, not an error
 
-        # Step 2: Push to remote (if no conflicts)
+        # Step 2: Discover new workflows/providers after pull
+        await send_log("Discovering workflows and data providers...")
+        from function_app import discover_workspace_modules
+        discover_workspace_modules()
+        await send_log("Discovery complete")
+
+        # Step 3: Push to remote (if no conflicts)
         await send_log("No conflicts detected, pushing changes to GitHub...")
         push_result = await git_service.push(context, connection_id=connection_id)
 
@@ -345,6 +351,12 @@ async def handle_git_refresh(message_data: dict) -> None:
 
         if result.get("success"):
             await send_log("✓ Status refreshed successfully", "success")
+
+            # Discover workflows and data providers after refresh
+            await send_log("Discovering workflows and data providers...")
+            from function_app import discover_workspace_modules
+            discover_workspace_modules()
+            await send_log("Discovery complete")
 
             # Send completion message with status data
             if connection_id and broadcaster.enabled and broadcaster.client:

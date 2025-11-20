@@ -31,6 +31,7 @@ from shared.models import (
 )
 from shared.repositories.config import ConfigRepository
 from shared.keyvault import KeyVaultClient
+from shared.utils.file_operations import manual_copy_tree, get_system_tmp
 
 logger = logging.getLogger(__name__)
 
@@ -219,18 +220,44 @@ class GitIntegrationService:
         return self._insert_token_in_url(repo_url, token)
 
     def _clone_repo(self, auth_url: str, branch: str) -> None:
-        """Clone repository using Dulwich"""
+        """
+        Clone repository using Dulwich.
+
+        Uses a two-step process to work with Azure Files SMB limitations:
+        1. Clone to /tmp (local disk - avoids chmod errors during clone)
+        2. Copy entire repo (including .git) to workspace using manual_copy_tree
+
+        After this, all Git operations work directly on the workspace.
+        """
         logger.info(f"Cloning repository (branch: {branch})")
 
-        # Clone the repository
-        porcelain.clone(
-            auth_url,
-            str(self.workspace_path),
-            checkout=True,
-            branch=branch.encode('utf-8')
-        )
+        # Clone to system /tmp (local disk, not Azure Files)
+        tmp_clone_dir = get_system_tmp() / f"bifrost_clone_{os.getpid()}_{id(self)}"
 
-        logger.info("Repository cloned successfully")
+        try:
+            logger.info(f"Step 1: Cloning to temporary directory: {tmp_clone_dir}")
+            porcelain.clone(
+                auth_url,
+                str(tmp_clone_dir),
+                checkout=True,
+                branch=branch.encode('utf-8')
+            )
+            logger.info("Clone to /tmp completed")
+
+            # Copy entire repo (including .git) to workspace
+            logger.info(f"Step 2: Copying to workspace: {self.workspace_path}")
+            manual_copy_tree(
+                tmp_clone_dir,
+                self.workspace_path,
+                exclude_patterns=['.DS_Store', '._*']  # Exclude macOS metadata
+            )
+            logger.info("Repository cloned and copied to workspace successfully")
+
+        finally:
+            # Clean up temporary clone
+            if tmp_clone_dir.exists():
+                shutil.rmtree(tmp_clone_dir, ignore_errors=True)
+                logger.debug(f"Cleaned up temporary clone directory: {tmp_clone_dir}")
 
     def _update_existing_repo(self, auth_url: str, branch: str) -> None:
         """Update an existing Git repository with new remote"""
@@ -1883,9 +1910,19 @@ class GitIntegrationService:
             }
 
     # GitHub API methods (these use PyGithub, not Git)
-    def list_repositories(self, token: str) -> list[GitHubRepoInfo]:
-        """List accessible GitHub repositories using token"""
-        gh = Github(token)
+    def list_repositories(self, token: str, max_repos: int = 500) -> list[GitHubRepoInfo]:
+        """
+        List accessible GitHub repositories using token.
+
+        Args:
+            token: GitHub personal access token
+            max_repos: Maximum number of repositories to return (default: 500)
+                       Prevents loading thousands of repos for org accounts
+
+        Returns:
+            List of GitHubRepoInfo objects (up to max_repos)
+        """
+        gh = Github(token, per_page=100)  # Use max per_page for fewer API calls
         repos = []
 
         try:
@@ -1897,6 +1934,12 @@ class GitIntegrationService:
                     url=repo.html_url,
                     private=repo.private
                 ))
+
+                # Stop if we hit the limit
+                if len(repos) >= max_repos:
+                    logger.warning(f"Reached repository limit of {max_repos}. Some repositories may not be shown.")
+                    break
+
         except GithubException as e:
             raise ValueError(f"Failed to list repositories: {e.data.get('message', str(e))}")
 

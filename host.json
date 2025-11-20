@@ -4,12 +4,10 @@
     "logging": {
         "logLevel": {
             "default": "Warning",
-            "Worker.LanguageWorkerChannel.LanguageWorkerChannel": "Error",
             "Worker": "Error",
             "Function": "Information",
             "Host": "Warning",
-            "Azure": "Error",
-            "azure.core.pipeline.policies.http_logging_policy": "WARNING"
+            "Azure": "Error"
         },
         "applicationInsights": {
             "samplingSettings": {
@@ -25,7 +23,8 @@
     "extensions": {
         "queues": {
             "maxDequeueCount": 3,
-            "visibilityTimeout": "00:05:00"
+            "visibilityTimeout": "00:05:00",
+            "maxPollingInterval": "00:00:02"
         }
     }
 }

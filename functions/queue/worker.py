@@ -173,6 +173,36 @@ async def handle_workflow_execution(message_data: dict) -> None:
         # Get workflow metadata for timeout
         registry = get_registry()
         metadata = registry.get_function(workflow_name)
+
+        # Reload the workflow module to ensure we have the latest code
+        # This handles multi-worker scenarios where file edits happen in other processes
+        if metadata and hasattr(metadata, 'source_file_path') and metadata.source_file_path:
+            try:
+                from pathlib import Path
+                from function_app import reload_single_module
+                reload_single_module(Path(metadata.source_file_path))
+                # Re-fetch metadata after reload
+                metadata = registry.get_function(workflow_name)
+                logger.debug(f"Reloaded workflow module before async execution: {workflow_name}")
+            except Exception as e:
+                # Reload failed (likely syntax error) - fail execution instead of using stale code
+                logger.error(f"Failed to reload workflow {workflow_name}: {e}", exc_info=True)
+
+                # Update execution status to failed
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.FAILED,
+                    result={
+                        "error": "WorkflowLoadError",
+                        "message": f"Failed to load workflow '{workflow_name}': {str(e)}"
+                    },
+                    duration_ms=duration_ms
+                )
+                return  # Exit without executing
+
         timeout_seconds = metadata.timeout_seconds if metadata else 1800  # Default 30 min
 
         # Build execution request for engine (reuse broadcaster initialized earlier)

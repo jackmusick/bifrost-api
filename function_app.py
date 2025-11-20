@@ -338,27 +338,56 @@ def reload_single_module(file_path: Path):
 
     Args:
         file_path: Path to the Python file to reload
-    """
-    try:
-        # Determine module name from file path
-        module_name = file_path.stem
 
-        # Remove from sys.modules if already imported
+    Raises:
+        Exception: If reload fails (e.g., SyntaxError in the file)
+    """
+    # Calculate correct module name using same logic as discover_workspace_modules
+    workspace_paths = get_workspace_paths()
+    module_name = None
+
+    for workspace_path in workspace_paths:
+        try:
+            relative_path = file_path.relative_to(workspace_path)
+            module_parts = list(relative_path.parts[:-1]) + [file_path.stem]
+            module_name = '.'.join(module_parts) if module_parts else file_path.stem
+            break
+        except ValueError:
+            continue
+
+    if not module_name:
+        module_name = file_path.stem  # Fallback to stem if not in any workspace
+
+    # Invalidate import caches to ensure fresh import (bypasses .pyc cache)
+    importlib.invalidate_caches()
+
+    # Remove from sys.modules if already imported
+    if module_name in sys.modules:
+        del sys.modules[module_name]
+        print(f"🔄 Removed {module_name} from sys.modules")
+
+    # Delete .pyc file if it exists (force recompilation from source)
+    pyc_file = file_path.parent / "__pycache__" / f"{file_path.stem}.cpython-{sys.version_info.major}{sys.version_info.minor}.pyc"
+    if pyc_file.exists():
+        pyc_file.unlink()
+        print(f"🗑️  Deleted cached bytecode: {pyc_file.name}")
+
+    # Re-import the module
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if not spec or not spec.loader:
+        raise ImportError(f"Could not create module spec for {file_path}")
+
+    try:
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        print(f"✓ Reloaded: {module_name} from {file_path}")
+    except Exception as e:
+        # Clean up corrupted module from sys.modules on failure
         if module_name in sys.modules:
             del sys.modules[module_name]
-            print(f"🔄 Removed {module_name} from sys.modules")
-
-        # Re-import the module
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-            print(f"✓ Reloaded: {module_name} from {file_path}")
-
-    except Exception as e:
-        print(
-            f"✗ Failed to reload {file_path.name}: {e}")
+        print(f"✗ Failed to reload {file_path.name}: {e}")
+        raise  # Re-raise to let caller handle the error
 
 
 # Discover all workspace modules on startup
@@ -384,43 +413,11 @@ try:
 except Exception as e:
     print(f"✗ Failed to initialize forms registry: {e}")
 
-# ==================== FILE WATCHER INITIALIZATION ====================
-# Start file watcher for hot-reload (both workflows and forms)
-print("=" * 60)
-print("FILE WATCHER INITIALIZATION")
-print("=" * 60)
-print("🔧 Attempting to start workspace file watcher...")
-try:
-    from shared.forms_registry import get_forms_registry
-    import asyncio
-
-    print("✓ File watcher module imported successfully")
-    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
-    print(f"📁 Workspace paths to watch: {workspace_paths}")
-
-    # Define form reload function
-    def reload_form_file(file_path: Path):
-        """Reload a single form file when it changes."""
-        try:
-            forms_registry = get_forms_registry()
-            asyncio.run(forms_registry.reload_form(file_path))
-        except Exception as e:
-            print(f"Failed to reload form {file_path.name}: {e}")
-
-    # Start watcher with both reload functions
-    from shared.file_watcher import _watcher
-    if _watcher is None:
-        from shared.file_watcher import WorkspaceWatcher
-        _watcher = WorkspaceWatcher(workspace_paths)
-        _watcher.set_reload_function(reload_single_module)
-        _watcher.set_form_reload_function(reload_form_file)
-        _watcher.start()
-
-    print("✓ File watcher initialization completed (workflows + forms)")
-except Exception as e:
-    print(f"❌ Failed to start workspace file watcher: {e}")
-    print(
-        "⚠️  Hot-reload will not work until this is resolved. Install watchdog: pip install watchdog>=3.0.0")
+# ==================== FILE WATCHER REMOVED ====================
+# File watcher removed - discovery is now explicit via API operations.
+# All file changes go through the API (editor, git sync) which trigger
+# immediate discovery/reload. Background watching is unreliable on Azure
+# Files SMB mounts and unnecessary when all operations are API-driven.
 
 # ==================== BLUEPRINT IMPORTS ====================
 # API Management Blueprints

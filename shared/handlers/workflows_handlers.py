@@ -63,6 +63,27 @@ async def execute_workflow_internal(
                 "message": f"Workflow '{workflow_name}' not found"
             }, 404
 
+        # Reload the workflow module to ensure we have the latest code
+        # This handles multi-worker scenarios where file edits happen in other processes
+        if workflow_metadata.source_file_path:
+            try:
+                from pathlib import Path
+                from function_app import reload_single_module
+                reload_single_module(Path(workflow_metadata.source_file_path))
+                # Re-fetch metadata after reload
+                reloaded_metadata = registry.get_workflow(workflow_name)
+                if reloaded_metadata:
+                    workflow_metadata = reloaded_metadata
+                logger.debug(f"Reloaded workflow module before execution: {workflow_name}")
+            except Exception as e:
+                # Reload failed (likely syntax error) - fail execution instead of using stale code
+                logger.error(f"Failed to reload workflow {workflow_name}: {e}", exc_info=True)
+                error_response = ErrorResponse(
+                    error="WorkflowLoadError",
+                    message=f"Failed to load workflow '{workflow_name}': {str(e)}"
+                )
+                return error_response.model_dump(), 500
+
         # Check if async execution required
         if workflow_metadata.execution_mode == "async":
             from shared.async_executor import enqueue_workflow_execution
