@@ -12,15 +12,13 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dulwich import porcelain
 from dulwich.repo import Repo as DulwichRepo
 from dulwich.errors import NotGitRepository
-from dulwich.porcelain import DivergedBranches
+from dulwich.objects import Commit as DulwichCommit, Blob, Tree, ShaFile
 from github import Github, GithubException
-
-from typing import Any
 
 from shared.models import (
     FileChange,
@@ -180,6 +178,9 @@ class GitIntegrationService:
 
         # Normalize repo URL - accept both full URLs and owner/repo format
         repo_url = github_config.repo_url
+        if not repo_url:
+            return None
+
         if not repo_url.startswith(('https://github.com/', 'git@github.com:')):
             # Convert owner/repo format to HTTPS URL
             repo_url = f"https://github.com/{repo_url}"
@@ -212,8 +213,8 @@ class GitIntegrationService:
         config.set((b'remote', b'origin'), b'fetch', b'+refs/heads/*:refs/remotes/origin/*')
         config.write_to_path()
 
-        # Fetch from remote
-        porcelain.fetch(repo, remote_location=auth_url)
+        # Fetch from remote (use 'origin' so Dulwich updates refs/remotes/origin/* automatically)
+        porcelain.fetch(repo, remote_location='origin')
 
         # Checkout branch
         branch_ref = f'refs/heads/{branch}'.encode('utf-8')
@@ -265,6 +266,38 @@ class GitIntegrationService:
 
         return str(backup_dir)
 
+    def _get_pushed_commit_shas(self) -> set[bytes]:
+        """
+        Get commits that exist in remote tracking branch using Dulwich.
+
+        Returns:
+            Set of commit SHAs (as bytes) that exist on remote
+        """
+        try:
+            repo = self.get_repo()
+            current_branch = self.get_current_branch() or 'main'
+            remote_ref = f'refs/remotes/origin/{current_branch}'.encode('utf-8')
+
+            # If remote ref doesn't exist, no commits are pushed
+            if remote_ref not in repo.refs:
+                logger.warning(f"Remote ref {remote_ref.decode()} not found")
+                return set()
+
+            # Walk all commits reachable from remote ref
+            remote_commit = repo.refs[remote_ref]
+            walker = repo.get_walker(include=[remote_commit])
+
+            pushed_shas = set()
+            for entry in walker:
+                pushed_shas.add(entry.commit.id)
+
+            logger.info(f"Found {len(pushed_shas)} commits in remote tracking branch")
+            return pushed_shas
+
+        except Exception as e:
+            logger.warning(f"Failed to get pushed commit SHAs: {e}")
+            return set()
+
     async def fetch_from_remote(self, context: Any) -> None:
         """
         Fetch latest refs from remote without merging.
@@ -287,25 +320,13 @@ class GitIntegrationService:
 
         try:
             repo = self.get_repo()
-            result = porcelain.fetch(repo, remote_location=auth_url)
-            logger.info(f"Fetched latest refs from remote. Refs: {result.refs}")
-
-            # Update remote tracking branches manually
-            # porcelain.fetch() downloads objects but doesn't update remote refs
-            for remote_ref, sha in result.refs.items():
-                # Skip symbolic refs like HEAD
-                if remote_ref == b'HEAD':
-                    continue
-
-                # Map refs/heads/branch to refs/remotes/origin/branch
-                if remote_ref.startswith(b'refs/heads/'):
-                    branch_name = remote_ref[len(b'refs/heads/'):]
-                    local_remote_ref = b'refs/remotes/origin/' + branch_name
-                    repo.refs[local_remote_ref] = sha
-                    logger.info(f"Updated {local_remote_ref.decode()} to {sha.decode()}")
+            # Use 'origin' so Dulwich automatically updates refs/remotes/origin/*
+            _result = porcelain.fetch(repo, remote_location='origin')
+            logger.info(f"Fetched latest refs from remote. Refs: {_result.refs}")
 
         except Exception as e:
             logger.error(f"Failed to fetch from remote: {e}", exc_info=True)
+            raise
 
     async def get_commits_ahead_behind(self) -> tuple[int, int]:
         """
@@ -397,47 +418,52 @@ class GitIntegrationService:
             logger.warning(f"Failed to get current branch: {e}")
             return None
 
-    async def get_commit_history(self, limit: int = 20) -> list[CommitInfo]:
+    async def get_commit_history(self, limit: int = 20, offset: int = 0) -> dict:
         """
-        Get commit history for the current branch.
+        Get commit history for the current branch with pagination support.
 
         Args:
             limit: Maximum number of commits to return (default 20)
+            offset: Number of commits to skip (default 0)
 
         Returns:
-            List of CommitInfo objects with commit details
+            Dict with:
+                - commits: List of CommitInfo objects
+                - total: Total number of commits
+                - has_more: Whether there are more commits to load
         """
         if not self.is_git_repo():
-            return []
+            return {"commits": [], "total": 0, "has_more": False}
 
         try:
             repo = self.get_repo()
             current_branch = self.get_current_branch()
             if not current_branch:
-                return []
+                return {"commits": [], "total": 0, "has_more": False}
 
             # Get current HEAD commit
             head_ref = f'refs/heads/{current_branch}'.encode('utf-8')
             if head_ref not in repo.refs:
-                return []
+                return {"commits": [], "total": 0, "has_more": False}
 
             head_commit_sha = repo.refs[head_ref]
 
-            # Get remote tracking ref to determine which commits are pushed
-            remote_ref = f'refs/remotes/origin/{current_branch}'.encode('utf-8')
-            remote_commit_sha = repo.refs[remote_ref] if remote_ref in repo.refs else None
+            # Get pushed commit SHAs from remote tracking branch using Dulwich
+            pushed_shas = self._get_pushed_commit_shas()
 
-            # Get all commits reachable from remote (these are pushed)
-            pushed_shas = set()
-            if remote_commit_sha:
-                walker = repo.get_walker(include=[remote_commit_sha])
-                pushed_shas = {entry.commit.id for entry in walker}
+            # First, get total count by walking all commits
+            total_walker = repo.get_walker(include=[head_commit_sha])
+            total_count = sum(1 for _ in total_walker)
 
-            # Walk the commit history
+            # Walk the commit history with offset + limit
             commits = []
-            walker = repo.get_walker(include=[head_commit_sha], max_entries=limit)
+            walker = repo.get_walker(include=[head_commit_sha], max_entries=offset + limit)
 
-            for entry in walker:
+            for i, entry in enumerate(walker):
+                # Skip first 'offset' commits
+                if i < offset:
+                    continue
+
                 commit = entry.commit
                 commit_sha = commit.id
 
@@ -471,11 +497,17 @@ class GitIntegrationService:
                     is_pushed=is_pushed
                 ))
 
-            return commits
+            has_more = (offset + limit) < total_count
+
+            return {
+                "commits": commits,
+                "total": total_count,
+                "has_more": has_more
+            }
 
         except Exception as e:
             logger.error(f"Failed to get commit history: {e}", exc_info=True)
-            return []
+            return {"commits": [], "total": 0, "has_more": False}
 
     async def get_changed_files(self) -> list[FileChange]:
         """
@@ -486,6 +518,10 @@ class GitIntegrationService:
         """
         repo = self.get_repo()
         changes = []
+
+        # Get conflicted files to exclude them from changes
+        conflicts = await self.get_conflicts()
+        conflicted_paths = {c.file_path for c in conflicts}
 
         # Get status using Dulwich
         status = porcelain.status(repo)
@@ -539,60 +575,58 @@ class GitIntegrationService:
                 deletions=None
             ))
 
-        return changes
+        # Filter out conflicted files - they should only appear in conflicts array
+        return [c for c in changes if c.path not in conflicted_paths]
 
     async def get_conflicts(self) -> list[ConflictInfo]:
         """
         Get list of files with merge conflicts by checking Git index.
 
         Returns:
-            List of ConflictInfo objects (minimal - just file paths from index)
+            List of ConflictInfo objects with ours/theirs/base content
         """
         repo = self.get_repo()
         conflicts = []
 
         try:
-            # Load saved conflicts with full content
-            from pathlib import Path
-            import json
-            conflicts_file = Path(repo.controldir()) / 'BIFROST_CONFLICTS'
-            saved_conflicts_map = {}
+            from dulwich.index import ConflictedIndexEntry
 
-            if conflicts_file.exists():
-                try:
-                    saved_conflicts = json.loads(conflicts_file.read_text())
-                    saved_conflicts_map = {c['file_path']: c for c in saved_conflicts}
-                except Exception as e:
-                    logger.warning(f"Failed to load saved conflicts: {e}")
-
-            # Check index for unmerged entries (stage > 0)
+            # Check index for conflicted entries
             index = repo.open_index()
-            path_entries = {}
+
             for path_bytes, entry in index.items():
-                path_str = path_bytes.decode('utf-8', errors='replace')
-                stage = (entry.flags >> 12) & 3  # type: ignore[attr-defined]
+                # Check if this is a conflicted entry
+                if isinstance(entry, ConflictedIndexEntry):
+                    path_str = path_bytes.decode('utf-8', errors='replace')
 
-                if stage > 0:
-                    if path_str not in path_entries:
-                        path_entries[path_str] = []
-                    path_entries[path_str].append(stage)
+                    # Get content from the three versions
+                    base_content = None
+                    if entry.ancestor:
+                        base_blob_obj = repo.object_store[entry.ancestor.sha]
+                        if isinstance(base_blob_obj, Blob):
+                            base_content = base_blob_obj.data.decode('utf-8', errors='replace')
 
-            # Build conflicts list
-            for path_str, stages in path_entries.items():
-                if len(stages) > 1:  # Multiple stages = conflict
-                    # Use saved conflict data if available, otherwise minimal info
-                    if path_str in saved_conflicts_map:
-                        conflicts.append(saved_conflicts_map[path_str])
-                    else:
-                        conflicts.append({
-                            "file_path": path_str,
-                            "current_content": "",
-                            "incoming_content": "",
-                            "base_content": None,
-                        })
+                    ours_content = ""
+                    if entry.this:
+                        ours_blob_obj = repo.object_store[entry.this.sha]
+                        if isinstance(ours_blob_obj, Blob):
+                            ours_content = ours_blob_obj.data.decode('utf-8', errors='replace')
+
+                    theirs_content = ""
+                    if entry.other:
+                        theirs_blob_obj = repo.object_store[entry.other.sha]
+                        if isinstance(theirs_blob_obj, Blob):
+                            theirs_content = theirs_blob_obj.data.decode('utf-8', errors='replace')
+
+                    conflicts.append(ConflictInfo(
+                        file_path=path_str,
+                        current_content=ours_content,  # "ours" version
+                        incoming_content=theirs_content,  # "theirs" version
+                        base_content=base_content,  # common ancestor
+                    ))
 
         except Exception as e:
-            logger.warning(f"Failed to check for conflicts: {e}")
+            logger.warning(f"Failed to check for conflicts: {e}", exc_info=True)
             return []
 
         return conflicts
@@ -613,20 +647,20 @@ class GitIntegrationService:
             # Stage all changes
             porcelain.add(repo, paths=[b'.'])
 
+            # Count files to be committed (before commit clears staging area)
+            status = porcelain.status(repo)
+            files_committed = (
+                len(status.staged.get('add', [])) +
+                len(status.staged.get('modify', [])) +
+                len(status.staged.get('delete', []))
+            )
+
             # Commit
             commit_sha = porcelain.commit(
                 repo,
                 message=message.encode('utf-8'),
                 author=b'Bifrost <noreply@bifrost.io>',
                 committer=b'Bifrost <noreply@bifrost.io>'
-            )
-
-            # Count committed files
-            status = porcelain.status(repo)
-            files_committed = (
-                len(status.staged.get('add', [])) +
-                len(status.staged.get('modify', [])) +
-                len(status.staged.get('delete', []))
             )
 
             # If we were in a merge state, clean it up now that merge is complete
@@ -658,64 +692,206 @@ class GitIntegrationService:
                 "error": f"Failed to commit changes: {str(e)}"
             }
 
-    async def push(self, context: Any) -> dict:
+    async def push(self, context: Any, connection_id: str | None = None) -> dict:
         """
-        Push local commits to remote without committing.
+        Push local commits to remote using GitHub API.
 
         Args:
             context: Organization context for retrieving GitHub configuration
+            connection_id: Optional WebPubSub connection ID for streaming logs
 
         Returns:
             dict with success status
         """
         repo = self.get_repo()
 
+        # Initialize WebPubSub broadcaster for streaming logs
+        from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+        broadcaster = WebPubSubBroadcaster()
+
+        async def send_log(message: str, level: str = "info"):
+            """Send log message to WebPubSub terminal"""
+            if connection_id and broadcaster.enabled and broadcaster.client:
+                try:
+                    broadcaster.client.send_to_connection(
+                        connection_id=connection_id,
+                        message={
+                            "type": "log",
+                            "level": level,
+                            "message": message
+                        },
+                        content_type="application/json"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send log to WebPubSub: {e}")
+
         try:
-            auth_url = await self._get_authenticated_remote_url(context)
-            if not auth_url:
+            # Check for uncommitted changes before pushing
+            await send_log("Checking for uncommitted changes...")
+            status = porcelain.status(repo)
+            has_changes = (
+                status.staged.get('add') or
+                status.staged.get('modify') or
+                status.staged.get('delete') or
+                status.unstaged or
+                status.untracked
+            )
+
+            if has_changes:
+                error_msg = "Cannot push: you have uncommitted changes. Please commit your changes first, then push."
+                await send_log(error_msg, "error")
+                return {
+                    "success": False,
+                    "error": error_msg
+                }
+
+            # Get GitHub configuration
+            config_repo = ConfigRepository(context)
+            github_config = await config_repo.get_github_config()
+
+            if not github_config or not github_config.secret_ref or not github_config.repo_url:
                 raise Exception("No GitHub configuration found")
+
+            # Get token from Key Vault
+            async with KeyVaultClient() as kv_client:
+                token = await kv_client.get_secret(github_config.secret_ref)
+
+            # Parse repo owner/name from repo_url
+            repo_url = github_config.repo_url
+            if repo_url.startswith('https://github.com/'):
+                repo_full_name = repo_url.replace('https://github.com/', '').replace('.git', '')
+            elif repo_url.startswith('git@github.com:'):
+                repo_full_name = repo_url.replace('git@github.com:', '').replace('.git', '')
+            else:
+                # Assume it's already in owner/repo format
+                repo_full_name = repo_url
+
+            await send_log(f"Pushing to GitHub repository: {repo_full_name}")
 
             # Get current branch
             current_branch = self.get_current_branch() or 'main'
-            refspec = f'refs/heads/{current_branch}:refs/heads/{current_branch}'.encode('utf-8')
 
-            porcelain.push(repo, remote_location=auth_url, refspecs=refspec)
+            # Get authenticated remote URL
+            auth_url = f"https://{token}@github.com/{repo_full_name}.git"
 
-            # Update remote tracking ref to match local after successful push
+            # Get local and remote commit SHAs for counting commits to push
             local_ref = f'refs/heads/{current_branch}'.encode('utf-8')
             remote_ref = f'refs/remotes/origin/{current_branch}'.encode('utf-8')
-            local_commit = repo.refs[local_ref]
-            repo.refs.set_if_equals(remote_ref, None, local_commit) if remote_ref not in repo.refs else repo.refs.set_if_equals(remote_ref, repo.refs[remote_ref], local_commit)
-            logger.info(f"Updated {remote_ref.decode('utf-8')} to {local_commit.decode('utf-8')}")
 
-            return {
-                "success": True,
-                "error": None
-            }
+            local_commit_sha = repo.refs[local_ref]
+            local_commit_sha_str = local_commit_sha.decode('utf-8')
 
-        except DivergedBranches as e:
-            logger.warning(f"Branches have diverged: {e}")
-            return {
-                "success": False,
-                "error": "Cannot push: your local branch has diverged from the remote. Pull the latest changes first, then try pushing again."
-            }
+            try:
+                remote_commit_sha = repo.refs[remote_ref]
+                remote_commit_sha_str = remote_commit_sha.decode('utf-8')
+                await send_log(f"Local: {local_commit_sha_str[:8]}, Remote: {remote_commit_sha_str[:8]}")
+            except KeyError:
+                await send_log("No remote tracking ref found, will create new branch")
+                remote_commit_sha = None
+                remote_commit_sha_str = None
+
+            # If already up to date, nothing to push
+            if remote_commit_sha and local_commit_sha == remote_commit_sha:
+                await send_log("✓ Already up to date, nothing to push")
+                return {
+                    "success": True,
+                    "commits_pushed": 0,
+                    "error": None
+                }
+
+            # Count commits to push
+            commits_to_push = []
+            if remote_commit_sha:
+                # Walk from local to remote to count commits
+                walker = repo.get_walker(include=[local_commit_sha], exclude=[remote_commit_sha])
+                commits_to_push = list(walker)
+            else:
+                # No remote ref, count all commits from HEAD
+                walker = repo.get_walker(include=[local_commit_sha])
+                commits_to_push = list(walker)
+
+            commits_count = len(commits_to_push)
+            await send_log(f"Pushing {commits_count} commit(s) to GitHub...")
+
+            # Push using Dulwich porcelain.push() which preserves commit SHAs
+            logger.info(f"Pushing to {auth_url}")
+            await send_log("Uploading objects to GitHub...")
+
+            try:
+                # Use porcelain.push to push the current branch
+                # This preserves local commit SHAs instead of recreating them
+                def progress_callback(msg):
+                    """Callback for push progress"""
+                    logger.info(f"Push progress: {msg.decode('utf-8') if isinstance(msg, bytes) else msg}")
+
+                push_result = porcelain.push(
+                    repo.path,
+                    remote_location=auth_url,
+                    refspecs=[f"refs/heads/{current_branch}:refs/heads/{current_branch}".encode('utf-8')],
+                    progress=progress_callback
+                )
+
+                logger.info(f"Push result: {push_result}")
+                await send_log(f"Pushed {commits_count} commit(s) to GitHub")
+
+                # Update local remote tracking ref to match local branch
+                # This ensures the local tracking ref reflects what's actually on GitHub
+                repo.refs[remote_ref] = local_commit_sha
+                await send_log(f"Updated local tracking ref to {local_commit_sha_str[:8]}")
+
+                return {
+                    "success": True,
+                    "commits_pushed": commits_count,
+                    "error": None
+                }
+
+            except Exception as push_error:
+                logger.error(f"Push failed: {str(push_error)}")
+                raise
+
         except Exception as e:
-            logger.error(f"Failed to push: {e}", exc_info=True)
+            error_msg = f"Failed to push: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            await send_log(error_msg, "error")
             return {
                 "success": False,
-                "error": f"Failed to push: {str(e)}"
+                "error": error_msg
             }
 
-    async def pull(self, context: Any) -> dict:
+    async def pull(self, context: Any, connection_id: str | None = None) -> dict:
         """
         Pull changes from GitHub remote.
 
         Uses porcelain.merge_tree() to detect conflicts before attempting merge.
 
+        Args:
+            context: Organization context for retrieving GitHub configuration
+            connection_id: Optional WebPubSub connection ID for streaming logs
+
         Returns:
             dict with updated_files, conflicts, success status
         """
         repo = self.get_repo()
+
+        # Initialize WebPubSub broadcaster for streaming logs
+        from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+        broadcaster = WebPubSubBroadcaster()
+
+        async def send_log(message: str, level: str = "info"):
+            """Send log message to WebPubSub terminal"""
+            if connection_id and broadcaster.enabled and broadcaster.client:
+                try:
+                    broadcaster.client.send_to_connection(
+                        connection_id=connection_id,
+                        message={
+                            "type": "log",
+                            "level": level,
+                            "message": message
+                        },
+                        content_type="application/json"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send log to WebPubSub: {e}")
 
         # Check if we're already in a merge state
         from pathlib import Path
@@ -742,22 +918,17 @@ class GitIntegrationService:
                 logger.info("Cleaned up merge state, continuing with pull")
 
         try:
+            await send_log("Starting pull from GitHub...")
+
             # Get authenticated URL
             auth_url = await self._get_authenticated_remote_url(context)
             if not auth_url:
                 raise Exception("No GitHub configuration found")
 
-            # Fetch changes with authentication (this will update remote refs)
-            result = porcelain.fetch(repo, remote_location=auth_url)
-
-            # Update remote tracking branches manually
-            for remote_ref, sha in result.refs.items():
-                if remote_ref == b'HEAD':
-                    continue
-                if remote_ref.startswith(b'refs/heads/'):
-                    branch_name = remote_ref[len(b'refs/heads/'):]
-                    local_remote_ref = b'refs/remotes/origin/' + branch_name
-                    repo.refs[local_remote_ref] = sha
+            await send_log("Fetching changes from remote...")
+            # Use 'origin' so Dulwich automatically updates refs/remotes/origin/*
+            _result = porcelain.fetch(repo, remote_location='origin')
+            await send_log("Fetch complete")
 
             # Get current branch
             current_branch = self.get_current_branch() or 'main'
@@ -773,6 +944,7 @@ class GitIntegrationService:
 
             # If already up to date, return success
             if local_commit == remote_commit:
+                await send_log("Already up to date", "success")
                 return {
                     "success": True,
                     "updated_files": [],
@@ -780,18 +952,84 @@ class GitIntegrationService:
                     "error": None
                 }
 
+            # Find merge base (common ancestor)
+            merge_bases = porcelain.merge_base(repo, committishes=[local_commit, remote_commit])
+            base_commit_raw = repo[merge_bases[0]] if merge_bases else None
+            base_commit = base_commit_raw if isinstance(base_commit_raw, DulwichCommit) else None
+
+            # Check if local is ahead of remote (remote is ancestor of local)
+            # If so, there's nothing to pull - user just needs to push
+            if base_commit and base_commit.id == remote_commit:
+                # Remote is behind local - nothing to pull
+                await send_log("Local is ahead of remote, nothing to pull")
+                return {
+                    "success": True,
+                    "updated_files": [],
+                    "conflicts": [],
+                    "error": None
+                }
+
+            await send_log("Checking for uncommitted changes...")
+
+            # First, check for uncommitted changes that would conflict with incoming changes
+            from dulwich.porcelain import status as git_status
+            from dulwich.diff_tree import tree_changes
+
+            git_status_result = git_status(repo)
+            uncommitted_files = set()
+
+            # Collect all uncommitted files (staged and unstaged)
+            for file_list in [git_status_result.staged.get('add', []),
+                             git_status_result.staged.get('modify', []),
+                             git_status_result.staged.get('delete', [])]:
+                uncommitted_files.update(f.decode('utf-8') if isinstance(f, bytes) else f for f in file_list)
+            uncommitted_files.update(f.decode('utf-8') if isinstance(f, bytes) else f for f in git_status_result.unstaged)
+
+            logger.info(f"Found {len(uncommitted_files)} uncommitted file(s): {uncommitted_files}")
+
+            # Get files that will be changed by the pull (compare local HEAD with remote)
+            local_commit_obj_raw = repo[local_commit]
+            remote_commit_obj_raw = repo[remote_commit]
+
+            # Cast to Commit type for type safety
+            if not isinstance(local_commit_obj_raw, DulwichCommit) or not isinstance(remote_commit_obj_raw, DulwichCommit):
+                raise Exception("Failed to retrieve commit objects")
+
+            local_commit_obj = local_commit_obj_raw
+            remote_commit_obj = remote_commit_obj_raw
+
+            remote_changed_files = set()
+            for change in tree_changes(repo.object_store, local_commit_obj.tree, remote_commit_obj.tree):
+                if change.type != 'unchanged':
+                    path_bytes = change.new.path if change.new and change.new.path else (change.old.path if change.old else None)
+                    if path_bytes:
+                        path = path_bytes.decode('utf-8')
+                        remote_changed_files.add(path)
+
+            logger.info(f"Remote will change {len(remote_changed_files)} file(s): {remote_changed_files}")
+
+            # Find files with uncommitted changes that remote also wants to change
+            uncommitted_conflicts = uncommitted_files & remote_changed_files
+
+            if uncommitted_conflicts:
+                logger.warning(f"Uncommitted changes conflict with incoming changes in {len(uncommitted_conflicts)} file(s): {uncommitted_conflicts}")
+
+                conflict_list = ", ".join(sorted(uncommitted_conflicts))
+                error_msg = f"Your local changes to the following files would be overwritten by pull: {conflict_list}. Please commit your changes or stash them before pulling."
+                await send_log(f"✗ {error_msg}", "error")
+
+                return {
+                    "success": False,
+                    "updated_files": [],
+                    "conflicts": [],
+                    "error": error_msg
+                }
+
+            await send_log("Checking for merge conflicts...")
             # Check for conflicts by comparing trees (don't write markers)
             from dulwich.merge import three_way_merge
 
             try:
-                # Get commit objects
-                local_commit_obj = repo[local_commit]
-                remote_commit_obj = repo[remote_commit]
-
-                # Find merge base
-                merge_bases = porcelain.merge_base(repo, committishes=[local_commit, remote_commit])
-                base_commit = repo[merge_bases[0]] if merge_bases else None
-
                 logger.info(f"Checking for conflicts: base={base_commit.id.decode('utf-8')[:8] if base_commit else 'None'}, ours={local_commit.decode('utf-8')[:8]}, theirs={remote_commit.decode('utf-8')[:8]}")
 
                 # Perform tree-level merge to detect conflicted paths (but don't write markers)
@@ -807,16 +1045,21 @@ class GitIntegrationService:
                 # For each conflicted path, collect local and remote content without writing markers
                 conflicts_list = []
 
-                def get_object_for_path(commit_obj, path_b):
+                def get_object_for_path(commit_obj: DulwichCommit | None, path_b: bytes | None) -> ShaFile | None:
                     """Get tree or blob object for a path"""
                     if not commit_obj:
                         return None
-                    tree_obj = repo[commit_obj.tree]
+                    tree_obj_raw = repo[commit_obj.tree]
+                    if not isinstance(tree_obj_raw, (Tree, Blob)):
+                        return None
+                    tree_obj: ShaFile = tree_obj_raw
                     if not path_b:  # Root
                         return tree_obj
                     parts = path_b.split(b'/')
                     for part in parts:
-                        mode, sha = tree_obj[part]
+                        if not hasattr(tree_obj, '__getitem__'):
+                            return None
+                        mode, sha = tree_obj[part]  # type: ignore
                         obj = repo[sha]
                         if hasattr(obj, 'items'):  # It's a tree
                             tree_obj = obj
@@ -917,6 +1160,7 @@ class GitIntegrationService:
 
                 # If we have conflicts, write merge state to Git and return
                 if conflicts_list:
+                    await send_log(f"⚠️ Found {len(conflicts_list)} conflicting file(s)", "warning")
                     logger.warning(f"Pull detected {len(conflicts_list)} conflict(s) in files: {[c['file_path'] for c in conflicts_list]}")
 
                     # Write MERGE_HEAD to mark that we're in a merge state
@@ -932,61 +1176,107 @@ class GitIntegrationService:
                         conflict_path_b = conflict_path_str.encode('utf-8')
 
                         # Get the three versions from the trees
-                        def get_blob_from_tree(tree_obj, path_b):
+                        def get_blob_from_tree(tree_obj: ShaFile | None, path_b: bytes) -> Blob | None:
                             if not tree_obj:
                                 return None
                             parts = path_b.split(b'/')
                             current_tree = tree_obj
                             for part in parts[:-1]:
                                 try:
-                                    mode, sha = current_tree[part]
+                                    if not hasattr(current_tree, '__getitem__'):
+                                        return None
+                                    mode, sha = current_tree[part]  # type: ignore
                                     current_tree = repo[sha]
                                 except (KeyError, TypeError):
                                     return None
                             try:
-                                mode, sha = current_tree[parts[-1]]
-                                return repo[sha]
+                                if not hasattr(current_tree, '__getitem__'):
+                                    return None
+                                mode, sha = current_tree[parts[-1]]  # type: ignore
+                                blob_obj = repo[sha]
+                                return blob_obj if isinstance(blob_obj, Blob) else None
                             except (KeyError, TypeError):
                                 return None
 
-                        base_blob = get_blob_from_tree(repo[base_commit.tree] if base_commit else None, conflict_path_b)
-                        ours_blob = get_blob_from_tree(repo[local_commit_obj.tree], conflict_path_b)
-                        theirs_blob = get_blob_from_tree(repo[remote_commit_obj.tree], conflict_path_b)
+                        base_tree_obj = repo[base_commit.tree] if base_commit else None
+                        ours_tree_obj = repo[local_commit_obj.tree]
+                        theirs_tree_obj = repo[remote_commit_obj.tree]
+
+                        base_blob = get_blob_from_tree(base_tree_obj, conflict_path_b)
+                        ours_blob = get_blob_from_tree(ours_tree_obj, conflict_path_b)
+                        theirs_blob = get_blob_from_tree(theirs_tree_obj, conflict_path_b)
 
                         # Remove stage 0 entry if it exists
                         if conflict_path_b in index:
                             del index[conflict_path_b]
 
-                        # Add stage 1 (base), stage 2 (ours), stage 3 (theirs)
-                        from dulwich.index import IndexEntry
+                        # Create ConflictedIndexEntry with all three versions
+                        from dulwich.index import IndexEntry, ConflictedIndexEntry
                         import time
                         import stat
 
-                        for stage, blob in [(1, base_blob), (2, ours_blob), (3, theirs_blob)]:
-                            if blob:
-                                # Create index entry with stage number in flags
-                                entry = IndexEntry(
-                                    ctime=(int(time.time()), 0),
-                                    mtime=(int(time.time()), 0),
-                                    dev=0,
-                                    ino=0,
-                                    mode=stat.S_IFREG | 0o644,
-                                    uid=0,
-                                    gid=0,
-                                    size=len(blob.data),
-                                    sha=blob.id,
-                                    flags=(stage << 12) | len(conflict_path_b),  # Stage in high bits
-                                )
-                                index[conflict_path_b] = entry
+                        def make_index_entry(blob: Blob | None) -> IndexEntry | None:
+                            """Create an IndexEntry for a blob."""
+                            if not blob or not isinstance(blob, Blob):
+                                return None
+                            return IndexEntry(
+                                ctime=(int(time.time()), 0),
+                                mtime=(int(time.time()), 0),
+                                dev=0,
+                                ino=0,
+                                mode=stat.S_IFREG | 0o644,
+                                uid=0,
+                                gid=0,
+                                size=len(blob.data),
+                                sha=blob.id,
+                                flags=len(conflict_path_b),  # No stage in flags for ConflictedIndexEntry
+                            )
+
+                        # Store as ConflictedIndexEntry so get_conflicts() can find it
+                        conflicted_entry = ConflictedIndexEntry(
+                            ancestor=make_index_entry(base_blob),  # stage 1
+                            this=make_index_entry(ours_blob),      # stage 2
+                            other=make_index_entry(theirs_blob)    # stage 3
+                        )
+                        index[conflict_path_b] = conflicted_entry
 
                     index.write()
                     logger.info(f"Wrote {len(conflicts_list)} conflicted files to index with stages")
 
-                    # Save conflicts to file for UI display (full content)
-                    import json
-                    conflicts_file = Path(repo.controldir()) / 'BIFROST_CONFLICTS'
-                    conflicts_file.write_text(json.dumps(conflicts_list))
-                    logger.info(f"Saved {len(conflicts_list)} conflicts for UI")
+                    # Write conflict markers to working directory files
+                    from dulwich.merge import merge_blobs
+                    files_with_markers = 0
+
+                    # Get tree objects (need them for the loop below)
+                    base_tree_for_markers = repo[base_commit.tree] if base_commit else None
+                    ours_tree_for_markers = repo[local_commit_obj.tree]
+                    theirs_tree_for_markers = repo[remote_commit_obj.tree]
+
+                    for conflict_path_str in [c['file_path'] for c in conflicts_list]:
+                        conflict_path_b = conflict_path_str.encode('utf-8')
+
+                        # Get the three blob versions
+                        base_blob = get_blob_from_tree(base_tree_for_markers, conflict_path_b)
+                        ours_blob = get_blob_from_tree(ours_tree_for_markers, conflict_path_b)
+                        theirs_blob = get_blob_from_tree(theirs_tree_for_markers, conflict_path_b)
+
+                        # Use merge_blobs to create content with conflict markers
+                        merged_content, had_conflicts = merge_blobs(
+                            base_blob,
+                            ours_blob,
+                            theirs_blob,
+                            path=conflict_path_b
+                        )
+
+                        # Write the merged content (with conflict markers) to working directory
+                        workspace_path = Path(repo.path)
+                        file_path = workspace_path / conflict_path_str
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        file_path.write_bytes(merged_content)
+                        files_with_markers += 1
+                        logger.info(f"Wrote conflict markers to {conflict_path_str}")
+
+                    logger.info(f"Wrote conflict markers to {files_with_markers} file(s) in working directory")
 
                     return {
                         "success": False,
@@ -995,13 +1285,105 @@ class GitIntegrationService:
                         "error": f"Merge conflicts in {len(conflicts_list)} file(s)"
                     }
 
-                # Merge succeeded without conflicts
-                return {
-                    "success": True,
-                    "updated_files": [],  # TODO: Track which files were merged
-                    "conflicts": [],
-                    "error": None
-                }
+                # Merge succeeded without conflicts - now actually perform the merge using Dulwich
+                await send_log("No conflicts detected, applying changes...")
+                logger.info("No conflicts detected, performing merge using Dulwich...")
+
+                try:
+                    # Check if this is a fast-forward merge (base == local)
+                    if base_commit and base_commit.id == local_commit:
+                        # Fast-forward: just update refs and working tree
+                        logger.info("Fast-forward merge: updating refs")
+                        await send_log("Fast-forwarding to remote commit...")
+
+                        # Update local branch ref to point to remote commit
+                        repo.refs[local_ref] = remote_commit
+
+                        # Update working tree to match remote commit
+                        # Use reset_index to update the working directory
+                        from dulwich.index import build_index_from_tree
+                        index_path = os.path.join(repo.controldir(), 'index')
+                        remote_commit_obj_for_ff = repo[remote_commit]
+                        if not isinstance(remote_commit_obj_for_ff, DulwichCommit):
+                            raise Exception("Failed to retrieve remote commit object")
+                        remote_tree = remote_commit_obj_for_ff.tree
+
+                        with open(index_path, 'wb'):  # noqa: F841
+                            build_index_from_tree(repo.path, index_path, repo.object_store, remote_tree)
+
+                        # Get updated files by comparing trees
+                        from dulwich.diff_tree import tree_changes
+                        local_commit_obj_for_ff = repo[local_commit]
+                        if not isinstance(local_commit_obj_for_ff, DulwichCommit):
+                            raise Exception("Failed to retrieve local commit object")
+                        old_tree = local_commit_obj_for_ff.tree
+                        new_tree = remote_tree
+
+                        updated_files = []
+                        for change in tree_changes(repo.object_store, old_tree, new_tree):
+                            if change.type != 'unchanged':
+                                path_bytes = change.new.path if change.new and change.new.path else (change.old.path if change.old else None)
+                                if path_bytes:
+                                    updated_files.append(path_bytes.decode('utf-8'))
+
+                        logger.info(f"Fast-forward completed: {len(updated_files)} file(s) updated")
+                        await send_log(f"✓ Pull successful! Fast-forwarded {len(updated_files)} file(s)", "success")
+
+                    else:
+                        # True merge: stage the merged tree and create MERGE_HEAD state
+                        # This allows the user to review changes and commit manually (GitHub Desktop-style)
+                        logger.info("Staging merge with Dulwich")
+                        await send_log("Staging merged changes...")
+
+                        # Stage the merged tree in the index using build_index_from_tree
+                        # This updates both the index and working tree
+                        from dulwich.index import build_index_from_tree
+                        index_path = os.path.join(repo.controldir(), 'index')
+
+                        with open(index_path, 'wb'):  # noqa: F841
+                            build_index_from_tree(repo.path, index_path, repo.object_store, merged_tree.id)
+
+                        logger.info("Staged merged tree to index and updated working tree")
+
+                        # Write MERGE_HEAD to mark merge in progress
+                        from pathlib import Path
+                        merge_head_path = Path(repo.controldir()) / 'MERGE_HEAD'
+                        merge_head_path.write_text(remote_commit.decode('utf-8') + '\n')
+                        logger.info(f"Wrote MERGE_HEAD: {remote_commit.decode('utf-8')[:8]}")
+
+                        # Calculate which files changed in the merge
+                        # We want the union of (local→merged) and (remote→merged) changes
+                        from dulwich.diff_tree import tree_changes
+
+                        local_changes = set()
+                        for change in tree_changes(repo.object_store, local_commit_obj.tree, merged_tree.id):
+                            if change.type != 'unchanged':
+                                path_bytes = change.new.path if change.new and change.new.path else (change.old.path if change.old else None)
+                                if path_bytes:
+                                    local_changes.add(path_bytes.decode('utf-8'))
+
+                        remote_changes = set()
+                        for change in tree_changes(repo.object_store, remote_commit_obj.tree, merged_tree.id):
+                            if change.type != 'unchanged':
+                                path_bytes = change.new.path if change.new and change.new.path else (change.old.path if change.old else None)
+                                if path_bytes:
+                                    remote_changes.add(path_bytes.decode('utf-8'))
+
+                        updated_files = list(local_changes | remote_changes)
+
+                        logger.info(f"Merge staged successfully, {len(updated_files)} file(s) ready to commit")
+                        await send_log(f"✓ Merge prepared! {len(updated_files)} file(s) staged. Review and commit to complete the merge.", "success")
+
+                    return {
+                        "success": True,
+                        "updated_files": updated_files,
+                        "conflicts": [],
+                        "error": None
+                    }
+
+                except Exception as e:
+                    logger.error(f"Merge execution failed: {str(e)}")
+                    raise
 
             except Exception as merge_error:
                 # Unexpected merge error
@@ -1078,8 +1460,11 @@ class GitIntegrationService:
                     "error": None
                 }
 
-            # 1. Fetch from remote to update tracking refs
-            await self.fetch_from_remote(context)
+            # 1. Fetch from remote to update tracking refs (Dulwich handles this automatically now)
+            try:
+                await self.fetch_from_remote(context)
+            except Exception as e:
+                logger.warning(f"Failed to fetch from remote during refresh: {e}")
 
             # 2. Get current branch
             current_branch = self.get_current_branch()
@@ -1097,8 +1482,8 @@ class GitIntegrationService:
             # 5. Get ahead/behind counts
             ahead, behind = await self.get_commits_ahead_behind()
 
-            # 6. Get commit history
-            commit_history = await self.get_commit_history(limit=20)
+            # 6. Get commit history (pass context for accurate pushed status)
+            history_result = await self.get_commit_history(limit=20)
 
             return {
                 "success": True,
@@ -1110,7 +1495,7 @@ class GitIntegrationService:
                 "merging": merging,
                 "commits_ahead": ahead,
                 "commits_behind": behind,
-                "commit_history": commit_history,
+                "commit_history": history_result["commits"],
                 "last_synced": datetime.now(timezone.utc).isoformat(),
                 "error": None
             }
@@ -1143,10 +1528,6 @@ class GitIntegrationService:
         repo = self.get_repo()
 
         try:
-            # Fetch from remote first to ensure we have the latest refs
-            if context:
-                await self._fetch_from_remote(context)
-
             # Get current branch
             current_branch = self.get_current_branch() or 'main'
             local_ref = f'refs/heads/{current_branch}'.encode('utf-8')
@@ -1184,8 +1565,11 @@ class GitIntegrationService:
                 repo.refs[local_ref] = remote_commit
 
                 # Hard reset working directory to match (need tree ID, not commit ID)
-                remote_commit_obj = repo[remote_commit]
-                repo.reset_index(remote_commit_obj.tree)
+                remote_commit_obj_raw = repo[remote_commit]
+                if isinstance(remote_commit_obj_raw, DulwichCommit):
+                    repo.reset_index(remote_commit_obj_raw.tree)
+                else:
+                    raise Exception("Failed to retrieve remote commit object")
 
                 logger.info(f"Discarded {len(discarded_commits)} unpushed commit(s) on {current_branch}")
 
@@ -1220,21 +1604,21 @@ class GitIntegrationService:
         repo = self.get_repo()
 
         try:
-            # Fetch from remote first to ensure we have the latest refs
-            if context:
-                await self._fetch_from_remote(context)
             # Convert SHA to bytes if needed
             target_sha = commit_sha.encode('utf-8') if isinstance(commit_sha, str) else commit_sha
 
             # Verify the commit exists
             try:
-                target_commit = repo[target_sha]
-            except KeyError:
+                target_commit_raw = repo[target_sha]
+                if not isinstance(target_commit_raw, DulwichCommit):
+                    raise Exception("Retrieved object is not a commit")
+                target_commit = target_commit_raw
+            except (KeyError, Exception) as e:
                 return {
                     "success": False,
                     "discarded_commits": [],
                     "new_head": None,
-                    "error": f"Commit {commit_sha} not found in repository"
+                    "error": f"Commit {commit_sha} not found in repository: {str(e)}"
                 }
 
             # Get current branch
@@ -1271,8 +1655,11 @@ class GitIntegrationService:
             repo.refs[local_ref] = new_head
 
             # Hard reset working directory to match (need tree ID, not commit ID)
-            new_head_obj = repo[new_head]
-            repo.reset_index(new_head_obj.tree)
+            new_head_obj_raw = repo[new_head]
+            if isinstance(new_head_obj_raw, DulwichCommit):
+                repo.reset_index(new_head_obj_raw.tree)
+            else:
+                raise Exception("Failed to retrieve new HEAD commit object")
 
             logger.info(f"Discarded {len(discarded_commits)} commit(s) on {current_branch}, reset to {new_head.decode('utf-8') if isinstance(new_head, bytes) else new_head}")
 
@@ -1408,14 +1795,19 @@ class GitIntegrationService:
             # Reset index to HEAD (removes conflict stages)
             # This is equivalent to git reset --mixed HEAD
             index = repo.open_index()
-            head_tree = repo[repo.head()].tree
+            head_commit_raw = repo[repo.head()]
+            if not isinstance(head_commit_raw, DulwichCommit):
+                raise Exception("Failed to retrieve HEAD commit")
+            head_tree = head_commit_raw.tree
             index.clear()
 
             # Rebuild index from HEAD tree
-            for entry in repo.object_store.iter_tree_contents(head_tree):
-                index[entry.path] = entry.in_entry
+            # Using build_index_from_tree instead of manual iteration
+            from dulwich.index import build_index_from_tree
+            index_path = os.path.join(repo.controldir(), 'index')
+            with open(index_path, 'wb'):  # noqa: F841
+                build_index_from_tree(repo.path, index_path, repo.object_store, head_tree)
 
-            index.write()
             logger.info("Reset index to HEAD")
 
             return {

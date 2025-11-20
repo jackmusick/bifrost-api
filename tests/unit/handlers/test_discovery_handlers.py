@@ -121,22 +121,28 @@ class TestConvertRegistryProviderToModel:
 class TestGetDiscoveryMetadata:
     """Tests for get_discovery_metadata"""
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_empty_registry(self, mock_get_registry):
+    async def test_empty_registry(self, mock_get_registry, mock_get_forms_registry):
         """Test discovery with empty registry"""
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = []
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
 
-        result = get_discovery_metadata()
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
+
+        result = await get_discovery_metadata()
 
         assert isinstance(result, MetadataResponse)
         assert len(result.workflows) == 0
         assert len(result.dataProviders) == 0
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_single_workflow_and_provider(self, mock_get_registry):
+    async def test_single_workflow_and_provider(self, mock_get_registry, mock_get_forms_registry):
         """Test discovery with single workflow and provider"""
         # Create mock workflow with all required attributes
         mock_workflow = MagicMock()
@@ -170,7 +176,11 @@ class TestGetDiscoveryMetadata:
         mock_registry.get_all_data_providers.return_value = [mock_provider]
         mock_get_registry.return_value = mock_registry
 
-        result = get_discovery_metadata()
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
+
+        result = await get_discovery_metadata()
 
         assert isinstance(result, MetadataResponse)
         assert len(result.workflows) == 1
@@ -178,8 +188,9 @@ class TestGetDiscoveryMetadata:
         assert isinstance(result.workflows[0], WorkflowMetadata)
         assert isinstance(result.dataProviders[0], DataProviderMetadata)
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_multiple_workflows_and_providers(self, mock_get_registry):
+    async def test_multiple_workflows_and_providers(self, mock_get_registry, mock_get_forms_registry):
         """Test discovery with multiple workflows and providers"""
         # Create multiple workflow mocks with all required attributes
         workflows = []
@@ -219,7 +230,11 @@ class TestGetDiscoveryMetadata:
         mock_registry.get_all_data_providers.return_value = providers
         mock_get_registry.return_value = mock_registry
 
-        result = get_discovery_metadata()
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
+
+        result = await get_discovery_metadata()
 
         assert isinstance(result, MetadataResponse)
         assert len(result.workflows) == 3
@@ -228,8 +243,9 @@ class TestGetDiscoveryMetadata:
         assert all(isinstance(w, WorkflowMetadata) for w in result.workflows)
         assert all(isinstance(p, DataProviderMetadata) for p in result.dataProviders)
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_metadata_response_structure(self, mock_get_registry):
+    async def test_metadata_response_structure(self, mock_get_registry, mock_get_forms_registry):
         """Test that result is valid MetadataResponse"""
         mock_workflow = MagicMock()
         mock_workflow.name = "test"
@@ -260,78 +276,108 @@ class TestGetDiscoveryMetadata:
         mock_registry.get_all_workflows.return_value = [mock_workflow]
         mock_registry.get_all_data_providers.return_value = [mock_provider]
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
-        result = get_discovery_metadata()
+        result = await get_discovery_metadata()
 
         # Verify it's a valid Pydantic model
         assert isinstance(result, MetadataResponse)
         assert hasattr(result, "workflows")
         assert hasattr(result, "dataProviders")
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_registry_called_once(self, mock_get_registry):
+    async def test_registry_called_once(self, mock_get_registry, mock_get_forms_registry):
         """Test that registry is called exactly once"""
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = []
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
-        get_discovery_metadata()
+        await get_discovery_metadata()
 
         mock_get_registry.assert_called_once()
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_registry_methods_called(self, mock_get_registry):
+    async def test_registry_methods_called(self, mock_get_registry, mock_get_forms_registry):
         """Test that registry methods are called"""
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = []
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
-        get_discovery_metadata()
+        await get_discovery_metadata()
 
         mock_registry.get_all_workflows.assert_called_once()
         mock_registry.get_all_data_providers.assert_called_once()
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_exception_propagation(self, mock_get_registry):
+    async def test_exception_propagation(self, mock_get_registry, mock_get_forms_registry):
         """Test that exceptions are propagated"""
         mock_get_registry.side_effect = RuntimeError("Registry error")
 
         with pytest.raises(RuntimeError, match="Registry error"):
-            get_discovery_metadata()
+            await get_discovery_metadata()
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_workflow_access_exception(self, mock_get_registry):
+    async def test_workflow_access_exception(self, mock_get_registry, mock_get_forms_registry):
         """Test exception during workflow access"""
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.side_effect = ValueError("Workflow error")
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
         with pytest.raises(ValueError, match="Workflow error"):
-            get_discovery_metadata()
+            await get_discovery_metadata()
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_provider_access_exception(self, mock_get_registry):
+    async def test_provider_access_exception(self, mock_get_registry, mock_get_forms_registry):
         """Test exception during provider access"""
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = []
         mock_registry.get_all_data_providers.side_effect = ValueError("Provider error")
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
         with pytest.raises(ValueError, match="Provider error"):
-            get_discovery_metadata()
+            await get_discovery_metadata()
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_logging_on_retrieval(self, mock_get_registry):
+    async def test_logging_on_retrieval(self, mock_get_registry, mock_get_forms_registry):
         """Test that logging occurs during retrieval"""
         mock_registry = MagicMock()
         mock_registry.get_all_workflows.return_value = []
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
         with patch("shared.handlers.discovery_handlers.logger") as mock_logger:
-            get_discovery_metadata()
+            await get_discovery_metadata()
 
             # Verify info logging was called
             assert mock_logger.info.call_count >= 1
@@ -341,8 +387,9 @@ class TestGetDiscoveryMetadata:
             assert any("Retrieved metadata" in str(call) for call in calls)
 
     @patch("shared.system_logger.get_system_logger")
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_workflow_validation_failure_skipped(self, mock_get_registry, mock_get_system_logger):
+    async def test_workflow_validation_failure_skipped(self, mock_get_registry, mock_get_forms_registry, mock_get_system_logger):
         """Test that workflows with validation errors are skipped and logged"""
         # Create one valid workflow and one invalid workflow
         valid_workflow = MagicMock()
@@ -383,11 +430,15 @@ class TestGetDiscoveryMetadata:
         mock_registry.get_all_workflows.return_value = [valid_workflow, invalid_workflow]
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
         mock_system_logger = MagicMock()
         mock_get_system_logger.return_value = mock_system_logger
 
-        result = get_discovery_metadata()
+        result = await get_discovery_metadata()
 
         # Should have skipped invalid workflow
         assert len(result.workflows) == 1
@@ -397,8 +448,9 @@ class TestGetDiscoveryMetadata:
         # Note: asyncio.create_task is called but we can't easily verify async call in sync test
 
     @patch("shared.system_logger.get_system_logger")
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_data_provider_validation_failure_skipped(self, mock_get_registry, mock_get_system_logger):
+    async def test_data_provider_validation_failure_skipped(self, mock_get_registry, mock_get_forms_registry, mock_get_system_logger):
         """Test that data providers with validation errors are skipped and logged"""
         valid_provider = MagicMock()
         valid_provider.name = "valid_provider"
@@ -414,18 +466,23 @@ class TestGetDiscoveryMetadata:
         mock_registry.get_all_workflows.return_value = []
         mock_registry.get_all_data_providers.return_value = [valid_provider]
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
         mock_system_logger = MagicMock()
         mock_get_system_logger.return_value = mock_system_logger
 
-        result = get_discovery_metadata()
+        result = await get_discovery_metadata()
 
         # All valid providers should be included
         assert len(result.dataProviders) == 1
         assert result.dataProviders[0].name == "valid_provider"
 
+    @patch("shared.handlers.discovery_handlers.get_forms_registry")
     @patch("shared.handlers.discovery_handlers.get_registry")
-    def test_validation_failure_logs_error(self, mock_get_registry):
+    async def test_validation_failure_logs_error(self, mock_get_registry, mock_get_forms_registry):
         """Test that validation failures are logged as errors"""
         import warnings
 
@@ -450,12 +507,16 @@ class TestGetDiscoveryMetadata:
         mock_registry.get_all_workflows.return_value = [invalid_workflow]
         mock_registry.get_all_data_providers.return_value = []
         mock_get_registry.return_value = mock_registry
+        
+        mock_forms_registry = MagicMock()
+        mock_forms_registry.get_all_metadata.return_value = []
+        mock_get_forms_registry.return_value = mock_forms_registry
 
         # Suppress RuntimeWarning about unawaited coroutine from fire-and-forget system logger
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*coroutine.*never awaited")
             with patch("shared.handlers.discovery_handlers.logger") as mock_logger:
-                get_discovery_metadata()
+                await get_discovery_metadata()
 
                 # Should have logged error
                 mock_logger.error.assert_called()

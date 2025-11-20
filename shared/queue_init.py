@@ -19,6 +19,8 @@ REQUIRED_QUEUES = [
     "workflow-executions-poison",  # Poison queue for failed messages
     "package-installations",
     "package-installations-poison",  # Poison queue for failed package installations
+    "git-sync-jobs",
+    "git-sync-jobs-poison",  # Poison queue for failed git sync operations
 ]
 
 

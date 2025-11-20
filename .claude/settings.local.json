@@ -31,7 +31,8 @@
       "Bash(src/lib/api-client.ts)",
       "Bash(pyright:*)",
       "WebFetch(domain:stackoverflow.com)",
-      "WebFetch(domain:openapi-ts.dev)"
+      "WebFetch(domain:openapi-ts.dev)",
+      "WebFetch(domain:www.dulwich.io)"
     ],
     "deny": [],
     "ask": [],

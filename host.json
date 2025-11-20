@@ -8,7 +8,8 @@
             "Worker": "Error",
             "Function": "Information",
             "Host": "Warning",
-            "Azure": "Error"
+            "Azure": "Error",
+            "azure.core.pipeline.policies.http_logging_policy": "WARNING"
         },
         "applicationInsights": {
             "samplingSettings": {

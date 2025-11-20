@@ -1,8 +1,18 @@
+import warnings
+import logging
 from shared.config import validate_filesystem_config
 from shared.import_restrictor import install_import_restrictions
+
+# Suppress aiohttp ResourceWarnings from Azure SDK
+warnings.filterwarnings('ignore', message='Unclosed client session')
+warnings.filterwarnings('ignore', message='Unclosed connector')
+
+# Suppress verbose Azure SDK HTTP logging
+logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
 from functions.queue.poison_queue_handler import bp as poison_queue_handler_bp
 from functions.queue.worker import bp as worker_bp
 from functions.queue.package_worker import bp as package_worker_bp
+from functions.queue.git_sync_worker import bp as git_sync_worker_bp
 from functions.timer.execution_cleanup import bp as execution_cleanup_timer_bp
 from functions.timer.schedule_processor import bp as schedule_processor_bp
 from functions.timer.oauth_refresh_timer import bp as oauth_refresh_timer_bp
@@ -467,6 +477,8 @@ app.register_functions(schedules_bp)
 app.register_functions(worker_bp)
 # Package installation worker
 app.register_functions(package_worker_bp)
+# Git sync worker
+app.register_functions(git_sync_worker_bp)
 # Poison queue handler for failed executions
 app.register_functions(poison_queue_handler_bp)
 print("Function app initialization complete!")

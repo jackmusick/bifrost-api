@@ -189,7 +189,12 @@ __all__ = [
     'ResolveConflictRequest',
     'ResolveConflictResponse',
     'FetchFromGitHubResponse',
+    'PushToGitHubRequest',
     'PushToGitHubResponse',
+    'PullFromGitHubRequest',
+    'PullFromGitHubResponse',
+    'GitHubSyncRequest',
+    'GitHubSyncResponse',
     'GitRefreshStatusResponse',
     'DiscardUnpushedCommitsResponse',
     'DiscardCommitRequest',
@@ -2147,10 +2152,24 @@ class CommitAndPushResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PushToGitHubRequest(BaseModel):
+    """Request to push to GitHub"""
+    connection_id: str | None = Field(None, description="WebPubSub connection ID for streaming logs")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PushToGitHubResponse(BaseModel):
     """Response after pushing to GitHub"""
     success: bool = Field(..., description="Whether push succeeded")
     error: str | None = Field(None, description="Error message if push failed")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PullFromGitHubRequest(BaseModel):
+    """Request to pull from GitHub"""
+    connection_id: str | None = Field(None, description="WebPubSub connection ID for streaming logs")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2161,6 +2180,21 @@ class PullFromGitHubResponse(BaseModel):
     updated_files: list[str] = Field(default_factory=list, description="List of updated file paths")
     conflicts: list[ConflictInfo] = Field(default_factory=list, description="List of conflicts (if any)")
     error: str | None = Field(None, description="Error message if pull failed")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GitHubSyncRequest(BaseModel):
+    """Request to sync with GitHub (pull + push)"""
+    connection_id: str | None = Field(None, description="WebPubSub connection ID for streaming logs")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GitHubSyncResponse(BaseModel):
+    """Response after queueing a git sync job"""
+    job_id: str = Field(..., description="Job ID for tracking the sync operation")
+    status: str = Field(..., description="Job status (queued, processing, completed, failed)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2265,8 +2299,9 @@ class CommitInfo(BaseModel):
 
 
 class CommitHistoryResponse(BaseModel):
-    """Response with commit history"""
+    """Response with commit history and pagination"""
     commits: list[CommitInfo] = Field(default_factory=list, description="List of commits (newest first)")
-    total_commits: int = Field(..., description="Total number of commits returned")
+    total_commits: int = Field(..., description="Total number of commits in the entire history")
+    has_more: bool = Field(..., description="Whether there are more commits to load")
 
     model_config = ConfigDict(from_attributes=True)

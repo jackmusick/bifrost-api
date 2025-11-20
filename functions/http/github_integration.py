@@ -6,8 +6,12 @@ Thin wrapper - business logic is in shared.services.git_integration_service
 
 import json
 import logging
+import os
+import uuid
+from datetime import datetime, timezone
 
 import azure.functions as func
+from azure.storage.queue import QueueClient, TextBase64EncodePolicy
 
 from shared.services.git_integration_service import GitIntegrationService
 from shared.keyvault import KeyVaultClient
@@ -20,8 +24,12 @@ from shared.models import (
     FetchFromGitHubResponse,
     CommitAndPushRequest,
     CommitAndPushResponse,
+    PushToGitHubRequest,
     PushToGitHubResponse,
+    PullFromGitHubRequest,
     PullFromGitHubResponse,
+    GitHubSyncRequest,
+    GitHubSyncResponse,
     ResolveConflictRequest,
     ResolveConflictResponse,
     WorkspaceAnalysisResponse,
@@ -142,6 +150,8 @@ async def github_configure(req: func.HttpRequest) -> func.HttpResponse:
             secret_ref=existing_config.secret_ref,
             repo_url=config_request.repo_url,
             production_branch=config_request.branch,
+            updated_at=datetime.now(timezone.utc),
+            updated_by=context.email or "system",
         )
         await config_repo.save_github_config(github_config, updated_by=context.email or "system")
 
@@ -195,7 +205,8 @@ async def github_get_config(req: func.HttpRequest) -> func.HttpResponse:
                 configured=False,
                 token_saved=False,
                 repo_url=None,
-                branch=None
+                branch=None,
+                backup_path=None
             )
         else:
             # Return configuration from Config table
@@ -203,7 +214,8 @@ async def github_get_config(req: func.HttpRequest) -> func.HttpResponse:
                 configured=(github_config.status == "configured"),
                 token_saved=(github_config.status != "disconnected"),
                 repo_url=github_config.repo_url,
-                branch=github_config.production_branch
+                branch=github_config.production_branch,
+                backup_path=None
             )
 
         return func.HttpResponse(
@@ -277,6 +289,8 @@ async def github_validate_token(req: func.HttpRequest) -> func.HttpResponse:
             secret_ref=secret_ref,
             repo_url=existing_config.repo_url if existing_config else None,
             production_branch=existing_config.production_branch if existing_config else None,
+            updated_at=datetime.now(timezone.utc),
+            updated_by=context.email or "system",
         )
         await config_repo.save_github_config(github_config, updated_by=context.email or "system")
 
@@ -415,22 +429,33 @@ async def github_list_branches(req: func.HttpRequest) -> func.HttpResponse:
 )
 @with_org_context
 async def github_commits(req: func.HttpRequest) -> func.HttpResponse:
-    """Get commit history"""
+    """Get commit history with pagination"""
     try:
-        # Get limit from query params (default 20)
+        _context = get_org_context(req)  # noqa: F841 - Required for auth
+
+        # Get limit and offset from query params
         limit_str = req.params.get('limit', '20')
+        offset_str = req.params.get('offset', '0')
+
         try:
             limit = int(limit_str)
             limit = max(1, min(limit, 100))  # Clamp between 1 and 100
         except ValueError:
             limit = 20
 
+        try:
+            offset = int(offset_str)
+            offset = max(0, offset)  # Ensure non-negative
+        except ValueError:
+            offset = 0
+
         git_service = GitIntegrationService()
-        commits = await git_service.get_commit_history(limit=limit)
+        result = await git_service.get_commit_history(limit=limit, offset=offset)
 
         response = CommitHistoryResponse(
-            commits=commits,
-            total_commits=len(commits)
+            commits=result["commits"],
+            total_commits=result["total"],
+            has_more=result["has_more"]
         )
 
         return func.HttpResponse(
@@ -507,21 +532,21 @@ async def github_fetch(req: func.HttpRequest) -> func.HttpResponse:
     path="/github/refresh",
     method="POST",
     summary="Refresh Git status",
-    description="Fetch from remote and return complete Git status including local changes, ahead/behind counts, and commit history",
+    description="Get complete Git status using GitHub API (fast) including local changes, ahead/behind counts, and commit history",
     tags=["GitHub"],
     response_model=GitRefreshStatusResponse,
 )
 @with_org_context
 async def github_refresh(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Unified endpoint that fetches from remote and returns complete Git status.
-    This is the primary endpoint for the Source Control panel.
+    Get complete Git status using GitHub API.
+    This is fast because it uses the GitHub API instead of git fetch.
     """
     try:
         context = get_org_context(req)
         git_service = GitIntegrationService()
 
-        # Get complete refresh status (includes fetch + status + commits)
+        # Get complete refresh status (uses GitHub API, no git fetch)
         result = await git_service.refresh_status(context)
 
         response = GitRefreshStatusResponse(**result)
@@ -648,12 +673,19 @@ async def github_discard_commit(req: func.HttpRequest) -> func.HttpResponse:
     summary="Pull from GitHub",
     description="Fetch and merge changes from GitHub repository",
     tags=["GitHub"],
+    request_model=PullFromGitHubRequest,
     response_model=PullFromGitHubResponse,
 )
 @with_org_context
 async def github_pull(req: func.HttpRequest) -> func.HttpResponse:
     """Pull changes from GitHub"""
     try:
+        logger.info("=== GitHub Pull Endpoint Called ===")
+
+        # Parse request body
+        request_data = json.loads(req.get_body().decode('utf-8')) if req.get_body() else {}
+        pull_request = PullFromGitHubRequest(**request_data)
+
         # Get configuration from Config table
         token = await _get_github_token(req)
         context = get_org_context(req)
@@ -661,14 +693,17 @@ async def github_pull(req: func.HttpRequest) -> func.HttpResponse:
         github_config = await config_repo.get_github_config()
 
         if not token or not github_config or not github_config.repo_url:
+            logger.warning("GitHub not configured for pull operation")
             return func.HttpResponse(
                 body=json.dumps({"error": "NotConfigured", "message": "GitHub integration not configured"}),
                 status_code=400,
                 mimetype="application/json",
             )
 
+        logger.info(f"Pulling from repository: {github_config.repo_url}")
         git_service = GitIntegrationService()
-        result = await git_service.pull(context)
+        result = await git_service.pull(context, connection_id=pull_request.connection_id)
+        logger.info(f"Pull result: success={result['success']}, updated_files={len(result['updated_files'])}, conflicts={len(result['conflicts'])}, error={result.get('error')}")
 
         response = PullFromGitHubResponse(
             success=result["success"],
@@ -687,6 +722,83 @@ async def github_pull(req: func.HttpRequest) -> func.HttpResponse:
         logger.error(f"Failed to pull from GitHub: {e}", exc_info=True)
         return func.HttpResponse(
             body=json.dumps({"error": "PullError", "message": str(e)}),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+
+@bp.route(route="github/sync", methods=["POST"])
+@bp.function_name("github_sync")
+@openapi_endpoint(
+    path="/github/sync",
+    method="POST",
+    summary="Sync with GitHub",
+    description="Atomic pull + push operation. Queues a job that pulls changes, checks for conflicts, and pushes if clean.",
+    tags=["GitHub"],
+    request_model=GitHubSyncRequest,
+    response_model=GitHubSyncResponse,
+)
+@with_org_context
+async def github_sync(req: func.HttpRequest) -> func.HttpResponse:
+    """Sync with GitHub (pull + push)"""
+    try:
+        # Parse request body
+        request_data = json.loads(req.get_body().decode('utf-8')) if req.get_body() else {}
+        sync_request = GitHubSyncRequest(**request_data)
+
+        # Get organization context
+        context = get_org_context(req)
+        git_service = GitIntegrationService()
+
+        # Check if Git repo is initialized
+        if not git_service.is_git_repo():
+            return func.HttpResponse(
+                body=json.dumps({"error": "NotInitialized", "message": "Git repository not initialized"}),
+                status_code=400,
+                mimetype="application/json",
+            )
+
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+
+        # Queue sync job
+        connection_string = os.environ.get("AzureWebJobsStorage", "UseDevelopmentStorage=true")
+        queue_client = QueueClient.from_connection_string(
+            connection_string,
+            queue_name="git-sync-jobs",
+            message_encode_policy=TextBase64EncodePolicy()
+        )
+
+        try:
+            ctx = getattr(req, "ctx", None)
+            message = {
+                "type": "git_sync",
+                "job_id": job_id,
+                "org_id": context.scope,  # Use scope (GLOBAL or org ID) instead of org_id (can be None)
+                "connection_id": sync_request.connection_id,
+                "user_id": ctx.user_id if ctx else "",
+                "user_email": ctx.email if ctx else ""
+            }
+
+            logger.info(f"Queuing git sync job {job_id} with connection_id: {sync_request.connection_id}")
+            queue_client.send_message(json.dumps(message))
+            logger.info(f"Queued git sync job {job_id}")
+        finally:
+            queue_client.close()
+
+        return func.HttpResponse(
+            body=json.dumps({
+                "job_id": job_id,
+                "status": "queued"
+            }),
+            mimetype="application/json",
+            status_code=202
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to queue git sync: {e}", exc_info=True)
+        return func.HttpResponse(
+            body=json.dumps({"error": "SyncError", "message": str(e)}),
             status_code=500,
             mimetype="application/json",
         )
@@ -744,12 +856,18 @@ async def github_commit(req: func.HttpRequest) -> func.HttpResponse:
     summary="Push to GitHub",
     description="Push local commits to GitHub without committing",
     tags=["GitHub"],
+    request_model=PushToGitHubRequest,
     response_model=PushToGitHubResponse,
 )
 @with_org_context
 async def github_push(req: func.HttpRequest) -> func.HttpResponse:
     """Push to GitHub"""
+    logger.info("=== GitHub Push Endpoint Called ===")
     try:
+        # Parse request body
+        request_data = json.loads(req.get_body().decode('utf-8')) if req.get_body() else {}
+        push_request = PushToGitHubRequest(**request_data)
+
         # Get configuration from Config table
         token = await _get_github_token(req)
         context = get_org_context(req)
@@ -757,14 +875,18 @@ async def github_push(req: func.HttpRequest) -> func.HttpResponse:
         github_config = await config_repo.get_github_config()
 
         if not token or not github_config or not github_config.repo_url:
+            logger.warning("GitHub not configured")
             return func.HttpResponse(
                 body=json.dumps({"error": "NotConfigured", "message": "GitHub integration not configured"}),
                 status_code=400,
                 mimetype="application/json",
             )
 
+        logger.info(f"Pushing to repository: {github_config.repo_url}")
         git_service = GitIntegrationService()
-        result = await git_service.push(context)
+        result = await git_service.push(context, connection_id=push_request.connection_id)
+
+        logger.info(f"Push result: success={result['success']}, error={result.get('error')}")
 
         response = PushToGitHubResponse(
             success=result["success"],
@@ -919,7 +1041,7 @@ async def github_create_repo(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"Creating repository: {create_request.name}")
 
         git_service = GitIntegrationService()
-        repo_info = await git_service.create_repository(
+        repo_info = git_service.create_repository(
             token=token,
             name=create_request.name,
             description=create_request.description,
