@@ -30,7 +30,8 @@ def is_production() -> bool:
     """
     return bool(
         os.environ.get('WEBSITE_SITE_NAME') or  # Azure App Service
-        os.environ.get('AZURE_FUNCTIONS_ENVIRONMENT', '').lower() == 'production'
+        os.environ.get('AZURE_FUNCTIONS_ENVIRONMENT',
+                       '').lower() == 'production'
     )
 
 
@@ -137,12 +138,14 @@ class AuthenticationService:
             key = req.params.get('code')
 
         if key and key.strip():
-            principal = FunctionKeyPrincipal(key_id=key.strip(), key_name="default")
+            principal = FunctionKeyPrincipal(
+                key_id=key.strip(), key_name="default")
 
             # Audit function key usage
             await self._audit_key_usage(req, principal)
 
-            logger.info(f"Authenticated with function key: {principal.key_name}")
+            logger.info(
+                f"Authenticated with function key: {principal.key_name}")
             return principal
 
         return None
@@ -165,9 +168,9 @@ class AuthenticationService:
             if not user_id:
                 if email:
                     user_id = email  # Use email as user_id for local dev
-                    logger.info("SWA CLI local dev: using email as user_id")
                 else:
-                    raise AuthenticationError("X-MS-CLIENT-PRINCIPAL missing both userId and userDetails")
+                    raise AuthenticationError(
+                        "X-MS-CLIENT-PRINCIPAL missing both userId and userDetails")
 
             principal = UserPrincipal(
                 user_id=user_id,
@@ -177,14 +180,15 @@ class AuthenticationService:
                 identity_provider=data.get('identityProvider', 'aad')
             )
 
-            logger.info(f"Authenticated user: {principal.email}")
             return principal
 
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}") from e
+            raise AuthenticationError(
+                f"Failed to decode Easy Auth principal: {e}") from e
         except Exception as e:
             # Catch base64 decoding errors
-            raise AuthenticationError(f"Failed to decode Easy Auth principal: {e}") from e
+            raise AuthenticationError(
+                f"Failed to decode Easy Auth principal: {e}") from e
 
     async def _audit_key_usage(self, req: func.HttpRequest, principal: FunctionKeyPrincipal) -> None:
         """Audit function key usage (fire and forget)"""
@@ -227,7 +231,8 @@ async def is_platform_admin(user_id: str) -> bool:
 
         return False
     except Exception as e:
-        logger.warning(f"Failed to check platform admin status for {user_id}: {e}")
+        logger.warning(
+            f"Failed to check platform admin status for {user_id}: {e}")
         return False
 
 
@@ -303,7 +308,8 @@ async def get_org_context(req: func.HttpRequest) -> tuple[str | None, str, func.
     # Regular user logic
     if provided_org_id:
         # Non-admin cannot override org context
-        logger.warning(f"Non-admin {principal.email} attempted to set X-Organization-Id")
+        logger.warning(
+            f"Non-admin {principal.email} attempted to set X-Organization-Id")
         return None, "", _error_response(
             403, "Forbidden",
             "Only platform administrators can override organization context"

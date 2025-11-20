@@ -13,6 +13,31 @@ import aiofiles
 import aiofiles.os
 
 from shared.models import FileMetadata, FileContentResponse, FileType
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _is_real_file(path: Path) -> bool:
+    """
+    Check if a path represents a real file (not SMB/macOS metadata).
+
+    Filters out phantom files that appear in directory listings on SMB/Azure Files
+    but aren't actually accessible (e.g., AppleDouble files like ._.packages).
+
+    Args:
+        path: Path to check
+
+    Returns:
+        False if this is a known metadata file that should be ignored, True otherwise
+    """
+    name = path.name
+    # Skip AppleDouble files (macOS metadata on non-native filesystems)
+    # These files start with ._ and often appear on SMB/Azure Files mounts
+    if name.startswith('._'):
+        logger.debug(f"Skipping AppleDouble metadata file: {name}")
+        return False
+    return True
 
 
 def get_base_path() -> Path:
@@ -88,6 +113,10 @@ def list_directory(relative_path: str = "") -> List[FileMetadata]:
     base_path = get_base_path().resolve()
 
     for item in sorted(dir_path.iterdir()):
+        # Skip AppleDouble and other SMB metadata files
+        if not _is_real_file(item):
+            continue
+
         try:
             stat = item.stat()
             relative = str(item.resolve().relative_to(base_path))

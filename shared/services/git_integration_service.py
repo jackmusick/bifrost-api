@@ -6,6 +6,7 @@ Provides Git operations: clone, pull, push, conflict resolution.
 Uses Dulwich (pure Python Git implementation) - works without git binary.
 """
 
+import asyncio
 import logging
 import os
 import shutil
@@ -32,6 +33,10 @@ from shared.repositories.config import ConfigRepository
 from shared.keyvault import KeyVaultClient
 
 logger = logging.getLogger(__name__)
+
+# Module-level lock to prevent concurrent Git fetch operations
+# This prevents SMB lock file conflicts when multiple requests arrive simultaneously
+_fetch_lock = asyncio.Lock()
 
 
 class GitIntegrationService:
@@ -60,6 +65,28 @@ class GitIntegrationService:
             )
 
         logger.info(f"Initialized Git integration service at: {self.workspace_path}")
+
+    @staticmethod
+    def _is_real_file(path: Path) -> bool:
+        """
+        Check if a path represents a real file (not SMB/macOS metadata).
+
+        Filters out phantom files that appear in directory listings on SMB/Azure Files
+        but aren't actually accessible (e.g., AppleDouble files like ._.packages).
+
+        Args:
+            path: Path to check
+
+        Returns:
+            False if this is a known metadata file that should be ignored, True otherwise
+        """
+        name = path.name
+        # Skip AppleDouble files (macOS metadata on non-native filesystems)
+        # These files start with ._ and often appear on SMB/Azure Files mounts
+        if name.startswith('._'):
+            logger.debug(f"Skipping AppleDouble metadata file: {name}")
+            return False
+        return True
 
     def is_git_repo(self) -> bool:
         """Check if workspace is a Git repository"""
@@ -114,8 +141,10 @@ class GitIntegrationService:
         # Convert HTTPS URL to use token authentication
         auth_url = self._insert_token_in_url(repo_url, token)
 
-        # Check workspace state
-        workspace_empty = not any(self.workspace_path.iterdir())
+        # Check workspace state (filter out SMB metadata files)
+        workspace_empty = not any(
+            self._is_real_file(item) for item in self.workspace_path.iterdir()
+        )
         is_git_repo = self.is_git_repo()
 
         result = None
@@ -239,9 +268,19 @@ class GitIntegrationService:
         backup_dir = Path(tempfile.mkdtemp(prefix="bifrost_backup_"))
         logger.info(f"Creating backup at {backup_dir}")
 
-        # Move all files to backup
+        # Move all files to backup (skip SMB metadata files)
         for item in self.workspace_path.iterdir():
-            shutil.move(str(item), str(backup_dir / item.name))
+            # Skip AppleDouble and other SMB metadata files
+            if not self._is_real_file(item):
+                continue
+
+            try:
+                shutil.move(str(item), str(backup_dir / item.name))
+            except FileNotFoundError:
+                # Handle phantom files that appear in directory listings but don't exist
+                # This can happen with SMB/Azure Files mounts
+                logger.warning(f"Skipping phantom file that doesn't exist: {item.name}")
+                continue
 
         # Clone repository
         self._clone_repo(auth_url, branch)
@@ -303,6 +342,9 @@ class GitIntegrationService:
         Fetch latest refs from remote without merging.
         Lightweight operation to update remote tracking branches.
 
+        Uses a module-level lock to prevent concurrent fetch operations that would
+        cause SMB lock file conflicts on Azure Files/network mounts.
+
         Args:
             context: Organization context for retrieving GitHub configuration
         """
@@ -316,17 +358,20 @@ class GitIntegrationService:
             logger.warning("No GitHub configuration found, cannot fetch")
             return
 
-        logger.info(f"Fetching from remote: {auth_url.replace(auth_url.split('@')[0].split('//')[1], '***') if '@' in auth_url else auth_url}")
+        # Acquire lock to prevent concurrent fetch operations
+        # This prevents "main.lock already exists" errors on SMB mounts
+        async with _fetch_lock:
+            logger.info(f"Fetching from remote: {auth_url.replace(auth_url.split('@')[0].split('//')[1], '***') if '@' in auth_url else auth_url}")
 
-        try:
-            repo = self.get_repo()
-            # Use 'origin' so Dulwich automatically updates refs/remotes/origin/*
-            _result = porcelain.fetch(repo, remote_location='origin')
-            logger.info(f"Fetched latest refs from remote. Refs: {_result.refs}")
+            try:
+                repo = self.get_repo()
+                # Use 'origin' so Dulwich automatically updates refs/remotes/origin/*
+                _result = porcelain.fetch(repo, remote_location='origin')
+                logger.info(f"Fetched latest refs from remote. Refs: {_result.refs}")
 
-        except Exception as e:
-            logger.error(f"Failed to fetch from remote: {e}", exc_info=True)
-            raise
+            except Exception as e:
+                logger.error(f"Failed to fetch from remote: {e}", exc_info=True)
+                raise
 
     async def get_commits_ahead_behind(self) -> tuple[int, int]:
         """
@@ -532,33 +577,39 @@ class GitIntegrationService:
 
         # Staged changes (added to index)
         for path in status.staged['add']:
-            changes.append(FileChange(
-                path=decode_path(path),
-                status=GitFileStatus.ADDED,
-                additions=None,
-                deletions=None
-            ))
+            decoded_path = decode_path(path)
+            if self._is_real_file(Path(decoded_path)):
+                changes.append(FileChange(
+                    path=decoded_path,
+                    status=GitFileStatus.ADDED,
+                    additions=None,
+                    deletions=None
+                ))
 
         for path in status.staged['modify']:
-            changes.append(FileChange(
-                path=decode_path(path),
-                status=GitFileStatus.MODIFIED,
-                additions=None,
-                deletions=None
-            ))
+            decoded_path = decode_path(path)
+            if self._is_real_file(Path(decoded_path)):
+                changes.append(FileChange(
+                    path=decoded_path,
+                    status=GitFileStatus.MODIFIED,
+                    additions=None,
+                    deletions=None
+                ))
 
         for path in status.staged['delete']:
-            changes.append(FileChange(
-                path=decode_path(path),
-                status=GitFileStatus.DELETED,
-                additions=None,
-                deletions=None
-            ))
+            decoded_path = decode_path(path)
+            if self._is_real_file(Path(decoded_path)):
+                changes.append(FileChange(
+                    path=decoded_path,
+                    status=GitFileStatus.DELETED,
+                    additions=None,
+                    deletions=None
+                ))
 
         # Unstaged changes
         for path in status.unstaged:
             decoded_path = decode_path(path)
-            if decoded_path not in [f.path for f in changes]:
+            if self._is_real_file(Path(decoded_path)) and decoded_path not in [f.path for f in changes]:
                 changes.append(FileChange(
                     path=decoded_path,
                     status=GitFileStatus.MODIFIED,
@@ -568,12 +619,14 @@ class GitIntegrationService:
 
         # Untracked files
         for path in status.untracked:
-            changes.append(FileChange(
-                path=decode_path(path),
-                status=GitFileStatus.UNTRACKED,
-                additions=None,
-                deletions=None
-            ))
+            decoded_path = decode_path(path)
+            if self._is_real_file(Path(decoded_path)):
+                changes.append(FileChange(
+                    path=decoded_path,
+                    status=GitFileStatus.UNTRACKED,
+                    additions=None,
+                    deletions=None
+                ))
 
         # Filter out conflicted files - they should only appear in conflicts array
         return [c for c in changes if c.path not in conflicted_paths]
@@ -1422,10 +1475,14 @@ class GitIntegrationService:
                 "error": f"Failed to pull from GitHub: {error_msg}"
             }
 
-    async def refresh_status(self, context: Any) -> dict:
+    async def refresh_status(self, context: Any, fetch: bool = False) -> dict:
         """
-        Unified method that fetches from remote and returns complete Git status.
-        This combines fetch + status + commit history into a single call.
+        Get complete Git status including local changes, conflicts, and commit history.
+
+        Args:
+            context: Organization context for retrieving GitHub configuration
+            fetch: If True, fetch from remote before getting status (default: False)
+                   Set to True only when user explicitly requests sync/refresh
 
         Returns:
             dict with complete refresh status (GitRefreshStatusResponse format)
@@ -1460,11 +1517,14 @@ class GitIntegrationService:
                     "error": None
                 }
 
-            # 1. Fetch from remote to update tracking refs (Dulwich handles this automatically now)
-            try:
-                await self.fetch_from_remote(context)
-            except Exception as e:
-                logger.warning(f"Failed to fetch from remote during refresh: {e}")
+            # 1. Optionally fetch from remote to update tracking refs
+            # Only fetch when user explicitly requests it (fetch=True)
+            # This prevents slow SMB operations on every status check
+            if fetch:
+                try:
+                    await self.fetch_from_remote(context)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch from remote during refresh: {e}")
 
             # 2. Get current branch
             current_branch = self.get_current_branch()

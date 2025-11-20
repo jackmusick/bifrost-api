@@ -133,9 +133,9 @@ async def get_request_context(req: func.HttpRequest) -> RequestContext:
         if not user_id:
             if email:
                 user_id = email  # Use email as user_id for local dev
-                logger.info("SWA CLI local dev: using email as user_id")
             else:
-                raise ValueError("X-MS-CLIENT-PRINCIPAL missing both userId and userDetails")
+                raise ValueError(
+                    "X-MS-CLIENT-PRINCIPAL missing both userId and userDetails")
 
         name = email.split('@')[0] if email else user_id
         user_roles = principal_data.get('userRoles', [])
@@ -177,8 +177,10 @@ async def get_request_context(req: func.HttpRequest) -> RequestContext:
     # Regular user - must derive org from database
     if provided_org_id:
         # Non-admin cannot override org context
-        logger.warning(f"Non-admin user {email} attempted to set X-Organization-Id")
-        raise PermissionError("Only platform administrators can override organization context")
+        logger.warning(
+            f"Non-admin user {email} attempted to set X-Organization-Id")
+        raise PermissionError(
+            "Only platform administrators can override organization context")
 
     # Look up user's org in database
     # GetRoles endpoint ensures user is provisioned with org assignment
@@ -187,7 +189,8 @@ async def get_request_context(req: func.HttpRequest) -> RequestContext:
     if not org_id:
         # User authenticated but has no org assignment
         # This should not happen if GetRoles is working properly
-        logger.error(f"User {email} authenticated but has no organization assignment")
+        logger.error(
+            f"User {email} authenticated but has no organization assignment")
         raise ValueError(
             f"User {email} has no organization assignment. "
             "Please contact your administrator to assign you to an organization."

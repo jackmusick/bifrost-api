@@ -539,15 +539,21 @@ async def github_fetch(req: func.HttpRequest) -> func.HttpResponse:
 @with_org_context
 async def github_refresh(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Get complete Git status using GitHub API.
-    This is fast because it uses the GitHub API instead of git fetch.
+    Get complete Git status.
+    By default, only returns local status (fast).
+    Pass ?fetch=true to also fetch from remote (slow on SMB).
     """
     try:
         context = get_org_context(req)
         git_service = GitIntegrationService()
 
-        # Get complete refresh status (uses GitHub API, no git fetch)
-        result = await git_service.refresh_status(context)
+        # Check if fetch parameter is provided
+        fetch = req.params.get('fetch', 'false').lower() == 'true'
+
+        # Get complete refresh status
+        # fetch=False (default): Fast, local status only
+        # fetch=True: Slow, fetches from remote first
+        result = await git_service.refresh_status(context, fetch=fetch)
 
         response = GitRefreshStatusResponse(**result)
 

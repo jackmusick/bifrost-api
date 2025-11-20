@@ -52,18 +52,16 @@ class KeyVaultClient:
         if self.vault_url:
             try:
                 self._credential = DefaultAzureCredential()
-                logger.info("Using DefaultAzureCredential for Key Vault")
-
                 self._client = SecretClient(
                     vault_url=self.vault_url,
                     credential=self._credential
                 )
-                logger.info(f"Key Vault manager initialized for {self.vault_url}")
             except Exception as e:
                 logger.error(f"Failed to initialize Key Vault client: {e}")
                 raise
         else:
-            raise ValueError("AZURE_KEY_VAULT_URL environment variable is required")
+            raise ValueError(
+                "AZURE_KEY_VAULT_URL environment variable is required")
 
     async def set_secret(self, ref: str, value: str) -> dict[str, str]:
         """
@@ -186,12 +184,14 @@ class KeyVaultClient:
                     if name.startswith(prefix_org) or name.startswith(prefix_global)
                 ]
 
-            logger.info(f"Listed {len(secret_names)} secrets" + (f" for org {org_id}" if org_id else ""))
+            logger.info(f"Listed {len(secret_names)} secrets" +
+                        (f" for org {org_id}" if org_id else ""))
             return secret_names
 
         except HttpResponseError as e:
             if e.status_code == 403:
-                logger.warning("Permission denied for list_secrets, returning empty list")
+                logger.warning(
+                    "Permission denied for list_secrets, returning empty list")
                 return []
             raise
 
@@ -229,7 +229,8 @@ class KeyVaultClient:
             result["can_connect"] = True
             result["can_list_secrets"] = True
             result["secret_count"] = len(secrets_list)
-            logger.info(f"Key Vault connection successful, found {len(secrets_list)} secrets")
+            logger.info(
+                f"Key Vault connection successful, found {len(secrets_list)} secrets")
 
             # Test 2: Get secret permission (try to get first secret if available)
             if secrets_list:
@@ -271,7 +272,8 @@ class KeyVaultClient:
             return result
 
         except HttpResponseError as e:
-            result["can_connect"] = True  # Connection works, but permission issue
+            # Connection works, but permission issue
+            result["can_connect"] = True
             if e.status_code == 403:
                 logger.warning("Key Vault list permission denied")
                 result["error"] = "Permission denied for list operation"
