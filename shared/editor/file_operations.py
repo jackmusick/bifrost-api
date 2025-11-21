@@ -17,26 +17,78 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Directories to hide from Code Editor file listings
+HIDDEN_DIRECTORIES = {
+    '.git',
+    '__pycache__',
+    '.vscode',
+    '.idea',
+    'node_modules',
+    '.venv',
+    'venv',
+    'env',
+    '.pytest_cache',
+    '.mypy_cache',
+    '.ruff_cache',
+    'htmlcov',
+}
+
+# Files to hide from Code Editor file listings
+HIDDEN_FILES = {
+    '.DS_Store',
+    'Thumbs.db',
+    'desktop.ini',
+    'bifrost.pyi',
+    '.coverage',
+}
+
+# File extensions to hide
+HIDDEN_EXTENSIONS = {'.pyc', '.pyo'}
+
+# Prefixes that indicate hidden/metadata files
+HIDDEN_PREFIXES = ('._',)  # AppleDouble metadata files
+
 
 def _is_real_file(path: Path) -> bool:
     """
-    Check if a path represents a real file (not SMB/macOS metadata).
+    Check if a path should be shown in the Code Editor file listing.
 
-    Filters out phantom files that appear in directory listings on SMB/Azure Files
-    but aren't actually accessible (e.g., AppleDouble files like ._.packages).
+    Filters out:
+    - SMB/macOS metadata files (AppleDouble, .DS_Store, etc.)
+    - Development tool directories (.git, __pycache__, node_modules, etc.)
+    - IDE settings (.vscode, .idea)
+    - Virtual environments (.venv, venv, env)
+    - Generated/cache files (.pyc, .coverage, etc.)
 
     Args:
         path: Path to check
 
     Returns:
-        False if this is a known metadata file that should be ignored, True otherwise
+        False if this file/directory should be hidden, True otherwise
     """
     name = path.name
-    # Skip AppleDouble files (macOS metadata on non-native filesystems)
-    # These files start with ._ and often appear on SMB/Azure Files mounts
-    if name.startswith('._'):
-        logger.debug(f"Skipping AppleDouble metadata file: {name}")
+
+    # Check hidden prefixes (AppleDouble files)
+    for prefix in HIDDEN_PREFIXES:
+        if name.startswith(prefix):
+            logger.debug(f"Skipping file with hidden prefix: {name}")
+            return False
+
+    # Check exact file matches
+    if name in HIDDEN_FILES:
+        logger.debug(f"Skipping hidden file: {name}")
         return False
+
+    # Check directory names
+    if path.is_dir() and name in HIDDEN_DIRECTORIES:
+        logger.debug(f"Skipping hidden directory: {name}")
+        return False
+
+    # Check file extensions
+    if path.is_file() and path.suffix.lower() in HIDDEN_EXTENSIONS:
+        logger.debug(f"Skipping file with hidden extension: {name}")
+        return False
+
     return True
 
 

@@ -83,15 +83,15 @@ class workflows:
         return list_workflows_logic(context)
 
     @staticmethod
-    def get_status(execution_id: str) -> dict[str, Any]:
+    def get(execution_id: str) -> dict[str, Any]:
         """
-        Get execution status for a workflow.
+        Get execution details for a workflow.
 
         Args:
             execution_id: Execution ID
 
         Returns:
-            dict: Execution status
+            dict: Execution details including status, result, logs
 
         Raises:
             ValueError: If execution not found
@@ -99,8 +99,8 @@ class workflows:
 
         Example:
             >>> from bifrost import workflows
-            >>> status = workflows.get_status("exec-123")
-            >>> print(status["status"])
+            >>> execution = workflows.get("exec-123")
+            >>> print(execution["status"])
         """
         context = get_context()
 

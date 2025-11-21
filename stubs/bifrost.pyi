@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 # ==================== CONTEXT ====================
 
@@ -273,6 +273,33 @@ class OAuthCredentials:
         """Get Authorization header value (e.g., 'Bearer token...')."""
         ...
 
+@dataclass
+class Role:
+    """Role entity for organization users."""
+    id: str
+    name: str
+    description: str | None
+    isActive: bool
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
+@dataclass
+class Form:
+    """Form entity."""
+    id: str
+    orgId: str
+    name: str
+    description: str | None
+    linkedWorkflow: str
+    formSchema: dict[str, Any]
+    isActive: bool
+    isGlobal: bool
+    accessLevel: str | None
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
 # ==================== ERRORS ====================
 
 class UserError(Exception):
@@ -313,43 +340,87 @@ class config:
         from bifrost import config
 
         # Get config value
-        api_key = config.get("api_key")
+        api_key = await config.get("api_key")
 
         # Get with default
-        timeout = config.get("timeout", default=30)
+        timeout = await config.get("timeout", default=30)
 
-        # Check if exists
-        if config.has("api_key"):
-            ...
+        # List all config for current org
+        org_config = await config.list(org_id="org-123")
+
+        # Platform admin: list all orgs' config
+        all_configs = await config.list()
     """
     @staticmethod
-    def get(key: str, default: Any = None) -> Any:
+    async def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
         """
         Get configuration value with automatic secret resolution.
 
         Args:
             key: Configuration key
+            org_id: Organization ID (defaults to current org from context)
             default: Default value if key not found
 
         Returns:
             Configuration value (with secret resolved if secret_ref type)
 
         Raises:
-            KeyError: If secret reference cannot be resolved
             RuntimeError: If no execution context available
         """
         ...
 
     @staticmethod
-    def has(key: str) -> bool:
+    async def set(key: str, value: Any, org_id: str | None = None) -> None:
         """
-        Check if configuration key exists.
+        Set configuration value.
 
         Args:
             key: Configuration key
+            value: Configuration value (must be JSON-serializable)
+            org_id: Organization ID (defaults to current org from context)
+
+        Raises:
+            RuntimeError: If no execution context
+            ValueError: If value is not JSON-serializable
+        """
+        ...
+
+    @staticmethod
+    async def list(org_id: str | None = None) -> dict[str, Any] | dict[str, dict[str, Any]]:
+        """
+        List configuration key-value pairs.
+
+        Behavior depends on context and parameters:
+        - If org_id is specified: Returns config for that specific org
+        - If org_id is None and user is platform admin: Returns all configs across all orgs
+        - If org_id is None and user is not admin: Returns config for current org
+
+        Args:
+            org_id: Organization ID (optional, defaults to all orgs for admins)
 
         Returns:
-            True if key exists, False otherwise
+            - Single org: dict[str, Any] - Configuration key-value pairs
+            - All orgs (admin): dict[str, dict[str, Any]] - Mapping of org_id to config dict
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def delete(key: str, org_id: str | None = None) -> bool:
+        """
+        Delete configuration value.
+
+        Args:
+            key: Configuration key
+            org_id: Organization ID (defaults to current org from context)
+
+        Returns:
+            bool: True if deleted, False if not found
+
+        Raises:
+            RuntimeError: If no execution context
         """
         ...
 
@@ -364,51 +435,86 @@ class secrets:
 
         # Get secret
         api_key = await secrets.get("api_key")
+
+        # Set secret
+        await secrets.set("api_key", "sk_live_xxxxx")
+
+        # List secret keys (not values)
+        keys = await secrets.list()
+
+        # Delete secret
+        await secrets.delete("old_api_key")
     """
     @staticmethod
-    async def get(key: str) -> str:
+    async def get(key: str, org_id: str | None = None) -> str | None:
         """
-        Get secret from Azure Key Vault.
+        Get decrypted secret value from Azure Key Vault.
 
         Args:
-            key: Secret key
+            key: Secret key (full Key Vault secret name)
+            org_id: Organization ID (optional, defaults to current org)
 
         Returns:
-            Secret value
+            str | None: Decrypted secret value, or None if not found
 
         Raises:
-            KeyError: If secret not found
             RuntimeError: If no execution context available
         """
         ...
 
-class executions:
-    """Execution history operations SDK."""
-    ...
+    @staticmethod
+    async def set(key: str, value: str, org_id: str | None = None) -> None:
+        """
+        Set encrypted secret value in Azure Key Vault.
 
-class files:
-    """Local filesystem operations SDK."""
-    ...
+        Requires: Permission to manage secrets (typically admin)
 
-class forms:
-    """Form management SDK."""
-    ...
+        Args:
+            key: Secret key (full Key Vault secret name)
+            value: Secret value (will be encrypted)
+            org_id: Organization ID (optional)
 
-class organizations:
-    """Organization management SDK."""
-    ...
+        Raises:
+            PermissionError: If user lacks permission
+            RuntimeError: If no execution context
+        """
+        ...
 
-class roles:
-    """Role and permission management SDK."""
-    ...
+    @staticmethod
+    async def list(org_id: str | None = None) -> list[str]:
+        """
+        List all secret keys (NOT values - keys only for security).
 
-class storage:
-    """Cloud storage operations SDK (Azure Blob Storage)."""
-    ...
+        Args:
+            org_id: Organization ID to filter by (optional)
 
-class workflows:
-    """Workflow execution SDK."""
-    ...
+        Returns:
+            list[str]: List of secret keys
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def delete(key: str, org_id: str | None = None) -> bool:
+        """
+        Delete secret from Azure Key Vault.
+
+        Requires: Permission to manage secrets (typically admin)
+
+        Args:
+            key: Secret key (full Key Vault secret name)
+            org_id: Organization ID (optional)
+
+        Returns:
+            bool: True if deleted, False if not found
+
+        Raises:
+            PermissionError: If user lacks permission
+            RuntimeError: If no execution context
+        """
+        ...
 
 class oauth:
     """
@@ -534,5 +640,767 @@ class oauth:
         Raises:
             RuntimeError: If no execution context or refresh fails
             ValueError: If provider not found or refresh token invalid
+        """
+        ...
+
+class files:
+    """
+    Local filesystem operations SDK.
+
+    Provides safe file access within workspace/files/ and temp directories.
+    All paths are sandboxed to prevent access outside allowed directories.
+
+    Location Options:
+    - "temp": Temporary files (cleared periodically, for execution-scoped data)
+    - "workspace": Persistent workspace files (survives across executions)
+
+    Example:
+        from bifrost import files
+
+        # Read a file
+        content = files.read("data/customers.csv")
+
+        # Write to temp (execution-scoped)
+        files.write("temp-data.txt", "content", location="temp")
+
+        # Write to workspace (persistent)
+        files.write("exports/report.csv", data)
+
+        # Check if file exists
+        if files.exists("data/input.csv"):
+            data = files.read("data/input.csv")
+    """
+    @staticmethod
+    def read(path: str, location: Literal["temp", "workspace"] = "workspace") -> str:
+        """
+        Read a text file.
+
+        Args:
+            path: File path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Returns:
+            str: File contents
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def read_bytes(path: str, location: Literal["temp", "workspace"] = "workspace") -> bytes:
+        """
+        Read a binary file.
+
+        Args:
+            path: File path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Returns:
+            bytes: File contents
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def write(path: str, content: str, location: Literal["temp", "workspace"] = "workspace") -> None:
+        """
+        Write text to a file.
+
+        Args:
+            path: File path (relative or absolute)
+            content: Text content to write
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Raises:
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def write_bytes(path: str, content: bytes, location: Literal["temp", "workspace"] = "workspace") -> None:
+        """
+        Write binary data to a file.
+
+        Args:
+            path: File path (relative or absolute)
+            content: Binary content to write
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Raises:
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def list(directory: str = "", location: Literal["temp", "workspace"] = "workspace") -> list[str]:
+        """
+        List files in a directory.
+
+        Args:
+            directory: Directory path (relative, default: root)
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Returns:
+            list[str]: List of file and directory names
+
+        Raises:
+            FileNotFoundError: If directory doesn't exist
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def delete(path: str, location: Literal["temp", "workspace"] = "workspace") -> None:
+        """
+        Delete a file or directory.
+
+        Args:
+            path: File or directory path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def exists(path: str, location: Literal["temp", "workspace"] = "workspace") -> bool:
+        """
+        Check if a file or directory exists.
+
+        Args:
+            path: File or directory path (relative or absolute)
+            location: Storage location ("temp" or "workspace", default: "workspace")
+
+        Returns:
+            bool: True if path exists
+
+        Raises:
+            ValueError: If path is outside allowed directories
+            RuntimeError: If no execution context
+        """
+        ...
+
+class storage:
+    """
+    Cloud storage operations SDK (Azure Blob Storage).
+
+    Provides access to Azure Blob Storage for workflows.
+    All methods use consistent (container, path) signature.
+
+    Containers:
+    - uploads: Form-uploaded files (temporary)
+    - files: Workflow-generated files (persistent)
+    - execution-data: Execution artifacts (internal)
+
+    Example:
+        from bifrost import storage
+
+        # Upload a file
+        blob_uri = await storage.upload(
+            container="files",
+            path="exports/report.csv",
+            data=csv_content.encode("utf-8"),
+            content_type="text/csv"
+        )
+
+        # Generate downloadable URL (24 hour expiry by default)
+        download_url = await storage.generate_url(
+            container="files",
+            path="exports/report.csv",
+            expiry_hours=24
+        )
+
+        # Download a file
+        file_data = await storage.download(
+            container="uploads",
+            path="user-files/input.xlsx"
+        )
+    """
+    @staticmethod
+    async def download(container: str, path: str) -> bytes:
+        """
+        Download a blob from storage.
+
+        Args:
+            container: Container name (uploads, files, execution-data)
+            path: Blob path within container (e.g., "exports/report.csv")
+
+        Returns:
+            bytes: Blob content as bytes
+
+        Raises:
+            ValueError: If context is invalid
+            FileNotFoundError: If blob doesn't exist
+        """
+        ...
+
+    @staticmethod
+    async def upload(
+        container: str,
+        path: str,
+        data: bytes,
+        content_type: str = "application/octet-stream"
+    ) -> str:
+        """
+        Upload a blob to storage.
+
+        Args:
+            container: Container name (uploads, files, execution-data)
+            path: Blob path within container (e.g., "exports/report.csv")
+            data: File content as bytes
+            content_type: MIME type (default: application/octet-stream)
+
+        Returns:
+            str: Blob URI
+
+        Raises:
+            ValueError: If context is invalid or data is not bytes
+        """
+        ...
+
+    @staticmethod
+    async def generate_url(
+        container: str,
+        path: str,
+        expiry_hours: int = 24
+    ) -> str:
+        """
+        Generate a time-limited SAS URL for downloading a blob.
+
+        Args:
+            container: Container name (uploads, files, execution-data)
+            path: Blob path within container
+            expiry_hours: URL expiry time in hours (default: 24)
+
+        Returns:
+            str: SAS URL with read permission and expiry
+
+        Raises:
+            ValueError: If context is invalid or expiry_hours <= 0
+            FileNotFoundError: If blob doesn't exist
+        """
+        ...
+
+    @staticmethod
+    async def get_metadata(container: str, path: str) -> dict[str, Any]:
+        """
+        Get blob metadata.
+
+        Args:
+            container: Container name (uploads, files, execution-data)
+            path: Blob path within container
+
+        Returns:
+            dict: Metadata with keys: name, size, content_type, last_modified, etag
+
+        Raises:
+            ValueError: If context is invalid
+            FileNotFoundError: If blob doesn't exist
+        """
+        ...
+
+    @staticmethod
+    async def delete(container: str, path: str) -> bool:
+        """
+        Delete a blob from storage.
+
+        Args:
+            container: Container name (uploads, files, execution-data)
+            path: Blob path within container
+
+        Returns:
+            bool: True if deleted, False if didn't exist
+
+        Raises:
+            ValueError: If context is invalid
+        """
+        ...
+
+class organizations:
+    """
+    Organization management SDK.
+
+    Provides CRUD operations for organizations.
+    Most operations require platform admin privileges.
+
+    Example:
+        from bifrost import organizations
+
+        # List all organizations (admin only)
+        orgs = await organizations.list()
+
+        # Get specific organization
+        org = await organizations.get("org-123")
+
+        # Create new organization (admin only)
+        new_org = await organizations.create("Acme Corp", domain="acme.com")
+    """
+    @staticmethod
+    async def create(name: str, domain: str | None = None, is_active: bool = True) -> Organization:
+        """
+        Create a new organization.
+
+        Requires: Platform admin privileges
+
+        Args:
+            name: Organization name
+            domain: Organization domain (optional)
+            is_active: Whether the organization is active (default: True)
+
+        Returns:
+            Organization: Created organization object
+
+        Raises:
+            PermissionError: If user is not platform admin
+            ValueError: If validation fails
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def get(org_id: str) -> Organization:
+        """
+        Get organization by ID.
+
+        Args:
+            org_id: Organization ID
+
+        Returns:
+            Organization: Organization object
+
+        Raises:
+            ValueError: If organization not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def list() -> list[Organization]:
+        """
+        List all organizations.
+
+        Requires: Platform admin privileges
+
+        Returns:
+            list[Organization]: List of organization objects
+
+        Raises:
+            PermissionError: If user is not platform admin
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def update(org_id: str, **updates: Any) -> Organization:
+        """
+        Update an organization.
+
+        Requires: Platform admin privileges
+
+        Args:
+            org_id: Organization ID
+            **updates: Fields to update (name, domain, isActive)
+
+        Returns:
+            Organization: Updated organization object
+
+        Raises:
+            PermissionError: If user is not platform admin
+            ValueError: If organization not found or validation fails
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def delete(org_id: str) -> bool:
+        """
+        Delete an organization.
+
+        Requires: Platform admin privileges
+
+        Args:
+            org_id: Organization ID
+
+        Returns:
+            bool: True if organization was deleted
+
+        Raises:
+            PermissionError: If user is not platform admin
+            ValueError: If organization not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+class roles:
+    """
+    Role and permission management SDK.
+
+    Provides CRUD operations for roles and user/form assignments.
+
+    Example:
+        from bifrost import roles
+
+        # List all roles
+        all_roles = await roles.list()
+
+        # Create a new role
+        role = await roles.create(
+            "Customer Manager",
+            description="Can manage customer data",
+            permissions=["customers.read", "customers.write"]
+        )
+
+        # Assign users to role
+        await roles.assign_users("role-123", ["user-1", "user-2"])
+    """
+    @staticmethod
+    async def create(name: str, description: str = "", permissions: list[str] | None = None) -> Role:
+        """
+        Create a new role.
+
+        Requires: Platform admin or organization admin privileges
+
+        Args:
+            name: Role name
+            description: Role description (optional)
+            permissions: List of permission strings (optional)
+
+        Returns:
+            Role: Created role object
+
+        Raises:
+            PermissionError: If user lacks permission
+            ValueError: If validation fails
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def get(role_id: str) -> Role:
+        """
+        Get role by ID.
+
+        Args:
+            role_id: Role ID
+
+        Returns:
+            Role: Role object
+
+        Raises:
+            ValueError: If role not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def list() -> list[Role]:
+        """
+        List all roles in the current organization.
+
+        Returns:
+            list[Role]: List of role objects
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def update(role_id: str, **updates: Any) -> Role:
+        """
+        Update a role.
+
+        Requires: Platform admin or organization admin privileges
+
+        Args:
+            role_id: Role ID
+            **updates: Fields to update (name, description, permissions)
+
+        Returns:
+            Role: Updated role object
+
+        Raises:
+            PermissionError: If user lacks permission
+            ValueError: If role not found or validation fails
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def delete(role_id: str) -> None:
+        """
+        Delete a role.
+
+        Requires: Platform admin or organization admin privileges
+
+        Args:
+            role_id: Role ID
+
+        Raises:
+            PermissionError: If user lacks permission
+            ValueError: If role not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def list_users(role_id: str) -> list[str]:
+        """
+        List all user IDs assigned to a role.
+
+        Args:
+            role_id: Role ID
+
+        Returns:
+            list[str]: List of user IDs
+
+        Raises:
+            ValueError: If role not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def list_forms(role_id: str) -> list[str]:
+        """
+        List all form IDs assigned to a role.
+
+        Args:
+            role_id: Role ID
+
+        Returns:
+            list[str]: List of form IDs
+
+        Raises:
+            ValueError: If role not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def assign_users(role_id: str, user_ids: list[str]) -> None:
+        """
+        Assign users to a role.
+
+        Requires: Platform admin or organization admin privileges
+
+        Args:
+            role_id: Role ID
+            user_ids: List of user IDs to assign
+
+        Raises:
+            PermissionError: If user lacks permission
+            ValueError: If role or users not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def assign_forms(role_id: str, form_ids: list[str]) -> None:
+        """
+        Assign forms to a role.
+
+        Requires: Platform admin or organization admin privileges
+
+        Args:
+            role_id: Role ID
+            form_ids: List of form IDs to assign
+
+        Raises:
+            PermissionError: If user lacks permission
+            ValueError: If role or forms not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+class forms:
+    """
+    Form management SDK.
+
+    Provides read-only access to form definitions.
+
+    Example:
+        from bifrost import forms
+
+        # List all forms
+        all_forms = await forms.list()
+
+        # Get specific form
+        form = await forms.get("form-123")
+        print(form.name)
+    """
+    @staticmethod
+    async def list() -> list[Form]:
+        """
+        List all forms available to the current user.
+
+        Returns:
+            list[Form]: List of form objects
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def get(form_id: str) -> Form:
+        """
+        Get a form definition by ID.
+
+        Args:
+            form_id: Form ID
+
+        Returns:
+            Form: Form object
+
+        Raises:
+            ValueError: If form not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+class executions:
+    """
+    Execution history operations SDK.
+
+    Provides access to workflow execution history.
+
+    Example:
+        from bifrost import executions
+
+        # List recent executions
+        recent = await executions.list(limit=10)
+
+        # List failed executions
+        failed = await executions.list(status="Failed")
+
+        # Get specific execution
+        exec_details = await executions.get("exec-123")
+    """
+    @staticmethod
+    async def list(
+        workflow_name: str | None = None,
+        status: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """
+        List workflow executions with filtering.
+
+        Platform admins see all executions in their scope.
+        Regular users see only their own executions.
+
+        Args:
+            workflow_name: Filter by workflow name (optional)
+            status: Filter by status (optional)
+            start_date: Filter by start date in ISO format (optional)
+            end_date: Filter by end date in ISO format (optional)
+            limit: Maximum number of results (default: 50, max: 1000)
+
+        Returns:
+            list[dict]: List of execution dictionaries
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    async def get(execution_id: str) -> dict[str, Any]:
+        """
+        Get execution details by ID.
+
+        Platform admins can view any execution in their scope.
+        Regular users can only view their own executions.
+
+        Args:
+            execution_id: Execution ID (UUID)
+
+        Returns:
+            dict: Execution details
+
+        Raises:
+            ValueError: If execution not found or access denied
+            RuntimeError: If no execution context
+        """
+        ...
+
+class workflows:
+    """
+    Workflow execution SDK.
+
+    Allows workflows to trigger other workflows and query execution status.
+
+    Example:
+        from bifrost import workflows
+
+        # Execute another workflow
+        result = workflows.execute("process_order", {"order_id": "12345"})
+
+        # List all workflows
+        wf_list = workflows.list()
+
+        # Get execution details
+        execution = workflows.get("exec-123")
+    """
+    @staticmethod
+    def execute(workflow_name: str, parameters: dict[str, Any] | None = None) -> dict[str, Any]:
+        """
+        Execute another workflow programmatically.
+
+        Args:
+            workflow_name: Name of workflow to execute
+            parameters: Workflow parameters (optional)
+
+        Returns:
+            dict: Execution result
+
+        Raises:
+            ValueError: If workflow not found
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def list() -> list[dict[str, Any]]:
+        """
+        List all available workflows.
+
+        Returns:
+            list[dict]: List of workflow metadata
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
+    @staticmethod
+    def get(execution_id: str) -> dict[str, Any]:
+        """
+        Get execution details for a workflow.
+
+        Args:
+            execution_id: Execution ID
+
+        Returns:
+            dict: Execution details including status, result, logs
+
+        Raises:
+            ValueError: If execution not found
+            RuntimeError: If no execution context
         """
         ...

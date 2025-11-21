@@ -67,7 +67,7 @@ class TestSDKImportsFromWorkflow:
 
         assert hasattr(workflows, 'execute')
         assert hasattr(workflows, 'list')
-        assert hasattr(workflows, 'get_status')
+        assert hasattr(workflows, 'get')
 
     def test_import_bifrost_files(self):
         """Test importing files module"""
@@ -92,7 +92,6 @@ class TestSDKImportsFromWorkflow:
 
         assert hasattr(executions, 'list')
         assert hasattr(executions, 'get')
-        assert hasattr(executions, 'delete')
 
     def test_import_bifrost_roles(self):
         """Test importing roles module"""

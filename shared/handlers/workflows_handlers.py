@@ -346,3 +346,232 @@ async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
         status_code=status_code,
         mimetype="application/json"
     )
+
+
+async def validate_workflow_file(path: str, content: str | None = None):
+    """
+    Validate a workflow file for syntax errors, decorator issues, and Pydantic validation.
+
+    Args:
+        path: Relative workspace path to the workflow file
+        content: Optional file content (if not provided, reads from disk)
+
+    Returns:
+        WorkflowValidationResponse with validation results
+    """
+    from pathlib import Path
+    import importlib.util
+    import sys
+    import tempfile
+    import os
+    import re
+    from pydantic import ValidationError
+    from shared.models import WorkflowValidationResponse, ValidationIssue
+    from shared.handlers.discovery_handlers import convert_registry_workflow_to_model
+    from shared.registry import get_registry
+    from shared.decorators import VALID_PARAM_TYPES
+
+    issues = []
+    valid = True
+    metadata = None
+
+    # Determine the absolute file path
+    workspace_roots = ["/home", "/platform", "/workspace"]
+    workspace_location = os.environ.get("BIFROST_WORKSPACE_LOCATION")
+    if workspace_location:
+        workspace_roots.insert(0, workspace_location)
+
+    abs_path = None
+    for root in workspace_roots:
+        candidate = Path(root) / path
+        if candidate.exists():
+            abs_path = candidate
+            break
+
+    # If content provided, use temporary file; otherwise use actual file
+    if content is not None:
+        # Create a temporary file with the content
+        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+        try:
+            temp_file.write(content)
+            temp_file.close()
+            file_to_validate = Path(temp_file.name)
+            file_content = content
+        except Exception as e:
+            issues.append(ValidationIssue(
+                line=None,
+                message=f"Failed to write temporary file: {str(e)}",
+                severity="error"
+            ))
+            return WorkflowValidationResponse(valid=False, issues=issues, metadata=None)
+    else:
+        if abs_path is None or not abs_path.exists():
+            issues.append(ValidationIssue(
+                line=None,
+                message=f"File not found: {path}",
+                severity="error"
+            ))
+            return WorkflowValidationResponse(valid=False, issues=issues, metadata=None)
+        file_to_validate = abs_path
+        file_content = abs_path.read_text()
+
+    try:
+        # Step 1: Check for Python syntax errors
+        try:
+            compile(file_content, str(file_to_validate), 'exec')
+        except SyntaxError as e:
+            issues.append(ValidationIssue(
+                line=e.lineno,
+                message=f"Syntax error: {e.msg}",
+                severity="error"
+            ))
+            valid = False
+            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
+
+        # Step 2: Check for import errors by attempting to load the module
+        module_name = f"validation_temp_{uuid.uuid4().hex}"
+        spec = importlib.util.spec_from_file_location(module_name, file_to_validate)
+
+        if spec is None or spec.loader is None:
+            issues.append(ValidationIssue(
+                line=None,
+                message="Failed to create module spec",
+                severity="error"
+            ))
+            valid = False
+            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
+
+        # Clear the registry before importing to avoid conflicts
+        registry = get_registry()
+        workflow_count_before = len(registry.get_all_workflows())
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+
+        try:
+            spec.loader.exec_module(module)
+        except Exception as e:
+            # Import error - could be missing dependencies or runtime errors
+            issues.append(ValidationIssue(
+                line=None,
+                message=f"Import error: {str(e)}",
+                severity="error"
+            ))
+            valid = False
+            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
+        finally:
+            # Clean up module from sys.modules
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+
+        # Step 3: Check if @workflow decorator was found
+        workflow_count_after = len(registry.get_all_workflows())
+        if workflow_count_after == workflow_count_before:
+            issues.append(ValidationIssue(
+                line=None,
+                message="No @workflow decorator found. Functions must use @workflow(...) to be discoverable.",
+                severity="error"
+            ))
+            valid = False
+            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
+
+        # Get the newly registered workflow(s)
+        # For simplicity, get the last registered workflow
+        all_workflows = registry.get_all_workflows()
+        if not all_workflows:
+            issues.append(ValidationIssue(
+                line=None,
+                message="Failed to retrieve registered workflow",
+                severity="error"
+            ))
+            valid = False
+            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
+
+        workflow_metadata = all_workflows[-1]  # Get the most recently registered
+
+        # Step 4: Validate workflow name pattern
+        name_pattern = r"^[a-z0-9_]+$"
+        if not re.match(name_pattern, workflow_metadata.name):
+            issues.append(ValidationIssue(
+                line=None,
+                message=f"Invalid workflow name '{workflow_metadata.name}'. Name must be lowercase snake_case (only letters, numbers, underscores).",
+                severity="error"
+            ))
+            valid = False
+
+        # Step 5: Validate required fields
+        if not workflow_metadata.description or len(workflow_metadata.description.strip()) == 0:
+            issues.append(ValidationIssue(
+                line=None,
+                message="Workflow description is required and cannot be empty.",
+                severity="error"
+            ))
+            valid = False
+
+        # Step 6: Validate execution mode
+        if workflow_metadata.execution_mode not in ["sync", "async"]:
+            issues.append(ValidationIssue(
+                line=None,
+                message=f"Invalid execution mode '{workflow_metadata.execution_mode}'. Must be 'sync' or 'async'.",
+                severity="error"
+            ))
+            valid = False
+
+        # Step 7: Validate timeout
+        if workflow_metadata.timeout_seconds is not None:
+            if workflow_metadata.timeout_seconds < 1 or workflow_metadata.timeout_seconds > 7200:
+                issues.append(ValidationIssue(
+                    line=None,
+                    message=f"Invalid timeout {workflow_metadata.timeout_seconds}s. Must be between 1 and 7200 seconds.",
+                    severity="error"
+                ))
+                valid = False
+
+        # Step 8: Validate parameter types
+        if workflow_metadata.parameters:
+            for param in workflow_metadata.parameters:
+                if param.type not in VALID_PARAM_TYPES:
+                    issues.append(ValidationIssue(
+                        line=None,
+                        message=f"Invalid parameter type '{param.type}' for parameter '{param.name}'. Must be one of: {', '.join(VALID_PARAM_TYPES)}",
+                        severity="error"
+                    ))
+                    valid = False
+
+        # Step 9: Validate Pydantic model conversion (this is what discovery endpoint does)
+        try:
+            metadata = convert_registry_workflow_to_model(workflow_metadata)
+        except ValidationError as e:
+            for error in e.errors():
+                field = ".".join(str(loc) for loc in error["loc"])
+                issues.append(ValidationIssue(
+                    line=None,
+                    message=f"Validation error in field '{field}': {error['msg']}",
+                    severity="error"
+                ))
+            valid = False
+
+        # Step 10: Warnings for best practices
+        if workflow_metadata.category == "General":
+            issues.append(ValidationIssue(
+                line=None,
+                message="Consider specifying a category other than 'General' for better organization.",
+                severity="warning"
+            ))
+
+        if not workflow_metadata.tags or len(workflow_metadata.tags) == 0:
+            issues.append(ValidationIssue(
+                line=None,
+                message="Consider adding tags to make your workflow more discoverable.",
+                severity="warning"
+            ))
+
+    finally:
+        # Clean up temporary file if created
+        if content is not None:
+            try:
+                os.unlink(temp_file.name)
+            except Exception:
+                pass
+
+    return WorkflowValidationResponse(valid=valid, issues=issues, metadata=metadata)

@@ -12,9 +12,15 @@ import azure.functions as func
 
 from shared.decorators import require_platform_admin, with_request_context
 from shared.handlers.discovery_handlers import convert_registry_workflow_to_model
-from shared.handlers.workflows_handlers import execute_workflow_handler
+from shared.handlers.workflows_handlers import execute_workflow_handler, validate_workflow_file
 from shared.middleware import with_org_context
-from shared.models import WorkflowExecutionRequest, WorkflowExecutionResponse, WorkflowMetadata
+from shared.models import (
+    WorkflowExecutionRequest,
+    WorkflowExecutionResponse,
+    WorkflowMetadata,
+    WorkflowValidationRequest,
+    WorkflowValidationResponse
+)
 from shared.openapi_decorators import openapi_endpoint
 from shared.registry import get_registry
 
@@ -107,3 +113,75 @@ async def list_workflows(req: func.HttpRequest) -> func.HttpResponse:
 async def execute_workflow(req: func.HttpRequest) -> func.HttpResponse:
     """Execute a workflow or script with the provided parameters"""
     return await execute_workflow_handler(req)
+
+
+@bp.route(route="workflows/validate", methods=["POST"])
+@bp.function_name("validate_workflow")
+@openapi_endpoint(
+    path="/workflows/validate",
+    method="POST",
+    summary="Validate a workflow file",
+    description="Validate a workflow file for syntax errors, decorator issues, and Pydantic validation problems",
+    tags=["Workflows"],
+    request_model=WorkflowValidationRequest,
+    response_model=WorkflowValidationResponse,
+)
+@with_request_context
+async def validate_workflow(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/workflows/validate
+    Validate a workflow file for errors
+
+    Request Body:
+        {
+            "path": "relative/path/to/workflow.py",
+            "content": "optional file content to validate"
+        }
+
+    Returns:
+        200: WorkflowValidationResponse with validation results
+        400: Invalid request
+        500: Internal server error
+    """
+    try:
+        # Parse request body
+        body = req.get_json()
+        validation_request = WorkflowValidationRequest(**body)
+
+        # Perform validation
+        result = await validate_workflow_file(
+            path=validation_request.path,
+            content=validation_request.content
+        )
+
+        logger.info(f"Validation result for {validation_request.path}: valid={result.valid}, issues={len(result.issues)}")
+
+        return func.HttpResponse(
+            json.dumps(result.model_dump(mode="json", by_alias=True, exclude_none=True)),
+            status_code=200,
+            mimetype="application/json"
+        )
+
+    except ValueError as e:
+        logger.error(f"Invalid request body: {e}", exc_info=True)
+        error_response = {
+            "error": "InvalidRequest",
+            "message": f"Invalid request body: {str(e)}"
+        }
+        return func.HttpResponse(
+            json.dumps(error_response),
+            status_code=400,
+            mimetype="application/json"
+        )
+
+    except Exception as e:
+        logger.error(f"Error validating workflow: {str(e)}", exc_info=True)
+        error_response = {
+            "error": "InternalServerError",
+            "message": "Failed to validate workflow"
+        }
+        return func.HttpResponse(
+            json.dumps(error_response),
+            status_code=500,
+            mimetype="application/json"
+        )

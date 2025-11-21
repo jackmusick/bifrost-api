@@ -34,8 +34,9 @@ class files:
     """
 
     # Allowed base paths for file operations (loaded from environment)
-    WORKSPACE_FILES_DIR = Path(os.getenv("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")) / "files"
-    TEMP_FILES_DIR = Path(os.getenv("BIFROST_TEMP_LOCATION", "/mounts/tmp")) / "files"
+    WORKSPACE_FILES_DIR = Path(
+        os.getenv("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace"))
+    TEMP_FILES_DIR = Path(os.getenv("BIFROST_TEMP_LOCATION", "/mounts/tmp"))
 
     @staticmethod
     def _resolve_path(path: str, location: Literal["temp", "workspace"]) -> Path:
@@ -74,12 +75,14 @@ class files:
         # Check if path is within allowed directory
         try:
             if not p.is_relative_to(base_dir):
-                raise ValueError(f"Path must be within {location} files directory: {path}")
+                raise ValueError(
+                    f"Path must be within {location} files directory: {path}")
         except AttributeError:
             # Python < 3.9 doesn't have is_relative_to
             # Fallback to string comparison
             if not str(p).startswith(str(base_dir)):
-                raise ValueError(f"Path must be within {location} files directory: {path}")
+                raise ValueError(
+                    f"Path must be within {location} files directory: {path}")
 
         return p
 

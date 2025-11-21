@@ -67,6 +67,8 @@ from shared.models import (
     ConfigType,
     FormFieldType,
     IntegrationType,
+    Role,
+    Form,
 )
 
 # For backwards compatibility with type stubs
@@ -99,6 +101,8 @@ __all__ = [
     'ConfigType',
     'FormFieldType',
     'IntegrationType',
+    'Role',
+    'Form',
     'UserError',
     'WorkflowError',
     'ValidationError',

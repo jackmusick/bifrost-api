@@ -85,6 +85,12 @@ __all__ = [
     'WorkflowMetadata',
     'DataProviderMetadata',
     'MetadataResponse',
+    'FormDiscoveryMetadata',
+
+    # Workflow Validation
+    'ValidationIssue',
+    'WorkflowValidationRequest',
+    'WorkflowValidationResponse',
 
     # Data Providers
     'DataProviderInputMode',
@@ -938,6 +944,28 @@ class MetadataResponse(BaseModel):
     forms: list[FormDiscoveryMetadata] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# ==================== WORKFLOW VALIDATION MODELS ====================
+
+class ValidationIssue(BaseModel):
+    """A single validation error or warning"""
+    line: int | None = Field(None, description="Line number where issue occurs (if applicable)")
+    message: str = Field(..., description="Human-readable error or warning message")
+    severity: Literal["error", "warning"] = Field(..., description="Severity level")
+
+
+class WorkflowValidationRequest(BaseModel):
+    """Request model for workflow validation endpoint"""
+    path: str = Field(..., description="Relative workspace path to the workflow file")
+    content: str | None = Field(None, description="File content to validate (if not provided, reads from disk)")
+
+
+class WorkflowValidationResponse(BaseModel):
+    """Response model for workflow validation endpoint"""
+    valid: bool = Field(..., description="True if workflow is valid and will be discovered")
+    issues: list[ValidationIssue] = Field(default_factory=list, description="List of errors and warnings")
+    metadata: WorkflowMetadata | None = Field(None, description="Workflow metadata if valid")
 
 
 # ==================== DATA PROVIDER RESPONSE MODELS ====================

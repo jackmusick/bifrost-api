@@ -1,7 +1,7 @@
 """
 Execution history SDK for Bifrost.
 
-Provides Python API for execution history operations (list, get, delete).
+Provides Python API for execution history operations (list, get).
 
 All methods are async and must be called with await.
 """
@@ -9,7 +9,6 @@ All methods are async and must be called with await.
 from typing import Any
 
 from shared.handlers.executions_handlers import get_execution_handler, list_executions_handler
-from shared.repositories.executions import ExecutionRepository
 
 from ._internal import get_context
 
@@ -18,7 +17,7 @@ class executions:
     """
     Execution history operations.
 
-    Allows workflows to query execution history and clean up old executions.
+    Allows workflows to query execution history.
 
     All methods are async and must be awaited.
     """
@@ -109,42 +108,3 @@ class executions:
 
         return execution or {}
 
-    @staticmethod
-    async def delete(execution_id: str) -> None:
-        """
-        Delete an execution from history.
-
-        Useful for cleaning up old or sensitive execution data.
-        Platform admins can delete any execution in their scope.
-        Regular users can only delete their own executions.
-
-        Args:
-            execution_id: Execution ID (UUID)
-
-        Raises:
-            ValueError: If execution not found or access denied
-            RuntimeError: If no execution context
-
-        Example:
-            >>> from bifrost import executions
-            >>> await executions.delete("exec-123")
-        """
-        context = get_context()
-
-        # Get execution to verify access
-        execution, error = await get_execution_handler(context, execution_id)
-
-        if error:
-            if error == "NotFound":
-                raise ValueError(f"Execution not found: {execution_id}")
-            elif error == "Forbidden":
-                raise PermissionError(f"Access denied to execution: {execution_id}")
-            else:
-                raise ValueError(f"Error retrieving execution: {error}")
-
-        if not execution:
-            raise ValueError(f"Execution not found: {execution_id}")
-
-        # Delete the execution
-        repo = ExecutionRepository(context)
-        await repo.delete_execution(execution_id, execution.get("orgId"))

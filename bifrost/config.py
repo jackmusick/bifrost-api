@@ -110,51 +110,147 @@ class config:
         )
 
     @staticmethod
-    async def list(org_id: str | None = None) -> dict[str, Any]:
+    async def list(org_id: str | None = None) -> dict[str, Any] | dict[str, dict[str, Any]]:
         """
-        List all configuration key-value pairs.
+        List configuration key-value pairs.
+
+        Behavior depends on context and parameters:
+        - If org_id is specified: Returns config for that specific org
+        - If org_id is None and user is platform admin: Returns all configs across all orgs
+        - If org_id is None and user is not admin: Returns config for current org
 
         Args:
-            org_id: Organization ID (defaults to current org from context)
+            org_id: Organization ID (optional, defaults to all orgs for admins)
 
         Returns:
-            dict: Configuration key-value pairs
+            - Single org: dict[str, Any] - Configuration key-value pairs
+            - All orgs (admin): dict[str, dict[str, Any]] - Mapping of org_id to config dict
 
         Raises:
             RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import config
-            >>> all_config = config.list()
-            >>> for key, value in all_config.items():
+            >>> # Get config for current/specific org
+            >>> org_config = await config.list(org_id="org-123")
+            >>> for key, value in org_config.items():
             ...     print(f"{key}: {value}")
+            >>>
+            >>> # Platform admin: get all orgs' config
+            >>> all_configs = await config.list()
+            >>> for org_id, org_config in all_configs.items():
+            ...     print(f"Org {org_id}: {org_config}")
         """
         context = get_context()
 
-        repo = ConfigRepository(context)
+        # If org_id specified or user is not platform admin, return single org config
+        if org_id is not None or not context.is_platform_admin:
+            return await config._list_single_org(context, org_id)
+
+        # Platform admin with no org_id: return all orgs' config
+        return await config._list_all_orgs(context)
+
+    @staticmethod
+    async def _list_single_org(context: Any, org_id: str | None = None) -> dict[str, Any]:
+        """List config for a single organization."""
+        # If org_id provided, create a context override for that org
+        if org_id and org_id != context.org_id:
+            # Use existing context but override target org
+            from shared.context import ExecutionContext
+            scoped_context = ExecutionContext(
+                user_id=context.user_id,
+                email=context.email,
+                name=context.name,
+                scope=org_id,
+                organization=context.organization,
+                is_platform_admin=context.is_platform_admin,
+                is_function_key=context.is_function_key,
+                execution_id=context.execution_id
+            )
+            repo = ConfigRepository(scoped_context)
+        else:
+            repo = ConfigRepository(context)
 
         # list_config returns list of Config models
         configs = await repo.list_config(include_global=True)
 
-        # Convert to dict[str, Any] as advertised in docstring
-        config_dict = {}
-        for config in configs:
+        return config._configs_to_dict(configs)
+
+    @staticmethod
+    async def _list_all_orgs(context: Any) -> dict[str, dict[str, Any]]:
+        """List config for all organizations (platform admin only)."""
+        from shared.handlers.organizations_handlers import list_organizations_logic
+        from shared.context import ExecutionContext, Organization as ContextOrganization
+
+        # Get all organizations
+        orgs = await list_organizations_logic(context)
+
+        result: dict[str, dict[str, Any]] = {}
+
+        for org in orgs:
+            # Convert model Organization to context Organization
+            ctx_org = ContextOrganization(
+                id=org.id,
+                name=org.name,
+                is_active=org.isActive
+            )
+            # Create context scoped to this org
+            scoped_context = ExecutionContext(
+                user_id=context.user_id,
+                email=context.email,
+                name=context.name,
+                scope=org.id,
+                organization=ctx_org,
+                is_platform_admin=context.is_platform_admin,
+                is_function_key=context.is_function_key,
+                execution_id=context.execution_id
+            )
+            repo = ConfigRepository(scoped_context)
+
+            # Get configs for this org
+            configs = await repo.list_config(include_global=False)  # Don't include GLOBAL in each org
+            result[org.id] = config._configs_to_dict(configs)
+
+        # Also include GLOBAL configs under "GLOBAL" key
+        global_context = ExecutionContext(
+            user_id=context.user_id,
+            email=context.email,
+            name=context.name,
+            scope="GLOBAL",
+            organization=None,
+            is_platform_admin=context.is_platform_admin,
+            is_function_key=context.is_function_key,
+            execution_id=context.execution_id
+        )
+        global_repo = ConfigRepository(global_context)
+        global_configs = await global_repo.list_config(include_global=False)
+        if global_configs:
+            result["GLOBAL"] = config._configs_to_dict(global_configs)
+
+        return result
+
+    @staticmethod
+    def _configs_to_dict(configs: list) -> dict[str, Any]:
+        """Convert list of Config models to dict with parsed values."""
+        import json as json_module
+
+        config_dict: dict[str, Any] = {}
+        for cfg in configs:
             # Parse value based on type
-            if config.type == "json":
-                import json
+            if cfg.type == "json":
                 try:
-                    config_dict[config.key] = json.loads(config.value)
-                except (json.JSONDecodeError, TypeError):
-                    config_dict[config.key] = config.value
-            elif config.type == "bool":
-                config_dict[config.key] = config.value.lower() == "true"
-            elif config.type == "int":
+                    config_dict[cfg.key] = json_module.loads(cfg.value)
+                except (json_module.JSONDecodeError, TypeError):
+                    config_dict[cfg.key] = cfg.value
+            elif cfg.type == "bool":
+                config_dict[cfg.key] = cfg.value.lower() == "true"
+            elif cfg.type == "int":
                 try:
-                    config_dict[config.key] = int(config.value)
+                    config_dict[cfg.key] = int(cfg.value)
                 except (ValueError, TypeError):
-                    config_dict[config.key] = config.value
+                    config_dict[cfg.key] = cfg.value
             else:
-                config_dict[config.key] = config.value
+                config_dict[cfg.key] = cfg.value
 
         return config_dict
 
