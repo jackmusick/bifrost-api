@@ -207,6 +207,13 @@ __all__ = [
     'CommitHistoryResponse',
     'CommitInfo',
 
+    # SDK Usage Scanning
+    'SDKUsageType',
+    'SDKUsageIssue',
+    'WorkspaceScanRequest',
+    'FileScanRequest',
+    'WorkspaceScanResponse',
+
     # Common
     'ErrorResponse',
 
@@ -2331,5 +2338,55 @@ class CommitHistoryResponse(BaseModel):
     commits: list[CommitInfo] = Field(default_factory=list, description="List of commits (newest first)")
     total_commits: int = Field(..., description="Total number of commits in the entire history")
     has_more: bool = Field(..., description="Whether there are more commits to load")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== SDK USAGE SCANNING ====================
+
+class SDKUsageType(str, Enum):
+    """Type of SDK usage"""
+    CONFIG = "config"
+    SECRET = "secret"
+    OAUTH = "oauth"
+
+
+class SDKUsageIssue(BaseModel):
+    """
+    Represents a missing SDK dependency found in a workflow file.
+
+    This is returned when scanning workspace files for config.get(),
+    secrets.get(), or oauth.get_token() calls that reference
+    non-existent configurations.
+    """
+    file_path: str = Field(..., description="Relative path to the file in workspace")
+    file_name: str = Field(..., description="Name of the file")
+    type: SDKUsageType = Field(..., description="Type of SDK call (config, secret, oauth)")
+    key: str = Field(..., description="The missing key/provider name")
+    line_number: int = Field(..., description="Line number where the call is made")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkspaceScanRequest(BaseModel):
+    """Request to scan workspace for SDK usage issues"""
+    # No fields needed - scans entire workspace
+    pass
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileScanRequest(BaseModel):
+    """Request to scan a single file for SDK usage issues"""
+    file_path: str = Field(..., min_length=1, description="Relative path to file in workspace")
+    content: str | None = Field(None, description="Optional file content (if not provided, reads from disk)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkspaceScanResponse(BaseModel):
+    """Response from scanning workspace for SDK usage issues"""
+    issues: list[SDKUsageIssue] = Field(default_factory=list, description="List of SDK usage issues found")
+    scanned_files: int = Field(..., description="Number of Python files scanned")
 
     model_config = ConfigDict(from_attributes=True)

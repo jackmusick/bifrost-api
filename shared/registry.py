@@ -192,6 +192,42 @@ class WorkflowRegistry:
         """Get total number of registered workflows"""
         return len(self._workflows)
 
+    def remove_workflow(self, name: str) -> bool:
+        """
+        Remove a workflow from the registry
+
+        Args:
+            name: Workflow name to remove
+
+        Returns:
+            True if workflow was removed, False if not found
+        """
+        with self._lock:
+            if name in self._workflows:
+                del self._workflows[name]
+                logger.info(f"Removed workflow: {name}")
+                return True
+            return False
+
+    def remove_workflows_by_file_path(self, file_path: str) -> list[str]:
+        """
+        Remove all workflows with matching source_file_path
+
+        Args:
+            file_path: Absolute file path to match
+
+        Returns:
+            List of workflow names that were removed
+        """
+        with self._lock:
+            removed = []
+            for name, metadata in list(self._workflows.items()):
+                if metadata.source_file_path == file_path:
+                    del self._workflows[name]
+                    removed.append(name)
+                    logger.info(f"Removed workflow '{name}' with file path: {file_path}")
+            return removed
+
     # ==================== DATA PROVIDER METHODS ====================
 
     def register_data_provider(self, metadata: DataProviderMetadata) -> None:

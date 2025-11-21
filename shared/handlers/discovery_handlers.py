@@ -26,13 +26,30 @@ def extract_relative_path(source_file_path: str | None) -> str | None:
         source_file_path: Absolute file path (e.g., /path/to/workspace/repo/workflows/my_workflow.py)
 
     Returns:
-        Relative path after /home/, /platform/, or /workspace/ (e.g., workflows/my_workflow.py)
+        Relative path after workspace root (e.g., workflows/my_workflow.py)
         Returns None if source_file_path is None or no marker found
     """
     if not source_file_path:
         return None
 
-    # Extract everything after /home/, /platform/, or /workspace/
+    import os
+    from pathlib import Path
+
+    # Get workspace location from environment
+    workspace_location = os.getenv("BIFROST_WORKSPACE_LOCATION")
+    if workspace_location:
+        workspace_path = Path(workspace_location)
+        source_path = Path(source_file_path)
+
+        # Check if source_path is relative to workspace
+        try:
+            relative = source_path.relative_to(workspace_path)
+            return str(relative)
+        except ValueError:
+            # Not relative to workspace, fall through to marker check
+            pass
+
+    # Fallback: Extract everything after /home/, /platform/, or /workspace/ markers
     for marker in ['/home/', '/platform/', '/workspace/']:
         if marker in source_file_path:
             return source_file_path.split(marker, 1)[1]

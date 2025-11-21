@@ -441,9 +441,9 @@ async def validate_workflow_file(path: str, content: str | None = None):
             valid = False
             return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
 
-        # Clear the registry before importing to avoid conflicts
+        # Get the absolute file path being validated
         registry = get_registry()
-        workflow_count_before = len(registry.get_all_workflows())
+        file_path_str = str(file_to_validate)
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
@@ -464,9 +464,15 @@ async def validate_workflow_file(path: str, content: str | None = None):
             if module_name in sys.modules:
                 del sys.modules[module_name]
 
-        # Step 3: Check if @workflow decorator was found
-        workflow_count_after = len(registry.get_all_workflows())
-        if workflow_count_after == workflow_count_before:
+        # Step 3: Check if @workflow decorator was found by checking source_file_path
+        # The decorator registers workflows with their source_file_path, so we look for any
+        # workflow that has this file path (handles both new workflows and re-validation)
+        registered_workflows = [
+            w for w in registry.get_all_workflows()
+            if w.source_file_path == file_path_str
+        ]
+
+        if not registered_workflows:
             issues.append(ValidationIssue(
                 line=None,
                 message="No @workflow decorator found. Functions must use @workflow(...) to be discoverable.",
@@ -475,19 +481,9 @@ async def validate_workflow_file(path: str, content: str | None = None):
             valid = False
             return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
 
-        # Get the newly registered workflow(s)
-        # For simplicity, get the last registered workflow
-        all_workflows = registry.get_all_workflows()
-        if not all_workflows:
-            issues.append(ValidationIssue(
-                line=None,
-                message="Failed to retrieve registered workflow",
-                severity="error"
-            ))
-            valid = False
-            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
-
-        workflow_metadata = all_workflows[-1]  # Get the most recently registered
+        # Use the first matching workflow for validation
+        # (most files will have just one workflow, but we support multiple)
+        workflow_metadata = registered_workflows[0]
 
         # Step 4: Validate workflow name pattern
         name_pattern = r"^[a-z0-9_]+$"
