@@ -1495,11 +1495,15 @@ class GitIntegrationService:
                 import re
                 error_msg = re.sub(r"b'([^']+)'", r'\1', error_msg)
 
+            # Send error to WebPubSub terminal
+            full_error_msg = f"Failed to pull from GitHub: {error_msg}"
+            await send_log(f"✗ {full_error_msg}", "error")
+
             return {
                 "success": False,
                 "updated_files": [],
                 "conflicts": [],
-                "error": f"Failed to pull from GitHub: {error_msg}"
+                "error": full_error_msg
             }
 
     async def refresh_status(self, context: Any, fetch: bool = False) -> dict:

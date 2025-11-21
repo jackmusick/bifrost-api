@@ -137,7 +137,7 @@ async def handle_git_sync(message_data: dict) -> None:
         # Check if pull was successful
         if not pull_result.get("success"):
             error_msg = pull_result.get("error", "Pull failed")
-            # Don't send duplicate log - pull() already sent error to WebPubSub
+            # pull() already sent error to WebPubSub, just raise to stop execution
             raise Exception(f"Pull failed: {error_msg}")
 
         # Check for conflicts
