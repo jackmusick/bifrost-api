@@ -8,14 +8,26 @@ Usage:
     2. Import and use with simplified imports
     3. At runtime, the actual engine implementation is provided by the container
 
-Example:
+Example (with explicit context parameter):
     from bifrost import workflow, param, ExecutionContext
 
     @workflow(name="my_workflow", description="...")
     @param("user_email", "string", required=True)
     async def my_workflow(context: ExecutionContext, user_email: str):
-        context.info(f"Processing {user_email}")
+        # Direct access to context properties
+        org_id = context.org_id
+        user = context.email
         return {"success": True}
+
+Example (without context parameter - SDK only):
+    from bifrost import workflow, param, config
+
+    @workflow(name="simple_workflow", description="...")
+    @param("api_key", "string", required=True)
+    async def simple_workflow(api_key: str):
+        # Only using SDK functions - no direct context access needed
+        endpoint = await config.get("api_endpoint")
+        return {"endpoint": endpoint}
 """
 
 from collections.abc import Callable
@@ -42,7 +54,14 @@ class Caller:
 
 class ExecutionContext:
     """
-    Context object passed to all workflows.
+    Context object for workflow execution.
+
+    The context parameter is OPTIONAL in workflow signatures:
+    - Include it when you need direct access to org_id, user_id, email, etc.
+    - Omit it when only using SDK functions (config, secrets, storage, etc.)
+
+    SDK functions (config.get(), secrets.get(), storage.download()) can access
+    the context implicitly via ContextVar, so they work without the parameter.
 
     Provides access to:
     - Organization information (id, name)
@@ -123,7 +142,6 @@ def workflow(
     max_duration_seconds: int = 300,
     retry_policy: dict[str, Any] | None = None,
     schedule: str | None = None,
-    requires_org: bool = True,
     expose_in_forms: bool = True,
     requires_approval: bool = False,
     required_permission: str = "canExecuteWorkflows"
@@ -138,11 +156,10 @@ def workflow(
         tags: Optional tags for filtering
         execution_mode: "sync", "async", or None (auto-select based on endpoint_enabled)
         timeout_seconds: Max execution time
-        requires_org: Whether workflow requires org context
         expose_in_forms: Whether workflow can be triggered from forms
         required_permission: Permission required to execute
 
-    Example:
+    Example (with context parameter):
         @workflow(
             name="create_user",
             description="Create a new user in Microsoft 365",
@@ -151,8 +168,23 @@ def workflow(
         @param("email", "string", required=True)
         @param("first_name", "string", required=True)
         @param("last_name", "string", required=True)
-        async def create_user(context: OrganizationContext, email: str, first_name: str, last_name: str):
-            # Workflow implementation
+        async def create_user(context: ExecutionContext, email: str, first_name: str, last_name: str):
+            # Direct access to context properties
+            org_id = context.org_id
+            user = context.email
+            pass
+
+    Example (without context parameter):
+        @workflow(
+            name="simple_task",
+            description="Simple task using only SDK functions",
+            category="Utilities"
+        )
+        @param("task_name", "string", required=True)
+        async def simple_task(task_name: str):
+            # SDK functions work without explicit context parameter
+            api_key = await secrets.get("api_key")
+            endpoint = await config.get("api_endpoint")
             pass
     """
     ...
@@ -547,7 +579,43 @@ class oauth:
 
         # Refresh a token
         new_token = await oauth.refresh_token("microsoft")
+
+        # Get full connection config (for custom token operations)
+        conn = await oauth.get("partner_center")
+        if conn:
+            client_id = conn["client_id"]
+            client_secret = conn["client_secret"]
     """
+    @staticmethod
+    async def get(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
+        """
+        Get OAuth connection configuration for a provider.
+
+        Returns the full OAuth configuration including credentials needed for
+        custom token operations (e.g., cross-tenant exchanges).
+
+        Args:
+            provider: OAuth provider/connection name (e.g., "microsoft", "partner_center")
+            org_id: Organization ID (defaults to current org from context)
+
+        Returns:
+            dict | None: OAuth connection config with keys:
+                - connection_name: str
+                - client_id: str
+                - client_secret: str | None (if configured)
+                - authorization_url: str | None
+                - token_url: str
+                - scopes: str
+                - refresh_token: str | None (if available)
+                - access_token: str | None (if available)
+                - expires_at: str | None (ISO format, if available)
+            Returns None if connection not found.
+
+        Raises:
+            RuntimeError: If no execution context
+        """
+        ...
+
     @staticmethod
     async def get_token(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
         """

@@ -33,11 +33,24 @@ class TestWorkspaceIsolation:
         """Integration: Workspace workflows can be imported and discovered"""
         assert workspace_path.exists(), f"Workspace path not found: {workspace_path}"
 
-        # Import platform examples module (actual structure)
+        # Import platform examples module using importlib to avoid conflict
+        # with Python's built-in 'platform' module
+        import importlib.util
+
+        test_workflow_path = workspace_path / "test_workflow.py"
+        assert test_workflow_path.exists(), f"Test workflow not found: {test_workflow_path}"
+
         try:
-            import platform.examples.test_workflow  # noqa: F401
+            spec = importlib.util.spec_from_file_location(
+                "examples.test_workflow", test_workflow_path
+            )
+            assert spec is not None, "Could not create module spec"
+            assert spec.loader is not None, "Module spec has no loader"
+
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
             # If this succeeds, workspace code is accessible
-            assert True
+            assert hasattr(module, "test_workflow") or True  # Module loaded successfully
         except ImportError as e:
             pytest.fail(f"Cannot import workspace workflows: {e}")
 

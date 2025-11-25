@@ -27,7 +27,7 @@ class config:
     @staticmethod
     async def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
         """
-        Get configuration value.
+        Get configuration value with automatic secret resolution.
 
         Args:
             key: Configuration key
@@ -35,29 +35,44 @@ class config:
             default: Default value if key not found (optional)
 
         Returns:
-            Any: Configuration value, or default if not found
+            Any: Configuration value (with secret resolved if secret_ref type),
+                 or default if not found
 
         Raises:
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context or secret resolution fails
 
         Example:
             >>> from bifrost import config
-            >>> api_url = config.get("api_url", default="https://api.example.com")
-            >>> # Get config for specific org
-            >>> other_url = config.get("api_url", org_id="other-org")
+            >>> api_key = await config.get("api_key")  # Resolves SECRET_REF automatically
+            >>> timeout = await config.get("timeout", default=30)
         """
         context = get_context()
-
         repo = ConfigRepository(context)
 
-        # Get config using the repository's actual method
-        # Note: Repository is already scoped to target_org via context
-        config = await repo.get_config(key, fallback_to_global=True)
+        # Get config from repository
+        cfg = await repo.get_config(key, fallback_to_global=True)
 
-        if config:
-            return config.value
+        if cfg is None:
+            return default
 
-        return default
+        # Convert Config model to dict format expected by ConfigResolver
+        config_data = {
+            key: {
+                "value": cfg.value,
+                "type": cfg.type.value if hasattr(cfg.type, 'value') else str(cfg.type)
+            }
+        }
+
+        # Use ConfigResolver for transparent secret resolution and type parsing
+        try:
+            return await context._config_resolver.get_config(
+                org_id=context.scope,
+                key=key,
+                config_data=config_data,
+                default=default
+            )
+        except ValueError as e:
+            raise RuntimeError(f"Failed to resolve config '{key}': {e}") from e
 
     @staticmethod
     async def set(key: str, value: Any, org_id: str | None = None) -> None:
@@ -90,16 +105,16 @@ class config:
 
         # Handle different value types
         if isinstance(value, (dict, list)):
-            config_type = ConfigType.json
+            config_type = ConfigType.JSON
             str_value = json.dumps(value)
         elif isinstance(value, bool):
-            config_type = ConfigType.bool
+            config_type = ConfigType.BOOL
             str_value = str(value).lower()
         elif isinstance(value, int):
-            config_type = ConfigType.int
+            config_type = ConfigType.INT
             str_value = str(value)
         else:
-            config_type = ConfigType.string
+            config_type = ConfigType.STRING
             str_value = str(value)
 
         await repo.set_config(

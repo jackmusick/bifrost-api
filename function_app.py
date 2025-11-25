@@ -361,16 +361,47 @@ def reload_single_module(file_path: Path):
     # Invalidate import caches to ensure fresh import (bypasses .pyc cache)
     importlib.invalidate_caches()
 
-    # Remove from sys.modules if already imported
-    if module_name in sys.modules:
-        del sys.modules[module_name]
-        print(f"🔄 Removed {module_name} from sys.modules")
+    # Clear all workspace-local modules from sys.modules
+    # This ensures helpers/dependencies are also reloaded, not just the target file
+    workspace_path_strs = [str(Path(wp).resolve()) for wp in workspace_paths]
 
-    # Delete .pyc file if it exists (force recompilation from source)
-    pyc_file = file_path.parent / "__pycache__" / f"{file_path.stem}.cpython-{sys.version_info.major}{sys.version_info.minor}.pyc"
-    if pyc_file.exists():
-        pyc_file.unlink()
-        print(f"🗑️  Deleted cached bytecode: {pyc_file.name}")
+    modules_to_clear: list[tuple[str, Path]] = []  # (module_name, file_path)
+    for mod_name, mod in list(sys.modules.items()):
+        # Skip modules without __file__ (built-ins, C extensions)
+        if not hasattr(mod, '__file__') or mod.__file__ is None:
+            continue
+
+        try:
+            mod_file_path = Path(mod.__file__).resolve()
+            mod_file = str(mod_file_path)
+            # Check if module is in any workspace path
+            is_workspace = any(mod_file.startswith(wp) for wp in workspace_path_strs)
+
+            if is_workspace:
+                # Skip .packages directory (user-installed third-party packages)
+                if '.packages' in mod_file:
+                    continue
+                modules_to_clear.append((mod_name, mod_file_path))
+        except (OSError, ValueError):
+            continue
+
+    # Remove workspace modules and their .pyc files
+    pyc_suffix = f".cpython-{sys.version_info.major}{sys.version_info.minor}.pyc"
+    for mod_name, mod_file_path in modules_to_clear:
+        # Delete from sys.modules
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
+        # Delete .pyc file to force recompilation from source
+        pyc_file = mod_file_path.parent / "__pycache__" / f"{mod_file_path.stem}{pyc_suffix}"
+        if pyc_file.exists():
+            try:
+                pyc_file.unlink()
+            except OSError:
+                pass  # Ignore if we can't delete (permissions, etc.)
+
+    if modules_to_clear:
+        print(f"🔄 Cleared {len(modules_to_clear)} workspace modules for hot-reload")
 
     # Re-import the module
     spec = importlib.util.spec_from_file_location(module_name, file_path)

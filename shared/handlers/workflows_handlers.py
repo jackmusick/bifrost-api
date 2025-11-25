@@ -48,10 +48,10 @@ async def execute_workflow_internal(
     # Determine execution mode
     is_script = bool(code_base64)
 
-    if is_script:
-        # Scripts always execute synchronously
-        pass
-    else:
+    # Determine if async execution is required
+    execution_mode = "async"  # Default for scripts
+
+    if not is_script:
         # Look up workflow from registry
         registry = get_registry()
         workflow_metadata = registry.get_workflow(workflow_name)
@@ -84,22 +84,26 @@ async def execute_workflow_internal(
                 )
                 return error_response.model_dump(), 500
 
-        # Check if async execution required
-        if workflow_metadata.execution_mode == "async":
-            from shared.async_executor import enqueue_workflow_execution
+        # Get execution mode from workflow metadata
+        execution_mode = workflow_metadata.execution_mode
 
-            execution_id = await enqueue_workflow_execution(
-                context=context,
-                workflow_name=workflow_name,
-                parameters=parameters,
-                form_id=form_id
-            )
+    # Queue for async execution if required
+    if execution_mode == "async":
+        from shared.async_executor import enqueue_workflow_execution
 
-            return {
-                "executionId": execution_id,
-                "status": "Pending",
-                "message": "Workflow queued for async execution"
-            }, 202
+        execution_id = await enqueue_workflow_execution(
+            context=context,
+            workflow_name=workflow_name,
+            parameters=parameters,
+            form_id=form_id,
+            code_base64=code_base64  # Pass script code if present
+        )
+
+        return {
+            "executionId": execution_id,
+            "status": "Pending",
+            "message": "Workflow queued for async execution" if not is_script else "Script queued for async execution"
+        }, 202
 
     # Synchronous execution path
     execution_id = str(uuid.uuid4())

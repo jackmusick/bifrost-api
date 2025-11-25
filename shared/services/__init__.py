@@ -10,7 +10,6 @@ Services:
 - workspace_service: Workspace and file management
 - temp_file_service: Temporary file handling
 - zip_service: ZIP file creation and management
-- oauth_test_service: OAuth connection testing utilities
 """
 
 # Re-export commonly used services

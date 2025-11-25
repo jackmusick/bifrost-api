@@ -26,6 +26,95 @@ class oauth:
     """
 
     @staticmethod
+    async def get(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
+        """
+        Get OAuth connection configuration for a provider.
+
+        Returns the full OAuth configuration including credentials needed for
+        custom token operations (e.g., cross-tenant exchanges).
+
+        Args:
+            provider: OAuth provider/connection name (e.g., "microsoft", "partner_center")
+            org_id: Organization ID (defaults to current org from context)
+
+        Returns:
+            dict | None: OAuth connection config with keys:
+                - connection_name: str
+                - client_id: str
+                - client_secret: str | None (if configured)
+                - authorization_url: str | None
+                - token_url: str
+                - scopes: str
+                - refresh_token: str | None (if available)
+                - access_token: str | None (if available)
+                - expires_at: str | None (ISO format, if available)
+            Returns None if connection not found.
+
+        Raises:
+            RuntimeError: If no execution context
+
+        Example:
+            >>> from bifrost import oauth
+            >>> conn = await oauth.get("partner_center")
+            >>> if conn:
+            ...     # Use for cross-tenant token exchange
+            ...     refresh_token = conn["refresh_token"]
+            ...     client_id = conn["client_id"]
+            ...     client_secret = conn["client_secret"]
+        """
+        import json
+        import logging
+
+        logger = logging.getLogger(__name__)
+        context = get_context()
+        target_org = org_id or context.scope
+
+        storage = OAuthStorageService()
+
+        # Get connection metadata
+        connection = await storage.get_connection(target_org, provider)
+
+        if not connection:
+            logger.warning(f"OAuth connection '{provider}' not found for org '{target_org}'")
+            return None
+
+        # Build result with connection config
+        result: dict[str, Any] = {
+            "connection_name": connection.connection_name,
+            "client_id": connection.client_id,
+            "client_secret": None,
+            "authorization_url": connection.authorization_url,
+            "token_url": connection.token_url,
+            "scopes": connection.scopes,
+            "refresh_token": None,
+            "access_token": None,
+            "expires_at": None,
+        }
+
+        # Retrieve client_secret from Key Vault if ref exists
+        if connection.client_secret_ref:
+            try:
+                async with KeyVaultClient() as kv:
+                    result["client_secret"] = await kv.get_secret(connection.client_secret_ref)
+            except Exception as e:
+                logger.warning(f"Could not retrieve client_secret for '{provider}': {e}")
+
+        # Retrieve OAuth tokens from Key Vault if ref exists
+        if connection.oauth_response_ref:
+            try:
+                async with KeyVaultClient() as kv:
+                    secret_value = await kv.get_secret(connection.oauth_response_ref)
+                    if secret_value:
+                        oauth_response = json.loads(secret_value)
+                        result["refresh_token"] = oauth_response.get("refresh_token")
+                        result["access_token"] = oauth_response.get("access_token")
+                        result["expires_at"] = oauth_response.get("expires_at")
+            except Exception as e:
+                logger.warning(f"Could not retrieve OAuth tokens for '{provider}': {e}")
+
+        return result
+
+    @staticmethod
     async def get_token(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
         """
         Get OAuth token for a provider.

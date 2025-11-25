@@ -3,6 +3,7 @@ Unified Execution Engine
 Single source of truth for all code execution (workflows, scripts, data providers)
 """
 
+import inspect
 import logging
 import os
 import sys
@@ -177,37 +178,32 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                         start_time
                     )
 
-            # Execute based on type
+            # Convert scripts to callables for unified execution
             if is_script:
                 assert request.code is not None
-                result, captured_variables, captured_logs = await _execute_script(
-                    request.code,
-                    context,
-                    request.name or "script"
-                )
-            else:
-                # Execute workflow/data provider
-                assert func is not None
+                func = _script_to_callable(request.code, request.name or "script")
 
-                # Always capture logs AND variables for all executions
-                # Filtering based on permissions happens at API response level
-                result, captured_variables, captured_logs = await _execute_workflow_with_trace(
-                    func,
-                    context,
+            # Unified execution path for both workflows and scripts
+            assert func is not None
+
+            # Always capture logs AND variables for all executions
+            # Filtering based on permissions happens at API response level
+            result, captured_variables, captured_logs = await _execute_workflow_with_trace(
+                func,
+                context,
+                request.parameters,
+                execution_id=request.execution_id,
+                broadcaster=request.broadcaster
+            )
+
+            # Cache if data provider
+            if metadata and "data_provider" in metadata.tags:
+                cache_key = _compute_cache_key(
+                    request.name or "",
                     request.parameters,
-                    execution_id=request.execution_id,
-                    broadcaster=request.broadcaster
+                    request.organization.id if request.organization else None
                 )
-
-                # Cache if data provider
-                if metadata and "data_provider" in metadata.tags:
-                    cache_key = _compute_cache_key(
-                        request.name or "",
-                        request.parameters,
-                        request.organization.id if request.organization else None
-                    )
-                    _cache_result(cache_key, result,
-                                  metadata.cache_ttl_seconds)
+                _cache_result(cache_key, result, metadata.cache_ttl_seconds)
 
         # Process captured logs (from scripts or workflows with platform admin)
         logger.info(
@@ -442,114 +438,120 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logger.debug(
                 f"Cleared bifrost execution context for execution {request.execution_id}")
 
+        # Close broadcaster to prevent resource leaks
+        if request.broadcaster is not None:
+            try:
+                request.broadcaster.close()
+                logger.debug(f"Closed broadcaster for execution {request.execution_id}")
+            except Exception as e:
+                logger.warning(f"Error closing broadcaster: {e}")
 
-async def _execute_script(code: str, context: ExecutionContext, name: str) -> tuple[Any, dict[str, Any], list[str]]:
+
+def _script_to_callable(code: str, name: str):
     """
-    Execute inline Python script.
+    Convert base64-encoded script code to an async callable function.
+
+    This allows scripts to be executed through the same unified execution path
+    as workflows, enabling consistent logging, variable capture, and real-time
+    streaming.
+
+    The script code is wrapped in an async main() function to enable:
+    - Proper variable capture via sys.settrace()
+    - Function-level logging that can be filtered
+    - Support for both sync and async code
 
     Args:
         code: Base64-encoded Python code
-        context: ExecutionContext
-        name: Script name for logging
+        name: Script name for logging and error messages
 
     Returns:
-        Tuple of (result, captured_variables, logs)
+        Async callable function with signature: async def(context, **parameters)
     """
     import base64
+    import textwrap
 
     # Decode base64 code
     script_code = base64.b64decode(code).decode('utf-8')
 
-    # Compile script
-    compiled_code = compile(script_code, f'<script:{name}>', 'exec')
+    # Wrap script code in an async main() function
+    # This allows sys.settrace() to capture variables properly
+    wrapped_code = f"""async def main():
+{textwrap.indent(script_code, '    ')}
+"""
 
-    # Set up logging capture for the script
-    # We pre-configure logging.basicConfig so logging.info() etc work
-    script_logs: list[str] = []
+    # Compile wrapped script
+    compiled_code = compile(wrapped_code, f'<script:{name}>', 'exec')
 
-    class ScriptLogHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            # Format: [LEVEL] message
-            script_logs.append(f"[{record.levelname}] {record.getMessage()}")
+    async def script_wrapper(context: ExecutionContext, **parameters):
+        """
+        Async wrapper that executes the script code.
 
-    # Configure logging for scripts
-    handler = ScriptLogHandler()
-    handler.setLevel(logging.DEBUG)  # Capture all levels including DEBUG
+        The script code runs inside an async main() function, allowing:
+        - sys.settrace() to capture variables from main's frame
+        - await to work in user scripts
+        - Proper logging with script-specific logger
+        """
+        import sys
+        import types
 
-    # Get or create a logger for this script
-    script_logger = logging.getLogger('__main__')
-    script_logger.addHandler(handler)
-    script_logger.setLevel(logging.DEBUG)  # Set logger level to capture DEBUG messages
-    script_logger.propagate = False  # Don't propagate to root
+        # Create script-specific logger
+        script_logger = logging.getLogger(f'script.{name}')
+        script_logger.setLevel(logging.DEBUG)
+        script_logger.propagate = True
 
-    captured_variables = {}
+        # Create a custom logging module wrapper that uses our script logger
+        # This allows scripts to use logging.info() and have it route to script.{name} logger
+        script_logging = types.ModuleType('logging')
 
-    try:
-        # Create execution namespace with bifrost SDK access
-        exec_globals = {
-            '__name__': '__main__',
-            '__file__': f'<script:{name}>',
-            'context': context,
-            'logging': logging  # Provide logging module
-        }
+        # Copy all attributes from real logging module
+        for attr in dir(logging):
+            if not attr.startswith('_'):
+                setattr(script_logging, attr, getattr(logging, attr))
 
-        # Execute script
-        exec(compiled_code, exec_globals)
+        # Override the module-level logging functions to use our script logger
+        script_logging.debug = script_logger.debug
+        script_logging.info = script_logger.info
+        script_logging.warning = script_logger.warning
+        script_logging.error = script_logger.error
+        script_logging.critical = script_logger.critical
+        script_logging.exception = script_logger.exception
+        script_logging.log = script_logger.log
+        script_logging.getLogger = lambda name=None: script_logger  # Return our logger for any getLogger calls
 
-        # Capture all variables from script (exclude functions, modules, built-ins, loggers)
-        captured_variables = {
-            k: v for k, v in exec_globals.items()
-            if not k.startswith('__')
-            and not callable(v)
-            and not isinstance(v, type(sys))
-            and not isinstance(v, logging.Logger)
-            and k not in ['context', 'logging']
-        }
+        # Temporarily replace logging in sys.modules so imports get our wrapper
+        original_logging = sys.modules.get('logging')
+        sys.modules['logging'] = script_logging
 
-        # Script result is success unless exception thrown
-        result = {"status": "completed",
-                  "message": "Script executed successfully"}
-        return result, captured_variables, script_logs
+        try:
+            # Create execution namespace with bifrost SDK access
+            exec_globals = {
+                '__name__': '__main__',
+                '__file__': f'<script:{name}>',
+                'context': context,
+                'logging': script_logging,  # Provide wrapped logging module
+                'logger': script_logger,  # Also provide logger instance for direct use
+                **parameters  # Make parameters available as globals
+            }
 
-    except Exception as e:
-        # Capture variables even on error
-        captured_variables = {
-            k: v for k, v in exec_globals.items()
-            if not k.startswith('__')
-            and not callable(v)
-            and not isinstance(v, type(sys))
-            and not isinstance(v, logging.Logger)
-            and k not in ['context', 'logging']
-        }
+            # Execute wrapped script (defines main() function)
+            exec(compiled_code, exec_globals)
 
-        # Format traceback for logs
-        import traceback
-        tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
-        formatted_traceback = ''.join(tb_lines)
+            # Call main() from async context
+            await exec_globals['main']()
 
-        # Add traceback to logs
-        # For UserError, show the actual message (user-facing)
-        if isinstance(e, UserError):
-            script_logs.append(f"[ERROR] {str(e)}")
-        else:
-            # For other exceptions, log generic error for users, traceback for admins
-            script_logs.append("[ERROR] An error occurred during execution")
-            # Add full traceback with TRACEBACK level (only visible to admins)
-            for line in formatted_traceback.split('\n'):
-                if line.strip():
-                    script_logs.append(f"[TRACEBACK] {line}")
+            return {"status": "completed", "message": "Script executed successfully"}
+        finally:
+            # Restore original logging module
+            if original_logging is not None:
+                sys.modules['logging'] = original_logging
+            else:
+                sys.modules.pop('logging', None)
 
-        # Return error result (execution completed with error)
-        result = {
-            "status": "failed",
-            "error": str(e) if isinstance(e, UserError) else "An error occurred during execution"
-        }
-        return result, captured_variables, script_logs
+    # Set function metadata for trace filtering
+    script_wrapper.__name__ = name
+    script_wrapper.__module__ = f'<script:{name}>'
 
-    finally:
-        # Clean up the logger
-        script_logger.removeHandler(handler)
-        script_logger.setLevel(logging.NOTSET)
+    return script_wrapper
 
 
 async def _execute_workflow_with_trace(
@@ -581,6 +583,12 @@ async def _execute_workflow_with_trace(
     func_name = func.__name__
     log_buffer: list[dict[str, Any]] = []  # Buffer for SignalR broadcasts
 
+    # Thread-safe sequence counter for log ordering in WebPubSub broadcasts
+    # Each execution gets its own counter starting at 0
+    import threading
+    broadcast_sequence_lock = threading.Lock()
+    broadcast_sequence_counter = 0
+
     # Get the workflow's module file path for filtering
     workflow_module_file = func.__code__.co_filename
 
@@ -589,6 +597,9 @@ async def _execute_workflow_with_trace(
         def emit(self, record: logging.LogRecord) -> None:
             # Always capture TRACEBACK level (admin-only error details)
             is_traceback = record.levelname == "TRACEBACK"
+
+            # Check if this is a script logger (logger name starts with 'script.')
+            is_script_log = record.name.startswith('script.')
 
             # Only capture logs that originate from the workflow's file or workspace
             # This prevents capturing Azure SDK, aiohttp, and infrastructure logs
@@ -603,7 +614,7 @@ async def _execute_workflow_with_trace(
             # Don't log from inside the handler to avoid infinite recursion
             # Just filter and process
 
-            if not (is_traceback or is_workflow_file or is_workspace_log):
+            if not (is_traceback or is_script_log or is_workflow_file or is_workspace_log):
                 return
 
             # Format: [LEVEL] message
@@ -616,11 +627,19 @@ async def _execute_workflow_with_trace(
                 log_id = str(uuid.uuid4())
                 timestamp = datetime.utcnow().isoformat() + "Z"
 
+                # Atomically get next sequence number BEFORE spawning thread
+                # This ensures sequence assignment order matches log order
+                nonlocal broadcast_sequence_counter
+                with broadcast_sequence_lock:
+                    broadcast_sequence_counter += 1
+                    sequence = broadcast_sequence_counter
+
                 log_dict = {
                     "executionLogId": log_id,
                     "level": record.levelname,
                     "message": record.getMessage(),
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
+                    "sequence": sequence
                 }
                 log_buffer.append(log_dict)
 
@@ -641,7 +660,6 @@ async def _execute_workflow_with_trace(
                     # Fire off async broadcast in background thread (non-blocking)
                     # Using threading.Thread instead of ThreadPoolExecutor to avoid blocking
                     import asyncio
-                    import threading
 
                     def run_broadcast():
                         """Run async broadcast in separate thread with its own event loop"""
@@ -734,8 +752,9 @@ async def _execute_workflow_with_trace(
 
     # Set up trace function to capture variables on return or exception
     def trace_func(frame, event, arg):
-        # Only trace the workflow function
-        if frame.f_code.co_name != func_name:
+        # Trace the workflow function OR script's main() function
+        # Scripts wrap their code in an async main() function
+        if frame.f_code.co_name not in (func_name, 'main'):
             return None
 
         # Capture variables when returning or raising exception
@@ -759,14 +778,61 @@ async def _execute_workflow_with_trace(
     sys.settrace(chained_trace_func if existing_trace else trace_func)
 
     try:
-        result = await func(context, **parameters)
+        # Inspect function signature to determine if it expects context parameter
+        sig = inspect.signature(func)
+        params = list(sig.parameters.values())
+
+        # Check if first parameter is for context (by type annotation OR by name as fallback)
+        first_param_is_context = False
+        if params:
+            first_param = params[0]
+            annotation = first_param.annotation
+
+            # Check type annotation first (preferred - supports any parameter name)
+            if annotation is not inspect.Parameter.empty:
+                if annotation is ExecutionContext:
+                    first_param_is_context = True
+                elif isinstance(annotation, str) and 'ExecutionContext' in annotation:
+                    first_param_is_context = True
+
+            # Fallback: check if parameter is named 'context' (for untyped legacy workflows)
+            if not first_param_is_context and first_param.name == 'context':
+                first_param_is_context = True
+
+        if first_param_is_context:
+            # Explicit context parameter - pass it as first positional argument
+            result = await func(context, **parameters)
+        else:
+            # No context parameter - just pass parameters (context available via ContextVar)
+            result = await func(**parameters)
+    except TypeError as e:
+        # Check if this is the "got multiple values" error caused by missing context parameter
+        if "got multiple values for argument" in str(e):
+            # This likely means the workflow is missing the context parameter
+            # The engine passed context as first positional arg, and it got bound to the first param,
+            # then the same param name was passed as a keyword arg
+            workflow_logger = logging.getLogger(func.__module__)
+            workflow_logger.error(
+                f"Workflow function '{func_name}' is missing the 'context' parameter. "
+                f"All @workflow decorated functions should have 'context: ExecutionContext' "
+                f"as the first parameter (or omit it entirely if only using SDK functions)."
+            )
+            # Wrap and re-raise with helpful message
+            captured_vars = {}
+            exception_to_raise = WorkflowExecutionException(e, captured_vars, workflow_logs)
+            result = None
+        else:
+            # Different TypeError - handle normally
+            raise
     except Exception as e:
         # On exception, extract variables from the traceback
-        # Find the workflow function frame in the traceback
+        # Find the workflow/script function frame in the traceback
         tb_frame = e.__traceback__
         while tb_frame:
-            if tb_frame.tb_frame.f_code.co_name == func_name:
-                # Found the workflow function frame - capture variables
+            frame_name = tb_frame.tb_frame.f_code.co_name
+            # Look for workflow function or script's main() function
+            if frame_name in (func_name, 'main'):
+                # Found the workflow/script function frame - capture variables
                 capture_variables_from_locals(tb_frame.tb_frame.f_locals)
                 break
             tb_frame = tb_frame.tb_next

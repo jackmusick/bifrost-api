@@ -38,6 +38,7 @@ class TestInlineSecretCreation:
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()  # Mock the Key Vault client
+            mock_kv._client.set_secret = AsyncMock()  # set_secret is async
 
             # Mock generate_secret_name to return a predictable value
             generated_name = "bifrost-test-org-api-key-12345678-1234-1234-1234-123456789012"
@@ -71,7 +72,7 @@ class TestInlineSecretCreation:
             )
 
             # Verify secret was stored in Key Vault
-            mock_kv._client.set_secret.assert_called_once_with(
+            mock_kv._client.set_secret.assert_awaited_once_with(
                 generated_name,
                 "my-actual-secret-value-xyz"
             )
@@ -335,6 +336,7 @@ class TestInlineSecretCreation:
 
             mock_kv = MockKV.return_value
             mock_kv._client = MagicMock()
+            mock_kv._client.set_secret = AsyncMock()  # set_secret is async
 
             # Mock the config that gets saved
             updated_config = Config(
@@ -356,7 +358,7 @@ class TestInlineSecretCreation:
             assert response.status_code == 200  # Updating existing config
 
             # Verify secret was updated with the SAME name (creates new version)
-            mock_kv._client.set_secret.assert_called_once_with(
+            mock_kv._client.set_secret.assert_awaited_once_with(
                 existing_secret_name,  # Same secret name
                 "new-secret-value-here"  # New value
             )

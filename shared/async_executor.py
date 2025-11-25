@@ -67,19 +67,21 @@ async def enqueue_workflow_execution(
     context: ExecutionContext,
     workflow_name: str,
     parameters: dict[str, Any],
-    form_id: str | None = None
+    form_id: str | None = None,
+    code_base64: str | None = None
 ) -> str:
     """
-    Enqueue a workflow for async execution.
+    Enqueue a workflow or script for async execution.
 
     Creates execution record with status=PENDING, enqueues message to Azure Storage Queue,
     and returns execution ID immediately (<500ms).
 
     Args:
         context: Request context with org scope and user info
-        workflow_name: Name of workflow to execute
-        parameters: Workflow parameters
+        workflow_name: Name of workflow to execute (or script name for inline scripts)
+        parameters: Workflow/script parameters
         form_id: Optional form ID if triggered by form
+        code_base64: Optional base64-encoded inline script code
 
     Returns:
         execution_id: UUID of the queued execution
@@ -123,7 +125,8 @@ async def enqueue_workflow_execution(
         "user_name": context.name,
         "user_email": context.email,
         "parameters": parameters,
-        "form_id": form_id
+        "form_id": form_id,
+        "code": code_base64  # Optional: for inline scripts
     }
 
     # Enqueue message with automatic cleanup

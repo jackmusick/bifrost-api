@@ -154,7 +154,7 @@ async def set_config_handler(req: func.HttpRequest) -> func.HttpResponse:
                         logger.info(f"Creating new secret for config key '{set_request.key}'")
 
                     # Store/update secret in Key Vault (creates new version if secret exists)
-                    keyvault._client.set_secret(secret_name, set_request.value)
+                    await keyvault._client.set_secret(secret_name, set_request.value)
                     logger.info(f"Stored secret in Key Vault: {secret_name}")
 
                     # Use the secret name as the config value

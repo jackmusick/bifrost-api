@@ -114,6 +114,37 @@ class WebPubSubBroadcaster:
 
         return self._client
 
+    def close(self):
+        """
+        Close the Web PubSub client and cleanup resources.
+
+        This closes the underlying aiohttp ClientSession used by the Azure SDK.
+        Should be called when done using the broadcaster to prevent resource leaks.
+        """
+        if self._client is not None:
+            try:
+                # Azure SDK clients have a close() method that closes internal aiohttp sessions
+                if hasattr(self._client, 'close'):
+                    self._client.close()
+                    logger.debug("Closed Web PubSub client")
+                self._client = None
+            except Exception as e:
+                logger.warning(f"Error closing Web PubSub client: {e}")
+
+    def __del__(self):
+        """
+        Cleanup on garbage collection as a fallback.
+
+        This ensures resources are released even if close() isn't explicitly called.
+        Note: __del__ is not guaranteed to run, so explicit close() is preferred.
+        """
+        try:
+            if self._client is not None:
+                self.close()
+        except Exception:
+            # Ignore errors in __del__ to avoid issues during interpreter shutdown
+            pass
+
     async def broadcast_execution_update(
         self,
         execution_id: str,

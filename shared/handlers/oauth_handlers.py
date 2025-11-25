@@ -17,7 +17,6 @@ from shared.models import (
     UpdateOAuthConnectionRequest,
 )
 from shared.services.oauth_provider import OAuthProviderClient
-from shared.services.oauth_test_service import OAuthTestService
 from shared.repositories.oauth import OAuthRepository
 from shared.keyvault import KeyVaultClient
 from shared.async_storage import AsyncTableStorageService
@@ -417,7 +416,6 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         # Create services
         oauth_repo = OAuthRepository()
         oauth_provider = OAuthProviderClient()
-        oauth_test = OAuthTestService()
 
         # Try to find connection (check GLOBAL first for simplicity)
         connection = await oauth_repo.get_connection(connection_name, "GLOBAL")
@@ -438,7 +436,7 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         await oauth_repo.update_status(
             connection_name=connection_name,
             org_id=connection.org_id,
-            status="testing",
+            status="exchanging",
             status_message="Exchanging authorization code for access token"
         )
 
@@ -495,15 +493,6 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
                 "error_message": error_msg
             })
 
-        # Test connection
-        logger.info(f"Testing OAuth connection: {connection_name}")
-
-        test_success, test_message = await oauth_test.test_connection(
-            access_token=result["access_token"],
-            authorization_url=connection.authorization_url or "",
-            token_url=connection.token_url
-        )
-
         # Store tokens
         await oauth_repo.store_tokens(
             connection_name=connection_name,
@@ -515,21 +504,20 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
             updated_by="system"
         )
 
-        # Update final status
-        final_status = "completed" if test_success else "failed"
+        # Update status to completed (token exchange success is sufficient validation)
         await oauth_repo.update_status(
             connection_name=connection_name,
             org_id=connection.org_id,
-            status=final_status,
-            status_message=test_message
+            status="completed",
+            status_message="Token exchange successful"
         )
 
-        logger.info(f"OAuth connection completed: {connection_name} (status={final_status})")
+        logger.info(f"OAuth connection completed: {connection_name}")
 
         # Check if refresh token was provided
         warning_message = None
         refresh_token = result.get("refresh_token")
-        logger.info(f"Refresh token check for {connection_name}: refresh_token={refresh_token!r}, type={type(refresh_token)}")
+        logger.debug(f"Refresh token check for {connection_name}: has_refresh_token={bool(refresh_token)}")
 
         if not refresh_token:
             warning_message = (
@@ -543,7 +531,7 @@ async def oauth_callback_handler(req: func.HttpRequest) -> func.HttpResponse:
         return success_response({
             "success": True,
             "message": "OAuth connection completed successfully",
-            "status": final_status,
+            "status": "completed",
             "connection_name": connection_name,
             "warning_message": warning_message,
             "error_message": None

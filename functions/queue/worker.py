@@ -51,7 +51,8 @@ async def workflow_execution_worker(msg: func.QueueMessage) -> None:
         "user_id": "uuid",
         "user_name": "User Name",
         "user_email": "user@example.com",
-        "parameters": {}
+        "parameters": {},
+        "code": "base64-encoded-script" (optional, for inline scripts)
     }
     """
     logger.info("Workflow execution worker invoked")
@@ -98,6 +99,7 @@ async def handle_workflow_execution(message_data: dict) -> None:
         workflow_name = message_data["workflow_name"]
         org_id = message_data["org_id"]
         user_id = message_data["user_id"]
+        code_base64 = message_data.get("code")  # Optional: for inline scripts
         user_name = message_data["user_name"]
         user_email = message_data["user_email"]
         parameters = message_data["parameters"]
@@ -132,6 +134,8 @@ async def handle_workflow_execution(message_data: dict) -> None:
                     duration_ms=0,
                     webpubsub_broadcaster=broadcaster
                 )
+                # Close broadcaster before early return
+                broadcaster.close()
                 return
         finally:
             await exec_repo_check.close()
@@ -170,38 +174,46 @@ async def handle_workflow_execution(message_data: dict) -> None:
             name=user_name
         )
 
-        # Get workflow metadata for timeout
-        registry = get_registry()
-        metadata = registry.get_function(workflow_name)
+        # Determine if this is a script or workflow execution
+        is_script = bool(code_base64)
 
-        # Reload the workflow module to ensure we have the latest code
-        # This handles multi-worker scenarios where file edits happen in other processes
-        if metadata and hasattr(metadata, 'source_file_path') and metadata.source_file_path:
-            try:
-                from pathlib import Path
-                from function_app import reload_single_module
-                reload_single_module(Path(metadata.source_file_path))
-                # Re-fetch metadata after reload
-                metadata = registry.get_function(workflow_name)
-                logger.debug(f"Reloaded workflow module before async execution: {workflow_name}")
-            except Exception as e:
-                # Reload failed (likely syntax error) - fail execution instead of using stale code
-                logger.error(f"Failed to reload workflow {workflow_name}: {e}", exc_info=True)
+        # Get workflow metadata for timeout (scripts don't have metadata)
+        metadata = None
+        if not is_script:
+            registry = get_registry()
+            metadata = registry.get_function(workflow_name)
 
-                # Update execution status to failed
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-                await exec_logger.update_execution(
-                    execution_id=execution_id,
-                    org_id=org_id,
-                    user_id=user_id,
-                    status=ExecutionStatus.FAILED,
-                    result={
-                        "error": "WorkflowLoadError",
-                        "message": f"Failed to load workflow '{workflow_name}': {str(e)}"
-                    },
-                    duration_ms=duration_ms
-                )
-                return  # Exit without executing
+            # Reload the workflow module to ensure we have the latest code
+            # This handles multi-worker scenarios where file edits happen in other processes
+            if metadata and hasattr(metadata, 'source_file_path') and metadata.source_file_path:
+                try:
+                    from pathlib import Path
+                    from function_app import reload_single_module
+                    reload_single_module(Path(metadata.source_file_path))
+                    # Re-fetch metadata after reload
+                    metadata = registry.get_function(workflow_name)
+                    logger.debug(f"Reloaded workflow module before async execution: {workflow_name}")
+                except Exception as e:
+                    # Reload failed (likely syntax error) - fail execution instead of using stale code
+                    logger.error(f"Failed to reload workflow {workflow_name}: {e}", exc_info=True)
+
+                    # Update execution status to failed
+                    duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                    await exec_logger.update_execution(
+                        execution_id=execution_id,
+                        org_id=org_id,
+                        user_id=user_id,
+                        status=ExecutionStatus.FAILED,
+                        result={
+                            "error": "WorkflowLoadError",
+                            "message": f"Failed to load workflow '{workflow_name}': {str(e)}"
+                        },
+                        duration_ms=duration_ms,
+                        webpubsub_broadcaster=broadcaster
+                    )
+                    # Close broadcaster before early return
+                    broadcaster.close()
+                    return  # Exit without executing
 
         timeout_seconds = metadata.timeout_seconds if metadata else 1800  # Default 30 min
 
@@ -211,7 +223,8 @@ async def handle_workflow_execution(message_data: dict) -> None:
             caller=caller,
             organization=org,
             config=config,
-            name=workflow_name,  # Always a workflow name for async execution
+            code=code_base64 if is_script else None,  # For inline scripts
+            name=workflow_name if not is_script else None,  # For registered workflows
             parameters=parameters,
             transient=False,  # Async executions always write to DB
             is_platform_admin=False,  # Used for API response filtering, not execution behavior
@@ -245,6 +258,8 @@ async def handle_workflow_execution(message_data: dict) -> None:
                     )
 
                     logger.info(f"Execution {execution_id} cancelled successfully")
+                    # Close broadcaster before early return
+                    broadcaster.close()
                     return
 
                 # Check for timeout
@@ -267,6 +282,8 @@ async def handle_workflow_execution(message_data: dict) -> None:
                     )
 
                     logger.info(f"Execution {execution_id} timed out")
+                    # Close broadcaster before early return
+                    broadcaster.close()
                     return
 
                 # Sleep before next check
@@ -315,6 +332,7 @@ async def handle_workflow_execution(message_data: dict) -> None:
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
+        # Pass broadcaster if available for real-time UI updates
         await exec_logger.update_execution(
             execution_id=execution_id,
             org_id=org_id,
@@ -322,7 +340,8 @@ async def handle_workflow_execution(message_data: dict) -> None:
             status=ExecutionStatus.FAILED,
             error_message=str(e),
             error_type=type(e).__name__,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            webpubsub_broadcaster=broadcaster if 'broadcaster' in locals() else None
         )
 
         logger.error(
@@ -334,3 +353,12 @@ async def handle_workflow_execution(message_data: dict) -> None:
             },
             exc_info=True
         )
+
+    finally:
+        # Close broadcaster to prevent resource leaks
+        if 'broadcaster' in locals():
+            try:
+                broadcaster.close()
+                logger.debug(f"Closed broadcaster for execution {execution_id}")
+            except Exception as e:
+                logger.warning(f"Error closing broadcaster: {e}")
