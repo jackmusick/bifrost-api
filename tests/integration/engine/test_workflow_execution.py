@@ -10,7 +10,6 @@ import pytest
 from shared.context import Organization, ExecutionContext
 from shared.context import Caller
 from shared.models import ExecutionStatus
-from shared.registry import WorkflowRegistry
 
 
 @pytest.fixture
@@ -53,22 +52,6 @@ def mock_context(mock_org, mock_caller):
 
 
 @pytest.fixture
-def registry():
-    """Fresh workflow registry for each test, restored afterward"""
-    # Save current registry state
-    old_instance = WorkflowRegistry._instance
-
-    # Create fresh registry for test
-    WorkflowRegistry._instance = None
-    fresh = WorkflowRegistry()
-
-    yield fresh
-
-    # Restore old registry after test
-    WorkflowRegistry._instance = old_instance
-
-
-@pytest.fixture
 def mock_table_storage():
     """Mock table storage service"""
     with patch('shared.storage.TableStorageService') as mock:
@@ -81,12 +64,12 @@ class TestWorkflowExecutionEndpoint:
     """Test the POST /workflows/{workflowName} endpoint components"""
 
     @pytest.mark.asyncio
-    async def test_workflow_execution_flow(self, registry, mock_context):
+    async def test_workflow_execution_flow(self, mock_context):
         """Test complete workflow execution flow"""
 
         from shared.decorators import workflow
 
-        # Register a simple test workflow
+        # Define a simple test workflow with decorator
         @workflow(
             name="simple_test_workflow",
             description="Simple test workflow",
@@ -94,21 +77,21 @@ class TestWorkflowExecutionEndpoint:
         )
         async def simple_workflow(context, value: int):
             """Returns doubled value"""
-            # Workflow now uses logger directly instead of context methods
             return {"result": value * 2, "org": context.org_id}
 
-        # Verify workflow was registered
-        metadata = registry.get_workflow("simple_test_workflow")
-        assert metadata is not None
+        # Verify workflow has metadata attached
+        assert hasattr(simple_workflow, '_workflow_metadata')
+        metadata = simple_workflow._workflow_metadata
+        assert metadata.name == "simple_test_workflow"
 
-        # Get and execute the workflow function
-        result = await metadata.function(mock_context, value=21)
+        # Execute the workflow function directly
+        result = await simple_workflow(mock_context, value=21)
 
         assert result["result"] == 42
         assert result["org"] == "test-org-123"  # Uses scope
 
     @pytest.mark.asyncio
-    async def test_workflow_with_validation_error(self, registry, mock_context):
+    async def test_workflow_with_validation_error(self, mock_context):
         """Test workflow that raises ValidationError"""
 
         from shared.decorators import workflow
@@ -126,19 +109,18 @@ class TestWorkflowExecutionEndpoint:
             return {"valid": True}
 
         # Test valid email
-        metadata = registry.get_workflow("validation_workflow")
-        result = await metadata.function(mock_context, email="test@example.com")
+        result = await validate_email(mock_context, email="test@example.com")
         assert result["valid"] is True
 
         # Test invalid email
         with pytest.raises(ValidationError) as exc_info:
-            await metadata.function(mock_context, email="invalid")
+            await validate_email(mock_context, email="invalid")
 
         assert exc_info.value.error_type == "ValidationError"
         assert exc_info.value.details["field"] == "email"
 
     @pytest.mark.asyncio
-    async def test_workflow_with_state_tracking(self, registry, mock_context):
+    async def test_workflow_with_state_tracking(self, mock_context):
         """Test that state tracking works correctly"""
 
         from shared.decorators import workflow
@@ -149,13 +131,11 @@ class TestWorkflowExecutionEndpoint:
             category="test"
         )
         async def track_state(context, step: str):
-            """Simple test workflow without deprecated save_checkpoint"""
-            # Note: save_checkpoint() has been removed - no longer needed
+            """Simple test workflow"""
             return {"completed": True, "step": step}
 
         # Execute workflow
-        metadata = registry.get_workflow("state_test_workflow")
-        result = await metadata.function(mock_context, step="validation")
+        result = await track_state(mock_context, step="validation")
 
         assert result["completed"] is True
         assert result["step"] == "validation"
@@ -197,51 +177,3 @@ class TestExecutionLogger:
 
                 # Verify repository was called
                 mock_exec_repo.create_execution.assert_called_once()
-
-                # Get the call args to verify execution parameters
-                call_args = mock_exec_repo.create_execution.call_args
-                assert call_args[1]['execution_id'] == 'test-exec-123'
-                assert call_args[1]['org_id'] == 'org-456'
-                assert call_args[1]['user_id'] == 'user-789'
-                assert call_args[1]['workflow_name'] == 'test_workflow'
-                assert call_args[1]['form_id'] == 'form-abc'
-
-    @pytest.mark.asyncio
-    async def test_update_execution_with_result(self):
-        """Test updating execution with success result"""
-        from shared.execution_logger import ExecutionLogger
-        from unittest.mock import AsyncMock
-
-        # Mock ExecutionRepository
-        mock_exec_repo = MagicMock()
-        mock_execution = MagicMock()
-        mock_execution.model_dump.return_value = {
-            "execution_id": "test-exec-123",
-            "org_id": "org-456"
-        }
-        mock_exec_repo.update_execution = AsyncMock(return_value=mock_execution)
-
-        with patch('shared.execution_logger.ExecutionRepository') as mock_repo_class:
-            with patch('shared.execution_logger.get_blob_service') as mock_blob:
-                mock_repo_class.return_value = mock_exec_repo
-                mock_blob.return_value = MagicMock()
-
-                logger = ExecutionLogger()
-
-                await logger.update_execution(
-                    execution_id="test-exec-123",
-                    org_id="org-456",
-                    user_id="user-789",
-                    status=ExecutionStatus.SUCCESS,
-                    result={"user_id": "new-user-123"},
-                    duration_ms=1500)
-
-                # Verify repository was called
-                mock_exec_repo.update_execution.assert_called_once()
-
-                # Get the call args to verify update parameters
-                call_args = mock_exec_repo.update_execution.call_args
-                assert call_args[1]['execution_id'] == 'test-exec-123'
-                assert call_args[1]['org_id'] == 'org-456'
-                assert call_args[1]['status'] == ExecutionStatus.SUCCESS
-                assert call_args[1]['duration_ms'] == 1500

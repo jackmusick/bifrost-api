@@ -395,11 +395,8 @@ class TestGenerateWorkflowEndpoints:
         """Should initialize paths if not present"""
         spec = {}
 
-        patcher = 'shared.handlers.openapi_handlers.get_registry'
-        with patch(patcher) as mock_get_registry:
-            mock_registry = Mock()
-            mock_registry.get_all_workflows.return_value = []
-            mock_get_registry.return_value = mock_registry
+        with patch('shared.handlers.openapi_handlers.scan_all_workflows') as mock_scan:
+            mock_scan.return_value = []
 
             generate_workflow_endpoints(spec)
 
@@ -409,11 +406,8 @@ class TestGenerateWorkflowEndpoints:
         """Should preserve existing paths in spec"""
         spec = {"paths": {"/existing": {"get": {}}}}
 
-        patcher = 'shared.handlers.openapi_handlers.get_registry'
-        with patch(patcher) as mock_get_registry:
-            mock_registry = Mock()
-            mock_registry.get_all_workflows.return_value = []
-            mock_get_registry.return_value = mock_registry
+        with patch('shared.handlers.openapi_handlers.scan_all_workflows') as mock_scan:
+            mock_scan.return_value = []
 
             generate_workflow_endpoints(spec)
 
@@ -434,12 +428,8 @@ class TestGenerateWorkflowEndpoints:
         mock_workflow2.endpoint_enabled = False
         mock_workflow2.name = "workflow2"
 
-        patcher = 'shared.handlers.openapi_handlers.get_registry'
-        with patch(patcher) as mock_get_registry:
-            mock_registry = Mock()
-            workflows = [mock_workflow1, mock_workflow2]
-            mock_registry.get_all_workflows.return_value = workflows
-            mock_get_registry.return_value = mock_registry
+        with patch('shared.handlers.openapi_handlers.scan_all_workflows') as mock_scan:
+            mock_scan.return_value = [mock_workflow1, mock_workflow2]
 
             generate_workflow_endpoints(spec)
 
@@ -457,11 +447,8 @@ class TestGenerateWorkflowEndpoints:
         mock_workflow.parameters = []
         mock_workflow.description = "Test workflow"
 
-        patcher = 'shared.handlers.openapi_handlers.get_registry'
-        with patch(patcher) as mock_get_registry:
-            mock_registry = Mock()
-            mock_registry.get_all_workflows.return_value = [mock_workflow]
-            mock_get_registry.return_value = mock_registry
+        with patch('shared.handlers.openapi_handlers.scan_all_workflows') as mock_scan:
+            mock_scan.return_value = [mock_workflow]
 
             generate_workflow_endpoints(spec)
 

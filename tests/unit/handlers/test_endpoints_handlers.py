@@ -122,6 +122,7 @@ class TestExecuteSync:
                             workflow_name="test_workflow",
                             http_method="POST",
                             input_data={"param1": "value1"},
+                            workflow_func=mock_workflow_func,
                             workflow_metadata=mock_workflow
                         )
 
@@ -180,6 +181,7 @@ class TestExecuteSync:
                             workflow_name="test_workflow",
                             http_method="POST",
                             input_data={"param1": "value1"},
+                            workflow_func=mock_workflow_func,
                             workflow_metadata=mock_workflow
                         )
 
@@ -238,6 +240,7 @@ class TestExecuteSync:
                             workflow_name="test_workflow",
                             http_method="POST",
                             input_data={"param1": "value1"},
+                            workflow_func=mock_workflow_func,
                             workflow_metadata=mock_workflow
                         )
 
@@ -293,6 +296,7 @@ class TestExecuteSync:
                             workflow_name="test_workflow",
                             http_method="POST",
                             input_data={"param1": "value1", "extra_var": "extra_value"},
+                            workflow_func=mock_workflow_func,
                             workflow_metadata=mock_workflow
                         )
 

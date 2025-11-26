@@ -52,16 +52,7 @@ bp = func.Blueprint()
 @with_request_context
 async def list_forms(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/forms - List all forms visible to the user"""
-    # Re-scan workspace to pick up new forms (matches workflow list behavior)
-    from function_app import get_workspace_paths
-    from shared.forms_registry import get_forms_registry
-    from pathlib import Path
-
-    logger.info("Triggering forms registry reload before returning forms")
-    forms_registry = get_forms_registry()
-    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
-    forms_registry.load_all_forms(workspace_paths)
-
+    # Forms are now discovered dynamically - no explicit reload needed
     context = req.context  # type: ignore[attr-defined]
     result, status_code = await list_forms_handler(req, context)
     return func.HttpResponse(
@@ -115,16 +106,7 @@ async def create_form(req: func.HttpRequest) -> func.HttpResponse:
 @with_request_context
 async def get_form(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/forms/{formId} - Get a specific form by ID"""
-    # Re-scan workspace to pick up new forms (matches list behavior)
-    from function_app import get_workspace_paths
-    from shared.forms_registry import get_forms_registry
-    from pathlib import Path
-
-    logger.info("Triggering forms registry reload before getting form")
-    forms_registry = get_forms_registry()
-    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
-    forms_registry.load_all_forms(workspace_paths)
-
+    # Forms are now discovered dynamically - no explicit reload needed
     context = req.context  # type: ignore[attr-defined]
     form_id = req.route_params.get("formId")
     assert form_id is not None
@@ -287,16 +269,7 @@ async def execute_form(req: func.HttpRequest) -> func.HttpResponse:
 @require_platform_admin
 async def get_form_roles(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/forms/{formId}/roles - Get roles assigned to form"""
-    # Re-scan workspace to pick up new forms (matches list behavior)
-    from function_app import get_workspace_paths
-    from shared.forms_registry import get_forms_registry
-    from pathlib import Path
-
-    logger.info("Triggering forms registry reload before getting form roles")
-    forms_registry = get_forms_registry()
-    workspace_paths = [Path(str(p)) for p in get_workspace_paths()]
-    forms_registry.load_all_forms(workspace_paths)
-
+    # Forms are now discovered dynamically - no explicit reload needed
     request_context = req.context  # type: ignore[attr-defined]
     form_id = req.route_params.get("formId")
     assert form_id is not None
@@ -358,3 +331,5 @@ async def execute_form_data_provider(req: func.HttpRequest) -> func.HttpResponse
         status_code=status_code,
         mimetype="application/json"
     )
+
+

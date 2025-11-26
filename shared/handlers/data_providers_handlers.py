@@ -1,37 +1,30 @@
 """
 Data Providers Handlers
 Business logic for data provider discovery and option retrieval
-Extracted from functions/data_providers.py for unit testability
+Routes execution through the unified engine for SDK access
 """
 
-import hashlib
-import json
 import logging
-from datetime import datetime, timedelta
-from typing import Any
+import uuid
+from typing import Any, TYPE_CHECKING
 
-from shared.models import ErrorResponse
-from shared.registry import get_registry
+from shared.context import Caller
+from shared.discovery import load_data_provider, scan_all_data_providers
+from shared.engine import ExecutionRequest, execute
+from shared.models import ErrorResponse, ExecutionStatus
 
-# TYPE_CHECKING import for type hints
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
-    from shared.models import DataProviderMetadata
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache for data provider results
-# In production, this would use Redis or Azure Cache
-_cache: dict[str, dict[str, Any]] = {}
-
 
 def validate_data_provider_inputs(
-    provider_metadata: "DataProviderMetadata",
+    provider_metadata,
     inputs: dict[str, Any] | None
 ) -> list[str]:
     """
-    Validate input parameters against data provider parameter definitions (T025).
+    Validate input parameters against data provider parameter definitions.
 
     Args:
         provider_metadata: Data provider metadata with parameter definitions
@@ -42,8 +35,7 @@ def validate_data_provider_inputs(
 
     Validation rules:
         1. All required parameters must be present in inputs
-        2. Input values must match expected types (basic validation)
-        3. Extra inputs (not defined in parameters) are allowed (forward compatibility)
+        2. Extra inputs (not defined in parameters) are allowed (forward compatibility)
     """
     errors = []
     inputs = inputs or {}
@@ -55,40 +47,7 @@ def validate_data_provider_inputs(
                 f"Required parameter '{param.name}' is missing"
             )
 
-    # Note: We allow extra inputs for forward compatibility
-    # This allows forms to pass inputs that may be used by future provider versions
-
     return errors
-
-
-def compute_cache_key(provider_name: str, inputs: dict[str, Any] | None = None, org_id: str | None = None) -> str:
-    """
-    Compute cache key for data provider with inputs (T012).
-
-    Args:
-        provider_name: Name of the data provider
-        inputs: Input parameter values (optional)
-        org_id: Organization ID (optional)
-
-    Returns:
-        Cache key string
-
-    Format:
-        - Without inputs: "{org_id}:{provider_name}"
-        - With inputs: "{org_id}:{provider_name}:{input_hash}"
-    """
-    if not inputs:
-        # Backward compatible format
-        return f"{org_id}:{provider_name}" if org_id else provider_name
-
-    # Sort keys for deterministic hash
-    input_str = json.dumps(inputs, sort_keys=True)
-    input_hash = hashlib.sha256(input_str.encode()).hexdigest()[:16]
-
-    if org_id:
-        return f"{org_id}:{provider_name}:{input_hash}"
-    else:
-        return f"{provider_name}:{input_hash}"
 
 
 async def get_data_provider_options_handler(
@@ -100,11 +59,15 @@ async def get_data_provider_options_handler(
     """
     Call a data provider and return options.
 
+    Routes execution through the unified engine to provide full SDK access
+    (config, secrets, oauth, etc.) while maintaining lightweight execution
+    (no DB tracking via transient=True).
+
     Args:
         provider_name: Name of the data provider
         context: ExecutionContext with organization context
         no_cache: If True, bypass cache
-        inputs: Optional input parameter values for the data provider (T024)
+        inputs: Optional input parameter values for the data provider
 
     Returns:
         Tuple of (response_dict, status_code)
@@ -136,20 +99,30 @@ async def get_data_provider_options_handler(
         )
         return error.model_dump(), 400
 
-    # Get provider from registry
-    registry = get_registry()
-    provider_metadata = registry.get_data_provider(provider_name)
+    # Dynamically load data provider (always fresh import)
+    try:
+        result = load_data_provider(provider_name)
+        if not result:
+            logger.warning(f"Data provider not found: {provider_name}")
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"Data provider '{provider_name}' not found"
+            )
+            return error.model_dump(), 404
 
-    if not provider_metadata:
-        logger.warning(f"Data provider not found: {provider_name}")
+        provider_func, provider_metadata = result
+        logger.debug(f"Loaded data provider fresh: {provider_name}")
+    except Exception as e:
+        # Load failed (likely syntax error)
+        logger.error(f"Failed to load data provider {provider_name}: {e}", exc_info=True)
         error = ErrorResponse(
-            error="NotFound",
-            message=f"Data provider '{provider_name}' not found"
+            error="DataProviderLoadError",
+            message=f"Failed to load data provider '{provider_name}': {str(e)}"
         )
-        return error.model_dump(), 404
+        return error.model_dump(), 500
 
-    # T025: Validate input parameters against provider parameter definitions
-    validation_errors = validate_data_provider_inputs(provider_metadata, inputs)  # type: ignore[arg-type]
+    # Validate input parameters against provider parameter definitions
+    validation_errors = validate_data_provider_inputs(provider_metadata, inputs)
     if validation_errors:
         error = ErrorResponse(
             error="BadRequest",
@@ -158,115 +131,110 @@ async def get_data_provider_options_handler(
         )
         return error.model_dump(), 400
 
-    # Get provider function
-    provider_func = provider_metadata.function
-    cache_ttl = provider_metadata.cache_ttl_seconds
-
-    # T026: Compute cache key with inputs hash (if inputs provided)
-    cache_key = compute_cache_key(
-        provider_name=provider_name,
-        inputs=inputs,
-        org_id=context.org_id
-    )
-    cached_result = None
-    cache_expires_at = None
-
-    if not no_cache and cache_key in _cache:
-        cached_entry = _cache[cache_key]
-        expires_at = cached_entry['expires_at']
-
-        # Check if cache is still valid
-        if datetime.utcnow() < expires_at:
-            cached_result = cached_entry['data']
-            cache_expires_at = expires_at.isoformat() + "Z"
-            logger.info(
-                f"Cache hit for data provider: {provider_name}",
-                extra={
-                    "provider": provider_name,
-                    "org_id": context.org_id,
-                    "expires_at": cache_expires_at
-                }
-            )
-
-    # Call provider if not cached
-    if cached_result is None:
-        try:
-            logger.info(
-                f"Calling data provider: {provider_name}",
-                extra={
-                    "provider": provider_name,
-                    "org_id": context.org_id,
-                    "inputs": inputs if inputs else {}
-                }
-            )
-
-            # T027: Call provider function with validated inputs as kwargs
-            if inputs and provider_metadata.parameters:
-                # Provider has parameters - pass inputs as keyword arguments
-                options = await provider_func(context, **inputs)
-            else:
-                # No parameters or no inputs - call with context only (backward compatible)
-                options = await provider_func(context)
-
-            # Validate options format (basic check)
-            if not isinstance(options, list):
-                raise ValueError(
-                    f"Data provider must return a list, got {type(options).__name__}")
-
-            # Cache the result
-            expires_at = datetime.utcnow() + timedelta(seconds=cache_ttl)
-            _cache[cache_key] = {
-                'data': options,
-                'expires_at': expires_at
-            }
-            cache_expires_at = expires_at.isoformat() + "Z"
-
-            logger.info(
-                f"Data provider executed successfully: {provider_name}",
-                extra={
-                    "provider": provider_name,
-                    "options_count": len(options),
-                    "cached_until": cache_expires_at
-                }
-            )
-
-            # Build response
-            response = {
+    # Execute through unified engine (provides SDK context, caching, etc.)
+    try:
+        logger.info(
+            f"Executing data provider via engine: {provider_name}",
+            extra={
                 "provider": provider_name,
-                "options": options,
-                "cached": False,
-                "cache_expires_at": cache_expires_at
+                "org_id": context.org_id,
+                "inputs": inputs if inputs else {}
             }
+        )
 
-            return response, 200
+        request = ExecutionRequest(
+            execution_id=str(uuid.uuid4()),
+            caller=Caller(
+                user_id=context.user_id,
+                email=context.email,
+                name=context.name
+            ),
+            organization=context.organization,
+            config=context._config,
+            func=provider_func,
+            name=provider_name,
+            tags=["data_provider"],
+            cache_ttl_seconds=provider_metadata.cache_ttl_seconds,
+            parameters=inputs or {},
+            transient=True,  # No execution tracking for data providers
+            no_cache=no_cache,
+            is_platform_admin=context.is_platform_admin
+        )
 
-        except Exception as e:
+        result = await execute(request)
+
+        # Handle execution result
+        if result.status != ExecutionStatus.SUCCESS:
             logger.error(
-                f"Error executing data provider: {provider_name}",
+                f"Data provider execution failed: {provider_name}",
                 extra={
                     "provider": provider_name,
-                    "error": str(e)
-                },
-                exc_info=True
+                    "error": result.error_message,
+                    "error_type": result.error_type
+                }
             )
-
+            # Build error details - include logs for platform admins
+            details: dict[str, Any] = {"provider": provider_name}
+            if context.is_platform_admin and result.logs:
+                # Extract log messages for admin visibility
+                details["logs"] = [
+                    log.get("message", str(log)) if isinstance(log, dict) else str(log)
+                    for log in result.logs
+                ]
             error = ErrorResponse(
                 error="InternalError",
-                message=f"Failed to execute data provider: {str(e)}",
-                details={"provider": provider_name}
+                message=f"Failed to execute data provider: {result.error_message}",
+                details=details
             )
-
             return error.model_dump(), 500
 
-    # Return cached result
-    response = {
-        "provider": provider_name,
-        "options": cached_result,
-        "cached": True,
-        "cache_expires_at": cache_expires_at
-    }
+        options = result.result
 
-    return response, 200
+        # Validate options format (basic check)
+        if not isinstance(options, list):
+            error = ErrorResponse(
+                error="InternalError",
+                message=f"Data provider must return a list, got {type(options).__name__}",
+                details={"provider": provider_name}
+            )
+            return error.model_dump(), 500
+
+        logger.info(
+            f"Data provider executed successfully: {provider_name}",
+            extra={
+                "provider": provider_name,
+                "options_count": len(options),
+                "cached": result.cached
+            }
+        )
+
+        # Build response
+        response = {
+            "provider": provider_name,
+            "options": options,
+            "cached": result.cached,
+            "cache_expires_at": result.cache_expires_at
+        }
+
+        return response, 200
+
+    except Exception as e:
+        logger.error(
+            f"Error executing data provider: {provider_name}",
+            extra={
+                "provider": provider_name,
+                "error": str(e)
+            },
+            exc_info=True
+        )
+
+        error = ErrorResponse(
+            error="InternalError",
+            message=f"Failed to execute data provider: {str(e)}",
+            details={"provider": provider_name}
+        )
+
+        return error.model_dump(), 500
 
 
 async def list_data_providers_handler() -> tuple[dict[str, Any], int]:
@@ -291,10 +259,10 @@ async def list_data_providers_handler() -> tuple[dict[str, Any], int]:
     Status codes:
         200: Success
     """
-    registry = get_registry()
-    providers = registry.get_all_data_providers()
+    # Dynamically scan all data providers (always fresh)
+    providers = scan_all_data_providers()
 
-    # Convert to response format (T031 - include parameters for User Story 1)
+    # Convert to response format (include parameters)
     provider_list = [
         {
             "name": p.name,

@@ -19,11 +19,11 @@ from datetime import datetime
 import azure.functions as func
 
 from shared.context import Caller, Organization
+from shared.discovery import load_workflow
 from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
 from shared.middleware import load_config_for_partition
 from shared.models import ExecutionStatus
-from shared.registry import get_registry
 from shared.repositories.executions import ExecutionRepository
 from shared.storage import get_organization_async
 
@@ -177,27 +177,15 @@ async def handle_workflow_execution(message_data: dict) -> None:
         # Determine if this is a script or workflow execution
         is_script = bool(code_base64)
 
-        # Get workflow metadata for timeout (scripts don't have metadata)
+        # Get workflow function and metadata (scripts don't have metadata)
+        workflow_func = None
         metadata = None
         if not is_script:
-            registry = get_registry()
-            metadata = registry.get_function(workflow_name)
-
-            # Reload the workflow module to ensure we have the latest code
-            # This handles multi-worker scenarios where file edits happen in other processes
-            if metadata and hasattr(metadata, 'source_file_path') and metadata.source_file_path:
-                try:
-                    from pathlib import Path
-                    from function_app import reload_single_module
-                    reload_single_module(Path(metadata.source_file_path))
-                    # Re-fetch metadata after reload
-                    metadata = registry.get_function(workflow_name)
-                    logger.debug(f"Reloaded workflow module before async execution: {workflow_name}")
-                except Exception as e:
-                    # Reload failed (likely syntax error) - fail execution instead of using stale code
-                    logger.error(f"Failed to reload workflow {workflow_name}: {e}", exc_info=True)
-
-                    # Update execution status to failed
+            # Dynamically load workflow (always fresh - discovery handles cache clearing)
+            try:
+                result = load_workflow(workflow_name)
+                if not result:
+                    logger.error(f"Workflow not found: {workflow_name}")
                     duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
                     await exec_logger.update_execution(
                         execution_id=execution_id,
@@ -205,15 +193,37 @@ async def handle_workflow_execution(message_data: dict) -> None:
                         user_id=user_id,
                         status=ExecutionStatus.FAILED,
                         result={
-                            "error": "WorkflowLoadError",
-                            "message": f"Failed to load workflow '{workflow_name}': {str(e)}"
+                            "error": "WorkflowNotFound",
+                            "message": f"Workflow '{workflow_name}' not found"
                         },
                         duration_ms=duration_ms,
                         webpubsub_broadcaster=broadcaster
                     )
-                    # Close broadcaster before early return
                     broadcaster.close()
-                    return  # Exit without executing
+                    return
+
+                workflow_func, metadata = result
+                logger.debug(f"Loaded workflow for async execution: {workflow_name}")
+
+            except Exception as e:
+                # Load failed (likely syntax error) - fail execution
+                logger.error(f"Failed to load workflow {workflow_name}: {e}", exc_info=True)
+
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.FAILED,
+                    result={
+                        "error": "WorkflowLoadError",
+                        "message": f"Failed to load workflow '{workflow_name}': {str(e)}"
+                    },
+                    duration_ms=duration_ms,
+                    webpubsub_broadcaster=broadcaster
+                )
+                broadcaster.close()
+                return
 
         timeout_seconds = metadata.timeout_seconds if metadata else 1800  # Default 30 min
 
@@ -223,8 +233,11 @@ async def handle_workflow_execution(message_data: dict) -> None:
             caller=caller,
             organization=org,
             config=config,
+            func=workflow_func if not is_script else None,  # For workflows
             code=code_base64 if is_script else None,  # For inline scripts
-            name=workflow_name if not is_script else None,  # For registered workflows
+            name=workflow_name,
+            tags=["workflow"] if not is_script else [],
+            timeout_seconds=timeout_seconds,
             parameters=parameters,
             transient=False,  # Async executions always write to DB
             is_platform_admin=False,  # Used for API response filtering, not execution behavior

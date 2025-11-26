@@ -54,7 +54,7 @@ class TestSDKContextProtection:
         clear_execution_context()
 
         with pytest.raises(RuntimeError, match="No execution context found"):
-            await oauth.get_token("microsoft")
+            await oauth.get("microsoft")
 
 
 class TestDefaultOrgScoping:
@@ -305,38 +305,86 @@ class TestCrossOrgParameterUsage:
         finally:
             clear_execution_context()
 
-    async def test_secrets_get_with_explicit_org_id(self):
-        """Test that secrets.get(org_id='other-org') uses the specified org"""
+    # Note: test_secrets_get_with_explicit_org_id was removed because
+    # secrets.get() no longer accepts org_id parameter. Secrets use Key Vault
+    # secret names which encode the scope in the naming convention.
+
+    async def test_config_set_with_explicit_org_id(self):
+        """Test that config.set(org_id='other-org') writes to the specified org"""
         from unittest.mock import AsyncMock, Mock, patch
-        from bifrost import secrets
+        from bifrost import config
         from shared.context import ExecutionContext, Organization
 
+        # User is in org-123
         org = Organization(id="org-123", name="Test Org", is_active=True)
         context = ExecutionContext(
-            user_id="admin-user",
-            email="admin@example.com",
-            name="Admin User",
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
             scope="org-123",
             organization=org,
             is_platform_admin=True,
             is_function_key=False,
-            execution_id="test-exec-admin-123"
+            execution_id="test-exec-123"
         )
         set_execution_context(context)
 
         try:
-            with patch('bifrost.secrets.KeyVaultClient') as mock_kv_class:
-                mock_kv = Mock()
-                mock_kv_class.return_value.__aenter__ = AsyncMock(return_value=mock_kv)
-                mock_kv_class.return_value.__aexit__ = AsyncMock(return_value=None)
-                mock_kv.get_secret = AsyncMock(return_value="other-secret")
+            with patch('bifrost.config._get_scoped_repo') as mock_get_repo:
+                mock_repo = Mock()
+                mock_repo.set_config = AsyncMock()
+                mock_get_repo.return_value = mock_repo
 
-                # Explicitly request org-888's secret
-                result = await secrets.get("api_key", org_id="org-888")
+                # Set config for org-999
+                await config.set("api_url", "https://api.other.com", org_id="org-999")
 
-                # Verify it was called with the full secret name
-                mock_kv.get_secret.assert_called_once_with("api_key")
-                assert result == "other-secret"
+                # Verify _get_scoped_repo was called with the target org_id
+                mock_get_repo.assert_called_once()
+                call_args = mock_get_repo.call_args
+                assert call_args[0][1] == "org-999"  # Second positional arg is org_id
+
+                # Verify set_config was called
+                mock_repo.set_config.assert_called_once()
+        finally:
+            clear_execution_context()
+
+    async def test_config_delete_with_explicit_org_id(self):
+        """Test that config.delete(org_id='other-org') deletes from the specified org"""
+        from unittest.mock import AsyncMock, Mock, patch
+        from bifrost import config
+        from shared.context import ExecutionContext, Organization
+
+        # User is in org-123
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
+            scope="org-123",
+            organization=org,
+            is_platform_admin=True,
+            is_function_key=False,
+            execution_id="test-exec-123"
+        )
+        set_execution_context(context)
+
+        try:
+            with patch('bifrost.config._get_scoped_repo') as mock_get_repo:
+                mock_repo = Mock()
+                mock_repo.delete_config = AsyncMock(return_value=True)
+                mock_get_repo.return_value = mock_repo
+
+                # Delete config from org-999
+                result = await config.delete("old_key", org_id="org-999")
+
+                # Verify _get_scoped_repo was called with the target org_id
+                mock_get_repo.assert_called_once()
+                call_args = mock_get_repo.call_args
+                assert call_args[0][1] == "org-999"  # Second positional arg is org_id
+
+                # Verify delete_config was called and returned True
+                mock_repo.delete_config.assert_called_once_with("old_key")
+                assert result is True
         finally:
             clear_execution_context()
 
@@ -397,7 +445,7 @@ class TestCrossOrgParameterUsage:
                     mock_kv.get_secret = AsyncMock(return_value='{"access_token": "xxx", "token_type": "Bearer"}')
 
                     # Explicitly request org-777's token
-                    result = await oauth.get_token("microsoft", org_id="org-777")
+                    result = await oauth.get("microsoft", org_id="org-777")
 
                     # Verify it called get_connection with org-777
                     mock_storage.get_connection.assert_called_once_with("org-777", "microsoft")

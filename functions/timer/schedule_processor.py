@@ -11,8 +11,8 @@ import azure.functions as func
 from croniter import croniter
 
 from shared.async_executor import enqueue_workflow_execution
-from shared.registry import get_registry
 from shared.context import ExecutionContext
+from shared.discovery import scan_all_workflows
 from shared.async_storage import AsyncTableStorageService
 from shared.workflows.cron_parser import calculate_next_run, is_cron_expression_valid
 
@@ -53,9 +53,8 @@ async def schedule_processor(timer: func.TimerRequest) -> None:
 
     async with config_service:
         try:
-            # Get all workflows from registry
-            registry = get_registry()
-            all_workflows = registry.get_all_workflows()
+            # Dynamically scan all workflows (always fresh)
+            all_workflows = scan_all_workflows()
             scheduled_workflows = [w for w in all_workflows if w.schedule]
 
             results["total_schedules"] = len(scheduled_workflows)

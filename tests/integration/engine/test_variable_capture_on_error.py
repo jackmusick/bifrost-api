@@ -38,7 +38,8 @@ class TestVariableCaptureOnError:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="failing_workflow_with_vars",
-            parameters={}
+            parameters={},
+            func=failing_workflow
         )
 
         result = await execute(request)
@@ -94,7 +95,8 @@ class TestVariableCaptureOnError:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="async_failing_workflow",
-            parameters={}
+            parameters={},
+            func=async_failing_workflow
         )
 
         result = await execute(request)
@@ -142,7 +144,8 @@ class TestVariableCaptureOnError:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="dict_attribute_error_workflow",
-            parameters={}
+            parameters={},
+            func=dict_attribute_workflow
         )
 
         result = await execute(request)

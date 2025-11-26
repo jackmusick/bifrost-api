@@ -12,10 +12,10 @@ from datetime import datetime
 import azure.functions as func
 
 from shared.context import Caller
+from shared.discovery import load_workflow
 from shared.engine import ExecutionRequest, execute
 from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus
-from shared.registry import get_registry
 from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
 logger = logging.getLogger(__name__)
@@ -51,38 +51,31 @@ async def execute_workflow_internal(
     # Determine if async execution is required
     execution_mode = "async"  # Default for scripts
 
+    # Variables to hold loaded workflow data
+    workflow_func = None
+    workflow_metadata = None
+
     if not is_script:
-        # Look up workflow from registry
-        registry = get_registry()
-        workflow_metadata = registry.get_workflow(workflow_name)
+        # Dynamically load workflow (always fresh import)
+        try:
+            result = load_workflow(workflow_name)
+            if not result:
+                logger.warning(f"Workflow not found: {workflow_name}")
+                return {
+                    "error": "NotFound",
+                    "message": f"Workflow '{workflow_name}' not found"
+                }, 404
 
-        if not workflow_metadata:
-            logger.warning(f"Workflow not found: {workflow_name}")
-            return {
-                "error": "NotFound",
-                "message": f"Workflow '{workflow_name}' not found"
-            }, 404
-
-        # Reload the workflow module to ensure we have the latest code
-        # This handles multi-worker scenarios where file edits happen in other processes
-        if workflow_metadata.source_file_path:
-            try:
-                from pathlib import Path
-                from function_app import reload_single_module
-                reload_single_module(Path(workflow_metadata.source_file_path))
-                # Re-fetch metadata after reload
-                reloaded_metadata = registry.get_workflow(workflow_name)
-                if reloaded_metadata:
-                    workflow_metadata = reloaded_metadata
-                logger.debug(f"Reloaded workflow module before execution: {workflow_name}")
-            except Exception as e:
-                # Reload failed (likely syntax error) - fail execution instead of using stale code
-                logger.error(f"Failed to reload workflow {workflow_name}: {e}", exc_info=True)
-                error_response = ErrorResponse(
-                    error="WorkflowLoadError",
-                    message=f"Failed to load workflow '{workflow_name}': {str(e)}"
-                )
-                return error_response.model_dump(), 500
+            workflow_func, workflow_metadata = result
+            logger.debug(f"Loaded workflow fresh: {workflow_name}")
+        except Exception as e:
+            # Load failed (likely syntax error)
+            logger.error(f"Failed to load workflow {workflow_name}: {e}", exc_info=True)
+            error_response = ErrorResponse(
+                error="WorkflowLoadError",
+                message=f"Failed to load workflow '{workflow_name}': {str(e)}"
+            )
+            return error_response.model_dump(), 500
 
         # Get execution mode from workflow metadata
         execution_mode = workflow_metadata.execution_mode
@@ -146,8 +139,11 @@ async def execute_workflow_internal(
             ),
             organization=context.organization,
             config=context._config,
+            func=workflow_func if not is_script else None,
             code=code_base64 if is_script else None,
-            name=workflow_name if not is_script else None,
+            name=workflow_name,
+            tags=["workflow"] if not is_script else [],
+            timeout_seconds=workflow_metadata.timeout_seconds if workflow_metadata else 1800,
             parameters=parameters,
             transient=transient,
             is_platform_admin=context.is_platform_admin,
@@ -371,8 +367,8 @@ async def validate_workflow_file(path: str, content: str | None = None):
     import re
     from pydantic import ValidationError
     from shared.models import WorkflowValidationResponse, ValidationIssue
-    from shared.handlers.discovery_handlers import convert_registry_workflow_to_model
-    from shared.registry import get_registry
+    from shared.handlers.discovery_handlers import convert_workflow_metadata_to_model
+    from shared.discovery import import_module_fresh, WorkflowMetadata
     from shared.decorators import VALID_PARAM_TYPES
 
     issues = []
@@ -433,27 +429,8 @@ async def validate_workflow_file(path: str, content: str | None = None):
             return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
 
         # Step 2: Check for import errors by attempting to load the module
-        module_name = f"validation_temp_{uuid.uuid4().hex}"
-        spec = importlib.util.spec_from_file_location(module_name, file_to_validate)
-
-        if spec is None or spec.loader is None:
-            issues.append(ValidationIssue(
-                line=None,
-                message="Failed to create module spec",
-                severity="error"
-            ))
-            valid = False
-            return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
-
-        # Get the absolute file path being validated
-        registry = get_registry()
-        file_path_str = str(file_to_validate)
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-
         try:
-            spec.loader.exec_module(module)
+            module = import_module_fresh(file_to_validate)
         except Exception as e:
             # Import error - could be missing dependencies or runtime errors
             issues.append(ValidationIssue(
@@ -463,20 +440,17 @@ async def validate_workflow_file(path: str, content: str | None = None):
             ))
             valid = False
             return WorkflowValidationResponse(valid=valid, issues=issues, metadata=None)
-        finally:
-            # Clean up module from sys.modules
-            if module_name in sys.modules:
-                del sys.modules[module_name]
 
-        # Step 3: Check if @workflow decorator was found by checking source_file_path
-        # The decorator registers workflows with their source_file_path, so we look for any
-        # workflow that has this file path (handles both new workflows and re-validation)
-        registered_workflows = [
-            w for w in registry.get_all_workflows()
-            if w.source_file_path == file_path_str
-        ]
+        # Step 3: Check if @workflow decorator was found by scanning module
+        discovered_workflows: list[WorkflowMetadata] = []
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if callable(attr) and hasattr(attr, '_workflow_metadata'):
+                metadata_obj = attr._workflow_metadata
+                if isinstance(metadata_obj, WorkflowMetadata):
+                    discovered_workflows.append(metadata_obj)
 
-        if not registered_workflows:
+        if not discovered_workflows:
             issues.append(ValidationIssue(
                 line=None,
                 message="No @workflow decorator found. Functions must use @workflow(...) to be discoverable.",
@@ -487,7 +461,7 @@ async def validate_workflow_file(path: str, content: str | None = None):
 
         # Use the first matching workflow for validation
         # (most files will have just one workflow, but we support multiple)
-        workflow_metadata = registered_workflows[0]
+        workflow_metadata = discovered_workflows[0]
 
         # Step 4: Validate workflow name pattern
         name_pattern = r"^[a-z0-9_]+$"
@@ -540,7 +514,7 @@ async def validate_workflow_file(path: str, content: str | None = None):
 
         # Step 9: Validate Pydantic model conversion (this is what discovery endpoint does)
         try:
-            metadata = convert_registry_workflow_to_model(workflow_metadata)
+            metadata = convert_workflow_metadata_to_model(workflow_metadata)
         except ValidationError as e:
             for error in e.errors():
                 field = ".".join(str(loc) for loc in error["loc"])

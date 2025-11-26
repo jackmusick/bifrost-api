@@ -9,10 +9,10 @@ import logging
 import azure.functions as func
 
 from shared.decorators import with_request_context
-from shared.handlers.discovery_handlers import convert_registry_provider_to_model
+from shared.discovery import scan_all_data_providers
+from shared.handlers.discovery_handlers import convert_data_provider_metadata_to_model
 from shared.models import DataProviderMetadata
 from shared.openapi_decorators import openapi_endpoint
-from shared.registry import get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +44,12 @@ async def list_data_providers(req: func.HttpRequest) -> func.HttpResponse:
         500: Internal server error
     """
     try:
-        # Re-scan workspace to pick up new providers
-        from function_app import discover_workspace_modules
-        logger.info("Triggering workspace re-scan before returning data providers")
-        discover_workspace_modules()
-
-        # Get all data providers from registry
-        registry = get_registry()
+        # Dynamically scan all data providers (always fresh)
         providers = []
 
-        for dp in registry.get_all_data_providers():
+        for dp in scan_all_data_providers():
             try:
-                provider_model = convert_registry_provider_to_model(dp)
+                provider_model = convert_data_provider_metadata_to_model(dp)
                 providers.append(provider_model)
             except Exception as e:
                 logger.error(

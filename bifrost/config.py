@@ -15,6 +15,24 @@ from shared.repositories.config import ConfigRepository
 from ._internal import get_context
 
 
+def _get_scoped_repo(context: Any, org_id: str | None = None) -> ConfigRepository:
+    """Get ConfigRepository scoped to the specified org_id or current context."""
+    if org_id and org_id != context.org_id:
+        from shared.context import ExecutionContext
+        scoped_context = ExecutionContext(
+            user_id=context.user_id,
+            email=context.email,
+            name=context.name,
+            scope=org_id,
+            organization=context.organization,
+            is_platform_admin=context.is_platform_admin,
+            is_function_key=context.is_function_key,
+            execution_id=context.execution_id
+        )
+        return ConfigRepository(scoped_context)
+    return ConfigRepository(context)
+
+
 class config:
     """
     Configuration management operations.
@@ -47,7 +65,7 @@ class config:
             >>> timeout = await config.get("timeout", default=30)
         """
         context = get_context()
-        repo = ConfigRepository(context)
+        repo = _get_scoped_repo(context, org_id)
 
         # Get config from repository
         cfg = await repo.get_config(key, fallback_to_global=True)
@@ -66,7 +84,7 @@ class config:
         # Use ConfigResolver for transparent secret resolution and type parsing
         try:
             return await context._config_resolver.get_config(
-                org_id=context.scope,
+                org_id=org_id or context.scope,
                 key=key,
                 config_data=config_data,
                 default=default
@@ -95,8 +113,7 @@ class config:
             >>> config.set("api_url", "https://other.example.com", org_id="other-org")
         """
         context = get_context()
-
-        repo = ConfigRepository(context)
+        repo = _get_scoped_repo(context, org_id)
 
         # Convert value to string for storage
         # ConfigRepository expects ConfigType, default to string
@@ -289,6 +306,5 @@ class config:
             >>> config.delete("old_api_url")
         """
         context = get_context()
-
-        repo = ConfigRepository(context)
+        repo = _get_scoped_repo(context, org_id)
         return await repo.delete_config(key)

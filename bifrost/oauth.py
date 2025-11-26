@@ -115,66 +115,6 @@ class oauth:
         return result
 
     @staticmethod
-    async def get_token(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
-        """
-        Get OAuth token for a provider.
-
-        Args:
-            provider: OAuth provider name (e.g., "microsoft", "google")
-            org_id: Organization ID (defaults to current org from context)
-
-        Returns:
-            dict | None: OAuth token data (access_token, refresh_token, expires_at, etc.)
-                        or None if not found
-
-        Raises:
-            RuntimeError: If no execution context
-
-        Example:
-            >>> from bifrost import oauth
-            >>> token = await oauth.get_token("microsoft")
-            >>> if token:
-            ...     access_token = token["access_token"]
-            ...     # Use the token for API calls
-        """
-        import json
-        import logging
-
-        logger = logging.getLogger(__name__)
-        context = get_context()
-        target_org = org_id or context.scope  # Use scope instead of org_id (scope is always a string)
-
-        storage = OAuthStorageService()
-
-        # Get connection using async method
-        connection = await storage.get_connection(target_org, provider)
-
-        if not connection:
-            logger.warning(f"OAuth connection '{provider}' not found for org '{target_org}'")
-            return None
-
-        if connection.status != "completed":
-            logger.warning(f"OAuth connection '{provider}' status is '{connection.status}', not 'completed'")
-            return None
-
-        # Retrieve OAuth response from Key Vault using direct ref
-        try:
-            if not connection.oauth_response_ref:
-                logger.warning(f"OAuth connection '{provider}' has no oauth_response_ref")
-                return None
-
-            async with KeyVaultClient() as kv:
-                secret_value = await kv.get_secret(connection.oauth_response_ref)
-                if secret_value:
-                    return json.loads(secret_value)
-                else:
-                    logger.warning(f"OAuth connection '{provider}' token secret is empty")
-                    return None
-        except Exception as e:
-            logger.error(f"Failed to retrieve OAuth token for '{provider}': {e}", exc_info=True)
-            return None
-
-    @staticmethod
     async def set_token(
         provider: str,
         token_data: dict[str, Any],

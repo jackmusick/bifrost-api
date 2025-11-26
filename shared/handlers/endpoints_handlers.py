@@ -13,10 +13,10 @@ import azure.functions as func
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.context import ExecutionContext
+from shared.discovery import load_workflow, WorkflowMetadata
 from shared.error_handling import WorkflowError
 from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus
-from shared.registry import get_registry, WorkflowMetadata
 from shared.workflow_endpoint_utils import (
     coerce_parameter_types,
     record_workflow_execution_result,
@@ -51,23 +51,38 @@ async def execute_workflow_endpoint_handler(
     Returns:
         tuple of (HttpResponse, status_code)
     """
-    # Get workflow from registry
-    registry = get_registry()
-    workflow_metadata = registry.get_workflow(workflow_name)
-
-    if not workflow_metadata:
-        logger.warning(f"Workflow not found: {workflow_name}")
+    # Dynamically load workflow (always fresh)
+    try:
+        result = load_workflow(workflow_name)
+        if not result:
+            logger.warning(f"Workflow not found: {workflow_name}")
+            error = ErrorResponse(
+                error="NotFound",
+                message=f"Workflow '{workflow_name}' not found"
+            )
+            return (
+                func.HttpResponse(
+                    json.dumps(error.model_dump()),
+                    status_code=404,
+                    mimetype="application/json"
+                ),
+                404
+            )
+        workflow_func, workflow_metadata = result
+    except Exception as e:
+        # Load failed (likely syntax error)
+        logger.error(f"Failed to load workflow {workflow_name}: {e}", exc_info=True)
         error = ErrorResponse(
-            error="NotFound",
-            message=f"Workflow '{workflow_name}' not found"
+            error="WorkflowLoadError",
+            message=f"Failed to load workflow '{workflow_name}': {str(e)}"
         )
         return (
             func.HttpResponse(
                 json.dumps(error.model_dump()),
-                status_code=404,
+                status_code=500,
                 mimetype="application/json"
             ),
-            404
+            500
         )
 
     # Check if endpoint is enabled
@@ -122,6 +137,7 @@ async def execute_workflow_endpoint_handler(
         workflow_name=workflow_name,
         http_method=http_method,
         input_data=input_data,
+        workflow_func=workflow_func,
         workflow_metadata=workflow_metadata
     )
 
@@ -170,6 +186,7 @@ async def _execute_sync(
     workflow_name: str,
     http_method: str,
     input_data: dict[str, Any],
+    workflow_func: Any,
     workflow_metadata: WorkflowMetadata,
 ) -> tuple[func.HttpResponse, int]:
     """
@@ -180,15 +197,13 @@ async def _execute_sync(
         workflow_name: Workflow name
         http_method: HTTP method (for logging)
         input_data: Input parameters
+        workflow_func: The workflow function to execute
         workflow_metadata: Workflow metadata
 
     Returns:
         tuple of (HttpResponse with execution result, status_code)
     """
     import uuid
-
-    # Get workflow function
-    workflow_func = workflow_metadata.function
 
     # Generate execution ID
     execution_id = str(uuid.uuid4())

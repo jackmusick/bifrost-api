@@ -9,8 +9,8 @@ Provides business logic for OpenAPI specification generation including:
 """
 
 from pydantic import BaseModel
+from shared.discovery import scan_all_workflows
 from shared.openapi_decorators import build_openapi_spec
-from shared.registry import get_registry
 import shared.models as models_module
 
 
@@ -224,20 +224,21 @@ def generate_workflow_endpoints(spec: dict) -> None:
     """
     Generate OpenAPI endpoint definitions for enabled workflows.
 
-    Dynamically adds workflow endpoints to the spec based on registry.
+    Dynamically scans workflows and adds endpoints to the spec.
     Updates the spec in-place with /endpoints/{workflow_name} paths.
 
     Args:
         spec: OpenAPI specification dict to update (modified in-place)
     """
-    registry = get_registry()
+    # Dynamically scan all workflows (always fresh)
+    workflows = scan_all_workflows()
 
     # Initialize paths if not present
     if "paths" not in spec:
         spec["paths"] = {}
 
     # Generate endpoint paths for each enabled workflow
-    for metadata in registry.get_all_workflows():
+    for metadata in workflows:
         # Skip workflows that aren't enabled as endpoints
         if not metadata.endpoint_enabled:
             continue

@@ -2,7 +2,7 @@
 Unit tests for metrics handlers
 
 Tests business logic for dashboard metrics and statistics.
-Uses mocks for registry and table services.
+Uses mocks for discovery and table services.
 """
 
 from datetime import datetime
@@ -32,17 +32,6 @@ def mock_context():
     context.user_id = "user-123"
     context.scope = "org-456"
     return context
-
-
-@pytest.fixture
-def mock_registry():
-    """Create a mock registry"""
-    registry = MagicMock()
-    registry.get_summary.return_value = {
-        "workflows_count": 5,
-        "data_providers_count": 3
-    }
-    return registry
 
 
 @pytest.fixture
@@ -115,57 +104,42 @@ class TestGetReverseTimestamp:
 class TestGetWorkflowMetadata:
     """Tests for get_workflow_metadata function"""
 
-    def test_successful_metadata_retrieval(self, mock_registry):
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
+    def test_successful_metadata_retrieval(self, mock_scan_providers, mock_scan_workflows):
         """Test successful retrieval of workflow metadata"""
-        result = get_workflow_metadata(mock_registry)
+        # Create mock workflows and providers
+        mock_scan_workflows.return_value = [Mock() for _ in range(5)]
+        mock_scan_providers.return_value = [Mock() for _ in range(3)]
+
+        result = get_workflow_metadata()
 
         assert result["workflowCount"] == 5
         assert result["dataProviderCount"] == 3
-        mock_registry.get_summary.assert_called_once()
+        mock_scan_workflows.assert_called_once()
+        mock_scan_providers.assert_called_once()
 
-    def test_metadata_with_zero_counts(self):
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
+    def test_metadata_with_zero_counts(self, mock_scan_providers, mock_scan_workflows):
         """Test metadata retrieval with zero counts"""
-        registry = MagicMock()
-        registry.get_summary.return_value = {
-            "workflows_count": 0,
-            "data_providers_count": 0
-        }
+        mock_scan_workflows.return_value = []
+        mock_scan_providers.return_value = []
 
-        result = get_workflow_metadata(registry)
+        result = get_workflow_metadata()
 
         assert result["workflowCount"] == 0
         assert result["dataProviderCount"] == 0
 
-    def test_metadata_retrieval_exception(self):
-        """Test graceful handling when registry fails"""
-        registry = MagicMock()
-        registry.get_summary.side_effect = Exception("Registry error")
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
+    def test_metadata_retrieval_exception(self, mock_scan_providers, mock_scan_workflows):
+        """Test graceful handling when discovery fails"""
+        mock_scan_workflows.side_effect = Exception("Discovery error")
 
-        result = get_workflow_metadata(registry)
-
-        assert result["workflowCount"] == 0
-        assert result["dataProviderCount"] == 0
-
-    def test_metadata_with_missing_fields(self):
-        """Test metadata retrieval with missing summary fields"""
-        registry = MagicMock()
-        registry.get_summary.return_value = {}
-
-        result = get_workflow_metadata(registry)
+        result = get_workflow_metadata()
 
         assert result["workflowCount"] == 0
-        assert result["dataProviderCount"] == 0
-
-    def test_metadata_with_partial_fields(self):
-        """Test metadata retrieval with only partial fields"""
-        registry = MagicMock()
-        registry.get_summary.return_value = {
-            "workflows_count": 7
-        }
-
-        result = get_workflow_metadata(registry)
-
-        assert result["workflowCount"] == 7
         assert result["dataProviderCount"] == 0
 
 
@@ -433,22 +407,20 @@ class TestGetDashboardMetrics:
     """Tests for get_dashboard_metrics function"""
 
     @pytest.mark.asyncio
-    @patch("shared.handlers.metrics_handlers.get_registry")
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
     @patch("shared.handlers.metrics_handlers.get_async_table_service")
     async def test_successful_metrics_aggregation(
         self,
         mock_get_async_table_service,
-        mock_get_registry,
+        mock_scan_providers,
+        mock_scan_workflows,
         mock_context
     ):
         """Test successful aggregation of all metrics"""
-        # Setup registry mock
-        mock_registry = MagicMock()
-        mock_registry.get_summary.return_value = {
-            "workflows_count": 5,
-            "data_providers_count": 3
-        }
-        mock_get_registry.return_value = mock_registry
+        # Setup discovery mocks
+        mock_scan_workflows.return_value = [Mock() for _ in range(5)]
+        mock_scan_providers.return_value = [Mock() for _ in range(3)]
 
         # Setup table service mock
         mock_service = AsyncMock()
@@ -471,19 +443,19 @@ class TestGetDashboardMetrics:
         assert "recentFailures" in result
 
     @pytest.mark.asyncio
-    @patch("shared.handlers.metrics_handlers.get_registry")
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
     @patch("shared.handlers.metrics_handlers.get_async_table_service")
-    async def test_metrics_with_registry_failure(
+    async def test_metrics_with_discovery_failure(
         self,
         mock_get_async_table_service,
-        mock_get_registry,
+        mock_scan_providers,
+        mock_scan_workflows,
         mock_context
     ):
-        """Test metrics generation when registry fails"""
-        # Setup registry to fail
-        mock_registry = MagicMock()
-        mock_registry.get_summary.side_effect = Exception("Registry error")
-        mock_get_registry.return_value = mock_registry
+        """Test metrics generation when discovery fails"""
+        # Setup discovery to fail
+        mock_scan_workflows.side_effect = Exception("Discovery error")
 
         # Setup table service mock
         mock_service = AsyncMock()
@@ -492,26 +464,24 @@ class TestGetDashboardMetrics:
 
         result = await get_dashboard_metrics(mock_context)
 
-        # Should have defaults from failed registry
+        # Should have defaults from failed discovery
         assert result["workflowCount"] == 0
         assert result["dataProviderCount"] == 0
 
     @pytest.mark.asyncio
-    @patch("shared.handlers.metrics_handlers.get_registry")
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
     @patch("shared.handlers.metrics_handlers.get_async_table_service")
     async def test_metrics_complete_structure(
         self,
         mock_get_async_table_service,
-        mock_get_registry,
+        mock_scan_providers,
+        mock_scan_workflows,
         mock_context
     ):
         """Test complete metrics structure"""
-        mock_registry = MagicMock()
-        mock_registry.get_summary.return_value = {
-            "workflows_count": 10,
-            "data_providers_count": 5
-        }
-        mock_get_registry.return_value = mock_registry
+        mock_scan_workflows.return_value = [Mock() for _ in range(10)]
+        mock_scan_providers.return_value = [Mock() for _ in range(5)]
 
         mock_service = AsyncMock()
         mock_get_async_table_service.side_effect = make_async_context_manager(mock_service)
@@ -534,36 +504,19 @@ class TestGetDashboardMetrics:
         assert isinstance(result["recentFailures"], list)
 
     @pytest.mark.asyncio
-    @patch("shared.handlers.metrics_handlers.get_registry")
-    @patch("shared.handlers.metrics_handlers.get_async_table_service")
-    async def test_metrics_exception_propagation(
-        self,
-        mock_get_async_table_service,
-        mock_get_registry,
-        mock_context
-    ):
-        """Test that critical exceptions are propagated"""
-        mock_get_registry.side_effect = Exception("Critical registry error")
-
-        with pytest.raises(Exception, match="Critical registry error"):
-            await get_dashboard_metrics(mock_context)
-
-    @pytest.mark.asyncio
-    @patch("shared.handlers.metrics_handlers.get_registry")
+    @patch("shared.handlers.metrics_handlers.scan_all_workflows")
+    @patch("shared.handlers.metrics_handlers.scan_all_data_providers")
     @patch("shared.handlers.metrics_handlers.get_async_table_service")
     async def test_metrics_with_complex_execution_data(
         self,
         mock_get_async_table_service,
-        mock_get_registry,
+        mock_scan_providers,
+        mock_scan_workflows,
         mock_context
     ):
         """Test metrics with complex execution data"""
-        mock_registry = MagicMock()
-        mock_registry.get_summary.return_value = {
-            "workflows_count": 3,
-            "data_providers_count": 2
-        }
-        mock_get_registry.return_value = mock_registry
+        mock_scan_workflows.return_value = [Mock() for _ in range(3)]
+        mock_scan_providers.return_value = [Mock() for _ in range(2)]
 
         mock_service = AsyncMock()
         mock_get_async_table_service.side_effect = make_async_context_manager(mock_service)

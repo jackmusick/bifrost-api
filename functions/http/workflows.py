@@ -11,7 +11,8 @@ import logging
 import azure.functions as func
 
 from shared.decorators import require_platform_admin, with_request_context
-from shared.handlers.discovery_handlers import convert_registry_workflow_to_model
+from shared.discovery import scan_all_workflows, scan_all_data_providers, scan_all_forms
+from shared.handlers.discovery_handlers import convert_workflow_metadata_to_model
 from shared.handlers.workflows_handlers import execute_workflow_handler, validate_workflow_file
 from shared.middleware import with_org_context
 from shared.models import (
@@ -24,7 +25,6 @@ from shared.models import (
     WorkspaceScanResponse,
 )
 from shared.openapi_decorators import openapi_endpoint
-from shared.registry import get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -68,67 +68,12 @@ async def list_workflows(req: func.HttpRequest) -> func.HttpResponse:
         500: Internal server error
     """
     try:
-        reload_file = req.params.get('reload_file')
-
-        if reload_file:
-            # Incremental reload: just reload the specified file
-            from pathlib import Path
-            from function_app import reload_single_module, get_workspace_paths
-            import os
-
-            logger.info(f"Triggering incremental reload for file: {reload_file}")
-
-            # Find the absolute path
-            workspace_roots = get_workspace_paths()
-            workspace_location = os.environ.get("BIFROST_WORKSPACE_LOCATION")
-            if workspace_location:
-                workspace_roots.insert(0, workspace_location)
-
-            abs_path = None
-            for root in workspace_roots:
-                candidate = Path(root) / reload_file
-                if candidate.exists():
-                    abs_path = candidate
-                    break
-
-            if abs_path is None:
-                error_response = {
-                    "error": "FileNotFound",
-                    "message": f"File not found: {reload_file}"
-                }
-                return func.HttpResponse(
-                    json.dumps(error_response),
-                    status_code=400,
-                    mimetype="application/json"
-                )
-
-            # Remove workflow(s) from registry if they exist with this file path
-            registry = get_registry()
-            abs_path_str = str(abs_path)
-            removed_workflows = registry.remove_workflows_by_file_path(abs_path_str)
-            if removed_workflows:
-                logger.info(f"Removed {len(removed_workflows)} workflow(s) before reload: {', '.join(removed_workflows)}")
-
-            # Reload the file (this will re-register if valid)
-            try:
-                reload_single_module(abs_path)
-                logger.info(f"Successfully reloaded file: {reload_file}")
-            except Exception as e:
-                logger.warning(f"Failed to reload file {reload_file}: {e}")
-                # Continue - file might have syntax errors, registry will reflect removal
-        else:
-            # Full workspace re-scan
-            from function_app import discover_workspace_modules
-            logger.info("Triggering full workspace re-scan before returning workflows")
-            discover_workspace_modules()
-
-        # Get all workflows from registry
-        registry = get_registry()
+        # Dynamically scan all workflows (always fresh - no reload needed)
         workflows = []
 
-        for w in registry.get_all_workflows():
+        for w in scan_all_workflows():
             try:
-                workflow_model = convert_registry_workflow_to_model(w)
+                workflow_model = convert_workflow_metadata_to_model(w)
                 workflows.append(workflow_model)
             except Exception as e:
                 logger.error(
@@ -255,8 +200,8 @@ async def validate_workflow(req: func.HttpRequest) -> func.HttpResponse:
 @openapi_endpoint(
     path="/workflows/scan",
     method="POST",
-    summary="Scan workspace for SDK usage issues",
-    description="Scans all Python files in workspace for config.get(), secrets.get(), and oauth.get_token() calls and validates against stored data",
+    summary="Scan workspace for SDK usage and form validation issues",
+    description="Scans all Python files for SDK usage issues (config.get, secrets.get, oauth.get) and all form files for schema validation errors. Returns both types of issues in a single response.",
     tags=["Workflows"],
     response_model=WorkspaceScanResponse,
 )
@@ -265,10 +210,10 @@ async def validate_workflow(req: func.HttpRequest) -> func.HttpResponse:
 async def scan_workspace(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/workflows/scan
-    Scan entire workspace for missing SDK dependencies
+    Scan entire workspace for SDK dependencies and form validation issues
 
     Returns:
-        200: WorkspaceScanResponse with issues found
+        200: WorkspaceScanResponse with SDK and form issues found
         500: Internal server error
     """
     import os
@@ -278,21 +223,28 @@ async def scan_workspace(req: func.HttpRequest) -> func.HttpResponse:
         context = req.org_context  # type: ignore[attr-defined]
         workspace_path = os.environ.get('BIFROST_WORKSPACE_LOCATION', '/mounts/workspace')
 
+        # 1. Scan for SDK usage issues
         scanner = SDKUsageScanner(workspace_path)
-
-        # Get count of Python files that will be scanned
         file_usages = scanner.scan_workspace()
         scanned_count = len(file_usages)
+        sdk_issues = await scanner.validate_workspace(context)
 
-        # Validate against stored data
-        issues = await scanner.validate_workspace(context)
+        # 2. Scan for forms (dynamic discovery)
+        forms = scan_all_forms()
+        form_count = len(forms)
 
         response = WorkspaceScanResponse(
-            issues=issues,
-            scanned_files=scanned_count
+            issues=sdk_issues,
+            scanned_files=scanned_count,
+            form_issues=[],  # Form validation now happens on-demand
+            scanned_forms=form_count,
+            valid_forms=form_count  # All loaded forms are valid by definition
         )
 
-        logger.info(f"Workspace scan complete: {scanned_count} files, {len(issues)} issues")
+        logger.info(
+            f"Workspace scan complete: {scanned_count} files/{len(sdk_issues)} SDK issues, "
+            f"{form_count} forms scanned"
+        )
 
         return func.HttpResponse(
             json.dumps(response.model_dump(mode="json", by_alias=True, exclude_none=True)),

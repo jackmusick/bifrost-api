@@ -1,16 +1,15 @@
 """
 Discovery Handlers
 Business logic for workflow and data provider metadata discovery.
-Extracted from functions/discovery.py for unit testability.
+Uses dynamic discovery for always-fresh metadata.
 """
 
 import logging
 from typing import Any, TYPE_CHECKING
 
 from pydantic import ValidationError
-from shared.models import DataProviderMetadata, FormDiscoveryMetadata, MetadataResponse, WorkflowMetadata
-from shared.registry import get_registry
-from shared.forms_registry import get_forms_registry
+from shared.models import DataProviderMetadata as DataProviderMetadataModel, FormDiscoveryMetadata, MetadataResponse, WorkflowMetadata as WorkflowMetadataModel
+from shared.discovery import scan_all_workflows, scan_all_data_providers, scan_all_forms
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -57,22 +56,22 @@ def extract_relative_path(source_file_path: str | None) -> str | None:
     return None
 
 
-def convert_registry_workflow_to_model(
-    registry_workflow: Any,
-) -> WorkflowMetadata:
+def convert_workflow_metadata_to_model(
+    workflow_metadata: Any,
+) -> WorkflowMetadataModel:
     """
-    Convert a registry WorkflowMetadata dataclass to a Pydantic model.
+    Convert a discovery WorkflowMetadata dataclass to a Pydantic model.
 
     Args:
-        registry_workflow: Workflow metadata from registry (dataclass)
+        workflow_metadata: Workflow metadata from discovery (dataclass)
 
     Returns:
         WorkflowMetadata Pydantic model for API response
     """
-    # Convert parameters from registry dataclass to dict with proper field mapping
+    # Convert parameters from dataclass to dict with proper field mapping
     parameters = []
-    if registry_workflow.parameters:
-        for p in registry_workflow.parameters:
+    if workflow_metadata.parameters:
+        for p in workflow_metadata.parameters:
             param_dict = {
                 "name": p.name,
                 "type": p.type,
@@ -93,42 +92,42 @@ def convert_registry_workflow_to_model(
                 param_dict["description"] = p.description
             parameters.append(param_dict)
 
-    return WorkflowMetadata(
-        name=registry_workflow.name,
-        description=registry_workflow.description,
-        category=registry_workflow.category,
-        tags=registry_workflow.tags,
+    return WorkflowMetadataModel(
+        name=workflow_metadata.name,
+        description=workflow_metadata.description,
+        category=workflow_metadata.category,
+        tags=workflow_metadata.tags,
         parameters=parameters,
-        executionMode=registry_workflow.execution_mode,
-        timeoutSeconds=registry_workflow.timeout_seconds,
-        retryPolicy=registry_workflow.retry_policy,
-        schedule=registry_workflow.schedule,
-        endpointEnabled=registry_workflow.endpoint_enabled,
-        allowedMethods=registry_workflow.allowed_methods,
-        disableGlobalKey=registry_workflow.disable_global_key,
-        publicEndpoint=registry_workflow.public_endpoint,
-        source=registry_workflow.source,
-        sourceFilePath=registry_workflow.source_file_path,
-        relativeFilePath=extract_relative_path(registry_workflow.source_file_path),
+        executionMode=workflow_metadata.execution_mode,
+        timeoutSeconds=workflow_metadata.timeout_seconds,
+        retryPolicy=workflow_metadata.retry_policy,
+        schedule=workflow_metadata.schedule,
+        endpointEnabled=workflow_metadata.endpoint_enabled,
+        allowedMethods=workflow_metadata.allowed_methods,
+        disableGlobalKey=workflow_metadata.disable_global_key,
+        publicEndpoint=workflow_metadata.public_endpoint,
+        source=workflow_metadata.source,
+        sourceFilePath=workflow_metadata.source_file_path,
+        relativeFilePath=extract_relative_path(workflow_metadata.source_file_path),
     )
 
 
-def convert_registry_provider_to_model(
-    registry_provider: Any,
-) -> DataProviderMetadata:
+def convert_data_provider_metadata_to_model(
+    provider_metadata: Any,
+) -> DataProviderMetadataModel:
     """
-    Convert a registry DataProviderMetadata dataclass to a Pydantic model.
+    Convert a discovery DataProviderMetadata dataclass to a Pydantic model.
 
     Args:
-        registry_provider: Provider metadata from registry (dataclass)
+        provider_metadata: Provider metadata from discovery (dataclass)
 
     Returns:
         DataProviderMetadata Pydantic model for API response
     """
-    # Convert parameters from registry dataclass to dict with proper field mapping (T024)
+    # Convert parameters from dataclass to dict with proper field mapping (T024)
     parameters = []
-    if registry_provider.parameters:
-        for p in registry_provider.parameters:
+    if provider_metadata.parameters:
+        for p in provider_metadata.parameters:
             param_dict = {
                 "name": p.name,
                 "type": p.type,
@@ -145,12 +144,12 @@ def convert_registry_provider_to_model(
                 param_dict["description"] = p.description
             parameters.append(param_dict)
 
-    source_file_path = getattr(registry_provider, 'source_file_path', None)
-    return DataProviderMetadata(
-        name=registry_provider.name,
-        description=registry_provider.description,
-        category=registry_provider.category,
-        cache_ttl_seconds=registry_provider.cache_ttl_seconds,
+    source_file_path = getattr(provider_metadata, 'source_file_path', None)
+    return DataProviderMetadataModel(
+        name=provider_metadata.name,
+        description=provider_metadata.description,
+        category=provider_metadata.category,
+        cache_ttl_seconds=provider_metadata.cache_ttl_seconds,
         parameters=parameters,
         sourceFilePath=source_file_path,
         relativeFilePath=extract_relative_path(source_file_path),
@@ -159,13 +158,13 @@ def convert_registry_provider_to_model(
 
 async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> MetadataResponse:
     """
-    Retrieve discovery metadata for all registered workflows and data providers.
+    Retrieve discovery metadata for all workflows, data providers, and forms.
 
     This is the core business logic for the discovery endpoint. It:
-    1. Gets the registry singleton
-    2. Converts all registered workflows to Pydantic models
-    3. Converts all registered data providers to Pydantic models
-    4. Filters forms based on user permissions
+    1. Dynamically scans all workflows fresh from workspace directories
+    2. Dynamically scans all data providers fresh from workspace directories
+    3. Dynamically scans all forms fresh from workspace directories
+    4. Filters forms based on user permissions (if context provided)
     5. Returns a MetadataResponse object
 
     Validation errors are caught and logged to system_logger, with offending
@@ -176,21 +175,15 @@ async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> M
 
     Returns:
         MetadataResponse with workflows, dataProviders, and forms lists
-
-    Raises:
-        Exception: If registry access fails (logged and propagated)
     """
-    logger.info("Retrieving discovery metadata")
+    logger.info("Retrieving discovery metadata (dynamic scan)")
 
-    # Get registry singleton
-    registry = get_registry()
-
-    # Get all workflows from registry and convert to models
+    # Dynamically scan all workflows and convert to models
     # Skip workflows that fail validation and log to system logger
     workflows = []
-    for w in registry.get_all_workflows():
+    for w in scan_all_workflows():
         try:
-            workflow_model = convert_registry_workflow_to_model(w)
+            workflow_model = convert_workflow_metadata_to_model(w)
             workflows.append(workflow_model)
         except ValidationError as e:
             logger.error(
@@ -214,12 +207,12 @@ async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> M
             except Exception as log_error:
                 logger.warning(f"Failed to log validation failure: {log_error}")
 
-    # Get all data providers from registry and convert to models
+    # Dynamically scan all data providers and convert to models
     # Skip data providers that fail validation and log to system logger
     data_providers = []
-    for dp in registry.get_all_data_providers():
+    for dp in scan_all_data_providers():
         try:
-            provider_model = convert_registry_provider_to_model(dp)
+            provider_model = convert_data_provider_metadata_to_model(dp)
             data_providers.append(provider_model)
         except ValidationError as e:
             logger.error(
@@ -243,7 +236,7 @@ async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> M
             except Exception as log_error:
                 logger.warning(f"Failed to log validation failure: {log_error}")
 
-    # Get all forms from registry and filter based on permissions
+    # Get forms - either filtered by permissions or all (for backward compatibility)
     forms = []
     if context:
         # Use authorization logic to get filtered forms
@@ -272,9 +265,8 @@ async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> M
                     exc_info=True
                 )
     else:
-        # No context provided - return all forms (backward compatibility for tests)
-        forms_registry = get_forms_registry()
-        for form_metadata in forms_registry.get_all_metadata():
+        # No context provided - scan all forms dynamically
+        for form_metadata in scan_all_forms():
             try:
                 form_model = FormDiscoveryMetadata(
                     id=form_metadata.id,

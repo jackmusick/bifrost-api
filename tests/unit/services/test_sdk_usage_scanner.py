@@ -113,6 +113,33 @@ config.get("api_key")
         assert result.config_calls[0].line_number == 2
         assert result.config_calls[1].line_number == 3
 
+    def test_no_match_variables_ending_in_sdk_name(self, tmp_path):
+        """Should NOT match variables that end in SDK names (word boundary)"""
+        code = '''
+# These should NOT match - they're dict .get() calls, not Bifrost SDK calls
+oauth_config.get("client_id")
+my_config.get("api_key")
+app_secrets.get("password")
+custom_oauth.get_token("provider")
+
+# These SHOULD match - actual Bifrost SDK calls
+config.get("real_config")
+secrets.get("real_secret")
+oauth.get_token("real_provider")
+'''
+        scanner = SDKUsageScanner(tmp_path)
+        result = scanner.extract_sdk_calls(code)
+
+        # Should only match the real SDK calls
+        assert len(result.config_calls) == 1
+        assert result.config_calls[0].key == "real_config"
+
+        assert len(result.secret_calls) == 1
+        assert result.secret_calls[0].key == "real_secret"
+
+        assert len(result.oauth_calls) == 1
+        assert result.oauth_calls[0].key == "real_provider"
+
 
 class TestScanFile:
     """Test single file scanning"""

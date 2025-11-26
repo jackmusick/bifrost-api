@@ -32,21 +32,20 @@ def validate_data_provider_inputs_for_form(form_schema_fields: list) -> list[str
         List of validation error messages (empty if valid)
 
     Validation rules:
-        1. If field has dataProvider, check if provider exists in registry
+        1. If field has dataProvider, check if provider exists
         2. If provider has required parameters, validate that static inputs are provided
         3. dataProviderInputs validation is handled by Pydantic model validators
     """
-    from shared.registry import get_registry
+    from shared.discovery import load_data_provider
     errors = []
-
-    registry = get_registry()
 
     for field in form_schema_fields:
         if not field.dataProvider:
             continue
 
-        # Get provider metadata from registry
-        provider_metadata = registry.get_data_provider(field.dataProvider)
+        # Dynamically load provider metadata
+        result = load_data_provider(field.dataProvider)
+        provider_metadata = result[1] if result else None
 
         if not provider_metadata:
             errors.append(
@@ -83,12 +82,13 @@ def validate_launch_workflow_params(
     if not launch_workflow_id:
         return None
 
-    from shared.registry import get_registry
-    registry = get_registry()
-    workflow_metadata = registry.get_workflow(launch_workflow_id)
+    from shared.discovery import load_workflow
+    result = load_workflow(launch_workflow_id)
 
-    if not workflow_metadata:
-        return f"Launch workflow '{launch_workflow_id}' not found in registry"
+    if not result:
+        return f"Launch workflow '{launch_workflow_id}' not found"
+
+    _, workflow_metadata = result
 
     default_params = default_launch_params or {}
     query_param_fields = allowed_query_params or []
@@ -117,10 +117,9 @@ async def list_forms_handler(context, request_context) -> tuple:
     logger.info(f"User {request_context.user_id} listing forms (org: {request_context.org_id or 'GLOBAL'})")
 
     try:
-        from shared.registry import get_registry
+        from shared.discovery import load_workflow
 
         forms = await get_user_visible_forms(request_context)
-        registry = get_registry()
 
         # Enrich forms with validation info (missing required params)
         for form in forms:
@@ -132,8 +131,9 @@ async def list_forms_handler(context, request_context) -> tuple:
                 logger.info(f"Form '{form.get('name')}' has no linked workflow - marking as valid")
                 continue
 
-            # Get workflow metadata
-            workflow_metadata = registry.get_workflow(linked_workflow)
+            # Dynamically load workflow metadata
+            result = load_workflow(linked_workflow)
+            workflow_metadata = result[1] if result else None
             logger.info(f"Found workflow metadata: {workflow_metadata is not None}")
 
             if not workflow_metadata or not workflow_metadata.parameters:
@@ -427,7 +427,7 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
 
 async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, request_context, workflow_context) -> tuple[dict, int]:
     """Execute the form's launch workflow to get initial context data"""
-    from shared.registry import get_registry
+    from shared.discovery import load_workflow
 
     logger.info(f"User {request_context.user_id} requesting startup workflow for form {form_id}")
 
@@ -474,15 +474,15 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
 
         logger.info(f"Executing launch workflow {form.launchWorkflowId} with merged input data: {input_data}")
 
-        registry = get_registry()
-        workflow_metadata = registry.get_workflow(form.launchWorkflowId)
+        # Dynamically load workflow (always fresh)
+        result = load_workflow(form.launchWorkflowId)
 
-        if not workflow_metadata:
-            logger.error(f"Launch workflow '{form.launchWorkflowId}' not found in registry")
+        if not result:
+            logger.error(f"Launch workflow '{form.launchWorkflowId}' not found")
             error = ErrorResponse(error="NotFound", message=f"Launch workflow '{form.launchWorkflowId}' not found")
             return error.model_dump(), 404
 
-        workflow_func = workflow_metadata.function
+        workflow_func, workflow_metadata = result
         defined_params = {param.name for param in workflow_metadata.parameters}
         workflow_params = {}
         extra_variables = {}

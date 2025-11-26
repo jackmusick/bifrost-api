@@ -1,261 +1,29 @@
 """
-Unit tests for WorkflowRegistry
-Tests singleton pattern, registration, and retrieval
+Unit tests for shared/discovery module.
+Tests workflow and data provider discovery from workspace files.
 """
 
 import pytest
+import tempfile
+import os
+from pathlib import Path
+from unittest.mock import patch, MagicMock
 
-from shared.registry import DataProviderMetadata, WorkflowMetadata, WorkflowParameter, WorkflowRegistry, get_registry
-
-
-@pytest.fixture
-def registry(isolated_registry):
-    """Use isolated registry for each test to prevent state pollution"""
-    return isolated_registry
-
-
-class TestWorkflowRegistry:
-    """Test WorkflowRegistry singleton and basic operations"""
-
-    def test_singleton_pattern(self):
-        """Test that registry follows singleton pattern"""
-        registry1 = WorkflowRegistry()
-        registry2 = WorkflowRegistry()
-        registry3 = get_registry()
-
-        assert registry1 is registry2
-        assert registry2 is registry3
-
-    def test_register_workflow(self, registry):
-        """Test registering a workflow"""
-        metadata = WorkflowMetadata(
-            name="test_workflow",
-            description="Test workflow",
-            category="Testing",
-            tags=["test"],
-            parameters=[],
-            function=lambda: None
-        )
-
-        registry.register_workflow(metadata)
-
-        assert registry.has_workflow("test_workflow")
-        assert registry.get_workflow_count() == 1
-
-    def test_register_workflow_with_parameters(self, registry):
-        """Test registering workflow with parameters"""
-        param1 = WorkflowParameter(
-            name="email",
-            type="email",
-            label="Email Address",
-            required=True
-        )
-        param2 = WorkflowParameter(
-            name="license",
-            type="string",
-            label="License Type",
-            data_provider="get_available_licenses"
-        )
-
-        metadata = WorkflowMetadata(
-            name="user_onboarding",
-            description="Onboard user",
-            parameters=[param1, param2],
-            function=lambda: None
-        )
-
-        registry.register_workflow(metadata)
-
-        workflow = registry.get_workflow("user_onboarding")
-        assert workflow is not None
-        assert len(workflow.parameters) == 2
-        assert workflow.parameters[0].name == "email"
-        assert workflow.parameters[1].data_provider == "get_available_licenses"
-
-    def test_get_workflow_not_found(self, registry):
-        """Test getting non-existent workflow returns None"""
-        result = registry.get_workflow("nonexistent")
-        assert result is None
-
-    def test_get_all_workflows(self, registry):
-        """Test getting all workflows"""
-        metadata1 = WorkflowMetadata(
-            name="workflow1",
-            description="First workflow",
-            function=lambda: None
-        )
-        metadata2 = WorkflowMetadata(
-            name="workflow2",
-            description="Second workflow",
-            function=lambda: None
-        )
-
-        registry.register_workflow(metadata1)
-        registry.register_workflow(metadata2)
-
-        workflows = registry.get_all_workflows()
-        assert len(workflows) == 2
-        workflow_names = {w.name for w in workflows}
-        assert workflow_names == {"workflow1", "workflow2"}
-
-    def test_overwrite_existing_workflow(self, registry):
-        """Test that registering same workflow name overwrites"""
-        metadata1 = WorkflowMetadata(
-            name="test_workflow",
-            description="First version",
-            function=lambda: None
-        )
-        metadata2 = WorkflowMetadata(
-            name="test_workflow",
-            description="Second version",
-            function=lambda: None
-        )
-
-        registry.register_workflow(metadata1)
-        registry.register_workflow(metadata2)
-
-        workflow = registry.get_workflow("test_workflow")
-        assert workflow.description == "Second version"
-        assert registry.get_workflow_count() == 1
-
-    def test_register_data_provider(self, registry):
-        """Test registering a data provider"""
-        metadata = DataProviderMetadata(
-            name="get_available_licenses",
-            description="Returns available licenses",
-            category="m365",
-            cache_ttl_seconds=300,
-            function=lambda: None
-        )
-
-        registry.register_data_provider(metadata)
-
-        assert registry.has_data_provider("get_available_licenses")
-        assert registry.get_data_provider_count() == 1
-
-    def test_get_data_provider(self, registry):
-        """Test retrieving data provider"""
-        metadata = DataProviderMetadata(
-            name="test_provider",
-            description="Test provider",
-            function=lambda: None
-        )
-
-        registry.register_data_provider(metadata)
-
-        provider = registry.get_data_provider("test_provider")
-        assert provider is not None
-        assert provider.name == "test_provider"
-        assert provider.cache_ttl_seconds == 300  # Default
-
-    def test_get_all_data_providers(self, registry):
-        """Test getting all data providers"""
-        metadata1 = DataProviderMetadata(
-            name="provider1",
-            description="First provider",
-            function=lambda: None
-        )
-        metadata2 = DataProviderMetadata(
-            name="provider2",
-            description="Second provider",
-            cache_ttl_seconds=600,
-            function=lambda: None
-        )
-
-        registry.register_data_provider(metadata1)
-        registry.register_data_provider(metadata2)
-
-        providers = registry.get_all_data_providers()
-        assert len(providers) == 2
-        provider_names = {p.name for p in providers}
-        assert provider_names == {"provider1", "provider2"}
-
-    def test_clear_all(self, registry):
-        """Test clearing all registrations"""
-        workflow_meta = WorkflowMetadata(
-            name="test_workflow",
-            description="Test",
-            function=lambda: None
-        )
-        provider_meta = DataProviderMetadata(
-            name="test_provider",
-            description="Test",
-            function=lambda: None
-        )
-
-        registry.register_workflow(workflow_meta)
-        registry.register_data_provider(provider_meta)
-
-        assert registry.get_workflow_count() == 1
-        assert registry.get_data_provider_count() == 1
-
-        registry.clear_all()
-
-        assert registry.get_workflow_count() == 0
-        assert registry.get_data_provider_count() == 0
-
-    def test_get_summary(self, registry):
-        """Test getting registry summary"""
-        workflow_meta = WorkflowMetadata(
-            name="test_workflow",
-            description="Test",
-            function=lambda: None
-        )
-        provider_meta = DataProviderMetadata(
-            name="test_provider",
-            description="Test",
-            function=lambda: None
-        )
-
-        registry.register_workflow(workflow_meta)
-        registry.register_data_provider(provider_meta)
-
-        summary = registry.get_summary()
-        assert summary["workflows_count"] == 1
-        assert summary["data_providers_count"] == 1
-        assert "test_workflow" in summary["workflows"]
-        assert "test_provider" in summary["data_providers"]
-
-
-class TestWorkflowParameter:
-    """Test WorkflowParameter dataclass"""
-
-    def test_create_parameter_minimal(self):
-        """Test creating parameter with minimal fields"""
-        param = WorkflowParameter(
-            name="test_param",
-            type="string"
-        )
-
-        assert param.name == "test_param"
-        assert param.type == "string"
-        assert param.label is None
-        assert param.required is False
-        assert param.validation is None
-        assert param.data_provider is None
-        assert param.default_value is None
-        assert param.help_text is None
-
-    def test_create_parameter_full(self):
-        """Test creating parameter with all fields"""
-        param = WorkflowParameter(
-            name="email",
-            type="email",
-            label="Email Address",
-            required=True,
-            validation={"pattern": r"^[a-zA-Z0-9._%+-]+@"},
-            data_provider=None,
-            default_value="test@example.com",
-            help_text="Enter your email address"
-        )
-
-        assert param.name == "email"
-        assert param.type == "email"
-        assert param.label == "Email Address"
-        assert param.required is True
-        assert "pattern" in param.validation
-        assert param.default_value == "test@example.com"
-        assert param.help_text == "Enter your email address"
+from shared.discovery import (
+    WorkflowMetadata,
+    DataProviderMetadata,
+    FormMetadata,
+    WorkflowParameter,
+    scan_all_workflows,
+    scan_all_data_providers,
+    scan_all_forms,
+    load_workflow,
+    load_data_provider,
+    load_form,
+    get_form_metadata,
+    get_forms_by_workflow,
+    get_workspace_paths,
+)
 
 
 class TestWorkflowMetadata:
@@ -301,6 +69,47 @@ class TestWorkflowMetadata:
         assert metadata.function is test_func
 
 
+class TestWorkflowParameter:
+    """Test WorkflowParameter dataclass"""
+
+    def test_create_parameter_minimal(self):
+        """Test creating parameter with minimal fields"""
+        param = WorkflowParameter(
+            name="test_param",
+            type="string"
+        )
+
+        assert param.name == "test_param"
+        assert param.type == "string"
+        assert param.label is None
+        assert param.required is False
+        assert param.validation is None
+        assert param.data_provider is None
+        assert param.default_value is None
+        assert param.help_text is None
+
+    def test_create_parameter_full(self):
+        """Test creating parameter with all fields"""
+        param = WorkflowParameter(
+            name="email",
+            type="email",
+            label="Email Address",
+            required=True,
+            validation={"pattern": r"^[a-zA-Z0-9._%+-]+@"},
+            data_provider=None,
+            default_value="test@example.com",
+            help_text="Enter your email address"
+        )
+
+        assert param.name == "email"
+        assert param.type == "email"
+        assert param.label == "Email Address"
+        assert param.required is True
+        assert "pattern" in param.validation
+        assert param.default_value == "test@example.com"
+        assert param.help_text == "Enter your email address"
+
+
 class TestDataProviderMetadata:
     """Test DataProviderMetadata dataclass"""
 
@@ -334,3 +143,122 @@ class TestDataProviderMetadata:
         assert metadata.category == "m365"
         assert metadata.cache_ttl_seconds == 600
         assert metadata.function is test_func
+
+
+class TestDiscoveryFunctions:
+    """Test discovery functions"""
+
+    def test_get_workspace_paths_no_env(self, monkeypatch):
+        """Test workspace paths when no env var is set"""
+        monkeypatch.delenv("BIFROST_WORKSPACE_LOCATION", raising=False)
+        paths = get_workspace_paths()
+        # Should still return platform path
+        assert any("platform" in str(p) for p in paths)
+
+    def test_scan_all_workflows_empty_workspace(self, monkeypatch, tmp_path):
+        """Test scanning empty workspace"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        workflows = scan_all_workflows()
+        # Platform workflows will still be found
+        assert isinstance(workflows, list)
+
+    def test_scan_all_data_providers_empty_workspace(self, monkeypatch, tmp_path):
+        """Test scanning empty workspace for data providers"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        providers = scan_all_data_providers()
+        # Platform providers will still be found
+        assert isinstance(providers, list)
+
+    def test_load_workflow_not_found(self, monkeypatch, tmp_path):
+        """Test loading non-existent workflow"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        result = load_workflow("nonexistent_workflow")
+        assert result is None
+
+    def test_load_data_provider_not_found(self, monkeypatch, tmp_path):
+        """Test loading non-existent data provider"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        result = load_data_provider("nonexistent_provider")
+        assert result is None
+
+
+class TestFormDiscovery:
+    """Test form discovery functions"""
+
+    def test_scan_all_forms_empty_workspace(self, monkeypatch, tmp_path):
+        """Test scanning empty workspace for forms"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        forms = scan_all_forms()
+        assert isinstance(forms, list)
+
+    def test_load_form_not_found(self, monkeypatch, tmp_path):
+        """Test loading non-existent form"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        result = load_form("nonexistent_form_id")
+        assert result is None
+
+    def test_get_form_metadata_not_found(self, monkeypatch, tmp_path):
+        """Test getting metadata for non-existent form"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        result = get_form_metadata("nonexistent_form_id")
+        assert result is None
+
+    def test_get_forms_by_workflow_empty(self, monkeypatch, tmp_path):
+        """Test getting forms by workflow when none exist"""
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        forms = get_forms_by_workflow("some_workflow")
+        assert forms == []
+
+    def test_scan_forms_from_file(self, monkeypatch, tmp_path):
+        """Test scanning forms from actual file"""
+        import json
+
+        # Create a test form file
+        form_data = {
+            "id": "test-form-123",
+            "name": "Test Form",
+            "linkedWorkflow": "test_workflow",
+            "orgId": "GLOBAL",
+            "isActive": True,
+            "isGlobal": True,
+            "accessLevel": "public",
+            "formSchema": {"title": "Test"},
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-01-01T00:00:00Z"
+        }
+
+        form_file = tmp_path / "test.form.json"
+        with open(form_file, 'w') as f:
+            json.dump(form_data, f)
+
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        forms = scan_all_forms()
+
+        # Find our test form
+        test_form = next((f for f in forms if f.id == "test-form-123"), None)
+        assert test_form is not None
+        assert test_form.name == "Test Form"
+        assert test_form.linkedWorkflow == "test_workflow"
+        assert test_form.isGlobal is True
+
+    def test_load_form_from_file(self, monkeypatch, tmp_path):
+        """Test loading form from file"""
+        import json
+
+        form_data = {
+            "id": "load-test-form",
+            "name": "Load Test Form",
+            "linkedWorkflow": "test_workflow",
+            "formSchema": {"title": "Test"}
+        }
+
+        form_file = tmp_path / "load-test.form.json"
+        with open(form_file, 'w') as f:
+            json.dump(form_data, f)
+
+        monkeypatch.setenv("BIFROST_WORKSPACE_LOCATION", str(tmp_path))
+        result = load_form("load-test-form")
+
+        assert result is not None
+        assert result["id"] == "load-test-form"
+        assert result["name"] == "Load Test Form"

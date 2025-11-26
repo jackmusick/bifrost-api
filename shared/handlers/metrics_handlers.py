@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from shared.registry import get_registry
+from shared.discovery import scan_all_workflows, scan_all_data_providers
 from shared.async_storage import get_async_table_service
 
 logger = logging.getLogger(__name__)
@@ -30,21 +30,19 @@ def get_reverse_timestamp(dt: datetime) -> int:
     return 9999999999999 - timestamp_ms
 
 
-def get_workflow_metadata(registry: Any) -> dict[str, int]:
+def get_workflow_metadata() -> dict[str, int]:
     """
-    Get workflow and data provider counts from registry.
-
-    Args:
-        registry: The workflow registry instance
+    Get workflow and data provider counts via dynamic discovery.
 
     Returns:
         Dict with workflowCount and dataProviderCount, defaults to 0 on error
     """
     try:
-        summary = registry.get_summary()
+        workflows = scan_all_workflows()
+        data_providers = scan_all_data_providers()
         return {
-            "workflowCount": summary.get("workflows_count", 0),
-            "dataProviderCount": summary.get("data_providers_count", 0)
+            "workflowCount": len(workflows),
+            "dataProviderCount": len(data_providers)
         }
     except Exception as e:
         logger.warning(f"Failed to fetch workflow metadata: {e}")
@@ -176,9 +174,8 @@ async def get_dashboard_metrics(context: Any) -> dict[str, Any]:
     try:
         metrics: dict[str, Any] = {}
 
-        # 1. Get workflow and data provider counts
-        registry = get_registry()
-        metadata = get_workflow_metadata(registry)
+        # 1. Get workflow and data provider counts via dynamic discovery
+        metadata = get_workflow_metadata()
         metrics.update(metadata)
 
         # 2. Get form count and execution statistics

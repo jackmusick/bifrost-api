@@ -6,7 +6,7 @@ End-to-end tests for async workflow execution lifecycle
 import asyncio
 import json
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,7 +15,6 @@ from shared.async_storage import close_async_storage_cache
 from shared.context import Organization, ExecutionContext
 from shared.decorators import workflow
 from shared.error_handling import WorkflowError
-from shared.registry import WorkflowRegistry
 
 
 # No custom event_loop fixture - use pytest-asyncio's built-in one
@@ -94,20 +93,6 @@ def request_context(test_org):
     )
 
 
-@pytest.fixture
-def registry():
-    """Fresh workflow registry for each test, restored afterward"""
-    # Save current registry state
-    old_instance = WorkflowRegistry._instance
-
-    # Create fresh registry for test
-    WorkflowRegistry._instance = None
-    fresh = WorkflowRegistry()
-
-    yield fresh
-
-    # Restore old registry after test
-    WorkflowRegistry._instance = old_instance
 
 
 @pytest.fixture(scope="function")
@@ -226,10 +211,10 @@ class TestAsyncWorkflowLifecycle:
     """Test the complete async workflow execution lifecycle"""
 
     @pytest.mark.asyncio
-    async def test_enqueue_async_workflow(self, registry, request_context, queue_client):
+    async def test_enqueue_async_workflow(self, request_context, queue_client):
         """Test enqueueing an async workflow creates execution record and queue message"""
 
-        # Register a test async workflow
+        # Define a test async workflow
         @workflow(
             name="async_test_workflow",
             description="Async test workflow",
@@ -241,9 +226,9 @@ class TestAsyncWorkflowLifecycle:
             await asyncio.sleep(0.1)  # Simulate async work
             return {"result": value * 2, "org": context.org_id}
 
-        # Verify workflow was registered
-        metadata = registry.get_workflow("async_test_workflow")
-        assert metadata is not None
+        # Verify workflow has metadata attached
+        assert hasattr(async_test, '_workflow_metadata')
+        metadata = async_test._workflow_metadata
         assert metadata.execution_mode == "async"
 
         # Enqueue workflow execution
@@ -259,10 +244,10 @@ class TestAsyncWorkflowLifecycle:
         assert execution_id.count('-') == 4  # UUID has 4 dashes
 
     @pytest.mark.asyncio
-    async def test_worker_processes_async_workflow(self, registry, request_context, queue_client):
+    async def test_worker_processes_async_workflow(self, request_context, queue_client):
         """Test that worker processes queued workflow correctly"""
 
-        # Register a test async workflow
+        # Define a test async workflow
         @workflow(
             name="worker_test_workflow",
             description="Worker test workflow",
@@ -302,10 +287,10 @@ class TestAsyncWorkflowLifecycle:
         await queue_client.delete_message(msg)
 
     @pytest.mark.asyncio
-    async def test_context_preservation_in_async_execution(self, registry, request_context, queue_client):
+    async def test_context_preservation_in_async_execution(self, request_context, queue_client):
         """Test that organization context is preserved through async execution"""
 
-        # Register workflow that uses context
+        # Define workflow that uses context
         @workflow(
             name="context_test_workflow",
             description="Context preservation test",
@@ -349,10 +334,10 @@ class TestAsyncWorkflowLifecycle:
         await queue_client.delete_message(msg)
 
     @pytest.mark.asyncio
-    async def test_async_workflow_error_handling(self, registry, request_context, queue_client):
+    async def test_async_workflow_error_handling(self, request_context, queue_client):
         """Test error handling in async workflow execution"""
 
-        # Register workflow that fails
+        # Define workflow that fails
         @workflow(
             name="failing_workflow",
             description="Workflow that fails",
@@ -392,10 +377,10 @@ class TestAsyncWorkflowLifecycle:
         await queue_client.delete_message(msg)
 
     @pytest.mark.asyncio
-    async def test_async_workflow_result_storage(self, registry, request_context, queue_client):
+    async def test_async_workflow_result_storage(self, request_context, queue_client):
         """Test that async workflow results are stored correctly"""
 
-        # Register workflow with result
+        # Define workflow with result
         @workflow(
             name="result_test_workflow",
             description="Result storage test",
@@ -431,10 +416,10 @@ class TestAsyncWorkflowLifecycle:
         await queue_client.delete_message(msg)
 
     @pytest.mark.asyncio
-    async def test_async_workflow_parameter_coercion(self, registry, request_context, queue_client):
+    async def test_async_workflow_parameter_coercion(self, request_context, queue_client):
         """Test that parameter types are coerced correctly in async execution"""
 
-        # Register workflow with typed parameters
+        # Define workflow with typed parameters
         @workflow(
             name="typed_workflow",
             description="Workflow with typed parameters",
@@ -483,7 +468,7 @@ class TestAsyncWorkflowLifecycle:
 class TestAsyncWorkflowConfiguration:
     """Test async workflow configuration and metadata"""
 
-    def test_async_workflow_metadata(self, registry):
+    def test_async_workflow_metadata(self):
         """Test that async workflows have correct metadata"""
 
         @workflow(
@@ -497,7 +482,8 @@ class TestAsyncWorkflowConfiguration:
             """Test workflow"""
             return {"status": "ok"}
 
-        metadata = registry.get_workflow("metadata_test")
+        # Get metadata directly from decorated function
+        metadata = metadata_workflow._workflow_metadata
 
         assert metadata is not None
         assert metadata.execution_mode == "async"
@@ -505,29 +491,30 @@ class TestAsyncWorkflowConfiguration:
         assert metadata.name == "metadata_test"
         assert metadata.description == "Metadata test workflow"
 
-    def test_sync_workflow_default(self, registry):
-        """Test that workflows default to sync mode"""
+    def test_sync_workflow_default(self):
+        """Test that workflows default to async mode"""
 
         @workflow(
             name="sync_default",
-            description="Default sync workflow",
+            description="Default workflow",
             category="test"
         )
-        async def sync_workflow(context):
-            """Sync workflow"""
+        async def default_workflow(context):
+            """Default workflow"""
             return {"status": "ok"}
 
-        metadata = registry.get_workflow("sync_default")
+        # Get metadata directly from decorated function
+        metadata = default_workflow._workflow_metadata
 
         assert metadata is not None
-        assert metadata.execution_mode == "async"  # New default
+        assert metadata.execution_mode == "async"  # Default mode
 
 
 class TestAsyncWorkflowQueueManagement:
     """Test queue management for async workflows"""
 
     @pytest.mark.asyncio
-    async def test_queue_message_format(self, registry, request_context, queue_client):
+    async def test_queue_message_format(self, request_context, queue_client):
         """Test that queue messages have correct format"""
 
         @workflow(
@@ -591,7 +578,7 @@ class TestAsyncWorkflowStatusTransitions:
     """
 
     @pytest.mark.asyncio
-    async def test_worker_completes_successful_workflow(self, registry, request_context, queue_client):
+    async def test_worker_completes_successful_workflow(self, request_context, queue_client):
         """Test that worker successfully processes and completes a workflow"""
 
         @workflow(
@@ -630,7 +617,7 @@ class TestAsyncWorkflowStatusTransitions:
         await queue_client.delete_message(msg)
 
     @pytest.mark.asyncio
-    async def test_worker_handles_workflow_errors_gracefully(self, registry, request_context, queue_client):
+    async def test_worker_handles_workflow_errors_gracefully(self, request_context, queue_client):
         """Test that worker handles errors without crashing"""
 
         @workflow(
@@ -674,9 +661,8 @@ class TestAsyncWorkflowStatusTransitions:
 
 
     @pytest.mark.asyncio
-    async def test_worker_executes_async_workflow_with_delay(self, registry, request_context, queue_client):
+    async def test_worker_executes_async_workflow_with_delay(self, request_context, queue_client):
         """Test that worker can execute workflows with delays"""
-        from unittest.mock import patch
 
         @workflow(
             name="duration_test",
@@ -691,9 +677,9 @@ class TestAsyncWorkflowStatusTransitions:
             duration = time.time() - start_time
             return {"completed": True, "duration_seconds": duration}
 
-        # Verify workflow was registered
-        metadata = registry.get_workflow("duration_test")
-        assert metadata is not None, "duration_test workflow should be registered"
+        # Verify workflow has metadata attached
+        metadata = timed_workflow._workflow_metadata
+        assert metadata is not None, "duration_test workflow should have metadata"
         assert metadata.execution_mode == "async"
 
         # Enqueue workflow
@@ -715,9 +701,7 @@ class TestAsyncWorkflowStatusTransitions:
         # Measure execution time
         start = time.time()
 
-        # Mock discover_workspace_modules to prevent registry wipe
-        with patch('function_app.discover_workspace_modules'):
-            await workflow_execution_worker(mock_msg)
+        await workflow_execution_worker(mock_msg)
 
         elapsed = time.time() - start
 
@@ -734,9 +718,8 @@ class TestWorkflowCancellation:
 
     @pytest.mark.skip(reason="Cancellation tests require complex setup - test manually for now")
     @pytest.mark.asyncio
-    async def test_cancel_running_workflow(self, registry, request_context, queue_client):
+    async def test_cancel_running_workflow(self, request_context, queue_client):
         """Test cancelling a workflow while it's running"""
-        from unittest.mock import patch
         from shared.models import ExecutionStatus
         from shared.repositories.executions import ExecutionRepository
 
@@ -773,10 +756,9 @@ class TestWorkflowCancellation:
         # Create execution repository for status updates
         exec_repo = ExecutionRepository()
 
-        # Start worker in background, mocking discover_workspace_modules to prevent registry wipe
+        # Start worker in background
         async def run_worker():
-            with patch('function_app.discover_workspace_modules'):
-                await workflow_execution_worker(mock_msg)
+            await workflow_execution_worker(mock_msg)
 
         worker_task = asyncio.create_task(run_worker())
 
@@ -811,9 +793,8 @@ class TestWorkflowCancellation:
 
     @pytest.mark.skip(reason="Cancellation tests require complex setup - test manually for now")
     @pytest.mark.asyncio
-    async def test_cancel_before_start(self, registry, request_context, queue_client):
+    async def test_cancel_before_start(self, request_context, queue_client):
         """Test cancelling a workflow before the worker starts processing it"""
-        from unittest.mock import patch
         from shared.models import ExecutionStatus
         from shared.repositories.executions import ExecutionRepository
 
@@ -855,9 +836,7 @@ class TestWorkflowCancellation:
             mock_msg = create_mock_queue_message(msg)
 
             # Worker should detect pre-cancellation and mark as CANCELLED
-            # Mock discover_workspace_modules to prevent registry wipe
-            with patch('function_app.discover_workspace_modules'):
-                await workflow_execution_worker(mock_msg)
+            await workflow_execution_worker(mock_msg)
 
             # Verify execution was cancelled
             execution = await exec_repo.get_execution(
@@ -877,9 +856,8 @@ class TestWorkflowCancellation:
 
     @pytest.mark.skip(reason="Cancellation tests require complex setup - test manually for now")
     @pytest.mark.asyncio
-    async def test_workflow_timeout(self, registry, request_context, queue_client):
+    async def test_workflow_timeout(self, request_context, queue_client):
         """Test that workflows timeout after exceeding configured timeout"""
-        from unittest.mock import patch
         from shared.models import ExecutionStatus
         from shared.repositories.executions import ExecutionRepository
 
@@ -913,9 +891,7 @@ class TestWorkflowCancellation:
         mock_msg = create_mock_queue_message(msg)
 
         # Worker should timeout the execution
-        # Mock discover_workspace_modules to prevent registry wipe
-        with patch('function_app.discover_workspace_modules'):
-            await workflow_execution_worker(mock_msg)
+        await workflow_execution_worker(mock_msg)
 
         # Verify execution timed out
         exec_repo = ExecutionRepository()

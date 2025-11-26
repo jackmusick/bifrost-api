@@ -1,60 +1,26 @@
 """
-Integration tests for workflow auto-discovery
-Tests that workflows are automatically discovered and registered
+Integration tests for workflow dynamic discovery
+Tests that workflows are automatically discovered from workspace directories
 """
-
-import importlib.util
-import sys
-from pathlib import Path
 
 import pytest
 
-from shared.registry import get_registry
+from shared.discovery import scan_all_workflows, load_workflow
 
 
-@pytest.fixture(scope="class", autouse=True)
-def discover_workspace_workflows():
-    """Discover and register workflows from platform and home directories before tests"""
-    api_path = Path(__file__).parent.parent.parent.parent
-
-    # Discover from both platform and home directories
-    for workspace_name in ["platform", "home"]:
-        workspace_path = api_path / workspace_name
-
-        if workspace_path.exists():
-            for py_file in workspace_path.rglob("*.py"):
-                if py_file.name.startswith("_"):
-                    continue
-
-                relative_path = py_file.relative_to(workspace_path)
-                module_parts = list(relative_path.parts[:-1]) + [py_file.stem]
-                module_name = f"{workspace_name}.{'.'.join(module_parts)}"
-
-                try:
-                    spec = importlib.util.spec_from_file_location(module_name, py_file)
-                    if spec and spec.loader:
-                        # Always create a new module instance to re-run decorators
-                        module = importlib.util.module_from_spec(spec)
-                        sys.modules[module_name] = module
-                        spec.loader.exec_module(module)
-                except Exception:
-                    pass
-
-    yield
-
-
-class TestAutoDiscovery:
-    """Test workflow auto-discovery system"""
+class TestDynamicDiscovery:
+    """Test workflow dynamic discovery system"""
 
     def test_test_workflow_discovered(self):
-        """Test that test_workflow is auto-discovered"""
-        registry = get_registry()
+        """Test that test_workflow is discovered dynamically"""
+        workflows = scan_all_workflows()
+        workflow_names = [w.name for w in workflows]
 
-        # Workflow should be registered
-        assert registry.has_workflow("test_workflow")
+        # Workflow should be discovered
+        assert "test_workflow" in workflow_names
 
         # Get workflow metadata
-        workflow = registry.get_workflow("test_workflow")
+        workflow = next((w for w in workflows if w.name == "test_workflow"), None)
         assert workflow is not None
         assert workflow.name == "test_workflow"
         assert workflow.description == "Simple test workflow for validation"
@@ -64,8 +30,9 @@ class TestAutoDiscovery:
 
     def test_test_workflow_parameters(self):
         """Test that test_workflow has correct parameters"""
-        registry = get_registry()
-        workflow = registry.get_workflow("test_workflow")
+        workflows = scan_all_workflows()
+        workflow = next((w for w in workflows if w.name == "test_workflow"), None)
+        assert workflow is not None
 
         assert len(workflow.parameters) == 2
 
@@ -90,20 +57,25 @@ class TestAutoDiscovery:
         assert count_param.default_value == 1
         assert count_param.help_text == "Number of times to greet"
 
-    def test_workflow_function_callable(self):
-        """Test that discovered workflow function is callable"""
-        registry = get_registry()
-        workflow = registry.get_workflow("test_workflow")
+    def test_workflow_function_loadable(self):
+        """Test that discovered workflow function is loadable"""
+        result = load_workflow("test_workflow")
 
-        # Function should be stored
-        assert workflow is not None
-        assert workflow.function is not None
-        assert callable(workflow.function)
+        # Function and metadata should be returned
+        assert result is not None
+        workflow_func, metadata = result
+        assert workflow_func is not None
+        assert callable(workflow_func)
+        assert metadata.name == "test_workflow"
 
-    def test_registry_summary(self):
-        """Test registry summary includes discovered workflows"""
-        registry = get_registry()
-        summary = registry.get_summary()
+    def test_scan_returns_multiple_workflows(self):
+        """Test that scanning returns multiple workflows from platform"""
+        workflows = scan_all_workflows()
 
-        assert summary["workflows_count"] >= 1
-        assert "test_workflow" in summary["workflows"]
+        # Should find multiple workflows
+        assert len(workflows) >= 1
+
+        # All workflows should have required fields
+        for workflow in workflows:
+            assert workflow.name is not None
+            assert workflow.description is not None

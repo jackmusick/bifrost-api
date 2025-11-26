@@ -18,7 +18,6 @@ from shared.context import Caller, ExecutionContext, Organization
 from shared.error_handling import WorkflowError
 from shared.errors import UserError, WorkflowExecutionException
 from shared.models import ExecutionStatus
-from shared.registry import FunctionMetadata, get_registry
 from shared.repositories.execution_logs import get_execution_logs_repository
 
 logger = logging.getLogger(__name__)
@@ -43,15 +42,27 @@ _cache: dict[str, dict[str, Any]] = {}
 
 @dataclass
 class ExecutionRequest:
-    """Request to execute code or registered function"""
+    """Request to execute code or a function"""
     execution_id: str
     caller: Caller
     organization: Organization | None
     config: dict[str, Any]
 
-    # EITHER inline code OR function name (mutually exclusive)
+    # Function to execute (preferred - passed directly from discovery)
+    func: Any = None                     # The actual callable function
+
+    # Alternative: inline code (mutually exclusive with func)
     code: str | None = None              # Base64 Python code
-    name: str | None = None              # Registered function name
+
+    # Function name (for display/logging purposes)
+    name: str | None = None              # Function name (from metadata)
+
+    # Tags for execution type (e.g., ["workflow"], ["data_provider"])
+    tags: list[str] = field(default_factory=list)
+
+    # Execution settings
+    timeout_seconds: int = 1800          # Default 30 minutes
+    cache_ttl_seconds: int = 300         # For data providers
 
     # Parameters
     parameters: dict[str, Any] = field(default_factory=dict)
@@ -92,9 +103,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     Unified execution engine for all code execution.
 
     Handles:
+    - Direct function execution (request.func set)
     - Inline Python scripts (request.code set)
-    - Registered workflows (request.name set, has "workflow" tag)
-    - Registered data providers (request.name set, has "data_provider" tag)
 
     Args:
         request: ExecutionRequest with execution details
@@ -103,35 +113,29 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         ExecutionResult with execution outcome
 
     Raises:
-        ValueError: If neither code nor name provided, or if name not found
+        ValueError: If neither func nor code provided
     """
     start_time = datetime.utcnow()
 
     # Resolve what we're executing
-    metadata: FunctionMetadata | None = None
     func = None
     is_script = False
+    is_data_provider = "data_provider" in request.tags
 
-    if request.code and request.name:
+    if request.func and request.code:
         raise ValueError(
-            "Cannot provide both code and name - they are mutually exclusive")
+            "Cannot provide both func and code - they are mutually exclusive")
 
-    if request.code:
+    if request.func:
+        # Direct function execution (from discovery)
+        func = request.func
+        is_script = False
+    elif request.code:
         # Executing inline script
         is_script = True
-        metadata = None
         func = None
-    elif request.name:
-        # Executing registered function
-        registry = get_registry()
-        metadata = registry.get_function(request.name)
-        if not metadata:
-            raise ValueError(
-                f"Function '{request.name}' not found in registry")
-        func = metadata.function
-        is_script = False
     else:
-        raise ValueError("Must provide either code or name")
+        raise ValueError("Must provide either func or code")
 
     # Create execution context
     context = ExecutionContext(
@@ -160,11 +164,12 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     # For captured logging (scripts and workflows)
     captured_logs: list[str] = []
     captured_variables: dict[str, Any] = {}  # Initialize to empty dict
+    cache_expires_at_str: str | None = None  # For data providers
 
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
             # Check cache for data providers
-            if metadata and "data_provider" in metadata.tags and not request.no_cache:
+            if is_data_provider and not request.no_cache:
                 cache_key = _compute_cache_key(
                     request.name or "",
                     request.parameters,
@@ -197,13 +202,14 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             )
 
             # Cache if data provider
-            if metadata and "data_provider" in metadata.tags:
+            if is_data_provider:
                 cache_key = _compute_cache_key(
                     request.name or "",
                     request.parameters,
                     request.organization.id if request.organization else None
                 )
-                _cache_result(cache_key, result, metadata.cache_ttl_seconds)
+                expires_at = _cache_result(cache_key, result, request.cache_ttl_seconds)
+                cache_expires_at_str = expires_at.isoformat() + "Z"
 
         # Process captured logs (from scripts or workflows with platform admin)
         logger.info(
@@ -253,7 +259,9 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             duration_ms=duration_ms,
             logs=logger_output,
             variables=captured_variables,
-            integration_calls=context._integration_calls
+            integration_calls=context._integration_calls,
+            cached=False,
+            cache_expires_at=cache_expires_at_str
         )
 
     except WorkflowExecutionException as e:
@@ -509,14 +517,15 @@ def _script_to_callable(code: str, name: str):
                 setattr(script_logging, attr, getattr(logging, attr))
 
         # Override the module-level logging functions to use our script logger
-        script_logging.debug = script_logger.debug
-        script_logging.info = script_logger.info
-        script_logging.warning = script_logger.warning
-        script_logging.error = script_logger.error
-        script_logging.critical = script_logger.critical
-        script_logging.exception = script_logger.exception
-        script_logging.log = script_logger.log
-        script_logging.getLogger = lambda name=None: script_logger  # Return our logger for any getLogger calls
+        # Using setattr for type-checker compatibility with ModuleType
+        setattr(script_logging, 'debug', script_logger.debug)
+        setattr(script_logging, 'info', script_logger.info)
+        setattr(script_logging, 'warning', script_logger.warning)
+        setattr(script_logging, 'error', script_logger.error)
+        setattr(script_logging, 'critical', script_logger.critical)
+        setattr(script_logging, 'exception', script_logger.exception)
+        setattr(script_logging, 'log', script_logger.log)
+        setattr(script_logging, 'getLogger', lambda name=None: script_logger)  # Return our logger for any getLogger calls
 
         # Temporarily replace logging in sys.modules so imports get our wrapper
         original_logging = sys.modules.get('logging')
@@ -777,10 +786,47 @@ async def _execute_workflow_with_trace(
 
     sys.settrace(chained_trace_func if existing_trace else trace_func)
 
+    # Track extra params injected into globals for cleanup
+    injected_extra_params: list[str] = []
+
     try:
         # Inspect function signature to determine if it expects context parameter
         sig = inspect.signature(func)
         params = list(sig.parameters.values())
+
+        # Get accepted parameter names from the function signature
+        # This allows us to split form fields into accepted params vs extra params
+        accepted_param_names = {p.name for p in params}
+
+        # Check if function accepts **kwargs (VAR_KEYWORD) - if so, all params are accepted
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params
+        )
+
+        if has_var_keyword:
+            # Function accepts **kwargs, pass everything
+            accepted_params = parameters
+            extra_params: dict[str, Any] = {}
+        else:
+            # Split parameters into accepted (match function signature) and extra
+            accepted_params = {
+                k: v for k, v in parameters.items() if k in accepted_param_names
+            }
+            extra_params = {
+                k: v for k, v in parameters.items() if k not in accepted_param_names
+            }
+
+        # Inject extra params into the function's module globals
+        # This makes them available as variables in the workflow and captured in execution trace
+        # Similar to PowerShell's Set-Variable for dynamic variable injection
+        if extra_params:
+            func_globals = func.__globals__
+            for key, value in extra_params.items():
+                # Track what we inject for cleanup
+                injected_extra_params.append(key)
+                func_globals[key] = value
+                # Also add to captured_vars so they appear in execution details
+                captured_vars[key] = remove_circular_refs(value)
 
         # Check if first parameter is for context (by type annotation OR by name as fallback)
         first_param_is_context = False
@@ -801,10 +847,10 @@ async def _execute_workflow_with_trace(
 
         if first_param_is_context:
             # Explicit context parameter - pass it as first positional argument
-            result = await func(context, **parameters)
+            result = await func(context, **accepted_params)
         else:
             # No context parameter - just pass parameters (context available via ContextVar)
-            result = await func(**parameters)
+            result = await func(**accepted_params)
     except TypeError as e:
         # Check if this is the "got multiple values" error caused by missing context parameter
         if "got multiple values for argument" in str(e):
@@ -866,6 +912,11 @@ async def _execute_workflow_with_trace(
         sys.settrace(existing_trace)
         # Clean up the logging handler
         root_logger.removeHandler(handler)
+        # Clean up injected extra params from globals to avoid polluting the module namespace
+        if injected_extra_params:
+            func_globals = func.__globals__
+            for key in injected_extra_params:
+                func_globals.pop(key, None)
 
     # Re-raise exception if one occurred (after cleanup and variable capture)
     if exception_to_raise:
@@ -928,7 +979,7 @@ def _check_cache(cache_key: str) -> Any | None:
         return None
 
 
-def _cache_result(cache_key: str, result: Any, ttl_seconds: int) -> None:
+def _cache_result(cache_key: str, result: Any, ttl_seconds: int) -> datetime:
     """
     Cache execution result.
 
@@ -936,6 +987,9 @@ def _cache_result(cache_key: str, result: Any, ttl_seconds: int) -> None:
         cache_key: Cache key
         result: Result to cache
         ttl_seconds: Time to live in seconds
+
+    Returns:
+        Expiration datetime
     """
     expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
     _cache[cache_key] = {
@@ -943,6 +997,7 @@ def _cache_result(cache_key: str, result: Any, ttl_seconds: int) -> None:
         'expires_at': expires_at
     }
     logger.info(f"Cached result for key: {cache_key} (TTL: {ttl_seconds}s)")
+    return expires_at
 
 
 def _build_cached_result(

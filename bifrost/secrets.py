@@ -29,13 +29,12 @@ class secrets:
     """
 
     @staticmethod
-    async def get(key: str, org_id: str | None = None) -> str | None:
+    async def get(key: str) -> str | None:
         """
         Get decrypted secret value.
 
         Args:
             key: Secret ref/name (full Key Vault secret name)
-            org_id: Organization ID (defaults to current org from context)
 
         Returns:
             str | None: Decrypted secret value, or None if not found
@@ -61,7 +60,7 @@ class secrets:
             return None
 
     @staticmethod
-    async def set(key: str, value: str, org_id: str | None = None) -> None:
+    async def set(key: str, value: str) -> None:
         """
         Set encrypted secret value.
 
@@ -70,7 +69,6 @@ class secrets:
         Args:
             key: Secret ref/name (full Key Vault secret name)
             value: Secret value (will be encrypted)
-            org_id: (deprecated - not used)
 
         Raises:
             PermissionError: If user lacks permission
@@ -114,7 +112,7 @@ class secrets:
             return secret_keys
 
     @staticmethod
-    async def delete(key: str, org_id: str | None = None) -> bool:
+    async def delete(key: str) -> bool:
         """
         Delete secret.
 
@@ -122,7 +120,6 @@ class secrets:
 
         Args:
             key: Secret ref/name (full Key Vault secret name)
-            org_id: (deprecated - not used)
 
         Returns:
             bool: True if deleted, False if not found

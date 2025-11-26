@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from shared.registry import get_registry
+from shared.discovery import scan_all_workflows
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -29,8 +29,8 @@ def list_workflows_logic(context: 'ExecutionContext') -> list[dict[str, Any]]:
     """
     logger.info(f"User {context.user_id} listing workflows")
 
-    registry = get_registry()
-    workflows = registry.get_all_workflows()
+    # Dynamically scan all workflows (always fresh)
+    workflows = scan_all_workflows()
 
     # Convert to dicts for serialization
     workflow_list = [

@@ -42,19 +42,18 @@ class workflows:
         """
         import asyncio
 
-        from shared.registry import get_registry
+        from shared.discovery import load_workflow
 
         context = get_context()
 
-        # Get workflow from registry
-        registry = get_registry()
-        workflow_metadata = registry.get_workflow(workflow_name)
+        # Dynamically load workflow (always fresh)
+        load_result = load_workflow(workflow_name)
 
-        if not workflow_metadata:
+        if not load_result:
             raise ValueError(f"Workflow not found: {workflow_name}")
 
         # Execute workflow function directly (avoids HTTP overhead)
-        workflow_func = workflow_metadata.function
+        workflow_func, _ = load_result
 
         # Execute workflow synchronously (workflows are async)
         result = asyncio.run(workflow_func(context, **(parameters or {})))

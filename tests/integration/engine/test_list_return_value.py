@@ -31,7 +31,8 @@ class TestListReturnValue:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="list_return_workflow",
-            parameters={}
+            parameters={},
+            func=return_list_workflow
         )
 
         result = await execute(request)
@@ -65,7 +66,8 @@ class TestListReturnValue:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="list_of_dicts_workflow",
-            parameters={}
+            parameters={},
+            func=return_list_of_dicts
         )
 
         result = await execute(request)
@@ -98,7 +100,8 @@ class TestListReturnValue:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="empty_list_workflow",
-            parameters={}
+            parameters={},
+            func=return_empty_list
         )
 
         result = await execute(request)
@@ -132,7 +135,8 @@ class TestListReturnValue:
             organization=Organization(id="test-org", name="Test Org"),
             config={},
             name="nested_list_workflow",
-            parameters={}
+            parameters={},
+            func=return_nested_list
         )
 
         result = await execute(request)

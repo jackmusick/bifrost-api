@@ -10,9 +10,9 @@ import azure.functions as func
 from croniter import croniter
 
 from shared.async_executor import enqueue_workflow_execution
-from shared.models import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
-from shared.registry import get_registry
 from shared.context import ExecutionContext
+from shared.discovery import scan_all_workflows, load_workflow
+from shared.models import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
 from shared.async_storage import AsyncTableStorageService
 from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid
 
@@ -33,11 +33,10 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
     logger.info("Processing all due schedules (manual trigger)")
 
     config_service = AsyncTableStorageService("Config")
-    registry = get_registry()
     context: ExecutionContext = req.context  # type: ignore[attr-defined]
 
-    # Get all workflows from registry
-    all_workflows = registry.get_all_workflows()
+    # Dynamically scan all workflows (always fresh)
+    all_workflows = scan_all_workflows()
     scheduled_workflows = [w for w in all_workflows if w.schedule]
 
     now = datetime.utcnow()
@@ -176,13 +175,12 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
     logger.info("Retrieving scheduled workflows")
 
     config_service = AsyncTableStorageService("Config")
-    registry = get_registry()
 
-    # Get all workflows from registry
-    all_workflows = registry.get_all_workflows()
+    # Dynamically scan all workflows (always fresh)
+    all_workflows = scan_all_workflows()
     scheduled_workflows = [w for w in all_workflows if w.schedule]
 
-    logger.info(f"Found {len(scheduled_workflows)} scheduled workflows in registry")
+    logger.info(f"Found {len(scheduled_workflows)} scheduled workflows")
 
     schedules_list: list[ScheduleInfo] = []
 
@@ -330,23 +328,19 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
     logger.info(f"Manually triggering scheduled workflow: {workflow_name}")
 
     config_service = AsyncTableStorageService("Config")
-    registry = get_registry()
 
-    # Get workflow from registry
-    workflow_meta = None
-    for w in registry.get_all_workflows():
-        if w.name == workflow_name:
-            workflow_meta = w
-            break
-
-    if not workflow_meta:
+    # Dynamically load workflow (always fresh)
+    result = load_workflow(workflow_name)
+    if not result:
         return func.HttpResponse(
             body=f'{{"error": "Workflow not found: {workflow_name}"}}',
             status_code=404,
             mimetype="application/json"
         )
 
-    if not workflow_meta.schedule:
+    _, workflow_metadata = result
+
+    if not workflow_metadata.schedule:
         return func.HttpResponse(
             body=f'{{"error": "Workflow {workflow_name} is not scheduled"}}',
             status_code=400,
@@ -354,9 +348,9 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
         )
 
     # Validate CRON expression using comprehensive validation
-    if not is_cron_expression_valid(workflow_meta.schedule):
+    if not is_cron_expression_valid(workflow_metadata.schedule):
         return func.HttpResponse(
-            body=f'{{"error": "Workflow {workflow_name} has invalid CRON expression: {workflow_meta.schedule}"}}',
+            body=f'{{"error": "Workflow {workflow_name} has invalid CRON expression: {workflow_metadata.schedule}"}}',
             status_code=400,
             mimetype="application/json"
         )
@@ -388,7 +382,7 @@ async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) ->
 
         if schedule_state:
             now = datetime.utcnow()
-            next_run_at = calculate_next_run(workflow_meta.schedule, now)
+            next_run_at = calculate_next_run(workflow_metadata.schedule, now)
 
             schedule_state["LastRunAt"] = now.isoformat()
             schedule_state["LastExecutionId"] = execution_id

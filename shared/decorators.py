@@ -1,6 +1,7 @@
 """
 Workflow and Data Provider Decorators
-Decorators for registering workflows and data providers with metadata
+Decorators for attaching metadata to workflows and data providers.
+No registration - metadata is stored on the function and discovered dynamically.
 """
 
 import functools
@@ -8,7 +9,7 @@ import logging
 from collections.abc import Callable
 from typing import Any, Literal
 
-from .registry import DataProviderMetadata, FunctionMetadata, WorkflowMetadata, WorkflowParameter, get_registry
+from .discovery import DataProviderMetadata, WorkflowMetadata, WorkflowParameter
 
 logger = logging.getLogger(__name__)
 
@@ -141,33 +142,8 @@ def workflow(
             function=func
         )
 
-        # Store metadata in function
+        # Store metadata on function for dynamic discovery
         func._workflow_metadata = metadata
-
-        # Register with old registry (backward compat)
-        registry = get_registry()
-        registry.register_workflow(metadata)
-
-        # Also register with unified registry
-        unified_metadata = FunctionMetadata(
-            name=name,
-            description=description,
-            category=category,
-            tags=tags + ['workflow'],  # Add 'workflow' tag
-            execution_mode=execution_mode,
-            timeout_seconds=timeout_seconds,
-            function=func,
-            parameters=pending_params,
-            endpoint_enabled=endpoint_enabled,
-            allowed_methods=allowed_methods,
-            disable_global_key=disable_global_key,
-            public_endpoint=public_endpoint,
-            source=source,
-            source_file_path=source_file_path,
-            retry_policy=retry_policy,
-            schedule=schedule
-        )
-        registry.register_function(unified_metadata)
 
         logger.debug(
             f"Workflow decorator applied: {name} "
@@ -175,7 +151,6 @@ def workflow(
         )
 
         # Return function unchanged (for normal Python execution)
-        # No need for wrapper since we're not modifying behavior
         return func
 
     return decorator
@@ -329,28 +304,8 @@ def data_provider(
             source_file_path=source_file_path
         )
 
-        # Store metadata on function
+        # Store metadata on function for dynamic discovery
         func._data_provider_metadata = metadata
-
-        # Register with old registry (backward compat)
-        registry = get_registry()
-        registry.register_data_provider(metadata)
-
-        # Also register with unified registry
-        unified_metadata = FunctionMetadata(
-            name=name,
-            description=description,
-            category=category,
-            tags=['data_provider'],  # Just this tag
-            execution_mode='async',  # Data providers are always async
-            timeout_seconds=1800,  # Default 30 minutes
-            function=func,
-            parameters=pending_params,
-            cache_ttl_seconds=cache_ttl_seconds,
-            source=source,
-            source_file_path=source_file_path
-        )
-        registry.register_function(unified_metadata)
 
         logger.debug(
             f"Data provider decorator applied: {name} "

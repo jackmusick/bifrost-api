@@ -460,31 +460,30 @@ class secrets:
     """
     Secret management SDK.
 
-    Provides access to Azure Key Vault secrets scoped to organization.
+    Provides access to Azure Key Vault secrets.
 
     Example:
         from bifrost import secrets
 
         # Get secret
-        api_key = await secrets.get("api_key")
+        api_key = await secrets.get("bifrost-org123-api-stripe-abc")
 
         # Set secret
-        await secrets.set("api_key", "sk_live_xxxxx")
+        await secrets.set("bifrost-org123-api-stripe-abc", "sk_live_xxxxx")
 
         # List secret keys (not values)
         keys = await secrets.list()
 
         # Delete secret
-        await secrets.delete("old_api_key")
+        await secrets.delete("bifrost-org123-api-old-abc")
     """
     @staticmethod
-    async def get(key: str, org_id: str | None = None) -> str | None:
+    async def get(key: str) -> str | None:
         """
         Get decrypted secret value from Azure Key Vault.
 
         Args:
             key: Secret key (full Key Vault secret name)
-            org_id: Organization ID (optional, defaults to current org)
 
         Returns:
             str | None: Decrypted secret value, or None if not found
@@ -495,7 +494,7 @@ class secrets:
         ...
 
     @staticmethod
-    async def set(key: str, value: str, org_id: str | None = None) -> None:
+    async def set(key: str, value: str) -> None:
         """
         Set encrypted secret value in Azure Key Vault.
 
@@ -504,7 +503,6 @@ class secrets:
         Args:
             key: Secret key (full Key Vault secret name)
             value: Secret value (will be encrypted)
-            org_id: Organization ID (optional)
 
         Raises:
             PermissionError: If user lacks permission
@@ -529,7 +527,7 @@ class secrets:
         ...
 
     @staticmethod
-    async def delete(key: str, org_id: str | None = None) -> bool:
+    async def delete(key: str) -> bool:
         """
         Delete secret from Azure Key Vault.
 
@@ -537,7 +535,6 @@ class secrets:
 
         Args:
             key: Secret key (full Key Vault secret name)
-            org_id: Organization ID (optional)
 
         Returns:
             bool: True if deleted, False if not found
@@ -552,39 +549,26 @@ class oauth:
     """
     OAuth token management SDK.
 
-    Provides access to OAuth tokens with automatic resolution from Azure Key Vault.
+    Provides access to OAuth connections and tokens with automatic resolution from Azure Key Vault.
 
     Example:
         from bifrost import oauth
 
-        # Get token
-        token = await oauth.get_token("microsoft")
-        if token:
-            access_token = token["access_token"]
-            # Use the token for API calls
+        # Get OAuth connection (includes tokens and credentials)
+        conn = await oauth.get("microsoft")
+        if conn:
+            access_token = conn["access_token"]
+            # For cross-tenant operations, also available:
+            # conn["client_id"], conn["client_secret"], conn["refresh_token"]
 
         # List configured providers
         providers = await oauth.list_providers()
 
-        # Set a token (admin only)
-        await oauth.set_token("microsoft", {
-            "access_token": "ya29.xxx",
-            "refresh_token": "1//xxx",
-            "expires_at": 1234567890,
-            "token_type": "Bearer"
-        })
-
-        # Delete a token (admin only)
+        # Delete a connection (admin only)
         await oauth.delete_token("microsoft")
 
         # Refresh a token
         new_token = await oauth.refresh_token("microsoft")
-
-        # Get full connection config (for custom token operations)
-        conn = await oauth.get("partner_center")
-        if conn:
-            client_id = conn["client_id"]
-            client_secret = conn["client_secret"]
     """
     @staticmethod
     async def get(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
@@ -610,24 +594,6 @@ class oauth:
                 - access_token: str | None (if available)
                 - expires_at: str | None (ISO format, if available)
             Returns None if connection not found.
-
-        Raises:
-            RuntimeError: If no execution context
-        """
-        ...
-
-    @staticmethod
-    async def get_token(provider: str, org_id: str | None = None) -> dict[str, Any] | None:
-        """
-        Get OAuth token for a provider.
-
-        Args:
-            provider: OAuth provider name (e.g., "microsoft", "google")
-            org_id: Organization ID (defaults to current org from context)
-
-        Returns:
-            dict | None: OAuth token data (access_token, refresh_token, expires_at, etc.)
-                        or None if not found
 
         Raises:
             RuntimeError: If no execution context

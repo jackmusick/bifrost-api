@@ -646,7 +646,8 @@ class DataProviderInputConfig(BaseModel):
 class FormField(BaseModel):
     """Form field definition"""
     name: str = Field(..., description="Parameter name for workflow")
-    label: str = Field(..., description="Display label")
+    label: str | None = Field(
+        None, description="Display label (optional for markdown/html types)")
     type: FormFieldType
     required: bool = Field(default=False)
     validation: dict[str, Any] | None = None
@@ -675,10 +676,21 @@ class FormField(BaseModel):
         None, description="Whether this field's value can be populated from URL query parameters")
 
     @model_validator(mode='after')
-    def validate_data_provider_inputs(self):
-        """Ensure dataProviderInputs is only set when dataProvider is set (T007)"""
+    def validate_field_requirements(self):
+        """Validate field-specific requirements"""
+        # dataProviderInputs requires dataProvider (T007)
         if self.dataProviderInputs and not self.dataProvider:
             raise ValueError("dataProviderInputs requires dataProvider to be set")
+
+        # label is required for non-display fields (markdown/html use content instead)
+        display_only_types = {FormFieldType.MARKDOWN, FormFieldType.HTML}
+        if self.type not in display_only_types and not self.label:
+            raise ValueError(f"label is required for {self.type.value} fields")
+
+        # content is required for markdown/html fields
+        if self.type in display_only_types and not self.content:
+            raise ValueError(f"content is required for {self.type.value} fields")
+
         return self
 
 
@@ -2385,8 +2397,41 @@ class FileScanRequest(BaseModel):
 
 
 class WorkspaceScanResponse(BaseModel):
-    """Response from scanning workspace for SDK usage issues"""
+    """Response from scanning workspace for SDK usage and form validation issues"""
     issues: list[SDKUsageIssue] = Field(default_factory=list, description="List of SDK usage issues found")
     scanned_files: int = Field(..., description="Number of Python files scanned")
+    # Form validation issues (added to existing response for unified scanning)
+    form_issues: list['FormValidationIssue'] = Field(
+        default_factory=list, description="List of form validation issues found")
+    scanned_forms: int = Field(default=0, description="Number of form files scanned")
+    valid_forms: int = Field(default=0, description="Number of valid forms loaded")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== FORM VALIDATION SCANNING ====================
+
+class FormValidationIssue(BaseModel):
+    """
+    Represents a validation error found when loading a form definition.
+
+    This is returned when scanning workspace form files (*.form.json, form.json)
+    that have schema validation errors preventing them from loading.
+    """
+    file_path: str = Field(..., description="Relative path to the form file in workspace")
+    file_name: str = Field(..., description="Name of the form file")
+    form_name: str | None = Field(None, description="Name of the form if parseable")
+    error_message: str = Field(..., description="Validation error message")
+    field_name: str | None = Field(None, description="Name of the field with the error, if applicable")
+    field_index: int | None = Field(None, description="Index of the field with the error, if applicable")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FormScanResponse(BaseModel):
+    """Response from scanning workspace for form validation issues"""
+    issues: list[FormValidationIssue] = Field(default_factory=list, description="List of form validation issues found")
+    scanned_forms: int = Field(..., description="Number of form files scanned")
+    valid_forms: int = Field(..., description="Number of valid forms loaded")
 
     model_config = ConfigDict(from_attributes=True)

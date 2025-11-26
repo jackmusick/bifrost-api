@@ -291,8 +291,8 @@ class TestFormField:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("name",) and e["type"] == "missing" for e in errors)
 
-    def test_missing_required_label(self):
-        """Test that label is required"""
+    def test_missing_required_label_for_input_fields(self):
+        """Test that label is required for input fields (text, select, etc.)"""
         with pytest.raises(ValidationError) as exc_info:
             FormField(
                 name="test",
@@ -300,7 +300,30 @@ class TestFormField:
             )
 
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("label",) and e["type"] == "missing" for e in errors)
+        # Now raises a value_error from model_validator (not a missing field error)
+        assert any("label is required" in str(e.get("msg", "")) for e in errors)
+
+    def test_label_not_required_for_markdown(self):
+        """Test that label is NOT required for markdown display fields"""
+        # Markdown fields use 'content' instead of 'label'
+        field = FormField(
+            name="info",
+            type=FormFieldType.MARKDOWN,
+            content="## Welcome\n\nThis is markdown content."
+        )
+        assert field.label is None
+        assert field.content == "## Welcome\n\nThis is markdown content."
+
+    def test_content_required_for_markdown(self):
+        """Test that content is required for markdown fields"""
+        with pytest.raises(ValidationError) as exc_info:
+            FormField(
+                name="info",
+                type=FormFieldType.MARKDOWN
+            )
+
+        errors = exc_info.value.errors()
+        assert any("content is required" in str(e.get("msg", "")) for e in errors)
 
     def test_missing_required_type(self):
         """Test that type is required"""

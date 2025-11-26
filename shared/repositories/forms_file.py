@@ -1,6 +1,6 @@
 """
 Forms File Repository
-Manages forms stored as *.forms.json files in workspace with lazy-loading
+Manages forms stored as *.forms.json files in workspace with dynamic discovery
 """
 
 import json
@@ -14,7 +14,13 @@ from typing import TYPE_CHECKING
 
 import aiofiles
 
-from shared.forms_registry import get_forms_registry
+from shared.discovery import (
+    scan_all_forms,
+    load_form,
+    get_form_metadata,
+    get_forms_by_workflow,
+    FormMetadata,
+)
 from shared.models import CreateFormRequest, Form, UpdateFormRequest, generate_entity_id
 
 if TYPE_CHECKING:
@@ -44,13 +50,12 @@ class FormsFileRepository:
     """
     Repository for forms stored as files
 
-    Uses FormsRegistry for fast metadata lookups and lazy-loads full forms from files.
+    Uses dynamic discovery for form lookups. Forms are always read fresh from disk.
     Role assignments still stored in Table Storage (Relationships table).
     """
 
     def __init__(self, context: 'ExecutionContext'):
         self.context = context
-        self.registry = get_forms_registry()
         self.workspace_location = Path(os.environ["BIFROST_WORKSPACE_LOCATION"])
 
     async def create_form(
@@ -113,15 +118,54 @@ class FormsFileRepository:
             f"(workflow={form_request.linkedWorkflow}, isGlobal={form_request.isGlobal})"
         )
 
-        # Reload form from disk into registry (ensures it's loaded from file system)
-        # This is important for multi-worker scenarios where the registry is per-process
-        await self.registry.reload_form(file_path)
-
-        # Return full form
-        form = await self.registry.get_form_full(form_id)
-        if not form:
-            raise ValueError(f"Failed to load created form {form_id}")
+        # Read back the form as a Form model (dynamic discovery will find it next scan)
+        form = self._dict_to_form(form_data)
         return form
+
+    def _dict_to_form(self, data: dict) -> Form:
+        """Convert a form dict to a Form model."""
+        from shared.models import FormSchema, FormAccessLevel
+
+        # Parse dates - provide defaults for file-based forms
+        now = datetime.utcnow()
+        created_at = data.get('createdAt')
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        elif created_at is None:
+            created_at = now
+
+        updated_at = data.get('updatedAt')
+        if isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        elif updated_at is None:
+            updated_at = now
+
+        # Parse form schema
+        form_schema_data = data.get('formSchema', {})
+        form_schema = FormSchema(**form_schema_data) if form_schema_data else None
+
+        # Parse access level
+        access_level = data.get('accessLevel')
+        if access_level and isinstance(access_level, str):
+            access_level = FormAccessLevel(access_level)
+
+        return Form(
+            id=data['id'],
+            orgId=data.get('orgId', 'GLOBAL'),
+            name=data['name'],
+            description=data.get('description'),
+            linkedWorkflow=data['linkedWorkflow'],
+            formSchema=form_schema,  # type: ignore[arg-type]
+            isActive=data.get('isActive', True),
+            isGlobal=data.get('isGlobal', False),
+            accessLevel=access_level,
+            createdBy=data.get('createdBy', 'system'),
+            createdAt=created_at,
+            updatedAt=updated_at,
+            launchWorkflowId=data.get('launchWorkflowId'),
+            allowedQueryParams=data.get('allowedQueryParams'),
+            defaultLaunchParams=data.get('defaultLaunchParams'),
+        )
 
     async def get_form(self, form_id: str) -> Form | None:
         """
@@ -133,36 +177,12 @@ class FormsFileRepository:
         Returns:
             Form model or None if not found or not accessible
         """
-        # Check metadata first (fast)
-        metadata = await self.registry.get_form_metadata(form_id)
+        # Get metadata using dynamic discovery
+        metadata = get_form_metadata(form_id)
 
-        # If not in registry, try to find and load from filesystem
-        # This handles multi-worker scenarios where a form was created in another process
         if not metadata:
-            logger.debug(f"Form {form_id} not in registry, scanning filesystem...")
-            form_file = None
-            for pattern in ["*.form.json", ".archived/*.form.json"]:
-                matches = list(self.workspace_location.rglob(pattern))
-                for file_path in matches:
-                    try:
-                        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                            content = await f.read()
-                            data = json.loads(content)
-                            if data.get('id') == form_id:
-                                form_file = file_path
-                                break
-                    except Exception:
-                        continue
-                if form_file:
-                    break
-
-            if form_file:
-                logger.info(f"Found form {form_id} on filesystem, loading into registry...")
-                await self.registry.reload_form(form_file)
-                metadata = await self.registry.get_form_metadata(form_id)
-
-            if not metadata:
-                return None
+            logger.debug(f"Form {form_id} not found")
+            return None
 
         # Apply org scope filtering (skip for platform admins)
         if not self.context.is_platform_admin:
@@ -170,8 +190,13 @@ class FormsFileRepository:
                 logger.debug(f"Form {form_id} not accessible (org mismatch)")
                 return None
 
-        # Load full form (lazy)
-        return await self.registry.get_form_full(form_id)
+        # Load full form data from file
+        form_data = load_form(form_id)
+        if not form_data:
+            logger.warning(f"Form {form_id} metadata found but data missing")
+            return None
+
+        return self._dict_to_form(form_data)
 
     async def list_forms(
         self,
@@ -181,7 +206,7 @@ class FormsFileRepository:
         """
         List forms visible to current user
 
-        Uses metadata cache for filtering, then lazy-loads full forms.
+        Uses dynamic discovery for filtering, then loads full forms.
 
         Args:
             active_only: Only return active forms
@@ -190,7 +215,7 @@ class FormsFileRepository:
         Returns:
             List of Form models
         """
-        all_metadata = self.registry.get_all_metadata()
+        all_metadata = scan_all_forms()
 
         # Filter by org scope
         if include_global:
@@ -205,12 +230,12 @@ class FormsFileRepository:
         if active_only:
             filtered = [m for m in filtered if m.isActive]
 
-        # Lazy-load full forms
+        # Load full forms
         forms = []
         for metadata in filtered:
-            form = await self.registry.get_form_full(metadata.id)
-            if form:
-                forms.append(form)
+            form_data = load_form(metadata.id)
+            if form_data:
+                forms.append(self._dict_to_form(form_data))
 
         logger.info(
             f"Found {len(forms)} forms "
@@ -234,8 +259,8 @@ class FormsFileRepository:
         Returns:
             List of Form models
         """
-        # Get forms by workflow from registry (fast metadata filter)
-        metadata_list = self.registry.get_forms_by_workflow(workflow_name)
+        # Get forms by workflow using dynamic discovery
+        metadata_list = get_forms_by_workflow(workflow_name)
 
         # Apply active filter
         if active_only:
@@ -247,12 +272,12 @@ class FormsFileRepository:
             if m.orgId == self.context.org_id or m.orgId == "GLOBAL"
         ]
 
-        # Lazy-load full forms
+        # Load full forms
         forms = []
         for metadata in metadata_list:
-            form = await self.registry.get_form_full(metadata.id)
-            if form:
-                forms.append(form)
+            form_data = load_form(metadata.id)
+            if form_data:
+                forms.append(self._dict_to_form(form_data))
 
         logger.info(f"Found {len(forms)} forms using workflow {workflow_name}")
         return forms
@@ -280,7 +305,7 @@ class FormsFileRepository:
         if not form:
             raise ValueError(f"Form {form_id} not found or not accessible")
 
-        metadata = await self.registry.get_form_metadata(form_id)
+        metadata = get_form_metadata(form_id)
         if not metadata:
             raise ValueError(f"Form {form_id} metadata not found")
 
@@ -332,14 +357,8 @@ class FormsFileRepository:
 
             logger.info(f"Updated form {form_id}")
 
-            # Reload metadata in registry
-            await self.registry.reload_form(file_path)
-
-            # Return updated form
-            updated_form = await self.registry.get_form_full(form_id)
-            if not updated_form:
-                raise ValueError(f"Failed to load updated form {form_id}")
-            return updated_form
+            # Return updated form (dynamic discovery will find it fresh)
+            return self._dict_to_form(form_data)
 
         except Exception as e:
             # Clean up temp file if it exists
@@ -374,8 +393,8 @@ class FormsFileRepository:
         Returns:
             True if deleted, False if not found
         """
-        # Get metadata
-        metadata = await self.registry.get_form_metadata(form_id)
+        # Get metadata using dynamic discovery
+        metadata = get_form_metadata(form_id)
         if not metadata:
             logger.info(f"Cannot delete form {form_id}: Not found")
             return False
@@ -388,8 +407,6 @@ class FormsFileRepository:
         file_path = Path(metadata.filePath)
         if not file_path.exists():
             logger.warning(f"Form file not found: {metadata.filePath}")
-            # Still remove from registry
-            self.registry.remove_form(form_id)
             return False
 
         # Create .archived directory if it doesn't exist
@@ -401,9 +418,6 @@ class FormsFileRepository:
         try:
             shutil.move(str(file_path), str(archived_path))
             logger.info(f"Moved form {form_id} to .archived/{file_path.name}")
-
-            # Remove from registry
-            self.registry.remove_form(form_id)
 
             return True
 

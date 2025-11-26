@@ -18,21 +18,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Regex patterns to extract SDK calls
+# Uses \b word boundary to avoid matching variables ending in the SDK name
+# e.g., oauth_config.get() should NOT match config.get()
+
 # Matches: config.get("key"), config.get('key'), await config.get("key"), etc.
 CONFIG_GET_PATTERN = re.compile(
-    r'''(?:await\s+)?config\.get\s*\(\s*["']([^"']+)["']''',
+    r'''(?:await\s+)?\bconfig\.get\s*\(\s*["']([^"']+)["']''',
     re.MULTILINE
 )
 
 # Matches: secrets.get("key"), await secrets.get("key"), etc.
 SECRETS_GET_PATTERN = re.compile(
-    r'''(?:await\s+)?secrets\.get\s*\(\s*["']([^"']+)["']''',
+    r'''(?:await\s+)?\bsecrets\.get\s*\(\s*["']([^"']+)["']''',
     re.MULTILINE
 )
 
 # Matches: oauth.get_token("provider"), await oauth.get_token("provider"), etc.
 OAUTH_GET_TOKEN_PATTERN = re.compile(
-    r'''(?:await\s+)?oauth\.get_token\s*\(\s*["']([^"']+)["']''',
+    r'''(?:await\s+)?\boauth\.get_token\s*\(\s*["']([^"']+)["']''',
     re.MULTILINE
 )
 
