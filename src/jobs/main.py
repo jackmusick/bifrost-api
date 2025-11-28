@@ -11,7 +11,17 @@ import signal
 import sys
 from typing import NoReturn
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 from src.config import get_settings
+from src.core.database import init_db, close_db
+from src.jobs.rabbitmq import rabbitmq
+from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
+from src.jobs.consumers.git_sync import GitSyncConsumer
+from src.jobs.consumers.package_install import PackageInstallConsumer
+from src.jobs.schedulers.cron_scheduler import process_scheduled_workflows
+from src.jobs.schedulers.execution_cleanup import cleanup_stuck_executions
 
 # Configure logging
 logging.basicConfig(
@@ -27,13 +37,15 @@ class JobsWorker:
 
     Manages:
     - RabbitMQ consumers for workflow execution, git sync, package installation
-    - APScheduler for scheduled tasks (CRON jobs, cleanup, OAuth refresh)
+    - APScheduler for scheduled tasks (CRON jobs, cleanup)
     """
 
     def __init__(self):
         self.settings = get_settings()
         self.running = False
         self._shutdown_event = asyncio.Event()
+        self._scheduler: AsyncIOScheduler | None = None
+        self._consumers: list = []
 
     async def start(self) -> None:
         """Start the worker."""
@@ -41,9 +53,18 @@ class JobsWorker:
         logger.info("Starting Bifrost Jobs Worker...")
         logger.info(f"Environment: {self.settings.environment}")
 
-        # TODO: Initialize RabbitMQ connection
-        # TODO: Initialize APScheduler
-        # TODO: Start consumers
+        # Initialize database connection
+        logger.info("Initializing database connection...")
+        await init_db()
+        logger.info("Database connection established")
+
+        # Initialize and start RabbitMQ consumers
+        logger.info("Starting RabbitMQ consumers...")
+        await self._start_consumers()
+
+        # Initialize and start APScheduler
+        logger.info("Starting scheduler...")
+        await self._start_scheduler()
 
         logger.info("Bifrost Jobs Worker started")
         logger.info("Waiting for messages... (Ctrl+C to stop)")
@@ -51,15 +72,77 @@ class JobsWorker:
         # Keep running until shutdown
         await self._shutdown_event.wait()
 
+    async def _start_consumers(self) -> None:
+        """Start all RabbitMQ consumers."""
+        # Create consumer instances
+        self._consumers = [
+            WorkflowExecutionConsumer(),
+            GitSyncConsumer(),
+            PackageInstallConsumer(),
+        ]
+
+        # Start each consumer
+        for consumer in self._consumers:
+            try:
+                await consumer.start()
+                logger.info(f"Started consumer: {consumer.queue_name}")
+            except Exception as e:
+                logger.error(f"Failed to start consumer {consumer.queue_name}: {e}")
+                raise
+
+    async def _start_scheduler(self) -> None:
+        """Start the APScheduler for cron jobs."""
+        self._scheduler = AsyncIOScheduler()
+
+        # Schedule processor - every 5 minutes
+        self._scheduler.add_job(
+            process_scheduled_workflows,
+            CronTrigger(minute="*/5"),  # Every 5 minutes
+            id="schedule_processor",
+            name="Process scheduled workflows",
+            replace_existing=True,
+        )
+
+        # Execution cleanup - every 5 minutes
+        self._scheduler.add_job(
+            cleanup_stuck_executions,
+            CronTrigger(minute="*/5"),  # Every 5 minutes
+            id="execution_cleanup",
+            name="Cleanup stuck executions",
+            replace_existing=True,
+        )
+
+        # Start the scheduler
+        self._scheduler.start()
+        logger.info("Scheduler started with 2 jobs")
+
     async def stop(self) -> None:
         """Stop the worker gracefully."""
         logger.info("Stopping Bifrost Jobs Worker...")
         self.running = False
+
+        # Stop scheduler
+        if self._scheduler:
+            self._scheduler.shutdown(wait=False)
+            logger.info("Scheduler stopped")
+
+        # Stop consumers
+        for consumer in self._consumers:
+            try:
+                await consumer.stop()
+                logger.info(f"Stopped consumer: {consumer.queue_name}")
+            except Exception as e:
+                logger.error(f"Error stopping consumer {consumer.queue_name}: {e}")
+
+        # Close RabbitMQ connections
+        await rabbitmq.close()
+        logger.info("RabbitMQ connections closed")
+
+        # Close database connections
+        await close_db()
+        logger.info("Database connections closed")
+
         self._shutdown_event.set()
-
-        # TODO: Close RabbitMQ connection
-        # TODO: Stop APScheduler
-
         logger.info("Bifrost Jobs Worker stopped")
 
     def handle_signal(self, signum: int, frame) -> None:
