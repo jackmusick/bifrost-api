@@ -1,0 +1,111 @@
+"""
+User Repository
+
+Data access for user entities.
+"""
+
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.models.database import User
+from src.repositories.base import BaseRepository
+
+
+class UserRepository(BaseRepository[User]):
+    """
+    Repository for User entities.
+    """
+
+    model = User
+
+    def __init__(self, session: AsyncSession):
+        super().__init__(session)
+
+    async def get_by_email(self, email: str) -> User | None:
+        """
+        Get user by email address.
+
+        Args:
+            email: User email (case-insensitive)
+
+        Returns:
+            User or None if not found
+        """
+        result = await self.session.execute(
+            select(User).where(User.email.ilike(email))
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_organization(
+        self,
+        organization_id: UUID,
+        limit: int = 100,
+        offset: int = 0
+    ) -> list[User]:
+        """
+        Get all users in an organization.
+
+        Args:
+            organization_id: Organization UUID
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of users
+        """
+        result = await self.session.execute(
+            select(User)
+            .where(User.organization_id == organization_id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all())
+
+    async def get_superusers(self) -> list[User]:
+        """
+        Get all superusers (platform admins).
+
+        Returns:
+            List of superuser accounts
+        """
+        result = await self.session.execute(
+            select(User).where(User.is_superuser == True)  # noqa: E712
+        )
+        return list(result.scalars().all())
+
+    async def create_user(
+        self,
+        email: str,
+        hashed_password: str | None = None,
+        name: str | None = None,
+        is_superuser: bool = False,
+        organization_id: UUID | None = None,
+    ) -> User:
+        """
+        Create a new user.
+
+        Args:
+            email: User email
+            hashed_password: Pre-hashed password (None for OAuth users)
+            name: Display name
+            is_superuser: Whether user is platform admin
+            organization_id: Organization membership (None for platform admins)
+
+        Returns:
+            Created user
+        """
+        from src.models.enums import UserType
+
+        user = User(
+            email=email,
+            hashed_password=hashed_password,
+            name=name or email.split("@")[0],
+            is_superuser=is_superuser,
+            is_active=True,
+            is_verified=False,
+            user_type=UserType.PLATFORM if is_superuser else UserType.ORG,
+            organization_id=organization_id,
+        )
+        return await self.create(user)

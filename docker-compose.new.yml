@@ -1,0 +1,131 @@
+# Bifrost Docker Stack - PostgreSQL, RabbitMQ, Redis, FastAPI
+# Usage: docker compose -f docker-compose.new.yml up
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: bifrost-postgres
+    environment:
+      POSTGRES_DB: bifrost
+      POSTGRES_USER: bifrost
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bifrost_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bifrost -d bifrost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: bifrost-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: bifrost
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-bifrost_dev}
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Redis (Sessions & Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: bifrost-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: bifrost-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      WORKSPACE_PATH: /workspace
+      TEMP_PATH: /tmp/bifrost
+      ENVIRONMENT: development
+      # Default dev user (created on startup)
+      DEV_USER_EMAIL: admin@localhost
+      DEV_USER_PASSWORD: admin
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./platform:/app/platform
+      - ./workspace:/workspace
+      - bifrost_temp:/tmp/bifrost
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m src.main"
+
+  # Background Jobs Worker
+  jobs:
+    build:
+      context: .
+      dockerfile: Dockerfile.jobs
+    container_name: bifrost-jobs
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      WORKSPACE_PATH: /workspace
+      TEMP_PATH: /tmp/bifrost
+      ENVIRONMENT: development
+    volumes:
+      - ./src:/app/src
+      - ./platform:/app/platform
+      - ./workspace:/workspace
+      - bifrost_temp:/tmp/bifrost
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: python -m src.jobs.main
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
+  bifrost_temp:

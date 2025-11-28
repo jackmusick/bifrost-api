@@ -1,0 +1,61 @@
+# Bifrost Jobs - Background Worker Service
+# Handles RabbitMQ message consumption and scheduled tasks
+
+# =============================================================================
+# Stage 1: Builder
+# =============================================================================
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
+COPY requirements-new.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-new.txt
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY src/ /app/src/
+COPY platform/ /app/platform/
+
+# Create non-root user
+RUN useradd -m -u 1000 bifrost && \
+    chown -R bifrost:bifrost /app
+
+# Create directories for workspace and temp
+RUN mkdir -p /workspace /tmp/bifrost && \
+    chown -R bifrost:bifrost /workspace /tmp/bifrost
+
+USER bifrost
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Expose debugpy port (optional)
+EXPOSE 5678
+
+# Default command - run jobs worker (to be implemented)
+CMD ["python", "-m", "src.jobs.main"]
