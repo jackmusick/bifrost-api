@@ -292,3 +292,84 @@ CurrentUser = Annotated[UserPrincipal, Depends(get_current_user)]
 CurrentActiveUser = Annotated[UserPrincipal, Depends(get_current_active_user)]
 CurrentSuperuser = Annotated[UserPrincipal, Depends(get_current_superuser)]
 Context = Annotated[ExecutionContext, Depends(get_execution_context)]
+
+
+async def get_current_user_ws(websocket) -> UserPrincipal | None:
+    """
+    Get current user from WebSocket connection.
+
+    Checks for token in:
+    1. Query parameter: ?token=xxx
+    2. Authorization header (if supported by client)
+
+    Args:
+        websocket: FastAPI WebSocket connection
+
+    Returns:
+        UserPrincipal if authenticated, None otherwise
+    """
+    from fastapi import WebSocket
+
+    websocket: WebSocket = websocket
+    settings = get_settings()
+
+    # Try to get token from query params
+    token = websocket.query_params.get("token")
+
+    # Try Authorization header (some WebSocket clients support this)
+    if not token:
+        auth_header = websocket.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:]
+
+    if not token:
+        # Development bypass
+        if settings.is_development:
+            return UserPrincipal(
+                user_id=UUID("00000000-0000-0000-0000-000000000001"),
+                email=settings.dev_user_email,
+                name="Dev Admin",
+                is_active=True,
+                is_superuser=True,
+                is_verified=True,
+                organization_id=None,
+                roles=["admin"],
+            )
+        return None
+
+    # Decode and validate token
+    payload = decode_token(token)
+    if payload is None:
+        return None
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        return None
+
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        return None
+
+    # Get user from database
+    from src.core.database import get_session_factory
+    from src.repositories.users import UserRepository
+
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_id)
+
+        if user is None or not user.is_active:
+            return None
+
+        return UserPrincipal(
+            user_id=user.id,
+            email=user.email,
+            name=user.name or user.email.split("@")[0],
+            is_active=user.is_active,
+            is_superuser=user.is_superuser,
+            is_verified=user.is_verified,
+            organization_id=user.organization_id,
+            roles=[],
+        )

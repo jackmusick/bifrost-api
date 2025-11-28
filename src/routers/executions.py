@@ -1,0 +1,449 @@
+"""
+Executions Router
+
+Provides access to workflow execution history with filtering capabilities.
+API-compatible with the existing Azure Functions implementation.
+"""
+
+import logging
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import select, and_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Import existing Pydantic models for API compatibility
+from shared.models import (
+    ExecutionStatus,
+    ExecutionsListResponse,
+    WorkflowExecution,
+)
+
+from src.core.auth import Context, CurrentActiveUser, UserPrincipal
+from src.core.database import DbSession
+from src.core.pubsub import publish_execution_update
+from src.models.database import Execution as ExecutionModel
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/executions", tags=["Executions"])
+
+
+# =============================================================================
+# Repository
+# =============================================================================
+
+
+class ExecutionRepository:
+    """PostgreSQL-based execution repository."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def list_executions(
+        self,
+        user: UserPrincipal,
+        org_id: UUID | None,
+        workflow_name: str | None = None,
+        status_filter: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[WorkflowExecution], str | None]:
+        """List executions with filtering."""
+        query = select(ExecutionModel)
+
+        # Organization scoping
+        if org_id:
+            query = query.where(ExecutionModel.organization_id == org_id)
+
+        # Non-superusers can only see their own executions
+        if not user.is_superuser:
+            query = query.where(ExecutionModel.executed_by == user.email)
+
+        # Filters
+        if workflow_name:
+            query = query.where(ExecutionModel.workflow_name == workflow_name)
+
+        if status_filter:
+            query = query.where(ExecutionModel.status == status_filter)
+
+        if start_date:
+            try:
+                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                query = query.where(ExecutionModel.started_at >= start_dt)
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                query = query.where(ExecutionModel.started_at <= end_dt)
+            except ValueError:
+                pass
+
+        # Order by newest first
+        query = query.order_by(desc(ExecutionModel.started_at))
+
+        # Pagination
+        query = query.offset(offset).limit(limit + 1)  # +1 to check for more
+
+        result = await self.db.execute(query)
+        executions = list(result.scalars().all())
+
+        # Check if there are more results
+        has_more = len(executions) > limit
+        if has_more:
+            executions = executions[:limit]
+
+        # Generate continuation token
+        next_token = None
+        if has_more:
+            next_token = str(offset + limit)
+
+        return [self._to_pydantic(e) for e in executions], next_token
+
+    async def get_execution(
+        self,
+        execution_id: UUID,
+        user: UserPrincipal,
+    ) -> tuple[WorkflowExecution | None, str | None]:
+        """
+        Get execution by ID with authorization.
+
+        Returns:
+            Tuple of (execution, error_code) where error_code is None on success
+        """
+        result = await self.db.execute(
+            select(ExecutionModel).where(ExecutionModel.id == execution_id)
+        )
+        execution = result.scalar_one_or_none()
+
+        if not execution:
+            return None, "NotFound"
+
+        # Check authorization - non-superusers can only see their own
+        if not user.is_superuser and execution.executed_by != user.email:
+            return None, "Forbidden"
+
+        return self._to_pydantic(execution), None
+
+    async def get_execution_result(
+        self,
+        execution_id: UUID,
+        user: UserPrincipal,
+    ) -> tuple[Any, str | None]:
+        """Get execution result only."""
+        result = await self.db.execute(
+            select(
+                ExecutionModel.result,
+                ExecutionModel.result_type,
+                ExecutionModel.executed_by,
+            ).where(ExecutionModel.id == execution_id)
+        )
+        row = result.one_or_none()
+
+        if not row:
+            return None, "NotFound"
+
+        if not user.is_superuser and row.executed_by != user.email:
+            return None, "Forbidden"
+
+        return row.result, None
+
+    async def get_execution_logs(
+        self,
+        execution_id: UUID,
+        user: UserPrincipal,
+    ) -> tuple[list[dict] | None, str | None]:
+        """Get execution logs only."""
+        result = await self.db.execute(
+            select(
+                ExecutionModel.logs,
+                ExecutionModel.executed_by,
+            ).where(ExecutionModel.id == execution_id)
+        )
+        row = result.one_or_none()
+
+        if not row:
+            return None, "NotFound"
+
+        if not user.is_superuser and row.executed_by != user.email:
+            return None, "Forbidden"
+
+        logs = row.logs or []
+
+        # Filter debug logs for non-superusers
+        if not user.is_superuser:
+            logs = [log for log in logs if log.get("level", "").lower() != "debug"]
+
+        return logs, None
+
+    async def get_execution_variables(
+        self,
+        execution_id: UUID,
+        user: UserPrincipal,
+    ) -> tuple[dict | None, str | None]:
+        """Get execution variables (platform admin only)."""
+        if not user.is_superuser:
+            return None, "Forbidden"
+
+        result = await self.db.execute(
+            select(ExecutionModel.variables).where(ExecutionModel.id == execution_id)
+        )
+        row = result.scalar_one_or_none()
+
+        if row is None:
+            return None, "NotFound"
+
+        return row or {}, None
+
+    async def cancel_execution(
+        self,
+        execution_id: UUID,
+        user: UserPrincipal,
+    ) -> tuple[WorkflowExecution | None, str | None]:
+        """Cancel a pending or running execution."""
+        result = await self.db.execute(
+            select(ExecutionModel).where(ExecutionModel.id == execution_id)
+        )
+        execution = result.scalar_one_or_none()
+
+        if not execution:
+            return None, "NotFound"
+
+        if not user.is_superuser and execution.executed_by != user.email:
+            return None, "Forbidden"
+
+        # Can only cancel pending or running executions
+        if execution.status not in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
+            return None, "BadRequest"
+
+        # Update status
+        execution.status = ExecutionStatus.CANCELLING.value
+        execution.updated_at = datetime.utcnow()
+
+        await self.db.flush()
+        await self.db.refresh(execution)
+
+        # Publish update
+        await publish_execution_update(
+            execution_id=execution_id,
+            status=ExecutionStatus.CANCELLING.value,
+        )
+
+        return self._to_pydantic(execution), None
+
+    def _to_pydantic(self, execution: ExecutionModel) -> WorkflowExecution:
+        """Convert SQLAlchemy model to Pydantic model."""
+        return WorkflowExecution(
+            executionId=str(execution.id),
+            workflowName=execution.workflow_name,
+            orgId=str(execution.organization_id) if execution.organization_id else None,
+            formId=str(execution.form_id) if execution.form_id else None,
+            executedBy=execution.executed_by,
+            executedByName=execution.executed_by_name or execution.executed_by,
+            status=ExecutionStatus(execution.status),
+            inputData=execution.input_data or {},
+            result=execution.result,
+            resultType=execution.result_type,
+            errorMessage=execution.error_message,
+            durationMs=execution.duration_ms,
+            startedAt=execution.started_at,
+            completedAt=execution.completed_at,
+            logs=execution.logs,
+            variables=execution.variables,
+        )
+
+
+# =============================================================================
+# HTTP Endpoints
+# =============================================================================
+
+
+@router.get(
+    "",
+    response_model=ExecutionsListResponse,
+    summary="List workflow executions",
+    description="List workflow executions with filtering and pagination",
+)
+async def list_executions(
+    ctx: Context,
+    workflowName: str | None = Query(None, description="Filter by workflow name"),
+    status: str | None = Query(None, description="Filter by execution status"),
+    startDate: str | None = Query(None, description="Filter by start date (ISO format)"),
+    endDate: str | None = Query(None, description="Filter by end date (ISO format)"),
+    limit: int = Query(25, ge=1, le=1000, description="Maximum number of results"),
+    continuationToken: str | None = Query(None, description="Continuation token"),
+) -> ExecutionsListResponse:
+    """List workflow executions."""
+    repo = ExecutionRepository(ctx.db)
+
+    # Parse continuation token as offset
+    offset = 0
+    if continuationToken:
+        try:
+            offset = int(continuationToken)
+        except ValueError:
+            pass
+
+    executions, next_token = await repo.list_executions(
+        user=ctx.user,
+        org_id=ctx.org_id,
+        workflow_name=workflowName,
+        status_filter=status,
+        start_date=startDate,
+        end_date=endDate,
+        limit=limit,
+        offset=offset,
+    )
+
+    return ExecutionsListResponse(
+        executions=executions,
+        continuationToken=next_token,
+    )
+
+
+@router.get(
+    "/{execution_id}",
+    response_model=WorkflowExecution,
+    summary="Get execution details",
+    description="Get detailed information about a specific execution",
+)
+async def get_execution(
+    execution_id: UUID,
+    ctx: Context,
+) -> WorkflowExecution:
+    """Get execution details."""
+    repo = ExecutionRepository(ctx.db)
+    execution, error = await repo.get_execution(execution_id, ctx.user)
+
+    if error == "NotFound":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution {execution_id} not found",
+        )
+    elif error == "Forbidden":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this execution",
+        )
+
+    return execution
+
+
+@router.get(
+    "/{execution_id}/result",
+    summary="Get execution result only",
+    description="Get only the result of a specific execution (progressive loading)",
+)
+async def get_execution_result(
+    execution_id: UUID,
+    ctx: Context,
+) -> Any:
+    """Get execution result."""
+    repo = ExecutionRepository(ctx.db)
+    result, error = await repo.get_execution_result(execution_id, ctx.user)
+
+    if error == "NotFound":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution {execution_id} not found",
+        )
+    elif error == "Forbidden":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this execution",
+        )
+
+    return result
+
+
+@router.get(
+    "/{execution_id}/logs",
+    summary="Get execution logs only",
+    description="Get only the logs of a specific execution (progressive loading)",
+)
+async def get_execution_logs(
+    execution_id: UUID,
+    ctx: Context,
+) -> list[dict]:
+    """Get execution logs."""
+    repo = ExecutionRepository(ctx.db)
+    logs, error = await repo.get_execution_logs(execution_id, ctx.user)
+
+    if error == "NotFound":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution {execution_id} not found",
+        )
+    elif error == "Forbidden":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this execution",
+        )
+
+    return logs or []
+
+
+@router.get(
+    "/{execution_id}/variables",
+    summary="Get execution variables only",
+    description="Get only the variables of a specific execution (platform admin only)",
+)
+async def get_execution_variables(
+    execution_id: UUID,
+    ctx: Context,
+) -> dict:
+    """Get execution variables."""
+    repo = ExecutionRepository(ctx.db)
+    variables, error = await repo.get_execution_variables(execution_id, ctx.user)
+
+    if error == "NotFound":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution {execution_id} not found",
+        )
+    elif error == "Forbidden":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform admin privileges required",
+        )
+
+    return variables or {}
+
+
+@router.post(
+    "/{execution_id}/cancel",
+    response_model=WorkflowExecution,
+    summary="Cancel execution",
+    description="Cancel a pending or running execution",
+)
+async def cancel_execution(
+    execution_id: UUID,
+    ctx: Context,
+) -> WorkflowExecution:
+    """Cancel an execution."""
+    repo = ExecutionRepository(ctx.db)
+    execution, error = await repo.cancel_execution(execution_id, ctx.user)
+
+    if error == "NotFound":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution {execution_id} not found",
+        )
+    elif error == "Forbidden":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to cancel this execution",
+        )
+    elif error == "BadRequest":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel execution {execution_id} - must be Pending or Running",
+        )
+
+    return execution

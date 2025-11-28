@@ -13,7 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.core.database import close_db, init_db
-from src.routers import auth_router, health_router
+from src.core.pubsub import manager as pubsub_manager
+from src.routers import (
+    auth_router,
+    health_router,
+    organizations_router,
+    users_router,
+    roles_router,
+    executions_router,
+    websocket_router,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -49,6 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down Bifrost API...")
+    await pubsub_manager.close()
     await close_db()
     logger.info("Bifrost API shutdown complete")
 
@@ -116,6 +126,11 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(organizations_router)
+    app.include_router(users_router)
+    app.include_router(roles_router)
+    app.include_router(executions_router)
+    app.include_router(websocket_router)
 
     # Root endpoint
     @app.get("/")

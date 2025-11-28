@@ -1,0 +1,157 @@
+"""
+WebSocket Router
+
+Provides real-time updates via WebSocket connections.
+Replaces Azure Web PubSub with native FastAPI WebSockets.
+"""
+
+import logging
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+
+from src.core.auth import get_current_user_ws, UserPrincipal
+from src.core.pubsub import manager
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/ws", tags=["WebSocket"])
+
+
+@router.websocket("/connect")
+async def websocket_connect(
+    websocket: WebSocket,
+    channels: Annotated[list[str], Query()] = [],
+):
+    """
+    WebSocket endpoint for real-time updates.
+
+    Connect and subscribe to channels:
+    - execution:{execution_id} - Execution updates and logs
+    - user:{user_id} - User notifications
+    - system - System broadcasts
+
+    Query params:
+        channels: List of channels to subscribe to
+
+    Example:
+        ws://localhost:8000/ws/connect?channels=execution:abc-123&channels=user:user-456
+
+    Messages are JSON with structure:
+        {
+            "type": "execution_update" | "execution_log" | "notification" | "system_event",
+            ...payload
+        }
+    """
+    # Authenticate via query param or header
+    user = await get_current_user_ws(websocket)
+
+    if not user:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    # Filter channels - users can only subscribe to their own user channel
+    # and execution channels (we'll validate execution access separately)
+    allowed_channels = []
+    for channel in channels:
+        if channel.startswith("user:"):
+            # Users can only subscribe to their own notifications
+            if channel == f"user:{user.user_id}":
+                allowed_channels.append(channel)
+        elif channel.startswith("execution:"):
+            # TODO: Validate user has access to this execution
+            allowed_channels.append(channel)
+        elif channel == "system":
+            allowed_channels.append(channel)
+
+    # Always subscribe to user's own channel
+    user_channel = f"user:{user.user_id}"
+    if user_channel not in allowed_channels:
+        allowed_channels.append(user_channel)
+
+    try:
+        await manager.connect(websocket, allowed_channels)
+        logger.info(f"WebSocket connected for user {user.user_id}, channels: {allowed_channels}")
+
+        # Send connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "channels": allowed_channels,
+            "userId": str(user.user_id)
+        })
+
+        # Keep connection alive and handle incoming messages
+        while True:
+            data = await websocket.receive_json()
+
+            # Handle subscription changes
+            if data.get("type") == "subscribe":
+                new_channels = data.get("channels", [])
+                for channel in new_channels:
+                    # Validate and add subscription
+                    if channel.startswith("execution:"):
+                        if channel not in manager.connections:
+                            manager.connections[channel] = set()
+                        manager.connections[channel].add(websocket)
+                        await websocket.send_json({
+                            "type": "subscribed",
+                            "channel": channel
+                        })
+
+            elif data.get("type") == "unsubscribe":
+                channel = data.get("channel")
+                if channel and channel in manager.connections:
+                    manager.connections[channel].discard(websocket)
+                    await websocket.send_json({
+                        "type": "unsubscribed",
+                        "channel": channel
+                    })
+
+            elif data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info(f"WebSocket disconnected for user {user.user_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
+
+
+@router.websocket("/execution/{execution_id}")
+async def websocket_execution(
+    websocket: WebSocket,
+    execution_id: str,
+):
+    """
+    Convenience endpoint for subscribing to a single execution.
+
+    Equivalent to connecting with channels=execution:{execution_id}
+    """
+    user = await get_current_user_ws(websocket)
+
+    if not user:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    channel = f"execution:{execution_id}"
+
+    try:
+        await manager.connect(websocket, [channel])
+        logger.info(f"WebSocket connected to execution {execution_id}")
+
+        await websocket.send_json({
+            "type": "connected",
+            "executionId": execution_id
+        })
+
+        while True:
+            data = await websocket.receive_json()
+            if data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)

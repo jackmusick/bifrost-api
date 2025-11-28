@@ -1,10 +1,21 @@
 #!/bin/bash
+# Bifrost API - Test Runner
+# Usage: ./test.sh [pytest args...]
+#
+# This script starts the PostgreSQL/RabbitMQ/Redis stack,
+# runs database migrations, and executes tests.
+
 set -e
 
-# Parse command line arguments
+# =============================================================================
+# Configuration
+# =============================================================================
+COMPOSE_FILE="docker-compose.yml"
+TEST_DB="bifrost_test"
 COVERAGE=false
 PYTEST_ARGS=()
 
+# Parse command line arguments
 for arg in "$@"; do
     if [ "$arg" = "--coverage" ]; then
         COVERAGE=true
@@ -13,93 +24,121 @@ for arg in "$@"; do
     fi
 done
 
-# Cleanup function - always runs on exit
+# =============================================================================
+# Cleanup function
+# =============================================================================
 cleanup() {
-    echo "Cleaning up test services..."
-    lsof -ti:7777 | xargs kill -9 2>/dev/null || true
-    pkill -9 -f "azurite.*10100" 2>/dev/null || true
+    echo ""
+    echo "Cleaning up test environment..."
+    docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+    echo "Cleanup complete"
 }
 
 # Trap to ensure cleanup on exit or Ctrl+C
 trap cleanup EXIT INT TERM
 
-# Kill any existing test processes
-cleanup
+# =============================================================================
+# Start services
+# =============================================================================
+echo "============================================================"
+echo "Bifrost API - Test Runner"
+echo "============================================================"
+echo ""
 
-# Start Azurite on test ports (in-memory)
-echo "Starting Azurite on test ports (10100-10102)..."
-npx azurite --blobPort 10100 --queuePort 10101 --tablePort 10102 --inMemoryPersistence > /tmp/azurite-test.log 2>&1 &
+# Stop any existing containers
+echo "Stopping any existing containers..."
+docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
 
-# Wait for Azurite services to be ready
-AZURITE_READY=false
-echo "Waiting on Azurite..."
-for i in {1..120}; do
-    # Check if all three services are successfully listening
-    if grep -q "Azurite Blob service is successfully listening" /tmp/azurite-test.log && \
-       grep -q "Azurite Queue service is successfully listening" /tmp/azurite-test.log && \
-       grep -q "Azurite Table service is successfully listening" /tmp/azurite-test.log; then
-        echo "Azurite is ready!"
-        AZURITE_READY=true
+# Start services
+echo "Starting PostgreSQL, RabbitMQ, and Redis..."
+docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis
+
+# Wait for PostgreSQL
+echo "Waiting for PostgreSQL to be ready..."
+for i in {1..60}; do
+    if docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U bifrost -d bifrost > /dev/null 2>&1; then
+        echo "PostgreSQL is ready!"
         break
+    fi
+    if [ $i -eq 60 ]; then
+        echo "ERROR: PostgreSQL failed to start within 60 seconds"
+        docker compose -f "$COMPOSE_FILE" logs postgres
+        exit 1
     fi
     sleep 1
 done
 
-if [ "$AZURITE_READY" = false ]; then
-    echo "ERROR: Azurite failed to start within 120 seconds"
-    echo "Azurite log:"
-    cat /tmp/azurite-test.log 2>/dev/null || echo "No log file found"
-    exit 1
-fi
-
-# Start func on port 7777 with test connection string
-echo "Starting func on port 7777..."
-
-export AzureWebJobsStorage="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10100/devstoreaccount1;QueueEndpoint=http://localhost:10101/devstoreaccount1;TableEndpoint=http://localhost:10102/devstoreaccount1;"
-export FUNCTIONS_WORKER_RUNTIME="python"
-
-# Create temporary directories for workspace and temp storage
-export BIFROST_WORKSPACE_LOCATION="$(mktemp -d)"
-export BIFROST_TEMP_LOCATION="$(mktemp -d)"
-echo "Created test workspace: $BIFROST_WORKSPACE_LOCATION"
-echo "Created test temp: $BIFROST_TEMP_LOCATION"
-
-# # Show diagnostic info
-# echo "=== Test Environment Diagnostics ==="
-# echo "AzureWebJobsStorage: ${AzureWebJobsStorage:0:50}..."
-# echo "AZURE_KEY_VAULT_URL: $AZURE_KEY_VAULT_URL"
-# echo "===================================="
-
-func start --port 7777 > /tmp/func-test.log 2>&1 &
-FUNC_PID=$!
-
-# Wait for func to be ready
-READY=false
-echo "Waiting on Azure Functions..."
-for i in {1..120}; do
-    if curl -s http://localhost:7777/api/openapi/v3.json > /dev/null 2>&1; then
-        echo "Function app initialization complete!"
-        READY=true
+# Wait for RabbitMQ
+echo "Waiting for RabbitMQ to be ready..."
+for i in {1..60}; do
+    if docker compose -f "$COMPOSE_FILE" exec -T rabbitmq rabbitmq-diagnostics check_running > /dev/null 2>&1; then
+        echo "RabbitMQ is ready!"
         break
     fi
-
+    if [ $i -eq 60 ]; then
+        echo "ERROR: RabbitMQ failed to start within 60 seconds"
+        docker compose -f "$COMPOSE_FILE" logs rabbitmq
+        exit 1
+    fi
     sleep 1
 done
 
-if [ "$READY" = false ]; then
-    echo "ERROR: Azure Functions failed to start within 120 seconds"
-    echo "Full func log:"
-    cat /tmp/func-test.log 2>/dev/null || echo "No log file found"
-    exit 1
-fi
+# Wait for Redis
+echo "Waiting for Redis to be ready..."
+for i in {1..30}; do
+    if docker compose -f "$COMPOSE_FILE" exec -T redis redis-cli ping > /dev/null 2>&1; then
+        echo "Redis is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "ERROR: Redis failed to start within 30 seconds"
+        docker compose -f "$COMPOSE_FILE" logs redis
+        exit 1
+    fi
+    sleep 1
+done
 
-# Run pytest with or without coverage
+# =============================================================================
+# Set up test environment
+# =============================================================================
+echo ""
+echo "Setting up test environment..."
+
+# Export environment variables for tests
+export DATABASE_URL="postgresql+asyncpg://bifrost:bifrost_dev@localhost:5432/bifrost"
+export DATABASE_URL_SYNC="postgresql://bifrost:bifrost_dev@localhost:5432/bifrost"
+export RABBITMQ_URL="amqp://bifrost:bifrost_dev@localhost:5672/"
+export REDIS_URL="redis://localhost:6379/0"
+export SECRET_KEY="test-secret-key-for-testing-only-32chars"
+export ENVIRONMENT="testing"
+export WORKSPACE_PATH="$(mktemp -d)"
+export TEMP_PATH="$(mktemp -d)"
+
+echo "Test workspace: $WORKSPACE_PATH"
+echo "Test temp: $TEMP_PATH"
+
+# =============================================================================
+# Run migrations
+# =============================================================================
+echo ""
+echo "Running database migrations..."
+python -m alembic upgrade head
+
+# =============================================================================
+# Run tests
+# =============================================================================
+echo ""
+echo "============================================================"
+echo "Running tests..."
+echo "============================================================"
+echo ""
+
 if [ "$COVERAGE" = true ]; then
     echo "Running tests with coverage..."
     if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
-        pytest tests/ --cov=shared --cov=functions --cov-report=term-missing --cov-report=xml -v
+        pytest tests/ --cov=src --cov-report=term-missing --cov-report=xml -v
     else
-        pytest "${PYTEST_ARGS[@]}" --cov=shared --cov=functions --cov-report=term-missing --cov-report=xml
+        pytest "${PYTEST_ARGS[@]}" --cov=src --cov-report=term-missing --cov-report=xml
     fi
 else
     if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
@@ -108,3 +147,8 @@ else
         pytest "${PYTEST_ARGS[@]}"
     fi
 fi
+
+echo ""
+echo "============================================================"
+echo "Tests completed!"
+echo "============================================================"
