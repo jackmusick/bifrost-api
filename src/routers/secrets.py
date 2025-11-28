@@ -57,10 +57,10 @@ class SecretRepository:
                 (SecretModel.organization_id == None)
             )
 
-        result = await self.db.execute(query.order_by(SecretModel.key))
+        result = await self.db.execute(query.order_by(SecretModel.name))
         secrets = result.scalars().all()
 
-        secret_names = [s.key for s in secrets]
+        secret_names = [s.name for s in secrets]
         return SecretListResponse(
             secrets=secret_names,
             orgId=org_id,
@@ -78,7 +78,7 @@ class SecretRepository:
         # Check if secret already exists
         existing = await self.db.execute(
             select(SecretModel).where(
-                SecretModel.key == request.secretKey,
+                SecretModel.name == request.secretKey,
                 SecretModel.organization_id == (UUID(request.orgId) if request.orgId else None),
             )
         )
@@ -89,10 +89,9 @@ class SecretRepository:
         encrypted_value = encrypt_secret(request.value)
 
         secret = SecretModel(
-            key=request.secretKey,
+            name=request.secretKey,
             encrypted_value=encrypted_value,
             organization_id=UUID(request.orgId) if request.orgId else None,
-            created_by=created_by,
             created_at=now,
             updated_at=now,
         )
@@ -103,7 +102,7 @@ class SecretRepository:
 
         logger.info(f"Created secret {request.secretKey}")
         return SecretResponse(
-            name=secret.key,
+            name=secret.name,
             orgId=request.orgId,
             secretKey=request.secretKey,
             value=request.value,  # Return value only on creation
@@ -119,7 +118,7 @@ class SecretRepository:
         """Update an existing secret."""
         result = await self.db.execute(
             select(SecretModel).where(
-                SecretModel.key == secret_key,
+                SecretModel.name == secret_key,
                 SecretModel.organization_id == (UUID(org_id) if org_id else None),
             )
         )
@@ -137,7 +136,7 @@ class SecretRepository:
 
         logger.info(f"Updated secret {secret_key}")
         return SecretResponse(
-            name=secret.key,
+            name=secret.name,
             orgId=org_id,
             secretKey=secret_key,
             message="Secret updated successfully",
@@ -151,7 +150,7 @@ class SecretRepository:
         """Delete a secret."""
         result = await self.db.execute(
             select(SecretModel).where(
-                SecretModel.key == secret_key,
+                SecretModel.name == secret_key,
                 SecretModel.organization_id == (UUID(org_id) if org_id else None),
             )
         )

@@ -278,6 +278,31 @@ class Form(Base):
     )
 
 
+class FormRole(Base):
+    """
+    Form-Role association table.
+
+    Controls which roles have access to which forms.
+    """
+    __tablename__ = "form_roles"
+
+    form_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("forms.id", ondelete="CASCADE"),
+        primary_key=True
+    )
+    role_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True
+    )
+    assigned_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
+
+
 # =============================================================================
 # Execution
 # =============================================================================
@@ -455,6 +480,7 @@ class Secret(Base):
 
     Replaces Azure Key Vault for local development.
     Secrets are encrypted using Fernet (AES-128-CBC with HMAC).
+    Values are stored as base64-encoded encrypted strings.
     """
     __tablename__ = "secrets"
 
@@ -470,7 +496,11 @@ class Secret(Base):
         comment="NULL for global secrets"
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    encrypted_value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_value: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Base64-encoded Fernet-encrypted value"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now()

@@ -1,5 +1,20 @@
 # Bifrost Docker Stack - PostgreSQL, RabbitMQ, Redis, FastAPI
-# Usage: docker compose -f docker-compose.new.yml up
+#
+# Usage:
+#   docker compose up              # Start all services
+#   docker compose up -d           # Start in background
+#   docker compose logs -f api     # Follow API logs
+#
+# Required environment variables for production:
+#   SECRET_KEY          - 32+ char secret for JWT signing and secret encryption
+#   POSTGRES_PASSWORD   - PostgreSQL password
+#   RABBITMQ_PASSWORD   - RabbitMQ password
+#
+# The SECRET_KEY is critical - it's used for:
+#   - JWT token signing (HS256)
+#   - Fernet encryption of secrets stored in PostgreSQL (replaces Azure Key Vault)
+#   - Must be consistent across API and Jobs workers
+#   - Changing it will invalidate all existing tokens and secrets
 
 services:
   # PostgreSQL Database
@@ -69,9 +84,9 @@ services:
       WORKSPACE_PATH: /workspace
       TEMP_PATH: /tmp/bifrost
       ENVIRONMENT: development
-      # Default dev user (created on startup)
-      DEV_USER_EMAIL: admin@localhost
-      DEV_USER_PASSWORD: admin
+      # JWT settings (optional, has defaults)
+      # ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      # REFRESH_TOKEN_EXPIRE_DAYS: 7
     ports:
       - "8000:8000"
     volumes:
