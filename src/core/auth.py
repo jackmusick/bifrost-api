@@ -29,10 +29,13 @@ class UserPrincipal:
     Authenticated user principal.
 
     Represents an authenticated user with their identity and permissions.
+    User info is primarily extracted from JWT claims for efficiency,
+    with database lookup as fallback for legacy tokens.
     """
     user_id: UUID
     email: str
     name: str = ""
+    user_type: str = "ORG"  # PLATFORM or ORG
     is_active: bool = True
     is_superuser: bool = False
     is_verified: bool = False
@@ -42,11 +45,15 @@ class UserPrincipal:
     @property
     def is_platform_admin(self) -> bool:
         """Check if user is a platform admin (superuser)."""
-        return self.is_superuser
+        return self.is_superuser or self.user_type == "PLATFORM"
 
     def has_role(self, role: str) -> bool:
         """Check if user has a specific role."""
         return role in self.roles
+
+    def has_any_role(self, *roles: str) -> bool:
+        """Check if user has any of the specified roles."""
+        return any(role in self.roles for role in roles)
 
 
 @dataclass
@@ -83,6 +90,9 @@ async def get_current_user_optional(
     """
     Get the current user from JWT token (optional).
 
+    User info is extracted from JWT claims when available (preferred),
+    with database lookup as fallback for tokens without embedded claims.
+
     Returns None if no token is provided or token is invalid.
     Does not raise an exception for unauthenticated requests.
 
@@ -112,7 +122,29 @@ async def get_current_user_optional(
     except ValueError:
         return None
 
-    # Import here to avoid circular imports
+    # Check if token has embedded user claims (new tokens)
+    if "email" in payload and "user_type" in payload:
+        # Extract claims directly from JWT (efficient - no DB lookup)
+        org_id = None
+        if payload.get("org_id"):
+            try:
+                org_id = UUID(payload["org_id"])
+            except ValueError:
+                pass
+
+        return UserPrincipal(
+            user_id=user_id,
+            email=payload.get("email", ""),
+            name=payload.get("name", ""),
+            user_type=payload.get("user_type", "ORG"),
+            is_active=True,  # Token is valid, user was active at issue time
+            is_superuser=payload.get("is_superuser", False),
+            is_verified=True,
+            organization_id=org_id,
+            roles=payload.get("roles", []),
+        )
+
+    # Fallback: Look up user in database (legacy tokens without claims)
     from src.repositories.users import UserRepository
 
     user_repo = UserRepository(db)
@@ -125,11 +157,12 @@ async def get_current_user_optional(
         user_id=user.id,
         email=user.email,
         name=user.name or user.email.split("@")[0],
+        user_type=user.user_type.value if user.user_type else "ORG",
         is_active=user.is_active,
         is_superuser=user.is_superuser,
         is_verified=user.is_verified,
         organization_id=user.organization_id,
-        roles=[],  # TODO: Load roles from database
+        roles=[],  # Legacy tokens don't have roles, would need DB lookup
     )
 
 
@@ -152,23 +185,6 @@ async def get_current_user(
     Raises:
         HTTPException: If not authenticated or token is invalid
     """
-    settings = get_settings()
-
-    # In development, allow bypass for unauthenticated requests
-    if settings.is_development and credentials is None:
-        logger.warning("Using development bypass authentication")
-        # Return a dev user principal
-        return UserPrincipal(
-            user_id=UUID("00000000-0000-0000-0000-000000000001"),
-            email=settings.dev_user_email,
-            name="Dev Admin",
-            is_active=True,
-            is_superuser=True,
-            is_verified=True,
-            organization_id=None,
-            roles=["admin"],
-        )
-
     user = await get_current_user_optional(credentials, db)
 
     if user is None:
@@ -311,7 +327,6 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     from fastapi import WebSocket
 
     websocket: WebSocket = websocket
-    settings = get_settings()
 
     # Try to get token from query params
     token = websocket.query_params.get("token")
@@ -323,18 +338,6 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
             token = auth_header[7:]
 
     if not token:
-        # Development bypass
-        if settings.is_development:
-            return UserPrincipal(
-                user_id=UUID("00000000-0000-0000-0000-000000000001"),
-                email=settings.dev_user_email,
-                name="Dev Admin",
-                is_active=True,
-                is_superuser=True,
-                is_verified=True,
-                organization_id=None,
-                roles=["admin"],
-            )
         return None
 
     # Decode and validate token
@@ -351,7 +354,29 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     except ValueError:
         return None
 
-    # Get user from database
+    # Check if token has embedded user claims (new tokens)
+    if "email" in payload and "user_type" in payload:
+        # Extract claims directly from JWT (efficient - no DB lookup)
+        org_id = None
+        if payload.get("org_id"):
+            try:
+                org_id = UUID(payload["org_id"])
+            except ValueError:
+                pass
+
+        return UserPrincipal(
+            user_id=user_id,
+            email=payload.get("email", ""),
+            name=payload.get("name", ""),
+            user_type=payload.get("user_type", "ORG"),
+            is_active=True,
+            is_superuser=payload.get("is_superuser", False),
+            is_verified=True,
+            organization_id=org_id,
+            roles=payload.get("roles", []),
+        )
+
+    # Fallback: Get user from database (legacy tokens)
     from src.core.database import get_session_factory
     from src.repositories.users import UserRepository
 
@@ -367,6 +392,7 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
             user_id=user.id,
             email=user.email,
             name=user.name or user.email.split("@")[0],
+            user_type=user.user_type.value if user.user_type else "ORG",
             is_active=user.is_active,
             is_superuser=user.is_superuser,
             is_verified=user.is_verified,

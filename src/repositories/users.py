@@ -75,6 +75,21 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
+    async def has_any_users(self) -> bool:
+        """
+        Check if any users exist in the system.
+
+        Used for first-user detection during auto-provisioning.
+
+        Returns:
+            True if at least one user exists, False otherwise
+        """
+        from sqlalchemy import exists
+        result = await self.session.execute(
+            select(exists().where(User.id.isnot(None)))
+        )
+        return result.scalar() or False
+
     async def create_user(
         self,
         email: str,
