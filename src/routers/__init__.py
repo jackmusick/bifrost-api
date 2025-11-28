@@ -7,6 +7,9 @@ from src.routers.roles import router as roles_router
 from src.routers.executions import router as executions_router
 from src.routers.workflows import router as workflows_router
 from src.routers.forms import router as forms_router
+from src.routers.secrets import router as secrets_router
+from src.routers.config import router as config_router
+from src.routers.data_providers import router as data_providers_router
 from src.routers.websocket import router as websocket_router
 
 __all__ = [
@@ -18,5 +21,8 @@ __all__ = [
     "executions_router",
     "workflows_router",
     "forms_router",
+    "secrets_router",
+    "config_router",
+    "data_providers_router",
     "websocket_router",
 ]

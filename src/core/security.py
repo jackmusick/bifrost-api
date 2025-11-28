@@ -144,3 +144,67 @@ def decode_token(token: str) -> dict[str, Any] | None:
         return None
     except jwt.InvalidTokenError:
         return None
+
+
+# =============================================================================
+# Secret Encryption (for storing secrets in database)
+# =============================================================================
+
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+def _get_fernet_key() -> bytes:
+    """
+    Derive a Fernet-compatible key from the application secret.
+
+    Returns:
+        32-byte key suitable for Fernet encryption
+    """
+    settings = get_settings()
+
+    # Use PBKDF2 to derive a key from the secret
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"bifrost_secrets_v1",  # Fixed salt for consistency
+        iterations=100000,
+    )
+
+    key = base64.urlsafe_b64encode(kdf.derive(settings.secret_key.encode()))
+    return key
+
+
+def encrypt_secret(plaintext: str) -> str:
+    """
+    Encrypt a secret value for storage in the database.
+
+    Args:
+        plaintext: The secret value to encrypt
+
+    Returns:
+        Base64-encoded encrypted value
+    """
+    key = _get_fernet_key()
+    f = Fernet(key)
+    encrypted = f.encrypt(plaintext.encode())
+    return base64.urlsafe_b64encode(encrypted).decode()
+
+
+def decrypt_secret(encrypted: str) -> str:
+    """
+    Decrypt a secret value from the database.
+
+    Args:
+        encrypted: Base64-encoded encrypted value
+
+    Returns:
+        Decrypted plaintext value
+    """
+    key = _get_fernet_key()
+    f = Fernet(key)
+    encrypted_bytes = base64.urlsafe_b64decode(encrypted.encode())
+    decrypted = f.decrypt(encrypted_bytes)
+    return decrypted.decode()

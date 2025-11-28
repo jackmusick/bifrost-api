@@ -23,6 +23,9 @@ from src.routers import (
     executions_router,
     workflows_router,
     forms_router,
+    secrets_router,
+    config_router,
+    data_providers_router,
     websocket_router,
 )
 
@@ -134,6 +137,9 @@ def create_app() -> FastAPI:
     app.include_router(executions_router)
     app.include_router(workflows_router)
     app.include_router(forms_router)
+    app.include_router(secrets_router)
+    app.include_router(config_router)
+    app.include_router(data_providers_router)
     app.include_router(websocket_router)
 
     # Root endpoint
