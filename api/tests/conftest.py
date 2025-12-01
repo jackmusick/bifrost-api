@@ -1,639 +1,303 @@
 """
-Pytest fixtures for Bifrost Integrations testing infrastructure.
+Pytest fixtures for Bifrost API testing infrastructure.
 
 This module provides:
-1. ISOLATED infrastructure (Azurite on ports 10100-10102, Functions on port 8080)
-2. Real HTTP integration tests (no mock requests)
-3. Session-scoped fixtures for efficiency
-4. Function-scoped fixtures for isolation
+1. Database fixtures (PostgreSQL with SQLAlchemy async)
+2. Message queue fixtures (RabbitMQ)
+3. Cache fixtures (Redis)
+4. Authentication/authorization fixtures
+5. Common test data fixtures
 """
 
+import asyncio
 import os
-import subprocess
 import sys
-import time
-from datetime import datetime
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, AsyncGenerator, Generator
+from unittest.mock import AsyncMock
 
 import pytest
-import requests
-from azure.core.exceptions import ResourceNotFoundError
-from azure.data.tables import TableServiceClient
+import pytest_asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from shared.init_tables import REQUIRED_TABLES, init_tables
-from shared.storage import TableStorageService
-
 # Import fixture modules
 pytest_plugins = ["tests.fixtures.registry", "tests.fixtures.auth"]
 
+
 # ==================== CONFIGURATION ====================
 
-# Test infrastructure ports (ISOLATED from dev)
-TEST_AZURITE_BLOB_PORT = 10100
-TEST_AZURITE_QUEUE_PORT = 10101
-TEST_AZURITE_TABLE_PORT = 10102
-TEST_FUNCTIONS_PORT = 8080
-TEST_FUNCTIONS_URL = f"http://localhost:{TEST_FUNCTIONS_PORT}"
-
-# Azurite connection string for tests
-TEST_AZURITE_CONNECTION = (
-    "DefaultEndpointsProtocol=http;"
-    "AccountName=devstoreaccount1;"
-    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
-    f"BlobEndpoint=http://127.0.0.1:{TEST_AZURITE_BLOB_PORT}/devstoreaccount1;"
-    f"QueueEndpoint=http://127.0.0.1:{TEST_AZURITE_QUEUE_PORT}/devstoreaccount1;"
-    f"TableEndpoint=http://127.0.0.1:{TEST_AZURITE_TABLE_PORT}/devstoreaccount1;"
+# Test database URL (from environment or docker-compose.test.yml defaults)
+TEST_DATABASE_URL = os.getenv(
+    "BIFROST_DATABASE_URL",
+    "postgresql+asyncpg://bifrost:bifrost_test@localhost:15432/bifrost_test"
 )
+
+TEST_DATABASE_URL_SYNC = os.getenv(
+    "BIFROST_DATABASE_URL_SYNC",
+    "postgresql://bifrost:bifrost_test@localhost:15432/bifrost_test"
+)
+
+TEST_RABBITMQ_URL = os.getenv(
+    "BIFROST_RABBITMQ_URL",
+    "amqp://bifrost:bifrost_test@localhost:15672/"
+)
+
+TEST_REDIS_URL = os.getenv(
+    "BIFROST_REDIS_URL",
+    "redis://localhost:16379/0"
+)
+
+TEST_API_URL = os.getenv("TEST_API_URL", "http://localhost:18000")
+
+
+# ==================== EVENT LOOP FIXTURES ====================
+
+@pytest.fixture(scope="session")
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+    """Create an instance of the default event loop for the test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
 
 # ==================== SESSION FIXTURES (Start Once Per Test Run) ====================
 
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment(tmp_path_factory):
-    """Set up test environment variables once per session"""
-    os.environ["AzureWebJobsStorage"] = TEST_AZURITE_CONNECTION
-    os.environ["FUNCTIONS_WORKER_RUNTIME"] = "python"
+    """Set up test environment variables once per session."""
+    # Set environment variables for testing
+    os.environ["BIFROST_ENVIRONMENT"] = "testing"
+    os.environ["BIFROST_DATABASE_URL"] = TEST_DATABASE_URL
+    os.environ["BIFROST_DATABASE_URL_SYNC"] = TEST_DATABASE_URL_SYNC
+    os.environ["BIFROST_RABBITMQ_URL"] = TEST_RABBITMQ_URL
+    os.environ["BIFROST_REDIS_URL"] = TEST_REDIS_URL
+    os.environ["BIFROST_SECRET_KEY"] = "test-secret-key-for-testing-must-be-32-chars"
 
     # Set up workspace and temp locations for tests
     test_workspace = tmp_path_factory.mktemp("workspace")
     test_temp = tmp_path_factory.mktemp("temp")
-    os.environ["BIFROST_WORKSPACE_LOCATION"] = str(test_workspace)
-    os.environ["BIFROST_TEMP_LOCATION"] = str(test_temp)
+    os.environ["BIFROST_WORKSPACE_PATH"] = str(test_workspace)
+    os.environ["BIFROST_TEMP_PATH"] = str(test_temp)
 
-    # NOTE: KeyVault env vars intentionally NOT set for integration tests
-    # Unit tests mock KeyVault, E2E tests should configure KeyVault separately
     yield
 
 
-@pytest.fixture(scope="session", autouse=True)
-def mock_key_vault():
-    """
-    Mock Azure Key Vault globally for all tests (session-scoped).
-    We can't connect to real Key Vault in tests.
-    """
-    mock_client = MagicMock()
+# ==================== DATABASE FIXTURES ====================
 
-    # In-memory secret storage
-    secrets_store = {}
-
-    def mock_set_secret(name, value):
-        secrets_store[name] = value
-        return MagicMock(name=name, value=value)
-
-    def mock_get_secret(name):
-        if name not in secrets_store:
-            raise ResourceNotFoundError(f"Secret '{name}' not found")
-        return MagicMock(name=name, value=secrets_store[name])
-
-    def mock_delete_secret(name):
-        if name in secrets_store:
-            del secrets_store[name]
-        return MagicMock()
-
-    mock_client.set_secret = mock_set_secret
-    mock_client.get_secret = mock_get_secret
-    mock_client.begin_delete_secret = lambda name: MagicMock(
-        wait=lambda: mock_delete_secret(name)
+@pytest.fixture(scope="session")
+def async_engine():
+    """Create async SQLAlchemy engine for test session."""
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
     )
-
-    # Mock list_properties_of_secrets for KeyVault tests
-    def mock_list_properties():
-        props_list = []
-        for name in secrets_store:
-            prop = MagicMock()
-            prop.name = name
-            props_list.append(prop)
-        return props_list
-
-    mock_client.list_properties_of_secrets = mock_list_properties
-
-    # Patch both SecretClient and DefaultAzureCredential globally for all tests
-    patcher_secret = patch("shared.keyvault.SecretClient", return_value=mock_client)
-    patcher_credential = patch("shared.keyvault.DefaultAzureCredential", return_value=MagicMock())
-
-    patcher_secret.start()
-    patcher_credential.start()
-
-    yield mock_client
-
-    patcher_secret.stop()
-    patcher_credential.stop()
+    yield engine
+    # Cleanup handled by test.sh
 
 
 @pytest.fixture(scope="session")
-def docker_compose_services():
-    """
-    Start Docker Compose services (Azurite + Azure Functions) for integration tests.
-    Uses docker-compose.testing.yml to start both services.
-
-    Yields:
-        tuple: (connection_string, functions_url)
-    """
-    # Get project root (two levels up from tests/)
-    project_root = os.path.join(os.path.dirname(__file__), "../..")
-
-    # Start Docker Compose services
-    print("\n🐳 Starting Docker Compose services...")
-    subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.testing.yml", "up", "-d", "--build"],
-        cwd=project_root,
-        check=True,
-    )
-
-    # Wait for Functions to be ready (up to 120 seconds for Docker startup + func init)
-    print("⏳ Waiting for Azure Functions to be ready...")
-    for i in range(120):
-        try:
-            response = requests.get(f"{TEST_FUNCTIONS_URL}/api/data-providers", timeout=2)
-            if response.status_code in [200, 401]:  # 401 is fine - server is up
-                print(f"✓ Azure Functions ready on {TEST_FUNCTIONS_URL}")
-                break
-        except Exception:
-            if i == 119:
-                # Print logs before failing
-                print("\n❌ Failed to start. Docker logs:")
-                subprocess.run(
-                    ["docker", "compose", "-f", "docker-compose.testing.yml", "logs"],
-                    cwd=project_root,
-                )
-                subprocess.run(
-                    ["docker", "compose", "-f", "docker-compose.testing.yml", "down"],
-                    cwd=project_root,
-                )
-                raise RuntimeError(
-                    f"Azure Functions failed to start on port {TEST_FUNCTIONS_PORT}"
-                )
-            time.sleep(1)
-
-    yield (TEST_AZURITE_CONNECTION, TEST_FUNCTIONS_URL)
-
-    # Cleanup: Stop Docker Compose services
-    print("\n🧹 Stopping Docker Compose services...")
-    subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.testing.yml", "down"],
-        cwd=project_root,
-        check=False,  # Don't fail if already stopped
+def async_session_factory(async_engine):
+    """Create async session factory."""
+    return async_sessionmaker(
+        async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
     )
 
 
-@pytest.fixture(scope="session")
-def test_azurite(docker_compose_services):
+@pytest_asyncio.fixture
+async def db_session(async_session_factory) -> AsyncGenerator[AsyncSession, None]:
     """
-    Provides Azurite connection string for tests.
-    Azurite runs in Docker via docker_compose_services fixture.
+    Provide a database session for each test.
 
-    Returns:
-        dict: Configuration with connection_string and port information
+    Each test gets its own session that is rolled back after the test,
+    ensuring test isolation.
     """
-    connection_string, _ = docker_compose_services
-    yield {
-        "connection_string": connection_string,
-        "blob_port": TEST_AZURITE_BLOB_PORT,
-        "queue_port": TEST_AZURITE_QUEUE_PORT,
-        "table_port": TEST_AZURITE_TABLE_PORT,
-    }
+    async with async_session_factory() as session:
+        yield session
+        await session.rollback()
 
 
-@pytest.fixture(scope="session")
-def azure_functions_server(docker_compose_services):
+@pytest_asyncio.fixture
+async def clean_db(db_session: AsyncSession) -> AsyncSession:
     """
-    Provides Azure Functions server URL for tests.
-    Functions run in Docker via docker_compose_services fixture.
+    Provide a clean database for tests that need it.
 
-    Yields:
-        str: Base URL for Functions server (http://localhost:8080)
+    Truncates all tables before the test runs.
+    Use sparingly as this is slower than transaction rollback.
     """
-    _, functions_url = docker_compose_services
-    yield functions_url
-
-
-# ==================== FUNCTION-SCOPED FIXTURES (Per Test) ====================
-
-
-@pytest.fixture(scope="function")
-def azurite_tables(test_azurite):
-    """
-    Initialize all required tables in test Azurite for each test.
-    Scope: function - ensures test isolation
-
-    Yields:
-        str: Full Azurite connection string
-    """
-    # Initialize tables
-    init_tables(TEST_AZURITE_CONNECTION)
-
-    yield TEST_AZURITE_CONNECTION
-
-    # Cleanup - delete all entities from all tables
-    service_client = TableServiceClient.from_connection_string(TEST_AZURITE_CONNECTION)
-    for table_name in REQUIRED_TABLES:
-        table_client = service_client.get_table_client(table_name)
-        try:
-            # Query all entities and delete them
-            entities = list(table_client.query_entities(query_filter=""))
-            for entity in entities:
-                table_client.delete_entity(
-                    partition_key=entity["PartitionKey"], row_key=entity["RowKey"]
-                )
-        except Exception:
-            # Table might not exist or be empty - that's OK
-            pass
-
-
-# ==================== TABLE SERVICE FIXTURES ====================
-
-
-@pytest.fixture
-def entities_service(azurite_tables):
-    """Returns TableStorageService instance for Entities table"""
-    return TableStorageService("Entities")
-
-
-@pytest.fixture
-def config_service(azurite_tables):
-    """Returns TableStorageService instance for Config table"""
-    return TableStorageService("Config")
-
-
-@pytest.fixture
-def users_service(azurite_tables):
-    """Returns TableStorageService instance for Entities table (users)"""
-    return TableStorageService("Entities")
-
-
-@pytest.fixture
-def relationships_service(azurite_tables):
-    """Returns TableStorageService instance for Relationships table"""
-    return TableStorageService("Relationships")
-
-
-# ==================== ENTITY FIXTURES ====================
-
-
-@pytest.fixture
-def test_org(entities_service) -> dict[str, Any]:
-    """
-    Creates a test organization in Azurite.
-    Table: Entities
-    PartitionKey: GLOBAL
-    RowKey: org:{uuid}
-    """
-    import uuid
-
-    org_id = str(uuid.uuid4())
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"org:{org_id}",
-        "Name": "Test Organization",
-        "Domain": "example.com",
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "CreatedBy": "test-system",
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-
-    entities_service.insert_entity(entity)
-
-    return {"org_id": org_id, "name": "Test Organization", "domain": "example.com"}
-
-
-@pytest.fixture
-def test_org_2(entities_service) -> dict[str, Any]:
-    """Creates a second test organization for multi-org tests"""
-    import uuid
-
-    org_id = str(uuid.uuid4())
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"org:{org_id}",
-        "Name": "Test Organization 2",
-        "Domain": "company.com",
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "CreatedBy": "test-system",
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-
-    entities_service.insert_entity(entity)
-
-    return {"org_id": org_id, "name": "Test Organization 2", "domain": "company.com"}
-
-
-@pytest.fixture
-def test_user(users_service) -> dict[str, Any]:
-    """Creates a test user"""
-    email = "test@example.com"
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{email}",
-        "Email": email,
-        "DisplayName": "Test User",
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-
-    users_service.insert_entity(entity)
-
-    return {"user_id": email, "email": email, "display_name": "Test User"}
-
-
-@pytest.fixture
-def test_user_2(users_service) -> dict[str, Any]:
-    """Creates a second test user for permission tests"""
-    email = "test2@company.com"
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{email}",
-        "Email": email,
-        "DisplayName": "Test User 2",
-        "UserType": "ORG",
-        "IsPlatformAdmin": False,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-
-    users_service.insert_entity(entity)
-
-    return {"user_id": email, "email": email, "display_name": "Test User 2"}
-
-
-@pytest.fixture
-def test_platform_admin_user(users_service) -> dict[str, Any]:
-    """
-    Creates a platform admin user for testing.
-
-    This fixture is used by tests that require platform-level administrative access.
-    """
-    email = "admin@platform.test"
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"user:{email}",
-        "Email": email,
-        "DisplayName": "Platform Admin",
-        "UserType": "PLATFORM",
-        "IsPlatformAdmin": True,
-        "IsActive": True,
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "LastLogin": datetime.utcnow().isoformat(),
-    }
-
-    users_service.insert_entity(entity)
-
-    return {
-        "user_id": email,
-        "email": email,
-        "display_name": "Platform Admin",
-        "user_type": "PLATFORM",
-        "is_platform_admin": True,
-    }
-
-
-@pytest.fixture
-def test_form(test_org, entities_service) -> dict[str, Any]:
-    """Creates a sample form linked to user_onboarding workflow"""
-    import json
-    import uuid
-
-    form_id = str(uuid.uuid4())
-
-    form_schema = {
-        "fields": [
-            {"name": "first_name", "label": "First Name", "type": "text", "required": True},
-            {"name": "last_name", "label": "Last Name", "type": "text", "required": True},
-            {"name": "email", "label": "Email", "type": "email", "required": True},
-        ]
-    }
-
-    entity = {
-        "PartitionKey": test_org["org_id"],
-        "RowKey": f"form:{form_id}",
-        "Name": "Test User Onboarding Form",
-        "Description": "Test form for user onboarding workflow",
-        "LinkedWorkflow": "user_onboarding",
-        "FormSchema": json.dumps(form_schema),
-        "IsActive": True,
-        "IsPublic": False,
-        "CreatedBy": "test-system",
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-
-    entities_service.insert_entity(entity)
-
-    return {
-        "form_id": form_id,
-        "org_id": test_org["org_id"],
-        "name": "Test User Onboarding Form",
-        "linked_workflow": "user_onboarding",
-        "form_schema": form_schema,
-    }
-
-
-@pytest.fixture
-def test_global_form(entities_service) -> dict[str, Any]:
-    """Creates a sample global form"""
-    import json
-    import uuid
-
-    form_id = str(uuid.uuid4())
-
-    form_schema = {
-        "fields": [
-            {"name": "company_name", "label": "Company Name", "type": "text", "required": True},
-            {"name": "industry", "label": "Industry", "type": "text", "required": False},
-        ]
-    }
-
-    entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"form:{form_id}",
-        "Name": "Test Global Form",
-        "Description": "Test global form visible to all users",
-        "LinkedWorkflow": "global_workflow",
-        "FormSchema": json.dumps(form_schema),
-        "IsActive": True,
-        "IsPublic": True,
-        "IsGlobal": True,
-        "CreatedBy": "test-system",
-        "CreatedAt": datetime.utcnow().isoformat(),
-        "UpdatedAt": datetime.utcnow().isoformat(),
-    }
-
-    entities_service.insert_entity(entity)
-
-    return {
-        "form_id": form_id,
-        "org_id": "GLOBAL",
-        "name": "Test Global Form",
-        "linked_workflow": "global_workflow",
-        "form_schema": form_schema,
-        "is_global": True,
-        "is_public": True,
-    }
-
-
-# ==================== PERMISSION FIXTURES ====================
-
-
-@pytest.fixture
-def test_org_with_user(test_org, test_user, relationships_service):
-    """Creates a test organization with an assigned user"""
-    permission_entity = {
-        "PartitionKey": "GLOBAL",
-        "RowKey": f"userperm:{test_user['email']}:{test_org['org_id']}",
-        "UserId": test_user["email"],
-        "OrganizationId": test_org["org_id"],
-        "GrantedBy": "test-system",
-        "GrantedAt": datetime.utcnow().isoformat(),
-    }
-
-    relationships_service.insert_entity(permission_entity)
-
-    return {
-        **test_org,
-        **test_user,
-        "user_type": "ORG",
-        "is_platform_admin": False,
-    }
-
-
-# ==================== CONFIG FIXTURES ====================
-
-
-@pytest.fixture
-def test_org_with_config(test_org, config_service) -> dict[str, Any]:
-    """Creates org with sample configs"""
-    configs = [
-        {
-            "PartitionKey": test_org["org_id"],
-            "RowKey": "config:default_location",
-            "Value": "NYC",
-            "Type": "string",
-            "Description": "Default office location",
-            "UpdatedAt": datetime.utcnow().isoformat(),
-            "UpdatedBy": "test-system",
-        },
-        {
-            "PartitionKey": test_org["org_id"],
-            "RowKey": "config:timeout",
-            "Value": "30",
-            "Type": "int",
-            "Description": "Request timeout in seconds",
-            "UpdatedAt": datetime.utcnow().isoformat(),
-            "UpdatedBy": "test-system",
-        },
-    ]
-
-    for config in configs:
-        config_service.insert_entity(config)
-
-    return {
-        **test_org,
-        "configs": {"default_location": "NYC", "timeout": "30"},
-    }
-
-
-@pytest.fixture
-def load_seed_data(azurite_tables):
-    """
-    Loads seed data into Azurite for integration tests.
-
-    This fixture initializes realistic sample data including:
-    - Organizations
-    - Users
-    - Forms
-    - Workflows
-    - Configuration
-
-    Scope: function - ensures each test has fresh seed data
-    """
-    from seed_data import seed_all_data
-
-    # Seed all data using the test Azurite connection
-    seed_all_data(TEST_AZURITE_CONNECTION)
-
-    yield TEST_AZURITE_CONNECTION
-
-    # Cleanup happens automatically via azurite_tables fixture
+    # Get all table names
+    result = await db_session.execute(
+        text("""
+            SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public'
+            AND tablename != 'alembic_version'
+        """)
+    )
+    tables = [row[0] for row in result.fetchall()]
+
+    if tables:
+        # Disable foreign key checks, truncate, re-enable
+        await db_session.execute(text("SET session_replication_role = 'replica'"))
+        for table in tables:
+            await db_session.execute(text(f'TRUNCATE TABLE "{table}" CASCADE'))
+        await db_session.execute(text("SET session_replication_role = 'origin'"))
+        await db_session.commit()
+
+    yield db_session
 
 
 # ==================== CONTEXT FIXTURES ====================
 
-
 @pytest.fixture
 def platform_admin_context():
-    """Returns a ExecutionContext for a platform admin user"""
-    from shared.context import ExecutionContext
+    """Returns a RequestContext for a platform admin user."""
+    from shared.request_context import RequestContext
 
-    return ExecutionContext(
+    return RequestContext(
         user_id="admin-user-12345",
         email="admin@test.com",
         name="Test Platform Admin",
-        scope="GLOBAL",  # GLOBAL scope
-        organization=None,
+        org_id="GLOBAL",
         is_platform_admin=True,
         is_function_key=False,
-        execution_id="exec-admin-12345",
     )
 
 
 @pytest.fixture
-def org_user_context(test_org):
-    """Returns a ExecutionContext for an organization user"""
-    from shared.context import ExecutionContext, Organization
+def org_user_context():
+    """Returns a RequestContext for an organization user."""
+    from shared.request_context import RequestContext
 
-    org_id = test_org["org_id"]
-    return ExecutionContext(
+    return RequestContext(
         user_id="org-user-67890",
         email="user@test.com",
         name="Test Org User",
-        scope=org_id,
-        organization=Organization(id=org_id, name=test_org["name"]),
+        org_id="test-org-12345",
         is_platform_admin=False,
         is_function_key=False,
-        execution_id="exec-org-user-67890",
     )
 
 
 @pytest.fixture
 def function_key_context():
-    """Returns a ExecutionContext for function key authentication"""
-    from shared.context import ExecutionContext
+    """Returns a RequestContext for function key authentication."""
+    from shared.request_context import RequestContext
 
-    return ExecutionContext(
+    return RequestContext(
         user_id="system",
         email="system@local",
         name="System (Function Key)",
-        scope="GLOBAL",
-        organization=None,
+        org_id="GLOBAL",
         is_platform_admin=True,
         is_function_key=True,
-        execution_id="exec-system-function-key",
     )
+
+
+# ==================== MOCK FIXTURES ====================
+
+@pytest.fixture
+def mock_rabbitmq():
+    """Mock RabbitMQ connection for unit tests."""
+    mock = AsyncMock()
+    mock.publish = AsyncMock(return_value=None)
+    mock.consume = AsyncMock(return_value=None)
+    return mock
+
+
+@pytest.fixture
+def mock_redis():
+    """Mock Redis connection for unit tests."""
+    mock = AsyncMock()
+    mock.get = AsyncMock(return_value=None)
+    mock.set = AsyncMock(return_value=True)
+    mock.delete = AsyncMock(return_value=True)
+    mock.expire = AsyncMock(return_value=True)
+    return mock
+
+
+# ==================== TEST DATA FIXTURES ====================
+
+@pytest.fixture
+def sample_user_data() -> dict[str, Any]:
+    """Sample user data for testing."""
+    return {
+        "email": "test@example.com",
+        "password": "SecurePassword123!",
+        "name": "Test User",
+    }
+
+
+@pytest.fixture
+def sample_org_data() -> dict[str, Any]:
+    """Sample organization data for testing."""
+    return {
+        "name": "Test Organization",
+        "domain": "example.com",
+    }
+
+
+@pytest.fixture
+def sample_form_data() -> dict[str, Any]:
+    """Sample form data for testing."""
+    return {
+        "name": "User Onboarding",
+        "description": "Onboard new users",
+        "linkedWorkflow": "user_onboarding",
+        "formSchema": {
+            "fields": [
+                {
+                    "type": "text",
+                    "name": "email",
+                    "label": "Email Address",
+                    "required": True,
+                },
+                {
+                    "type": "text",
+                    "name": "name",
+                    "label": "Full Name",
+                    "required": True,
+                },
+            ]
+        },
+        "isPublic": False,
+    }
+
+
+@pytest.fixture
+def sample_workflow_data() -> dict[str, Any]:
+    """Sample workflow data for testing."""
+    return {
+        "name": "user_onboarding",
+        "description": "User onboarding workflow",
+        "steps": [
+            {
+                "id": "step1",
+                "name": "Validate Input",
+                "action": "validate",
+            },
+            {
+                "id": "step2",
+                "name": "Create User",
+                "action": "create_user",
+            },
+        ],
+    }
 
 
 # ==================== MARKERS ====================
 
-
 def pytest_configure(config):
-    """Register custom pytest markers"""
+    """Register custom pytest markers."""
     config.addinivalue_line("markers", "unit: Unit tests (fast, mocked dependencies)")
     config.addinivalue_line(
-        "markers", "integration: Integration tests (real HTTP + Azurite)"
+        "markers", "integration: Integration tests (real database, message queue)"
     )
-    config.addinivalue_line("markers", "e2e: End-to-end tests (complete workflows)")
+    config.addinivalue_line(
+        "markers", "e2e: End-to-end tests (full API with all services)"
+    )
     config.addinivalue_line("markers", "slow: Tests that take >1 second")

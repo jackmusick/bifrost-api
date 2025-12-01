@@ -234,7 +234,7 @@ class ConfigType(str, Enum):
     INT = "int"
     BOOL = "bool"
     JSON = "json"
-    SECRET_REF = "secret_ref"
+    SECRET = "secret"  # Value is encrypted
 
 
 class ExecutionStatus(str, Enum):
@@ -251,9 +251,9 @@ class ExecutionStatus(str, Enum):
 
 class RetryPolicy(BaseModel):
     """Retry policy configuration for workflow execution"""
-    maxAttempts: int = Field(3, ge=1, le=10, description="Total attempts including initial execution")
-    backoffSeconds: int = Field(2, ge=1, description="Initial backoff duration in seconds")
-    maxBackoffSeconds: int = Field(60, ge=1, description="Maximum backoff cap in seconds")
+    max_attempts: int = Field(3, ge=1, le=10, description="Total attempts including initial execution")
+    backoff_seconds: int = Field(2, ge=1, description="Initial backoff duration in seconds")
+    max_backoff_seconds: int = Field(60, ge=1, description="Maximum backoff cap in seconds")
 
 
 class FormAccessLevel(str, Enum):
@@ -306,10 +306,10 @@ class Organization(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     domain: str | None = Field(
         None, description="Email domain for auto-provisioning users (e.g., 'acme.com')")
-    isActive: bool = Field(default=True)
-    createdAt: datetime
-    createdBy: str
-    updatedAt: datetime
+    is_active: bool = Field(default=True)
+    created_at: datetime
+    created_by: str
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -337,7 +337,7 @@ class UpdateOrganizationRequest(BaseModel):
     """Request model for updating an organization"""
     name: str | None = Field(None, min_length=1, max_length=200)
     domain: str | None = Field(None, description="Email domain for auto-provisioning users")
-    isActive: bool | None = None
+    is_active: bool | None = None
 
     @field_validator('domain')
     @classmethod
@@ -357,46 +357,23 @@ class UpdateOrganizationRequest(BaseModel):
 class Config(BaseModel):
     """Configuration entity (global or org-specific)"""
     key: str
-    value: str
-    type: ConfigType
+    value: Any = Field(..., description="Config value. For SECRET type, this will be '[SECRET]' in list responses.")
+    type: ConfigType = ConfigType.STRING
     scope: Literal["GLOBAL", "org"] = Field(
-        ..., description="GLOBAL for MSP-wide or 'org' for org-specific")
-    orgId: str | None = Field(
+        default="org", description="GLOBAL for MSP-wide or 'org' for org-specific")
+    org_id: str | None = Field(
         None, description="Organization ID (only for org-specific config)")
     description: str | None = None
-    updatedAt: datetime
-    updatedBy: str
+    updated_at: datetime | None = None
+    updated_by: str | None = None
 
 
 class SetConfigRequest(BaseModel):
     """Request model for setting config"""
     key: str = Field(..., pattern=r"^[a-zA-Z0-9_]+$")
-    value: str | None = Field(None, description="Config value (for non-secret types) or raw secret value to create/update in Key Vault")
-    secretRef: str | None = Field(None, description="Reference to existing Key Vault secret (for secret_ref type only)")
+    value: str = Field(..., description="Config value. For SECRET type, this will be encrypted before storage.")
     type: ConfigType
     description: str | None = Field(None, description="Optional description of this config entry")
-
-    @model_validator(mode='after')
-    def validate_value_or_secret_ref(self):
-        """Ensure exactly one of value or secretRef is provided for secret_ref type"""
-        value = self.value
-        secret_ref = self.secretRef
-        config_type = self.type
-
-        # For secret_ref type, require exactly one of value or secretRef
-        if config_type == ConfigType.SECRET_REF:
-            if value and secret_ref:
-                raise ValueError("Cannot specify both 'value' and 'secretRef' for secret_ref type")
-            if not value and not secret_ref:
-                raise ValueError("Must specify either 'value' (to create/update secret) or 'secretRef' (to reference existing secret) for secret_ref type")
-        else:
-            # For non-secret types, require value and forbid secretRef
-            if not value:
-                raise ValueError(f"'value' is required for type '{config_type.value}'")
-            if secret_ref:
-                raise ValueError(f"'secretRef' can only be used with type 'secret_ref', not '{config_type.value}'")
-
-        return self
 
 
 # ==================== INTEGRATION CONFIG MODELS ====================
@@ -407,8 +384,8 @@ class IntegrationConfig(BaseModel):
     enabled: bool = Field(default=True)
     settings: dict[str, Any] = Field(...,
                                      description="Integration-specific settings")
-    updatedAt: datetime
-    updatedBy: str
+    updated_at: datetime
+    updated_by: str
 
 
 class SetIntegrationConfigRequest(BaseModel):
@@ -424,13 +401,13 @@ class SetIntegrationConfigRequest(BaseModel):
         integration_type = info.data.get('type')
 
         if integration_type == IntegrationType.MSGRAPH:
-            required_keys = {'tenant_id', 'client_id', 'client_secret_ref'}
+            required_keys = {'tenant_id', 'client_id', 'client_secret_config_key'}
             if not required_keys.issubset(v.keys()):
                 raise ValueError(
                     f"Microsoft Graph integration requires: {required_keys}")
 
         elif integration_type == IntegrationType.HALOPSA:
-            required_keys = {'api_url', 'client_id', 'api_key_ref'}
+            required_keys = {'api_url', 'client_id', 'api_key_config_key'}
             if not required_keys.issubset(v.keys()):
                 raise ValueError(
                     f"HaloPSA integration requires: {required_keys}")
@@ -444,26 +421,26 @@ class User(BaseModel):
     """User entity"""
     id: str = Field(..., description="User ID from Azure AD")
     email: str
-    displayName: str
-    userType: UserType = Field(
+    display_name: str
+    user_type: UserType = Field(
         default=UserType.PLATFORM, description="Platform admin or organization user")
-    isPlatformAdmin: bool = Field(
+    is_platform_admin: bool = Field(
         default=False, description="Whether user is platform admin")
-    isActive: bool = Field(default=True)
-    lastLogin: datetime | None = None
-    createdAt: datetime
+    is_active: bool = Field(default=True)
+    last_login: datetime | None = None
+    created_at: datetime
 
     # NEW: Entra ID fields for enhanced authentication (T007)
-    entraUserId: str | None = Field(
+    entra_user_id: str | None = Field(
         None, description="Azure AD user object ID (oid claim) for duplicate prevention")
-    lastEntraIdSync: datetime | None = Field(
+    last_entra_id_sync: datetime | None = Field(
         None, description="Last synchronization timestamp from Azure AD")
 
-    @field_validator('isPlatformAdmin')
+    @field_validator('is_platform_admin')
     @classmethod
     def validate_platform_admin(cls, v, info):
         """Validate that only PLATFORM users can be admins"""
-        user_type = info.data.get('userType')
+        user_type = info.data.get('user_type')
         if v and user_type != UserType.PLATFORM:
             raise ValueError("Only PLATFORM users can be admins")
         return v
@@ -472,32 +449,32 @@ class User(BaseModel):
 class CreateUserRequest(BaseModel):
     """Request model for creating a user"""
     email: str = Field(..., description="User email address")
-    displayName: str = Field(..., min_length=1, max_length=200, description="User display name")
-    isPlatformAdmin: bool = Field(..., description="Whether user is a platform administrator")
-    orgId: str | None = Field(None, description="Organization ID (required if isPlatformAdmin=false)")
+    display_name: str = Field(..., min_length=1, max_length=200, description="User display name")
+    is_platform_admin: bool = Field(..., description="Whether user is a platform administrator")
+    org_id: str | None = Field(None, description="Organization ID (required if is_platform_admin=false)")
 
     @model_validator(mode='after')
     def validate_org_requirement(self):
-        """Validate that orgId is provided for non-platform-admin users"""
-        if not self.isPlatformAdmin and not self.orgId:
-            raise ValueError("orgId is required when isPlatformAdmin is false")
-        if self.isPlatformAdmin and self.orgId:
-            raise ValueError("orgId must be null when isPlatformAdmin is true")
+        """Validate that org_id is provided for non-platform-admin users"""
+        if not self.is_platform_admin and not self.org_id:
+            raise ValueError("org_id is required when is_platform_admin is false")
+        if self.is_platform_admin and self.org_id:
+            raise ValueError("org_id must be null when is_platform_admin is true")
         return self
 
 
 class UpdateUserRequest(BaseModel):
     """Request model for updating a user"""
-    displayName: str | None = Field(None, min_length=1, max_length=200, description="User display name")
-    isActive: bool | None = Field(None, description="Whether user is active")
-    isPlatformAdmin: bool | None = Field(None, description="Whether user is a platform administrator")
-    orgId: str | None = Field(None, description="Organization ID (required when changing to isPlatformAdmin=false)")
+    display_name: str | None = Field(None, min_length=1, max_length=200, description="User display name")
+    is_active: bool | None = Field(None, description="Whether user is active")
+    is_platform_admin: bool | None = Field(None, description="Whether user is a platform administrator")
+    org_id: str | None = Field(None, description="Organization ID (required when changing to is_platform_admin=false)")
 
     @model_validator(mode='after')
     def validate_org_requirement(self):
-        """Validate that orgId is provided when demoting to non-platform-admin"""
-        if self.isPlatformAdmin is False and not self.orgId:
-            raise ValueError("orgId is required when setting isPlatformAdmin to false")
+        """Validate that org_id is provided when demoting to non-platform-admin"""
+        if self.is_platform_admin is False and not self.org_id:
+            raise ValueError("org_id is required when setting is_platform_admin to false")
         return self
 
 
@@ -508,10 +485,10 @@ class Role(BaseModel):
     id: str = Field(..., description="Role ID (GUID)")
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
-    isActive: bool = Field(default=True)
-    createdBy: str
-    createdAt: datetime
-    updatedAt: datetime
+    is_active: bool = Field(default=True)
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class CreateRoleRequest(BaseModel):
@@ -528,81 +505,81 @@ class UpdateRoleRequest(BaseModel):
 
 class UserRole(BaseModel):
     """User-to-Role assignment entity"""
-    userId: str
-    roleId: str
-    assignedBy: str
-    assignedAt: datetime
+    user_id: str
+    role_id: str
+    assigned_by: str
+    assigned_at: datetime
 
 
 class FormRole(BaseModel):
     """Form-to-Role access control entity"""
-    formId: str
-    roleId: str
-    assignedBy: str
-    assignedAt: datetime
+    form_id: str
+    role_id: str
+    assigned_by: str
+    assigned_at: datetime
 
 
 class AssignUsersToRoleRequest(BaseModel):
     """Request model for assigning users to a role"""
-    userIds: list[str] = Field(..., min_length=1,
+    user_ids: list[str] = Field(..., min_length=1,
                                description="List of user IDs to assign")
 
 
 class AssignFormsToRoleRequest(BaseModel):
     """Request model for assigning forms to a role"""
-    formIds: list[str] = Field(..., min_length=1,
+    form_ids: list[str] = Field(..., min_length=1,
                                description="List of form IDs to assign")
 
 
 class RoleUsersResponse(BaseModel):
     """Response model for getting users assigned to a role"""
-    userIds: list[str] = Field(..., description="List of user IDs assigned to the role")
+    user_ids: list[str] = Field(..., description="List of user IDs assigned to the role")
 
 
 class RoleFormsResponse(BaseModel):
     """Response model for getting forms assigned to a role"""
-    formIds: list[str] = Field(..., description="List of form IDs assigned to the role")
+    form_ids: list[str] = Field(..., description="List of form IDs assigned to the role")
 
 
 # ==================== PERMISSION MODELS ====================
 
 class UserPermission(BaseModel):
     """User permission entity"""
-    userId: str
-    orgId: str
-    canExecuteWorkflows: bool = Field(default=False)
-    canManageConfig: bool = Field(default=False)
-    canManageForms: bool = Field(default=False)
-    canViewHistory: bool = Field(default=False)
-    grantedBy: str
-    grantedAt: datetime
+    user_id: str
+    org_id: str
+    can_execute_workflows: bool = Field(default=False)
+    can_manage_config: bool = Field(default=False)
+    can_manage_forms: bool = Field(default=False)
+    can_view_history: bool = Field(default=False)
+    granted_by: str
+    granted_at: datetime
 
 
 class PermissionsData(BaseModel):
     """Permissions data for grant request"""
-    canExecuteWorkflows: bool
-    canManageConfig: bool
-    canManageForms: bool
-    canViewHistory: bool
+    can_execute_workflows: bool
+    can_manage_config: bool
+    can_manage_forms: bool
+    can_view_history: bool
 
 
 class GrantPermissionsRequest(BaseModel):
     """Request model for granting permissions"""
-    userId: str
-    orgId: str
+    user_id: str
+    org_id: str
     permissions: PermissionsData
 
 
 class UserRolesResponse(BaseModel):
     """Response model for getting roles assigned to a user"""
-    roleIds: list[str] = Field(..., description="List of role IDs assigned to the user")
+    role_ids: list[str] = Field(..., description="List of role IDs assigned to the user")
 
 
 class UserFormsResponse(BaseModel):
     """Response model for getting forms accessible to a user"""
-    userType: UserType = Field(..., description="User type (PLATFORM or ORG)")
-    hasAccessToAllForms: bool = Field(..., description="Whether user has access to all forms")
-    formIds: list[str] = Field(default_factory=list, description="List of form IDs user can access (empty if hasAccessToAllForms=true)")
+    user_type: UserType = Field(..., description="User type (PLATFORM or ORG)")
+    has_access_to_all_forms: bool = Field(..., description="Whether user has access to all forms")
+    form_ids: list[str] = Field(default_factory=list, description="List of form IDs user can access (empty if has_access_to_all_forms=true)")
 
 
 # ==================== FORM MODELS ====================
@@ -619,7 +596,7 @@ class DataProviderInputConfig(BaseModel):
     """Configuration for a single data provider input parameter (T006)"""
     mode: DataProviderInputMode
     value: str | None = None
-    fieldName: str | None = None
+    field_name: str | None = None
     expression: str | None = None
 
     @model_validator(mode='after')
@@ -628,17 +605,17 @@ class DataProviderInputConfig(BaseModel):
         if self.mode == DataProviderInputMode.STATIC:
             if not self.value:
                 raise ValueError("value required for static mode")
-            if self.fieldName or self.expression:
+            if self.field_name or self.expression:
                 raise ValueError("only value should be set for static mode")
         elif self.mode == DataProviderInputMode.FIELD_REF:
-            if not self.fieldName:
-                raise ValueError("fieldName required for fieldRef mode")
+            if not self.field_name:
+                raise ValueError("field_name required for fieldRef mode")
             if self.value or self.expression:
-                raise ValueError("only fieldName should be set for fieldRef mode")
+                raise ValueError("only field_name should be set for fieldRef mode")
         elif self.mode == DataProviderInputMode.EXPRESSION:
             if not self.expression:
                 raise ValueError("expression required for expression mode")
-            if self.value or self.fieldName:
+            if self.value or self.field_name:
                 raise ValueError("only expression should be set for expression mode")
         return self
 
@@ -651,36 +628,36 @@ class FormField(BaseModel):
     type: FormFieldType
     required: bool = Field(default=False)
     validation: dict[str, Any] | None = None
-    dataProvider: str | None = Field(
+    data_provider: str | None = Field(
         None, description="Data provider name for dynamic options")
-    dataProviderInputs: dict[str, DataProviderInputConfig] | None = Field(
+    data_provider_inputs: dict[str, DataProviderInputConfig] | None = Field(
         None, description="Input configurations for data provider parameters (T007)")
-    defaultValue: Any | None = None
+    default_value: Any | None = None
     placeholder: str | None = None
-    helpText: str | None = None
+    help_text: str | None = None
 
     # NEW MVP fields (T012)
-    visibilityExpression: str | None = Field(
+    visibility_expression: str | None = Field(
         None, description="JavaScript expression for conditional visibility (e.g., context.field.show === true)")
     options: list[dict[str, str]] | None = Field(
         None, description="Options for radio/select fields")
-    allowedTypes: list[str] | None = Field(
+    allowed_types: list[str] | None = Field(
         None, description="Allowed MIME types for file uploads")
     multiple: bool | None = Field(
         None, description="Allow multiple file uploads")
-    maxSizeMB: int | None = Field(
+    max_size_mb: int | None = Field(
         None, description="Maximum file size in MB")
     content: str | None = Field(
         None, description="Static content for markdown/HTML components")
-    allowAsQueryParam: bool | None = Field(
+    allow_as_query_param: bool | None = Field(
         None, description="Whether this field's value can be populated from URL query parameters")
 
     @model_validator(mode='after')
     def validate_field_requirements(self):
         """Validate field-specific requirements"""
-        # dataProviderInputs requires dataProvider (T007)
-        if self.dataProviderInputs and not self.dataProvider:
-            raise ValueError("dataProviderInputs requires dataProvider to be set")
+        # data_provider_inputs requires data_provider (T007)
+        if self.data_provider_inputs and not self.data_provider:
+            raise ValueError("data_provider_inputs requires data_provider to be set")
 
         # label is required for non-display fields (markdown/html use content instead)
         display_only_types = {FormFieldType.MARKDOWN, FormFieldType.HTML}
@@ -712,25 +689,25 @@ class FormSchema(BaseModel):
 class Form(BaseModel):
     """Form entity (response model)"""
     id: str
-    orgId: str = Field(..., description="Organization ID or 'GLOBAL'")
+    org_id: str = Field(..., description="Organization ID or 'GLOBAL'")
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
-    linkedWorkflow: str = Field(..., description="Workflow name to execute")
-    formSchema: FormSchema
-    isActive: bool = Field(default=True)
-    isGlobal: bool = Field(default=False)
-    accessLevel: FormAccessLevel | None = Field(
+    linked_workflow: str = Field(..., description="Workflow name to execute")
+    form_schema: FormSchema
+    is_active: bool = Field(default=True)
+    is_global: bool = Field(default=False)
+    access_level: FormAccessLevel | None = Field(
         default=None, description="Access control level. Defaults to 'role_based' if not set.")
-    createdBy: str
-    createdAt: datetime
-    updatedAt: datetime
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
 
     # NEW MVP fields (T012)
-    launchWorkflowId: str | None = Field(
+    launch_workflow_id: str | None = Field(
         None, description="Optional workflow to execute on form load for context generation")
-    allowedQueryParams: list[str] | None = Field(
+    allowed_query_params: list[str] | None = Field(
         None, description="List of allowed query parameter names to inject into form context")
-    defaultLaunchParams: dict[str, Any] | None = Field(
+    default_launch_params: dict[str, Any] | None = Field(
         None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
 
 
@@ -738,18 +715,18 @@ class CreateFormRequest(BaseModel):
     """Request model for creating a form"""
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
-    linkedWorkflow: str
-    formSchema: FormSchema
-    isGlobal: bool = Field(default=False)
-    accessLevel: FormAccessLevel = Field(
+    linked_workflow: str
+    form_schema: FormSchema
+    is_global: bool = Field(default=False)
+    access_level: FormAccessLevel = Field(
         default=FormAccessLevel.ROLE_BASED, description="Access control level")
 
     # NEW MVP fields (T012)
-    launchWorkflowId: str | None = Field(
+    launch_workflow_id: str | None = Field(
         None, description="Optional workflow to execute on form load for context generation")
-    allowedQueryParams: list[str] | None = Field(
+    allowed_query_params: list[str] | None = Field(
         None, description="List of allowed query parameter names to inject into form context")
-    defaultLaunchParams: dict[str, Any] | None = Field(
+    default_launch_params: dict[str, Any] | None = Field(
         None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
 
 
@@ -757,17 +734,17 @@ class UpdateFormRequest(BaseModel):
     """Request model for updating a form"""
     name: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = None
-    linkedWorkflow: str | None = None
-    formSchema: FormSchema | None = None
-    isActive: bool | None = None
-    accessLevel: FormAccessLevel | None = None
+    linked_workflow: str | None = None
+    form_schema: FormSchema | None = None
+    is_active: bool | None = None
+    access_level: FormAccessLevel | None = None
 
     # NEW MVP fields (T012)
-    launchWorkflowId: str | None = Field(
+    launch_workflow_id: str | None = Field(
         None, description="Optional workflow to execute on form load for context generation")
-    allowedQueryParams: list[str] | None = Field(
+    allowed_query_params: list[str] | None = Field(
         None, description="List of allowed query parameter names to inject into form context")
-    defaultLaunchParams: dict[str, Any] | None = Field(
+    default_launch_params: dict[str, Any] | None = Field(
         None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
 
 
@@ -793,62 +770,63 @@ class ExecutionLog(BaseModel):
 
 class WorkflowExecution(BaseModel):
     """Workflow execution entity"""
-    executionId: str
-    workflowName: str
-    orgId: str | None = None  # Organization ID for display/filtering
-    formId: str | None = None
-    executedBy: str
-    executedByName: str  # Display name of user who executed
+    execution_id: str
+    workflow_name: str
+    org_id: str | None = None  # Organization ID for display/filtering
+    form_id: str | None = None
+    executed_by: str
+    executed_by_name: str  # Display name of user who executed
     status: ExecutionStatus
-    inputData: dict[str, Any]
+    input_data: dict[str, Any]
     result: dict[str, Any] | list[Any] | str | None = None  # Can be dict/list (JSON) or str (HTML/text)
-    resultType: Literal['json', 'html', 'text'] | None = None  # How to render result
-    errorMessage: str | None = None
-    durationMs: int | None = None
-    startedAt: datetime
-    completedAt: datetime | None = None
+    result_type: str | None = None  # How to render result (json, html, text)
+    error_message: str | None = None
+    duration_ms: int | None = None
+    started_at: datetime | None = None  # May be None if not started yet
+    completed_at: datetime | None = None
     logs: list[dict[str, Any]] | None = None  # Structured logger output (replaces old ExecutionLog format)
     variables: dict[str, Any] | None = None  # Runtime variables captured from execution scope
 
 
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow"""
-    workflowName: str | None = Field(None, description="Name of the workflow to execute (required if code not provided)")
-    inputData: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
-    formId: str | None = Field(None, description="Optional form ID that triggered this execution")
+    workflow_name: str | None = Field(None, description="Name of the workflow to execute (required if code not provided)")
+    input_data: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
+    form_id: str | None = Field(None, description="Optional form ID that triggered this execution")
     transient: bool = Field(default=False, description="If true, skip database persistence (for code editor debugging)")
     code: str | None = Field(None, description="Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by name.")
-    scriptName: str | None = Field(None, description="Optional: Name/identifier for the script (used for logging when code is provided)")
+    script_name: str | None = Field(None, description="Optional: Name/identifier for the script (used for logging when code is provided)")
 
     @model_validator(mode='after')
     def validate_workflow_or_code(self) -> 'WorkflowExecutionRequest':
-        """Ensure either workflowName or code is provided"""
-        if not self.workflowName and not self.code:
-            raise ValueError("Either 'workflowName' or 'code' must be provided")
+        """Ensure either workflow_name or code is provided"""
+        if not self.workflow_name and not self.code:
+            raise ValueError("Either 'workflow_name' or 'code' must be provided")
         return self
 
 
 class WorkflowExecutionResponse(BaseModel):
     """Response model for workflow execution"""
-    executionId: str
+    execution_id: str
+    workflow_name: str | None = None
     status: ExecutionStatus
     result: dict[str, Any] | list[Any] | str | None = None  # Can be dict/list (JSON) or str (HTML/text)
     error: str | None = None
-    errorType: str | None = None
+    error_type: str | None = None
     details: dict[str, Any] | None = None
-    durationMs: int | None = None
-    startedAt: datetime | None = None
-    completedAt: datetime | None = None
+    duration_ms: int | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     # Enhanced debugging output for code editor
     logs: list[dict[str, Any]] | None = None  # Structured logger output
     variables: dict[str, Any] | None = None  # Runtime variables from execution scope
-    isTransient: bool = False  # Flag for editor executions (no DB persistence)
+    is_transient: bool = False  # Flag for editor executions (no DB persistence)
 
 
 class ExecutionsListResponse(BaseModel):
     """Response model for listing workflow executions with pagination"""
     executions: list[WorkflowExecution] = Field(..., description="List of workflow executions")
-    continuationToken: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded). Presence of token indicates more results available.")
+    continuation_token: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded). Presence of token indicates more results available.")
 
 
 class StuckExecutionsResponse(BaseModel):
@@ -869,20 +847,20 @@ class CleanupTriggeredResponse(BaseModel):
 
 class SystemLog(BaseModel):
     """System log entry (platform events, not workflow executions)"""
-    eventId: str = Field(..., description="Unique event ID (UUID)")
+    event_id: str = Field(..., description="Unique event ID (UUID)")
     timestamp: datetime = Field(..., description="When the event occurred (ISO 8601)")
     category: Literal["discovery", "organization", "user", "role", "config", "secret", "form", "oauth", "execution", "system", "error"] = Field(..., description="Event category")
     level: Literal["info", "warning", "error", "critical"] = Field(..., description="Event severity level")
     message: str = Field(..., description="Human-readable event description")
-    executedBy: str = Field(..., description="User ID or 'System'")
-    executedByName: str = Field(..., description="Display name or 'System'")
+    executed_by: str = Field(..., description="User ID or 'System'")
+    executed_by_name: str = Field(..., description="Display name or 'System'")
     details: dict[str, Any] | None = Field(None, description="Additional event-specific data")
 
 
 class SystemLogsListResponse(BaseModel):
     """Response model for listing system logs with pagination"""
     logs: list[SystemLog] = Field(..., description="List of system log entries")
-    continuationToken: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded)")
+    continuation_token: str | None = Field(None, description="Continuation token for next page (opaque, base64-encoded)")
 
 
 # ==================== METADATA MODELS ====================
@@ -893,9 +871,9 @@ class WorkflowParameter(BaseModel):
     type: str  # string, int, bool, etc.
     required: bool
     label: str | None = None
-    dataProvider: str | None = None
-    defaultValue: Any | None = None
-    helpText: str | None = None
+    data_provider: str | None = None
+    default_value: Any | None = None
+    help_text: str | None = None
     validation: dict[str, Any] | None = None
     description: str | None = None
 
@@ -912,23 +890,23 @@ class WorkflowMetadata(BaseModel):
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Workflow parameters")
 
     # Execution configuration
-    executionMode: Literal["sync", "async"] = Field("sync", description="Execution mode")
-    timeoutSeconds: int = Field(1800, ge=1, le=7200, description="Max execution time in seconds (default 30 min, max 2 hours)")
+    execution_mode: Literal["sync", "async"] = Field("sync", description="Execution mode")
+    timeout_seconds: int = Field(1800, ge=1, le=7200, description="Max execution time in seconds (default 30 min, max 2 hours)")
 
     # Retry and scheduling (for future use)
-    retryPolicy: RetryPolicy | None = Field(None, description="Retry configuration")
+    retry_policy: RetryPolicy | None = Field(None, description="Retry configuration")
     schedule: str | None = Field(None, description="Cron expression for scheduled execution")
 
     # HTTP Endpoint configuration
-    endpointEnabled: bool = Field(False, description="Whether workflow is exposed as HTTP endpoint")
-    allowedMethods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods")
-    disableGlobalKey: bool = Field(False, description="If true, only workflow-specific API keys work")
-    publicEndpoint: bool = Field(False, description="If true, skip authentication for webhooks")
+    endpoint_enabled: bool = Field(False, description="Whether workflow is exposed as HTTP endpoint")
+    allowed_methods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods")
+    disable_global_key: bool = Field(False, description="If true, only workflow-specific API keys work")
+    public_endpoint: bool = Field(False, description="If true, skip authentication for webhooks")
 
     # Source tracking (for UI filtering)
     source: Literal["home", "platform", "workspace"] | None = Field(None, description="Where the workflow is located")
-    sourceFilePath: str | None = Field(None, description="Full file path to the workflow source code")
-    relativeFilePath: str | None = Field(None, description="Workspace-relative file path (e.g., 'workflows/my_workflow.py')")
+    source_file_path: str | None = Field(None, description="Full file path to the workflow source code")
+    relative_file_path: str | None = Field(None, description="Workspace-relative file path (e.g., 'workflows/my_workflow.py')")
 
 
 class DataProviderMetadata(BaseModel):
@@ -938,28 +916,28 @@ class DataProviderMetadata(BaseModel):
     category: str = "General"
     cache_ttl_seconds: int = 300
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
-    sourceFilePath: str | None = Field(None, description="Full file path to the data provider source code")
-    relativeFilePath: str | None = Field(None, description="Workspace-relative file path (e.g., 'data_providers/my_provider.py')")
+    source_file_path: str | None = Field(None, description="Full file path to the data provider source code")
+    relative_file_path: str | None = Field(None, description="Workspace-relative file path (e.g., 'data_providers/my_provider.py')")
 
 
 class FormDiscoveryMetadata(BaseModel):
     """Lightweight form metadata for discovery endpoint"""
     id: str
     name: str
-    linkedWorkflow: str
-    orgId: str
-    isActive: bool
-    isGlobal: bool
-    accessLevel: FormAccessLevel | None = None
-    createdAt: datetime
-    updatedAt: datetime
-    launchWorkflowId: str | None = None
+    linked_workflow: str
+    org_id: str
+    is_active: bool
+    is_global: bool
+    access_level: FormAccessLevel | str | None = None
+    created_at: datetime
+    updated_at: datetime
+    launch_workflow_id: str | None = None
 
 
 class MetadataResponse(BaseModel):
     """Response model for /admin/workflow endpoint"""
     workflows: list[WorkflowMetadata] = Field(default_factory=list)
-    dataProviders: list[DataProviderMetadata] = Field(default_factory=list)
+    data_providers: list[DataProviderMetadata] = Field(default_factory=list)
     forms: list[FormDiscoveryMetadata] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
@@ -991,9 +969,9 @@ class WorkflowValidationResponse(BaseModel):
 
 class DataProviderRequest(BaseModel):
     """Request model for data provider endpoint (T009)"""
-    orgId: str | None = Field(None, description="Organization ID for org-scoped providers")
+    org_id: str | None = Field(None, description="Organization ID for org-scoped providers")
     inputs: dict[str, Any] | None = Field(None, description="Input parameter values for data provider")
-    noCache: bool = Field(False, description="Bypass cache and fetch fresh data")
+    no_cache: bool = Field(False, description="Bypass cache and fetch fresh data")
 
 
 class DataProviderOption(BaseModel):
@@ -1008,9 +986,7 @@ class DataProviderResponse(BaseModel):
     provider: str = Field(..., description="Name of the data provider")
     options: list[DataProviderOption] = Field(..., description="List of options returned by the provider")
     cached: bool = Field(..., description="Whether this result was served from cache")
-    cacheExpiresAt: str = Field(..., alias="cache_expires_at", description="Cache expiration timestamp")
-
-    model_config = ConfigDict(populate_by_name=True)
+    cache_expires_at: str = Field(..., description="Cache expiration timestamp")
 
 
 # ==================== SECRET MODELS ====================
@@ -1019,20 +995,20 @@ class SecretListResponse(BaseModel):
     """Response model for listing secrets"""
     secrets: list[str] = Field(...,
                                description="List of secret names available in Key Vault")
-    orgId: str | None = Field(
+    org_id: str | None = Field(
         None, description="Organization ID filter (if applied)")
     count: int = Field(..., description="Total number of secrets returned")
 
 
 class SecretCreateRequest(BaseModel):
     """Request model for creating a secret"""
-    orgId: str = Field(...,
+    org_id: str = Field(...,
                        description="Organization ID or 'GLOBAL' for platform-wide")
-    secretKey: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$",
+    secret_key: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$",
                            description="Secret key (alphanumeric, hyphens, underscores)")
     value: str = Field(..., min_length=1, description="Secret value")
 
-    @field_validator('secretKey')
+    @field_validator('secret_key')
     @classmethod
     def validate_secret_key(cls, v):
         """Validate secret key follows naming conventions"""
@@ -1050,8 +1026,8 @@ class SecretResponse(BaseModel):
     """Response model for secret operations"""
     name: str = Field(...,
                       description="Full secret name in Key Vault (e.g., org-123--api-key)")
-    orgId: str = Field(..., description="Organization ID or 'GLOBAL'")
-    secretKey: str = Field(..., description="Secret key portion")
+    org_id: str = Field(..., description="Organization ID or 'GLOBAL'")
+    secret_key: str = Field(..., description="Secret key portion")
     value: str | None = Field(
         None, description="Secret value (only shown immediately after create/update)")
     message: str = Field(..., description="Operation result message")
@@ -1087,17 +1063,17 @@ class KeyVaultHealthResponse(BaseModel):
     status: Literal["healthy", "degraded",
                     "unhealthy"] = Field(..., description="Health status")
     message: str = Field(..., description="Health status message")
-    vaultUrl: str | None = Field(
+    vault_url: str | None = Field(
         None, description="Key Vault URL being monitored")
-    canConnect: bool = Field(...,
+    can_connect: bool = Field(...,
                              description="Whether connection to Key Vault succeeded")
-    canListSecrets: bool = Field(...,
+    can_list_secrets: bool = Field(...,
                                  description="Whether listing secrets is permitted")
-    canGetSecrets: bool = Field(...,
+    can_get_secrets: bool = Field(...,
                                 description="Whether reading secrets is permitted")
-    secretCount: int | None = Field(
+    secret_count: int | None = Field(
         None, description="Number of secrets in Key Vault (if accessible)")
-    lastChecked: datetime = Field(..., description="Timestamp of health check")
+    last_checked: datetime = Field(..., description="Timestamp of health check")
 
 
 # ==================== OAUTH MODELS ====================
@@ -1158,30 +1134,30 @@ class OAuthCredentials:
 
 class ExecutionStats(BaseModel):
     """Execution statistics for dashboard"""
-    totalExecutions: int
-    successCount: int
-    failedCount: int
-    runningCount: int
-    pendingCount: int
-    successRate: float
-    avgDurationSeconds: float
+    total_executions: int
+    success_count: int
+    failed_count: int
+    running_count: int
+    pending_count: int
+    success_rate: float
+    avg_duration_seconds: float
 
 
 class RecentFailure(BaseModel):
     """Recent failed execution info"""
-    executionId: str
-    workflowName: str
-    errorMessage: str | None
-    startedAt: str | None
+    execution_id: str
+    workflow_name: str
+    error_message: str | None
+    started_at: str | None
 
 
 class DashboardMetricsResponse(BaseModel):
     """Dashboard metrics response"""
-    workflowCount: int
-    dataProviderCount: int
-    formCount: int
-    executionStats: ExecutionStats
-    recentFailures: list[RecentFailure]
+    workflow_count: int
+    data_provider_count: int
+    form_count: int
+    execution_stats: ExecutionStats
+    recent_failures: list[RecentFailure]
 
 
 # ==================== LIST RESPONSE MODELS ====================
@@ -1207,9 +1183,9 @@ class UploadedFileMetadata(BaseModel):
 
 class FileUploadResponse(BaseModel):
     """Response model for file upload SAS URL generation"""
-    upload_url: str = Field(..., description="SAS URL for direct upload to Blob Storage")
-    blob_uri: str = Field(..., description="Final blob URI (without SAS token)")
-    expires_at: str = Field(..., description="SAS token expiration timestamp (ISO format)")
+    upload_url: str = Field(..., description="URL for direct upload")
+    blob_uri: str = Field(..., description="Final file URI")
+    expires_at: str = Field(..., description="Token expiration timestamp (ISO format)")
     file_metadata: UploadedFileMetadata = Field(..., description="Metadata for accessing the uploaded file in workflows")
 
 
@@ -1218,38 +1194,38 @@ class FileUploadResponse(BaseModel):
 class WorkflowKey(BaseModel):
     """Workflow API Key for HTTP access without user authentication"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique key ID")
-    hashedKey: str = Field(..., description="SHA-256 hash of the API key")
-    workflowId: str | None = Field(None, description="Workflow-specific key, or None for global access")
-    createdBy: str = Field(..., description="User email who created the key")
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    lastUsedAt: datetime | None = None
+    hashed_key: str = Field(..., description="SHA-256 hash of the API key")
+    workflow_id: str | None = Field(None, description="Workflow-specific key, or None for global access")
+    created_by: str = Field(..., description="User email who created the key")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_used_at: datetime | None = None
     revoked: bool = Field(default=False)
-    revokedAt: datetime | None = None
-    revokedBy: str | None = None
-    expiresAt: datetime | None = Field(None, description="Optional expiration timestamp")
+    revoked_at: datetime | None = None
+    revoked_by: str | None = None
+    expires_at: datetime | None = Field(None, description="Optional expiration timestamp")
     description: str | None = Field(None, description="Optional key description")
-    disableGlobalKey: bool = Field(default=False, description="If true, workflow opts out of global API keys")
+    disable_global_key: bool = Field(default=False, description="If true, workflow opts out of global API keys")
 
 class WorkflowKeyCreateRequest(BaseModel):
     """Request model for creating a workflow API key"""
-    workflowId: str | None = Field(None, description="Workflow-specific key, or None for global")
-    expiresInDays: int | None = Field(None, description="Days until key expires (default: no expiration)")
+    workflow_id: str | None = Field(None, description="Workflow-specific key, or None for global")
+    expires_in_days: int | None = Field(None, description="Days until key expires (default: no expiration)")
     description: str | None = Field(None, description="Optional key description")
-    disableGlobalKey: bool = Field(default=False, description="If true, workflow opts out of global API keys")
+    disable_global_key: bool = Field(default=False, description="If true, workflow opts out of global API keys")
 
 class WorkflowKeyResponse(BaseModel):
     """Response model for workflow key (includes raw key on creation only)"""
     id: str
-    rawKey: str | None = Field(None, description="Raw API key (only returned on creation)")
-    maskedKey: str | None = Field(None, description="Last 4 characters for display")
-    workflowId: str | None = None
-    createdBy: str
-    createdAt: datetime
-    lastUsedAt: datetime | None = None
+    raw_key: str | None = Field(None, description="Raw API key (only returned on creation)")
+    masked_key: str | None = Field(None, description="Last 4 characters for display")
+    workflow_id: str | None = None
+    created_by: str
+    created_at: datetime
+    last_used_at: datetime | None = None
     revoked: bool
-    expiresAt: datetime | None = None
+    expires_at: datetime | None = None
     description: str | None = None
-    disableGlobalKey: bool = Field(default=False, description="If true, workflow opts out of global API keys")
+    disable_global_key: bool = Field(default=False, description="If true, workflow opts out of global API keys")
 
 # ==================== ASYNC EXECUTION (T004, T042, T043 - User Story 4) ====================
 
@@ -1263,19 +1239,19 @@ class AsyncExecutionStatus(str, Enum):
 
 class AsyncExecution(BaseModel):
     """Async workflow execution tracking"""
-    executionId: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    workflowId: str = Field(..., description="Workflow name to execute")
+    execution_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    workflow_id: str = Field(..., description="Workflow name to execute")
     status: AsyncExecutionStatus = Field(default=AsyncExecutionStatus.QUEUED)
     parameters: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
     context: dict[str, Any] = Field(default_factory=dict, description="Execution context (org scope, user)")
     result: Any | None = Field(None, description="Workflow result (for small results)")
-    resultBlobUri: str | None = Field(None, description="Blob URI for large results (>32KB)")
+    result_blob_uri: str | None = Field(None, description="Blob URI for large results (>32KB)")
     error: str | None = Field(None, description="Error message if failed")
-    errorDetails: dict[str, Any] | None = Field(None, description="Detailed error information")
-    queuedAt: datetime = Field(default_factory=datetime.utcnow)
-    startedAt: datetime | None = None
-    completedAt: datetime | None = None
-    durationMs: int | None = Field(None, description="Execution duration in milliseconds")
+    error_details: dict[str, Any] | None = Field(None, description="Detailed error information")
+    queued_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_ms: int | None = Field(None, description="Execution duration in milliseconds")
 
 
 # ==================== CRON SCHEDULING (T004, T052, T053 - User Story 5) ====================
@@ -1283,26 +1259,26 @@ class AsyncExecution(BaseModel):
 class CronSchedule(BaseModel):
     """CRON schedule configuration for automatic workflow execution"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    workflowId: str = Field(..., description="Workflow name to execute on schedule")
-    cronExpression: str = Field(..., description="Standard CRON expression (e.g., '0 2 * * *')")
-    humanReadable: str | None = Field(None, description="Human-readable schedule description")
+    workflow_id: str = Field(..., description="Workflow name to execute on schedule")
+    cron_expression: str = Field(..., description="Standard CRON expression (e.g., '0 2 * * *')")
+    human_readable: str | None = Field(None, description="Human-readable schedule description")
     enabled: bool = Field(default=True)
     parameters: dict[str, Any] = Field(default_factory=dict, description="Default parameters for execution")
-    nextRunAt: datetime = Field(..., description="Next scheduled execution time")
-    lastRunAt: datetime | None = None
-    lastExecutionId: str | None = Field(None, description="ID of last execution")
-    createdBy: str = Field(..., description="User email who created the schedule")
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    next_run_at: datetime = Field(..., description="Next scheduled execution time")
+    last_run_at: datetime | None = None
+    last_execution_id: str | None = Field(None, description="ID of last execution")
+    created_by: str = Field(..., description="User email who created the schedule")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class CronScheduleCreateRequest(BaseModel):
     """Request model for creating a CRON schedule"""
-    workflowId: str = Field(..., description="Workflow name to schedule")
-    cronExpression: str = Field(..., description="CRON expression (e.g., '0 2 * * *' for 2am daily)")
+    workflow_id: str = Field(..., description="Workflow name to schedule")
+    cron_expression: str = Field(..., description="CRON expression (e.g., '0 2 * * *' for 2am daily)")
     parameters: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = Field(default=True)
 
-    @field_validator('cronExpression')
+    @field_validator('cron_expression')
     @classmethod
     def validate_cron_expression(cls, v):
         """Validate CRON expression format"""
@@ -1313,31 +1289,31 @@ class CronScheduleCreateRequest(BaseModel):
 
 class CronScheduleUpdateRequest(BaseModel):
     """Request model for updating a CRON schedule"""
-    cronExpression: str | None = None
+    cron_expression: str | None = None
     parameters: dict[str, Any] | None = None
     enabled: bool | None = None
 
 
 class ScheduleInfo(BaseModel):
     """Information about a scheduled workflow for display"""
-    workflowName: str = Field(..., description="Internal workflow name/identifier")
-    workflowDescription: str = Field(..., description="Display name of the workflow")
-    cronExpression: str = Field(..., description="CRON expression")
-    humanReadable: str = Field(..., description="Human-readable schedule (e.g., 'Every day at 2:00 AM')")
-    nextRunAt: datetime | None = Field(None, description="Next scheduled execution time")
-    lastRunAt: datetime | None = Field(None, description="Last execution time")
-    lastExecutionId: str | None = Field(None, description="ID of last execution")
-    executionCount: int = Field(0, description="Total number of times this schedule has been triggered")
+    workflow_name: str = Field(..., description="Internal workflow name/identifier")
+    workflow_description: str = Field(..., description="Display name of the workflow")
+    cron_expression: str = Field(..., description="CRON expression")
+    human_readable: str = Field(..., description="Human-readable schedule (e.g., 'Every day at 2:00 AM')")
+    next_run_at: datetime | None = Field(None, description="Next scheduled execution time")
+    last_run_at: datetime | None = Field(None, description="Last execution time")
+    last_execution_id: str | None = Field(None, description="ID of last execution")
+    execution_count: int = Field(0, description="Total number of times this schedule has been triggered")
     enabled: bool = Field(True, description="Whether this schedule is currently active")
-    validationStatus: Literal["valid", "warning", "error"] | None = Field(None, description="Validation status of the CRON expression")
-    validationMessage: str | None = Field(None, description="Validation message for warning/error statuses")
-    isOverdue: bool = Field(False, description="Whether the schedule is overdue by more than 6 minutes")
+    validation_status: Literal["valid", "warning", "error"] | None = Field(None, description="Validation status of the CRON expression")
+    validation_message: str | None = Field(None, description="Validation message for warning/error statuses")
+    is_overdue: bool = Field(False, description="Whether the schedule is overdue by more than 6 minutes")
 
 
 class SchedulesListResponse(BaseModel):
     """Response model for listing scheduled workflows"""
     schedules: list[ScheduleInfo] = Field(..., description="List of scheduled workflows")
-    totalCount: int = Field(..., description="Total number of scheduled workflows")
+    total_count: int = Field(..., description="Total number of scheduled workflows")
 
 
 class CronValidationRequest(BaseModel):
@@ -1348,9 +1324,9 @@ class CronValidationRequest(BaseModel):
 class CronValidationResponse(BaseModel):
     """Response model for CRON validation"""
     valid: bool = Field(..., description="Whether the CRON expression is valid")
-    humanReadable: str = Field(..., description="Human-readable description")
-    nextRuns: list[str] | None = Field(None, description="Next 5 execution times (ISO format)")
-    intervalSeconds: int | None = Field(None, description="Seconds between executions")
+    human_readable: str = Field(..., description="Human-readable description")
+    next_runs: list[str] | None = Field(None, description="Next 5 execution times (ISO format)")
+    interval_seconds: int | None = Field(None, description="Seconds between executions")
     warning: str | None = Field(None, description="Warning message for too-frequent schedules")
     error: str | None = Field(None, description="Error message for invalid expressions")
 
@@ -1368,14 +1344,14 @@ class ProcessSchedulesResponse(BaseModel):
 
 class BrandingSettings(BaseModel):
     """Organization branding configuration"""
-    orgId: str | None = Field(None, description="Organization ID or 'GLOBAL' for platform default")
-    squareLogoUrl: str | None = Field(None, description="Square logo URL (for icons, 1:1 ratio)")
-    rectangleLogoUrl: str | None = Field(None, description="Rectangle logo URL (for headers, 16:9 ratio)")
-    primaryColor: str | None = Field(None, description="Primary brand color (hex format, e.g., #FF5733)")
-    updatedBy: str | None = Field(None, description="User email who last updated branding")
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    org_id: str | None = Field(None, description="Organization ID or 'GLOBAL' for platform default")
+    square_logo_url: str | None = Field(None, description="Square logo URL (for icons, 1:1 ratio)")
+    rectangle_logo_url: str | None = Field(None, description="Rectangle logo URL (for headers, 16:9 ratio)")
+    primary_color: str | None = Field(None, description="Primary brand color (hex format, e.g., #FF5733)")
+    updated_by: str | None = Field(None, description="User email who last updated branding")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    @field_validator('primaryColor')
+    @field_validator('primary_color')
     @classmethod
     def validate_hex_color(cls, v):
         """Validate hex color format"""
@@ -1391,10 +1367,10 @@ class BrandingSettings(BaseModel):
 
 class BrandingUpdateRequest(BaseModel):
     """Request model for updating branding settings"""
-    orgId: str | None = Field(None, description="Organization ID (defaults to current user's org)")
-    squareLogoUrl: str | None = None
-    rectangleLogoUrl: str | None = None
-    primaryColor: str | None = None
+    org_id: str | None = Field(None, description="Organization ID (defaults to current user's org)")
+    square_logo_url: str | None = None
+    rectangle_logo_url: str | None = None
+    primary_color: str | None = None
 
 
 # ==================== ERROR MODEL ====================
@@ -1485,17 +1461,17 @@ def entity_to_model(entity: dict, model_class: type[BaseModel]) -> BaseModel:
         clean_entity['id'] = entity_id
 
     # Handle composite keys for junction tables (UserRole, FormRole, etc.)
-    if 'userId' in model_class.model_fields and 'roleId' in model_class.model_fields:
+    if 'user_id' in model_class.model_fields and 'role_id' in model_class.model_fields:
         # e.g., "userrole:user-123:a3b2c1d4-5678-90ab-cdef-1234567890ab"
         parts = parse_composite_row_key(entity['RowKey'], 3)
-        clean_entity['userId'] = parts[1]
-        clean_entity['roleId'] = parts[2]  # UUID
+        clean_entity['user_id'] = parts[1]
+        clean_entity['role_id'] = parts[2]  # UUID
 
-    if 'formId' in model_class.model_fields and 'roleId' in model_class.model_fields:
+    if 'form_id' in model_class.model_fields and 'role_id' in model_class.model_fields:
         # e.g., "formrole:form_uuid:role_uuid"
         parts = parse_composite_row_key(entity['RowKey'], 3)
-        clean_entity['formId'] = parts[1]  # UUID
-        clean_entity['roleId'] = parts[2]  # UUID
+        clean_entity['form_id'] = parts[1]  # UUID
+        clean_entity['role_id'] = parts[2]  # UUID
 
     return model_class(**clean_entity)
 
@@ -1733,13 +1709,13 @@ class OAuthConnection(BaseModel):
     description: str | None = Field(None, max_length=500)
     oauth_flow_type: OAuthFlowType
     client_id: str
-    client_secret_ref: str = Field(
+    client_secret_config_key: str = Field(
         ...,
-        description="Reference to client secret in Config table (oauth_{name}_client_secret)"
+        description="Config key containing the encrypted client secret (oauth_{name}_client_secret)"
     )
-    oauth_response_ref: str = Field(
+    oauth_response_config_key: str = Field(
         ...,
-        description="Reference to OAuth response in Config table (oauth_{name}_oauth_response)"
+        description="Config key containing the encrypted OAuth response (oauth_{name}_oauth_response)"
     )
     authorization_url: str | None = Field(
         None,
@@ -1968,12 +1944,12 @@ class SearchRequest(BaseModel):
 
 class SearchResult(BaseModel):
     """Single search match result"""
-    filePath: str = Field(..., description="Relative path to file containing match")
+    file_path: str = Field(..., description="Relative path to file containing match")
     line: int = Field(..., ge=1, description="Line number (1-indexed)")
     column: int = Field(..., ge=0, description="Column number (0-indexed)")
-    matchText: str = Field(..., description="The matched text")
-    contextBefore: str | None = Field(None, description="Line before match")
-    contextAfter: str | None = Field(None, description="Line after match")
+    match_text: str = Field(..., description="The matched text")
+    context_before: str | None = Field(None, description="Line before match")
+    context_after: str | None = Field(None, description="Line after match")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2154,7 +2130,7 @@ class GitHubConfigEntity(BaseModel):
         ...,
         description="Integration status: disconnected (inactive), token_saved (validated), configured (ready)"
     )
-    secret_ref: str | None = Field(None, description="Key Vault secret name containing GitHub token")
+    token_config_key: str | None = Field(None, description="Config key containing the encrypted GitHub token")
     repo_url: str | None = Field(None, description="Configured repository URL")
     production_branch: str | None = Field(None, description="Production branch to sync with")
     updated_at: datetime | None = Field(None, description="Last update timestamp")

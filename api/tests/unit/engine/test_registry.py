@@ -3,16 +3,10 @@ Unit tests for shared/discovery module.
 Tests workflow and data provider discovery from workspace files.
 """
 
-import pytest
-import tempfile
-import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from shared.discovery import (
     WorkflowMetadata,
     DataProviderMetadata,
-    FormMetadata,
     WorkflowParameter,
     scan_all_workflows,
     scan_all_data_providers,

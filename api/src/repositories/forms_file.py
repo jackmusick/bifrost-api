@@ -19,7 +19,6 @@ from shared.discovery import (
     load_form,
     get_form_metadata,
     get_forms_by_workflow,
-    FormMetadata,
 )
 from shared.models import CreateFormRequest, Form, UpdateFormRequest, generate_entity_id
 

@@ -351,24 +351,77 @@ class SDKUsageScanner:
 
     async def _get_stored_config_keys(self, context: 'ExecutionContext') -> set[str]:
         """Get all stored config keys for the context's scope"""
-        from shared.repositories.config import ConfigRepository
+        from uuid import UUID
+        from sqlalchemy import select, or_
 
         try:
-            repo = ConfigRepository(context)
-            configs = await repo.list_config(include_global=True)
-            return {c.key for c in configs}
+            from src.core.database import get_session_factory
+            from src.models import Config
+
+            session_factory = get_session_factory()
+            org_id = getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+            org_uuid = None
+            if org_id and org_id != "GLOBAL":
+                try:
+                    org_uuid = UUID(org_id)
+                except ValueError:
+                    pass
+
+            async with session_factory() as db:
+                # Get org-specific and GLOBAL configs
+                if org_uuid:
+                    query = select(Config.key).where(
+                        or_(
+                            Config.organization_id == org_uuid,
+                            Config.organization_id.is_(None)
+                        )
+                    )
+                else:
+                    query = select(Config.key).where(Config.organization_id.is_(None))
+
+                result = await db.execute(query)
+                return {row[0] for row in result.all()}
         except Exception as e:
             logger.error(f"Failed to list configs: {e}")
             return set()
 
     async def _get_stored_secret_keys(self, context: 'ExecutionContext') -> set[str]:
         """Get all stored secret keys for the context's scope"""
-        from shared.keyvault import KeyVaultClient
+        from uuid import UUID
+        from sqlalchemy import select, or_
 
         try:
-            async with KeyVaultClient() as kv:
-                secrets = await kv.list_secrets(context.scope)
-                return set(secrets)
+            from src.core.database import get_session_factory
+            from src.models import Config
+            from src.models.enums import ConfigType
+
+            session_factory = get_session_factory()
+            org_id = getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+            org_uuid = None
+            if org_id and org_id != "GLOBAL":
+                try:
+                    org_uuid = UUID(org_id)
+                except ValueError:
+                    pass
+
+            async with session_factory() as db:
+                # Get org-specific and GLOBAL secrets (config entries with config_type=SECRET)
+                if org_uuid:
+                    query = select(Config.key).where(
+                        Config.config_type == ConfigType.SECRET,
+                        or_(
+                            Config.organization_id == org_uuid,
+                            Config.organization_id.is_(None)
+                        )
+                    )
+                else:
+                    query = select(Config.key).where(
+                        Config.config_type == ConfigType.SECRET,
+                        Config.organization_id.is_(None)
+                    )
+
+                result = await db.execute(query)
+                return {row[0] for row in result.all()}
         except Exception as e:
             logger.error(f"Failed to list secrets: {e}")
             return set()

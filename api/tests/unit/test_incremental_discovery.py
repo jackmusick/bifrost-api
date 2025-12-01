@@ -4,7 +4,6 @@ Tests the dynamic discovery system for workflows.
 """
 
 import pytest
-from pathlib import Path
 
 
 class TestValidationWithDynamicDiscovery:

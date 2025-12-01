@@ -6,7 +6,7 @@ API-compatible with the existing Azure Functions implementation.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -19,12 +19,14 @@ from shared.models import (
     ExecutionStatus,
     ExecutionsListResponse,
     WorkflowExecution,
+    StuckExecutionsResponse,
+    CleanupTriggeredResponse,
 )
 
 from src.core.auth import Context, CurrentActiveUser, UserPrincipal
 from src.core.database import DbSession
 from src.core.pubsub import publish_execution_update
-from src.models.database import Execution as ExecutionModel
+from src.models import Execution as ExecutionModel, ExecutionLog
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,7 @@ class ExecutionRepository:
 
         # Non-superusers can only see their own executions
         if not user.is_superuser:
-            query = query.where(ExecutionModel.executed_by == user.email)
+            query = query.where(ExecutionModel.executed_by == user.user_id)
 
         # Filters
         if workflow_name:
@@ -159,12 +161,10 @@ class ExecutionRepository:
         execution_id: UUID,
         user: UserPrincipal,
     ) -> tuple[list[dict] | None, str | None]:
-        """Get execution logs only."""
+        """Get execution logs from the execution_logs table."""
+        # First check if execution exists and user has access
         result = await self.db.execute(
-            select(
-                ExecutionModel.logs,
-                ExecutionModel.executed_by,
-            ).where(ExecutionModel.id == execution_id)
+            select(ExecutionModel.executed_by).where(ExecutionModel.id == execution_id)
         )
         row = result.one_or_none()
 
@@ -174,11 +174,31 @@ class ExecutionRepository:
         if not user.is_superuser and row.executed_by != user.email:
             return None, "Forbidden"
 
-        logs = row.logs or []
+        # Query logs from execution_logs table
+        logs_query = (
+            select(ExecutionLog)
+            .where(ExecutionLog.execution_id == execution_id)
+            .order_by(ExecutionLog.timestamp)
+        )
 
         # Filter debug logs for non-superusers
         if not user.is_superuser:
-            logs = [log for log in logs if log.get("level", "").lower() != "debug"]
+            logs_query = logs_query.where(ExecutionLog.level.notin_(["DEBUG", "TRACEBACK"]))
+
+        logs_result = await self.db.execute(logs_query)
+        log_entries = logs_result.scalars().all()
+
+        # Convert to dict format expected by API
+        logs = [
+            {
+                "id": log.id,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                "level": log.level,
+                "message": log.message,
+                "data": log.log_metadata,
+            }
+            for log in log_entries
+        ]
 
         return logs, None
 
@@ -223,8 +243,7 @@ class ExecutionRepository:
             return None, "BadRequest"
 
         # Update status
-        execution.status = ExecutionStatus.CANCELLING.value
-        execution.updated_at = datetime.utcnow()
+        execution.status = ExecutionStatus.CANCELLING.value  # type: ignore[assignment]
 
         await self.db.flush()
         await self.db.refresh(execution)
@@ -238,23 +257,27 @@ class ExecutionRepository:
         return self._to_pydantic(execution), None
 
     def _to_pydantic(self, execution: ExecutionModel) -> WorkflowExecution:
-        """Convert SQLAlchemy model to Pydantic model."""
+        """Convert SQLAlchemy model to Pydantic model.
+
+        Note: logs are NOT included here - they should be fetched separately
+        via the /logs endpoint to avoid loading potentially large log data.
+        """
         return WorkflowExecution(
-            executionId=str(execution.id),
-            workflowName=execution.workflow_name,
-            orgId=str(execution.organization_id) if execution.organization_id else None,
-            formId=str(execution.form_id) if execution.form_id else None,
-            executedBy=execution.executed_by,
-            executedByName=execution.executed_by_name or execution.executed_by,
+            execution_id=str(execution.id),
+            workflow_name=execution.workflow_name,
+            org_id=str(execution.organization_id) if execution.organization_id else None,
+            form_id=str(execution.form_id) if execution.form_id else None,
+            executed_by=str(execution.executed_by),
+            executed_by_name=execution.executed_by_name or str(execution.executed_by),
             status=ExecutionStatus(execution.status),
-            inputData=execution.input_data or {},
+            input_data=execution.parameters or {},
             result=execution.result,
-            resultType=execution.result_type,
-            errorMessage=execution.error_message,
-            durationMs=execution.duration_ms,
-            startedAt=execution.started_at,
-            completedAt=execution.completed_at,
-            logs=execution.logs,
+            result_type=execution.result_type,
+            error_message=execution.error_message,
+            duration_ms=execution.duration_ms,
+            started_at=execution.started_at,
+            completed_at=execution.completed_at,
+            logs=None,  # Fetched separately via /logs endpoint
             variables=execution.variables,
         )
 
@@ -303,7 +326,7 @@ async def list_executions(
 
     return ExecutionsListResponse(
         executions=executions,
-        continuationToken=next_token,
+        continuation_token=next_token,
     )
 
 
@@ -332,6 +355,11 @@ async def get_execution(
             detail="You do not have permission to view this execution",
         )
 
+    if execution is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution {execution_id} not found",
+        )
     return execution
 
 
@@ -446,4 +474,124 @@ async def cancel_execution(
             detail=f"Cannot cancel execution {execution_id} - must be Pending or Running",
         )
 
+    if execution is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unexpected error cancelling execution",
+        )
     return execution
+
+
+# =============================================================================
+# Cleanup Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/cleanup/stuck",
+    response_model=StuckExecutionsResponse,
+    summary="Get stuck executions",
+    description="Get executions that have been running or pending too long (Platform admin only)",
+)
+async def get_stuck_executions(
+    ctx: Context,
+    hours: int = Query(24, description="Hours since start to consider stuck"),
+) -> StuckExecutionsResponse:
+    """Get stuck executions that may need cleanup."""
+    if not ctx.user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform admin privileges required",
+        )
+
+    # Find executions that have been pending/running for too long
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    query = select(ExecutionModel).where(
+        and_(
+            ExecutionModel.status.in_([
+                ExecutionStatus.PENDING.value,
+                ExecutionStatus.RUNNING.value,
+            ]),
+            ExecutionModel.started_at < cutoff,
+        )
+    ).order_by(desc(ExecutionModel.started_at))
+
+    result = await ctx.db.execute(query)
+    executions = result.scalars().all()
+
+    repo = ExecutionRepository(ctx.db)
+    stuck_executions = [repo._to_pydantic(e) for e in executions]
+
+    return StuckExecutionsResponse(
+        executions=stuck_executions,
+        count=len(stuck_executions),
+    )
+
+
+@router.post(
+    "/cleanup/trigger",
+    response_model=CleanupTriggeredResponse,
+    summary="Trigger execution cleanup",
+    description="Clean up stuck executions by marking them as timed out (Platform admin only)",
+)
+async def trigger_cleanup(
+    ctx: Context,
+    hours: int = Query(24, description="Hours since start to consider stuck"),
+) -> CleanupTriggeredResponse:
+    """Trigger cleanup of stuck executions."""
+    if not ctx.user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform admin privileges required",
+        )
+
+    # Find stuck executions
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    # Count pending
+    pending_query = select(ExecutionModel).where(
+        and_(
+            ExecutionModel.status == ExecutionStatus.PENDING.value,
+            ExecutionModel.started_at < cutoff,
+        )
+    )
+    pending_result = await ctx.db.execute(pending_query)
+    pending_executions = pending_result.scalars().all()
+
+    # Count running
+    running_query = select(ExecutionModel).where(
+        and_(
+            ExecutionModel.status == ExecutionStatus.RUNNING.value,
+            ExecutionModel.started_at < cutoff,
+        )
+    )
+    running_result = await ctx.db.execute(running_query)
+    running_executions = running_result.scalars().all()
+
+    # Update all stuck executions to FAILED with timeout message
+    failed_count = 0
+    for execution in list(pending_executions) + list(running_executions):
+        try:
+            execution.status = ExecutionStatus.FAILED.value  # type: ignore[assignment]
+            execution.error_message = f"Execution timed out after {hours} hours"
+            execution.completed_at = datetime.utcnow()
+        except Exception as e:
+            logger.error(f"Failed to cleanup execution {execution.id}: {e}")
+            failed_count += 1
+
+    await ctx.db.flush()
+
+    total_cleaned = len(pending_executions) + len(running_executions) - failed_count
+
+    logger.info(
+        f"Cleanup triggered: {total_cleaned} executions cleaned "
+        f"({len(pending_executions)} pending, {len(running_executions)} running, {failed_count} failed)"
+    )
+
+    return CleanupTriggeredResponse(
+        cleaned=total_cleaned,
+        pending=len(pending_executions),
+        running=len(running_executions),
+        failed=failed_count,
+    )

@@ -4,7 +4,7 @@ Tests data provider discovery and option retrieval logic via unified engine
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 
 from shared.handlers.data_providers_handlers import (
     get_data_provider_options_handler,

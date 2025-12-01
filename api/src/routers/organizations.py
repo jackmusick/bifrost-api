@@ -6,22 +6,23 @@ API-compatible with the existing Azure Functions implementation.
 """
 
 import logging
-from typing import Annotated
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing Pydantic models for API compatibility
 from shared.models import (
     CreateOrganizationRequest,
-    ErrorResponse,
     Organization,
     UpdateOrganizationRequest,
 )
 
-from src.core.auth import CurrentSuperuser, UserPrincipal
+from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
+from src.models.database import Organization as OrganizationModel
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,6 @@ router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
 # =============================================================================
 # Repository (PostgreSQL implementation)
 # =============================================================================
-
-from datetime import datetime
-from sqlalchemy import select
-from src.models.database import Organization as OrganizationModel
 
 
 class OrganizationRepository:
@@ -47,7 +44,7 @@ class OrganizationRepository:
         """List all organizations."""
         query = select(OrganizationModel)
         if active_only:
-            query = query.where(OrganizationModel.is_active == True)
+            query = query.where(OrganizationModel.is_active)
         query = query.order_by(OrganizationModel.name)
 
         result = await self.db.execute(query)
@@ -71,7 +68,7 @@ class OrganizationRepository:
         result = await self.db.execute(
             select(OrganizationModel)
             .where(OrganizationModel.domain == domain.lower())
-            .where(OrganizationModel.is_active == True)
+            .where(OrganizationModel.is_active)
         )
         org = result.scalar_one_or_none()
 

@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 
 from shared.models import User, UserType
-from shared.repositories.users import UserRepository
+from src.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)
 

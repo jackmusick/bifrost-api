@@ -4,21 +4,235 @@ Provides pure async handlers for form CRUD and execution operations
 """
 
 import logging
+from typing import Any
 
-import azure.functions as func
 from pydantic import ValidationError
 
-from shared.authorization import can_user_execute_form, can_user_view_form, get_user_visible_forms
 from shared.error_handling import WorkflowError
 from shared.models import (
     CreateFormRequest,
     ErrorResponse,
     UpdateFormRequest,
 )
-from shared.repositories.forms_file import FormsFileRepository
+from src.repositories.forms_file import FormsFileRepository
 from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Authorization Helpers (use PostgreSQL directly)
+# =============================================================================
+
+async def can_user_view_form(request_context, form_id: str) -> bool:
+    """Check if user can view a form using PostgreSQL directly."""
+    from uuid import UUID
+    from sqlalchemy import select, or_
+    from src.core.database import get_session_factory
+    from src.models import Form, UserRole
+
+    # Platform admins can view all forms
+    if request_context.is_platform_admin:
+        return True
+
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        form_uuid = UUID(form_id)
+        org_uuid = UUID(request_context.org_id) if request_context.org_id else None
+
+        # Get form with org scoping
+        query = select(Form).where(Form.id == form_uuid)
+        if org_uuid:
+            query = query.where(
+                or_(Form.organization_id == org_uuid, Form.organization_id.is_(None))
+            )
+        else:
+            query = query.where(Form.organization_id.is_(None))
+
+        result = await db.execute(query)
+        form = result.scalar_one_or_none()
+
+        if not form:
+            return False
+
+        # Only active forms for non-admins
+        if not form.is_active:
+            return False
+
+        # Check access level
+        access_level = form.access_level or "role_based"
+        if access_level == "authenticated":
+            return True
+
+        # Role-based: check user role membership
+        user_uuid = UUID(request_context.user_id)
+        role_query = select(UserRole.role_id).where(UserRole.user_id == user_uuid)
+        role_result = await db.execute(role_query)
+        user_role_ids = {str(r) for r in role_result.scalars().all()}
+
+        form_role_ids = {str(r) for r in (form.assigned_roles or [])}
+        return bool(user_role_ids & form_role_ids)
+
+
+async def can_user_execute_form(request_context, form_id: str) -> bool:
+    """Check if user can execute a form (same as view)."""
+    return await can_user_view_form(request_context, form_id)
+
+
+async def get_user_visible_forms(request_context) -> list[dict]:
+    """Get all forms visible to user as list of dicts."""
+    from uuid import UUID
+    from sqlalchemy import select, or_
+    from src.core.database import get_session_factory
+    from src.models import Form, UserRole
+
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        org_uuid = UUID(request_context.org_id) if request_context.org_id else None
+
+        # Base query with org scoping
+        query = select(Form)
+        if org_uuid:
+            query = query.where(
+                or_(Form.organization_id == org_uuid, Form.organization_id.is_(None))
+            )
+        else:
+            query = query.where(Form.organization_id.is_(None))
+
+        # Platform admin sees all forms
+        if request_context.is_platform_admin:
+            result = await db.execute(query)
+            forms = result.scalars().all()
+            return [_form_to_dict(f) for f in forms]
+
+        # Regular user: filter to active forms
+        query = query.where(Form.is_active)
+        result = await db.execute(query)
+        all_forms = list(result.scalars().all())
+
+        # Get user's roles
+        user_uuid = UUID(request_context.user_id)
+        role_query = select(UserRole.role_id).where(UserRole.user_id == user_uuid)
+        role_result = await db.execute(role_query)
+        user_role_ids = {str(r) for r in role_result.scalars().all()}
+
+        # Filter by access level
+        visible_forms = []
+        for form in all_forms:
+            access_level = form.access_level or "role_based"
+            if access_level == "authenticated":
+                visible_forms.append(form)
+            elif access_level == "role_based":
+                form_role_ids = {str(r) for r in (form.assigned_roles or [])}
+                if user_role_ids & form_role_ids:
+                    visible_forms.append(form)
+
+        return [_form_to_dict(f) for f in visible_forms]
+
+
+async def get_form_role_ids(form_id: str) -> list[str]:
+    """Get role IDs assigned to a form."""
+    from uuid import UUID
+    from sqlalchemy import select
+    from src.core.database import get_session_factory
+    from src.models import Form
+
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        form_uuid = UUID(form_id)
+        query = select(Form.assigned_roles).where(Form.id == form_uuid)
+        result = await db.execute(query)
+        assigned_roles = result.scalar_one_or_none()
+        return [str(r) for r in (assigned_roles or [])]
+
+
+def _form_to_dict(form) -> dict:
+    """Convert Form ORM object to dict for handler compatibility."""
+    return {
+        "id": str(form.id),
+        "name": form.name,
+        "description": form.description,
+        "org_id": str(form.organization_id) if form.organization_id else None,
+        "linked_workflow": form.linked_workflow,
+        "launch_workflow_id": form.launch_workflow_id,
+        "default_launch_params": form.default_launch_params,
+        "allowed_query_params": form.allowed_query_params,
+        "form_schema": form.form_schema,
+        "is_active": form.is_active,
+        "access_level": form.access_level,
+        "assigned_roles": [str(r) for r in (form.assigned_roles or [])],
+        "created_at": form.created_at.isoformat() if form.created_at else None,
+        "updated_at": form.updated_at.isoformat() if form.updated_at else None,
+    }
+
+
+# =============================================================================
+# Data Provider Helpers
+# =============================================================================
+
+
+async def _execute_data_provider(
+    provider_name: str,
+    context,
+    no_cache: bool = False,
+    inputs: dict | None = None
+) -> tuple[dict, int]:
+    """
+    Execute a data provider and return options.
+
+    Args:
+        provider_name: Name of the data provider
+        context: Execution context
+        no_cache: Whether to bypass cache
+        inputs: Optional input parameters
+
+    Returns:
+        Tuple of (response_dict, status_code)
+    """
+    from shared.discovery import load_data_provider
+    from shared.engine import run_workflow
+
+    # Load the data provider
+    result = load_data_provider(provider_name)
+    if not result:
+        logger.warning(f"Data provider '{provider_name}' not found")
+        error = ErrorResponse(error="NotFound", message=f"Data provider '{provider_name}' not found")
+        return error.model_dump(), 404
+
+    provider_func, provider_metadata = result
+
+    try:
+        # Execute the data provider with inputs
+        provider_inputs = inputs or {}
+        options = await run_workflow(provider_func, context, provider_inputs)
+
+        response = {
+            "provider": provider_name,
+            "options": options if isinstance(options, list) else [],
+            "cached": False,
+            "cacheExpiresAt": None
+        }
+        return response, 200
+
+    except TypeError as e:
+        logger.warning(f"Data provider '{provider_name}' parameter error: {e}")
+        error = ErrorResponse(
+            error="BadRequest",
+            message=f"Invalid parameters for data provider: {str(e)}"
+        )
+        return error.model_dump(), 400
+    except Exception as e:
+        logger.error(f"Data provider '{provider_name}' execution failed: {e}", exc_info=True)
+        error = ErrorResponse(
+            error="InternalServerError",
+            message=f"Data provider execution failed: {str(e)}"
+        )
+        return error.model_dump(), 500
+
+
+# =============================================================================
+# Validation Helpers
+# =============================================================================
 
 
 def validate_data_provider_inputs_for_form(form_schema_fields: list) -> list[str]:
@@ -58,11 +272,11 @@ def validate_data_provider_inputs_for_form(form_schema_fields: list) -> list[str
         if provider_metadata.parameters:
             for param in provider_metadata.parameters:
                 if param.required:
-                    # Check if input is provided in dataProviderInputs
-                    if not field.dataProviderInputs or param.name not in field.dataProviderInputs:
+                    # Check if input is provided in data_provider_inputs
+                    if not field.data_provider_inputs or param.name not in field.data_provider_inputs:
                         errors.append(
-                            f"Field '{field.name}' uses data provider '{field.dataProvider}': "
-                            f"required parameter '{param.name}' is missing from dataProviderInputs"
+                            f"Field '{field.name}' uses data provider '{field.data_provider}': "
+                            f"required parameter '{param.name}' is missing from data_provider_inputs"
                         )
 
     return errors
@@ -180,10 +394,10 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
         create_request = CreateFormRequest(**request_body)
 
         validation_error = validate_launch_workflow_params(
-            launch_workflow_id=create_request.launchWorkflowId,
-            default_launch_params=create_request.defaultLaunchParams,
-            allowed_query_params=create_request.allowedQueryParams,
-            form_schema_fields=create_request.formSchema.fields
+            launch_workflow_id=create_request.launch_workflow_id,
+            default_launch_params=create_request.default_launch_params,
+            allowed_query_params=create_request.allowed_query_params,
+            form_schema_fields=create_request.form_schema.fields
         )
         if validation_error:
             logger.warning(f"Launch workflow validation failed: {validation_error}")
@@ -191,7 +405,7 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
             return error.model_dump(), 400
 
         # T028-T030: Validate dataProviderInputs for all form fields
-        data_provider_errors = validate_data_provider_inputs_for_form(create_request.formSchema.fields)
+        data_provider_errors = validate_data_provider_inputs_for_form(create_request.form_schema.fields)
         if data_provider_errors:
             logger.warning(f"Data provider validation failed: {data_provider_errors}")
             error = ErrorResponse(
@@ -203,7 +417,7 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
 
         form_repo = FormsFileRepository(request_context)
         form = await form_repo.create_form(form_request=create_request, created_by=request_context.user_id)
-        logger.info(f"Created form {form.id} in partition {form.orgId}")
+        logger.info(f"Created form {form.id} in partition {form.org_id}")
 
         # Log to system logger
         system_logger = get_system_logger()
@@ -211,7 +425,7 @@ async def create_form_handler(request_body: dict, request_context) -> tuple[dict
             action="create",
             form_id=form.id,
             form_name=form.name,
-            scope=form.orgId or "GLOBAL",
+            scope=form.org_id or "GLOBAL",
             executed_by=request_context.user_id,
             executed_by_name=request_context.name or request_context.user_id
         )
@@ -294,10 +508,10 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
-        merged_launch_workflow = update_request.launchWorkflowId if update_request.launchWorkflowId is not None else existing_form.launchWorkflowId
-        merged_default_params = update_request.defaultLaunchParams if update_request.defaultLaunchParams is not None else existing_form.defaultLaunchParams
-        merged_query_params = update_request.allowedQueryParams if update_request.allowedQueryParams is not None else existing_form.allowedQueryParams
-        merged_form_schema = update_request.formSchema if update_request.formSchema is not None else existing_form.formSchema
+        merged_launch_workflow = update_request.launch_workflow_id if update_request.launch_workflow_id is not None else existing_form.launch_workflow_id
+        merged_default_params = update_request.default_launch_params if update_request.default_launch_params is not None else existing_form.default_launch_params
+        merged_query_params = update_request.allowed_query_params if update_request.allowed_query_params is not None else existing_form.allowed_query_params
+        merged_form_schema = update_request.form_schema if update_request.form_schema is not None else existing_form.form_schema
 
         validation_error = validate_launch_workflow_params(
             launch_workflow_id=merged_launch_workflow,
@@ -336,7 +550,7 @@ async def update_form_handler(form_id: str, request_body: dict, request_context)
             action="update",
             form_id=form.id,
             form_name=form.name,
-            scope=form.orgId or "GLOBAL",
+            scope=form.org_id or "GLOBAL",
             executed_by=request_context.user_id,
             executed_by_name=request_context.name or request_context.user_id
         )
@@ -398,7 +612,7 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
                 action="delete",
                 form_id=form.id,
                 form_name=form.name,
-                scope=form.orgId or "GLOBAL",
+                scope=form.org_id or "GLOBAL",
                 executed_by=request_context.user_id,
                 executed_by_name=request_context.name or request_context.user_id
             )
@@ -425,7 +639,7 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
         return error.model_dump(), 500
 
 
-async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, request_context, workflow_context) -> tuple[dict, int]:
+async def execute_form_startup_handler(form_id: str, req: Any, request_context: Any, workflow_context: Any) -> tuple[dict, int]:
     """Execute the form's launch workflow to get initial context data"""
     from shared.discovery import load_workflow
 
@@ -446,16 +660,16 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
             return error.model_dump(), 404
 
         # Regular users cannot execute inactive forms; admins can (for testing/development)
-        if not form.isActive and not request_context.is_platform_admin:
+        if not form.is_active and not request_context.is_platform_admin:
             logger.warning(f"Form {form_id} is not active and user is not an admin")
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
-        if not form.launchWorkflowId:
+        if not form.launch_workflow_id:
             logger.info(f"Form {form_id} has no launch workflow, returning empty result")
             return {"result": {}}, 200
 
-        input_data = dict(form.defaultLaunchParams or {})
+        input_data = dict(form.default_launch_params or {})
 
         if req.method == "POST":
             try:
@@ -466,20 +680,20 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
             except ValueError:
                 pass
 
-        allowed_params = form.allowedQueryParams or []
+        allowed_params = form.allowed_query_params or []
         for param_name in allowed_params:
             param_value = req.params.get(param_name)
             if param_value is not None:
                 input_data[param_name] = param_value
 
-        logger.info(f"Executing launch workflow {form.launchWorkflowId} with merged input data: {input_data}")
+        logger.info(f"Executing launch workflow {form.launch_workflow_id} with merged input data: {input_data}")
 
         # Dynamically load workflow (always fresh)
-        result = load_workflow(form.launchWorkflowId)
+        result = load_workflow(form.launch_workflow_id)
 
         if not result:
-            logger.error(f"Launch workflow '{form.launchWorkflowId}' not found")
-            error = ErrorResponse(error="NotFound", message=f"Launch workflow '{form.launchWorkflowId}' not found")
+            logger.error(f"Launch workflow '{form.launch_workflow_id}' not found")
+            error = ErrorResponse(error="NotFound", message=f"Launch workflow '{form.launch_workflow_id}' not found")
             return error.model_dump(), 404
 
         workflow_func, workflow_metadata = result
@@ -496,7 +710,7 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
         # Extra variables are no longer injected into context
 
         result = await workflow_func(workflow_context, **workflow_params)
-        logger.info(f"Launch workflow {form.launchWorkflowId} completed successfully")
+        logger.info(f"Launch workflow {form.launch_workflow_id} completed successfully")
         return {"result": result}, 200
 
     except TypeError as e:
@@ -511,13 +725,13 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
 
         # form is guaranteed to exist here (we've already checked and returned early if not)
         assert form is not None
-        error = ErrorResponse(error="BadRequest", message=user_message, details={"workflow": form.launchWorkflowId, "error": error_msg})
+        error = ErrorResponse(error="BadRequest", message=user_message, details={"workflow": form.launch_workflow_id, "error": error_msg})
         return error.model_dump(), 400
 
     except WorkflowError as e:
         # form is guaranteed to exist here (we've already checked and returned early if not)
         assert form is not None
-        logger.error(f"Launch workflow failed: {form.launchWorkflowId} - {e.error_type}: {e.message}")
+        logger.error(f"Launch workflow failed: {form.launch_workflow_id} - {e.error_type}: {e.message}")
         error = ErrorResponse(error=e.error_type, message=e.message, details=e.details)
         return error.model_dump(), 400
 
@@ -529,7 +743,7 @@ async def execute_form_startup_handler(form_id: str, req: func.HttpRequest, requ
 
 async def execute_form_handler(form_id: str, request_body: dict, request_context, workflow_context) -> tuple[dict, int]:
     """Execute a form and run the linked workflow"""
-    from shared.handlers.workflows_handlers import execute_workflow_internal
+    from shared.engine import execute_workflow_internal
 
     logger.info(f"User {request_context.user_id} submitting form {form_id}")
 
@@ -549,12 +763,12 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
             return error.model_dump(), 404
 
         # Regular users cannot execute inactive forms; admins can (for testing/development)
-        if not form.isActive and not request_context.is_platform_admin:
+        if not form.is_active and not request_context.is_platform_admin:
             logger.warning(f"Form {form_id} is not active and user is not an admin")
             error = ErrorResponse(error="NotFound", message="Form not found")
             return error.model_dump(), 404
 
-        linked_workflow = form.linkedWorkflow
+        linked_workflow = form.linked_workflow
         if not linked_workflow:
             logger.error(f"Form {form_id} has no linked workflow")
             error = ErrorResponse(error="InternalServerError", message="Form configuration error: No linked workflow")
@@ -588,8 +802,7 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
 
 async def get_form_roles_handler(form_id: str, request_context) -> tuple[dict, int]:
     """Get all roles assigned to a form"""
-    from shared.authorization import get_form_role_ids
-
+    # get_form_role_ids is defined in this module
     logger.info(f"User {request_context.user_id} requesting roles for form {form_id}")
 
     try:
@@ -660,8 +873,6 @@ async def execute_form_data_provider_handler(
         404: Form or provider not found
         500: Provider execution error
     """
-    from shared.handlers.data_providers_handlers import get_data_provider_options_handler
-
     logger.info(
         f"User {request_context.user_id} requesting data provider {provider_name} for form {form_id}"
     )
@@ -693,7 +904,7 @@ async def execute_form_data_provider_handler(
             f"(user={request_context.user_id}, org={workflow_context.org_id})"
         )
 
-        result, status_code = await get_data_provider_options_handler(
+        result, status_code = await _execute_data_provider(
             provider_name=provider_name,
             context=workflow_context,
             no_cache=no_cache,

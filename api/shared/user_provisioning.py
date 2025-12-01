@@ -17,8 +17,8 @@ import logging
 from typing import Literal
 
 from shared.models import UserType
-from shared.repositories.organizations import OrganizationRepository
-from shared.repositories.users import UserRepository
+from src.repositories.organizations import OrganizationRepository
+from src.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)
 

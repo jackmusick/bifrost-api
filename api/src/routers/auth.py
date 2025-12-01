@@ -13,19 +13,21 @@ Key Features:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
 from src.config import get_settings
-from src.core.auth import CurrentActiveUser, UserPrincipal
+from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
 from src.core.security import (
     create_access_token,
+    create_mfa_token,
     create_refresh_token,
+    decode_mfa_token,
     decode_token,
     get_password_hash,
     verify_password,
@@ -47,6 +49,43 @@ class Token(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class MFARequiredResponse(BaseModel):
+    """Response when MFA verification is required."""
+    mfa_required: bool = True
+    mfa_token: str
+    available_methods: list[str]
+    expires_in: int = 300  # 5 minutes
+
+
+class MFASetupRequiredResponse(BaseModel):
+    """Response when MFA enrollment is required."""
+    mfa_setup_required: bool = True
+    mfa_token: str
+    expires_in: int = 300  # 5 minutes
+
+
+class MFAVerifyRequest(BaseModel):
+    """Request to verify MFA code during login."""
+    mfa_token: str
+    code: str
+    trust_device: bool = False
+    device_name: str | None = None
+
+
+class LoginResponse(BaseModel):
+    """Unified login response that can be Token or MFA response."""
+    # Token fields (when MFA not required or after MFA verification)
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    # MFA fields (when MFA required)
+    mfa_required: bool = False
+    mfa_setup_required: bool = False
+    mfa_token: str | None = None
+    available_methods: list[str] | None = None
+    expires_in: int | None = None
 
 
 class TokenRefresh(BaseModel):
@@ -78,13 +117,18 @@ class UserCreate(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=LoginResponse)
 async def login(
+    db: DbSession,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: DbSession = None,
-) -> Token:
+    request: Request | None = None,
+) -> LoginResponse:
     """
     Login with email and password.
+
+    For email/password authentication, MFA is REQUIRED:
+    - If user has MFA enrolled: returns mfa_required=True with mfa_token
+    - If user has no MFA: returns mfa_setup_required=True to redirect to enrollment
 
     Performs user provisioning on each login:
     - First user in system becomes PlatformAdmin
@@ -93,14 +137,17 @@ async def login(
 
     Args:
         form_data: OAuth2 password form with username (email) and password
+        request: FastAPI request object
         db: Database session
 
     Returns:
-        Access and refresh tokens with user claims
+        LoginResponse with either tokens (MFA bypass for trusted device) or MFA requirements
 
     Raises:
         HTTPException: If credentials are invalid or provisioning fails
     """
+    from src.services.mfa_service import MFAService
+
     user_repo = UserRepository(db)
     user = await user_repo.get_by_email(form_data.username)
 
@@ -131,8 +178,158 @@ async def login(
             detail="Account is inactive",
         )
 
+    # Check MFA status - MFA is REQUIRED for password login
+    mfa_service = MFAService(db)
+    mfa_status = await mfa_service.get_mfa_status(user)
+
+    if not user.mfa_enabled or not mfa_status["enrolled_methods"]:
+        # User has no MFA enrolled - require setup
+        mfa_token = create_mfa_token(str(user.id), purpose="mfa_setup")
+
+        logger.info(
+            f"MFA setup required for user: {user.email}",
+            extra={"user_id": str(user.id)}
+        )
+
+        return LoginResponse(
+            mfa_setup_required=True,
+            mfa_token=mfa_token,
+            expires_in=300,
+        )
+
+    # User has MFA - check for trusted device
+    if request:
+        user_agent = request.headers.get("user-agent", "")
+        fingerprint = MFAService.generate_device_fingerprint(user_agent)
+        client_ip = request.client.host if request.client else None
+
+        if await mfa_service.is_device_trusted(user.id, fingerprint, client_ip):
+            # Trusted device - skip MFA verification
+            logger.info(
+                f"Trusted device login for user: {user.email}",
+                extra={"user_id": str(user.id)}
+            )
+            return await _generate_login_tokens(user, db)
+
+    # MFA verification required
+    mfa_token = create_mfa_token(str(user.id), purpose="mfa_verify")
+
+    logger.info(
+        f"MFA verification required for user: {user.email}",
+        extra={"user_id": str(user.id)}
+    )
+
+    return LoginResponse(
+        mfa_required=True,
+        mfa_token=mfa_token,
+        available_methods=mfa_status["enrolled_methods"],
+        expires_in=300,
+    )
+
+
+@router.post("/mfa/login", response_model=LoginResponse)
+async def verify_mfa_login(
+    mfa_request: MFAVerifyRequest,
+    db: DbSession,
+    request: Request | None = None,
+) -> LoginResponse:
+    """
+    Complete MFA verification during login to get access tokens.
+
+    This is used when an existing user with MFA logs in and needs to verify their code.
+    For initial MFA enrollment verification, use POST /auth/mfa/verify.
+
+    Args:
+        mfa_request: MFA verification request with token, code, and trust options
+        request: FastAPI request object
+        db: Database session
+
+    Returns:
+        LoginResponse with access and refresh tokens
+
+    Raises:
+        HTTPException: If MFA token is invalid or code verification fails
+    """
+    from src.services.mfa_service import MFAService
+
+    # Validate MFA token
+    payload = decode_mfa_token(mfa_request.mfa_token, "mfa_verify")
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired MFA token",
+        )
+
+    user_id = UUID(payload["sub"])
+
+    # Get user from database
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(user_id)
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    mfa_service = MFAService(db)
+
+    # Check if code is a recovery code (longer format)
+    code = mfa_request.code.replace("-", "").upper()
+    is_recovery = len(code) == 8 and not code.isdigit()
+
+    if is_recovery:
+        # Verify recovery code
+        client_ip = request.client.host if request and request.client else None
+        if not await mfa_service.verify_recovery_code(user.id, mfa_request.code, client_ip):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid recovery code",
+            )
+    else:
+        # Verify TOTP code
+        if not await mfa_service.verify_totp_code(user.id, mfa_request.code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA code",
+            )
+
+    # Optionally trust this device
+    if mfa_request.trust_device and request:
+        user_agent = request.headers.get("user-agent", "")
+        fingerprint = MFAService.generate_device_fingerprint(user_agent)
+        client_ip = request.client.host if request.client else None
+
+        await mfa_service.create_trusted_device(
+            user_id=user.id,
+            fingerprint=fingerprint,
+            device_name=mfa_request.device_name,
+            ip_address=client_ip,
+        )
+
+    await db.commit()
+
+    logger.info(
+        f"MFA verification successful for user: {user.email}",
+        extra={"user_id": str(user.id)}
+    )
+
+    return await _generate_login_tokens(user, db)
+
+
+async def _generate_login_tokens(user, db) -> LoginResponse:
+    """
+    Generate login response with access and refresh tokens.
+
+    Args:
+        user: User model
+        db: Database session
+
+    Returns:
+        LoginResponse with tokens
+    """
     # Update last login
-    user.last_login = datetime.now(timezone.utc)
+    user.last_login = datetime.utcnow()
     await db.commit()
 
     # Get user roles from database
@@ -171,7 +368,7 @@ async def login(
         }
     )
 
-    return Token(
+    return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
     )
@@ -180,7 +377,7 @@ async def login(
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
     token_data: TokenRefresh,
-    db: DbSession = None,
+    db: DbSession,
 ) -> Token:
     """
     Refresh access token using refresh token.
@@ -289,14 +486,15 @@ async def get_current_user_info(
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
     user_data: UserCreate,
-    db: DbSession = None,
+    db: DbSession,
 ) -> UserResponse:
     """
     Register a new user with auto-provisioning.
 
-    Uses the same provisioning logic as login:
-    - First user becomes PlatformAdmin
-    - Subsequent users are matched to organizations by email domain
+    Handles three scenarios:
+    1. Pre-created user (is_registered=False): Admin created the user, user completes registration
+    2. First user in system: Becomes PlatformAdmin
+    3. New user with matching domain: Auto-joined to organization
 
     Note: In production, this should be restricted or require admin approval.
 
@@ -308,12 +506,12 @@ async def register_user(
         Created user information with roles
 
     Raises:
-        HTTPException: If email already exists or provisioning fails
+        HTTPException: If email already registered or provisioning fails
     """
     settings = get_settings()
 
-    # Only allow registration in development mode
-    if not settings.is_development:
+    # Only allow registration in development or testing mode
+    if not (settings.is_development or settings.is_testing):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User registration is disabled",
@@ -323,13 +521,51 @@ async def register_user(
 
     # Check if email already exists
     existing_user = await user_repo.get_by_email(user_data.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
-        )
 
-    # Use provisioning logic to determine user type and org assignment
+    if existing_user:
+        # Check if this is a pre-created user completing registration
+        if not existing_user.is_registered:
+            # Pre-created user - complete their registration
+            existing_user.hashed_password = get_password_hash(user_data.password)
+            existing_user.is_registered = True
+            if user_data.name:
+                existing_user.name = user_data.name
+            await db.commit()
+
+            logger.info(
+                f"Pre-created user completed registration: {existing_user.email}",
+                extra={
+                    "user_id": str(existing_user.id),
+                    "user_type": existing_user.user_type.value,
+                }
+            )
+
+            # Build roles list
+            roles = ["authenticated"]
+            if existing_user.is_superuser:
+                roles.append("PlatformAdmin")
+            else:
+                roles.append("OrgUser")
+
+            return UserResponse(
+                id=str(existing_user.id),
+                email=existing_user.email,
+                name=existing_user.name or "",
+                is_active=existing_user.is_active,
+                is_superuser=existing_user.is_superuser,
+                is_verified=existing_user.is_verified,
+                user_type=existing_user.user_type.value,
+                organization_id=str(existing_user.organization_id) if existing_user.organization_id else None,
+                roles=roles,
+            )
+        else:
+            # Already registered user
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
+
+    # New user - use provisioning logic to determine user type and org assignment
     try:
         result = await ensure_user_provisioned(
             db=db,
@@ -342,9 +578,10 @@ async def register_user(
             detail=str(e),
         )
 
-    # Set password for the provisioned user
+    # Set password and mark as registered
     user = result.user
     user.hashed_password = get_password_hash(user_data.password)
+    user.is_registered = True
     await db.commit()
 
     logger.info(
@@ -369,6 +606,76 @@ async def register_user(
     )
 
 
+class OAuthProviderInfo(BaseModel):
+    """OAuth provider info for login page."""
+    name: str
+    display_name: str
+    icon: str | None = None
+
+
+class AuthStatusResponse(BaseModel):
+    """
+    Pre-login status response.
+
+    Provides all information the client needs to render the login page:
+    - Whether initial setup is required (no users exist)
+    - Whether password login is available
+    - Whether MFA is required for password login
+    - Available OAuth/SSO providers
+    """
+    needs_setup: bool
+    password_login_enabled: bool
+    mfa_required_for_password: bool
+    oauth_providers: list[OAuthProviderInfo]
+
+
+@router.get("/status", response_model=AuthStatusResponse)
+async def get_auth_status(db: DbSession) -> AuthStatusResponse:
+    """
+    Get authentication system status for the login page.
+
+    Public endpoint that returns everything needed to render the login UI:
+    - Whether this is first-time setup (no users exist)
+    - Available authentication methods (password, OAuth providers)
+    - MFA requirements
+
+    Returns:
+        AuthStatusResponse with complete login page configuration
+    """
+    from src.services.oauth_sso import OAuthService
+
+    settings = get_settings()
+    user_repo = UserRepository(db)
+    has_users = await user_repo.has_any_users()
+
+    # Get available OAuth providers
+    oauth_service = OAuthService(db)
+    available_providers = oauth_service.get_available_providers()
+
+    # Provider display info
+    provider_info_map = {
+        "microsoft": {"display_name": "Microsoft", "icon": "microsoft"},
+        "google": {"display_name": "Google", "icon": "google"},
+        "oidc": {"display_name": "SSO", "icon": "key"},
+    }
+
+    oauth_providers = [
+        OAuthProviderInfo(
+            name=name,
+            display_name=provider_info_map.get(name, {}).get("display_name", name.title()),
+            icon=provider_info_map.get(name, {}).get("icon"),
+        )
+        for name in available_providers
+    ]
+
+    return AuthStatusResponse(
+        needs_setup=not has_users,
+        password_login_enabled=True,  # Always enabled for now
+        mfa_required_for_password=settings.mfa_enabled,
+        oauth_providers=oauth_providers,
+    )
+
+
 class OAuthLoginRequest(BaseModel):
     """OAuth/SSO login request model."""
     email: EmailStr
@@ -379,7 +686,7 @@ class OAuthLoginRequest(BaseModel):
 @router.post("/oauth/login", response_model=Token)
 async def oauth_login(
     login_data: OAuthLoginRequest,
-    db: DbSession = None,
+    db: DbSession,
 ) -> Token:
     """
     Login via OAuth/SSO provider.
@@ -423,7 +730,7 @@ async def oauth_login(
         )
 
     # Update last login
-    user.last_login = datetime.now(timezone.utc)
+    user.last_login = datetime.utcnow()
     await db.commit()
 
     # Get user roles from database

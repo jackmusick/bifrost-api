@@ -19,8 +19,8 @@ from shared.models import (
 )
 from shared.context import ExecutionContext
 from shared.async_storage import get_async_table_service
-from shared.repositories.users import UserRepository
-from shared.repositories.organizations import OrganizationRepository
+from src.repositories.users import UserRepository
+from src.repositories.organizations import OrganizationRepository
 from shared.system_logger import get_system_logger
 
 logger = logging.getLogger(__name__)

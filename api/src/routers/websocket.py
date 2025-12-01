@@ -8,9 +8,9 @@ Replaces Azure Web PubSub with native FastAPI WebSockets.
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from src.core.auth import get_current_user_ws, UserPrincipal
+from src.core.auth import get_current_user_ws
 from src.core.pubsub import manager
 
 logger = logging.getLogger(__name__)

@@ -53,4 +53,19 @@ class ConfigType(str, Enum):
     INT = "int"
     BOOL = "bool"
     JSON = "json"
-    SECRET_REF = "secret_ref"
+    SECRET = "secret"  # Value is encrypted
+
+
+class MFAMethodType(str, Enum):
+    """Supported MFA method types"""
+    TOTP = "totp"
+    SMS = "sms"
+    EMAIL = "email"
+    WEBAUTHN = "webauthn"
+
+
+class MFAMethodStatus(str, Enum):
+    """MFA method enrollment status"""
+    PENDING = "pending"
+    ACTIVE = "active"
+    DISABLED = "disabled"

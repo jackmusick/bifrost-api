@@ -15,9 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
-COPY requirements-new.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements-new.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # =============================================================================
 # Stage 2: Runtime
@@ -36,11 +36,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY src/ /app/src/
-COPY alembic/ /app/alembic/
-COPY alembic.ini /app/
-COPY platform/ /app/platform/
+# Copy application code (paths relative to root context)
+COPY api/src/ /app/src/
+COPY api/shared/ /app/shared/
+COPY api/alembic/ /app/alembic/
+COPY api/alembic.ini /app/
+COPY api/platform/ /app/platform/
+COPY api/bifrost/ /app/bifrost/
+COPY api/bifrost.py /app/
 
 # Create non-root user
 RUN useradd -m -u 1000 bifrost && \

@@ -2,28 +2,172 @@
 Config Router
 
 Manage global and organization-specific configuration key-value pairs.
-Manage integration configurations (Microsoft Graph, HaloPSA).
 API-compatible with the existing Azure Functions implementation.
+
+Uses OrgScopedRepository for standardized org scoping.
 """
 
 import logging
-from uuid import UUID
+from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
 from shared.models import (
-    Config,
-    IntegrationConfig,
+    Config as ConfigSchema,
+    ConfigType,
     SetConfigRequest,
-    SetIntegrationConfigRequest,
 )
 
 from src.core.auth import Context, CurrentSuperuser
+from src.models import Config as ConfigModel
+from src.models.enums import ConfigType as ConfigTypeEnum
+from src.repositories.org_scoped import OrgScopedRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Configuration"])
+
+
+# =============================================================================
+# Repository (using OrgScopedRepository)
+# =============================================================================
+
+
+class ConfigRepository(OrgScopedRepository[ConfigModel]):
+    """
+    Config repository using OrgScopedRepository.
+
+    Configs use the CASCADE scoping pattern:
+    - Org-specific configs + global (NULL org_id) configs
+    """
+
+    model = ConfigModel
+
+    async def list_configs(self) -> list[ConfigSchema]:
+        """List all configs visible to current org scope."""
+        query = select(self.model)
+        query = self.filter_cascade(query)
+        query = query.order_by(self.model.key)
+
+        result = await self.session.execute(query)
+        configs = result.scalars().all()
+
+        schemas = []
+        for c in configs:
+            raw_value = c.value.get("value") if isinstance(c.value, dict) else c.value
+            # Mask secret values in list responses
+            if c.config_type == ConfigTypeEnum.SECRET:
+                display_value = "[SECRET]"
+            else:
+                display_value = raw_value
+
+            schemas.append(
+                ConfigSchema(
+                    key=c.key,
+                    value=display_value,
+                    type=ConfigType(c.config_type.value) if c.config_type else ConfigType.STRING,
+                    scope="org" if c.organization_id else "GLOBAL",
+                    org_id=str(c.organization_id) if c.organization_id else None,
+                    description=c.description,
+                    updated_at=c.updated_at,
+                    updated_by=c.updated_by,
+                )
+            )
+        return schemas
+
+    async def get_config(self, key: str) -> ConfigModel | None:
+        """Get config by key with cascade scoping."""
+        query = select(self.model).where(self.model.key == key)
+        query = self.filter_cascade(query)
+
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_config_strict(self, key: str) -> ConfigModel | None:
+        """Get config strictly in current org scope (no fallback)."""
+        query = select(self.model).where(
+            self.model.key == key,
+            self.model.organization_id == self.org_id,
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def set_config(self, request: SetConfigRequest, updated_by: str) -> ConfigSchema:
+        """Create or update a config in current org scope."""
+        now = datetime.utcnow()
+
+        # Handle secret encryption if this is a SECRET type
+        stored_value = request.value
+        if request.type == ConfigType.SECRET:
+            from src.core.security import encrypt_secret
+            stored_value = encrypt_secret(request.value)
+
+        # Build value object for JSONB storage
+        config_value = {
+            "value": stored_value,
+        }
+
+        # Convert shared.models.ConfigType to src.models.enums.ConfigType
+        # Both enums have same values, so we can use the value to lookup
+        db_config_type = ConfigTypeEnum(request.type.value) if request.type else ConfigTypeEnum.STRING
+
+        # Check if config exists in current org scope
+        existing = await self.get_config_strict(request.key)
+
+        if existing:
+            # Update existing
+            existing.value = config_value
+            existing.config_type = db_config_type
+            existing.description = request.description
+            existing.updated_at = now
+            existing.updated_by = updated_by
+            await self.session.flush()
+            await self.session.refresh(existing)
+            config = existing
+        else:
+            # Create new
+            config = ConfigModel(
+                key=request.key,
+                value=config_value,
+                config_type=db_config_type,
+                description=request.description,
+                organization_id=self.org_id,
+                created_at=now,
+                updated_at=now,
+                updated_by=updated_by,
+            )
+            self.session.add(config)
+            await self.session.flush()
+            await self.session.refresh(config)
+
+        logger.info(f"Set config {request.key} in org {self.org_id}")
+
+        # Extract value from JSONB for response
+        stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
+        return ConfigSchema(
+            key=config.key,
+            value=stored_value,
+            type=request.type if request.type else ConfigType.STRING,
+            scope="org" if config.organization_id else "GLOBAL",
+            org_id=str(config.organization_id) if config.organization_id else None,
+            description=config.description,
+            updated_at=config.updated_at,
+            updated_by=config.updated_by,
+        )
+
+    async def delete_config(self, key: str) -> bool:
+        """Delete config from current org scope."""
+        config = await self.get_config_strict(key)
+        if not config:
+            return False
+
+        await self.session.delete(config)
+        await self.session.flush()
+
+        logger.info(f"Deleted config {key}")
+        return True
 
 
 # =============================================================================
@@ -33,41 +177,22 @@ router = APIRouter(tags=["Configuration"])
 
 @router.get(
     "/api/config",
-    response_model=list[Config],
+    response_model=list[ConfigSchema],
     summary="Get configuration values",
-    description="Get configuration values for current scope",
+    description="Get configuration values for current scope (includes global configs)",
 )
 async def get_config(
     ctx: Context,
     user: CurrentSuperuser,
-) -> list[Config]:
+) -> list[ConfigSchema]:
     """Get configuration for current scope."""
-    from shared.handlers.org_config_handlers import get_config_logic
-    from shared.context import ExecutionContext as SharedContext
-
-    try:
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            is_platform_admin=ctx.user.is_superuser,
-            org_id=str(ctx.org_id) if ctx.org_id else None,
-        )
-
-        configs = await get_config_logic(shared_ctx)
-        return configs
-
-    except Exception as e:
-        logger.error(f"Error getting config: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get configuration",
-        )
+    repo = ConfigRepository(ctx.db, ctx.org_id)
+    return await repo.list_configs()
 
 
 @router.post(
     "/api/config",
-    response_model=Config,
+    response_model=ConfigSchema,
     status_code=status.HTTP_201_CREATED,
     summary="Set configuration value",
     description="Set a configuration value in the current scope",
@@ -76,23 +201,12 @@ async def set_config(
     request: SetConfigRequest,
     ctx: Context,
     user: CurrentSuperuser,
-) -> Config:
+) -> ConfigSchema:
     """Set a configuration key-value pair."""
-    from shared.handlers.org_config_handlers import set_config_logic
-    from shared.context import ExecutionContext as SharedContext
+    repo = ConfigRepository(ctx.db, ctx.org_id)
 
     try:
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            is_platform_admin=ctx.user.is_superuser,
-            org_id=str(ctx.org_id) if ctx.org_id else None,
-        )
-
-        config = await set_config_logic(shared_ctx, request)
-        return config
-
+        return await repo.set_config(request, updated_by=user.email)
     except Exception as e:
         logger.error(f"Error setting config: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -113,148 +227,19 @@ async def delete_config(
     user: CurrentSuperuser,
 ) -> None:
     """Delete a configuration key."""
-    from shared.handlers.org_config_handlers import delete_config_logic
-    from shared.context import ExecutionContext as SharedContext
+    repo = ConfigRepository(ctx.db, ctx.org_id)
 
-    try:
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            is_platform_admin=ctx.user.is_superuser,
-            org_id=str(ctx.org_id) if ctx.org_id else None,
-        )
-
-        success = await delete_config_logic(shared_ctx, key)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Configuration not found",
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting config: {str(e)}", exc_info=True)
+    success = await repo.delete_config(key)
+    if not success:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete configuration",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Configuration not found",
         )
 
 
 # =============================================================================
 # Integration Config Endpoints
+# TODO: Migrate integrations to dedicated IntegrationConfiguration table with
+#       PostgreSQL storage. The shared/handlers/org_config_handlers.py
+#       integration handlers still use Azure Table Storage patterns.
 # =============================================================================
-
-
-@router.get(
-    "/api/organizations/{org_id}/integrations",
-    response_model=list[IntegrationConfig],
-    summary="Get organization integrations",
-    description="Get all integration configurations for an organization",
-)
-async def get_integrations(
-    org_id: UUID,
-    ctx: Context,
-    user: CurrentSuperuser,
-) -> list[IntegrationConfig]:
-    """Get integration configurations for an organization."""
-    from shared.handlers.org_config_handlers import get_integrations_logic
-    from shared.context import ExecutionContext as SharedContext
-
-    try:
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            is_platform_admin=ctx.user.is_superuser,
-            org_id=str(org_id),
-        )
-
-        integrations = await get_integrations_logic(shared_ctx, str(org_id))
-        return integrations
-
-    except Exception as e:
-        logger.error(f"Error getting integrations: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get integrations",
-        )
-
-
-@router.post(
-    "/api/organizations/{org_id}/integrations",
-    response_model=IntegrationConfig,
-    summary="Set organization integration",
-    description="Set integration configuration for an organization",
-)
-async def set_integration(
-    org_id: UUID,
-    request: SetIntegrationConfigRequest,
-    ctx: Context,
-    user: CurrentSuperuser,
-) -> IntegrationConfig:
-    """Set integration configuration."""
-    from shared.handlers.org_config_handlers import set_integration_logic
-    from shared.context import ExecutionContext as SharedContext
-
-    try:
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            is_platform_admin=ctx.user.is_superuser,
-            org_id=str(org_id),
-        )
-
-        integration = await set_integration_logic(shared_ctx, str(org_id), request)
-        return integration
-
-    except Exception as e:
-        logger.error(f"Error setting integration: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to set integration",
-        )
-
-
-@router.delete(
-    "/api/organizations/{org_id}/integrations/{integration_type}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete organization integration",
-    description="Delete integration configuration for an organization",
-)
-async def delete_integration(
-    org_id: UUID,
-    integration_type: str,
-    ctx: Context,
-    user: CurrentSuperuser,
-) -> None:
-    """Delete integration configuration."""
-    from shared.handlers.org_config_handlers import delete_integration_logic
-    from shared.context import ExecutionContext as SharedContext
-
-    try:
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            is_platform_admin=ctx.user.is_superuser,
-            org_id=str(org_id),
-        )
-
-        success = await delete_integration_logic(shared_ctx, str(org_id), integration_type)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Integration not found",
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting integration: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete integration",
-        )

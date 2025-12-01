@@ -5,11 +5,10 @@ Provides the base consumer class and connection management for processing
 background jobs from RabbitMQ queues.
 """
 
-import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import Any
 
 import aio_pika
 from aio_pika import IncomingMessage, RobustConnection, RobustChannel
@@ -175,7 +174,7 @@ class BaseConsumer(ABC):
                 await self.process_message(body)
 
                 logger.info(
-                    f"Message processed successfully",
+                    "Message processed successfully",
                     extra={"message_id": message.message_id},
                 )
 
@@ -223,7 +222,7 @@ async def publish_message(
 
     try:
         # Declare queue (ensures it exists)
-        queue = await channel.declare_queue(queue_name, durable=True)
+        await channel.declare_queue(queue_name, durable=True)
 
         # Publish message
         await channel.default_exchange.publish(

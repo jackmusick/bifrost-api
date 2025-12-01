@@ -9,13 +9,14 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.core.database import close_db, init_db
 from src.core.pubsub import manager as pubsub_manager
 from src.routers import (
     auth_router,
+    mfa_router,
+    oauth_router,
     health_router,
     organizations_router,
     users_router,
@@ -23,10 +24,20 @@ from src.routers import (
     executions_router,
     workflows_router,
     forms_router,
-    secrets_router,
     config_router,
     data_providers_router,
     websocket_router,
+    branding_router,
+    editor_files_router,
+    schedules_router,
+    workflow_keys_router,
+    logs_router,
+    metrics_router,
+    packages_router,
+    github_router,
+    oauth_connections_router,
+    endpoints_router,
+    file_uploads_router,
 )
 
 # Configure logging
@@ -53,9 +64,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     logger.info("Database connection established")
 
-    # Create default dev user if in development mode
-    if settings.is_development:
-        await create_dev_user()
+    # Create default admin user if configured via environment variables
+    if settings.default_user_email and settings.default_user_password:
+        await create_default_user()
 
     logger.info(f"Bifrost API started in {settings.environment} mode")
 
@@ -68,11 +79,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Bifrost API shutdown complete")
 
 
-async def create_dev_user() -> None:
+async def create_default_user() -> None:
     """
-    Create default development user if it doesn't exist.
+    Create default admin user if it doesn't exist.
 
-    Only runs in development mode.
+    Only runs if BIFROST_DEFAULT_USER_EMAIL and BIFROST_DEFAULT_USER_PASSWORD
+    environment variables are set. This is useful for automated deployments
+    where you want to pre-configure an admin account.
+
+    If not configured, users will go through the setup wizard on first access.
     """
     from src.core.database import get_db_context
     from src.core.security import get_password_hash
@@ -80,24 +95,27 @@ async def create_dev_user() -> None:
 
     settings = get_settings()
 
+    if not settings.default_user_email or not settings.default_user_password:
+        return
+
     async with get_db_context() as db:
         user_repo = UserRepository(db)
 
-        # Check if dev user exists
-        existing = await user_repo.get_by_email(settings.dev_user_email)
+        # Check if default user exists
+        existing = await user_repo.get_by_email(settings.default_user_email)
         if existing:
-            logger.info(f"Dev user already exists: {settings.dev_user_email}")
+            logger.info(f"Default user already exists: {settings.default_user_email}")
             return
 
-        # Create dev user
-        hashed_password = get_password_hash(settings.dev_user_password)
+        # Create default admin user
+        hashed_password = get_password_hash(settings.default_user_password)
         user = await user_repo.create_user(
-            email=settings.dev_user_email,
+            email=settings.default_user_email,
             hashed_password=hashed_password,
-            name="Dev Admin",
+            name="Admin",
             is_superuser=True,
         )
-        logger.info(f"Created dev user: {user.email} (id: {user.id})")
+        logger.info(f"Created default admin user: {user.email} (id: {user.id})")
 
 
 def create_app() -> FastAPI:
@@ -119,28 +137,34 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Configure CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Note: CORS middleware not needed - frontend proxies all /api requests
+    # through Vite dev server (dev) or nginx (prod), making them same-origin.
 
     # Register routers
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(mfa_router)
+    app.include_router(oauth_router)
     app.include_router(organizations_router)
     app.include_router(users_router)
     app.include_router(roles_router)
     app.include_router(executions_router)
     app.include_router(workflows_router)
     app.include_router(forms_router)
-    app.include_router(secrets_router)
     app.include_router(config_router)
     app.include_router(data_providers_router)
     app.include_router(websocket_router)
+    app.include_router(branding_router)
+    app.include_router(editor_files_router)
+    app.include_router(schedules_router)
+    app.include_router(workflow_keys_router)
+    app.include_router(logs_router)
+    app.include_router(metrics_router)
+    app.include_router(packages_router)
+    app.include_router(github_router)
+    app.include_router(oauth_connections_router)
+    app.include_router(endpoints_router)
+    app.include_router(file_uploads_router)
 
     # Root endpoint
     @app.get("/")

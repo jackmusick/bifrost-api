@@ -17,7 +17,7 @@ from typing import Any
 from uuid import UUID
 
 import redis.asyncio as redis
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 from src.config import get_settings
 

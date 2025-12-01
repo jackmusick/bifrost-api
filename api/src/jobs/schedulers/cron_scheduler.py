@@ -52,11 +52,10 @@ async def process_scheduled_workflows() -> dict[str, Any]:
         now = datetime.utcnow()
         session_factory = get_session_factory()
 
-        async with session_factory() as db:
+        async with session_factory():
             for workflow_meta in scheduled_workflows:
                 try:
                     workflow_name = workflow_meta.name
-                    workflow_description = workflow_meta.description
                     cron_expression = workflow_meta.schedule
 
                     # Validate CRON expression
@@ -112,7 +111,7 @@ async def process_scheduled_workflows() -> dict[str, Any]:
                         )
 
                         logger.info(
-                            f"Enqueued scheduled workflow execution",
+                            "Enqueued scheduled workflow execution",
                             extra={
                                 "workflow_name": workflow_name,
                                 "execution_id": execution_id,

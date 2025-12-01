@@ -17,7 +17,7 @@ from shared.models import (
     Organization,
     UpdateOrganizationRequest,
 )
-from shared.repositories.organizations import OrganizationRepository
+from src.repositories.organizations import OrganizationRepository
 from shared.system_logger import get_system_logger
 
 if TYPE_CHECKING:

@@ -3,9 +3,8 @@ Unit tests for discovery handlers
 Tests discovery logic with mocked discovery module dependencies
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from shared.handlers.discovery_handlers import (
     convert_workflow_metadata_to_model,

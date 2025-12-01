@@ -29,8 +29,6 @@ from shared.models import (
     GitHubBranchInfo,
     CommitInfo,
 )
-from shared.repositories.config import ConfigRepository
-from shared.keyvault import KeyVaultClient
 from shared.utils.file_operations import manual_copy_tree, get_system_tmp
 
 logger = logging.getLogger(__name__)
@@ -181,7 +179,7 @@ class GitIntegrationService:
 
     async def _get_authenticated_remote_url(self, context: Any) -> str | None:
         """
-        Get authenticated remote URL with token from Key Vault.
+        Get authenticated remote URL with token from PostgreSQL.
 
         Args:
             context: Organization context
@@ -189,28 +187,21 @@ class GitIntegrationService:
         Returns:
             Authenticated URL with token, or None if not configured
         """
-        config_repo = ConfigRepository(context)
-        github_config = await config_repo.get_github_config()
+        github_config = await self._get_github_config(context)
 
-        if not github_config or not github_config.secret_ref:
+        if not github_config:
             return None
 
-        if github_config.status == "disconnected":
+        repo_url = github_config.get("repo_url")
+        token = github_config.get("token")
+
+        if not repo_url or not token:
             return None
 
-        # Get token from Key Vault
-        async with KeyVaultClient() as kv_client:
-            try:
-                token = await kv_client.get_secret(github_config.secret_ref)
-            except Exception as e:
-                logger.warning(f"Failed to retrieve token from Key Vault: {e}")
-                return None
+        if github_config.get("status") == "disconnected":
+            return None
 
         # Normalize repo URL - accept both full URLs and owner/repo format
-        repo_url = github_config.repo_url
-        if not repo_url:
-            return None
-
         if not repo_url.startswith(('https://github.com/', 'git@github.com:')):
             # Convert owner/repo format to HTTPS URL
             repo_url = f"https://github.com/{repo_url}"
@@ -218,6 +209,86 @@ class GitIntegrationService:
 
         # Build authenticated URL
         return self._insert_token_in_url(repo_url, token)
+
+    async def _get_github_config(self, context: Any) -> dict | None:
+        """
+        Get GitHub configuration from PostgreSQL Config table.
+
+        Args:
+            context: Organization context with org_id
+
+        Returns:
+            Dict with repo_url, token, branch, status or None
+        """
+        from uuid import UUID
+        from sqlalchemy import select
+        from cryptography.fernet import Fernet
+        import base64
+
+        try:
+            from src.config import get_settings
+            from src.core.database import get_session_factory
+            from src.models import Config
+
+            settings = get_settings()
+            session_factory = get_session_factory()
+
+            # Get encryption key
+            key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
+            fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+
+            org_id = getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+            org_uuid = None
+            if org_id and org_id != "GLOBAL":
+                try:
+                    org_uuid = UUID(org_id)
+                except ValueError:
+                    pass
+
+            async with session_factory() as db:
+                # Look for github_config in Config table
+                query = select(Config).where(
+                    Config.key == "github_config",
+                    Config.organization_id == org_uuid
+                )
+                result = await db.execute(query)
+                config = result.scalars().first()
+
+                if not config:
+                    # Try GLOBAL fallback
+                    query = select(Config).where(
+                        Config.key == "github_config",
+                        Config.organization_id.is_(None)
+                    )
+                    result = await db.execute(query)
+                    config = result.scalars().first()
+
+                if not config:
+                    return None
+
+                config_value = config.value or {}
+                repo_url = config_value.get("repo_url")
+                encrypted_token = config_value.get("encrypted_token")
+                branch = config_value.get("branch", "main")
+                status = config_value.get("status", "connected")
+
+                # Decrypt token if present
+                token = None
+                if encrypted_token:
+                    try:
+                        token = fernet.decrypt(encrypted_token.encode()).decode()
+                    except Exception as e:
+                        logger.warning(f"Failed to decrypt GitHub token: {e}")
+
+                return {
+                    "repo_url": repo_url,
+                    "token": token,
+                    "branch": branch,
+                    "status": status
+                }
+        except Exception as e:
+            logger.error(f"Failed to get GitHub config: {e}")
+            return None
 
     def _clone_repo(self, auth_url: str, branch: str) -> None:
         """
@@ -825,19 +896,16 @@ class GitIntegrationService:
                     "error": error_msg
                 }
 
-            # Get GitHub configuration
-            config_repo = ConfigRepository(context)
-            github_config = await config_repo.get_github_config()
+            # Get GitHub configuration from PostgreSQL
+            github_config = await self._get_github_config(context)
 
-            if not github_config or not github_config.secret_ref or not github_config.repo_url:
+            if not github_config or not github_config.get("token") or not github_config.get("repo_url"):
                 raise Exception("No GitHub configuration found")
 
-            # Get token from Key Vault
-            async with KeyVaultClient() as kv_client:
-                token = await kv_client.get_secret(github_config.secret_ref)
+            token = github_config["token"]
 
             # Parse repo owner/name from repo_url
-            repo_url = github_config.repo_url
+            repo_url = github_config["repo_url"]
             if repo_url.startswith('https://github.com/'):
                 repo_full_name = repo_url.replace('https://github.com/', '').replace('.git', '')
             elif repo_url.startswith('git@github.com:'):

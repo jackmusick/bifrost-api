@@ -1,9 +1,9 @@
 {
     "include": [
-        "functions/**/*.py",
+        "src/**/*.py",
         "shared/**/*.py",
-        "services/**/*.py",
-        "models/**/*.py"
+        "bifrost/**/*.py",
+        "tests/**/*.py"
     ],
     "exclude": [
         "**/__pycache__",
@@ -11,7 +11,6 @@
         "**/node_modules",
         "**/.venv",
         "**/venv",
-        "**/tests",
         "**/stubs"
     ],
     "pythonVersion": "3.11",

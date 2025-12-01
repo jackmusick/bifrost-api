@@ -56,7 +56,7 @@ class RoleRepository:
         """List all roles."""
         query = select(RoleModel)
         if active_only:
-            query = query.where(RoleModel.is_active == True)
+            query = query.where(RoleModel.is_active)
         query = query.order_by(RoleModel.name)
 
         result = await self.db.execute(query)

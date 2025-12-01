@@ -5,10 +5,14 @@ Password hashing and JWT token handling using industry-standard libraries.
 Based on FastAPI's official security tutorial patterns.
 """
 
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from passlib.context import CryptContext
 
 from src.config import get_settings
@@ -149,11 +153,6 @@ def decode_token(token: str) -> dict[str, Any] | None:
 # =============================================================================
 # Secret Encryption (for storing secrets in database)
 # =============================================================================
-
-import base64
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
 def _get_fernet_key() -> bytes:

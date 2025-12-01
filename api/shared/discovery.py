@@ -90,15 +90,15 @@ class FormMetadata:
     """Lightweight form metadata for listing"""
     id: str
     name: str
-    linkedWorkflow: str
-    orgId: str
-    isActive: bool
-    isGlobal: bool
-    accessLevel: str | None
-    filePath: str
-    createdAt: datetime
-    updatedAt: datetime
-    launchWorkflowId: str | None = None
+    linked_workflow: str
+    org_id: str
+    is_active: bool
+    is_global: bool
+    access_level: str | None
+    file_path: str
+    created_at: datetime
+    updated_at: datetime
+    launch_workflow_id: str | None = None
 
 
 # ==================== WORKSPACE HELPERS ====================
@@ -506,15 +506,15 @@ def scan_all_forms() -> list[FormMetadata]:
                 forms.append(FormMetadata(
                     id=form_id,
                     name=data['name'],
-                    linkedWorkflow=data['linkedWorkflow'],
-                    orgId=org_id,
-                    isActive=data.get('isActive', True),
-                    isGlobal=data.get('isGlobal', False),
-                    accessLevel=access_level,
-                    filePath=str(form_file),
-                    createdAt=created_at,
-                    updatedAt=updated_at,
-                    launchWorkflowId=data.get('launchWorkflowId')
+                    linked_workflow=data['linkedWorkflow'],
+                    org_id=org_id,
+                    is_active=data.get('isActive', True),
+                    is_global=data.get('isGlobal', False),
+                    access_level=access_level,
+                    file_path=str(form_file),
+                    created_at=created_at,
+                    updated_at=updated_at,
+                    launch_workflow_id=data.get('launchWorkflowId')
                 ))
 
             except Exception as e:
@@ -603,7 +603,7 @@ def get_forms_by_workflow(workflow_name: str) -> list[FormMetadata]:
         List of FormMetadata for forms using this workflow
     """
     all_forms = scan_all_forms()
-    return [f for f in all_forms if f.linkedWorkflow == workflow_name]
+    return [f for f in all_forms if f.linked_workflow == workflow_name]
 
 
 # ==================== METADATA CONVERSION HELPERS ====================

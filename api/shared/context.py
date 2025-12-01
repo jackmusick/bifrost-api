@@ -16,9 +16,12 @@ unified context that works everywhere:
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config_resolver import ConfigResolver
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +83,10 @@ class ExecutionContext:
     # ==================== EXECUTION ====================
     execution_id: str
 
+    # ==================== DATABASE SESSION ====================
+    # Database session for SDK operations (injected during execution)
+    _db: "AsyncSession | None" = field(default=None, repr=False)
+
     # ==================== WORKFLOW STATE (private) ====================
     _config: dict[str, Any] = field(default_factory=dict)
     _config_resolver: ConfigResolver = field(default_factory=ConfigResolver)
@@ -102,6 +109,21 @@ class ExecutionContext:
     def is_global_scope(self) -> bool:
         """True if executing in GLOBAL scope (no organization)"""
         return self.scope == "GLOBAL"
+
+    @property
+    def db(self) -> "AsyncSession":
+        """
+        Database session for SDK operations.
+
+        Raises:
+            RuntimeError: If no database session is available
+        """
+        if self._db is None:
+            raise RuntimeError(
+                "No database session available. "
+                "SDK operations require a database context."
+            )
+        return self._db
 
     @property
     def executed_by(self) -> str:

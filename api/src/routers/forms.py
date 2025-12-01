@@ -7,7 +7,6 @@ API-compatible with the existing Azure Functions implementation.
 """
 
 import logging
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -25,8 +24,7 @@ from shared.models import (
     WorkflowExecutionResponse,
 )
 
-from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
-from src.core.database import DbSession
+from src.core.auth import Context, CurrentSuperuser
 from src.core.pubsub import publish_execution_update
 
 logger = logging.getLogger(__name__)

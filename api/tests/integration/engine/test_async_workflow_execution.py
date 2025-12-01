@@ -6,7 +6,7 @@ End-to-end tests for async workflow execution lifecycle
 import asyncio
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

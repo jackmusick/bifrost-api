@@ -1,15 +1,17 @@
 """
 File Upload Handlers
-Business logic for generating SAS URLs for direct blob uploads
+Business logic for file uploads to filesystem storage
 Extracted from functions/file_uploads.py for unit testability
 """
 
 import logging
+import uuid
+from datetime import datetime, timedelta
 
-from shared.blob_storage import get_blob_service
 from shared.context import ExecutionContext
 from shared.exceptions import FileUploadError
 from shared.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
+from src.services.file_storage import get_file_storage
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +24,11 @@ async def generate_file_upload_url(
     allowed_types: list[str] | None = None,
 ) -> FileUploadResponse:
     """
-    Generate a SAS URL for uploading a file directly to blob storage.
+    Generate upload metadata for file uploads.
 
-    This handler creates a secure, time-limited URL that allows the client
-    to upload a file directly to Azure Blob Storage without going through
-    the API server. This is more efficient for large files.
+    With filesystem storage, files are uploaded directly to the API
+    rather than using pre-signed URLs. This function validates the
+    request and returns the endpoint URL for uploading.
 
     Args:
         form_id: Form ID to associate uploaded file with
@@ -36,10 +38,10 @@ async def generate_file_upload_url(
         allowed_types: List of allowed MIME types (None = all types allowed)
 
     Returns:
-        FileUploadResponse: Contains upload_url, blob_uri, and expires_at
+        FileUploadResponse: Contains upload_url and file_metadata
 
     Raises:
-        FileUploadError: If file validation or SAS generation fails
+        FileUploadError: If file validation fails
         ValueError: If request validation fails
     """
     logger.info(
@@ -57,37 +59,35 @@ async def generate_file_upload_url(
     # Validate file request
     _validate_file_request(request, max_size_bytes, allowed_types)
 
-    # Initialize blob storage service
-    blob_service = get_blob_service()
+    # Generate unique upload ID
+    upload_id = uuid.uuid4().hex
 
-    # Generate SAS URL for upload
-    # This creates a secure, time-limited URL for direct upload
-    result = await blob_service.generate_upload_url(
-        file_name=request.file_name,
-        content_type=request.content_type,
-        file_size=request.file_size,
-        max_size_bytes=max_size_bytes,
-        allowed_types=allowed_types,
-    )
+    # Sanitize filename and create safe path
+    safe_filename = _sanitize_filename(request.file_name)
+    blob_name = f"{upload_id}_{safe_filename}"
+
+    # Container for uploads
+    container = "uploads"
 
     # Create file metadata for workflows to access the file
-    # Extract container and path from blob_name returned by generate_upload_url
-    container = "uploads"
-    path = result["blob_name"]  # The safe filename with UUID prefix
-
     file_metadata = UploadedFileMetadata(
         name=request.file_name,
         container=container,
-        path=path,
+        path=blob_name,
         content_type=request.content_type,
         size=request.file_size,
     )
 
+    # Generate the upload endpoint URL
+    # With filesystem storage, clients POST directly to this URL
+    upload_url = f"/api/files/upload/{upload_id}"
+
     # Create response
+    # Note: blob_uri is now a local path reference, not an Azure URI
     response = FileUploadResponse(
-        upload_url=result["upload_url"],
-        blob_uri=result["blob_uri"],
-        expires_at=result["expires_at"],
+        upload_url=upload_url,
+        blob_uri=f"/api/storage/{container}/{blob_name}",
+        expires_at=(datetime.utcnow() + timedelta(hours=24)).isoformat(),
         file_metadata=file_metadata,
     )
 
@@ -95,13 +95,88 @@ async def generate_file_upload_url(
         f"Successfully generated upload URL for {request.file_name}",
         extra={
             "form_id": form_id,
-            "blob_uri": response.blob_uri,
+            "upload_id": upload_id,
             "user": context.email,
             "org_id": context.org_id,
         },
     )
 
     return response
+
+
+async def save_uploaded_file(
+    content: bytes,
+    original_filename: str,
+    content_type: str | None = None,
+) -> dict:
+    """
+    Save an uploaded file to filesystem storage.
+
+    Args:
+        content: File content as bytes
+        original_filename: Original filename from user
+        content_type: MIME type
+
+    Returns:
+        Dict with upload details (upload_id, path, url, etc.)
+    """
+    file_storage = get_file_storage()
+    return await file_storage.save_upload(content, original_filename, content_type)
+
+
+async def get_uploaded_file(upload_id_or_filename: str) -> bytes | None:
+    """
+    Get an uploaded file by ID or filename.
+
+    Args:
+        upload_id_or_filename: Upload ID or full filename
+
+    Returns:
+        File content or None if not found
+    """
+    file_storage = get_file_storage()
+    return await file_storage.get_upload(upload_id_or_filename)
+
+
+async def delete_uploaded_file(upload_id_or_filename: str) -> bool:
+    """
+    Delete an uploaded file.
+
+    Args:
+        upload_id_or_filename: Upload ID or full filename
+
+    Returns:
+        True if deleted, False if not found
+    """
+    file_storage = get_file_storage()
+    return await file_storage.delete_upload(upload_id_or_filename)
+
+
+def _sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename to prevent path traversal and ensure safe storage.
+
+    Args:
+        filename: Original filename
+
+    Returns:
+        Sanitized filename
+    """
+    import os
+    import re
+
+    # Get just the filename part (no path)
+    filename = os.path.basename(filename)
+
+    # Remove any non-alphanumeric characters except . - _
+    filename = re.sub(r"[^\w.\-]", "_", filename)
+
+    # Limit length
+    if len(filename) > 200:
+        name, ext = os.path.splitext(filename)
+        filename = name[:200 - len(ext)] + ext
+
+    return filename
 
 
 def _validate_file_request(

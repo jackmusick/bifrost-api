@@ -13,6 +13,7 @@ python-multipart>=0.0.6  # Form data handling
 # =============================================================================
 sqlalchemy[asyncio]>=2.0.25
 asyncpg>=0.29.0  # Async PostgreSQL driver
+psycopg2-binary>=2.9.0  # Sync PostgreSQL driver (for Alembic migrations)
 alembic>=1.13.0  # Database migrations
 greenlet>=3.0.0  # Required by SQLAlchemy async
 
@@ -38,7 +39,7 @@ cryptography>=41.0.0  # Encryption utilities
 # =============================================================================
 # Configuration
 # =============================================================================
-pydantic>=2.5.0
+pydantic[email]>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 

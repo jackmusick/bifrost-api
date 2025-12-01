@@ -21,11 +21,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create enum types first
-    op.execute("CREATE TYPE user_type AS ENUM ('PLATFORM', 'ORG')")
-    op.execute("CREATE TYPE form_access_level AS ENUM ('public', 'authenticated', 'role_based')")
-    op.execute("CREATE TYPE execution_status AS ENUM ('Pending', 'Running', 'Success', 'Failed', 'Timeout', 'CompletedWithErrors', 'Cancelling', 'Cancelled')")
-    op.execute("CREATE TYPE config_type AS ENUM ('string', 'int', 'bool', 'json', 'secret_ref')")
+    # Create enum types first (PostgreSQL doesn't support IF NOT EXISTS for CREATE TYPE)
+    # Using DO block to conditionally create if not exists
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE user_type AS ENUM ('PLATFORM', 'ORG');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE form_access_level AS ENUM ('public', 'authenticated', 'role_based');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE execution_status AS ENUM ('Pending', 'Running', 'Success', 'Failed', 'Timeout', 'CompletedWithErrors', 'Cancelling', 'Cancelled');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE config_type AS ENUM ('string', 'int', 'bool', 'json', 'secret');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     # Organizations table
     op.create_table(
@@ -55,7 +80,7 @@ def upgrade() -> None:
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('is_superuser', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('is_verified', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('user_type', sa.Enum('PLATFORM', 'ORG', name='user_type'), nullable=False, server_default='ORG'),
+        sa.Column('user_type', postgresql.ENUM('PLATFORM', 'ORG', name='user_type', create_type=False), nullable=False, server_default='ORG'),
         sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -101,22 +126,36 @@ def upgrade() -> None:
         'forms',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('slug', sa.String(100), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('workflow_name', sa.String(255), nullable=False),
-        sa.Column('schema', postgresql.JSONB(), nullable=False),
-        sa.Column('access_level', sa.Enum('public', 'authenticated', 'role_based', name='form_access_level'), nullable=False, server_default='role_based'),
-        sa.Column('settings', postgresql.JSONB(), nullable=False, server_default='{}'),
-        sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('linked_workflow', sa.String(255), nullable=True),
+        sa.Column('launch_workflow_id', sa.String(255), nullable=True),
+        sa.Column('default_launch_params', postgresql.JSONB(), nullable=True),
+        sa.Column('allowed_query_params', postgresql.JSONB(), nullable=True),
+        sa.Column('form_schema', postgresql.JSONB(), nullable=True),
+        sa.Column('assigned_roles', postgresql.JSONB(), nullable=True),
+        sa.Column('access_level', postgresql.ENUM('public', 'authenticated', 'role_based', name='form_access_level', create_type=False), nullable=False, server_default='role_based'),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('created_by', sa.String(255), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['organization_id'], ['organizations.id']),
         sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_forms_organization_slug', 'forms', ['organization_id', 'slug'], unique=True)
-    op.create_index('ix_forms_workflow_name', 'forms', ['workflow_name'])
+    op.create_index('ix_forms_organization_id', 'forms', ['organization_id'])
+    op.create_index('ix_forms_linked_workflow', 'forms', ['linked_workflow'])
+
+    # Form-Role association table
+    op.create_table(
+        'form_roles',
+        sa.Column('form_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('role_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('assigned_by', sa.String(255), nullable=False),
+        sa.Column('assigned_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['role_id'], ['roles.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('form_id', 'role_id')
+    )
 
     # Executions table
     op.create_table(
@@ -124,7 +163,7 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('workflow_name', sa.String(255), nullable=False),
         sa.Column('workflow_version', sa.String(50), nullable=True),
-        sa.Column('status', sa.Enum('Pending', 'Running', 'Success', 'Failed', 'Timeout', 'CompletedWithErrors', 'Cancelling', 'Cancelled', name='execution_status'), nullable=False, server_default='Pending'),
+        sa.Column('status', postgresql.ENUM('Pending', 'Running', 'Success', 'Failed', 'Timeout', 'CompletedWithErrors', 'Cancelling', 'Cancelled', name='execution_status', create_type=False), nullable=False, server_default='Pending'),
         sa.Column('parameters', postgresql.JSONB(), nullable=False, server_default='{}'),
         sa.Column('result', postgresql.JSONB(), nullable=True),
         sa.Column('result_type', sa.String(50), nullable=True),
@@ -155,7 +194,7 @@ def upgrade() -> None:
         sa.Column('execution_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('level', sa.String(20), nullable=False),
         sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('metadata', postgresql.JSONB(), nullable=True),
+        sa.Column('log_metadata', postgresql.JSONB(), nullable=True),
         sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['execution_id'], ['executions.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id')
@@ -169,7 +208,7 @@ def upgrade() -> None:
         sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('key', sa.String(255), nullable=False),
         sa.Column('value', postgresql.JSONB(), nullable=False),
-        sa.Column('config_type', sa.Enum('string', 'int', 'bool', 'json', 'secret_ref', name='config_type'), nullable=False, server_default='string'),
+        sa.Column('config_type', postgresql.ENUM('string', 'int', 'bool', 'json', 'secret', name='config_type', create_type=False), nullable=False, server_default='string'),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -179,19 +218,24 @@ def upgrade() -> None:
     )
     op.create_index('ix_configs_org_key', 'configs', ['organization_id', 'key'], unique=True)
 
-    # Secrets table
+    # Workflow keys table (API keys for workflow execution)
     op.create_table(
-        'secrets',
+        'workflow_keys',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('encrypted_value', sa.LargeBinary(), nullable=False),
+        sa.Column('workflow_name', sa.String(255), nullable=True),  # NULL = global key
+        sa.Column('hashed_key', sa.String(64), nullable=False),  # SHA-256 hash
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('created_by', sa.String(255), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id']),
+        sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('revoked', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('revoked_by', sa.String(255), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_secrets_org_name', 'secrets', ['organization_id', 'name'], unique=True)
+    op.create_index('ix_workflow_keys_hashed', 'workflow_keys', ['hashed_key'])
+    op.create_index('ix_workflow_keys_workflow', 'workflow_keys', ['workflow_name'])
 
     # OAuth providers table
     op.create_table(
@@ -199,10 +243,18 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('provider_name', sa.String(100), nullable=False),
+        sa.Column('display_name', sa.String(255), nullable=True),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('oauth_flow_type', sa.String(50), nullable=False, server_default='authorization_code'),
         sa.Column('client_id', sa.String(255), nullable=False),
         sa.Column('encrypted_client_secret', sa.LargeBinary(), nullable=False),
+        sa.Column('authorization_url', sa.String(500), nullable=True),
+        sa.Column('token_url', sa.String(500), nullable=True),
         sa.Column('scopes', postgresql.JSONB(), nullable=False, server_default='[]'),
-        sa.Column('metadata', postgresql.JSONB(), nullable=False, server_default='{}'),
+        sa.Column('redirect_uri', sa.String(500), nullable=True),
+        sa.Column('status', sa.String(50), nullable=False, server_default='not_connected'),
+        sa.Column('provider_metadata', postgresql.JSONB(), nullable=False, server_default='{}'),
+        sa.Column('created_by', sa.String(255), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['organization_id'], ['organizations.id']),
@@ -255,10 +307,11 @@ def downgrade() -> None:
     op.drop_table('audit_logs')
     op.drop_table('oauth_tokens')
     op.drop_table('oauth_providers')
-    op.drop_table('secrets')
+    op.drop_table('workflow_keys')
     op.drop_table('configs')
     op.drop_table('execution_logs')
     op.drop_table('executions')
+    op.drop_table('form_roles')
     op.drop_table('forms')
     op.drop_table('user_roles')
     op.drop_table('roles')

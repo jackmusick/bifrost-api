@@ -106,15 +106,24 @@ async def execute_workflow(
 
     try:
         # Build context for execution
-        from shared.context import ExecutionContext as SharedContext
+        from uuid import uuid4
+        from shared.context import ExecutionContext as SharedContext, Organization
+
+        # Create organization object if org_id is set
+        org = None
+        if ctx.org_id:
+            org = Organization(id=str(ctx.org_id), name="", is_active=True)
 
         # Create shared context compatible with existing handlers
         shared_ctx = SharedContext(
             user_id=str(ctx.user.user_id),
             name=ctx.user.name,
             email=ctx.user.email,
+            scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+            organization=org,
             is_platform_admin=ctx.user.is_superuser,
-            org_id=str(ctx.org_id) if ctx.org_id else None,
+            is_function_key=False,
+            execution_id=str(uuid4()),
         )
 
         if request.code:
@@ -122,35 +131,35 @@ async def execute_workflow(
             result = await execute_code_logic(
                 context=shared_ctx,
                 code=request.code,
-                script_name=request.scriptName or "inline_script",
-                input_data=request.inputData,
+                script_name=request.script_name or "inline_script",
+                input_data=request.input_data,
                 transient=request.transient,
             )
         else:
             # Execute named workflow
-            if not request.workflowName:
+            if not request.workflow_name:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Either workflowName or code must be provided",
+                    detail="Either workflow_name or code must be provided",
                 )
 
             result = await execute_workflow_logic(
                 context=shared_ctx,
-                workflow_name=request.workflowName,
-                input_data=request.inputData,
-                form_id=request.formId,
+                workflow_name=request.workflow_name,
+                input_data=request.input_data,
+                form_id=request.form_id,
                 transient=request.transient,
             )
 
         # Publish execution update via WebSocket
-        if not request.transient and result.executionId:
+        if not request.transient and result.execution_id:
             await publish_execution_update(
-                execution_id=result.executionId,
+                execution_id=result.execution_id,
                 status=result.status.value,
                 data={
                     "result": result.result,
                     "error": result.error,
-                    "durationMs": result.durationMs,
+                    "duration_ms": result.duration_ms,
                 },
             )
 
@@ -215,20 +224,29 @@ async def scan_workspace(
     user: CurrentSuperuser,
 ) -> WorkspaceScanResponse:
     """Scan entire workspace for SDK dependencies and issues."""
+    from uuid import uuid4
     from shared.discovery import scan_all_forms
     from shared.services.sdk_usage_scanner import SDKUsageScanner
-    from shared.context import ExecutionContext as SharedContext
+    from shared.context import ExecutionContext as SharedContext, Organization
 
     try:
         workspace_path = os.environ.get("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")
+
+        # Create organization object if org_id is set
+        org = None
+        if ctx.org_id:
+            org = Organization(id=str(ctx.org_id), name="", is_active=True)
 
         # Create shared context
         shared_ctx = SharedContext(
             user_id=str(ctx.user.user_id),
             name=ctx.user.name,
             email=ctx.user.email,
+            scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+            organization=org,
             is_platform_admin=ctx.user.is_superuser,
-            org_id=str(ctx.org_id) if ctx.org_id else None,
+            is_function_key=False,
+            execution_id=str(uuid4()),
         )
 
         # Scan for SDK usage issues
@@ -276,19 +294,28 @@ async def scan_file(
     user: CurrentSuperuser,
 ) -> WorkspaceScanResponse:
     """Scan a single file for SDK dependencies."""
+    from uuid import uuid4
     from shared.services.sdk_usage_scanner import SDKUsageScanner
-    from shared.context import ExecutionContext as SharedContext
+    from shared.context import ExecutionContext as SharedContext, Organization
 
     try:
         workspace_path = os.environ.get("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")
+
+        # Create organization object if org_id is set
+        org = None
+        if ctx.org_id:
+            org = Organization(id=str(ctx.org_id), name="", is_active=True)
 
         # Create shared context
         shared_ctx = SharedContext(
             user_id=str(ctx.user.user_id),
             name=ctx.user.name,
             email=ctx.user.email,
+            scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+            organization=org,
             is_platform_admin=ctx.user.is_superuser,
-            org_id=str(ctx.org_id) if ctx.org_id else None,
+            is_function_key=False,
+            execution_id=str(uuid4()),
         )
 
         scanner = SDKUsageScanner(workspace_path)

@@ -3,7 +3,6 @@ Integration tests for workflow dynamic discovery
 Tests that workflows are automatically discovered from workspace directories
 """
 
-import pytest
 
 from shared.discovery import scan_all_workflows, load_workflow
 

@@ -61,7 +61,7 @@ class GitSyncConsumer(BaseConsumer):
         org_id = message_data.get("org_id")
         connection_id = message_data.get("connection_id")
 
-        logger.info(f"Processing git sync operation", extra={"job_id": job_id, "org_id": org_id})
+        logger.info("Processing git sync operation", extra={"job_id": job_id, "org_id": org_id})
 
         async def send_log(message: str, level: str = "info"):
             """Send log message via WebSocket."""
@@ -172,7 +172,7 @@ class GitSyncConsumer(BaseConsumer):
         org_id = message_data.get("org_id")
         connection_id = message_data.get("connection_id")
 
-        logger.info(f"Processing git refresh operation", extra={"job_id": job_id, "org_id": org_id})
+        logger.info("Processing git refresh operation", extra={"job_id": job_id, "org_id": org_id})
 
         async def send_log(message: str, level: str = "info"):
             if connection_id:

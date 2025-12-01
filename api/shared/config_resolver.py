@@ -1,47 +1,34 @@
 """
-Configuration resolver with transparent secret reference resolution.
+Configuration resolver with transparent secret handling.
 
-This module provides unified configuration access that automatically resolves
-secret references from Azure Key Vault based on config type.
+This module provides unified configuration access that automatically decrypts
+secret values stored in the Config table.
 """
 
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from .keyvault import KeyVaultClient
 from .models import ConfigType
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
 
 class ConfigResolver:
     """
-    Resolves configuration values with transparent secret reference handling.
+    Resolves configuration values with transparent secret handling.
 
     Features:
-    - Automatic config type detection (secret_ref vs plain values)
-    - Transparent secret resolution from Key Vault
-    - Org-scoped → global fallback for secrets
-    - Local development fallback support
-    - Audit logging for secret access (without logging values)
+    - Automatic config type detection (secret vs plain values)
+    - Transparent decryption for secret type configs
+    - Type parsing for int, bool, json types
     """
 
-    def __init__(self, keyvault_client: KeyVaultClient | None = None):
-        """
-        Initialize the configuration resolver.
-
-        Args:
-            keyvault_client: Optional KeyVaultClient instance
-                           If None, will be created automatically
-        """
-        if keyvault_client:
-            self.keyvault_client = keyvault_client
-        else:
-            try:
-                self.keyvault_client = KeyVaultClient()
-            except Exception as e:
-                logger.warning(f"Failed to initialize KeyVaultClient: {e}. Secret references will not be available.")
-                self.keyvault_client = None
+    def __init__(self):
+        """Initialize the configuration resolver."""
+        pass
 
     async def get_config(
         self,
@@ -51,28 +38,28 @@ class ConfigResolver:
         default: Any = ...,  # Sentinel value to distinguish None from "not provided"
     ) -> Any:
         """
-        Get configuration value with transparent secret reference resolution.
+        Get configuration value with transparent secret decryption.
 
         Logic:
         1. Check if key exists in config_data
         2. Determine config type (if available)
-        3. If type is secret_ref, resolve from Key Vault
-        4. Otherwise, return plain value
+        3. If type is secret, decrypt the value
+        4. Otherwise, return/parse plain value
         5. If key not found, return default or raise KeyError
 
         Args:
             org_id: Organization identifier
             key: Configuration key
-            config_data: Configuration dictionary (from Table Storage)
-                        Expected format: {key: {"value": "...", "type": "secret_ref"}}
+            config_data: Configuration dictionary
+                        Expected format: {key: {"value": "...", "type": "secret"}}
                         or {key: "plain_value"}
             default: Default value if key not found. If not provided, raises KeyError.
 
         Returns:
-            Configuration value (with secret resolved if needed)
+            Configuration value (with secret decrypted if needed)
 
         Raises:
-            KeyError: If key not found and no default provided, or if secret reference cannot be resolved
+            KeyError: If key not found and no default provided
         """
         # Check if key exists
         if key not in config_data:
@@ -93,85 +80,44 @@ class ConfigResolver:
             config_type = config_entry.get("type")
             config_value = config_entry.get("value")
 
-            # If type is secret_ref, resolve from Key Vault
-            if config_type == ConfigType.SECRET_REF.value or config_type == "secret_ref":
-                assert config_value is not None, f"secret_ref value is None for key '{key}'"
-                return await self._resolve_secret_ref(org_id, key, config_value)
+            if config_value is None:
+                raise ValueError(f"Config value is None for key '{key}'")
 
-            # Otherwise return plain value
+            # If type is secret, decrypt the value
+            if config_type == ConfigType.SECRET.value or config_type == "secret":
+                return self._decrypt_secret(key, config_value)
+
+            # Otherwise return parsed plain value
             logger.debug(f"Retrieved plain config value: {key} (type: {config_type})")
-            assert config_value is not None, f"config value is None for key '{key}'"
             return self._parse_value(config_value, config_type)
 
         # Fallback: return value as-is
         logger.debug(f"Retrieved config value: {key}")
         return config_entry
 
-    async def _resolve_secret_ref(self, org_id: str, config_key: str, secret_ref: str) -> str:
+    def _decrypt_secret(self, config_key: str, encrypted_value: str) -> str:
         """
-        Resolve a secret reference from Key Vault.
+        Decrypt a secret value.
 
         Args:
-            org_id: Organization identifier
             config_key: Configuration key (for logging)
-            secret_ref: Secret reference value (the secret key to look up)
+            encrypted_value: The encrypted value to decrypt
 
         Returns:
-            Secret value from Key Vault
+            Decrypted secret value
 
         Raises:
-            ValueError: If secret not found in Key Vault or local config, or if Key Vault client not available
+            ValueError: If decryption fails
         """
-        # Check if Key Vault client is available
-        if not self.keyvault_client:
-            raise ValueError(
-                f"Key Vault client not available for secret reference resolution. "
-                f"Cannot resolve secret '{secret_ref}' for config '{config_key}'."
-            )
-
-        if not self.keyvault_client._client and not self.keyvault_client.vault_url:
-            raise ValueError(
-                f"Key Vault client not available for secret reference resolution. "
-                f"Cannot resolve secret '{secret_ref}' for config '{config_key}'."
-            )
-
         try:
-            # Log access attempt (without value)
-            logger.info(
-                f"Resolving secret reference for config '{config_key}'",
-                extra={
-                    "org_id": org_id,
-                    "config_key": config_key,
-                    "secret_ref": secret_ref
-                }
-            )
+            from src.core.security import decrypt_secret
 
-            # Get secret from Key Vault (secret_ref is already the full reference)
-            secret_value = await self.keyvault_client.get_secret(secret_ref)
+            logger.debug(f"Decrypting secret for config '{config_key}'")
+            return decrypt_secret(encrypted_value)
 
-            # Log successful resolution (without value)
-            logger.info(
-                f"Successfully resolved secret for config '{config_key}'",
-                extra={
-                    "org_id": org_id,
-                    "config_key": config_key,
-                    "secret_ref": secret_ref
-                }
-            )
-
-            return secret_value
-
-        except KeyError as e:
-            # Log failure with actionable error message
-            error_msg = (
-                f"Secret reference not found for config '{config_key}': {secret_ref}. "
-                f"Verify the secret exists in Key Vault or local configuration."
-            )
-            logger.error(error_msg, extra={
-                "org_id": org_id,
-                "config_key": config_key,
-                "secret_ref": secret_ref
-            })
+        except Exception as e:
+            error_msg = f"Failed to decrypt secret for config '{config_key}': {str(e)}"
+            logger.error(error_msg, exc_info=True)
             raise ValueError(error_msg) from e
 
     def _parse_value(self, value: str, config_type: str | None) -> Any:
@@ -180,7 +126,7 @@ class ConfigResolver:
 
         Args:
             value: String value from config
-            config_type: Config type (string, int, bool, json, secret_ref)
+            config_type: Config type (string, int, bool, json, secret)
 
         Returns:
             Parsed value in appropriate type

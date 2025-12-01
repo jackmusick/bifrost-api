@@ -220,7 +220,7 @@ async def is_platform_admin(user_id: str) -> bool:
     Returns:
         True if platform admin, False otherwise
     """
-    from shared.repositories.users import UserRepository
+    from src.repositories.users import UserRepository
 
     try:
         user_repo = UserRepository()
@@ -243,7 +243,7 @@ async def get_user_org_id(user_id: str) -> str | None:
     Returns:
         Organization ID or None if not found
     """
-    from shared.repositories.users import UserRepository
+    from src.repositories.users import UserRepository
 
     try:
         user_repo = UserRepository()

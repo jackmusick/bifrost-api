@@ -7,15 +7,17 @@ Supports JWT bearer token authentication with user context injection.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from src.config import get_settings
 from src.core.database import DbSession
 from src.core.security import decode_token
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ class ExecutionContext:
     """
     user: UserPrincipal
     org_id: UUID | None
-    db: object  # AsyncSession, but avoid circular import
+    db: "AsyncSession"
 
     @property
     def scope(self) -> str:
@@ -81,6 +83,11 @@ class ExecutionContext:
     def is_global_scope(self) -> bool:
         """Check if operating in global scope."""
         return self.org_id is None
+
+    @property
+    def is_platform_admin(self) -> bool:
+        """Check if user is a platform admin (superuser)."""
+        return self.user.is_platform_admin
 
 
 async def get_current_user_optional(
@@ -308,6 +315,40 @@ CurrentUser = Annotated[UserPrincipal, Depends(get_current_user)]
 CurrentActiveUser = Annotated[UserPrincipal, Depends(get_current_active_user)]
 CurrentSuperuser = Annotated[UserPrincipal, Depends(get_current_superuser)]
 Context = Annotated[ExecutionContext, Depends(get_execution_context)]
+
+
+async def get_current_user_from_db(
+    current_user: UserPrincipal,
+    db,  # DbSession - avoid circular import
+):
+    """
+    Get the actual User model from database.
+
+    This is needed when you need to access user relationships (MFA methods, etc.)
+    that aren't available on the UserPrincipal dataclass.
+
+    Args:
+        current_user: UserPrincipal from JWT
+        db: Database session
+
+    Returns:
+        User model from database
+
+    Raises:
+        HTTPException: If user not found
+    """
+    from src.repositories.users import UserRepository
+
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(current_user.user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return user
 
 
 async def get_current_user_ws(websocket) -> UserPrincipal | None:

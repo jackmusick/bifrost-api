@@ -64,7 +64,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: api/Dockerfile.api
     container_name: bifrost-test-api
     environment:
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
@@ -81,11 +81,11 @@ services:
     ports:
       - "18000:8000"  # Offset port
     volumes:
-      - ./src:/app/src:ro
-      - ./shared:/app/shared:ro
-      - ./bifrost:/app/bifrost:ro
-      - ./platform:/app/platform  # Read-write for E2E tests (forms are JSON files)
-      - ./alembic:/app/alembic:ro
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform  # Read-write for E2E tests (forms are JSON files)
+      - ./api/alembic:/app/alembic:ro
       - test-mounts:/mounts  # Persistent mounts for file uploads during E2E tests
     depends_on:
       postgres:
@@ -106,7 +106,7 @@ services:
   jobs:
     build:
       context: .
-      dockerfile: Dockerfile.jobs
+      dockerfile: api/Dockerfile.jobs
     container_name: bifrost-test-jobs
     environment:
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
@@ -118,10 +118,10 @@ services:
       BIFROST_ENVIRONMENT: testing
       BIFROST_WORKSPACE_LOCATION: /app/platform
     volumes:
-      - ./src:/app/src:ro
-      - ./shared:/app/shared:ro
-      - ./bifrost:/app/bifrost:ro
-      - ./platform:/app/platform:ro
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,7 +136,7 @@ services:
   test-runner:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: api/Dockerfile.api
     container_name: bifrost-test-runner
     environment:
       # Point to test infrastructure (internal docker network)
@@ -154,15 +154,15 @@ services:
       TEST_API_URL: http://api:8000
       PYTHONPATH: /app
     volumes:
-      - ./src:/app/src:ro
-      - ./shared:/app/shared:ro
-      - ./bifrost:/app/bifrost:ro
-      - ./platform:/app/platform:ro
-      - ./tests:/app/tests:ro
-      - ./alembic:/app/alembic:ro
-      - ./alembic.ini:/app/alembic.ini:ro
-      - ./pytest.ini:/app/pytest.ini:ro
-      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
+      - ./api/tests:/app/tests:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
+      - ./api/pytest.ini:/app/pytest.ini:ro
+      - ./api/pyproject.toml:/app/pyproject.toml:ro
     working_dir: /app
     depends_on:
       postgres:

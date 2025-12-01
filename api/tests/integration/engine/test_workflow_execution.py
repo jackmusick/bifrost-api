@@ -9,7 +9,6 @@ import pytest
 
 from shared.context import Organization, ExecutionContext
 from shared.context import Caller
-from shared.models import ExecutionStatus
 
 
 @pytest.fixture

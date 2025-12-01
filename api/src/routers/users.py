@@ -7,18 +7,15 @@ API-compatible with the existing Azure Functions implementation.
 
 import logging
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import ValidationError
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing Pydantic models for API compatibility
 from shared.models import (
     CreateUserRequest,
-    ErrorResponse,
     UpdateUserRequest,
     User,
     UserFormsResponse,
@@ -26,7 +23,7 @@ from shared.models import (
     UserType,
 )
 
-from src.core.auth import CurrentSuperuser, UserPrincipal
+from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
 from src.models.database import User as UserModel, UserRole as UserRoleModel, FormRole as FormRoleModel
 
@@ -52,13 +49,13 @@ class UserManagementRepository:
         org_id: UUID | None = None,
     ) -> list[User]:
         """List users with optional filtering."""
-        query = select(UserModel).where(UserModel.is_active == True)
+        query = select(UserModel).where(UserModel.is_active)
 
         if user_type:
             if user_type.lower() == "platform":
-                query = query.where(UserModel.is_superuser == True)
+                query = query.where(UserModel.is_superuser)
             elif user_type.lower() == "org":
-                query = query.where(UserModel.is_superuser == False)
+                query = query.where(not UserModel.is_superuser)
 
         if org_id:
             query = query.where(UserModel.organization_id == org_id)

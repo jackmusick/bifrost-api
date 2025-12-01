@@ -240,7 +240,7 @@ async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> M
     forms = []
     if context:
         # Use authorization logic to get filtered forms
-        from shared.authorization import get_user_visible_forms
+        from shared.handlers.forms_handlers import get_user_visible_forms
         user_forms_dicts = await get_user_visible_forms(context)
 
         # Convert dicts to FormDiscoveryMetadata models

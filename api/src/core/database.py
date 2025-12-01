@@ -16,14 +16,9 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 
 from src.config import Settings, get_settings
-
-
-class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy models."""
-    pass
+from src.models.orm import Base  # noqa: F401 - imported for Alembic
 
 
 # Global engine and session factory (initialized on startup)
@@ -106,6 +101,29 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 # Type alias for dependency injection
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_optional_db() -> AsyncGenerator[AsyncSession | None, None]:
+    """
+    Dependency for optional database sessions.
+
+    Use for endpoints that may not always need the database.
+
+    Yields:
+        AsyncSession or None
+    """
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+# Type alias for optional database injection
+OptionalDbSession = Annotated[AsyncSession | None, Depends(get_optional_db)]
 
 
 @asynccontextmanager

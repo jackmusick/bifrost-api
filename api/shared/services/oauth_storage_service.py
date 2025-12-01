@@ -1,865 +1,444 @@
 """
 OAuth Storage Service
-Handles CRUD operations for OAuth connections with Config table integration
+Handles CRUD operations for OAuth connections using PostgreSQL with encrypted fields.
 """
 
-import json
 import logging
 from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from cryptography.fernet import Fernet
 
 from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
-from shared.keyvault import KeyVaultClient
-from shared.async_storage import AsyncTableStorageService
-from shared.secret_naming import generate_oauth_secret_name
 
 logger = logging.getLogger(__name__)
 
 
+def _get_encryption_key() -> bytes:
+    """Get encryption key from settings."""
+    from src.config import get_settings
+    settings = get_settings()
+    # Use first 32 bytes of secret key as Fernet key (base64 encoded)
+    import base64
+    key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
+    return base64.urlsafe_b64encode(key_bytes)
+
+
+def _encrypt(value: str) -> bytes:
+    """Encrypt a string value."""
+    f = Fernet(_get_encryption_key())
+    return f.encrypt(value.encode())
+
+
+def _decrypt(value: bytes) -> str:
+    """Decrypt bytes to string."""
+    f = Fernet(_get_encryption_key())
+    return f.decrypt(value).decode()
+
+
 class OAuthStorageService:
     """
-    Service for managing OAuth connections in Table Storage and Config table
+    Service for managing OAuth connections in PostgreSQL.
 
     Responsibilities:
-    - CRUD operations for OAuthConnections table
-    - Store client_secret in Config table with Type="secret_ref"
-    - Store OAuth response tokens in Config table with Type="secret_ref"
-    - Store metadata in Config table with Type="json"
+    - CRUD operations for OAuthProvider table
+    - Store client_secret encrypted in database
+    - Store OAuth tokens encrypted in OAuthToken table
     - Implement org→GLOBAL fallback pattern
     """
 
-    def __init__(self, connection_string: str | None = None):
-        """
-        Initialize OAuth storage service
-
-        Args:
-            connection_string: Optional Azure Storage connection string override
-        """
-        self.config_table = AsyncTableStorageService("Config", connection_string or None)
-
-        logger.info("OAuthStorageService initialized with Config table only")
+    def __init__(self):
+        """Initialize OAuth storage service."""
+        logger.info("OAuthStorageService initialized with PostgreSQL")
 
     async def create_connection(
         self,
-        org_id: str,
+        org_id: str | None,
         request: CreateOAuthConnectionRequest,
         created_by: str
     ) -> OAuthConnection:
         """
-        Create a new OAuth connection
-
-        Process:
-        1. Create OAuth entity with oauth: prefix
-        2. Store client_secret in Key Vault (if provided)
-        3. Store metadata in OAuth entity with direct refs
+        Create a new OAuth connection/provider.
 
         Args:
-            org_id: Organization ID or "GLOBAL"
-            request: OAuth connection creation request
-            created_by: User ID creating the connection
+            org_id: Organization ID or None for GLOBAL
+            request: Connection creation request
+            created_by: Email of user creating the connection
 
         Returns:
             Created OAuthConnection
-
-        Raises:
-            ResourceExistsError: If connection with same name already exists
         """
-        now = datetime.utcnow()
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider
 
-        # Generate Key Vault secret names
-        client_secret_ref = None
-        if request.client_secret:
-            try:
-                async with KeyVaultClient() as keyvault:
-                    # Generate full KV secret name using bifrost_{scope}_oauth_{name}_{type}_{uuid}
-                    client_secret_ref = generate_oauth_secret_name(
-                        org_id,
-                        request.connection_name,
-                        "client-secret"
-                    )
-                    await keyvault.set_secret(client_secret_ref, request.client_secret)
-                    logger.info(f"Stored client_secret in Key Vault: {client_secret_ref}")
-            except ValueError as e:
-                # KeyVault not configured (e.g., in test environment)
-                logger.warning(f"KeyVault not available for client_secret storage: {e}")
-                logger.warning("Client secret will not be persisted - OAuth connection may not work in production")
-            except Exception as e:
-                logger.error(f"Failed to store client_secret in Key Vault: {e}")
-                raise
-        else:
-            logger.info(f"No client secret provided (PKCE flow) for {request.connection_name}")
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
-        # Store OAuth entity with oauth: prefix
-        oauth_entity = {
-            "PartitionKey": org_id,
-            "RowKey": f"oauth:{request.connection_name}",
-            "Type": "oauth",
-            "Description": request.description or f"OAuth connection: {request.connection_name}",
-            "OAuthFlowType": request.oauth_flow_type,
-            "ClientId": request.client_id,
-            "ClientSecretRef": client_secret_ref,  # Full KV secret name or None
-            "OAuthResponseRef": None,  # Will be set when tokens are stored
-            "AuthorizationUrl": request.authorization_url,
-            "TokenUrl": request.token_url,
-            "Scopes": request.scopes,
-            "RedirectUri": f"/oauth/callback/{request.connection_name}",
-            "Status": "not_connected",
-            "CreatedBy": created_by,
-            "CreatedAt": now.isoformat(),
-            "UpdatedAt": now.isoformat()
-        }
+            # Encrypt client secret
+            encrypted_secret = _encrypt(request.client_secret)
 
-        await self.config_table.insert_entity(oauth_entity)
-        logger.info(f"Created OAuth connection: {request.connection_name}")
+            provider = OAuthProvider(
+                organization_id=org_uuid,
+                provider_name=request.connection_name,
+                client_id=request.client_id,
+                encrypted_client_secret=encrypted_secret,
+                scopes=request.scopes.split(",") if request.scopes else [],
+                provider_metadata={
+                    "authorization_url": request.authorization_url,
+                    "token_url": request.token_url,
+                    "redirect_uri": request.redirect_uri or f"/oauth/callback/{request.connection_name}",
+                    "oauth_flow_type": request.oauth_flow_type,
+                    "description": request.description,
+                    "created_by": created_by,
+                    "status": "not_connected"
+                }
+            )
+            db.add(provider)
+            await db.commit()
+            await db.refresh(provider)
 
-        # Create OAuth connection model
-        connection = OAuthConnection(
-            org_id=org_id,
-            connection_name=request.connection_name,
-            description=request.description,
-            oauth_flow_type=request.oauth_flow_type,
-            client_id=request.client_id,
-            client_secret_ref=client_secret_ref or "",
-            oauth_response_ref="",
-            authorization_url=request.authorization_url,
-            token_url=request.token_url,
-            scopes=request.scopes,
-            redirect_uri=f"/oauth/callback/{request.connection_name}",
-            status="not_connected",
-            created_by=created_by,
-            created_at=now,
-            updated_at=now,
-            expires_at=None
-        )
-
-        return connection
+            return self._to_connection_model(provider)
 
     async def get_connection(
         self,
-        org_id: str,
+        org_id: str | None,
         connection_name: str
     ) -> OAuthConnection | None:
         """
-        Get OAuth connection with org→GLOBAL fallback
+        Get OAuth connection by name with org→GLOBAL fallback.
 
         Args:
-            org_id: Organization ID
-            connection_name: Connection name
+            org_id: Organization ID or None for GLOBAL
+            connection_name: Name of the connection
 
         Returns:
             OAuthConnection or None if not found
         """
-        oauth_rowkey = f"oauth:{connection_name}"
+        from sqlalchemy import select, or_
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider
 
-        try:
-            # First, try org-specific OAuth entity
-            oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
-            if oauth_entity:
-                logger.debug(f"Found org-specific OAuth connection: {connection_name} for org {org_id}")
-                return self._entity_to_oauth_connection(oauth_entity)
+            # Try org-specific first, then GLOBAL fallback
+            if org_uuid:
+                query = select(OAuthProvider).where(
+                    OAuthProvider.provider_name == connection_name,
+                    or_(
+                        OAuthProvider.organization_id == org_uuid,
+                        OAuthProvider.organization_id.is_(None)
+                    )
+                ).order_by(OAuthProvider.organization_id.desc().nulls_last())
+            else:
+                query = select(OAuthProvider).where(
+                    OAuthProvider.provider_name == connection_name,
+                    OAuthProvider.organization_id.is_(None)
+                )
 
-            # If not found, try GLOBAL
-            if org_id != "GLOBAL":
-                global_oauth_entity = await self.config_table.get_entity("GLOBAL", oauth_rowkey)
+            result = await db.execute(query)
+            provider = result.scalars().first()
 
-                if global_oauth_entity:
-                    logger.debug(f"Found GLOBAL OAuth connection: {connection_name}")
-                    return self._entity_to_oauth_connection(global_oauth_entity)
-        except Exception as e:
-            logger.warning(f"Error retrieving OAuth connection: {e}")
-
-        logger.debug(f"OAuth connection not found: {connection_name} (org: {org_id})")
-        return None
-
-    async def list_connections(
-        self,
-        org_id: str,
-        include_global: bool = True
-    ) -> list[OAuthConnection]:
-        """
-        List OAuth connections for an organization
-
-        Args:
-            org_id: Organization ID
-            include_global: Whether to include GLOBAL connections
-
-        Returns:
-            List of OAuthConnection
-        """
-        connections = []
-
-        try:
-            # Query OAuth entities for org
-            org_query_filter = f"PartitionKey eq '{org_id}' and RowKey ge 'oauth:' and RowKey lt 'oauth;'"
-            org_oauth_entities = list(await self.config_table.query_entities(filter=org_query_filter))
-
-            # Process org-specific connections
-            for oauth_entity in org_oauth_entities:
-                connection = self._entity_to_oauth_connection(oauth_entity)
-                if connection:
-                    connections.append(connection)
-
-            # Add GLOBAL connections if requested
-            if include_global and org_id != "GLOBAL":
-                global_query_filter = "PartitionKey eq 'GLOBAL' and RowKey ge 'oauth:' and RowKey lt 'oauth;'"
-                global_oauth_entities = list(await self.config_table.query_entities(filter=global_query_filter))
-
-                for oauth_entity in global_oauth_entities:
-                    connection = self._entity_to_oauth_connection(oauth_entity)
-                    if connection:
-                        connections.append(connection)
-
-            logger.info(f"Listed {len(connections)} OAuth connections for org {org_id} (include_global={include_global})")
-
-        except Exception as e:
-            logger.warning(f"Error listing OAuth connections: {e}")
-
-        return connections
+            if provider:
+                return self._to_connection_model(provider)
+            return None
 
     async def update_connection(
         self,
-        org_id: str,
+        org_id: str | None,
         connection_name: str,
         request: UpdateOAuthConnectionRequest,
         updated_by: str
     ) -> OAuthConnection | None:
         """
-        Update an existing OAuth connection
+        Update an OAuth connection.
 
         Args:
-            org_id: Organization ID
-            connection_name: Connection name
-            request: Update request with optional fields
-            updated_by: User ID making the update
+            org_id: Organization ID or None for GLOBAL
+            connection_name: Name of the connection to update
+            request: Update request
+            updated_by: Email of user updating
 
         Returns:
             Updated OAuthConnection or None if not found
         """
-        # Retrieve current OAuth entity
-        oauth_rowkey = f"oauth:{connection_name}"
-        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider
 
-        if not oauth_entity:
-            logger.warning(f"OAuth connection not found for update: {connection_name}")
-            return None
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
-        # Update fields if provided
-        if request.client_id is not None:
-            oauth_entity['ClientId'] = request.client_id
-        if request.authorization_url is not None:
-            oauth_entity['AuthorizationUrl'] = request.authorization_url
-        if request.token_url is not None:
-            oauth_entity['TokenUrl'] = request.token_url
-        if request.scopes is not None:
-            oauth_entity['Scopes'] = request.scopes
+            query = select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name,
+                OAuthProvider.organization_id == org_uuid
+            )
+            result = await db.execute(query)
+            provider = result.scalars().first()
 
-        # Update client_secret if provided - version the existing ref
-        if request.client_secret is not None:
-            try:
-                async with KeyVaultClient() as keyvault:
-                    # Get existing ref or generate new one if none exists
-                    client_secret_ref = oauth_entity.get('ClientSecretRef')
-
-                    if not client_secret_ref:
-                        # First time setting client secret - generate new ref
-                        client_secret_ref = generate_oauth_secret_name(
-                            org_id,
-                            connection_name,
-                            "client-secret"
-                        )
-                        oauth_entity['ClientSecretRef'] = client_secret_ref
-                        logger.info(f"Creating new client_secret in Key Vault: {client_secret_ref}")
-                    else:
-                        # Reuse existing ref - this creates a new version in Key Vault
-                        logger.info(f"Updating client_secret (new version) in Key Vault: {client_secret_ref}")
-
-                    await keyvault.set_secret(client_secret_ref, request.client_secret)
-            except ValueError as e:
-                # KeyVault not configured (e.g., in test environment)
-                logger.warning(f"KeyVault not available for client_secret update: {e}")
-                logger.warning("Client secret will not be persisted - OAuth connection may not work in production")
-            except Exception as e:
-                logger.error(f"Failed to update client_secret in Key Vault: {e}")
-                raise
-
-        # Mark as not connected if significant changes occurred
-        if request.client_id or request.client_secret or request.authorization_url or request.token_url:
-            oauth_entity['Status'] = 'not_connected'
-
-        # Update timestamps
-        oauth_entity['UpdatedAt'] = datetime.utcnow().isoformat()
-        oauth_entity['UpdatedBy'] = updated_by
-
-        await self.config_table.upsert_entity(oauth_entity)
-        logger.info(f"Updated OAuth connection: {connection_name}")
-
-        return self._entity_to_oauth_connection(oauth_entity)
-
-    def _entity_to_oauth_connection(self, entity: dict) -> OAuthConnection | None:
-        """
-        Convert Table Storage entity to OAuthConnection model
-
-        Args:
-            entity: OAuth entity from Table Storage
-
-        Returns:
-            OAuthConnection model or None if conversion fails
-        """
-        try:
-            # Parse datetime fields
-            created_at_str = entity.get("CreatedAt")
-            created_at = datetime.utcnow()
-            if created_at_str and isinstance(created_at_str, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-                except (ValueError, AttributeError, TypeError):
-                    pass
-            elif isinstance(created_at_str, datetime):
-                created_at = created_at_str
-
-            updated_at_str = entity.get("UpdatedAt")
-            updated_at = created_at
-            if updated_at_str and isinstance(updated_at_str, str):
-                try:
-                    updated_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
-                except (ValueError, AttributeError, TypeError):
-                    pass
-            elif isinstance(updated_at_str, datetime):
-                updated_at = updated_at_str
-
-            expires_at = None
-            expires_at_str = entity.get("ExpiresAt")
-            if expires_at_str and isinstance(expires_at_str, str):
-                try:
-                    expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                except (ValueError, AttributeError, TypeError):
-                    pass
-            elif isinstance(expires_at_str, datetime):
-                expires_at = expires_at_str
-
-            # Extract connection name from RowKey (remove "oauth:" prefix)
-            connection_name = entity["RowKey"].replace("oauth:", "", 1)
-
-            # Get oauth_flow_type, default to authorization_code if not set
-            oauth_flow_type = entity.get("OAuthFlowType", "authorization_code")
-
-            # Get URLs - use None instead of empty string for optional authorization_url
-            authorization_url = entity.get("AuthorizationUrl") or None
-            token_url = entity.get("TokenUrl")
-
-            # Token URL is required, must be https
-            if not token_url or not token_url.startswith("https://"):
-                logger.warning(f"Invalid or missing token_url for OAuth connection {connection_name}, skipping")
+            if not provider:
                 return None
 
-            return OAuthConnection(
-                org_id=entity["PartitionKey"],
-                connection_name=connection_name,
-                description=entity.get("Description"),
-                oauth_flow_type=oauth_flow_type,
-                client_id=entity.get("ClientId", ""),
-                client_secret_ref=entity.get("ClientSecretRef") or "",
-                oauth_response_ref=entity.get("OAuthResponseRef") or "",
-                authorization_url=authorization_url,
-                token_url=token_url,
-                scopes=entity.get("Scopes", ""),
-                redirect_uri=entity.get("RedirectUri", f"/oauth/callback/{connection_name}"),
-                status=entity.get("Status", "not_connected"),
-                status_message=entity.get("StatusMessage"),
-                expires_at=expires_at,
-                created_at=created_at,
-                created_by=entity.get("CreatedBy", "system"),
-                updated_at=updated_at
-            )
-        except Exception as e:
-            logger.error(f"Failed to convert OAuth entity to model: {e}", exc_info=True)
-            return None
+            # Update fields
+            if request.client_id:
+                provider.client_id = request.client_id
+            if request.client_secret:
+                provider.encrypted_client_secret = _encrypt(request.client_secret)
+            if request.scopes:
+                provider.scopes = request.scopes.split(",")
+
+            # Update metadata
+            metadata = dict(provider.provider_metadata)
+            if request.authorization_url:
+                metadata["authorization_url"] = request.authorization_url
+            if request.token_url:
+                metadata["token_url"] = request.token_url
+            metadata["updated_by"] = updated_by
+            provider.provider_metadata = metadata
+
+            await db.commit()
+            await db.refresh(provider)
+
+            return self._to_connection_model(provider)
 
     async def delete_connection(
         self,
-        org_id: str,
+        org_id: str | None,
         connection_name: str
     ) -> bool:
         """
-        Delete an OAuth connection and its associated secrets
+        Delete an OAuth connection and its tokens.
 
         Args:
-            org_id: Organization ID
-            connection_name: Connection name
+            org_id: Organization ID or None for GLOBAL
+            connection_name: Name of the connection to delete
 
         Returns:
             True if deleted, False if not found
         """
-        # Get the OAuth entity to find secret refs
-        oauth_rowkey = f"oauth:{connection_name}"
-        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+        from sqlalchemy import select, delete
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider, OAuthToken
 
-        if not oauth_entity:
-            logger.warning(f"OAuth connection not found for deletion: {connection_name}")
-            return False
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
-        # Delete secrets from Key Vault using direct refs
-        try:
-            async with KeyVaultClient() as keyvault:
-                client_secret_ref = oauth_entity.get("ClientSecretRef")
-                oauth_response_ref = oauth_entity.get("OAuthResponseRef")
+            query = select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name,
+                OAuthProvider.organization_id == org_uuid
+            )
+            result = await db.execute(query)
+            provider = result.scalars().first()
 
-                if client_secret_ref:
-                    try:
-                        await keyvault.delete_secret(client_secret_ref)
-                        logger.debug(f"Deleted Key Vault secret: {client_secret_ref}")
-                    except Exception as e:
-                        logger.debug(f"Could not delete Key Vault secret {client_secret_ref}: {e}")
+            if not provider:
+                return False
 
-                if oauth_response_ref:
-                    try:
-                        await keyvault.delete_secret(oauth_response_ref)
-                        logger.debug(f"Deleted Key Vault secret: {oauth_response_ref}")
-                    except Exception as e:
-                        logger.debug(f"Could not delete Key Vault secret {oauth_response_ref}: {e}")
-        except ValueError as e:
-            logger.warning(f"KeyVault not available for secret deletion: {e}")
-            logger.debug("Skipping Key Vault secret cleanup")
+            # Delete associated tokens first
+            await db.execute(
+                delete(OAuthToken).where(OAuthToken.provider_id == provider.id)
+            )
 
-        # Delete OAuth entity
-        try:
-            await self.config_table.delete_entity(org_id, oauth_rowkey)
-            logger.debug(f"Deleted OAuth entity: {oauth_rowkey}")
-        except Exception as e:
-            logger.warning(f"Failed to delete OAuth entity {oauth_rowkey}: {e}")
+            # Delete provider
+            await db.delete(provider)
+            await db.commit()
 
-        logger.info(f"Deleted OAuth connection: {connection_name}")
-        return True
+            return True
+
+    async def list_connections(
+        self,
+        org_id: str | None
+    ) -> list[OAuthConnection]:
+        """
+        List all OAuth connections for an organization.
+
+        Args:
+            org_id: Organization ID or None for GLOBAL
+
+        Returns:
+            List of OAuthConnections
+        """
+        from sqlalchemy import select, or_
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider
+
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
+
+            if org_uuid:
+                # Include both org-specific and GLOBAL connections
+                query = select(OAuthProvider).where(
+                    or_(
+                        OAuthProvider.organization_id == org_uuid,
+                        OAuthProvider.organization_id.is_(None)
+                    )
+                )
+            else:
+                # GLOBAL only
+                query = select(OAuthProvider).where(
+                    OAuthProvider.organization_id.is_(None)
+                )
+
+            result = await db.execute(query)
+            providers = result.scalars().all()
+
+            return [self._to_connection_model(p) for p in providers]
 
     async def store_tokens(
         self,
-        org_id: str,
+        org_id: str | None,
         connection_name: str,
         access_token: str,
-        refresh_token: str | None,
-        expires_at: datetime,
-        token_type: str = "Bearer",
-        updated_by: str = "system"
+        refresh_token: str | None = None,
+        expires_at: datetime | None = None,
+        scopes: list[str] | None = None,
+        user_id: str | None = None
     ) -> bool:
         """
-        Store OAuth tokens directly in OAuth entity
+        Store OAuth tokens for a connection.
 
         Args:
-            org_id: Organization ID
-            connection_name: Connection name
-            access_token: OAuth access token
+            org_id: Organization ID or None for GLOBAL
+            connection_name: Name of the connection
+            access_token: Access token to store
             refresh_token: Optional refresh token
-            expires_at: Token expiration datetime
-            token_type: Token type (usually "Bearer")
-            updated_by: User ID storing tokens
+            expires_at: Token expiration time
+            scopes: Token scopes
+            user_id: Optional user ID if user-specific token
 
         Returns:
             True if stored successfully
         """
-        # Prepare OAuth response JSON
-        oauth_response = {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": token_type,
-            "expires_at": expires_at.isoformat()
-        }
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider, OAuthToken
 
-        # Get OAuth entity to check for existing response ref
-        oauth_rowkey = f"oauth:{connection_name}"
-        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
+            user_uuid = UUID(user_id) if user_id else None
 
-        if not oauth_entity:
-            logger.error(f"OAuth connection not found: {connection_name}")
-            return False
+            # Find provider
+            query = select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name,
+                OAuthProvider.organization_id == org_uuid
+            )
+            result = await db.execute(query)
+            provider = result.scalars().first()
 
-        # Store OAuth response JSON in Key Vault
-        oauth_response_ref = oauth_entity.get("OAuthResponseRef")
-
-        try:
-            async with KeyVaultClient() as keyvault:
-                if oauth_response_ref:
-                    # Reuse existing ref (creates new version in Key Vault)
-                    await keyvault.set_secret(oauth_response_ref, json.dumps(oauth_response))
-                    logger.info(f"Updated existing OAuth token secret: {oauth_response_ref}")
-                else:
-                    # Generate new secret ref
-                    oauth_response_ref = generate_oauth_secret_name(
-                        org_id,
-                        connection_name,
-                        "response"
-                    )
-                    await keyvault.set_secret(oauth_response_ref, json.dumps(oauth_response))
-                    logger.info(f"Created new OAuth token secret: {oauth_response_ref}")
-
-                    # Update entity with new ref
-                    oauth_entity["OAuthResponseRef"] = oauth_response_ref
-        except ValueError as e:
-            logger.warning(f"KeyVault not available for OAuth token storage: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to store OAuth tokens in Key Vault: {e}")
-            raise
-
-        # Update OAuth entity with new status and expiration
-        oauth_entity["Status"] = "completed"
-        oauth_entity["ExpiresAt"] = expires_at.isoformat()
-        oauth_entity["UpdatedAt"] = datetime.utcnow().isoformat()
-        oauth_entity["UpdatedBy"] = updated_by
-
-        await self.config_table.upsert_entity(oauth_entity)
-        logger.info(f"Updated OAuth connection status to completed: {connection_name}")
-
-        return True
-
-    async def refresh_token(
-        self,
-        org_id: str,
-        connection_name: str
-    ) -> bool:
-        """
-        Refresh OAuth access token for any flow type
-
-        Handles both authorization_code (uses refresh_token) and
-        client_credentials (gets new token with client_id + client_secret)
-
-        Args:
-            org_id: Organization ID
-            connection_name: Connection name
-
-        Returns:
-            True if refreshed successfully, False otherwise
-        """
-        from shared.services.oauth_provider import OAuthProviderClient
-        import json
-
-        try:
-            # Get connection
-            connection = await self.get_connection(org_id, connection_name)
-            if not connection:
-                logger.error(f"Connection not found for refresh: {connection_name}")
+            if not provider:
                 return False
 
-            logger.info(f"Refreshing OAuth connection: {connection_name} (flow={connection.oauth_flow_type})")
-
-            # Get client secret if exists using direct ref
-            client_secret = None
-            if connection.client_secret_ref:
-                try:
-                    async with KeyVaultClient() as keyvault:
-                        client_secret = await keyvault.get_secret(connection.client_secret_ref)
-                        logger.info("Successfully retrieved client secret")
-                except Exception as e:
-                    logger.error(f"Could not retrieve client_secret: {e}", exc_info=True)
-
-            # Refresh based on flow type
-            oauth_provider = OAuthProviderClient()
-
-            if connection.oauth_flow_type == "client_credentials":
-                # Client credentials: get new token with client_id + client_secret
-                logger.info(f"Refreshing client_credentials token for {connection_name}")
-
-                if not client_secret:
-                    raise Exception("Client credentials flow requires client_secret")
-
-                success, result = await oauth_provider.get_client_credentials_token(
-                    token_url=connection.token_url,
-                    client_id=connection.client_id,
-                    client_secret=client_secret,
-                    scopes=connection.scopes
-                )
-
-                if not success:
-                    error_msg = result.get("error_description", result.get("error", "Token refresh failed"))
-                    logger.error(f"Failed to refresh token: {error_msg}")
-                    return False
-
-                # Client credentials doesn't have refresh token
-                new_refresh_token = None
-
-            else:
-                # Authorization code flow: use refresh_token
-                logger.info(f"Refreshing authorization_code token for {connection_name}")
-
-                # Get OAuth response from Key Vault using direct ref
-                if not connection.oauth_response_ref:
-                    logger.error(f"No oauth_response_ref found for {connection_name}")
-                    return False
-
-                async with KeyVaultClient() as keyvault:
-                    oauth_response_json = await keyvault.get_secret(connection.oauth_response_ref)
-                    assert oauth_response_json is not None, "OAuth response is None"
-                    oauth_response = json.loads(oauth_response_json)
-
-                refresh_token = oauth_response.get("refresh_token")
-
-                if not refresh_token:
-                    logger.error(f"No refresh token available for {connection_name}")
-                    return False
-
-                success, result = await oauth_provider.refresh_access_token(
-                    token_url=connection.token_url,
-                    refresh_token=refresh_token,
-                    client_id=connection.client_id,
-                    client_secret=client_secret
-                )
-
-                if not success:
-                    error_msg = result.get("error_description", result.get("error", "Token refresh failed"))
-                    logger.error(f"Failed to refresh token: {error_msg}")
-                    return False
-
-                # Preserve old refresh_token if new one not provided
-                new_refresh_token = result.get("refresh_token") or refresh_token
-
-            # Store refreshed tokens
-            await self.store_tokens(
-                org_id=connection.org_id,
-                connection_name=connection_name,
-                access_token=result["access_token"],
-                refresh_token=new_refresh_token,
-                expires_at=result["expires_at"],
-                token_type=result["token_type"],
-                updated_by="system"
+            # Create or update token
+            token_query = select(OAuthToken).where(
+                OAuthToken.provider_id == provider.id,
+                OAuthToken.user_id == user_uuid
             )
+            result = await db.execute(token_query)
+            token = result.scalars().first()
 
-            logger.info(f"Successfully refreshed token for {connection_name}")
+            if token:
+                # Update existing token
+                token.encrypted_access_token = _encrypt(access_token)
+                if refresh_token:
+                    token.encrypted_refresh_token = _encrypt(refresh_token)
+                if expires_at:
+                    token.expires_at = expires_at
+                if scopes:
+                    token.scopes = scopes
+            else:
+                # Create new token
+                token = OAuthToken(
+                    organization_id=org_uuid,
+                    provider_id=provider.id,
+                    user_id=user_uuid,
+                    encrypted_access_token=_encrypt(access_token),
+                    encrypted_refresh_token=_encrypt(refresh_token) if refresh_token else None,
+                    expires_at=expires_at,
+                    scopes=scopes or []
+                )
+                db.add(token)
+
+            # Update provider status
+            metadata = dict(provider.provider_metadata)
+            metadata["status"] = "connected"
+            provider.provider_metadata = metadata
+
+            await db.commit()
             return True
 
-        except Exception as e:
-            logger.error(f"Error refreshing token for {connection_name}: {e}", exc_info=True)
-            return False
-
-    async def update_connection_status(
+    async def get_tokens(
         self,
-        org_id: str,
+        org_id: str | None,
         connection_name: str,
-        status: str,
-        status_message: str | None = None,
-        expires_at: datetime | None = None,
-        last_refresh_at: datetime | None = None
-    ) -> bool:
+        user_id: str | None = None
+    ) -> dict[str, Any] | None:
         """
-        Update OAuth connection status
+        Get OAuth tokens for a connection.
 
         Args:
-            org_id: Organization ID
-            connection_name: Connection name
-            status: New status
-            status_message: Optional status message
-            expires_at: Optional new expiration time
-            last_refresh_at: Optional last refresh timestamp
+            org_id: Organization ID or None for GLOBAL
+            connection_name: Name of the connection
+            user_id: Optional user ID for user-specific tokens
 
         Returns:
-            True if updated successfully
+            Dict with token info or None if not found
         """
-        oauth_rowkey = f"oauth:{connection_name}"
-        oauth_entity = await self.config_table.get_entity(org_id, oauth_rowkey)
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import OAuthProvider, OAuthToken
 
-        if not oauth_entity:
-            logger.warning(f"OAuth connection not found for status update: {connection_name}")
-            return False
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
+            user_uuid = UUID(user_id) if user_id else None
 
-        oauth_entity['Status'] = status
-        if status_message is not None:
-            oauth_entity['StatusMessage'] = status_message
-        if expires_at is not None:
-            oauth_entity['ExpiresAt'] = expires_at.isoformat()
-        oauth_entity['UpdatedAt'] = datetime.utcnow().isoformat()
-
-        await self.config_table.upsert_entity(oauth_entity)
-        logger.info(f"Updated OAuth connection status: {connection_name} -> {status}")
-
-        return True
-
-    async def run_refresh_job(
-        self,
-        trigger_type: str = "automatic",
-        trigger_user: str | None = None,
-        refresh_threshold_minutes: int | None = None
-    ) -> dict:
-        """
-        Run the OAuth token refresh job
-
-        This method contains the shared logic for refreshing expiring OAuth tokens.
-        Can be called by both the timer trigger and HTTP endpoint.
-
-        Args:
-            trigger_type: Type of trigger ("automatic" or "manual")
-            trigger_user: Email of user who triggered (for manual triggers)
-            refresh_threshold_minutes: Override threshold in minutes (default: 30 for automatic, None for manual to refresh all)
-
-        Returns:
-            Dictionary with job results including:
-            - total_connections: Total OAuth connections found
-            - needs_refresh: Connections that need refresh
-            - refreshed_successfully: Successfully refreshed count
-            - refresh_failed: Failed refresh count
-            - errors: List of error details
-            - duration_seconds: Job duration
-        """
-        from datetime import timedelta
-
-        start_time = datetime.utcnow()
-
-        # Track results
-        results = {
-            "total_connections": 0,
-            "needs_refresh": 0,
-            "refreshed_successfully": 0,
-            "refresh_failed": 0,
-            "errors": []
-        }
-
-        try:
-            # Get all OAuth connections from all orgs
-            all_connections = []
-
-            # Query GLOBAL connections
-            global_connections = await self.list_connections("GLOBAL", include_global=False)
-            all_connections.extend(global_connections)
-
-            results["total_connections"] = len(all_connections)
-            logger.info(f"Found {len(all_connections)} total OAuth connections")
-
-            # Filter connections that need refresh
-            now = datetime.utcnow()
-
-            # Determine refresh threshold
-            # Default: 30 minutes for automatic, no threshold (refresh all completed) for manual
-            if refresh_threshold_minutes is not None:
-                refresh_threshold = now + timedelta(minutes=refresh_threshold_minutes)
-                logger.info(f"Using custom refresh threshold: {refresh_threshold_minutes} minutes")
-            elif trigger_type == "automatic":
-                refresh_threshold = now + timedelta(minutes=30)
-                logger.info("Using automatic refresh threshold: 30 minutes")
-            else:
-                # Manual trigger with no threshold - refresh all completed connections
-                refresh_threshold = None
-                logger.info("Manual trigger: refreshing all completed connections")
-
-            connections_to_refresh = []
-            for conn in all_connections:
-                # Only refresh completed connections with tokens
-                if conn.status != "completed":
-                    continue
-
-                # Check if token expires soon (or refresh all if no threshold)
-                if refresh_threshold is None:
-                    # Manual trigger with no threshold - refresh all completed connections
-                    connections_to_refresh.append(conn)
-                elif conn.expires_at and conn.expires_at <= refresh_threshold:
-                    connections_to_refresh.append(conn)
-
-            results["needs_refresh"] = len(connections_to_refresh)
-            logger.info(f"Found {len(connections_to_refresh)} connections needing refresh")
-
-            # Refresh each connection
-            for connection in connections_to_refresh:
-                try:
-                    # Use the centralized refresh_token method
-                    success = await self.refresh_token(
-                        org_id=connection.org_id,
-                        connection_name=connection.connection_name
-                    )
-
-                    if success:
-                        results["refreshed_successfully"] += 1
-                        logger.info(f"Successfully refreshed: {connection.connection_name}")
-                    else:
-                        results["refresh_failed"] += 1
-                        logger.error(f"Failed to refresh: {connection.connection_name}")
-
-                except Exception as e:
-                    results["refresh_failed"] += 1
-                    error_info = {
-                        "connection_name": connection.connection_name,
-                        "org_id": connection.org_id,
-                        "error": str(e)
-                    }
-                    results["errors"].append(error_info)
-
-                    logger.error(
-                        f"Failed to refresh {connection.connection_name}: {str(e)}",
-                        extra=error_info
-                    )
-
-                    # Update connection status to failed
-                    try:
-                        await self.update_connection_status(
-                            org_id=connection.org_id,
-                            connection_name=connection.connection_name,
-                            status="failed",
-                            status_message=f"{trigger_type.capitalize()} refresh failed: {str(e)}"
-                        )
-                    except Exception as status_error:
-                        logger.error(f"Could not update status: {status_error}")
-
-            # Calculate duration
-            end_time = datetime.utcnow()
-            duration_seconds = (end_time - start_time).total_seconds()
-            results["duration_seconds"] = duration_seconds
-
-            # Store job status in Config table
-            job_status_entity = {
-                "PartitionKey": "SYSTEM",
-                "RowKey": "jobstatus:TokenRefreshJob",
-                "StartTime": start_time.isoformat(),
-                "EndTime": end_time.isoformat(),
-                "DurationSeconds": duration_seconds,
-                "Status": "completed",
-                "TriggerType": trigger_type,
-                "TotalConnections": results["total_connections"],
-                "NeedsRefresh": results["needs_refresh"],
-                "RefreshedSuccessfully": results["refreshed_successfully"],
-                "RefreshFailed": results["refresh_failed"],
-                "Errors": json.dumps(results["errors"]) if results["errors"] else None
-            }
-
-            if trigger_user:
-                job_status_entity["TriggerUser"] = trigger_user
-
-            await self.config_table.upsert_entity(job_status_entity)
-
-            # Log summary
-            logger.info(
-                f"{trigger_type.capitalize()} OAuth token refresh completed in {duration_seconds:.2f}s: "
-                f"Total={results['total_connections']}, "
-                f"NeedsRefresh={results['needs_refresh']}, "
-                f"Success={results['refreshed_successfully']}, "
-                f"Failed={results['refresh_failed']}"
+            # Find provider
+            query = select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name,
+                OAuthProvider.organization_id == org_uuid
             )
+            result = await db.execute(query)
+            provider = result.scalars().first()
 
-            return results
+            if not provider:
+                return None
 
-        except Exception as e:
-            logger.error(f"OAuth refresh job failed: {str(e)}", exc_info=True)
+            # Find token
+            token_query = select(OAuthToken).where(
+                OAuthToken.provider_id == provider.id,
+                OAuthToken.user_id == user_uuid
+            )
+            result = await db.execute(token_query)
+            token = result.scalars().first()
 
-            # Store failed job status
-            end_time = datetime.utcnow()
-            duration_seconds = (end_time - start_time).total_seconds()
+            if not token:
+                return None
 
-            job_status_entity = {
-                "PartitionKey": "SYSTEM",
-                "RowKey": "jobstatus:TokenRefreshJob",
-                "StartTime": start_time.isoformat(),
-                "EndTime": end_time.isoformat(),
-                "DurationSeconds": duration_seconds,
-                "Status": "failed",
-                "TriggerType": trigger_type,
-                "ErrorMessage": str(e),
-                "TotalConnections": 0,
-                "NeedsRefresh": 0,
-                "RefreshedSuccessfully": 0,
-                "RefreshFailed": 0,
-                "Errors": None
+            return {
+                "access_token": _decrypt(token.encrypted_access_token),
+                "refresh_token": _decrypt(token.encrypted_refresh_token) if token.encrypted_refresh_token else None,
+                "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+                "scopes": token.scopes
             }
 
-            if trigger_user:
-                job_status_entity["TriggerUser"] = trigger_user
-
-            try:
-                await self.config_table.upsert_entity(job_status_entity)
-            except Exception:
-                pass
-
-            raise
+    def _to_connection_model(self, provider) -> OAuthConnection:
+        """Convert OAuthProvider to OAuthConnection model."""
+        metadata = provider.provider_metadata or {}
+        return OAuthConnection(
+            connection_name=provider.provider_name,
+            oauth_flow_type=metadata.get("oauth_flow_type", "authorization_code"),
+            client_id=provider.client_id,
+            authorization_url=metadata.get("authorization_url"),
+            token_url=metadata.get("token_url"),
+            scopes=",".join(provider.scopes) if provider.scopes else "",
+            redirect_uri=metadata.get("redirect_uri"),
+            status=metadata.get("status", "not_connected"),
+            created_at=provider.created_at,
+            updated_at=provider.updated_at
+        )

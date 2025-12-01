@@ -76,7 +76,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: api/Dockerfile.api
     container_name: bifrost-api
     environment:
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
@@ -97,10 +97,10 @@ services:
       - "8000:8000"
       - "5678:5678"  # debugpy port for VS Code attachment
     volumes:
-      - ./src:/app/src
-      - ./shared:/app/shared
-      - ./platform:/app/platform
-      - ./alembic:/app/alembic
+      - ./api/src:/app/src
+      - ./api/shared:/app/shared
+      - ./api/platform:/app/platform
+      - ./api/alembic:/app/alembic
       - bifrost_files:/mounts/files
       - bifrost_workspace:/mounts/workspace
       - bifrost_temp:/mounts/temp
@@ -123,8 +123,8 @@ services:
   # Frontend (Vite)
   client:
     build:
-      context: .
-      dockerfile: Dockerfile.client
+      context: ./client
+      dockerfile: Dockerfile
     container_name: bifrost-client
     environment:
       API_URL: http://api:8000
@@ -144,7 +144,7 @@ services:
   jobs:
     build:
       context: .
-      dockerfile: Dockerfile.jobs
+      dockerfile: api/Dockerfile.jobs
     container_name: bifrost-jobs
     environment:
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
@@ -155,9 +155,9 @@ services:
       BIFROST_MOUNTS_PATH: /mounts
       BIFROST_ENVIRONMENT: development
     volumes:
-      - ./src:/app/src
-      - ./shared:/app/shared
-      - ./platform:/app/platform
+      - ./api/src:/app/src
+      - ./api/shared:/app/shared
+      - ./api/platform:/app/platform
       - bifrost_files:/mounts/files
       - bifrost_workspace:/mounts/workspace
       - bifrost_temp:/mounts/temp

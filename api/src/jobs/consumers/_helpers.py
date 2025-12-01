@@ -11,7 +11,6 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_session_factory
 from src.models.database import Execution as ExecutionModel

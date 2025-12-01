@@ -1,57 +1,86 @@
 """
 E2E test configuration.
 
-E2E tests require additional setup:
-- Real KeyVault instance with AZURE_KEY_VAULT_URL environment variable set
-- Azure credentials configured (DefaultAzureCredential must work)
-- External service dependencies
+E2E tests run against the full API stack (API + Jobs workers) with real
+PostgreSQL, RabbitMQ, and Redis services.
 
-These tests are automatically skipped if KeyVault is not properly configured.
+These tests require:
+- docker-compose.test.yml services running (via ./test.sh --e2e)
+- API service accessible at TEST_API_URL
 """
 
 import os
+
 import pytest
-from azure.identity import DefaultAzureCredential
-from azure.core.exceptions import ClientAuthenticationError
+import httpx
+
+
+# E2E test API URL (from docker-compose.test.yml)
+E2E_API_URL = os.getenv("TEST_API_URL", "http://localhost:18000")
 
 
 def pytest_configure(config):
-    """Register e2e marker"""
+    """Register e2e marker."""
     config.addinivalue_line(
-        "markers", "e2e: End-to-end tests requiring external services (auto-skipped if KeyVault not configured)"
+        "markers",
+        "e2e: End-to-end tests requiring full API stack (auto-skipped if API not available)"
     )
 
 
-def _check_keyvault_available():
+def _check_api_available() -> tuple[bool, str]:
     """
-    Check if KeyVault is properly configured and accessible.
+    Check if the API is properly running and accessible.
 
     Returns:
         tuple: (is_available: bool, reason: str)
     """
-    # Check if KeyVault URL is set
-    keyvault_url = os.environ.get("AZURE_KEY_VAULT_URL") or os.environ.get("KEY_VAULT_URL")
-    if not keyvault_url:
-        return False, "AZURE_KEY_VAULT_URL environment variable not set"
-
-    # Check if we can get Azure credentials
     try:
-        credential = DefaultAzureCredential()
-        # Try to get a token to verify credentials work
-        credential.get_token("https://vault.azure.net/.default")
-        return True, None
-    except ClientAuthenticationError as e:
-        return False, f"Azure authentication failed: {str(e)}"
+        response = httpx.get(f"{E2E_API_URL}/health", timeout=5.0)
+        if response.status_code == 200:
+            return True, None
+        return False, f"API returned status {response.status_code}"
+    except httpx.ConnectError:
+        return False, f"Cannot connect to API at {E2E_API_URL}"
+    except httpx.TimeoutException:
+        return False, f"API request timed out at {E2E_API_URL}"
     except Exception as e:
-        return False, f"Failed to initialize Azure credentials: {str(e)}"
+        return False, f"Error checking API: {str(e)}"
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip e2e tests if KeyVault is not properly configured"""
-    is_available, reason = _check_keyvault_available()
+    """Skip e2e tests if API is not available."""
+    is_available, reason = _check_api_available()
 
     if not is_available:
         skip_e2e = pytest.mark.skip(reason=f"E2E tests skipped: {reason}")
         for item in items:
             if "e2e" in item.nodeid:
                 item.add_marker(skip_e2e)
+
+
+@pytest.fixture(scope="session")
+def e2e_api_url():
+    """Base URL for E2E API tests."""
+    return E2E_API_URL
+
+
+@pytest.fixture(scope="session")
+def e2e_client():
+    """
+    HTTP client for E2E tests.
+
+    Provides a configured httpx client for making requests to the API.
+    """
+    with httpx.Client(base_url=E2E_API_URL, timeout=30.0) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+async def e2e_async_client():
+    """
+    Async HTTP client for E2E tests.
+
+    Provides a configured async httpx client for making requests to the API.
+    """
+    async with httpx.AsyncClient(base_url=E2E_API_URL, timeout=30.0) as client:
+        yield client

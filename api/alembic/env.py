@@ -23,13 +23,18 @@ from src.models.database import (  # noqa: F401
     Role,
     UserRole,
     Form,
+    FormRole,
     Execution,
     ExecutionLog,
     Config,
-    Secret,
+    WorkflowKey,
     OAuthProvider,
     OAuthToken,
     AuditLog,
+    UserMFAMethod,
+    MFARecoveryCode,
+    TrustedDevice,
+    UserOAuthAccount,
 )
 
 # Alembic Config object
@@ -44,9 +49,15 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    """Get database URL from settings."""
+    """Get sync database URL from settings (for offline mode)."""
     settings = get_settings()
     return settings.database_url_sync
+
+
+def get_async_url() -> str:
+    """Get async database URL from settings (for online mode)."""
+    settings = get_settings()
+    return settings.database_url
 
 
 def run_migrations_offline() -> None:
@@ -88,7 +99,7 @@ async def run_async_migrations() -> None:
     connection with the context.
     """
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = get_url()
+    configuration["sqlalchemy.url"] = get_async_url()
 
     connectable = async_engine_from_config(
         configuration,

@@ -360,8 +360,6 @@ async def validate_workflow_file(path: str, content: str | None = None):
         WorkflowValidationResponse with validation results
     """
     from pathlib import Path
-    import importlib.util
-    import sys
     import tempfile
     import os
     import re
