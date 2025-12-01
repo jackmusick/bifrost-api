@@ -14,27 +14,27 @@ class TestBrandingContracts:
         """Test that BrandingSettings model has required fields"""
         # Test model can be instantiated with all fields
         branding = BrandingSettings(
-            squareLogoUrl="https://example.com/logo-square.png",
-            rectangleLogoUrl="https://example.com/logo-rect.png",
-            primaryColor="#0066CC"
+            square_logo_url="https://example.com/logo-square.png",
+            rectangle_logo_url="https://example.com/logo-rect.png",
+            primary_color="#0066CC"
         )
 
-        assert branding.squareLogoUrl == "https://example.com/logo-square.png"
-        assert branding.rectangleLogoUrl == "https://example.com/logo-rect.png"
-        assert branding.primaryColor == "#0066CC"
+        assert branding.square_logo_url == "https://example.com/logo-square.png"
+        assert branding.rectangle_logo_url == "https://example.com/logo-rect.png"
+        assert branding.primary_color == "#0066CC"
 
     def test_branding_settings_optional_fields(self):
         """Test that branding fields are optional (can be None)"""
         # Test with minimal fields
         branding = BrandingSettings(
-            squareLogoUrl=None,
-            rectangleLogoUrl=None,
-            primaryColor=None
+            square_logo_url=None,
+            rectangle_logo_url=None,
+            primary_color=None
         )
 
-        assert branding.squareLogoUrl is None
-        assert branding.rectangleLogoUrl is None
-        assert branding.primaryColor is None
+        assert branding.square_logo_url is None
+        assert branding.rectangle_logo_url is None
+        assert branding.primary_color is None
 
     def test_primary_color_hex_format_validation(self):
         """Test that primary color validates hex format"""
@@ -43,21 +43,21 @@ class TestBrandingContracts:
 
         for color in valid_colors:
             branding = BrandingSettings(
-                squareLogoUrl=None,
-                rectangleLogoUrl=None,
-                primaryColor=color
+                square_logo_url=None,
+                rectangle_logo_url=None,
+                primary_color=color
             )
-            assert branding.primaryColor == color
+            assert branding.primary_color == color
 
     def test_branding_fallback_to_defaults(self):
         """Test that missing branding falls back to None (frontend handles defaults)"""
         branding = BrandingSettings(
-            squareLogoUrl=None,
-            rectangleLogoUrl=None,
-            primaryColor=None
+            square_logo_url=None,
+            rectangle_logo_url=None,
+            primary_color=None
         )
 
         # Frontend should handle None values by showing default branding
-        assert branding.squareLogoUrl is None
-        assert branding.rectangleLogoUrl is None
-        assert branding.primaryColor is None
+        assert branding.square_logo_url is None
+        assert branding.rectangle_logo_url is None
+        assert branding.primary_color is None

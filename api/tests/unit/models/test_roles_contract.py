@@ -16,6 +16,10 @@ from shared.models import (
 )
 
 
+# Note: Models use snake_case (e.g., is_active, user_ids, form_ids)
+# This matches the OpenAPI/TypeScript schema
+
+
 class TestCreateRoleRequest:
     """Test CreateRoleRequest validation"""
 
@@ -102,32 +106,32 @@ class TestAssignUsersToRoleRequest:
 
     def test_valid_single_user(self):
         """Assign single user should pass"""
-        request = AssignUsersToRoleRequest(userIds=["user-123"])
-        assert len(request.userIds) == 1
-        assert request.userIds[0] == "user-123"
+        request = AssignUsersToRoleRequest(user_ids=["user-123"])
+        assert len(request.user_ids) == 1
+        assert request.user_ids[0] == "user-123"
 
     def test_valid_multiple_users(self):
         """Assign multiple users should pass"""
         request = AssignUsersToRoleRequest(
-            userIds=["user-1", "user-2", "user-3"]
+            user_ids=["user-1", "user-2", "user-3"]
         )
-        assert len(request.userIds) == 3
+        assert len(request.user_ids) == 3
 
     def test_invalid_empty_list(self):
         """Empty user list should fail validation"""
         with pytest.raises(ValidationError) as exc_info:
-            AssignUsersToRoleRequest(userIds=[])
+            AssignUsersToRoleRequest(user_ids=[])
 
         errors = exc_info.value.errors()
         assert any(error["type"] == "too_short" for error in errors)
 
     def test_invalid_missing_user_ids(self):
-        """Missing userIds should fail validation"""
+        """Missing user_ids should fail validation"""
         with pytest.raises(ValidationError) as exc_info:
             AssignUsersToRoleRequest()
 
         errors = exc_info.value.errors()
-        assert any(error["loc"] == ("userIds",) for error in errors)
+        assert any(error["loc"] == ("user_ids",) for error in errors)
 
 
 class TestAssignFormsToRoleRequest:
@@ -135,32 +139,32 @@ class TestAssignFormsToRoleRequest:
 
     def test_valid_single_form(self):
         """Assign single form should pass"""
-        request = AssignFormsToRoleRequest(formIds=["form-abc-123"])
-        assert len(request.formIds) == 1
-        assert request.formIds[0] == "form-abc-123"
+        request = AssignFormsToRoleRequest(form_ids=["form-abc-123"])
+        assert len(request.form_ids) == 1
+        assert request.form_ids[0] == "form-abc-123"
 
     def test_valid_multiple_forms(self):
         """Assign multiple forms should pass"""
         request = AssignFormsToRoleRequest(
-            formIds=["form-1", "form-2", "form-3", "form-4"]
+            form_ids=["form-1", "form-2", "form-3", "form-4"]
         )
-        assert len(request.formIds) == 4
+        assert len(request.form_ids) == 4
 
     def test_invalid_empty_list(self):
         """Empty form list should fail validation"""
         with pytest.raises(ValidationError) as exc_info:
-            AssignFormsToRoleRequest(formIds=[])
+            AssignFormsToRoleRequest(form_ids=[])
 
         errors = exc_info.value.errors()
         assert any(error["type"] == "too_short" for error in errors)
 
     def test_invalid_missing_form_ids(self):
-        """Missing formIds should fail validation"""
+        """Missing form_ids should fail validation"""
         with pytest.raises(ValidationError) as exc_info:
             AssignFormsToRoleRequest()
 
         errors = exc_info.value.errors()
-        assert any(error["loc"] == ("formIds",) for error in errors)
+        assert any(error["loc"] == ("form_ids",) for error in errors)
 
 
 class TestRoleResponse:
@@ -174,15 +178,15 @@ class TestRoleResponse:
             id="role-123",
             name="Manager",
             description="Management role",
-            isActive=True,
-            createdBy="admin@example.com",
-            createdAt=datetime(2025, 1, 1, 12, 0, 0),
-            updatedAt=datetime(2025, 1, 2, 14, 30, 0)
+            is_active=True,
+            created_by="admin@example.com",
+            created_at=datetime(2025, 1, 1, 12, 0, 0),
+            updated_at=datetime(2025, 1, 2, 14, 30, 0)
         )
 
         assert role.id == "role-123"
         assert role.name == "Manager"
-        assert role.isActive is True
+        assert role.is_active is True
 
     def test_valid_role_minimal(self):
         """Role with minimal fields should work"""
@@ -192,14 +196,14 @@ class TestRoleResponse:
             id="role-456",
             name="Basic Role",
             description=None,
-            isActive=True,
-            createdBy="user@test.com",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_by="user@test.com",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
         assert role.description is None
-        assert role.isActive is True
+        assert role.is_active is True
 
 
 class TestUserTypeValidation:
@@ -238,16 +242,16 @@ class TestRolesAPIContract:
             id="role-789",
             name=request.name,
             description=request.description,
-            isActive=True,
-            createdBy="admin@example.com",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_by="admin@example.com",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
         # Verify contract
         assert response.name == request.name
         assert response.description == request.description
-        assert response.isActive is True
+        assert response.is_active is True
 
     def test_update_role_partial_request(self):
         """Partial update should only modify specified fields"""
@@ -258,10 +262,10 @@ class TestRolesAPIContract:
             id="role-100",
             name="Original Name",
             description="Original Description",
-            isActive=True,
-            createdBy="user@test.com",
-            createdAt=datetime(2025, 1, 1),
-            updatedAt=datetime(2025, 1, 1)
+            is_active=True,
+            created_by="user@test.com",
+            created_at=datetime(2025, 1, 1),
+            updated_at=datetime(2025, 1, 1)
         )
 
         # Update request (name only)
@@ -272,10 +276,10 @@ class TestRolesAPIContract:
             id=original.id,
             name=update_request.name if update_request.name else original.name,
             description=update_request.description if update_request.description is not None else original.description,
-            isActive=original.isActive,
-            createdBy=original.createdBy,
-            createdAt=original.createdAt,
-            updatedAt=datetime.utcnow()
+            is_active=original.is_active,
+            created_by=original.created_by,
+            created_at=original.created_at,
+            updated_at=datetime.utcnow()
         )
 
         # Verify only name changed
@@ -287,14 +291,14 @@ class TestRolesAPIContract:
         """Assign users request should validate user list"""
         # Valid request
         valid_request = AssignUsersToRoleRequest(
-            userIds=["user-1", "user-2", "user-3"]
+            user_ids=["user-1", "user-2", "user-3"]
         )
-        assert len(valid_request.userIds) == 3
+        assert len(valid_request.user_ids) == 3
 
         # Should reject duplicates in business logic (not validated by schema)
         request_with_dupes = AssignUsersToRoleRequest(
-            userIds=["user-1", "user-1", "user-2"]
+            user_ids=["user-1", "user-1", "user-2"]
         )
         # Schema allows duplicates, but API should deduplicate
-        unique_ids = list(set(request_with_dupes.userIds))
+        unique_ids = list(set(request_with_dupes.user_ids))
         assert len(unique_ids) == 2

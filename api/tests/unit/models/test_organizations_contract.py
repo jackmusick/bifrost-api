@@ -11,6 +11,10 @@ from pydantic import ValidationError
 from shared.models import CreateOrganizationRequest, ErrorResponse, Organization, UpdateOrganizationRequest
 
 
+# Note: Models use snake_case (e.g., is_active, created_at, created_by, updated_at)
+# This matches the OpenAPI/TypeScript schema
+
+
 class TestCreateOrganizationRequest:
     """Test validation for CreateOrganizationRequest model"""
 
@@ -73,14 +77,14 @@ class TestOrganizationResponse:
         org = Organization(
             id="org-123",
             name="Test Organization",
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            createdBy="user-123",
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_at=datetime.utcnow(),
+            created_by="user-123",
+            updated_at=datetime.utcnow()
         )
         assert org.id == "org-123"
         assert org.name == "Test Organization"
-        assert org.isActive is True
+        assert org.is_active is True
 
     def test_organization_missing_required_fields(self):
         """Test that all required fields must be present"""
@@ -88,11 +92,11 @@ class TestOrganizationResponse:
             Organization(
                 id="org-123",
                 name="Test Organization"
-                # Missing: createdAt, createdBy, updatedAt (isActive has default=True)
+                # Missing: created_at, created_by, updated_at (is_active has default=True)
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"createdAt", "createdBy", "updatedAt"}
+        required_fields = {"created_at", "created_by", "updated_at"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
 
@@ -101,19 +105,19 @@ class TestOrganizationResponse:
         org = Organization(
             id="org-123",
             name="Test Organization",
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            createdBy="user-123",
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_at=datetime.utcnow(),
+            created_by="user-123",
+            updated_at=datetime.utcnow()
         )
 
         org_dict = org.model_dump()
         assert "id" in org_dict
         assert "name" in org_dict
-        assert "isActive" in org_dict
-        assert "createdAt" in org_dict
-        assert "createdBy" in org_dict
-        assert "updatedAt" in org_dict
+        assert "is_active" in org_dict
+        assert "created_at" in org_dict
+        assert "created_by" in org_dict
+        assert "updated_at" in org_dict
 
 
 class TestUpdateOrganizationRequest:
@@ -123,28 +127,28 @@ class TestUpdateOrganizationRequest:
         """Test updating only the name"""
         request = UpdateOrganizationRequest(name="Updated Name")
         assert request.name == "Updated Name"
-        assert request.isActive is None
+        assert request.is_active is None
 
     def test_valid_update_is_active_only(self):
-        """Test updating only the isActive flag"""
-        request = UpdateOrganizationRequest(isActive=False)
+        """Test updating only the is_active flag"""
+        request = UpdateOrganizationRequest(is_active=False)
         assert request.name is None
-        assert request.isActive is False
+        assert request.is_active is False
 
     def test_valid_update_all_fields(self):
         """Test updating all fields at once"""
         request = UpdateOrganizationRequest(
             name="Updated Name",
-            isActive=False
+            is_active=False
         )
         assert request.name == "Updated Name"
-        assert request.isActive is False
+        assert request.is_active is False
 
     def test_valid_update_with_no_fields(self):
         """Test that update request with no fields is valid (no-op)"""
         request = UpdateOrganizationRequest()
         assert request.name is None
-        assert request.isActive is None
+        assert request.is_active is None
 
     def test_invalid_empty_name(self):
         """Test that empty name is rejected in updates"""

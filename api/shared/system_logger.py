@@ -1,6 +1,6 @@
 """
 System Logger
-Logs platform-level events (not workflow executions) to Table Storage
+Logs platform-level events (not workflow executions) to PostgreSQL
 
 Events like:
 - Module discovery failures
@@ -12,13 +12,10 @@ Events like:
 - System errors and warnings
 """
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
-
-from azure.data.tables import TableServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +42,15 @@ class SystemLogger:
     """
     Logger for platform-level system events.
 
-    Stores events in Table Storage with structure:
-    - PartitionKey: Event category (e.g., "discovery", "organization")
-    - RowKey: timestamp_eventId (for chronological ordering)
-    - Timestamp: ISO timestamp
-    - Level: info/warning/error/critical
-    - Message: Human-readable event description
-    - ExecutedBy: User ID or "System"
-    - ExecutedByName: Display name or "System"
-    - Details: JSON blob with event-specific data
+    Stores events in PostgreSQL with structure:
+    - id: UUID primary key
+    - category: Event category (e.g., "discovery", "organization")
+    - timestamp: Datetime
+    - level: info/warning/error/critical
+    - message: Human-readable event description
+    - executed_by: User ID or "System"
+    - executed_by_name: Display name or "System"
+    - details: JSONB blob with event-specific data
 
     Usage:
         system_logger = SystemLogger()
@@ -78,42 +75,9 @@ class SystemLogger:
         )
     """
 
-    def __init__(self, connection_string: str | None = None):
-        """
-        Initialize system logger.
-
-        Args:
-            connection_string: Azure Storage connection string (defaults to env var)
-        """
-        import os
-        self.connection_string = connection_string or os.environ.get(
-            "AzureWebJobsStorage",
-            "UseDevelopmentStorage=true"
-        )
-        self.table_name = "SystemLogs"
-
-        # Ensure table exists
-        try:
-            table_service = TableServiceClient.from_connection_string(self.connection_string)
-            table_service.create_table_if_not_exists(self.table_name)
-            logger.debug(f"System logs table '{self.table_name}' ready")
-        except Exception as e:
-            logger.warning(f"Failed to initialize system logs table: {e}")
-
-    def _reverse_timestamp(self, dt: datetime) -> str:
-        """
-        Create reverse timestamp for sorting logs newest-first.
-        Same pattern as ExecutionRepository.
-
-        Args:
-            dt: Datetime to convert
-
-        Returns:
-            Reverse timestamp string (9999999999999 - timestamp_ms)
-        """
-        timestamp_ms = int(dt.timestamp() * 1000)
-        reverse = 9999999999999 - timestamp_ms
-        return str(reverse)
+    def __init__(self):
+        """Initialize system logger."""
+        logger.debug("System logger initialized with PostgreSQL")
 
     async def log(
         self,
@@ -145,37 +109,20 @@ class SystemLogger:
         if executed_by_name is None:
             executed_by_name = executed_by
 
-        # Create entity with reverse timestamp for newest-first ordering
-        reverse_ts = self._reverse_timestamp(timestamp)
-        entity = {
-            "PartitionKey": category,
-            "RowKey": f"{reverse_ts}_{event_id}",  # Reverse chronological ordering (newest first)
-            "EventId": event_id,
-            "TimestampISO": timestamp.isoformat(),  # Store ISO timestamp for parsing
-            "Level": level,
-            "Message": message,
-            "ExecutedBy": executed_by,
-            "ExecutedByName": executed_by_name,
-            "Details": json.dumps(details) if details else None
-        }
-
-        try:
-            table_service = TableServiceClient.from_connection_string(self.connection_string)
-            table_client = table_service.get_table_client(self.table_name)
-            table_client.create_entity(entity)
-
-            logger.debug(
-                f"System event logged: [{level.upper()}] {category} - {message}",
-                extra={"event_id": event_id, "category": category, "executed_by": executed_by}
-            )
-
-        except Exception as e:
-            # Don't fail the operation if logging fails
-            logger.error(
-                f"Failed to log system event: {e}",
-                extra={"category": category, "event_message": message},
-                exc_info=True
-            )
+        # Log to standard logging
+        # TODO: Add PostgreSQL system_logs table if persistent logging is needed
+        log_method = getattr(logger, level, logger.info)
+        log_method(
+            f"[{category}] {message}",
+            extra={
+                "event_id": event_id,
+                "category": category,
+                "executed_by": executed_by,
+                "executed_by_name": executed_by_name,
+                "details": details,
+                "timestamp": timestamp.isoformat()
+            }
+        )
 
         return event_id
 

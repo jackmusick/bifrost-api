@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.keyvault import KeyVaultClient
 from shared.services.oauth_storage_service import OAuthStorageService
 
 from ._internal import get_context, require_permission
@@ -62,7 +61,6 @@ class oauth:
             ...     client_id = conn["client_id"]
             ...     client_secret = conn["client_secret"]
         """
-        import json
         import logging
 
         logger = logging.getLogger(__name__)
@@ -91,26 +89,15 @@ class oauth:
             "expires_at": None,
         }
 
-        # Retrieve client_secret from Key Vault if ref exists
-        if connection.client_secret_ref:
-            try:
-                async with KeyVaultClient() as kv:
-                    result["client_secret"] = await kv.get_secret(connection.client_secret_ref)
-            except Exception as e:
-                logger.warning(f"Could not retrieve client_secret for '{provider}': {e}")
-
-        # Retrieve OAuth tokens from Key Vault if ref exists
-        if connection.oauth_response_ref:
-            try:
-                async with KeyVaultClient() as kv:
-                    secret_value = await kv.get_secret(connection.oauth_response_ref)
-                    if secret_value:
-                        oauth_response = json.loads(secret_value)
-                        result["refresh_token"] = oauth_response.get("refresh_token")
-                        result["access_token"] = oauth_response.get("access_token")
-                        result["expires_at"] = oauth_response.get("expires_at")
-            except Exception as e:
-                logger.warning(f"Could not retrieve OAuth tokens for '{provider}': {e}")
+        # Retrieve tokens from PostgreSQL storage
+        try:
+            tokens = await storage.get_tokens(target_org, provider)
+            if tokens:
+                result["access_token"] = tokens.get("access_token")
+                result["refresh_token"] = tokens.get("refresh_token")
+                result["expires_at"] = tokens.get("expires_at")
+        except Exception as e:
+            logger.warning(f"Could not retrieve OAuth tokens for '{provider}': {e}")
 
         return result
 

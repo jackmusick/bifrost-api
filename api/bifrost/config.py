@@ -8,29 +8,11 @@ All methods are async and must be called with await.
 
 from __future__ import annotations
 
+import json as json_module
 from typing import Any
-
-from shared.repositories.config import ConfigRepository
+from uuid import UUID
 
 from ._internal import get_context
-
-
-def _get_scoped_repo(context: Any, org_id: str | None = None) -> ConfigRepository:
-    """Get ConfigRepository scoped to the specified org_id or current context."""
-    if org_id and org_id != context.org_id:
-        from shared.context import ExecutionContext
-        scoped_context = ExecutionContext(
-            user_id=context.user_id,
-            email=context.email,
-            name=context.name,
-            scope=org_id,
-            organization=context.organization,
-            is_platform_admin=context.is_platform_admin,
-            is_function_key=context.is_function_key,
-            execution_id=context.execution_id
-        )
-        return ConfigRepository(scoped_context)
-    return ConfigRepository(context)
 
 
 class config:
@@ -45,7 +27,7 @@ class config:
     @staticmethod
     async def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
         """
-        Get configuration value with automatic secret resolution.
+        Get configuration value with automatic secret decryption.
 
         Args:
             key: Configuration key
@@ -53,47 +35,89 @@ class config:
             default: Default value if key not found (optional)
 
         Returns:
-            Any: Configuration value (with secret resolved if secret_ref type),
+            Any: Configuration value (with secret decrypted if secret type),
                  or default if not found
 
         Raises:
-            RuntimeError: If no execution context or secret resolution fails
+            RuntimeError: If no execution context or decryption fails
 
         Example:
             >>> from bifrost import config
-            >>> api_key = await config.get("api_key")  # Resolves SECRET_REF automatically
+            >>> api_key = await config.get("api_key")  # Decrypts SECRET type automatically
             >>> timeout = await config.get("timeout", default=30)
         """
+        from sqlalchemy import select, or_
+        from src.core.database import get_session_factory
+        from src.models import Config as ConfigModel
+
         context = get_context()
-        repo = _get_scoped_repo(context, org_id)
+        session_factory = get_session_factory()
 
-        # Get config from repository
-        cfg = await repo.get_config(key, fallback_to_global=True)
+        target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        org_uuid = None
+        if target_org_id and target_org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(target_org_id)
+            except ValueError:
+                pass
 
-        if cfg is None:
-            return default
+        async with session_factory() as db:
+            # Try org-specific first, then GLOBAL fallback
+            if org_uuid:
+                query = select(ConfigModel).where(
+                    ConfigModel.key == key,
+                    or_(
+                        ConfigModel.organization_id == org_uuid,
+                        ConfigModel.organization_id.is_(None)
+                    )
+                ).order_by(ConfigModel.organization_id.desc().nulls_last())
+            else:
+                query = select(ConfigModel).where(
+                    ConfigModel.key == key,
+                    ConfigModel.organization_id.is_(None)
+                )
 
-        # Convert Config model to dict format expected by ConfigResolver
-        config_data = {
-            key: {
-                "value": cfg.value,
-                "type": cfg.type.value if hasattr(cfg.type, 'value') else str(cfg.type)
-            }
-        }
+            result = await db.execute(query)
+            cfg = result.scalars().first()
 
-        # Use ConfigResolver for transparent secret resolution and type parsing
-        try:
-            return await context._config_resolver.get_config(
-                org_id=org_id or context.scope,
-                key=key,
-                config_data=config_data,
-                default=default
-            )
-        except ValueError as e:
-            raise RuntimeError(f"Failed to resolve config '{key}': {e}") from e
+            if cfg is None:
+                return default
+
+            # Parse value based on config type
+            config_value = cfg.value or {}
+            raw_value = config_value.get("value", config_value)
+            config_type = str(cfg.config_type.value) if cfg.config_type else "string"
+
+            # Handle secret type - decrypt the value
+            if config_type == "secret":
+                from src.core.security import decrypt_secret
+                try:
+                    return decrypt_secret(raw_value)
+                except Exception:
+                    return None
+
+            # Parse other types
+            if config_type == "json":
+                if isinstance(raw_value, str):
+                    try:
+                        return json_module.loads(raw_value)
+                    except json_module.JSONDecodeError:
+                        return raw_value
+                return raw_value
+            elif config_type == "bool":
+                if isinstance(raw_value, bool):
+                    return raw_value
+                return str(raw_value).lower() == "true"
+            elif config_type == "int":
+                try:
+                    return int(raw_value)
+                except (ValueError, TypeError):
+                    return raw_value
+            else:
+                return raw_value
 
     @staticmethod
-    async def set(key: str, value: Any, org_id: str | None = None) -> None:
+    async def set(key: str, value: Any, org_id: str | None = None, is_secret: bool = False) -> None:
         """
         Set configuration value.
 
@@ -101,6 +125,7 @@ class config:
             key: Configuration key
             value: Configuration value (must be JSON-serializable)
             org_id: Organization ID (defaults to current org from context)
+            is_secret: If True, encrypts the value before storage
 
         Raises:
             RuntimeError: If no execution context
@@ -108,183 +133,146 @@ class config:
 
         Example:
             >>> from bifrost import config
-            >>> config.set("api_url", "https://api.example.com")
-            >>> # Set config for specific org
-            >>> config.set("api_url", "https://other.example.com", org_id="other-org")
+            >>> await config.set("api_url", "https://api.example.com")
+            >>> await config.set("api_key", "secret123", is_secret=True)
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Config as ConfigModel
+        from src.models.enums import ConfigType
+
         context = get_context()
-        repo = _get_scoped_repo(context, org_id)
+        session_factory = get_session_factory()
 
-        # Convert value to string for storage
-        # ConfigRepository expects ConfigType, default to string
-        from shared.models import ConfigType
-        import json
+        target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        org_uuid = None
+        if target_org_id and target_org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(target_org_id)
+            except ValueError:
+                pass
 
-        # Handle different value types
-        if isinstance(value, (dict, list)):
+        # Determine config type and process value
+        if is_secret:
+            from src.core.security import encrypt_secret
+            config_type = ConfigType.SECRET
+            stored_value = encrypt_secret(str(value))
+        elif isinstance(value, (dict, list)):
             config_type = ConfigType.JSON
-            str_value = json.dumps(value)
+            stored_value = value
         elif isinstance(value, bool):
             config_type = ConfigType.BOOL
-            str_value = str(value).lower()
+            stored_value = value
         elif isinstance(value, int):
             config_type = ConfigType.INT
-            str_value = str(value)
+            stored_value = value
         else:
             config_type = ConfigType.STRING
-            str_value = str(value)
+            stored_value = value
 
-        await repo.set_config(
-            key=key,
-            value=str_value,
-            config_type=config_type,
-            updated_by=context.user_id
-        )
+        async with session_factory() as db:
+            # Check if config exists
+            query = select(ConfigModel).where(
+                ConfigModel.key == key,
+                ConfigModel.organization_id == org_uuid
+            )
+            result = await db.execute(query)
+            existing = result.scalars().first()
+
+            if existing:
+                existing.value = {"value": stored_value}
+                existing.config_type = config_type
+                existing.updated_by = getattr(context, 'user_id', 'system')
+            else:
+                new_config = ConfigModel(
+                    organization_id=org_uuid,
+                    key=key,
+                    value={"value": stored_value},
+                    config_type=config_type,
+                    updated_by=getattr(context, 'user_id', 'system')
+                )
+                db.add(new_config)
+
+            await db.commit()
 
     @staticmethod
-    async def list(org_id: str | None = None) -> dict[str, Any] | dict[str, dict[str, Any]]:
+    async def list(org_id: str | None = None) -> dict[str, Any]:
         """
         List configuration key-value pairs.
 
-        Behavior depends on context and parameters:
-        - If org_id is specified: Returns config for that specific org
-        - If org_id is None and user is platform admin: Returns all configs across all orgs
-        - If org_id is None and user is not admin: Returns config for current org
+        Note: Secret values are NOT decrypted in list - use get() for individual secrets.
 
         Args:
-            org_id: Organization ID (optional, defaults to all orgs for admins)
+            org_id: Organization ID (optional, defaults to current org)
 
         Returns:
-            - Single org: dict[str, Any] - Configuration key-value pairs
-            - All orgs (admin): dict[str, dict[str, Any]] - Mapping of org_id to config dict
+            dict[str, Any]: Configuration key-value pairs (secrets shown as "[SECRET]")
 
         Raises:
             RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import config
-            >>> # Get config for current/specific org
-            >>> org_config = await config.list(org_id="org-123")
+            >>> org_config = await config.list()
             >>> for key, value in org_config.items():
             ...     print(f"{key}: {value}")
-            >>>
-            >>> # Platform admin: get all orgs' config
-            >>> all_configs = await config.list()
-            >>> for org_id, org_config in all_configs.items():
-            ...     print(f"Org {org_id}: {org_config}")
         """
+        from sqlalchemy import select, or_
+        from src.core.database import get_session_factory
+        from src.models import Config as ConfigModel
+
         context = get_context()
+        session_factory = get_session_factory()
 
-        # If org_id specified or user is not platform admin, return single org config
-        if org_id is not None or not context.is_platform_admin:
-            return await config._list_single_org(context, org_id)
+        target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        org_uuid = None
+        if target_org_id and target_org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(target_org_id)
+            except ValueError:
+                pass
 
-        # Platform admin with no org_id: return all orgs' config
-        return await config._list_all_orgs(context)
-
-    @staticmethod
-    async def _list_single_org(context: Any, org_id: str | None = None) -> dict[str, Any]:
-        """List config for a single organization."""
-        # If org_id provided, create a context override for that org
-        if org_id and org_id != context.org_id:
-            # Use existing context but override target org
-            from shared.context import ExecutionContext
-            scoped_context = ExecutionContext(
-                user_id=context.user_id,
-                email=context.email,
-                name=context.name,
-                scope=org_id,
-                organization=context.organization,
-                is_platform_admin=context.is_platform_admin,
-                is_function_key=context.is_function_key,
-                execution_id=context.execution_id
-            )
-            repo = ConfigRepository(scoped_context)
-        else:
-            repo = ConfigRepository(context)
-
-        # list_config returns list of Config models
-        configs = await repo.list_config(include_global=True)
-
-        return config._configs_to_dict(configs)
-
-    @staticmethod
-    async def _list_all_orgs(context: Any) -> dict[str, dict[str, Any]]:
-        """List config for all organizations (platform admin only)."""
-        from shared.handlers.organizations_handlers import list_organizations_logic
-        from shared.context import ExecutionContext, Organization as ContextOrganization
-
-        # Get all organizations
-        orgs = await list_organizations_logic(context)
-
-        result: dict[str, dict[str, Any]] = {}
-
-        for org in orgs:
-            # Convert model Organization to context Organization
-            ctx_org = ContextOrganization(
-                id=org.id,
-                name=org.name,
-                is_active=org.isActive
-            )
-            # Create context scoped to this org
-            scoped_context = ExecutionContext(
-                user_id=context.user_id,
-                email=context.email,
-                name=context.name,
-                scope=org.id,
-                organization=ctx_org,
-                is_platform_admin=context.is_platform_admin,
-                is_function_key=context.is_function_key,
-                execution_id=context.execution_id
-            )
-            repo = ConfigRepository(scoped_context)
-
-            # Get configs for this org
-            configs = await repo.list_config(include_global=False)  # Don't include GLOBAL in each org
-            result[org.id] = config._configs_to_dict(configs)
-
-        # Also include GLOBAL configs under "GLOBAL" key
-        global_context = ExecutionContext(
-            user_id=context.user_id,
-            email=context.email,
-            name=context.name,
-            scope="GLOBAL",
-            organization=None,
-            is_platform_admin=context.is_platform_admin,
-            is_function_key=context.is_function_key,
-            execution_id=context.execution_id
-        )
-        global_repo = ConfigRepository(global_context)
-        global_configs = await global_repo.list_config(include_global=False)
-        if global_configs:
-            result["GLOBAL"] = config._configs_to_dict(global_configs)
-
-        return result
-
-    @staticmethod
-    def _configs_to_dict(configs: list) -> dict[str, Any]:
-        """Convert list of Config models to dict with parsed values."""
-        import json as json_module
-
-        config_dict: dict[str, Any] = {}
-        for cfg in configs:
-            # Parse value based on type
-            if cfg.type == "json":
-                try:
-                    config_dict[cfg.key] = json_module.loads(cfg.value)
-                except (json_module.JSONDecodeError, TypeError):
-                    config_dict[cfg.key] = cfg.value
-            elif cfg.type == "bool":
-                config_dict[cfg.key] = cfg.value.lower() == "true"
-            elif cfg.type == "int":
-                try:
-                    config_dict[cfg.key] = int(cfg.value)
-                except (ValueError, TypeError):
-                    config_dict[cfg.key] = cfg.value
+        async with session_factory() as db:
+            if org_uuid:
+                query = select(ConfigModel).where(
+                    or_(
+                        ConfigModel.organization_id == org_uuid,
+                        ConfigModel.organization_id.is_(None)
+                    )
+                )
             else:
-                config_dict[cfg.key] = cfg.value
+                query = select(ConfigModel).where(
+                    ConfigModel.organization_id.is_(None)
+                )
 
-        return config_dict
+            result = await db.execute(query)
+            configs = result.scalars().all()
+
+            config_dict: dict[str, Any] = {}
+            for cfg in configs:
+                config_value = cfg.value or {}
+                raw_value = config_value.get("value", config_value)
+                config_type = str(cfg.config_type.value) if cfg.config_type else "string"
+
+                # Don't expose secret values in list
+                if config_type == "secret":
+                    config_dict[cfg.key] = "[SECRET]"
+                elif config_type == "json" and isinstance(raw_value, str):
+                    try:
+                        config_dict[cfg.key] = json_module.loads(raw_value)
+                    except json_module.JSONDecodeError:
+                        config_dict[cfg.key] = raw_value
+                elif config_type == "bool":
+                    config_dict[cfg.key] = str(raw_value).lower() == "true" if isinstance(raw_value, str) else bool(raw_value)
+                elif config_type == "int":
+                    try:
+                        config_dict[cfg.key] = int(raw_value)
+                    except (ValueError, TypeError):
+                        config_dict[cfg.key] = raw_value
+                else:
+                    config_dict[cfg.key] = raw_value
+
+            return config_dict
 
     @staticmethod
     async def delete(key: str, org_id: str | None = None) -> bool:
@@ -303,8 +291,34 @@ class config:
 
         Example:
             >>> from bifrost import config
-            >>> config.delete("old_api_url")
+            >>> await config.delete("old_api_url")
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Config as ConfigModel
+
         context = get_context()
-        repo = _get_scoped_repo(context, org_id)
-        return await repo.delete_config(key)
+        session_factory = get_session_factory()
+
+        target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        org_uuid = None
+        if target_org_id and target_org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(target_org_id)
+            except ValueError:
+                pass
+
+        async with session_factory() as db:
+            query = select(ConfigModel).where(
+                ConfigModel.key == key,
+                ConfigModel.organization_id == org_uuid
+            )
+            result = await db.execute(query)
+            existing = result.scalars().first()
+
+            if not existing:
+                return False
+
+            db.delete(existing)
+            await db.commit()
+            return True

@@ -17,6 +17,10 @@ from shared.user_provisioning import (
 )
 
 
+# Note: Models use snake_case (e.g., display_name, user_type, is_platform_admin)
+# This matches the OpenAPI/TypeScript schema
+
+
 class TestEnsureUserProvisioned:
     """Test main ensure_user_provisioned function"""
 
@@ -33,12 +37,12 @@ class TestEnsureUserProvisioned:
         mock_user = User(
             id="admin@example.com",
             email="admin@example.com",
-            displayName="admin",
-            userType=UserType.PLATFORM,
-            isPlatformAdmin=True,
-            isActive=True,
-            lastLogin=datetime.utcnow(),
-            createdAt=datetime.utcnow()
+            display_name="admin",
+            user_type=UserType.PLATFORM,
+            is_platform_admin=True,
+            is_active=True,
+            last_login=datetime.utcnow(),
+            created_at=datetime.utcnow()
         )
         mock_user_repo.get_user_by_entra_id = AsyncMock(return_value=None)
         mock_user_repo.get_user = AsyncMock(return_value=mock_user)
@@ -69,12 +73,12 @@ class TestEnsureUserProvisioned:
         mock_user = User(
             id="user@company.com",
             email="user@company.com",
-            displayName="user",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            lastLogin=None,
-            createdAt=datetime.utcnow()
+            display_name="user",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            last_login=None,
+            created_at=datetime.utcnow()
         )
         mock_user_repo.get_user_by_entra_id = AsyncMock(return_value=None)
         mock_user_repo.get_user = AsyncMock(return_value=mock_user)
@@ -172,12 +176,12 @@ class TestEnsureUserProvisioned:
         mock_user = User(
             id="orphan@company.com",
             email="orphan@company.com",
-            displayName="orphan",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            lastLogin=None,
-            createdAt=datetime.utcnow()
+            display_name="orphan",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            last_login=None,
+            created_at=datetime.utcnow()
         )
         mock_user_repo.get_user_by_entra_id = AsyncMock(return_value=None)
         mock_user_repo.get_user = AsyncMock(return_value=mock_user)
@@ -216,12 +220,12 @@ class TestCreateFirstPlatformAdmin:
         mock_user = User(
             id="first@example.com",
             email="first@example.com",
-            displayName="first",
-            userType=UserType.PLATFORM,
-            isPlatformAdmin=True,
-            isActive=True,
-            lastLogin=None,
-            createdAt=datetime.utcnow()
+            display_name="first",
+            user_type=UserType.PLATFORM,
+            is_platform_admin=True,
+            is_active=True,
+            last_login=None,
+            created_at=datetime.utcnow()
         )
         mock_user_repo.create_user = AsyncMock(return_value=mock_user)
 
@@ -261,10 +265,10 @@ class TestProvisionUserByDomain:
             id="org-789",
             name="Company Inc",
             domain="company.com",
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            createdBy="system",
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_at=datetime.utcnow(),
+            created_by="system",
+            updated_at=datetime.utcnow()
         )
         mock_org_repo.get_organization_by_domain = AsyncMock(return_value=mock_org)
 
@@ -276,12 +280,12 @@ class TestProvisionUserByDomain:
         mock_user = User(
             id="newuser@company.com",
             email="newuser@company.com",
-            displayName="newuser",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            lastLogin=None,
-            createdAt=datetime.utcnow()
+            display_name="newuser",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            last_login=None,
+            created_at=datetime.utcnow()
         )
         mock_user_repo.create_user = AsyncMock(return_value=mock_user)
         mock_user_repo.assign_user_to_org = AsyncMock()
@@ -343,10 +347,10 @@ class TestProvisionUserByDomain:
             id="org-999",
             name="Company",
             domain="COMPANY.COM",
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            createdBy="system",
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_at=datetime.utcnow(),
+            created_by="system",
+            updated_at=datetime.utcnow()
         )
         mock_org_repo.get_organization_by_domain = AsyncMock(return_value=mock_org)
 
@@ -358,12 +362,12 @@ class TestProvisionUserByDomain:
         mock_user = User(
             id="user@company.com",
             email="user@company.com",
-            displayName="user",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            lastLogin=None,
-            createdAt=datetime.utcnow()
+            display_name="user",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            last_login=None,
+            created_at=datetime.utcnow()
         )
         mock_user_repo.create_user = AsyncMock(return_value=mock_user)
         mock_user_repo.assign_user_to_org = AsyncMock()

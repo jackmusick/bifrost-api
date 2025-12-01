@@ -8,6 +8,7 @@ Requires:
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -15,6 +16,12 @@ import pytest
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Skip unless running E2E tests (requires running API server)
+pytestmark = pytest.mark.skipif(
+    os.environ.get("E2E_TESTS") != "true",
+    reason="E2E test requires running API server (set E2E_TESTS=true)"
+)
 
 
 @pytest.fixture

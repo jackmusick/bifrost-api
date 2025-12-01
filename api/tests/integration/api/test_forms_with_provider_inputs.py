@@ -3,7 +3,16 @@ Integration tests for forms with static dataProviderInputs (T022)
 Tests that forms can be saved and validated with data provider inputs
 """
 
+import os
+
+import pytest
 import requests
+
+# Skip unless running E2E tests (requires running API server)
+pytestmark = pytest.mark.skipif(
+    os.environ.get("E2E_TESTS") != "true",
+    reason="E2E test requires running API server (set E2E_TESTS=true)"
+)
 
 
 class TestFormsWithDataProviderInputs:

@@ -11,6 +11,11 @@ from pydantic import ValidationError
 from shared.models import IntegrationConfig, IntegrationType, SetIntegrationConfigRequest
 
 
+# Note: Models use snake_case (e.g., updated_at, updated_by)
+# Settings require: client_secret_config_key (not client_secret_ref)
+#                   api_key_config_key (not api_key_ref)
+
+
 class TestSetIntegrationConfigRequest:
     """Test validation for SetIntegrationConfigRequest model"""
 
@@ -22,13 +27,13 @@ class TestSetIntegrationConfigRequest:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret"
+                "client_secret_config_key": "org-123-msgraph-secret"
             }
         )
         assert request.type == IntegrationType.MSGRAPH
         assert request.enabled is True
         assert request.settings["tenant_id"] == "12345678-1234-1234-1234-123456789012"
-        assert request.settings["client_secret_ref"] == "org-123-msgraph-secret"
+        assert request.settings["client_secret_config_key"] == "org-123-msgraph-secret"
 
     def test_valid_halopsa_request(self):
         """Test valid HaloPSA integration request"""
@@ -38,13 +43,13 @@ class TestSetIntegrationConfigRequest:
             settings={
                 "api_url": "https://tenant.halopsa.com",
                 "client_id": "halopsa-client-123",
-                "api_key_ref": "org-123-halopsa-key"
+                "api_key_config_key": "org-123-halopsa-key"
             }
         )
         assert request.type == IntegrationType.HALOPSA
         assert request.enabled is True
         assert request.settings["api_url"] == "https://tenant.halopsa.com"
-        assert request.settings["api_key_ref"] == "org-123-halopsa-key"
+        assert request.settings["api_key_config_key"] == "org-123-halopsa-key"
 
     def test_valid_disabled_integration(self):
         """Test valid integration with enabled=False"""
@@ -54,7 +59,7 @@ class TestSetIntegrationConfigRequest:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret"
+                "client_secret_config_key": "org-123-msgraph-secret"
             }
         )
         assert request.enabled is False
@@ -66,7 +71,7 @@ class TestSetIntegrationConfigRequest:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret"
+                "client_secret_config_key": "org-123-msgraph-secret"
             }
         )
         assert request.enabled is True
@@ -89,7 +94,7 @@ class TestSetIntegrationConfigRequest:
                 type=IntegrationType.MSGRAPH,
                 settings={
                     "client_id": "87654321-4321-4321-4321-210987654321",
-                    "client_secret_ref": "org-123-msgraph-secret"
+                    "client_secret_config_key": "org-123-msgraph-secret"
                 }
             )
 
@@ -103,15 +108,15 @@ class TestSetIntegrationConfigRequest:
                 type=IntegrationType.MSGRAPH,
                 settings={
                     "tenant_id": "12345678-1234-1234-1234-123456789012",
-                    "client_secret_ref": "org-123-msgraph-secret"
+                    "client_secret_config_key": "org-123-msgraph-secret"
                 }
             )
 
         errors = exc_info.value.errors()
         assert any("client_id" in str(e) for e in errors)
 
-    def test_msgraph_missing_client_secret_ref(self):
-        """Test that msgraph integration requires client_secret_ref"""
+    def test_msgraph_missing_client_secret_config_key(self):
+        """Test that msgraph integration requires client_secret_config_key"""
         with pytest.raises(ValidationError) as exc_info:
             SetIntegrationConfigRequest(
                 type=IntegrationType.MSGRAPH,
@@ -122,7 +127,7 @@ class TestSetIntegrationConfigRequest:
             )
 
         errors = exc_info.value.errors()
-        assert any("client_secret_ref" in str(e) for e in errors)
+        assert any("client_secret_config_key" in str(e) for e in errors)
 
     def test_halopsa_missing_api_url(self):
         """Test that halopsa integration requires api_url"""
@@ -131,7 +136,7 @@ class TestSetIntegrationConfigRequest:
                 type=IntegrationType.HALOPSA,
                 settings={
                     "client_id": "halopsa-client-123",
-                    "api_key_ref": "org-123-halopsa-key"
+                    "api_key_config_key": "org-123-halopsa-key"
                 }
             )
 
@@ -145,15 +150,15 @@ class TestSetIntegrationConfigRequest:
                 type=IntegrationType.HALOPSA,
                 settings={
                     "api_url": "https://tenant.halopsa.com",
-                    "api_key_ref": "org-123-halopsa-key"
+                    "api_key_config_key": "org-123-halopsa-key"
                 }
             )
 
         errors = exc_info.value.errors()
         assert any("client_id" in str(e) for e in errors)
 
-    def test_halopsa_missing_api_key_ref(self):
-        """Test that halopsa integration requires api_key_ref"""
+    def test_halopsa_missing_api_key_config_key(self):
+        """Test that halopsa integration requires api_key_config_key"""
         with pytest.raises(ValidationError) as exc_info:
             SetIntegrationConfigRequest(
                 type=IntegrationType.HALOPSA,
@@ -164,7 +169,7 @@ class TestSetIntegrationConfigRequest:
             )
 
         errors = exc_info.value.errors()
-        assert any("api_key_ref" in str(e) for e in errors)
+        assert any("api_key_config_key" in str(e) for e in errors)
 
     def test_msgraph_with_extra_settings(self):
         """Test that msgraph integration accepts extra settings beyond required"""
@@ -173,7 +178,7 @@ class TestSetIntegrationConfigRequest:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret",
+                "client_secret_config_key": "org-123-msgraph-secret",
                 "scope": "https://graph.microsoft.com/.default",
                 "authority": "https://login.microsoftonline.com"
             }
@@ -188,7 +193,7 @@ class TestSetIntegrationConfigRequest:
                 settings={
                     "tenant_id": "12345678-1234-1234-1234-123456789012",
                     "client_id": "87654321-4321-4321-4321-210987654321",
-                    "client_secret_ref": "org-123-msgraph-secret"
+                    "client_secret_config_key": "org-123-msgraph-secret"
                 }
             )
 
@@ -217,15 +222,15 @@ class TestIntegrationConfigResponse:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret"
+                "client_secret_config_key": "org-123-msgraph-secret"
             },
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
         assert config.type == IntegrationType.MSGRAPH
         assert config.enabled is True
         assert isinstance(config.settings, dict)
-        assert isinstance(config.updatedAt, datetime)
+        assert isinstance(config.updated_at, datetime)
 
     def test_valid_halopsa_response(self):
         """Test valid HaloPSA integration response"""
@@ -235,10 +240,10 @@ class TestIntegrationConfigResponse:
             settings={
                 "api_url": "https://tenant.halopsa.com",
                 "client_id": "halopsa-client-123",
-                "api_key_ref": "org-123-halopsa-key"
+                "api_key_config_key": "org-123-halopsa-key"
             },
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-456"
+            updated_at=datetime.utcnow(),
+            updated_by="user-456"
         )
         assert config.type == IntegrationType.HALOPSA
         assert config.enabled is False
@@ -250,11 +255,11 @@ class TestIntegrationConfigResponse:
                 type=IntegrationType.MSGRAPH,
                 enabled=True,
                 settings={"test": "value"}
-                # Missing: updatedAt, updatedBy
+                # Missing: updated_at, updated_by
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"updatedAt", "updatedBy"}
+        required_fields = {"updated_at", "updated_by"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
 
@@ -266,18 +271,18 @@ class TestIntegrationConfigResponse:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret"
+                "client_secret_config_key": "org-123-msgraph-secret"
             },
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
 
         config_dict = config.model_dump()
         assert "type" in config_dict
         assert "enabled" in config_dict
         assert "settings" in config_dict
-        assert "updatedAt" in config_dict
-        assert "updatedBy" in config_dict
+        assert "updated_at" in config_dict
+        assert "updated_by" in config_dict
 
     def test_integration_config_json_serialization(self):
         """Test that integration config can be serialized to JSON mode"""
@@ -287,14 +292,14 @@ class TestIntegrationConfigResponse:
             settings={
                 "tenant_id": "12345678-1234-1234-1234-123456789012",
                 "client_id": "87654321-4321-4321-4321-210987654321",
-                "client_secret_ref": "org-123-msgraph-secret"
+                "client_secret_config_key": "org-123-msgraph-secret"
             },
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
 
         config_dict = config.model_dump(mode="json")
-        assert isinstance(config_dict["updatedAt"], str)  # datetime -> ISO string
+        assert isinstance(config_dict["updated_at"], str)  # datetime -> ISO string
         assert config_dict["type"] == "msgraph"  # Enum -> string value
 
 
@@ -313,13 +318,13 @@ class TestIntegrationTypeEnum:
                 settings = {
                     "tenant_id": "12345678-1234-1234-1234-123456789012",
                     "client_id": "87654321-4321-4321-4321-210987654321",
-                    "client_secret_ref": "org-123-msgraph-secret"
+                    "client_secret_config_key": "org-123-msgraph-secret"
                 }
             else:
                 settings = {
                     "api_url": "https://tenant.halopsa.com",
                     "client_id": "halopsa-client-123",
-                    "api_key_ref": "org-123-halopsa-key"
+                    "api_key_config_key": "org-123-halopsa-key"
                 }
 
             request = SetIntegrationConfigRequest(

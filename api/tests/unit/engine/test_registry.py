@@ -232,8 +232,8 @@ class TestFormDiscovery:
         test_form = next((f for f in forms if f.id == "test-form-123"), None)
         assert test_form is not None
         assert test_form.name == "Test Form"
-        assert test_form.linkedWorkflow == "test_workflow"
-        assert test_form.isGlobal is True
+        assert test_form.linked_workflow == "test_workflow"
+        assert test_form.is_global is True
 
     def test_load_form_from_file(self, monkeypatch, tmp_path):
         """Test loading form from file"""

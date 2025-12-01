@@ -141,87 +141,87 @@ class TestEditorModelContracts:
     def test_search_result_model(self):
         """Test SearchResult model structure"""
         result = SearchResult(
-            filePath="workflows/sync.py",
+            file_path="workflows/sync.py",
             line=42,
             column=15,
-            matchText="def run",
-            contextBefore="# Sync workflow",
-            contextAfter="    context.info('Starting')",
+            match_text="def run",
+            context_before="# Sync workflow",
+            context_after="    context.info('Starting')",
         )
 
-        assert result.filePath == "workflows/sync.py"
+        assert result.file_path == "workflows/sync.py"
         assert result.line == 42
         assert result.column == 15
-        assert result.matchText == "def run"
-        assert result.contextBefore == "# Sync workflow"
-        assert result.contextAfter == "    context.info('Starting')"
+        assert result.match_text == "def run"
+        assert result.context_before == "# Sync workflow"
+        assert result.context_after == "    context.info('Starting')"
 
     def test_search_result_optional_context(self):
         """Test SearchResult with optional context fields"""
         result = SearchResult(
-            filePath="workflows/sync.py",
+            file_path="workflows/sync.py",
             line=1,
             column=0,
-            matchText="import",
-            contextBefore=None,
-            contextAfter=None,
+            match_text="import",
+            context_before=None,
+            context_after=None,
         )
 
-        assert result.contextBefore is None
-        assert result.contextAfter is None
+        assert result.context_before is None
+        assert result.context_after is None
 
     def test_search_result_validates_line_number(self):
         """Test SearchResult validates line >= 1"""
         # Valid line numbers
         SearchResult(
-            filePath="test.py",
+            file_path="test.py",
             line=1,
             column=0,
-            matchText="test",
+            match_text="test",
         )
 
         # Invalid line number (must be >= 1)
         with pytest.raises(ValidationError):
             SearchResult(
-                filePath="test.py",
+                file_path="test.py",
                 line=0,
                 column=0,
-                matchText="test",
+                match_text="test",
             )
 
     def test_search_result_validates_column_number(self):
         """Test SearchResult validates column >= 0"""
         # Valid column numbers
         SearchResult(
-            filePath="test.py",
+            file_path="test.py",
             line=1,
             column=0,
-            matchText="test",
+            match_text="test",
         )
 
         # Invalid column number (must be >= 0)
         with pytest.raises(ValidationError):
             SearchResult(
-                filePath="test.py",
+                file_path="test.py",
                 line=1,
                 column=-1,
-                matchText="test",
+                match_text="test",
             )
 
     def test_search_response_model(self):
         """Test SearchResponse model structure"""
         results = [
             SearchResult(
-                filePath="test1.py",
+                file_path="test1.py",
                 line=10,
                 column=5,
-                matchText="test",
+                match_text="test",
             ),
             SearchResult(
-                filePath="test2.py",
+                file_path="test2.py",
                 line=20,
                 column=8,
-                matchText="test",
+                match_text="test",
             ),
         ]
 

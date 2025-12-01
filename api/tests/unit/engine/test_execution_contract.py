@@ -10,54 +10,58 @@ from pydantic import ValidationError
 from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionRequest, WorkflowExecutionResponse
 
 
+# Note: Models use snake_case (e.g., workflow_name, input_data, execution_id)
+# This matches the OpenAPI/TypeScript schema
+
+
 class TestWorkflowExecutionRequest:
     """Test WorkflowExecutionRequest validation"""
 
     def test_valid_execution_request(self):
         """Test valid execution request with all fields"""
         request = WorkflowExecutionRequest(
-            workflowName="sync_users",
-            formId="form-123",
-            inputData={
+            workflow_name="sync_users",
+            form_id="form-123",
+            input_data={
                 "email": "test@example.com",
                 "first_name": "Test",
                 "last_name": "User"
             }
         )
 
-        assert request.workflowName == "sync_users"
-        assert request.formId == "form-123"
-        assert request.inputData["email"] == "test@example.com"
+        assert request.workflow_name == "sync_users"
+        assert request.form_id == "form-123"
+        assert request.input_data["email"] == "test@example.com"
 
     def test_execution_request_minimal(self):
         """Test execution request with minimal fields"""
         request = WorkflowExecutionRequest(
-            workflowName="test_workflow",
-            inputData={"key": "value"}
+            workflow_name="test_workflow",
+            input_data={"key": "value"}
         )
 
-        assert request.workflowName == "test_workflow"
-        assert request.formId is None
-        assert request.inputData == {"key": "value"}
+        assert request.workflow_name == "test_workflow"
+        assert request.form_id is None
+        assert request.input_data == {"key": "value"}
 
     def test_execution_request_missing_workflow_name(self):
-        """Test that either workflowName or code is required"""
+        """Test that either workflow_name or code is required"""
         with pytest.raises(ValidationError) as exc_info:
             WorkflowExecutionRequest()
 
         errors = exc_info.value.errors()
-        assert any("Either 'workflowName' or 'code' must be provided" in str(e) for e in errors)
+        assert any("Either 'workflow_name' or 'code' must be provided" in str(e) for e in errors)
 
     def test_execution_request_missing_input_data(self):
-        """Test that inputData has default factory"""
+        """Test that input_data has default factory"""
         request = WorkflowExecutionRequest(
-            workflowName="test_workflow",
-            formId="form-123"
+            workflow_name="test_workflow",
+            form_id="form-123"
         )
 
-        assert request.inputData == {}
-        assert request.formId == "form-123"
-        assert request.workflowName == "test_workflow"
+        assert request.input_data == {}
+        assert request.form_id == "form-123"
+        assert request.workflow_name == "test_workflow"
 
 
 class TestWorkflowExecutionResponse:
@@ -66,12 +70,12 @@ class TestWorkflowExecutionResponse:
     def test_success_response(self):
         """Test successful execution response"""
         response = WorkflowExecutionResponse(
-            executionId="exec-123",
+            execution_id="exec-123",
             status=ExecutionStatus.SUCCESS,
             result={"message": "Workflow executed successfully"}
         )
 
-        assert response.executionId == "exec-123"
+        assert response.execution_id == "exec-123"
         assert response.status == ExecutionStatus.SUCCESS
         assert response.result == {"message": "Workflow executed successfully"}
         assert response.error is None
@@ -79,34 +83,34 @@ class TestWorkflowExecutionResponse:
     def test_failed_response(self):
         """Test failed execution response"""
         response = WorkflowExecutionResponse(
-            executionId="exec-789",
+            execution_id="exec-789",
             status=ExecutionStatus.FAILED,
             error="Validation failed",
-            errorType="ValidationError"
+            error_type="ValidationError"
         )
 
-        assert response.executionId == "exec-789"
+        assert response.execution_id == "exec-789"
         assert response.status == ExecutionStatus.FAILED
         assert response.error == "Validation failed"
-        assert response.errorType == "ValidationError"
+        assert response.error_type == "ValidationError"
 
     def test_running_response(self):
         """Test running/pending response"""
         response = WorkflowExecutionResponse(
-            executionId="exec-999",
+            execution_id="exec-999",
             status=ExecutionStatus.RUNNING
         )
 
-        assert response.executionId == "exec-999"
+        assert response.execution_id == "exec-999"
         assert response.status == ExecutionStatus.RUNNING
         assert response.result is None
         assert response.error is None
 
     def test_response_required_fields(self):
-        """Test that executionId and status are required"""
+        """Test that execution_id and status are required"""
         with pytest.raises(ValidationError) as exc_info:
             WorkflowExecutionResponse(
-                executionId="exec-123"
+                execution_id="exec-123"
             )
 
         errors = exc_info.value.errors()
@@ -163,7 +167,7 @@ class TestExecutionStatus:
     def test_execution_status_in_response(self):
         """Test using ExecutionStatus in response"""
         response = WorkflowExecutionResponse(
-            executionId="exec-123",
+            execution_id="exec-123",
             status=ExecutionStatus.SUCCESS,
             result={"status": "Success"}
         )

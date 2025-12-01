@@ -9,9 +9,9 @@ All methods are async and must be called with await.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from shared.models import Role, CreateRoleRequest, UpdateRoleRequest
-from shared.repositories.roles import RoleRepository
 
 from ._internal import get_context, require_permission
 
@@ -52,20 +52,44 @@ class roles:
             ...     permissions=["customers.read", "customers.write"]
             ... )
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel
+
         context = require_permission("roles.create")
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        role_request = CreateRoleRequest(
-            name=name,
-            description=description,
-            permissions=permissions or []
-        )
+        org_uuid = None
+        if context.org_id and context.org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(context.org_id)
+            except ValueError:
+                pass
 
-        return await repo.create_role(
-            role_request=role_request,
-            org_id=context.org_id,
-            created_by=context.user_id
-        )
+        async with session_factory() as db:
+            role = RoleModel(
+                name=name,
+                description=description,
+                permissions=permissions or [],
+                organization_id=org_uuid,
+                created_by=context.user_id,
+            )
+            db.add(role)
+            await db.flush()
+            await db.refresh(role)
+            await db.commit()
+
+            return Role(
+                id=str(role.id),
+                name=role.name,
+                description=role.description,
+                permissions=role.permissions or [],
+                orgId=str(role.organization_id) if role.organization_id else None,
+                isActive=role.is_active,
+                createdBy=role.created_by,
+                createdAt=role.created_at,
+                updatedAt=role.updated_at,
+            )
 
     @staticmethod
     async def get(role_id: str) -> Role:
@@ -87,15 +111,35 @@ class roles:
             >>> role = roles.get("role-123")
             >>> print(role.name)
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel
+
         context = get_context()
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        role = await repo.get_role(role_id, context.org_id)
+        role_uuid = UUID(role_id)
 
-        if not role:
-            raise ValueError(f"Role not found: {role_id}")
+        async with session_factory() as db:
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
 
-        return role
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
+
+            return Role(
+                id=str(role.id),
+                name=role.name,
+                description=role.description,
+                permissions=role.permissions or [],
+                orgId=str(role.organization_id) if role.organization_id else None,
+                isActive=role.is_active,
+                createdBy=role.created_by,
+                createdAt=role.created_at,
+                updatedAt=role.updated_at,
+            )
 
     @staticmethod
     async def list() -> list[Role]:
@@ -114,10 +158,46 @@ class roles:
             >>> for role in all_roles:
             ...     print(f"{role.name}: {len(role.permissions)} permissions")
         """
-        context = get_context()
-        repo = RoleRepository(context)
+        from sqlalchemy import select, or_
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel
 
-        return await repo.list_roles(context.org_id, active_only=True)
+        context = get_context()
+        session_factory = get_session_factory()
+
+        org_uuid = None
+        if context.org_id and context.org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(context.org_id)
+            except ValueError:
+                pass
+
+        async with session_factory() as db:
+            query = select(RoleModel).where(
+                RoleModel.is_active == True,  # noqa: E712
+                or_(
+                    RoleModel.organization_id == org_uuid,
+                    RoleModel.organization_id.is_(None)
+                )
+            ).order_by(RoleModel.name)
+
+            result = await db.execute(query)
+            role_models = result.scalars().all()
+
+            return [
+                Role(
+                    id=str(r.id),
+                    name=r.name,
+                    description=r.description,
+                    permissions=r.permissions or [],
+                    orgId=str(r.organization_id) if r.organization_id else None,
+                    isActive=r.is_active,
+                    createdBy=r.created_by,
+                    createdAt=r.created_at,
+                    updatedAt=r.updated_at,
+                )
+                for r in role_models
+            ]
 
     @staticmethod
     async def update(role_id: str, **updates: Any) -> Role:
@@ -146,22 +226,44 @@ class roles:
             ...     permissions=["customers.read"]
             ... )
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel
+
         context = require_permission("roles.update")
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        update_request = UpdateRoleRequest(**updates)
+        role_uuid = UUID(role_id)
 
-        updated_role = await repo.update_role(
-            role_id=role_id,
-            role_update=update_request,
-            org_id=context.org_id,
-            updated_by=context.user_id
-        )
+        async with session_factory() as db:
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
 
-        if not updated_role:
-            raise ValueError(f"Role not found: {role_id}")
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
 
-        return updated_role
+            # Apply updates
+            for field, value in updates.items():
+                if hasattr(role, field):
+                    setattr(role, field, value)
+
+            await db.flush()
+            await db.refresh(role)
+            await db.commit()
+
+            return Role(
+                id=str(role.id),
+                name=role.name,
+                description=role.description,
+                permissions=role.permissions or [],
+                orgId=str(role.organization_id) if role.organization_id else None,
+                isActive=role.is_active,
+                createdBy=role.created_by,
+                createdAt=role.created_at,
+                updatedAt=role.updated_at,
+            )
 
     @staticmethod
     async def delete(role_id: str) -> None:
@@ -182,13 +284,26 @@ class roles:
             >>> from bifrost import roles
             >>> roles.delete("role-123")
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel
+
         context = require_permission("roles.delete")
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        success = await repo.delete_role(role_id, context.org_id)
+        role_uuid = UUID(role_id)
 
-        if not success:
-            raise ValueError(f"Role not found: {role_id}")
+        async with session_factory() as db:
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
+
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
+
+            role.is_active = False
+            await db.commit()
 
     @staticmethod
     async def list_users(role_id: str) -> list[str]:
@@ -211,15 +326,29 @@ class roles:
             >>> for user_id in user_ids:
             ...     print(user_id)
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel, UserRole
+
         context = get_context()
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        # Verify role exists
-        role = await repo.get_role(role_id, context.org_id)
-        if not role:
-            raise ValueError(f"Role not found: {role_id}")
+        role_uuid = UUID(role_id)
 
-        return await repo.get_role_user_ids(role_id)
+        async with session_factory() as db:
+            # Verify role exists
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
+
+            # Get user IDs
+            result = await db.execute(
+                select(UserRole.user_id).where(UserRole.role_id == role_uuid)
+            )
+            return [str(uid) for uid in result.scalars().all()]
 
     @staticmethod
     async def list_forms(role_id: str) -> list[str]:
@@ -242,15 +371,29 @@ class roles:
             >>> for form_id in form_ids:
             ...     print(form_id)
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel, FormRole
+
         context = get_context()
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        # Verify role exists
-        role = await repo.get_role(role_id, context.org_id)
-        if not role:
-            raise ValueError(f"Role not found: {role_id}")
+        role_uuid = UUID(role_id)
 
-        return await repo.get_role_form_ids(role_id)
+        async with session_factory() as db:
+            # Verify role exists
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
+
+            # Get form IDs
+            result = await db.execute(
+                select(FormRole.form_id).where(FormRole.role_id == role_uuid)
+            )
+            return [str(fid) for fid in result.scalars().all()]
 
     @staticmethod
     async def assign_users(role_id: str, user_ids: list[str]) -> None:
@@ -272,20 +415,45 @@ class roles:
             >>> from bifrost import roles
             >>> roles.assign_users("role-123", ["user-1", "user-2"])
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel, UserRole
+
         context = require_permission("roles.assign_users")
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        # Verify role exists
-        role = await repo.get_role(role_id, context.org_id)
-        if not role:
-            raise ValueError(f"Role not found: {role_id}")
+        role_uuid = UUID(role_id)
 
-        await repo.assign_users_to_role(
-            role_id=role_id,
-            user_ids=user_ids,
-            org_id=context.org_id,
-            created_by=context.user_id
-        )
+        async with session_factory() as db:
+            # Verify role exists
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
+
+            for user_id in user_ids:
+                user_uuid = UUID(user_id)
+
+                # Check if already assigned
+                existing = await db.execute(
+                    select(UserRole).where(
+                        UserRole.user_id == user_uuid,
+                        UserRole.role_id == role_uuid,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue
+
+                user_role = UserRole(
+                    user_id=user_uuid,
+                    role_id=role_uuid,
+                    assigned_by=context.user_id,
+                )
+                db.add(user_role)
+
+            await db.commit()
 
     @staticmethod
     async def assign_forms(role_id: str, form_ids: list[str]) -> None:
@@ -307,17 +475,42 @@ class roles:
             >>> from bifrost import roles
             >>> roles.assign_forms("role-123", ["form-1", "form-2"])
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Role as RoleModel, FormRole
+
         context = require_permission("roles.assign_forms")
-        repo = RoleRepository(context)
+        session_factory = get_session_factory()
 
-        # Verify role exists
-        role = await repo.get_role(role_id, context.org_id)
-        if not role:
-            raise ValueError(f"Role not found: {role_id}")
+        role_uuid = UUID(role_id)
 
-        await repo.assign_forms_to_role(
-            role_id=role_id,
-            form_ids=form_ids,
-            org_id=context.org_id,
-            created_by=context.user_id
-        )
+        async with session_factory() as db:
+            # Verify role exists
+            result = await db.execute(
+                select(RoleModel).where(RoleModel.id == role_uuid)
+            )
+            role = result.scalar_one_or_none()
+            if not role:
+                raise ValueError(f"Role not found: {role_id}")
+
+            for form_id in form_ids:
+                form_uuid = UUID(form_id)
+
+                # Check if already assigned
+                existing = await db.execute(
+                    select(FormRole).where(
+                        FormRole.form_id == form_uuid,
+                        FormRole.role_id == role_uuid,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue
+
+                form_role = FormRole(
+                    form_id=form_uuid,
+                    role_id=role_uuid,
+                    assigned_by=context.user_id,
+                )
+                db.add(form_role)
+
+            await db.commit()

@@ -139,8 +139,8 @@ class TestEnhancedFormIntegration:
                     type=FormFieldType.FILE,
                     required=False,
                     multiple=True,
-                    allowedTypes=["application/pdf", "image/png"],
-                    maxSizeMB=10
+                    allowed_types=["application/pdf", "image/png"],
+                    max_size_mb=10
                 )
             ]
         )
@@ -155,8 +155,8 @@ class TestEnhancedFormIntegration:
         """Test form with launch workflow, query params, and field visibility"""
         request = CreateFormRequest(
             name="Advanced Dynamic Form",
-            linkedWorkflow="workflows.process_advanced_form",
-            formSchema=FormSchema(
+            linked_workflow="workflows.process_advanced_form",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="customer_type",
@@ -169,36 +169,36 @@ class TestEnhancedFormIntegration:
                         label="Enterprise Options",
                         type=FormFieldType.TEXT,
                         required=False,
-                        visibilityExpression="context.field.customer_type === 'enterprise'"
+                        visibility_expression="context.field.customer_type === 'enterprise'"
                     ),
                     FormField(
                         name="available_licenses",
                         label="Available Licenses",
                         type=FormFieldType.SELECT,
                         required=False,
-                        visibilityExpression="context.workflow.has_licenses === true",
-                        dataProvider="get_available_licenses"
+                        visibility_expression="context.workflow.has_licenses === true",
+                        data_provider="get_available_licenses"
                     )
                 ]
             ),
-            launchWorkflowId="workflows.load_customer_context",
-            allowedQueryParams=["customer_id", "source"]
+            launch_workflow_id="workflows.load_customer_context",
+            allowed_query_params=["customer_id", "source"]
         )
-        assert request.launchWorkflowId == "workflows.load_customer_context"
-        assert request.allowedQueryParams == ["customer_id", "source"]
-        assert len(request.formSchema.fields) == 3
-        assert request.formSchema.fields[1].visibilityExpression == "context.field.customer_type === 'enterprise'"
-        assert request.formSchema.fields[2].visibilityExpression == "context.workflow.has_licenses === true"
+        assert request.launch_workflow_id == "workflows.load_customer_context"
+        assert request.allowed_query_params == ["customer_id", "source"]
+        assert len(request.form_schema.fields) == 3
+        assert request.form_schema.fields[1].visibility_expression == "context.field.customer_type === 'enterprise'"
+        assert request.form_schema.fields[2].visibility_expression == "context.workflow.has_licenses === true"
 
     def test_complete_form_response_with_enhancements(self):
         """Test Form response model with all enhanced features"""
         form = Form(
             id="form-enhanced-123",
-            orgId="org-456",
+            org_id="org-456",
             name="Enhanced Form",
             description="Form with all new features",
-            linkedWorkflow="workflows.process_enhanced",
-            formSchema=FormSchema(
+            linked_workflow="workflows.process_enhanced",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="markdown_section",
@@ -212,7 +212,7 @@ class TestEnhancedFormIntegration:
                         label="Select Date",
                         type=FormFieldType.DATETIME,
                         required=True,
-                        visibilityExpression="context.query.requires_date === 'true'"
+                        visibility_expression="context.query.requires_date === 'true'"
                     ),
                     FormField(
                         name="file_upload",
@@ -220,36 +220,36 @@ class TestEnhancedFormIntegration:
                         type=FormFieldType.FILE,
                         required=False,
                         multiple=True,
-                        allowedTypes=["application/pdf"],
-                        maxSizeMB=50
+                        allowed_types=["application/pdf"],
+                        max_size_mb=50
                     )
                 ]
             ),
-            isActive=True,
-            isGlobal=False,
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow(),
-            launchWorkflowId="workflows.context_loader",
-            allowedQueryParams=["customer_id", "requires_date"]
+            is_active=True,
+            is_global=False,
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            launch_workflow_id="workflows.context_loader",
+            allowed_query_params=["customer_id", "requires_date"]
         )
 
         # Verify all enhanced features are preserved
-        assert form.launchWorkflowId == "workflows.context_loader"
-        assert form.allowedQueryParams == ["customer_id", "requires_date"]
-        assert len(form.formSchema.fields) == 3
+        assert form.launch_workflow_id == "workflows.context_loader"
+        assert form.allowed_query_params == ["customer_id", "requires_date"]
+        assert len(form.form_schema.fields) == 3
 
         # Verify new field types
-        assert form.formSchema.fields[0].type == FormFieldType.MARKDOWN
-        assert form.formSchema.fields[1].type == FormFieldType.DATETIME
-        assert form.formSchema.fields[2].type == FormFieldType.FILE
+        assert form.form_schema.fields[0].type == FormFieldType.MARKDOWN
+        assert form.form_schema.fields[1].type == FormFieldType.DATETIME
+        assert form.form_schema.fields[2].type == FormFieldType.FILE
 
         # Verify field-specific features
-        assert form.formSchema.fields[0].content is not None
-        assert form.formSchema.fields[1].visibilityExpression is not None
-        assert form.formSchema.fields[2].multiple is True
-        assert form.formSchema.fields[2].allowedTypes == ["application/pdf"]
-        assert form.formSchema.fields[2].maxSizeMB == 50
+        assert form.form_schema.fields[0].content is not None
+        assert form.form_schema.fields[1].visibility_expression is not None
+        assert form.form_schema.fields[2].multiple is True
+        assert form.form_schema.fields[2].allowed_types == ["application/pdf"]
+        assert form.form_schema.fields[2].max_size_mb == 50
 
 
 class TestDataProviderInputsValidation:
@@ -257,10 +257,10 @@ class TestDataProviderInputsValidation:
 
     def test_form_field_with_static_data_provider_inputs(self):
         """
-        Test that FormField with dataProvider and dataProviderInputs validates correctly.
+        Test that FormField with data_provider and data_provider_inputs validates correctly.
 
         Expected behavior:
-        - dataProviderInputs is optional when dataProvider is set
+        - data_provider_inputs is optional when data_provider is set
         - Each input config must have valid mode (static, fieldRef, expression)
         - Static mode requires 'value' field
         - Input keys should match data provider parameter names
@@ -271,8 +271,8 @@ class TestDataProviderInputsValidation:
             label="Select Repository",
             type=FormFieldType.SELECT,
             required=True,
-            dataProvider="get_github_repos",
-            dataProviderInputs={
+            data_provider="get_github_repos",
+            data_provider_inputs={
                 "token": DataProviderInputConfig(
                     mode=DataProviderInputMode.STATIC,
                     value="ghp_test_token_12345"
@@ -284,20 +284,20 @@ class TestDataProviderInputsValidation:
             }
         )
 
-        assert field.dataProvider == "get_github_repos"
-        assert field.dataProviderInputs is not None
-        assert len(field.dataProviderInputs) == 2
-        assert field.dataProviderInputs["token"].mode == DataProviderInputMode.STATIC
-        assert field.dataProviderInputs["token"].value == "ghp_test_token_12345"
-        assert field.dataProviderInputs["org"].mode == DataProviderInputMode.STATIC
-        assert field.dataProviderInputs["org"].value == "my-org"
+        assert field.data_provider == "get_github_repos"
+        assert field.data_provider_inputs is not None
+        assert len(field.data_provider_inputs) == 2
+        assert field.data_provider_inputs["token"].mode == DataProviderInputMode.STATIC
+        assert field.data_provider_inputs["token"].value == "ghp_test_token_12345"
+        assert field.data_provider_inputs["org"].mode == DataProviderInputMode.STATIC
+        assert field.data_provider_inputs["org"].value == "my-org"
 
     def test_data_provider_inputs_without_data_provider_fails(self):
         """
-        Test that dataProviderInputs cannot be set without dataProvider.
+        Test that data_provider_inputs cannot be set without data_provider.
 
         Expected behavior:
-        - Setting dataProviderInputs without dataProvider should raise ValidationError
+        - Setting data_provider_inputs without data_provider should raise ValidationError
         """
         with pytest.raises(ValidationError) as exc_info:
             FormField(
@@ -305,8 +305,8 @@ class TestDataProviderInputsValidation:
                 label="Invalid Field",
                 type=FormFieldType.SELECT,
                 required=False,
-                # No dataProvider set!
-                dataProviderInputs={
+                # No data_provider set!
+                data_provider_inputs={
                     "param": DataProviderInputConfig(
                         mode=DataProviderInputMode.STATIC,
                         value="test"
@@ -315,7 +315,7 @@ class TestDataProviderInputsValidation:
             )
 
         errors = exc_info.value.errors()
-        assert any("dataProviderInputs requires dataProvider" in str(e.get("ctx", {}).get("error", "")) for e in errors)
+        assert any("data_provider_inputs requires data_provider" in str(e.get("ctx", {}).get("error", "")) for e in errors)
 
     def test_static_input_mode_validation(self):
         """
@@ -323,7 +323,7 @@ class TestDataProviderInputsValidation:
 
         Expected behavior:
         - mode="static" requires 'value' to be set
-        - mode="static" should reject 'fieldName' or 'expression'
+        - mode="static" should reject 'field_name' or 'expression'
         """
         # Valid static mode
         config = DataProviderInputConfig(
@@ -332,7 +332,7 @@ class TestDataProviderInputsValidation:
         )
         assert config.mode == DataProviderInputMode.STATIC
         assert config.value == "test_value"
-        assert config.fieldName is None
+        assert config.field_name is None
         assert config.expression is None
 
         # Invalid: static mode without value
@@ -343,12 +343,12 @@ class TestDataProviderInputsValidation:
             )
         assert any("value required for static mode" in str(e) for e in exc_info.value.errors())
 
-        # Invalid: static mode with fieldName
+        # Invalid: static mode with field_name
         with pytest.raises(ValidationError) as exc_info:
             DataProviderInputConfig(
                 mode=DataProviderInputMode.STATIC,
                 value="test",
-                fieldName="other_field"  # Should not be set for static mode
+                field_name="other_field"  # Should not be set for static mode
             )
         assert any("only value should be set for static mode" in str(e) for e in exc_info.value.errors())
 
@@ -357,14 +357,14 @@ class TestDataProviderInputsValidation:
         Test complete form creation with data provider inputs in multiple fields.
 
         Expected behavior:
-        - Form can have multiple fields with dataProviderInputs
+        - Form can have multiple fields with data_provider_inputs
         - Each field's inputs are independent
-        - Form validation passes with valid dataProviderInputs
+        - Form validation passes with valid data_provider_inputs
         """
         request = CreateFormRequest(
             name="Form with Data Provider Inputs",
-            linkedWorkflow="workflows.process_repo_selection",
-            formSchema=FormSchema(
+            linked_workflow="workflows.process_repo_selection",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="github_token",
@@ -377,8 +377,8 @@ class TestDataProviderInputsValidation:
                         label="Select Repository",
                         type=FormFieldType.SELECT,
                         required=True,
-                        dataProvider="get_github_repos",
-                        dataProviderInputs={
+                        data_provider="get_github_repos",
+                        data_provider_inputs={
                             "token": DataProviderInputConfig(
                                 mode=DataProviderInputMode.STATIC,
                                 value="ghp_static_token"
@@ -390,8 +390,8 @@ class TestDataProviderInputsValidation:
                         label="Select Branch",
                         type=FormFieldType.SELECT,
                         required=True,
-                        dataProvider="get_github_branches",
-                        dataProviderInputs={
+                        data_provider="get_github_branches",
+                        data_provider_inputs={
                             "token": DataProviderInputConfig(
                                 mode=DataProviderInputMode.STATIC,
                                 value="ghp_static_token"
@@ -406,19 +406,19 @@ class TestDataProviderInputsValidation:
             )
         )
 
-        assert len(request.formSchema.fields) == 3
+        assert len(request.form_schema.fields) == 3
 
         # First field has no data provider
-        assert request.formSchema.fields[0].dataProvider is None
-        assert request.formSchema.fields[0].dataProviderInputs is None
+        assert request.form_schema.fields[0].data_provider is None
+        assert request.form_schema.fields[0].data_provider_inputs is None
 
         # Second field has data provider with 1 input
-        assert request.formSchema.fields[1].dataProvider == "get_github_repos"
-        assert len(request.formSchema.fields[1].dataProviderInputs) == 1
-        assert "token" in request.formSchema.fields[1].dataProviderInputs
+        assert request.form_schema.fields[1].data_provider == "get_github_repos"
+        assert len(request.form_schema.fields[1].data_provider_inputs) == 1
+        assert "token" in request.form_schema.fields[1].data_provider_inputs
 
         # Third field has data provider with 2 inputs
-        assert request.formSchema.fields[2].dataProvider == "get_github_branches"
-        assert len(request.formSchema.fields[2].dataProviderInputs) == 2
-        assert "token" in request.formSchema.fields[2].dataProviderInputs
-        assert "repo" in request.formSchema.fields[2].dataProviderInputs
+        assert request.form_schema.fields[2].data_provider == "get_github_branches"
+        assert len(request.form_schema.fields[2].data_provider_inputs) == 2
+        assert "token" in request.form_schema.fields[2].data_provider_inputs
+        assert "repo" in request.form_schema.fields[2].data_provider_inputs

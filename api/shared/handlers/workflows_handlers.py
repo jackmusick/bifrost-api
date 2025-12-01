@@ -1,6 +1,8 @@
 """
 Workflows Handlers V2 - Refactored to use unified engine
 Business logic for workflow execution using shared/engine.py
+
+Note: Azure Functions handlers have been removed - see FastAPI routers in src/routers/
 """
 
 import base64
@@ -8,15 +10,17 @@ import json
 import logging
 import uuid
 from datetime import datetime
-
-import azure.functions as func
+from typing import TYPE_CHECKING
 
 from shared.context import Caller
 from shared.discovery import load_workflow
 from shared.engine import ExecutionRequest, execute
-from shared.execution_logger import get_execution_logger
 from shared.models import ErrorResponse, ExecutionStatus
-from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+
+# Lazy imports to avoid Azure blob storage dependency for validation-only use cases
+if TYPE_CHECKING:
+    from shared.execution_logger import get_execution_logger
+    from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +104,11 @@ async def execute_workflow_internal(
 
     # Synchronous execution path
     execution_id = str(uuid.uuid4())
+
+    # Runtime imports to avoid Azure blob storage dependency at module load
+    from shared.execution_logger import get_execution_logger
+    from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+
     exec_logger = get_execution_logger()
     start_time = datetime.utcnow()
 
@@ -255,97 +264,8 @@ async def execute_workflow_internal(
         }, 200
 
 
-async def execute_workflow_handler(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Execute a workflow with the provided parameters - V2 using unified engine.
-
-    Supports:
-    - Named workflows from registry
-    - Inline Python scripts (base64-encoded)
-    - Async execution (enqueue to worker)
-    - Transient execution (no DB writes, for editor)
-    """
-    # Pre-execution setup
-    try:
-        # Get context from request (injected by @with_org_context decorator)
-        context = req.org_context  # type: ignore[attr-defined]
-    except Exception as e:
-        logger.error(f"Pre-execution error: {str(e)}", exc_info=True)
-        error = ErrorResponse(
-            error="InternalError",
-            message=f"Failed to initialize workflow execution: {str(e)}"
-        )
-        return func.HttpResponse(
-            json.dumps(error.model_dump()),
-            status_code=500,
-            mimetype="application/json"
-        )
-
-    # Parse request body
-    try:
-        body = req.get_json() or {}
-
-        if not isinstance(body, dict):
-            raise ValueError("Request body must be a JSON object")
-
-        # Extract fields
-        workflow_name = body.get(
-            'workflowName') or req.route_params.get('workflowName')
-        form_id = body.get('formId')
-        input_data = body.get('inputData', {})
-        transient = body.get('transient', False)
-        code_base64 = body.get('code')
-        script_name = body.get('scriptName')
-
-        # Validate
-        if not workflow_name and not code_base64:
-            raise ValueError(
-                "Either 'workflowName' or 'code' must be provided")
-
-        # For scripts, use scriptName or fallback
-        if code_base64:
-            workflow_name = script_name or "script"
-            # Validate base64
-            try:
-                base64.b64decode(code_base64).decode('utf-8')
-            except Exception as e:
-                error = ErrorResponse(
-                    error="BadRequest",
-                    message=f"Invalid base64 encoded code: {str(e)}"
-                )
-                return func.HttpResponse(
-                    json.dumps(error.model_dump()),
-                    status_code=400,
-                    mimetype="application/json"
-                )
-
-        # At this point, workflow_name must be set (either from body/route params or defaulted to "script")
-        assert workflow_name is not None, "workflow_name should be set"
-
-    except (ValueError, TypeError) as e:
-        logger.error(f"Failed to parse request body: {str(e)}")
-        error = ErrorResponse(error="BadRequest", message=str(e))
-        return func.HttpResponse(
-            json.dumps(error.model_dump()),
-            status_code=400,
-            mimetype="application/json"
-        )
-
-    # Delegate to internal execution logic
-    response_dict, status_code = await execute_workflow_internal(
-        context=context,
-        workflow_name=workflow_name,
-        parameters=input_data,
-        form_id=form_id,
-        transient=transient,
-        code_base64=code_base64
-    )
-
-    return func.HttpResponse(
-        json.dumps(response_dict, default=str),
-        status_code=status_code,
-        mimetype="application/json"
-    )
+# Note: execute_workflow_handler (Azure Functions) has been removed.
+# Use FastAPI router in src/routers/workflows.py instead.
 
 
 async def validate_workflow_file(path: str, content: str | None = None):

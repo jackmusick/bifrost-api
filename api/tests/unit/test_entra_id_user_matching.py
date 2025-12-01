@@ -12,6 +12,10 @@ from shared.models import User, UserType
 from shared.user_provisioning import ensure_user_provisioned
 
 
+# Note: Models use snake_case (e.g., display_name, user_type, is_platform_admin, entra_user_id)
+# This matches the OpenAPI/TypeScript schema
+
+
 class TestEntraIdLookupStrategy:
     """Test Entra ID lookup takes precedence over email"""
 
@@ -25,12 +29,12 @@ class TestEntraIdLookupStrategy:
         mock_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="Test User",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-123"
+            display_name="Test User",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-123"
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=mock_user)
         mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
@@ -55,12 +59,12 @@ class TestEntraIdLookupStrategy:
         mock_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="Test User",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId=None
+            display_name="Test User",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id=None
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=None)
         mock_repo.get_user = AsyncMock(return_value=mock_user)
@@ -92,12 +96,12 @@ class TestEntraIdBackfill:
         mock_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="Test User",
-            userType=UserType.PLATFORM,
-            isPlatformAdmin=True,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId=None  # No Entra ID stored
+            display_name="Test User",
+            user_type=UserType.PLATFORM,
+            is_platform_admin=True,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id=None  # No Entra ID stored
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=None)
         mock_repo.get_user = AsyncMock(return_value=mock_user)
@@ -125,12 +129,12 @@ class TestEntraIdBackfill:
         mock_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="Test User",
-            userType=UserType.PLATFORM,
-            isPlatformAdmin=True,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-existing"
+            display_name="Test User",
+            user_type=UserType.PLATFORM,
+            is_platform_admin=True,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-existing"
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=None)
         mock_repo.get_user = AsyncMock(return_value=mock_user)
@@ -159,22 +163,22 @@ class TestProfileUpdates:
         old_user = User(
             id="old@example.com",
             email="old@example.com",
-            displayName="Test User",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-123"
+            display_name="Test User",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-123"
         )
         updated_user = User(
             id="new@example.com",
             email="new@example.com",
-            displayName="Test User",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-123"
+            display_name="Test User",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-123"
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=old_user)
         mock_repo.update_user_profile = AsyncMock(return_value=updated_user)
@@ -204,22 +208,22 @@ class TestProfileUpdates:
         old_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="Old Name",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-123"
+            display_name="Old Name",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-123"
         )
         updated_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="New Name",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-123"
+            display_name="New Name",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-123"
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=old_user)
         mock_repo.update_user_profile = AsyncMock(return_value=updated_user)
@@ -249,12 +253,12 @@ class TestProfileUpdates:
         mock_user = User(
             id="user@example.com",
             email="user@example.com",
-            displayName="Test User",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-123"
+            display_name="Test User",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-123"
         )
         mock_repo.get_user_by_entra_id = AsyncMock(return_value=mock_user)
         mock_repo.get_user_org_id = AsyncMock(return_value="org-123")
@@ -289,12 +293,12 @@ class TestNewUserCreationWithEntraId:
         created_user = User(
             id="first@example.com",
             email="first@example.com",
-            displayName="First User",
-            userType=UserType.PLATFORM,
-            isPlatformAdmin=True,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-first"
+            display_name="First User",
+            user_type=UserType.PLATFORM,
+            is_platform_admin=True,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-first"
         )
         mock_user_repo.create_user = AsyncMock(return_value=created_user)
 
@@ -331,22 +335,22 @@ class TestNewUserCreationWithEntraId:
             id="org-123",
             name="Example Org",
             domain="example.com",
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            createdBy="system",
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            created_at=datetime.utcnow(),
+            created_by="system",
+            updated_at=datetime.utcnow()
         )
 
         # Mock the created user
         created_user = User(
             id="new@example.com",
             email="new@example.com",
-            displayName="New User",
-            userType=UserType.ORG,
-            isPlatformAdmin=False,
-            isActive=True,
-            createdAt=datetime.utcnow(),
-            entraUserId="entra-new"
+            display_name="New User",
+            user_type=UserType.ORG,
+            is_platform_admin=False,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            entra_user_id="entra-new"
         )
 
         mock_user_repo.get_user_by_entra_id = AsyncMock(return_value=None)

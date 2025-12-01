@@ -18,6 +18,10 @@ from shared.models import (
 )
 
 
+# Note: Models use snake_case (e.g., linked_workflow, form_schema, is_global)
+# This matches the OpenAPI/TypeScript schema
+
+
 class TestCreateFormRequest:
     """Test validation for CreateFormRequest model"""
 
@@ -25,8 +29,8 @@ class TestCreateFormRequest:
         """Test valid create form request"""
         request = CreateFormRequest(
             name="Customer Onboarding",
-            linkedWorkflow="workflows.onboarding.customer_onboarding",
-            formSchema=FormSchema(
+            linked_workflow="workflows.onboarding.customer_onboarding",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="company_name",
@@ -38,26 +42,26 @@ class TestCreateFormRequest:
             )
         )
         assert request.name == "Customer Onboarding"
-        assert request.linkedWorkflow == "workflows.onboarding.customer_onboarding"
-        assert len(request.formSchema.fields) == 1
-        assert request.isGlobal is False  # Default
+        assert request.linked_workflow == "workflows.onboarding.customer_onboarding"
+        assert len(request.form_schema.fields) == 1
+        assert request.is_global is False  # Default
 
     def test_create_form_with_global_flag(self):
         """Test creating a global form"""
         request = CreateFormRequest(
             name="Global Template",
-            linkedWorkflow="workflows.templates.global_template",
-            formSchema=FormSchema(fields=[]),
-            isGlobal=True
+            linked_workflow="workflows.templates.global_template",
+            form_schema=FormSchema(fields=[]),
+            is_global=True
         )
-        assert request.isGlobal is True
+        assert request.is_global is True
 
     def test_create_form_with_description(self):
         """Test creating form with optional description"""
         request = CreateFormRequest(
             name="Test Form",
-            linkedWorkflow="workflows.test",
-            formSchema=FormSchema(fields=[]),
+            linked_workflow="workflows.test",
+            form_schema=FormSchema(fields=[]),
             description="This is a test form"
         )
         assert request.description == "This is a test form"
@@ -66,34 +70,34 @@ class TestCreateFormRequest:
         """Test that name is required"""
         with pytest.raises(ValidationError) as exc_info:
             CreateFormRequest(
-                linkedWorkflow="workflows.test",
-                formSchema=FormSchema(fields=[])
+                linked_workflow="workflows.test",
+                form_schema=FormSchema(fields=[])
             )
 
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("name",) and e["type"] == "missing" for e in errors)
 
     def test_missing_required_linked_workflow(self):
-        """Test that linkedWorkflow is required"""
+        """Test that linked_workflow is required"""
         with pytest.raises(ValidationError) as exc_info:
             CreateFormRequest(
                 name="Test Form",
-                formSchema=FormSchema(fields=[])
+                form_schema=FormSchema(fields=[])
             )
 
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("linkedWorkflow",) and e["type"] == "missing" for e in errors)
+        assert any(e["loc"] == ("linked_workflow",) and e["type"] == "missing" for e in errors)
 
     def test_missing_required_form_schema(self):
-        """Test that formSchema is required"""
+        """Test that form_schema is required"""
         with pytest.raises(ValidationError) as exc_info:
             CreateFormRequest(
                 name="Test Form",
-                linkedWorkflow="workflows.test"
+                linked_workflow="workflows.test"
             )
 
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("formSchema",) and e["type"] == "missing" for e in errors)
+        assert any(e["loc"] == ("form_schema",) and e["type"] == "missing" for e in errors)
 
 
 class TestUpdateFormRequest:
@@ -104,8 +108,8 @@ class TestUpdateFormRequest:
         request = UpdateFormRequest(
             name="Updated Form",
             description="Updated description",
-            linkedWorkflow="workflows.updated",
-            formSchema=FormSchema(
+            linked_workflow="workflows.updated",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="field1",
@@ -115,11 +119,11 @@ class TestUpdateFormRequest:
                     )
                 ]
             ),
-            isActive=False
+            is_active=False
         )
         assert request.name == "Updated Form"
         assert request.description == "Updated description"
-        assert request.isActive is False
+        assert request.is_active is False
 
     def test_update_form_request_partial(self):
         """Test update with only some fields"""
@@ -128,27 +132,27 @@ class TestUpdateFormRequest:
         )
         assert request.name == "New Name"
         assert request.description is None
-        assert request.linkedWorkflow is None
-        assert request.formSchema is None
+        assert request.linked_workflow is None
+        assert request.form_schema is None
 
     def test_update_form_request_empty_valid(self):
         """Test that update request can be empty (all optional)"""
         request = UpdateFormRequest()
         assert request.name is None
         assert request.description is None
-        assert request.linkedWorkflow is None
-        assert request.formSchema is None
-        assert request.isActive is None
+        assert request.linked_workflow is None
+        assert request.form_schema is None
+        assert request.is_active is None
 
     def test_update_form_request_activate(self):
         """Test activating a form via update"""
-        request = UpdateFormRequest(isActive=True)
-        assert request.isActive is True
+        request = UpdateFormRequest(is_active=True)
+        assert request.is_active is True
 
     def test_update_form_request_deactivate(self):
         """Test deactivating a form via update"""
-        request = UpdateFormRequest(isActive=False)
-        assert request.isActive is False
+        request = UpdateFormRequest(is_active=False)
+        assert request.is_active is False
 
 
 class TestFormSchema:
@@ -259,15 +263,15 @@ class TestFormField:
         assert field.validation == {"min": 0, "max": 120}
 
     def test_field_with_data_provider(self):
-        """Test field with dataProvider string"""
+        """Test field with data_provider string"""
         field = FormField(
             name="organization",
             label="Organization",
             type=FormFieldType.SELECT,
             required=True,
-            dataProvider="msgraph_organizations"
+            data_provider="msgraph_organizations"
         )
-        assert field.dataProvider == "msgraph_organizations"
+        assert field.data_provider == "msgraph_organizations"
 
     def test_field_defaults(self):
         """Test that optional fields have proper defaults"""
@@ -278,7 +282,7 @@ class TestFormField:
         )
         assert field.required is False  # Default
         assert field.validation is None
-        assert field.dataProvider is None
+        assert field.data_provider is None
 
     def test_missing_required_name(self):
         """Test that name is required"""
@@ -356,10 +360,10 @@ class TestFormResponse:
         """Test valid form response"""
         form = Form(
             id="form-123",
-            orgId="org-456",
+            org_id="org-456",
             name="Test Form",
-            linkedWorkflow="workflows.test",
-            formSchema=FormSchema(
+            linked_workflow="workflows.test",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="field1",
@@ -369,32 +373,32 @@ class TestFormResponse:
                     )
                 ]
             ),
-            isActive=True,
-            isGlobal=False,
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            is_global=False,
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
         assert form.id == "form-123"
-        assert form.orgId == "org-456"
+        assert form.org_id == "org-456"
         assert form.name == "Test Form"
-        assert form.isActive is True
-        assert form.isGlobal is False
+        assert form.is_active is True
+        assert form.is_global is False
 
     def test_form_response_with_description(self):
         """Test form response with optional description"""
         form = Form(
             id="form-123",
-            orgId="org-456",
+            org_id="org-456",
             name="Test Form",
             description="Test description",
-            linkedWorkflow="workflows.test",
-            formSchema=FormSchema(fields=[]),
-            isActive=True,
-            isGlobal=False,
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            linked_workflow="workflows.test",
+            form_schema=FormSchema(fields=[]),
+            is_active=True,
+            is_global=False,
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
         assert form.description == "Test description"
 
@@ -402,33 +406,33 @@ class TestFormResponse:
         """Test global form response"""
         form = Form(
             id="form-123",
-            orgId="GLOBAL",
+            org_id="GLOBAL",
             name="Global Form",
-            linkedWorkflow="workflows.global",
-            formSchema=FormSchema(fields=[]),
-            isActive=True,
-            isGlobal=True,
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            linked_workflow="workflows.global",
+            form_schema=FormSchema(fields=[]),
+            is_active=True,
+            is_global=True,
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
-        assert form.orgId == "GLOBAL"
-        assert form.isGlobal is True
+        assert form.org_id == "GLOBAL"
+        assert form.is_global is True
 
     def test_form_defaults(self):
         """Test that form fields have proper defaults"""
         form = Form(
             id="form-123",
-            orgId="org-456",
+            org_id="org-456",
             name="Test Form",
-            linkedWorkflow="workflows.test",
-            formSchema=FormSchema(fields=[]),
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            linked_workflow="workflows.test",
+            form_schema=FormSchema(fields=[]),
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
-        assert form.isActive is True  # Default
-        assert form.isGlobal is False  # Default
+        assert form.is_active is True  # Default
+        assert form.is_global is False  # Default
         assert form.description is None
 
     def test_form_missing_required_fields(self):
@@ -436,13 +440,13 @@ class TestFormResponse:
         with pytest.raises(ValidationError) as exc_info:
             Form(
                 id="form-123",
-                orgId="org-456",
+                org_id="org-456",
                 name="Test Form"
-                # Missing: linkedWorkflow, formSchema, createdBy, createdAt, updatedAt
+                # Missing: linked_workflow, form_schema, created_by, created_at, updated_at
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"linkedWorkflow", "formSchema", "createdBy", "createdAt", "updatedAt"}
+        required_fields = {"linked_workflow", "form_schema", "created_by", "created_at", "updated_at"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
 
@@ -450,10 +454,10 @@ class TestFormResponse:
         """Test that form can be serialized to dict/JSON"""
         form = Form(
             id="form-123",
-            orgId="org-456",
+            org_id="org-456",
             name="Test Form",
-            linkedWorkflow="workflows.test",
-            formSchema=FormSchema(
+            linked_workflow="workflows.test",
+            form_schema=FormSchema(
                 fields=[
                     FormField(
                         name="field1",
@@ -463,40 +467,40 @@ class TestFormResponse:
                     )
                 ]
             ),
-            isActive=True,
-            isGlobal=False,
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            is_active=True,
+            is_global=False,
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
         form_dict = form.model_dump()
         assert "id" in form_dict
-        assert "orgId" in form_dict
+        assert "org_id" in form_dict
         assert "name" in form_dict
-        assert "linkedWorkflow" in form_dict
-        assert "formSchema" in form_dict
-        assert "isActive" in form_dict
-        assert "isGlobal" in form_dict
-        assert "createdBy" in form_dict
-        assert "createdAt" in form_dict
-        assert "updatedAt" in form_dict
+        assert "linked_workflow" in form_dict
+        assert "form_schema" in form_dict
+        assert "is_active" in form_dict
+        assert "is_global" in form_dict
+        assert "created_by" in form_dict
+        assert "created_at" in form_dict
+        assert "updated_at" in form_dict
 
     def test_form_json_serialization(self):
         """Test that form can be serialized to JSON mode"""
         form = Form(
             id="form-123",
-            orgId="org-456",
+            org_id="org-456",
             name="Test Form",
-            linkedWorkflow="workflows.test",
-            formSchema=FormSchema(fields=[]),
-            isActive=True,
-            isGlobal=False,
-            createdBy="user-789",
-            createdAt=datetime.utcnow(),
-            updatedAt=datetime.utcnow()
+            linked_workflow="workflows.test",
+            form_schema=FormSchema(fields=[]),
+            is_active=True,
+            is_global=False,
+            created_by="user-789",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
         form_dict = form.model_dump(mode="json")
-        assert isinstance(form_dict["createdAt"], str)  # datetime -> ISO string
-        assert isinstance(form_dict["updatedAt"], str)  # datetime -> ISO string
+        assert isinstance(form_dict["created_at"], str)  # datetime -> ISO string
+        assert isinstance(form_dict["updated_at"], str)  # datetime -> ISO string

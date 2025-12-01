@@ -11,6 +11,10 @@ from pydantic import ValidationError
 from shared.models import Config, ConfigType, SetConfigRequest
 
 
+# Note: Models use snake_case (e.g., updated_at, updated_by, org_id)
+# ConfigType has: STRING, INT, BOOL, JSON, SECRET
+
+
 class TestSetConfigRequest:
     """Test validation for SetConfigRequest model"""
 
@@ -57,14 +61,15 @@ class TestSetConfigRequest:
         )
         assert request.type == ConfigType.JSON
 
-    def test_valid_request_secret_ref_type(self):
-        """Test valid request with secret reference type"""
+    def test_valid_request_secret_type(self):
+        """Test valid request with secret type (encrypted value)"""
         request = SetConfigRequest(
             key="api_key",
-            value="vault://secrets/api-key",
-            type=ConfigType.SECRET_REF
+            value="my-secret-api-key",
+            type=ConfigType.SECRET
         )
-        assert request.type == ConfigType.SECRET_REF
+        assert request.type == ConfigType.SECRET
+        assert request.value == "my-secret-api-key"
 
     def test_valid_request_without_description(self):
         """Test valid request without description"""
@@ -133,17 +138,15 @@ class TestSetConfigRequest:
         assert any(e["loc"] == ("key",) and e["type"] == "missing" for e in errors)
 
     def test_missing_required_value(self):
-        """Test that value is required for non-secret types"""
+        """Test that value is required"""
         with pytest.raises(ValidationError) as exc_info:
             SetConfigRequest(
                 key="test_key",
                 type=ConfigType.STRING
-                # No value or secretRef provided
             )
 
         errors = exc_info.value.errors()
-        # Should get validation error about missing value
-        assert any("value" in str(e) for e in errors)
+        assert any(e["loc"] == ("value",) and e["type"] == "missing" for e in errors)
 
     def test_missing_required_type(self):
         """Test that type is required"""
@@ -168,60 +171,6 @@ class TestSetConfigRequest:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("type",) for e in errors)
 
-    def test_secret_ref_requires_value_or_secret_ref(self):
-        """Test that secret_ref type requires either value or secretRef"""
-        # Missing both should fail
-        with pytest.raises(ValidationError) as exc_info:
-            SetConfigRequest(
-                key="test_key",
-                type=ConfigType.SECRET_REF
-            )
-        errors = exc_info.value.errors()
-        assert any("value" in str(e) or "secretRef" in str(e) for e in errors)
-
-    def test_secret_ref_with_value(self):
-        """Test that secret_ref accepts value (to create secret)"""
-        config = SetConfigRequest(
-            key="test_key",
-            value="my-secret-value",
-            type=ConfigType.SECRET_REF
-        )
-        assert config.value == "my-secret-value"
-        assert config.secretRef is None
-
-    def test_secret_ref_with_secret_ref(self):
-        """Test that secret_ref accepts secretRef (to reference existing)"""
-        config = SetConfigRequest(
-            key="test_key",
-            secretRef="bifrost-global-api-key-12345678-1234-1234-1234-123456789012",
-            type=ConfigType.SECRET_REF
-        )
-        assert config.secretRef == "bifrost-global-api-key-12345678-1234-1234-1234-123456789012"
-        assert config.value is None
-
-    def test_secret_ref_cannot_have_both(self):
-        """Test that secret_ref cannot have both value and secretRef"""
-        with pytest.raises(ValidationError) as exc_info:
-            SetConfigRequest(
-                key="test_key",
-                value="my-secret",
-                secretRef="bifrost-global-api-key-12345678-1234-1234-1234-123456789012",
-                type=ConfigType.SECRET_REF
-            )
-        errors = exc_info.value.errors()
-        assert any("both" in str(e).lower() for e in errors)
-
-    def test_non_secret_type_forbids_secret_ref(self):
-        """Test that non-secret types cannot use secretRef"""
-        with pytest.raises(ValidationError) as exc_info:
-            SetConfigRequest(
-                key="test_key",
-                secretRef="some-secret-name",
-                type=ConfigType.STRING
-            )
-        errors = exc_info.value.errors()
-        assert any("secretRef" in str(e) for e in errors)
-
 
 class TestConfigResponse:
     """Test Config response model structure"""
@@ -234,16 +183,16 @@ class TestConfigResponse:
             type=ConfigType.INT,
             scope="GLOBAL",
             description="API timeout in seconds",
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
         assert config.key == "api_timeout"
         assert config.value == "30"
         assert config.type == ConfigType.INT
         assert config.scope == "GLOBAL"
         assert config.description == "API timeout in seconds"
-        assert isinstance(config.updatedAt, datetime)
-        assert config.updatedBy == "user-123"
+        assert isinstance(config.updated_at, datetime)
+        assert config.updated_by == "user-123"
 
     def test_config_without_description(self):
         """Test config with null description"""
@@ -252,27 +201,25 @@ class TestConfigResponse:
             value="test_value",
             type=ConfigType.STRING,
             scope="org",
-            orgId="test-org-123",
+            org_id="test-org-123",
             description=None,
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
         assert config.description is None
         assert config.scope == "org"
-        assert config.orgId == "test-org-123"
+        assert config.org_id == "test-org-123"
 
     def test_config_missing_required_fields(self):
-        """Test that all required fields must be present"""
+        """Test that key and value are required"""
         with pytest.raises(ValidationError) as exc_info:
             Config(
-                key="test_key",
-                value="test_value",
                 type=ConfigType.STRING
-                # Missing: scope, updatedAt, updatedBy
+                # Missing: key, value
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"scope", "updatedAt", "updatedBy"}
+        required_fields = {"key", "value"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
 
@@ -284,8 +231,8 @@ class TestConfigResponse:
             type=ConfigType.STRING,
             scope="GLOBAL",
             description="Test description",
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
 
         config_dict = config.model_dump()
@@ -294,8 +241,8 @@ class TestConfigResponse:
         assert "type" in config_dict
         assert "scope" in config_dict
         assert "description" in config_dict
-        assert "updatedAt" in config_dict
-        assert "updatedBy" in config_dict
+        assert "updated_at" in config_dict
+        assert "updated_by" in config_dict
 
     def test_config_json_serialization(self):
         """Test that config can be serialized to JSON mode"""
@@ -305,12 +252,12 @@ class TestConfigResponse:
             type=ConfigType.STRING,
             scope="GLOBAL",
             description="Test description",
-            updatedAt=datetime.utcnow(),
-            updatedBy="user-123"
+            updated_at=datetime.utcnow(),
+            updated_by="user-123"
         )
 
         config_dict = config.model_dump(mode="json")
-        assert isinstance(config_dict["updatedAt"], str)  # datetime -> ISO string
+        assert isinstance(config_dict["updated_at"], str)  # datetime -> ISO string
 
 
 class TestConfigTypeEnum:
@@ -322,12 +269,12 @@ class TestConfigTypeEnum:
         assert ConfigType.INT == "int"
         assert ConfigType.BOOL == "bool"
         assert ConfigType.JSON == "json"
-        assert ConfigType.SECRET_REF == "secret_ref"
+        assert ConfigType.SECRET == "secret"
 
     def test_config_type_in_request(self):
         """Test using enum in request"""
         for config_type in [ConfigType.STRING, ConfigType.INT, ConfigType.BOOL,
-                           ConfigType.JSON, ConfigType.SECRET_REF]:
+                           ConfigType.JSON, ConfigType.SECRET]:
             request = SetConfigRequest(
                 key="test_key",
                 value="test_value",

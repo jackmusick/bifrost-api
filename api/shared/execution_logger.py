@@ -1,16 +1,17 @@
 """
 Execution Logger
-Logs workflow execution details using ExecutionRepository
+Logs workflow execution details using ExecutionLogRepository (PostgreSQL)
 Large data (logs, results, snapshots) stored in Blob Storage to avoid size limits
 """
 
 import json
 import logging
+from datetime import datetime
 from typing import Any, TYPE_CHECKING
+from uuid import UUID
 
 from shared.blob_storage import get_blob_service
 from shared.models import ExecutionStatus
-from shared.repositories.executions import ExecutionRepository
 
 if TYPE_CHECKING:
     from shared.webpubsub_broadcaster import WebPubSubBroadcaster
@@ -25,11 +26,10 @@ class ExecutionLogger:
     """
     Logger for workflow executions.
 
-    Uses ExecutionRepository for all database operations with automatic index management.
+    Uses PostgreSQL repositories for all database operations.
     """
 
     def __init__(self, context=None):
-        self.repository = ExecutionRepository(context)
         self.blob_service = get_blob_service()
         self.context = context
 
@@ -45,13 +45,7 @@ class ExecutionLogger:
         webpubsub_broadcaster: 'WebPubSubBroadcaster | None' = None
     ) -> dict[str, Any]:
         """
-        Create execution record with automatic index management.
-
-        Repository handles:
-        - Primary record in Entities table
-        - User index for "my executions" queries
-        - Workflow index for "executions by workflow" queries
-        - Form index for "executions from form" queries
+        Create execution record.
 
         Args:
             execution_id: Unique execution ID (UUID)
@@ -65,37 +59,67 @@ class ExecutionLogger:
         Returns:
             Created execution entity (as dict for compatibility)
         """
-        # Delegate to repository (handles all indexes automatically!)
-        execution_model = await self.repository.create_execution(
-            execution_id=execution_id,
-            org_id=org_id,
-            user_id=user_id,
-            user_name=user_name,
-            workflow_name=workflow_name,
-            input_data=input_data,
-            form_id=form_id
-        )
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Execution
+        from src.models.enums import ExecutionStatus as ExecutionStatusEnum
 
-        logger.info(
-            f"Created execution {execution_id} via repository with all indexes",
-            extra={"execution_id": execution_id, "org_id": org_id, "workflow": workflow_name}
-        )
+        session_factory = get_session_factory()
+        exec_uuid = UUID(execution_id)
+        org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
+        form_uuid = UUID(form_id) if form_id else None
+        user_uuid = UUID(user_id) if user_id else None
 
-        # Broadcast new execution to history page (if enabled)
-        if webpubsub_broadcaster:
-            scope = org_id or "GLOBAL"
-            await webpubsub_broadcaster.broadcast_execution_to_history(
-                execution_id=execution_id,
+        async with session_factory() as db:
+            execution = Execution(
+                id=exec_uuid,
+                organization_id=org_uuid,
                 workflow_name=workflow_name,
-                status=execution_model.status.value,  # Use actual DB status (RUNNING)
-                executed_by=user_id,
+                status=ExecutionStatusEnum.RUNNING,
+                executed_by=user_uuid,
                 executed_by_name=user_name,
-                scope=scope,
-                started_at=execution_model.startedAt
+                input_data=input_data,
+                form_id=form_uuid,
+                started_at=datetime.utcnow(),
+            )
+            db.add(execution)
+            await db.commit()
+            await db.refresh(execution)
+
+            logger.info(
+                f"Created execution {execution_id} with all indexes",
+                extra={"execution_id": execution_id, "org_id": org_id, "workflow": workflow_name}
             )
 
-        # Return as dict for compatibility with existing code
-        return execution_model.model_dump()
+            # Broadcast new execution to history page (if enabled)
+            if webpubsub_broadcaster:
+                scope = org_id or "GLOBAL"
+                await webpubsub_broadcaster.broadcast_execution_to_history(
+                    execution_id=execution_id,
+                    workflow_name=workflow_name,
+                    status=execution.status.value,
+                    executed_by=user_id,
+                    executed_by_name=user_name,
+                    scope=scope,
+                    started_at=execution.started_at
+                )
+
+            # Return as dict for compatibility with existing code
+            return {
+                "id": str(execution.id),
+                "workflowName": execution.workflow_name,
+                "status": execution.status.value,
+                "executedBy": str(execution.executed_by) if execution.executed_by else None,
+                "executedByName": execution.executed_by_name,
+                "startedAt": execution.started_at.isoformat() if execution.started_at else None,
+                "completedAt": execution.completed_at.isoformat() if execution.completed_at else None,
+                "inputData": execution.input_data,
+                "result": execution.result,
+                "errorMessage": execution.error_message,
+                "durationMs": execution.duration_ms,
+                "orgId": str(execution.organization_id) if execution.organization_id else None,
+                "formId": str(execution.form_id) if execution.form_id else None,
+            }
 
     async def update_execution(
         self,
@@ -114,10 +138,9 @@ class ExecutionLogger:
         webpubsub_broadcaster: 'WebPubSubBroadcaster | None' = None
     ) -> dict[str, Any]:
         """
-        Update execution record with results and automatic index updates.
+        Update execution record with results.
 
         Large data (logs, results, snapshots) automatically stored in blob storage.
-        Repository updates ALL indexes (user, workflow, form) with display fields.
 
         Args:
             execution_id: Execution ID
@@ -136,8 +159,14 @@ class ExecutionLogger:
         Returns:
             Updated execution entity (as dict)
         """
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Execution
+        from src.models.enums import ExecutionStatus as ExecutionStatusEnum
+
         # Handle result storage (blob for large, table for small)
         result_in_blob = False
+        stored_result = result
         if result is not None:
             # Convert result to JSON string if it's not already a string
             result_json = result if isinstance(result, str) else json.dumps(result)
@@ -147,7 +176,7 @@ class ExecutionLogger:
                 # Store in blob storage
                 await self.blob_service.upload_result(execution_id, result)
                 result_in_blob = True
-                result = None  # Don't store inline
+                stored_result = None  # Don't store inline
                 logger.info(
                     f"Stored large result in blob storage ({result_size} bytes)",
                     extra={"execution_id": execution_id}
@@ -168,59 +197,84 @@ class ExecutionLogger:
                 extra={"execution_id": execution_id}
             )
 
-        # Delegate to repository (handles primary record + ALL indexes!)
-        execution_model = await self.repository.update_execution(
-            execution_id=execution_id,
-            org_id=org_id,
-            user_id=user_id,
-            status=status,
-            result=result,
-            error_message=error_message,
-            duration_ms=duration_ms,
-            result_in_blob=result_in_blob
-        )
+        session_factory = get_session_factory()
+        exec_uuid = UUID(execution_id)
 
-        logger.info(
-            f"Updated execution {execution_id} via repository (status={status.value}, all indexes updated)",
-            extra={"execution_id": execution_id, "status": status.value}
-        )
+        # Map status to enum
+        status_enum = ExecutionStatusEnum(status.value)
 
-        # Broadcast execution update via Web PubSub (if enabled)
-        if webpubsub_broadcaster:
-            scope = org_id or "GLOBAL"
-            is_complete = status in [
-                ExecutionStatus.SUCCESS,
-                ExecutionStatus.FAILED,
-                ExecutionStatus.TIMEOUT,
-                ExecutionStatus.COMPLETED_WITH_ERRORS
-            ]
-            # Broadcast completion status ONLY (logs already streamed in real-time)
-            # Logs are persisted in ExecutionLogs table and available via HTTP API
-            # Client can fetch logs from /api/executions/{id}/logs if needed
-            await webpubsub_broadcaster.broadcast_execution_update(
-                execution_id=execution_id,
-                status=status.value,
-                executed_by=user_id,
-                scope=scope,
-                latest_logs=None,  # Don't re-send logs (already streamed + in Table Storage)
-                is_complete=is_complete
+        async with session_factory() as db:
+            result_query = await db.execute(
+                select(Execution).where(Execution.id == exec_uuid)
+            )
+            execution = result_query.scalar_one_or_none()
+
+            if not execution:
+                raise ValueError(f"Execution not found: {execution_id}")
+
+            execution.status = status_enum
+            execution.result = stored_result
+            execution.error_message = error_message
+            execution.duration_ms = duration_ms
+            execution.result_in_blob = result_in_blob
+            if status in [ExecutionStatus.SUCCESS, ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT, ExecutionStatus.COMPLETED_WITH_ERRORS]:
+                execution.completed_at = datetime.utcnow()
+
+            await db.commit()
+            await db.refresh(execution)
+
+            logger.info(
+                f"Updated execution {execution_id} (status={status.value})",
+                extra={"execution_id": execution_id, "status": status.value}
             )
 
-            # Broadcast to history page for ALL status changes (PENDING → RUNNING → completion)
-            await webpubsub_broadcaster.broadcast_execution_to_history(
-                execution_id=execution_id,
-                workflow_name=execution_model.workflowName,
-                status=status.value,
-                executed_by=user_id,
-                executed_by_name=execution_model.executedByName,
-                scope=scope,
-                started_at=execution_model.startedAt,
-                completed_at=execution_model.completedAt,
-                duration_ms=duration_ms
-            )
+            # Broadcast execution update via Web PubSub (if enabled)
+            if webpubsub_broadcaster:
+                scope = org_id or "GLOBAL"
+                is_complete = status in [
+                    ExecutionStatus.SUCCESS,
+                    ExecutionStatus.FAILED,
+                    ExecutionStatus.TIMEOUT,
+                    ExecutionStatus.COMPLETED_WITH_ERRORS
+                ]
+                await webpubsub_broadcaster.broadcast_execution_update(
+                    execution_id=execution_id,
+                    status=status.value,
+                    executed_by=user_id,
+                    scope=scope,
+                    latest_logs=None,
+                    is_complete=is_complete
+                )
 
-        # Return as dict for compatibility
-        return execution_model.model_dump()
+                # Broadcast to history page
+                await webpubsub_broadcaster.broadcast_execution_to_history(
+                    execution_id=execution_id,
+                    workflow_name=execution.workflow_name,
+                    status=status.value,
+                    executed_by=user_id,
+                    executed_by_name=execution.executed_by_name,
+                    scope=scope,
+                    started_at=execution.started_at,
+                    completed_at=execution.completed_at,
+                    duration_ms=duration_ms
+                )
+
+            # Return as dict for compatibility
+            return {
+                "id": str(execution.id),
+                "workflowName": execution.workflow_name,
+                "status": execution.status.value,
+                "executedBy": str(execution.executed_by) if execution.executed_by else None,
+                "executedByName": execution.executed_by_name,
+                "startedAt": execution.started_at.isoformat() if execution.started_at else None,
+                "completedAt": execution.completed_at.isoformat() if execution.completed_at else None,
+                "inputData": execution.input_data,
+                "result": execution.result,
+                "errorMessage": execution.error_message,
+                "durationMs": execution.duration_ms,
+                "orgId": str(execution.organization_id) if execution.organization_id else None,
+                "formId": str(execution.form_id) if execution.form_id else None,
+            }
 
 
 # Singleton instance

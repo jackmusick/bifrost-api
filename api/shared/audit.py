@@ -1,20 +1,19 @@
 """
 Audit Logging System for Privileged Operations
 
-Provides structured audit logging to Azure Table Storage for:
+Provides structured audit logging to PostgreSQL for:
 - Function key authentication usage
 - Cross-organization access by PlatformAdmins
 - Import violation attempts
 
-All audit logs are stored in the AuditLog table with date-based partitioning
-for efficient time-range queries and 90-day retention.
+All audit logs are stored in the audit_logs table with date-based partitioning
+for efficient time-range queries.
 """
 
 import logging
-import os
+from datetime import datetime
 from typing import Any, Optional
-
-from shared.repositories.audit import AuditRepository
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -24,51 +23,17 @@ _audit_logger_instance: Optional['AuditLogger'] = None
 
 class AuditLogger:
     """
-    Structured audit logging to Azure Table Storage.
+    Structured audit logging to PostgreSQL.
 
-    All audit events are written to the AuditLog table with:
-    - PartitionKey: Date in YYYY-MM-DD format (for time-range queries)
-    - RowKey: Reverse timestamp + UUID (for chronological sorting)
-    - EventType: Type of audit event
-    - Additional event-specific fields
+    All audit events are written to the audit_logs table with:
+    - event_type: Type of audit event
+    - timestamp: When the event occurred
+    - Additional event-specific fields stored in JSONB
     """
 
-    def __init__(self, connection_string: str | None = None):
-        """
-        Initialize audit logger with Table Storage connection.
-
-        Args:
-            connection_string: Azure Storage connection string.
-                              Defaults to AzureWebJobsStorage env var.
-        """
-        self.connection_string = connection_string or os.environ.get(
-            "AzureWebJobsStorage"
-        )
-
-        if not self.connection_string:
-            logger.warning(
-                "AzureWebJobsStorage not set - audit logging disabled"
-            )
-            self._enabled = False
-        else:
-            self._enabled = True
-
-        self._repository = None
-
-    def _get_repository(self) -> AuditRepository | None:
-        """Lazy-load audit repository"""
-        if not self._enabled:
-            return None
-
-        if self._repository is None:
-            try:
-                self._repository = AuditRepository()
-            except Exception as e:
-                logger.error(f"Failed to create audit repository: {e}")
-                self._enabled = False
-                return None
-
-        return self._repository
+    def __init__(self):
+        """Initialize audit logger."""
+        self._enabled = True
 
     async def log_function_key_access(
         self,
@@ -85,8 +50,6 @@ class AuditLogger:
         """
         Log function key authentication usage.
 
-        Creates entry in AuditLog table with EventType='function_key_access'.
-
         Args:
             key_id: Function key identifier
             key_name: Friendly key name
@@ -102,22 +65,27 @@ class AuditLogger:
             logger.debug("Audit logging disabled, skipping function_key_access event")
             return
 
-        repository = self._get_repository()
-        if not repository:
-            return
-
         try:
-            await repository.log_function_key_access(
-                key_id=key_id,
-                key_name=key_name,
-                org_id=org_id,
-                endpoint=endpoint,
-                method=method,
-                remote_addr=remote_addr,
-                user_agent=user_agent,
-                status_code=status_code,
-                details=details
-            )
+            from src.core.database import get_session_factory
+            from src.models import AuditLog
+
+            session_factory = get_session_factory()
+
+            async with session_factory() as db:
+                audit_entry = AuditLog(
+                    event_type="function_key_access",
+                    key_id=key_id,
+                    key_name=key_name,
+                    org_id=org_id,
+                    endpoint=endpoint,
+                    method=method,
+                    remote_addr=remote_addr,
+                    user_agent=user_agent,
+                    status_code=status_code,
+                    details=details,
+                )
+                db.add(audit_entry)
+                await db.commit()
         except Exception as e:
             logger.error(
                 f"Failed to log function_key_access event: {e}",
@@ -137,8 +105,6 @@ class AuditLogger:
         """
         Log PlatformAdmin cross-organization access.
 
-        Creates entry in AuditLog table with EventType='cross_org_access'.
-
         Args:
             user_id: Admin user ID
             target_org_id: Organization being accessed
@@ -152,20 +118,25 @@ class AuditLogger:
             logger.debug("Audit logging disabled, skipping cross_org_access event")
             return
 
-        repository = self._get_repository()
-        if not repository:
-            return
-
         try:
-            await repository.log_cross_org_access(
-                user_id=user_id,
-                target_org_id=target_org_id,
-                endpoint=endpoint,
-                method=method,
-                remote_addr=remote_addr,
-                status_code=status_code,
-                details=details
-            )
+            from src.core.database import get_session_factory
+            from src.models import AuditLog
+
+            session_factory = get_session_factory()
+
+            async with session_factory() as db:
+                audit_entry = AuditLog(
+                    event_type="cross_org_access",
+                    user_id=user_id,
+                    target_org_id=target_org_id,
+                    endpoint=endpoint,
+                    method=method,
+                    remote_addr=remote_addr,
+                    status_code=status_code,
+                    details=details,
+                )
+                db.add(audit_entry)
+                await db.commit()
         except Exception as e:
             logger.error(
                 f"Failed to log cross_org_access event: {e}",
@@ -181,8 +152,6 @@ class AuditLogger:
         """
         Log attempted workspace→engine import violation.
 
-        Creates entry in AuditLog table with EventType='engine_violation_attempt'.
-
         Args:
             blocked_module: Module name that was blocked
             workspace_file: Source file that attempted import
@@ -192,16 +161,23 @@ class AuditLogger:
             logger.debug("Audit logging disabled, skipping engine_violation_attempt event")
             return
 
-        repository = self._get_repository()
-        if not repository:
-            return
-
         try:
-            await repository.log_import_violation_attempt(
-                blocked_module=blocked_module,
-                workspace_file=workspace_file,
-                stack_trace=stack_trace
-            )
+            from src.core.database import get_session_factory
+            from src.models import AuditLog
+
+            session_factory = get_session_factory()
+
+            async with session_factory() as db:
+                audit_entry = AuditLog(
+                    event_type="engine_violation_attempt",
+                    details={
+                        "blocked_module": blocked_module,
+                        "workspace_file": workspace_file,
+                        "stack_trace": stack_trace,
+                    },
+                )
+                db.add(audit_entry)
+                await db.commit()
         except Exception as e:
             logger.error(
                 f"Failed to log engine_violation_attempt event: {e}",

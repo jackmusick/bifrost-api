@@ -70,16 +70,13 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         'shared.handlers.workflows_logic',  # Business logic for bifrost SDK
         'shared.handlers.forms_handlers',  # Business logic for bifrost SDK
         'shared.handlers.forms_logic',  # Business logic for bifrost SDK
-        'shared.handlers.executions_handlers',  # Business logic for bifrost SDK
-        'shared.handlers.roles_handlers',  # Business logic for bifrost SDK
         'shared.request_context',  # Used by bifrost SDK
         'shared.registry',  # Used by bifrost SDK
-        'shared.repositories.executions',  # Used by bifrost executions SDK
-        'shared.repositories.roles',  # Used by bifrost roles SDK
-        'shared.repositories.forms',  # Used by bifrost forms SDK
-        'shared.repositories.config',  # Used by bifrost config SDK
         'shared.keyvault',  # Used by bifrost secrets SDK
-        'services.oauth_storage_service',  # Used by bifrost oauth SDK
+        'shared.services.oauth_storage_service',  # Used by bifrost oauth SDK
+        'src.core.database',  # PostgreSQL database access
+        'src.models',  # SQLAlchemy models
+        'src.repositories',  # PostgreSQL repositories
     }
 
     def __init__(self, workspace_paths: list[str], home_path: str | None = None) -> None:

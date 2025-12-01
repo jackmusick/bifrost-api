@@ -50,7 +50,18 @@ Usage:
 from typing import Any
 
 from ._internal import get_context
-from shared.blob_storage import get_blob_service
+
+
+def _get_blob_service():
+    """Lazy import blob service to avoid Azure dependency at module load."""
+    try:
+        from shared.blob_storage import get_blob_service
+        return get_blob_service()
+    except ImportError:
+        raise NotImplementedError(
+            "Cloud storage is not available. "
+            "Azure Blob Storage SDK is required but not installed."
+        )
 
 
 class storage:
@@ -86,7 +97,7 @@ class storage:
         get_context()
 
         # Get blob service
-        blob_service = get_blob_service()
+        blob_service = _get_blob_service()
 
         # Download blob
         return await blob_service.download_blob(container, path)
@@ -131,7 +142,7 @@ class storage:
             raise ValueError(f"data must be bytes, got {type(data).__name__}")
 
         # Get blob service
-        blob_service = get_blob_service()
+        blob_service = _get_blob_service()
 
         # Upload blob
         return await blob_service.upload_blob(container, path, data, content_type)
@@ -174,7 +185,7 @@ class storage:
             raise ValueError(f"expiry_hours must be positive, got {expiry_hours}")
 
         # Get blob service
-        blob_service = get_blob_service()
+        blob_service = _get_blob_service()
 
         # Generate SAS URL
         return await blob_service.generate_sas_url(container, path, expiry_hours)
@@ -210,7 +221,7 @@ class storage:
         get_context()
 
         # Get blob service
-        blob_service = get_blob_service()
+        blob_service = _get_blob_service()
 
         # Get metadata
         return await blob_service.get_blob_metadata(container, path)
@@ -238,7 +249,7 @@ class storage:
         get_context()
 
         # Get blob service
-        blob_service = get_blob_service()
+        blob_service = _get_blob_service()
 
         # Delete blob
         return await blob_service.delete_blob(container, path)

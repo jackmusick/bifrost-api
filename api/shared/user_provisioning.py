@@ -98,17 +98,17 @@ async def ensure_user_provisioned(
 
             # Check if email or display name has changed
             email_changed = user.email != user_email
-            name_changed = display_name and user.displayName != display_name
+            name_changed = display_name and user.display_name != display_name
 
             if email_changed or name_changed:
                 logger.info(
                     f"User profile changed - email: {user.email} -> {user_email}, "
-                    f"name: {user.displayName} -> {display_name}"
+                    f"name: {user.display_name} -> {display_name}"
                 )
                 updated_user = await user_repo.update_user_profile(
                     old_email=user.email,
                     new_email=user_email,
-                    display_name=display_name or user.displayName
+                    display_name=display_name or user.display_name
                 )
                 if updated_user:
                     user = updated_user
@@ -121,7 +121,7 @@ async def ensure_user_provisioned(
 
             # Get org_id if ORG user
             org_id = None
-            if user.userType == UserType.ORG:
+            if user.user_type == UserType.ORG:
                 org_id = await user_repo.get_user_org_id(user.email)
                 logger.info(f"Retrieved org_id for {user.email}: {org_id}")
 
@@ -139,8 +139,8 @@ async def ensure_user_provisioned(
                         raise
 
             return UserProvisioningResult(
-                user_type=user.userType.value,
-                is_platform_admin=user.isPlatformAdmin,
+                user_type=user.user_type.value,
+                is_platform_admin=user.is_platform_admin,
                 org_id=org_id,
                 was_created=False,
             )
@@ -152,7 +152,7 @@ async def ensure_user_provisioned(
         logger.info(f"Found user by email: {user_email}")
 
         # If we have Entra ID but user doesn't, backfill it
-        if entra_user_id and not user.entraUserId:
+        if entra_user_id and not user.entra_user_id:
             logger.info(f"Backfilling Entra ID for {user_email}")
             await user_repo.update_user_entra_id(user_email, entra_user_id)
 
@@ -164,7 +164,7 @@ async def ensure_user_provisioned(
 
         # Get org_id if ORG user
         org_id = None
-        if user.userType == UserType.ORG:
+        if user.user_type == UserType.ORG:
             org_id = await user_repo.get_user_org_id(user_email)
             logger.info(f"Retrieved org_id for {user_email}: {org_id}")
 
@@ -182,8 +182,8 @@ async def ensure_user_provisioned(
                     raise
 
         return UserProvisioningResult(
-            user_type=user.userType.value,
-            is_platform_admin=user.isPlatformAdmin,
+            user_type=user.user_type.value,
+            is_platform_admin=user.is_platform_admin,
             org_id=org_id,
             was_created=False,
         )
