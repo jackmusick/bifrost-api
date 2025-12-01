@@ -1,0 +1,603 @@
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Save, Eye, Pencil, Info, Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { ContextViewer } from "@/components/ui/context-viewer";
+import {
+	useForm as useFormQuery,
+	useCreateForm,
+	useUpdateForm,
+} from "@/hooks/useForms";
+import { formsService } from "@/services/forms";
+import { rolesService } from "@/services/roles";
+import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
+import { useMutation } from "@tanstack/react-query";
+import { FormInfoDialog } from "@/components/forms/FormInfoDialog";
+import { FieldsPanelDnD } from "@/components/forms/FieldsPanelDnD";
+import { FormPreview } from "@/components/forms/FormPreview";
+import { WorkflowParametersForm } from "@/components/workflows/WorkflowParametersForm";
+import { useOrgScope } from "@/contexts/OrgScopeContext";
+import { useAuth } from "@/hooks/useAuth";
+import type { components } from "@/lib/v1";
+type FormField = components["schemas"]["FormField-Output"];
+type FormCreate = components["schemas"]["FormCreate"];
+type FormUpdate = components["schemas"]["FormUpdate"];
+type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
+type FormStartupResponse = components["schemas"]["FormStartupResponse"];
+import { toast } from "sonner";
+
+export function FormBuilder() {
+	const navigate = useNavigate();
+	const { formId } = useParams();
+	const isEditing = !!formId;
+	const { isGlobalScope, scope } = useOrgScope();
+	const { user } = useAuth();
+
+	const { data: existingForm } = useFormQuery(formId);
+	const createForm = useCreateForm();
+	const updateForm = useUpdateForm();
+	const { data: workflowsMetadata } = useWorkflowsMetadata();
+
+	// Mutation for testing form startup workflow
+	const testStartupWorkflow = useMutation<FormStartupResponse, Error, { formId: string }>({
+		mutationFn: async ({ formId }: { formId: string }) => {
+			return await formsService.executeFormStartup(formId);
+		},
+	});
+
+	// Form state
+	const [formName, setFormName] = useState("");
+	const [formDescription, setFormDescription] = useState("");
+	const [linkedWorkflow, setLinkedWorkflow] = useState("");
+	const [isGlobal, setIsGlobal] = useState(isGlobalScope); // Default based on current scope
+	const [launchWorkflowId, setLaunchWorkflowId] = useState<string | null>(
+		null,
+	);
+	const [defaultLaunchParams, setDefaultLaunchParams] = useState<Record<
+		string,
+		unknown
+	> | null>(null);
+	const [accessLevel, setAccessLevel] = useState<
+		"public" | "authenticated" | "role_based"
+	>("role_based");
+	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+	const [fields, setFields] = useState<FormField[]>([]);
+	const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+	const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
+	const [workflowResultsDialogOpen, setWorkflowResultsDialogOpen] =
+		useState(false);
+	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
+		useState(false);
+	const [workflowResults, setWorkflowResults] = useState<Record<
+		string,
+		unknown
+	> | null>(null);
+
+	// Load existing form data
+	useEffect(() => {
+		if (existingForm && existingForm.form_schema) {
+			setFormName(existingForm.name);
+			setFormDescription(existingForm.description || "");
+			setLinkedWorkflow(existingForm.linked_workflow || "");
+			// Form is global if it has no organization_id
+			setIsGlobal(!existingForm.organization_id);
+			setLaunchWorkflowId(existingForm.launch_workflow_id || null);
+			setDefaultLaunchParams(existingForm.default_launch_params || null);
+			setAccessLevel(existingForm.access_level || "role_based");
+			// Type guard to ensure form_schema has fields property
+			if (
+				typeof existingForm.form_schema === "object" &&
+				existingForm.form_schema !== null &&
+				"fields" in existingForm.form_schema
+			) {
+				setFields(existingForm.form_schema.fields as FormField[]);
+			}
+		}
+	}, [existingForm]);
+
+	// Load form roles when editing
+	useEffect(() => {
+		if (formId && isEditing) {
+			// Fetch roles for this form using the correct endpoint
+			rolesService
+				.getFormRoles(formId)
+				.then((data) => {
+					// The response contains role entities assigned to this form
+					// Extract role IDs
+					if (data && Array.isArray(data)) {
+						setSelectedRoleIds(
+							data.map((role: { id: string }) => role.id),
+						);
+					}
+				})
+				.catch(() => {
+					// Silently fail - roles are optional
+				});
+		}
+	}, [formId, isEditing]);
+
+	// Update isGlobal when scope changes (only for new forms)
+	useEffect(() => {
+		if (!isEditing) {
+			setIsGlobal(isGlobalScope);
+		}
+	}, [isGlobalScope, isEditing]);
+
+	// Open info dialog automatically for new forms
+	useEffect(() => {
+		if (!isEditing && !formName) {
+			setIsInfoDialogOpen(true);
+		}
+	}, [isEditing, formName]);
+
+	const handleSave = async () => {
+		try {
+			// Auto-generate allowedQueryParams from fields that have allow_as_query_param enabled
+			const autoGeneratedParams = fields
+				.filter((field) => field.allow_as_query_param === true)
+				.map((field) => field.name);
+
+			if (isEditing && formId) {
+				const updateRequest: FormUpdate = {
+					name: formName,
+					description: formDescription || null,
+					linked_workflow: linkedWorkflow,
+					form_schema: { fields },
+					is_active: true,
+					access_level: accessLevel,
+					// NEW MVP fields
+					launch_workflow_id: launchWorkflowId || null,
+					allowed_query_params:
+						autoGeneratedParams.length > 0
+							? autoGeneratedParams
+							: null,
+					default_launch_params: defaultLaunchParams,
+				};
+				await updateForm.mutateAsync({
+					formId,
+					request: updateRequest,
+				});
+
+				// Update role assignments if access level is role_based
+				if (accessLevel === "role_based") {
+					await rolesService.assignRolesToForm(
+						formId,
+						selectedRoleIds,
+					);
+				} else {
+					// If not role-based, clear all role assignments
+					await rolesService.assignRolesToForm(formId, []);
+				}
+			} else {
+				const createRequest: FormCreate = {
+					name: formName,
+					description: formDescription || null,
+					linked_workflow: linkedWorkflow,
+					form_schema: { fields },
+					access_level: accessLevel,
+					// NEW MVP fields
+					launch_workflow_id: launchWorkflowId || null,
+					allowed_query_params:
+						autoGeneratedParams.length > 0
+							? autoGeneratedParams
+							: null,
+					default_launch_params: defaultLaunchParams,
+				};
+				const createdForm = await createForm.mutateAsync(createRequest);
+
+				// Assign roles if access level is role_based
+				if (
+					accessLevel === "role_based" &&
+					createdForm?.id &&
+					selectedRoleIds.length > 0
+				) {
+					await rolesService.assignRolesToForm(
+						createdForm.id,
+						selectedRoleIds,
+					);
+				}
+			}
+
+			navigate("/forms");
+		} catch (error: unknown) {
+			// Extract error message from response
+			const errorResponse = error as {
+				response?: {
+					data?: {
+						message?: string;
+						details?: { errors?: { loc: string[]; msg: string }[] };
+					};
+				};
+			} & Error;
+			const errorMessage =
+				errorResponse?.response?.data?.message ||
+				errorResponse?.message ||
+				"Failed to save form";
+			const errorDetails = errorResponse?.response?.data?.details;
+
+			if (errorDetails?.errors) {
+				// Show validation errors with better formatting
+				const validationErrors = errorDetails.errors
+					.map(
+						(err: { loc: string[]; msg: string }) =>
+							`${err.loc.join(".")}: ${err.msg}`,
+					)
+					.join("\n");
+				toast.error(`Validation Error\n${validationErrors}`, {
+					duration: 8000, // 8 seconds for validation errors
+				});
+			} else {
+				// For long error messages (like parameter validation), increase duration
+				toast.error(errorMessage, {
+					duration: errorMessage.length > 150 ? 10000 : 6000, // 10s for long messages, 6s otherwise
+				});
+			}
+		}
+	};
+
+	// Validate that all required workflow parameters have corresponding form fields
+	const validateRequiredParameters = (): {
+		valid: boolean;
+		missingParams: string[];
+	} => {
+		if (!linkedWorkflow || !workflowsMetadata?.workflows) {
+			return { valid: true, missingParams: [] };
+		}
+
+		// Find the linked workflow's metadata
+		const workflow = (workflowsMetadata.workflows as WorkflowMetadata[]).find(
+			(w: WorkflowMetadata) => w.name === linkedWorkflow,
+		);
+		if (!workflow || !workflow.parameters) {
+			return { valid: true, missingParams: [] };
+		}
+
+		// Get all required parameter names
+		const requiredParams = workflow.parameters
+			.filter((param) => param.required)
+			.map((param) => param.name);
+
+		// Get all form field names
+		const fieldNames = new Set(fields.map((field) => field.name));
+
+		// Find missing required parameters
+		const missingParams = requiredParams.filter(
+			(paramName) => !fieldNames.has(paramName),
+		);
+
+		return {
+			valid: missingParams.length === 0,
+			missingParams,
+		};
+	};
+
+	const validationResult = validateRequiredParameters();
+	const isSaveDisabled =
+		!formName ||
+		!linkedWorkflow ||
+		fields.length === 0 ||
+		!validationResult.valid;
+
+	// Handle test launch workflow execution
+	const handleTestLaunchWorkflow = async () => {
+		if (!launchWorkflowId) {
+			toast.error("No launch workflow configured");
+			return;
+		}
+
+		// Need a saved form ID to test
+		if (!formId) {
+			toast.error(
+				"Please save the form first before testing the launch workflow",
+			);
+			return;
+		}
+
+		try {
+			// Use workflow params directly (just like workflow execution)
+			const result = await testStartupWorkflow.mutateAsync({
+				formId,
+			});
+
+			// Extract result from response
+			if (result && typeof result === "object" && "result" in result) {
+				setWorkflowResults(result.result as Record<string, unknown>);
+			}
+			setWorkflowResultsDialogOpen(true);
+			toast.success("Launch workflow executed successfully");
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to execute launch workflow";
+			toast.error(errorMessage);
+		}
+	};
+
+	// Get workflow metadata for launch workflow
+	const launchWorkflow = (workflowsMetadata?.workflows as WorkflowMetadata[] | undefined)?.find(
+		(w: WorkflowMetadata) => w.name === launchWorkflowId,
+	);
+	const launchWorkflowParameters = launchWorkflow?.parameters || [];
+
+	// Build real context preview based on current user and form state
+	const previewContext = useMemo(() => {
+		// Build workflow context with real user data or workflow results if available
+		const workflowContext = workflowResults || {
+			user_id: user?.userId || "user-123",
+			user_email: user?.userDetails || "user@example.com",
+			organization_id: scope.orgId || null,
+		};
+
+		// Build query context from fields with allow_as_query_param enabled
+		const queryContext: Record<string, string> = {};
+		fields
+			.filter((field) => field.allow_as_query_param)
+			.forEach((field) => {
+				queryContext[field.name] =
+					`<${field.label?.toLowerCase().replace(/\s+/g, "_") || field.name}>`;
+			});
+
+		return {
+			workflow: workflowContext,
+			query: queryContext,
+			field: {},
+		};
+	}, [user, scope.orgId, fields, workflowResults]);
+
+	return (
+		<div className="flex flex-col h-full -m-6 lg:-m-8 p-6 lg:p-8">
+			<div className="flex items-center justify-between flex-shrink-0 mb-6">
+				<div>
+					<h1 className="text-4xl font-extrabold tracking-tight">
+						{formName || (isEditing ? "Edit Form" : "New Form")}
+					</h1>
+					<div className="mt-2 flex items-center gap-2">
+						{linkedWorkflow && (
+							<Badge
+								variant="outline"
+								className="font-mono text-xs"
+							>
+								{linkedWorkflow}
+							</Badge>
+						)}
+						{isGlobal && (
+							<Badge variant="secondary" className="text-xs">
+								Global
+							</Badge>
+						)}
+						{formDescription && (
+							<p className="text-sm text-muted-foreground">
+								{formDescription}
+							</p>
+						)}
+					</div>
+				</div>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => navigate("/forms")}
+						title="Back to Forms"
+					>
+						<ArrowLeft className="h-4 w-4" />
+					</Button>
+					<div className="flex items-center">
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={() => setIsInfoDialogOpen(true)}
+							title={formName ? "Edit Info" : "Set Info"}
+							className="rounded-r-none"
+						>
+							<Pencil className="h-4 w-4" />
+						</Button>
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={() => setIsContextDialogOpen(true)}
+							title="Show Context"
+							className="rounded-none border-l-0"
+						>
+							<Info className="h-4 w-4" />
+						</Button>
+						{launchWorkflowId && (
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={() => {
+									if (launchWorkflowParameters.length > 0) {
+										setWorkflowParamsDialogOpen(true);
+									} else {
+										handleTestLaunchWorkflow();
+									}
+								}}
+								disabled={
+									testStartupWorkflow.isPending || !formId
+								}
+								title={
+									testStartupWorkflow.isPending
+										? "Testing..."
+										: "Test Launch Workflow"
+								}
+								className="rounded-none border-l-0"
+							>
+								<Play className="h-4 w-4" />
+							</Button>
+						)}
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={handleSave}
+							disabled={
+								isSaveDisabled ||
+								createForm.isPending ||
+								updateForm.isPending
+							}
+							title={
+								createForm.isPending || updateForm.isPending
+									? "Saving..."
+									: !validationResult.valid
+										? `Missing required parameters: ${validationResult.missingParams.join(", ")}`
+										: "Save Form"
+							}
+							className={
+								launchWorkflowId
+									? "rounded-l-none border-l-0"
+									: "rounded-l-none border-l-0"
+							}
+						>
+							<Save className="h-4 w-4" />
+						</Button>
+					</div>
+				</div>
+			</div>
+
+			<Tabs
+				defaultValue="builder"
+				className="w-full flex-1 flex flex-col overflow-hidden"
+			>
+				<TabsList className="flex-shrink-0">
+					<TabsTrigger value="builder">Form Builder</TabsTrigger>
+					<TabsTrigger value="preview">
+						<Eye className="mr-2 h-4 w-4" />
+						Preview
+					</TabsTrigger>
+				</TabsList>
+
+				<TabsContent
+					value="builder"
+					className="flex-1 overflow-hidden data-[state=active]:flex"
+				>
+					<FieldsPanelDnD
+						fields={fields}
+						setFields={setFields}
+						linkedWorkflow={linkedWorkflow}
+						previewContext={previewContext}
+					/>
+				</TabsContent>
+
+				<TabsContent
+					value="preview"
+					className="flex-1 overflow-auto data-[state=active]:block"
+				>
+					<FormPreview
+						formName={formName}
+						formDescription={formDescription}
+						fields={fields}
+					/>
+				</TabsContent>
+			</Tabs>
+
+			<FormInfoDialog
+				open={isInfoDialogOpen}
+				onClose={() => setIsInfoDialogOpen(false)}
+				onSave={(info) => {
+					setFormName(info.formName);
+					setFormDescription(info.formDescription);
+					setLinkedWorkflow(info.linkedWorkflow);
+					setLaunchWorkflowId(info.launchWorkflowId);
+					setDefaultLaunchParams(info.defaultLaunchParams);
+					setAccessLevel(info.accessLevel);
+					setSelectedRoleIds(info.selectedRoleIds);
+				}}
+				initialData={{
+					formName,
+					formDescription,
+					linkedWorkflow,
+					launchWorkflowId,
+					defaultLaunchParams,
+					accessLevel,
+					selectedRoleIds,
+				}}
+			/>
+
+			<Dialog
+				open={isContextDialogOpen}
+				onOpenChange={setIsContextDialogOpen}
+			>
+				<DialogContent className="sm:max-w-[600px]">
+					<DialogHeader>
+						<DialogTitle>Form Context Preview</DialogTitle>
+						<DialogDescription>
+							Preview of context available to form fields at
+							runtime. Workflow values shown are based on your
+							current session
+							{workflowResults
+								? " and test launch workflow results"
+								: ""}
+							.
+						</DialogDescription>
+					</DialogHeader>
+					<ContextViewer
+						context={previewContext}
+						maxHeight="500px"
+						fieldNames={fields.map((f) => f.name)}
+					/>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog
+				open={workflowParamsDialogOpen}
+				onOpenChange={setWorkflowParamsDialogOpen}
+			>
+				<DialogContent className="sm:max-w-[600px]">
+					<DialogHeader>
+						<DialogTitle>Test Launch Workflow</DialogTitle>
+						<DialogDescription>
+							Enter parameters for {launchWorkflowId} to test with
+							real workflow data.
+						</DialogDescription>
+					</DialogHeader>
+					<WorkflowParametersForm
+						parameters={launchWorkflowParameters}
+						onExecute={async () => {
+							await handleTestLaunchWorkflow();
+							setWorkflowParamsDialogOpen(false);
+						}}
+						isExecuting={testStartupWorkflow.isPending}
+						executeButtonText="Run & View Results"
+					/>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog
+				open={workflowResultsDialogOpen}
+				onOpenChange={setWorkflowResultsDialogOpen}
+			>
+				<DialogContent className="sm:max-w-[700px]">
+					<DialogHeader>
+						<DialogTitle>Launch Workflow Test Results</DialogTitle>
+						<DialogDescription>
+							Results from executing the launch workflow. This
+							data will be available in context.workflow when the
+							form loads.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4">
+						<div className="p-4 bg-muted rounded-md">
+							<pre className="text-xs overflow-auto max-h-[400px]">
+								{JSON.stringify(workflowResults, null, 2)}
+							</pre>
+						</div>
+						<p className="text-sm text-muted-foreground">
+							The context preview has been updated with these
+							results. You can now test field visibility
+							expressions and HTML templates with real workflow
+							data.
+						</p>
+					</div>
+				</DialogContent>
+			</Dialog>
+		</div>
+	);
+}

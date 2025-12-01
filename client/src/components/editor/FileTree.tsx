@@ -1,0 +1,998 @@
+import { useEffect, useCallback, useState, useRef } from "react";
+import {
+	ChevronRight,
+	ChevronDown,
+	File,
+	Folder,
+	FilePlus,
+	FolderPlus,
+	Trash2,
+	Edit2,
+	RefreshCw,
+	Loader2,
+} from "lucide-react";
+import { useFileTree, type FileTreeNode } from "@/hooks/useFileTree";
+import { useEditorStore } from "@/stores/editorStore";
+import { fileService, type FileMetadata } from "@/services/fileService";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+type CreatingItemType = "file" | "folder" | null;
+
+/**
+ * File tree component with hierarchical navigation
+ */
+export function FileTree() {
+	const {
+		files,
+		isLoading,
+		loadFiles,
+		toggleFolder,
+		isFolderExpanded,
+		refreshAll,
+	} = useFileTree();
+	const tabs = useEditorStore((state) => state.tabs);
+	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
+	const setOpenFile = useEditorStore((state) => state.setOpenFile);
+	const setLoadingFile = useEditorStore((state) => state.setLoadingFile);
+	const updateTabPath = useEditorStore((state) => state.updateTabPath);
+	const closeTabsByPath = useEditorStore((state) => state.closeTabsByPath);
+
+	// Compute active tab from state
+	const activeTab =
+		activeTabIndex >= 0 && activeTabIndex < tabs.length
+			? tabs[activeTabIndex]
+			: null;
+	const openFile = activeTab?.file || null;
+	const [creatingItem, setCreatingItem] = useState<CreatingItemType>(null);
+	const [newItemName, setNewItemName] = useState("");
+	const [creatingInFolder, setCreatingInFolder] = useState<string | null>(
+		null,
+	); // Folder path where item is being created
+	const [renamingFile, setRenamingFile] = useState<FileMetadata | null>(null); // File being renamed
+	const [renameValue, setRenameValue] = useState(""); // New name for rename
+	const [fileToDelete, setFileToDelete] = useState<FileMetadata | null>(null);
+	const [dragOverFolder, setDragOverFolder] = useState<string | null>(null); // Folder being dragged over
+	const [isProcessing, setIsProcessing] = useState(false); // Loading overlay for operations
+	const inputRef = useRef<HTMLInputElement>(null);
+	const renameInputRef = useRef<HTMLInputElement>(null);
+
+	// Load root directory on mount
+	useEffect(() => {
+		loadFiles("");
+	}, [loadFiles]);
+
+	const handleFileClick = useCallback(
+		async (file: FileMetadata) => {
+			if (file.type === "folder") {
+				toggleFolder(file.path);
+				return;
+			}
+
+			// Auto-expand parent folders
+			try {
+				const pathParts = file.path.split("/");
+				pathParts.pop(); // Remove filename
+				let currentPath = "";
+				for (const part of pathParts) {
+					currentPath = currentPath ? `${currentPath}/${part}` : part;
+					// Load folder contents if not already loaded
+					if (!isFolderExpanded(currentPath)) {
+						await toggleFolder(currentPath);
+					}
+				}
+			} catch {
+				// Ignore folder expansion errors
+			}
+
+			// Load file directly - no conflict checking on explicit user click
+			try {
+				setLoadingFile(true);
+				const response = await fileService.readFile(file.path);
+				setOpenFile(
+					file,
+					response.content,
+					response.encoding as "utf-8" | "base64",
+					response.etag,
+				);
+			} catch {
+				setLoadingFile(false);
+			}
+		},
+		[toggleFolder, isFolderExpanded, setOpenFile, setLoadingFile],
+	);
+
+	const handleFolderToggle = useCallback(
+		(folder: FileMetadata) => {
+			toggleFolder(folder.path);
+			// TODO: Load folder contents when expanded
+		},
+		[toggleFolder],
+	);
+
+	const handleCancelNewItem = useCallback(() => {
+		setCreatingItem(null);
+		setNewItemName("");
+		setCreatingInFolder(null);
+	}, []);
+
+	const handleCreateFile = useCallback((folderPath?: string) => {
+		setCreatingItem("file");
+		setNewItemName("");
+		setCreatingInFolder(folderPath || null);
+	}, []);
+
+	const handleCreateFolder = useCallback((folderPath?: string) => {
+		setCreatingItem("folder");
+		setNewItemName("");
+		setCreatingInFolder(folderPath || null);
+	}, []);
+
+	const handleInputMouseDown = useCallback((e: React.MouseEvent) => {
+		// Prevent this click from triggering the click-outside handler
+		e.stopPropagation();
+	}, []);
+
+	const handleRefresh = useCallback(async () => {
+		await refreshAll();
+	}, [refreshAll]);
+
+	const handleSaveNewItem = useCallback(async () => {
+		if (!newItemName.trim() || !creatingItem) return;
+
+		try {
+			setIsProcessing(true);
+
+			// Construct the full path (folder path + new item name)
+			const fullPath = creatingInFolder
+				? `${creatingInFolder}/${newItemName}`
+				: newItemName;
+
+			if (creatingItem === "file") {
+				// Create an empty file
+				await fileService.writeFile(fullPath, "");
+			} else {
+				await fileService.createFolder(fullPath);
+			}
+
+			// Reload the parent folder (or root if no parent)
+			await loadFiles(creatingInFolder || "");
+
+			setCreatingItem(null);
+			setNewItemName("");
+			setCreatingInFolder(null);
+		} catch (err) {
+			toast.error(`Failed to create ${creatingItem}`, {
+				description: err instanceof Error ? err.message : String(err),
+			});
+		} finally {
+			setIsProcessing(false);
+		}
+	}, [newItemName, creatingItem, creatingInFolder, loadFiles]);
+
+	// Focus input when creating new item
+	useEffect(() => {
+		if (creatingItem && inputRef.current) {
+			inputRef.current.focus();
+		}
+	}, [creatingItem, creatingInFolder]);
+
+	// Handle clicks outside the input to cancel if empty
+	useEffect(() => {
+		if (!creatingItem) return;
+
+		const handleClickOutside = (event: MouseEvent) => {
+			if (
+				inputRef.current &&
+				!inputRef.current.contains(event.target as Node)
+			) {
+				// Clicked outside - cancel if empty, otherwise keep it
+				if (!newItemName.trim()) {
+					handleCancelNewItem();
+				}
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, [creatingItem, newItemName, handleCancelNewItem]);
+
+	const handleNewItemKeyDown = useCallback(
+		(e: React.KeyboardEvent<HTMLInputElement>) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				if (newItemName.trim()) {
+					handleSaveNewItem();
+				} else {
+					// Cancel if trying to save with empty name
+					handleCancelNewItem();
+				}
+			} else if (e.key === "Escape") {
+				e.preventDefault();
+				handleCancelNewItem();
+			}
+		},
+		[handleSaveNewItem, handleCancelNewItem, newItemName],
+	);
+
+	const handleDelete = useCallback((file: FileMetadata) => {
+		setFileToDelete(file);
+	}, []);
+
+	const handleConfirmDelete = useCallback(async () => {
+		if (!fileToDelete) return;
+
+		try {
+			setIsProcessing(true);
+
+			// Get parent folder path
+			const parentFolder = fileToDelete.path.includes("/")
+				? fileToDelete.path.substring(
+						0,
+						fileToDelete.path.lastIndexOf("/"),
+					)
+				: "";
+
+			// Close any open tabs for this file/folder
+			const isFolder = fileToDelete.type === "folder";
+			const closedCount = closeTabsByPath(fileToDelete.path, isFolder);
+
+			await fileService.deletePath(fileToDelete.path);
+			await loadFiles(parentFolder); // Refresh parent folder
+			setFileToDelete(null);
+
+			// Show appropriate message
+			if (closedCount > 0) {
+				toast.success(
+					isFolder
+						? `Deleted folder ${fileToDelete.name} and closed ${closedCount} open ${closedCount === 1 ? "file" : "files"}`
+						: `Deleted ${fileToDelete.name} and closed the tab`,
+				);
+			} else {
+				toast.success(`Deleted ${fileToDelete.name}`);
+			}
+		} catch (err) {
+			toast.error("Failed to delete", {
+				description: err instanceof Error ? err.message : String(err),
+			});
+		} finally {
+			setIsProcessing(false);
+		}
+	}, [fileToDelete, loadFiles, closeTabsByPath]);
+
+	const handleRename = useCallback((file: FileMetadata) => {
+		setRenamingFile(file);
+		setRenameValue(file.name);
+	}, []);
+
+	const handleCancelRename = useCallback(() => {
+		setRenamingFile(null);
+		setRenameValue("");
+	}, []);
+
+	const handleSaveRename = useCallback(async () => {
+		if (
+			!renamingFile ||
+			!renameValue.trim() ||
+			renameValue === renamingFile.name
+		) {
+			handleCancelRename();
+			return;
+		}
+
+		try {
+			setIsProcessing(true);
+			const newPath = renamingFile.path.includes("/")
+				? renamingFile.path.replace(/[^/]+$/, renameValue)
+				: renameValue;
+
+			// Get parent folder path
+			const parentFolder = renamingFile.path.includes("/")
+				? renamingFile.path.substring(
+						0,
+						renamingFile.path.lastIndexOf("/"),
+					)
+				: "";
+
+			// Update tab paths if any tabs have this file/folder open
+			updateTabPath(renamingFile.path, newPath);
+
+			await fileService.renamePath(renamingFile.path, newPath);
+			await loadFiles(parentFolder); // Refresh parent folder
+			toast.success(`Renamed to ${renameValue}`);
+
+			handleCancelRename();
+		} catch (err) {
+			toast.error("Failed to rename", {
+				description: err instanceof Error ? err.message : String(err),
+			});
+		} finally {
+			setIsProcessing(false);
+		}
+	}, [
+		renamingFile,
+		renameValue,
+		loadFiles,
+		handleCancelRename,
+		updateTabPath,
+	]);
+
+	// Focus rename input when renaming starts
+	useEffect(() => {
+		if (renamingFile && renameInputRef.current) {
+			renameInputRef.current.focus();
+			// Select the filename without extension
+			const lastDotIndex = renameValue.lastIndexOf(".");
+			if (lastDotIndex > 0) {
+				renameInputRef.current.setSelectionRange(0, lastDotIndex);
+			} else {
+				renameInputRef.current.select();
+			}
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [renamingFile]); // Only run when renamingFile changes, not renameValue
+
+	// Handle clicks outside the rename input to save
+	useEffect(() => {
+		if (!renamingFile) return;
+
+		const handleClickOutside = (event: MouseEvent) => {
+			if (
+				renameInputRef.current &&
+				!renameInputRef.current.contains(event.target as Node)
+			) {
+				// Clicked outside - save if has value, otherwise cancel
+				if (renameValue.trim()) {
+					handleSaveRename();
+				} else {
+					handleCancelRename();
+				}
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, [renamingFile, renameValue, handleSaveRename, handleCancelRename]);
+
+	const handleRenameKeyDown = useCallback(
+		(e: React.KeyboardEvent<HTMLInputElement>) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				if (renameValue.trim()) {
+					handleSaveRename();
+				} else {
+					handleCancelRename();
+				}
+			} else if (e.key === "Escape") {
+				e.preventDefault();
+				handleCancelRename();
+			}
+		},
+		[handleSaveRename, handleCancelRename, renameValue],
+	);
+
+	const handleRenameInputMouseDown = useCallback((e: React.MouseEvent) => {
+		// Prevent this click from triggering the click-outside handler
+		e.stopPropagation();
+	}, []);
+
+	const handleDragStart = useCallback(
+		(e: React.DragEvent, file: FileMetadata) => {
+			e.dataTransfer.effectAllowed = "move";
+			e.dataTransfer.setData("text/plain", file.path);
+			e.dataTransfer.setData("application/json", JSON.stringify(file));
+		},
+		[],
+	);
+
+	const handleDragOver = useCallback(
+		(e: React.DragEvent, targetFolder?: string) => {
+			e.preventDefault();
+
+			// Check if dragging files from outside (not internal move)
+			const hasFiles = e.dataTransfer.types.includes("Files");
+			const hasInternalData = e.dataTransfer.types.includes("text/plain");
+
+			if (hasFiles && !hasInternalData) {
+				// External file upload
+				e.dataTransfer.dropEffect = "copy";
+			} else {
+				// Internal move
+				e.dataTransfer.dropEffect = "move";
+			}
+
+			setDragOverFolder(targetFolder || "");
+		},
+		[],
+	);
+
+	const handleDragLeave = useCallback(() => {
+		setDragOverFolder(null);
+	}, []);
+
+	const handleDrop = useCallback(
+		async (e: React.DragEvent, targetFolder?: string) => {
+			e.preventDefault();
+			setDragOverFolder(null);
+
+			// Check if this is an external file drop (not internal move)
+			const files = e.dataTransfer.files;
+			if (files && files.length > 0) {
+				// External file upload
+				try {
+					setIsProcessing(true);
+					const targetPath = targetFolder || "";
+					let uploadedCount = 0;
+
+					for (let i = 0; i < files.length; i++) {
+						const file = files[i];
+						if (!file) continue;
+
+						const filePath = targetPath
+							? `${targetPath}/${file.name}`
+							: file.name;
+
+						// Detect if file is text or binary
+						const isTextFile =
+							file.type.startsWith("text/") ||
+							file.type === "application/json" ||
+							file.type === "application/javascript" ||
+							file.type === "application/xml" ||
+							file.name.match(
+								/\.(txt|md|json|js|jsx|ts|tsx|py|java|c|cpp|h|hpp|css|scss|html|xml|yaml|yml|sh|bash|sql|log|csv)$/i,
+							);
+
+						let content: string;
+						let encoding: "utf-8" | "base64";
+
+						if (isTextFile) {
+							// Read as text
+							content = await file.text();
+							encoding = "utf-8";
+						} else {
+							// Read as binary and encode to base64
+							const arrayBuffer = await file.arrayBuffer();
+							const bytes = new Uint8Array(arrayBuffer);
+							content = btoa(String.fromCharCode(...bytes));
+							encoding = "base64";
+						}
+
+						// Upload file
+						await fileService.writeFile(
+							filePath,
+							content,
+							encoding,
+						);
+						uploadedCount++;
+					}
+
+					// Reload the target folder
+					await loadFiles(targetPath);
+
+					if (uploadedCount === 1 && files[0]) {
+						toast.success(`Uploaded ${files[0].name}`);
+					} else {
+						toast.success(`Uploaded ${uploadedCount} files`);
+					}
+				} catch (err) {
+					toast.error("Failed to upload files", {
+						description:
+							err instanceof Error ? err.message : String(err),
+					});
+				} finally {
+					setIsProcessing(false);
+				}
+				return;
+			}
+
+			// Internal move operation
+			try {
+				const draggedPath = e.dataTransfer.getData("text/plain");
+				if (!draggedPath) return;
+
+				// Don't allow dropping on itself
+				if (draggedPath === targetFolder) return;
+
+				// Don't allow dropping a folder into its own child
+				if (targetFolder && targetFolder.startsWith(draggedPath + "/"))
+					return;
+
+				// Calculate new path
+				const fileName = draggedPath.split("/").pop()!;
+				const newPath = targetFolder
+					? `${targetFolder}/${fileName}`
+					: fileName;
+
+				// Don't do anything if the path hasn't changed
+				if (draggedPath === newPath) return;
+
+				setIsProcessing(true);
+
+				// Get source and target folders
+				const sourceFolder = draggedPath.includes("/")
+					? draggedPath.substring(0, draggedPath.lastIndexOf("/"))
+					: "";
+				const targetFolderPath = targetFolder || "";
+
+				// Update tab paths if any tabs have this file/folder open
+				updateTabPath(draggedPath, newPath);
+
+				await fileService.renamePath(draggedPath, newPath);
+
+				// Reload affected folders
+				await loadFiles(sourceFolder); // Reload source folder
+				if (sourceFolder !== targetFolderPath) {
+					await loadFiles(targetFolderPath); // Reload target folder if different
+				}
+
+				toast.success(`Moved ${fileName}`);
+			} catch (err) {
+				toast.error("Failed to move", {
+					description:
+						err instanceof Error ? err.message : String(err),
+				});
+			} finally {
+				setIsProcessing(false);
+			}
+		},
+		[loadFiles, updateTabPath],
+	);
+
+	return (
+		<div className="flex h-full flex-col relative">
+			{/* Loading overlay */}
+			{isProcessing && (
+				<div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+					<div className="flex flex-col items-center gap-2">
+						<Loader2 className="h-8 w-8 animate-spin text-primary" />
+						<p className="text-sm text-muted-foreground">
+							Processing...
+						</p>
+					</div>
+				</div>
+			)}
+
+			{/* Toolbar */}
+			<div className="flex items-center gap-1 border-b p-2">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => handleCreateFile()}
+					title="New File"
+					className="h-7 px-2"
+				>
+					<FilePlus className="h-4 w-4" />
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => handleCreateFolder()}
+					title="New Folder"
+					className="h-7 px-2"
+				>
+					<FolderPlus className="h-4 w-4" />
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={handleRefresh}
+					title="Refresh"
+					className="h-7 px-2"
+				>
+					<RefreshCw className="h-4 w-4" />
+				</Button>
+			</div>
+
+			{/* File list */}
+			<ContextMenu>
+				<ContextMenuTrigger asChild>
+					<div
+						className={cn(
+							"flex-1 overflow-auto",
+							dragOverFolder === "" &&
+								"bg-primary/10 outline outline-2 outline-primary outline-dashed",
+						)}
+						onDragOver={(e) => handleDragOver(e)}
+						onDragLeave={handleDragLeave}
+						onDrop={(e) => handleDrop(e)}
+					>
+						{isLoading && files.length === 0 && !creatingItem ? (
+							<div className="flex h-full items-center justify-center">
+								<div className="text-sm text-muted-foreground">
+									Loading files...
+								</div>
+							</div>
+						) : files.length === 0 && !creatingItem ? (
+							<div className="flex h-full items-center justify-center p-4">
+								<div className="text-center text-sm text-muted-foreground">
+									<p>No files found</p>
+									<p className="mt-2 text-xs">
+										Right-click to create files and folders
+									</p>
+								</div>
+							</div>
+						) : (
+							<div className="space-y-1 p-2">
+								{/* Inline new item editor */}
+								{creatingItem && !creatingInFolder && (
+									<div className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50">
+										<div className="w-4" />
+										{isProcessing ? (
+											<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+										) : creatingItem === "folder" ? (
+											<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
+										) : (
+											<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+										)}
+										<input
+											ref={inputRef}
+											type="text"
+											value={newItemName}
+											onChange={(e) =>
+												setNewItemName(e.target.value)
+											}
+											onKeyDown={handleNewItemKeyDown}
+											onMouseDown={handleInputMouseDown}
+											placeholder={
+												creatingItem === "folder"
+													? "Folder name"
+													: "File name"
+											}
+											disabled={isProcessing}
+											className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+										/>
+									</div>
+								)}
+
+								{/* Existing files */}
+								{files.map((file) => (
+									<FileTreeItem
+										key={file.path}
+										file={file}
+										onFileClick={handleFileClick}
+										onFolderToggle={handleFolderToggle}
+										onDelete={handleDelete}
+										onRename={handleRename}
+										onCreateFile={handleCreateFile}
+										onCreateFolder={handleCreateFolder}
+										isExpanded={isFolderExpanded(file.path)}
+										isSelected={
+											openFile?.path === file.path
+										}
+										onDragStart={handleDragStart}
+										onDragOver={handleDragOver}
+										onDragLeave={handleDragLeave}
+										onDrop={handleDrop}
+										isDragOver={
+											dragOverFolder === file.path
+										}
+										creatingItem={creatingItem}
+										creatingInFolder={creatingInFolder}
+										newItemName={newItemName}
+										setNewItemName={setNewItemName}
+										inputRef={inputRef}
+										handleNewItemKeyDown={
+											handleNewItemKeyDown
+										}
+										handleInputMouseDown={
+											handleInputMouseDown
+										}
+										handleCancelNewItem={
+											handleCancelNewItem
+										}
+										renamingFile={renamingFile}
+										renameValue={renameValue}
+										setRenameValue={setRenameValue}
+										renameInputRef={renameInputRef}
+										handleRenameKeyDown={
+											handleRenameKeyDown
+										}
+										handleRenameInputMouseDown={
+											handleRenameInputMouseDown
+										}
+										isProcessing={isProcessing}
+									/>
+								))}
+							</div>
+						)}
+					</div>
+				</ContextMenuTrigger>
+				<ContextMenuContent>
+					<ContextMenuItem onClick={() => handleCreateFile()}>
+						<FilePlus className="mr-2 h-4 w-4" />
+						New File
+					</ContextMenuItem>
+					<ContextMenuItem onClick={() => handleCreateFolder()}>
+						<FolderPlus className="mr-2 h-4 w-4" />
+						New Folder
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
+
+			{/* Delete Confirmation Dialog */}
+			<AlertDialog
+				open={!!fileToDelete}
+				onOpenChange={(open) => !open && setFileToDelete(null)}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Delete{" "}
+							{fileToDelete?.type === "folder"
+								? "Folder"
+								: "File"}
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to delete{" "}
+							<strong>{fileToDelete?.name}</strong>?
+							{fileToDelete?.type === "folder" &&
+								" This will delete all contents inside the folder."}{" "}
+							This action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleConfirmDelete}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Delete
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</div>
+	);
+}
+
+interface FileTreeItemProps {
+	file: FileTreeNode;
+	onFileClick: (file: FileMetadata) => void;
+	onFolderToggle: (folder: FileMetadata) => void;
+	onDelete: (file: FileMetadata) => void;
+	onRename: (file: FileMetadata) => void;
+	onCreateFile: (folderPath?: string) => void;
+	onCreateFolder: (folderPath?: string) => void;
+	isExpanded: boolean;
+	isSelected: boolean;
+	onDragStart: (e: React.DragEvent, file: FileMetadata) => void;
+	onDragOver: (e: React.DragEvent, targetFolder?: string) => void;
+	onDragLeave: () => void;
+	onDrop: (e: React.DragEvent, targetFolder?: string) => void;
+	isDragOver: boolean;
+	creatingItem: CreatingItemType;
+	creatingInFolder: string | null;
+	newItemName: string;
+	setNewItemName: (name: string) => void;
+	inputRef: React.RefObject<HTMLInputElement>;
+	handleNewItemKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+	handleInputMouseDown: (e: React.MouseEvent) => void;
+	handleCancelNewItem: () => void;
+	renamingFile: FileMetadata | null;
+	renameValue: string;
+	setRenameValue: (name: string) => void;
+	renameInputRef: React.RefObject<HTMLInputElement>;
+	handleRenameKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+	handleRenameInputMouseDown: (e: React.MouseEvent) => void;
+	isProcessing: boolean;
+}
+
+function FileTreeItem({
+	file,
+	onFileClick,
+	onFolderToggle,
+	onDelete,
+	onRename,
+	onCreateFile,
+	onCreateFolder,
+	isExpanded,
+	isSelected,
+	onDragStart,
+	onDragOver,
+	onDragLeave,
+	onDrop,
+	isDragOver,
+	creatingItem,
+	creatingInFolder,
+	newItemName,
+	setNewItemName,
+	inputRef,
+	handleNewItemKeyDown,
+	handleInputMouseDown,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	handleCancelNewItem: _handleCancelNewItem,
+	renamingFile,
+	renameValue,
+	setRenameValue,
+	renameInputRef,
+	handleRenameKeyDown,
+	handleRenameInputMouseDown,
+	isProcessing,
+}: FileTreeItemProps) {
+	const isFolder = file.type === "folder";
+	const level = file.level;
+	const isRenaming = renamingFile?.path === file.path;
+
+	return (
+		<div>
+			{isRenaming ? (
+				// Inline rename editor
+				<div
+					className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50"
+					style={{ paddingLeft: `${level * 12 + 8}px` }}
+				>
+					{isFolder ? (
+						<>
+							{isExpanded ? (
+								<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+							) : (
+								<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+							)}
+							<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
+						</>
+					) : (
+						<>
+							<div className="w-4" />
+							<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+						</>
+					)}
+					<input
+						ref={renameInputRef}
+						type="text"
+						value={renameValue}
+						onChange={(e) => setRenameValue(e.target.value)}
+						onKeyDown={handleRenameKeyDown}
+						onMouseDown={handleRenameInputMouseDown}
+						disabled={isProcessing}
+						className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+					/>
+				</div>
+			) : (
+				<ContextMenu>
+					<ContextMenuTrigger asChild>
+						<button
+							draggable
+							onClick={() =>
+								isFolder
+									? onFolderToggle(file)
+									: onFileClick(file)
+							}
+							onDragStart={(e) => onDragStart(e, file)}
+							onDragOver={(e) => {
+								if (isFolder) {
+									e.stopPropagation(); // Prevent highlighting the container
+									onDragOver(e, file.path);
+								}
+							}}
+							onDragLeave={onDragLeave}
+							onDrop={(e) => {
+								if (isFolder) {
+									e.stopPropagation(); // Prevent container from handling the drop
+									onDrop(e, file.path);
+								}
+							}}
+							className={cn(
+								"flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors outline-none",
+								isSelected && !isDragOver
+									? "bg-accent text-accent-foreground"
+									: "",
+								!isDragOver && !isSelected
+									? "hover:bg-muted"
+									: "",
+								isDragOver &&
+									isFolder &&
+									"bg-primary/30 border-2 border-primary",
+							)}
+							style={{ paddingLeft: `${level * 12 + 8}px` }}
+						>
+							{isFolder && (
+								<>
+									{isExpanded ? (
+										<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+									) : (
+										<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+									)}
+									<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
+								</>
+							)}
+							{!isFolder && (
+								<>
+									<div className="w-4" />
+									<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+								</>
+							)}
+							<span className="flex-1 truncate">{file.name}</span>
+						</button>
+					</ContextMenuTrigger>
+					<ContextMenuContent>
+						{isFolder && (
+							<>
+								<ContextMenuItem
+									onClick={() => onCreateFile(file.path)}
+								>
+									<FilePlus className="mr-2 h-4 w-4" />
+									New File
+								</ContextMenuItem>
+								<ContextMenuItem
+									onClick={() => onCreateFolder(file.path)}
+								>
+									<FolderPlus className="mr-2 h-4 w-4" />
+									New Folder
+								</ContextMenuItem>
+								<ContextMenuSeparator />
+							</>
+						)}
+						<ContextMenuItem onClick={() => onRename(file)}>
+							<Edit2 className="mr-2 h-4 w-4" />
+							Rename
+						</ContextMenuItem>
+						<ContextMenuSeparator />
+						<ContextMenuItem
+							onClick={() => onDelete(file)}
+							className="text-destructive focus:text-destructive"
+						>
+							<Trash2 className="mr-2 h-4 w-4" />
+							Delete
+						</ContextMenuItem>
+					</ContextMenuContent>
+				</ContextMenu>
+			)}
+
+			{/* Inline new item editor (shown when creating in this folder) */}
+			{creatingItem && creatingInFolder === file.path && (
+				<div
+					className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50 mt-1"
+					style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
+				>
+					<div className="w-4" />
+					{isProcessing ? (
+						<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+					) : creatingItem === "folder" ? (
+						<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
+					) : (
+						<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+					)}
+					<input
+						ref={inputRef}
+						type="text"
+						value={newItemName}
+						onChange={(e) => setNewItemName(e.target.value)}
+						onKeyDown={handleNewItemKeyDown}
+						onMouseDown={handleInputMouseDown}
+						placeholder={
+							creatingItem === "folder"
+								? "Folder name"
+								: "File name"
+						}
+						disabled={isProcessing}
+						className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+					/>
+				</div>
+			)}
+		</div>
+	);
+}

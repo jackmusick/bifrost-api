@@ -1,0 +1,111 @@
+name: Build and Release
+
+on:
+    push:
+        branches:
+            - main
+        tags:
+            - "v*"
+    pull_request:
+        branches:
+            - main
+    workflow_dispatch:
+
+env:
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+    # Build and push Docker image
+    build-and-push:
+        if: |
+            github.repository == 'jackmusick/bifrost-client'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Log in to GitHub Container Registry
+              if: github.event_name != 'pull_request'
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract metadata (tags, labels)
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+                  tags: |
+                      # Version tags (for all releases including pre-releases)
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
+                      type=semver,pattern={{major}}
+                      # Branch and PR tags (for CI)
+                      type=ref,event=branch
+                      type=ref,event=pr
+                      type=sha
+                      # Latest tag (only on stable releases, excludes pre-releases like v1.0.0-alpha)
+                      type=raw,value=latest,enable=${{ !contains(github.ref, '-') && startsWith(github.ref, 'refs/tags/v') }}
+
+            - name: Build and push Docker image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  # Push on: main branch pushes, or version tags
+                  # Don't push on: PRs
+                  push: ${{ github.event_name != 'pull_request' }}
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+
+    # Create GitHub release (only on version tags)
+    create-release:
+        if: |
+            github.repository == 'jackmusick/bifrost-client' &&
+            startsWith(github.ref, 'refs/tags/v')
+        needs: build-and-push
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Get version from tag
+              id: get_version
+              run: |
+                  VERSION="${GITHUB_REF#refs/tags/}"
+                  echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+            - name: Create release
+              uses: softprops/action-gh-release@v1
+              with:
+                  tag_name: ${{ steps.get_version.outputs.version }}
+                  name: Release ${{ steps.get_version.outputs.version }}
+                  body: |
+                      ## Bifrost Client ${{ steps.get_version.outputs.version }}
+
+                      ### Docker Images
+                      ```bash
+                      docker pull ghcr.io/${{ github.repository }}:${{ steps.get_version.outputs.version }}
+                      docker pull ghcr.io/${{ github.repository }}:latest
+                      ```
+
+                      ### What's Included
+                      - Production-built React web interface
+                      - Built-in SWA CLI for authentication and API proxying
+                      - Pre-optimized static assets
+                      - Entra ID authentication support
+
+                  draft: false
+                  prerelease: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,15 @@
+{
+	"$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+	"configurations": {
+		"client": {
+			"apiDevServerUrl": "http://localhost:7071",
+			"appDevserverUrl": "http://localhost:5173",
+			"run": "npm run dev",
+			"appLocation": "",
+			"outputLocation": "dist",
+			"appBuildCommand": "npm run build",
+			"resourceGroup": "bifrost-rg",
+			"host": "localhost"
+		}
+	}
+}

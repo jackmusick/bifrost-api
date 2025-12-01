@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# GitHub Actions
+.github/azure-static-web-apps-*.yml
+
+# Build output
+dist/
+output/
+client/output
+
+# Logs (root level only, not src/components/logs)
+/logs/
+npm-debug.log
+yarn-error.log
+*.log
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+
+# Azure SWA
+.azure/
+swa-db-connections/
+staticwebapp.config.json
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+templates_c/
+compile
+clicks
+sock
+pids
+basic.zip
+phrase.zip
+scripts/model_status.log
+scripts/nohup.out
+data
+*bak*
+test/unit/coverage
+test/e2e/reports
+selenium-debug.log
+
+.env
+
+__azurite_db*
+AzuriteConfig
