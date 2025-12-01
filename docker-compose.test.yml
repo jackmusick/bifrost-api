@@ -1,0 +1,181 @@
+# Bifrost Docker Stack - Isolated Test Environment
+#
+# This compose file creates a completely isolated test environment with:
+# - Separate container names (bifrost-test-*)
+# - Separate volumes (bifrost_test_*)
+# - Separate ports (offset by 1000)
+# - Fresh database for each test run
+#
+# Usage:
+#   ./test.sh                          # Run unit/integration tests
+#   ./test.sh --e2e                    # Run E2E tests against isolated API
+#   ./test.sh tests/e2e/ --e2e -v      # Run specific E2E tests
+
+services:
+  # PostgreSQL Database (Test)
+  # Uses tmpfs so data is NOT persisted between test runs - fresh database each time
+  postgres:
+    image: postgres:16-alpine
+    container_name: bifrost-test-postgres
+    environment:
+      POSTGRES_DB: bifrost_test
+      POSTGRES_USER: bifrost
+      POSTGRES_PASSWORD: bifrost_test
+    ports:
+      - "15432:5432"  # Offset port to avoid conflicts
+    tmpfs:
+      - /var/lib/postgresql/data  # Ephemeral storage - fresh each run
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bifrost -d bifrost_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # RabbitMQ Message Broker (Test)
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: bifrost-test-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: bifrost
+      RABBITMQ_DEFAULT_PASS: bifrost_test
+    ports:
+      - "15672:5672"    # AMQP - offset port
+      - "25672:15672"   # Management UI - offset port
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  # Redis (Test)
+  redis:
+    image: redis:7-alpine
+    container_name: bifrost-test-redis
+    command: redis-server
+    ports:
+      - "16379:6379"  # Offset port
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # FastAPI Application (Test) - Only started for E2E tests
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: bifrost-test-api
+    environment:
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_MOUNTS_PATH: /mounts
+      BIFROST_ENVIRONMENT: testing
+      # Workspace location for forms and workflows (file-based storage)
+      BIFROST_WORKSPACE_LOCATION: /app/platform
+      # Enable registration for E2E tests
+      BIFROST_ALLOW_REGISTRATION: "true"
+    ports:
+      - "18000:8000"  # Offset port
+    volumes:
+      - ./src:/app/src:ro
+      - ./shared:/app/shared:ro
+      - ./bifrost:/app/bifrost:ro
+      - ./platform:/app/platform  # Read-write for E2E tests (forms are JSON files)
+      - ./alembic:/app/alembic:ro
+      - test-mounts:/mounts  # Persistent mounts for file uploads during E2E tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command: >
+      sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"
+
+  # Background Jobs Worker (Test) - Only started for E2E tests
+  jobs:
+    build:
+      context: .
+      dockerfile: Dockerfile.jobs
+    container_name: bifrost-test-jobs
+    environment:
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_MOUNTS_PATH: /mounts
+      BIFROST_ENVIRONMENT: testing
+      BIFROST_WORKSPACE_LOCATION: /app/platform
+    volumes:
+      - ./src:/app/src:ro
+      - ./shared:/app/shared:ro
+      - ./bifrost:/app/bifrost:ro
+      - ./platform:/app/platform:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    profiles:
+      - e2e  # Only start in E2E mode
+
+  # Test Runner - Executes pytest inside container with all dependencies
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: bifrost-test-runner
+    environment:
+      # Point to test infrastructure (internal docker network)
+      # Uses BIFROST_ prefix as required by src/config.py
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_ENVIRONMENT: testing
+      BIFROST_ALLOW_REGISTRATION: "true"
+      BIFROST_WORKSPACE_LOCATION: /app/platform
+      BIFROST_MOUNTS_PATH: /mounts
+      # For E2E tests, point to the API container
+      TEST_API_URL: http://api:8000
+      PYTHONPATH: /app
+    volumes:
+      - ./src:/app/src:ro
+      - ./shared:/app/shared:ro
+      - ./bifrost:/app/bifrost:ro
+      - ./platform:/app/platform:ro
+      - ./tests:/app/tests:ro
+      - ./alembic:/app/alembic:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./pytest.ini:/app/pytest.ini:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Default command runs all tests except E2E
+    command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]
+    profiles:
+      - test  # Only start when running tests
+
+# Named volumes for test data - ephemeral within test session
+volumes:
+  test-mounts:

@@ -1,16 +1,20 @@
-# Bifrost Docker Stack - PostgreSQL, RabbitMQ, Redis, FastAPI
+# Bifrost Docker Stack - Full Development Environment
 #
 # Usage:
-#   docker compose up              # Start all services
+#   docker compose up              # Start all services (API, client, jobs, etc.)
 #   docker compose up -d           # Start in background
 #   docker compose logs -f api     # Follow API logs
 #
+# Debugging:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+#   Then attach VS Code debugger to port 5678
+#
 # Required environment variables for production:
-#   SECRET_KEY          - 32+ char secret for JWT signing and secret encryption
+#   BIFROST_SECRET_KEY  - 32+ char secret for JWT signing and secret encryption
 #   POSTGRES_PASSWORD   - PostgreSQL password
 #   RABBITMQ_PASSWORD   - RabbitMQ password
 #
-# The SECRET_KEY is critical - it's used for:
+# The BIFROST_SECRET_KEY is critical - it's used for:
 #   - JWT token signing (HS256)
 #   - Fernet encryption of secrets stored in PostgreSQL (replaces Azure Key Vault)
 #   - Must be consistent across API and Jobs workers
@@ -75,25 +79,31 @@ services:
       dockerfile: Dockerfile.api
     container_name: bifrost-api
     environment:
-      DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
-      WORKSPACE_PATH: /workspace
-      TEMP_PATH: /tmp/bifrost
-      ENVIRONMENT: development
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_MOUNTS_PATH: /mounts
+      BIFROST_ENVIRONMENT: development
+      # Default admin user (optional - uncomment to skip setup wizard)
+      # If not set, users will go through the setup wizard on first access.
+      # BIFROST_DEFAULT_USER_EMAIL: admin@localhost
+      # BIFROST_DEFAULT_USER_PASSWORD: admin
       # JWT settings (optional, has defaults)
-      # ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      # REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # BIFROST_ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      # BIFROST_REFRESH_TOKEN_EXPIRE_DAYS: 7
     ports:
       - "8000:8000"
+      - "5678:5678"  # debugpy port for VS Code attachment
     volumes:
       - ./src:/app/src
+      - ./shared:/app/shared
       - ./platform:/app/platform
-      - ./workspace:/workspace
-      - bifrost_temp:/tmp/bifrost
+      - ./alembic:/app/alembic
+      - bifrost_files:/mounts/files
+      - bifrost_workspace:/mounts/workspace
+      - bifrost_temp:/mounts/temp
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,7 +118,27 @@ services:
       retries: 5
     command: >
       sh -c "alembic upgrade head &&
-             python -m src.main"
+             uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared"
+
+  # Frontend (Vite)
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: bifrost-client
+    environment:
+      API_URL: http://api:8000
+      WS_URL: ws://api:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client/src:/app/src
+      - ./client/public:/app/public
+      - ./client/index.html:/app/index.html
+      - ./client/vite.config.ts:/app/vite.config.ts
+    depends_on:
+      api:
+        condition: service_healthy
 
   # Background Jobs Worker
   jobs:
@@ -117,19 +147,20 @@ services:
       dockerfile: Dockerfile.jobs
     container_name: bifrost-jobs
     environment:
-      DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      WORKSPACE_PATH: /workspace
-      TEMP_PATH: /tmp/bifrost
-      ENVIRONMENT: development
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_MOUNTS_PATH: /mounts
+      BIFROST_ENVIRONMENT: development
     volumes:
       - ./src:/app/src
+      - ./shared:/app/shared
       - ./platform:/app/platform
-      - ./workspace:/workspace
-      - bifrost_temp:/tmp/bifrost
+      - bifrost_files:/mounts/files
+      - bifrost_workspace:/mounts/workspace
+      - bifrost_temp:/mounts/temp
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,10 +168,13 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
-    command: python -m src.jobs.main
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.jobs.main
 
 volumes:
   postgres_data:
   rabbitmq_data:
   redis_data:
+  bifrost_files:
+  bifrost_workspace:
   bifrost_temp:

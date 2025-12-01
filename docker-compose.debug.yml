@@ -1,0 +1,17 @@
+# Debug overlay for docker-compose
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+#
+# This starts the API with debugpy in wait-for-client mode.
+# The API will pause on startup until you attach the VS Code debugger.
+#
+# Attach in VS Code:
+#   Run → Start Debugging → "Attach to Docker API"
+
+services:
+  api:
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m debugpy --listen 0.0.0.0:5678 --wait-for-client
+             -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
