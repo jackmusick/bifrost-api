@@ -14,7 +14,7 @@ from croniter import croniter
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.context import ExecutionContext
-from shared.discovery import scan_all_workflows, load_workflow
+from shared.discovery import scan_all_workflows, get_workflow
 from src.models.schemas import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
 from shared.async_storage import AsyncTableStorageService
 from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid
@@ -333,7 +333,7 @@ async def trigger_schedule_handler(req: "func.HttpRequest", workflow_name: str) 
     config_service = AsyncTableStorageService("Config")
 
     # Dynamically load workflow (always fresh)
-    result = load_workflow(workflow_name)
+    result = get_workflow(workflow_name)
     if not result:
         return func.HttpResponse(
             body=f'{{"error": "Workflow not found: {workflow_name}"}}',

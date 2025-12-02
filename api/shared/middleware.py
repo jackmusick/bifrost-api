@@ -347,8 +347,8 @@ def has_workflow_key(handler: Callable) -> Callable:
 
         if workflow_id:
             # Check workflow metadata to see if it's public
-            from shared.discovery import load_workflow
-            result = load_workflow(workflow_id)
+            from shared.discovery import get_workflow
+            result = get_workflow(workflow_id)
             workflow_metadata = result[1] if result else None
 
             if workflow_metadata and workflow_metadata.public_endpoint:

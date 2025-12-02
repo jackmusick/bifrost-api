@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from shared.context import Caller
-from shared.discovery import load_workflow
+from shared.discovery import get_workflow
 from shared.engine import ExecutionRequest, execute
 from src.models.schemas import ErrorResponse, ExecutionStatus
 
@@ -62,7 +62,7 @@ async def execute_workflow_internal(
     if not is_script:
         # Dynamically load workflow (always fresh import)
         try:
-            result = load_workflow(workflow_name)
+            result = get_workflow(workflow_name)
             if not result:
                 logger.warning(f"Workflow not found: {workflow_name}")
                 return {

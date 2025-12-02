@@ -20,7 +20,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from shared.context import ExecutionContext
-from shared.discovery import load_workflow
+from shared.discovery import get_workflow
 from shared.workflow_endpoint_utils import (
     coerce_parameter_types,
     separate_workflow_params,
@@ -103,7 +103,7 @@ async def execute_endpoint(
 
     # Load workflow
     try:
-        result = load_workflow(workflow_name)
+        result = get_workflow(workflow_name)
         if not result:
             logger.warning(f"Workflow not found: {workflow_name}")
             raise HTTPException(

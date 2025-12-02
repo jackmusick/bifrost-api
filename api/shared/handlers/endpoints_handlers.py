@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.context import ExecutionContext
-from shared.discovery import load_workflow, WorkflowMetadata
+from shared.discovery import get_workflow, WorkflowMetadata
 from shared.error_handling import WorkflowError
 from shared.execution_logger import get_execution_logger
 from src.models.schemas import ErrorResponse, ExecutionStatus
@@ -54,7 +54,7 @@ async def execute_workflow_endpoint_handler(
     """
     # Dynamically load workflow (always fresh)
     try:
-        result = load_workflow(workflow_name)
+        result = get_workflow(workflow_name)
         if not result:
             logger.warning(f"Workflow not found: {workflow_name}")
             error = ErrorResponse(

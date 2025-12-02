@@ -42,12 +42,12 @@ class workflows:
         """
         import asyncio
 
-        from shared.discovery import load_workflow
+        from shared.discovery import get_workflow
 
         context = get_context()
 
         # Dynamically load workflow (always fresh)
-        load_result = load_workflow(workflow_name)
+        load_result = get_workflow(workflow_name)
 
         if not load_result:
             raise ValueError(f"Workflow not found: {workflow_name}")

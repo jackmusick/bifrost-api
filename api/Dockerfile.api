@@ -30,6 +30,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
@@ -53,7 +54,13 @@ RUN useradd -m -u 1000 bifrost && \
 RUN mkdir -p /workspace /tmp/bifrost && \
     chown -R bifrost:bifrost /workspace /tmp/bifrost
 
-USER bifrost
+# Copy entrypoint script
+COPY api/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Don't switch to bifrost here - entrypoint handles user switching
+# This allows the entrypoint to fix volume permissions when needed
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Environment variables
 ENV PYTHONPATH=/app

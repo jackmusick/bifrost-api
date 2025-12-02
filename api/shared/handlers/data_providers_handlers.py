@@ -9,7 +9,7 @@ import uuid
 from typing import Any, TYPE_CHECKING
 
 from shared.context import Caller
-from shared.discovery import load_data_provider, scan_all_data_providers
+from shared.discovery import get_data_provider, scan_all_data_providers
 from shared.engine import ExecutionRequest, execute
 from src.models.schemas import ErrorResponse, ExecutionStatus
 
@@ -101,7 +101,7 @@ async def get_data_provider_options_handler(
 
     # Dynamically load data provider (always fresh import)
     try:
-        result = load_data_provider(provider_name)
+        result = get_data_provider(provider_name)
         if not result:
             logger.warning(f"Data provider not found: {provider_name}")
             error = ErrorResponse(

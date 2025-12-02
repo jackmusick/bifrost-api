@@ -3,19 +3,22 @@ Forms Router
 
 CRUD operations for workflow forms.
 Support for org-specific and global forms.
+Form execution for org users with access control.
 """
 
 import logging
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 from sqlalchemy import select
 
-from src.core.auth import Context, CurrentSuperuser
+from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
-from src.models.orm import Form as FormORM
+from src.core.pubsub import publish_execution_update
+from src.models.orm import Form as FormORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models.models import FormCreate, FormUpdate, FormPublic
+from src.models.schemas import WorkflowExecutionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -228,3 +231,193 @@ async def delete_form(
 
     await db.flush()
     logger.info(f"Soft deleted form {form_id}")
+
+
+# =============================================================================
+# Form Execution
+# =============================================================================
+
+
+async def _check_form_access(
+    db: DbSession,
+    form: FormORM,
+    user_id: UUID,
+    is_superuser: bool,
+) -> bool:
+    """
+    Check if user has access to execute a form.
+
+    Access levels:
+    - 'public': Anyone can access (not recommended for production)
+    - 'authenticated': Any logged-in user can access
+    - 'role_based': User must be assigned to a role that has this form
+    """
+    # Platform admins always have access
+    if is_superuser:
+        return True
+
+    access_level = form.access_level or "authenticated"
+
+    if access_level == "public":
+        return True
+
+    if access_level == "authenticated":
+        return True  # User is already authenticated to reach this point
+
+    if access_level == "role_based":
+        # Check if user has a role that is assigned to this form
+        # 1. Get all roles the user has
+        user_roles_query = select(UserRoleORM.role_id).where(
+            UserRoleORM.user_id == user_id
+        )
+        user_roles_result = await db.execute(user_roles_query)
+        user_role_ids = list(user_roles_result.scalars().all())
+
+        if not user_role_ids:
+            return False
+
+        # 2. Check if any of those roles have this form assigned
+        form_role_query = select(FormRoleORM).where(
+            FormRoleORM.form_id == form.id,
+            FormRoleORM.role_id.in_(user_role_ids),
+        )
+        form_role_result = await db.execute(form_role_query)
+        has_access = form_role_result.scalar_one_or_none() is not None
+
+        return has_access
+
+    # Unknown access level - deny by default
+    return False
+
+
+@router.post(
+    "/{form_id}/execute",
+    response_model=WorkflowExecutionResponse,
+    summary="Execute a form",
+    description="Execute the workflow linked to a form. Requires appropriate access based on form's access_level.",
+)
+async def execute_form(
+    form_id: UUID,
+    ctx: Context,
+    user: CurrentActiveUser,
+    db: DbSession,
+    input_data: dict = Body(default={}),
+) -> WorkflowExecutionResponse:
+    """
+    Execute the workflow linked to a form.
+
+    This endpoint allows org users to execute workflows through forms they have access to.
+    Access control is based on the form's access_level:
+    - 'authenticated': Any logged-in user can execute
+    - 'role_based': User must be assigned to a role that has this form
+    """
+    from shared.context import ExecutionContext as SharedContext, Organization
+    from shared.handlers.workflows_handlers import execute_workflow_internal
+    from src.models.schemas import ExecutionStatus
+
+    # Get the form
+    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    form = result.scalar_one_or_none()
+
+    if not form or not form.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form not found",
+        )
+
+    # Check access
+    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.user.is_superuser)
+    if not has_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this form",
+        )
+
+    # Form must have a linked workflow
+    if not form.linked_workflow:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Form has no linked workflow",
+        )
+
+    # Merge default launch params with provided input
+    merged_params = {**(form.default_launch_params or {}), **input_data}
+
+    # Create organization object if org_id is set
+    org = None
+    if ctx.org_id:
+        org = Organization(id=str(ctx.org_id), name="", is_active=True)
+
+    # Create shared context compatible with existing handlers
+    shared_ctx = SharedContext(
+        user_id=str(ctx.user.user_id),
+        name=ctx.user.name,
+        email=ctx.user.email,
+        scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+        organization=org,
+        is_platform_admin=ctx.user.is_superuser,
+        is_function_key=False,
+        execution_id=str(uuid4()),
+    )
+
+    try:
+        # Execute the linked workflow
+        result_dict, status_code = await execute_workflow_internal(
+            context=shared_ctx,
+            workflow_name=form.linked_workflow,
+            parameters=merged_params,
+            form_id=str(form.id),
+            transient=False,
+        )
+
+        # Convert to response model
+        if status_code >= 400:
+            # Error response
+            raise HTTPException(
+                status_code=status_code,
+                detail=result_dict.get("message", "Execution failed"),
+            )
+
+        # Success or pending response
+        execution_id = result_dict.get("executionId", "")
+        status_str = result_dict.get("status", "Pending")
+
+        # Map status string to enum
+        status_map = {
+            "Pending": ExecutionStatus.PENDING,
+            "Running": ExecutionStatus.RUNNING,
+            "Success": ExecutionStatus.SUCCESS,
+            "Failed": ExecutionStatus.FAILED,
+        }
+        exec_status = status_map.get(status_str, ExecutionStatus.PENDING)
+
+        # Publish execution update via WebSocket
+        if execution_id:
+            await publish_execution_update(
+                execution_id=execution_id,
+                status=exec_status.value,
+                data={
+                    "form_id": str(form.id),
+                    "workflow_name": form.linked_workflow,
+                },
+            )
+
+        logger.info(f"Form {form_id} executed by user {ctx.user.email}, execution_id={execution_id}")
+
+        return WorkflowExecutionResponse(
+            execution_id=execution_id,
+            status=exec_status,
+            result=result_dict.get("result"),
+            error=result_dict.get("error"),
+            error_type=result_dict.get("errorType"),
+            duration_ms=result_dict.get("durationMs"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing form {form_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to execute form",
+        )

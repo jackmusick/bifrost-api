@@ -189,11 +189,11 @@ async def _execute_data_provider(
     Returns:
         Tuple of (response_dict, status_code)
     """
-    from shared.discovery import load_data_provider
+    from shared.discovery import get_data_provider
     from shared.engine import run_workflow
 
     # Load the data provider
-    result = load_data_provider(provider_name)
+    result = get_data_provider(provider_name)
     if not result:
         logger.warning(f"Data provider '{provider_name}' not found")
         error = ErrorResponse(error="NotFound", message=f"Data provider '{provider_name}' not found")
@@ -250,7 +250,7 @@ def validate_data_provider_inputs_for_form(form_schema_fields: list) -> list[str
         2. If provider has required parameters, validate that static inputs are provided
         3. dataProviderInputs validation is handled by Pydantic model validators
     """
-    from shared.discovery import load_data_provider
+    from shared.discovery import get_data_provider
     errors = []
 
     for field in form_schema_fields:
@@ -258,7 +258,7 @@ def validate_data_provider_inputs_for_form(form_schema_fields: list) -> list[str
             continue
 
         # Dynamically load provider metadata
-        result = load_data_provider(field.dataProvider)
+        result = get_data_provider(field.dataProvider)
         provider_metadata = result[1] if result else None
 
         if not provider_metadata:
@@ -296,8 +296,8 @@ def validate_launch_workflow_params(
     if not launch_workflow_id:
         return None
 
-    from shared.discovery import load_workflow
-    result = load_workflow(launch_workflow_id)
+    from shared.discovery import get_workflow
+    result = get_workflow(launch_workflow_id)
 
     if not result:
         return f"Launch workflow '{launch_workflow_id}' not found"
@@ -331,7 +331,7 @@ async def list_forms_handler(context, request_context) -> tuple:
     logger.info(f"User {request_context.user_id} listing forms (org: {request_context.org_id or 'GLOBAL'})")
 
     try:
-        from shared.discovery import load_workflow
+        from shared.discovery import get_workflow
 
         forms = await get_user_visible_forms(request_context)
 
@@ -346,7 +346,7 @@ async def list_forms_handler(context, request_context) -> tuple:
                 continue
 
             # Dynamically load workflow metadata
-            result = load_workflow(linked_workflow)
+            result = get_workflow(linked_workflow)
             workflow_metadata = result[1] if result else None
             logger.info(f"Found workflow metadata: {workflow_metadata is not None}")
 
@@ -641,7 +641,7 @@ async def delete_form_handler(form_id: str, request_context) -> tuple[dict | Non
 
 async def execute_form_startup_handler(form_id: str, req: Any, request_context: Any, workflow_context: Any) -> tuple[dict, int]:
     """Execute the form's launch workflow to get initial context data"""
-    from shared.discovery import load_workflow
+    from shared.discovery import get_workflow
 
     logger.info(f"User {request_context.user_id} requesting startup workflow for form {form_id}")
 
@@ -689,7 +689,7 @@ async def execute_form_startup_handler(form_id: str, req: Any, request_context: 
         logger.info(f"Executing launch workflow {form.launch_workflow_id} with merged input data: {input_data}")
 
         # Dynamically load workflow (always fresh)
-        result = load_workflow(form.launch_workflow_id)
+        result = get_workflow(form.launch_workflow_id)
 
         if not result:
             logger.error(f"Launch workflow '{form.launch_workflow_id}' not found")

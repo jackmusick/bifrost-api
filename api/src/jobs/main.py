@@ -58,6 +58,30 @@ class JobsWorker:
         await init_db()
         logger.info("Database connection established")
 
+        # Initialize discovery watcher for hot reload
+        logger.info("Initializing workspace file watcher...")
+        try:
+            from shared.discovery import get_workspace_paths
+            from shared.discovery_watcher import (
+                build_initial_index,
+                start_watcher,
+                get_index_stats,
+            )
+
+            workspace_paths = get_workspace_paths()
+            if workspace_paths:
+                build_initial_index(workspace_paths)
+                start_watcher(workspace_paths)
+                stats = get_index_stats()
+                logger.info(
+                    f"Workspace watcher started: {stats['workflows']} workflows, "
+                    f"{stats['providers']} providers, {stats['forms']} forms indexed"
+                )
+            else:
+                logger.warning("No workspace paths configured - watcher not started")
+        except Exception as e:
+            logger.warning(f"Failed to initialize workspace watcher: {e}")
+
         # Initialize and start RabbitMQ consumers
         logger.info("Starting RabbitMQ consumers...")
         await self._start_consumers()
@@ -133,6 +157,14 @@ class JobsWorker:
                 logger.info(f"Stopped consumer: {consumer.queue_name}")
             except Exception as e:
                 logger.error(f"Error stopping consumer {consumer.queue_name}: {e}")
+
+        # Stop workspace watcher
+        try:
+            from shared.discovery_watcher import stop_watcher
+            stop_watcher()
+            logger.info("Workspace watcher stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping workspace watcher: {e}")
 
         # Close RabbitMQ connections
         await rabbitmq.close()

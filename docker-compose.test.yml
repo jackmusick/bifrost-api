@@ -72,10 +72,9 @@ services:
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
-      BIFROST_MOUNTS_PATH: /mounts
       BIFROST_ENVIRONMENT: testing
-      # Workspace location for forms and workflows (file-based storage)
-      BIFROST_WORKSPACE_LOCATION: /app/platform
+      # Workspace location - writable directory for user workflows
+      BIFROST_WORKSPACE_LOCATION: /workspace
       # Enable registration for E2E tests
       BIFROST_ALLOW_REGISTRATION: "true"
     ports:
@@ -84,9 +83,9 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform  # Read-write for E2E tests (forms are JSON files)
+      - ./api/platform:/app/platform:ro  # Built-in platform workflows (read-only)
       - ./api/alembic:/app/alembic:ro
-      - test-mounts:/mounts  # Persistent mounts for file uploads during E2E tests
+      - test-workspace:/workspace  # Writable workspace for E2E tests (hot reload)
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,8 +98,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    command: >
-      sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"
+    # Entrypoint handles permissions; run as root so it can fix volume ownership
+    user: root
+    command: ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
 
   # Background Jobs Worker (Test) - Only started for E2E tests
   jobs:
@@ -114,14 +114,14 @@ services:
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
-      BIFROST_MOUNTS_PATH: /mounts
       BIFROST_ENVIRONMENT: testing
-      BIFROST_WORKSPACE_LOCATION: /app/platform
+      BIFROST_WORKSPACE_LOCATION: /workspace
     volumes:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/platform:/app/platform:ro
+      - test-workspace:/workspace  # Same writable workspace as API (hot reload)
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,6 +129,8 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+    # Entrypoint handles permissions; run as root so it can fix volume ownership
+    user: root
     profiles:
       - e2e  # Only start in E2E mode
 
@@ -149,7 +151,6 @@ services:
       BIFROST_ENVIRONMENT: testing
       BIFROST_ALLOW_REGISTRATION: "true"
       BIFROST_WORKSPACE_LOCATION: /app/platform
-      BIFROST_MOUNTS_PATH: /mounts
       # For E2E tests, point to the API container
       TEST_API_URL: http://api:8000
       PYTHONPATH: /app
@@ -178,4 +179,4 @@ services:
 
 # Named volumes for test data - ephemeral within test session
 volumes:
-  test-mounts:
+  test-workspace:  # Writable workspace for testing hot reload

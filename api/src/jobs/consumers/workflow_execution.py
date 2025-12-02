@@ -67,7 +67,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             # Import shared modules for execution
             from shared.context import Caller, Organization
-            from shared.discovery import load_workflow
+            from shared.discovery import get_workflow
             from shared.engine import ExecutionRequest, execute
             from src.models.schemas import ExecutionStatus
 
@@ -135,7 +135,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             if not is_script:
                 try:
-                    result = load_workflow(workflow_name)
+                    result = get_workflow(workflow_name)
                     if not result:
                         logger.error(f"Workflow not found: {workflow_name}")
                         duration_ms = int(

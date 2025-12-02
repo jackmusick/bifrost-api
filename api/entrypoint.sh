@@ -1,0 +1,24 @@
+#!/bin/sh
+# Bifrost API Entrypoint
+# Ensures proper permissions and starts the application
+
+set -e
+
+# Fix ownership of mounted volumes if running as root
+if [ "$(id -u)" = "0" ]; then
+    # Fix workspace permissions if needed
+    if [ -d "/workspace" ]; then
+        chown -R bifrost:bifrost /workspace 2>/dev/null || true
+    fi
+
+    # Fix temp directory permissions if needed
+    if [ -d "/tmp/bifrost" ]; then
+        chown -R bifrost:bifrost /tmp/bifrost 2>/dev/null || true
+    fi
+
+    # Drop to bifrost user and exec the command
+    exec gosu bifrost "$@"
+else
+    # Already running as bifrost, just exec
+    exec "$@"
+fi

@@ -52,7 +52,7 @@ async def list_files(
         List of file and folder metadata
     """
     try:
-        files = await list_directory(path)
+        files = list_directory(path)
         logger.info(f"Listed directory: {path} ({len(files)} items)")
         return files
     except ValueError as e:
@@ -94,18 +94,9 @@ async def get_file_content(
         File content and metadata
     """
     try:
-        content, encoding = await read_file(path)
-        logger.info(f"Read file: {path} ({len(content)} bytes)")
-
-        # Return minimal response - actual FileContentResponse has more fields
-        return FileContentResponse(
-            path=path,
-            content=content,
-            encoding=encoding,
-            size=len(content),
-            etag="",
-            modified="",
-        )
+        result = await read_file(path)
+        logger.info(f"Read file: {path} ({result.size} bytes)")
+        return result
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -191,7 +182,7 @@ async def create_new_folder(
         Folder metadata
     """
     try:
-        folder_meta = await create_folder(path)
+        folder_meta = create_folder(path)
         logger.info(f"Created folder: {path}")
         return folder_meta
     except ValueError as e:
