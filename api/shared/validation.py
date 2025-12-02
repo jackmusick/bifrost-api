@@ -7,7 +7,7 @@ import json
 
 import azure.functions as func
 
-from shared.models import ErrorResponse
+from src.models.schemas import ErrorResponse
 
 
 def validate_scope_parameter(scope: str, org_id: str | None) -> tuple[bool, func.HttpResponse | None]:

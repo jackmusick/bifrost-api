@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Query, HTTPException, status
 
-from shared.models import FileContentRequest, FileContentResponse, FileMetadata
+from src.models.schemas import FileContentRequest, FileContentResponse, FileMetadata
 from shared.editor.file_operations import (
     list_directory,
     read_file,

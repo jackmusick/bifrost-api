@@ -11,7 +11,7 @@ from typing import Any, TYPE_CHECKING
 from uuid import UUID
 
 from shared.blob_storage import get_blob_service
-from shared.models import ExecutionStatus
+from src.models.schemas import ExecutionStatus
 
 if TYPE_CHECKING:
     from shared.webpubsub_broadcaster import WebPubSubBroadcaster

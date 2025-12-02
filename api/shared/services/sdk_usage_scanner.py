@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
-    from shared.models import SDKUsageIssue
+    from src.models.schemas import SDKUsageIssue
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class SDKUsageScanner:
         Returns:
             List of SDKUsageIssue for missing configurations
         """
-        from shared.models import SDKUsageIssue, SDKUsageType
+        from src.models.schemas import SDKUsageIssue, SDKUsageType
 
         # Phase 1: Scan all files
         file_usages = self.scan_workspace()
@@ -280,7 +280,7 @@ class SDKUsageScanner:
         Returns:
             List of SDKUsageIssue for missing configurations
         """
-        from shared.models import SDKUsageIssue, SDKUsageType
+        from src.models.schemas import SDKUsageIssue, SDKUsageType
 
         full_path = self.workspace_path / file_path
 

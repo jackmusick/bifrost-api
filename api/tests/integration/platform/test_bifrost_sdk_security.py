@@ -196,7 +196,7 @@ class TestDefaultOrgScoping:
             # Mock OAuthStorageService - patch where it's imported IN SDK
             with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
                 from unittest.mock import AsyncMock
-                from shared.models import OAuthConnection
+                from src.models.schemas import OAuthConnection
                 from datetime import datetime
 
                 mock_storage = Mock()
@@ -453,7 +453,7 @@ class TestCrossOrgParameterUsage:
         from unittest.mock import AsyncMock, Mock, patch
         from bifrost import oauth
         from shared.context import ExecutionContext, Organization
-        from shared.models import OAuthConnection
+        from src.models.schemas import OAuthConnection
         from datetime import datetime
 
         org = Organization(id="org-123", name="Test Org", is_active=True)

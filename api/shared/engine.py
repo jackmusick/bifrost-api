@@ -17,7 +17,7 @@ from typing import Any
 from shared.context import Caller, ExecutionContext, Organization
 from shared.error_handling import WorkflowError
 from shared.errors import UserError, WorkflowExecutionException
-from shared.models import ExecutionStatus
+from src.models.schemas import ExecutionStatus
 from src.repositories.execution_logs import get_execution_logs_repository
 
 logger = logging.getLogger(__name__)

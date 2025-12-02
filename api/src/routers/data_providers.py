@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 # Import existing Pydantic models for API compatibility
-from shared.models import DataProviderMetadata
+from src.models.schemas import DataProviderMetadata
 
 from src.core.auth import CurrentActiveUser
 

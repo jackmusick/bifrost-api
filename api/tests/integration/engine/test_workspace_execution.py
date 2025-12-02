@@ -172,7 +172,7 @@ class TestWorkspacePublicAPI:
     def test_models_module_accessible(self):
         """Integration: Pydantic models are accessible"""
         try:
-            from shared.models import ExecutionStatus, WorkflowExecutionResponse
+            from src.models.schemas import ExecutionStatus, WorkflowExecutionResponse
             # These should be importable
             assert WorkflowExecutionResponse is not None
             assert ExecutionStatus is not None

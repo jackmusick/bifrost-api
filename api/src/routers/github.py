@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from shared.models import (
+from src.models.schemas import (
     GitHubConfigRequest,
     PullFromGitHubRequest,
     PullFromGitHubResponse,

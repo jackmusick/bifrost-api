@@ -10,7 +10,7 @@ from typing import List
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from shared.models import SearchRequest, SearchResult, SearchResponse
+from src.models.schemas import SearchRequest, SearchResult, SearchResponse
 from shared.editor.file_operations import get_base_path, validate_and_resolve_path
 
 

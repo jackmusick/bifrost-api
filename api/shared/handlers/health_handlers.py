@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from shared.keyvault import KeyVaultClient
-from shared.models import BasicHealthResponse, GeneralHealthResponse, HealthCheck, KeyVaultHealthResponse
+from src.models.schemas import BasicHealthResponse, GeneralHealthResponse, HealthCheck, KeyVaultHealthResponse
 
 logger = logging.getLogger(__name__)
 

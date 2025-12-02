@@ -55,7 +55,7 @@ from .workflows import workflows
 from shared.decorators import workflow, param, data_provider
 from shared.context import ExecutionContext, Organization
 from shared.errors import UserError, WorkflowError, ValidationError, IntegrationError, ConfigurationError
-from shared.models import (
+from src.models.schemas import (
     ExecutionStatus,
     OAuthCredentials,
     ConfigType,

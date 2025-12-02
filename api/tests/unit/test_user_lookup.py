@@ -7,7 +7,7 @@ Tests user existence checks and organization lookups with mocked repositories.
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
-from shared.models import User, UserType
+from src.models.schemas import User, UserType
 from shared.user_lookup import ensure_user_exists_in_db, get_user_organization
 import shared.user_lookup as user_lookup_module
 

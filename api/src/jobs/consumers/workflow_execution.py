@@ -69,7 +69,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             from shared.context import Caller, Organization
             from shared.discovery import load_workflow
             from shared.engine import ExecutionRequest, execute
-            from shared.models import ExecutionStatus
+            from src.models.schemas import ExecutionStatus
 
             # Check if execution was already cancelled before we started
             from src.jobs.consumers._helpers import (
@@ -309,7 +309,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Unexpected error
             duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 
-            from shared.models import ExecutionStatus
+            from src.models.schemas import ExecutionStatus
             from src.jobs.consumers._helpers import update_execution
 
             await update_execution(

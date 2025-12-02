@@ -9,7 +9,7 @@ All methods are async and must be called with await.
 from __future__ import annotations
 
 from shared.handlers.forms_logic import get_form_logic, list_forms_logic
-from shared.models import Form
+from src.models.schemas import Form
 
 from ._internal import get_context
 

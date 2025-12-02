@@ -16,7 +16,7 @@ Key Features:
 import logging
 from typing import Literal
 
-from shared.models import UserType
+from src.models.schemas import UserType
 from src.repositories.organizations import OrganizationRepository
 from src.repositories.users import UserRepository
 

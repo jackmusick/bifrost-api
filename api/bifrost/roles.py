@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from shared.models import Role, CreateRoleRequest, UpdateRoleRequest
+from src.models.schemas import Role, CreateRoleRequest, UpdateRoleRequest
 
 from ._internal import get_context, require_permission
 

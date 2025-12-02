@@ -6,7 +6,7 @@ Created for T013-T016
 
 import re
 
-from shared.models import FormField, DataProviderInputMode
+from src.models.schemas import FormField, DataProviderInputMode
 
 
 def extract_field_references(expression: str) -> set[str]:

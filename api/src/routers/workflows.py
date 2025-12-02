@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import ValidationError
 
 # Import existing Pydantic models for API compatibility
-from shared.models import (
+from src.models.schemas import (
     FileScanRequest,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
@@ -101,7 +101,7 @@ async def execute_workflow(
     """Execute a workflow or script with the provided parameters."""
     # Import shared execution handler
     from shared.handlers.workflows_logic import execute_workflow_logic, execute_code_logic
-    from shared.models import ExecutionStatus
+    from src.models.schemas import ExecutionStatus
 
     try:
         # Build context for execution

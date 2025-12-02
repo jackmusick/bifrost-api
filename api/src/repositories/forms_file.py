@@ -20,7 +20,7 @@ from shared.discovery import (
     get_form_metadata,
     get_forms_by_workflow,
 )
-from shared.models import CreateFormRequest, Form, UpdateFormRequest, generate_entity_id
+from src.models.schemas import CreateFormRequest, Form, UpdateFormRequest, generate_entity_id
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext
@@ -123,7 +123,7 @@ class FormsFileRepository:
 
     def _dict_to_form(self, data: dict) -> Form:
         """Convert a form dict to a Form model."""
-        from shared.models import FormSchema, FormAccessLevel
+        from src.models.schemas import FormSchema, FormAccessLevel
 
         # Parse dates - provide defaults for file-based forms
         now = datetime.utcnow()

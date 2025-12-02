@@ -11,7 +11,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, status
 
-from shared.models import (
+from src.models.schemas import (
     InstallPackageRequest,
     InstalledPackage,
     InstalledPackagesResponse,

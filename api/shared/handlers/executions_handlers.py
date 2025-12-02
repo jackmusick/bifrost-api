@@ -13,7 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import desc, select
 
-from shared.models import ExecutionStatus, WorkflowExecution
+from src.models.schemas import ExecutionStatus, WorkflowExecution
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext

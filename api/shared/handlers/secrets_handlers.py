@@ -13,7 +13,7 @@ import logging
 from typing import Any
 
 from shared.keyvault import KeyVaultClient
-from shared.models import (
+from src.models.schemas import (
     SecretCreateRequest,
     SecretListResponse,
     SecretResponse,

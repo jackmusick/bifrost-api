@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models import (
+from src.models.schemas import (
     CreateOAuthConnectionRequest,
     UpdateOAuthConnectionRequest,
     OAuthConnectionDetail,

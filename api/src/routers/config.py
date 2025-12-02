@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
-from shared.models import (
+from src.models.schemas import (
     Config as ConfigSchema,
     ConfigType,
     SetConfigRequest,

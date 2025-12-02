@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from shared.models import BrandingSettings, FileUploadResponse, UploadedFileMetadata
+from src.models.schemas import BrandingSettings, FileUploadResponse, UploadedFileMetadata
 from shared.blob_storage import get_blob_service
 from shared.async_storage import AsyncTableStorageService
 

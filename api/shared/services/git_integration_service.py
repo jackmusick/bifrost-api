@@ -21,7 +21,7 @@ from dulwich.errors import NotGitRepository
 from dulwich.objects import Commit as DulwichCommit, Blob, Tree, ShaFile
 from github import Github, GithubException
 
-from shared.models import (
+from src.models.schemas import (
     FileChange,
     GitFileStatus,
     ConflictInfo,

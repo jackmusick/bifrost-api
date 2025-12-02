@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 
-from shared.models import BrandingSettings, BrandingUpdateRequest
+from src.models.schemas import BrandingSettings, BrandingUpdateRequest
 from src.core.auth import Context, CurrentActiveUser
 from src.core.database import AsyncSession, get_db
 from src.models import Config as ConfigModel

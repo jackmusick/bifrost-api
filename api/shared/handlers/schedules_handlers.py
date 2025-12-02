@@ -15,7 +15,7 @@ from croniter import croniter
 from shared.async_executor import enqueue_workflow_execution
 from shared.context import ExecutionContext
 from shared.discovery import scan_all_workflows, load_workflow
-from shared.models import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
+from src.models.schemas import ExecutionStatus, ProcessSchedulesResponse, ScheduleInfo, SchedulesListResponse, WorkflowExecutionResponse
 from shared.async_storage import AsyncTableStorageService
 from shared.workflows.cron_parser import calculate_next_run, cron_to_human_readable, is_cron_expression_valid
 

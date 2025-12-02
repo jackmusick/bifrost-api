@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from shared.models import (
+from src.models.schemas import (
     CreateOrganizationRequest,
     Organization,
     UpdateOrganizationRequest,

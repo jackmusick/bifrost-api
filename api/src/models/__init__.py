@@ -3,9 +3,14 @@ Bifrost Models
 
 ORM models (database tables):
     from src.models import Organization, User, Form
+    from src.models.orm import Organization, User, Form
 
 Pydantic schemas (API request/response):
     from src.models import OrganizationCreate, OrganizationPublic
+    from src.models.models import OrganizationCreate, OrganizationPublic
+
+Legacy API schemas (from shared/models.py, now in src/models/schemas.py):
+    from src.models.schemas import WorkflowExecution, ExecutionStatus
 """
 
 # ORM models (database tables)

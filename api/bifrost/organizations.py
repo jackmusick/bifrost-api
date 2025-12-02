@@ -17,7 +17,7 @@ from shared.handlers.organizations_handlers import (
     list_organizations_logic,
     update_organization_logic,
 )
-from shared.models import Organization
+from src.models.schemas import Organization
 
 from ._internal import get_context, require_admin
 

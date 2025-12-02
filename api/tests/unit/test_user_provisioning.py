@@ -28,7 +28,7 @@ class TestEnsureUserProvisioned:
     @pytest.mark.asyncio
     async def test_existing_platform_admin_user(self, mock_user_repo_class):
         """Existing PlatformAdmin user returns correct status"""
-        from shared.models import User, UserType
+        from src.models.schemas import User, UserType
 
         mock_user_repo = Mock()
         mock_user_repo_class.return_value = mock_user_repo
@@ -64,7 +64,7 @@ class TestEnsureUserProvisioned:
     @pytest.mark.asyncio
     async def test_existing_org_user(self, mock_user_repo_class):
         """Existing ORG user returns correct status with org_id"""
-        from shared.models import User, UserType
+        from src.models.schemas import User, UserType
 
         mock_user_repo = Mock()
         mock_user_repo_class.return_value = mock_user_repo
@@ -167,7 +167,7 @@ class TestEnsureUserProvisioned:
         self, mock_user_repo_class, mock_provision_relationship
     ):
         """Existing ORG user without org relationship gets auto-provisioned"""
-        from shared.models import User, UserType
+        from src.models.schemas import User, UserType
 
         mock_user_repo = Mock()
         mock_user_repo_class.return_value = mock_user_repo
@@ -211,7 +211,7 @@ class TestCreateFirstPlatformAdmin:
     @pytest.mark.asyncio
     async def test_creates_platform_admin_user(self, mock_user_repo_class):
         """First user is created with PlatformAdmin privileges"""
-        from shared.models import User, UserType
+        from src.models.schemas import User, UserType
 
         mock_user_repo = Mock()
         mock_user_repo_class.return_value = mock_user_repo
@@ -254,7 +254,7 @@ class TestProvisionUserByDomain:
     @pytest.mark.asyncio
     async def test_successful_domain_match(self, mock_user_repo_class, mock_org_repo_class):
         """User with matching domain is auto-provisioned to org"""
-        from shared.models import User, Organization, UserType
+        from src.models.schemas import User, Organization, UserType
 
         # Mock OrganizationRepository
         mock_org_repo = Mock()
@@ -336,7 +336,7 @@ class TestProvisionUserByDomain:
     @pytest.mark.asyncio
     async def test_case_insensitive_domain_matching(self, mock_user_repo_class, mock_org_repo_class):
         """Domain matching is case-insensitive"""
-        from shared.models import User, Organization, UserType
+        from src.models.schemas import User, Organization, UserType
 
         # Mock OrganizationRepository
         mock_org_repo = Mock()

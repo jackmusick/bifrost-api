@@ -13,7 +13,7 @@ from azure.storage.queue.aio import QueueServiceClient  # type: ignore[import-un
 from azure.storage.queue import TextBase64EncodePolicy  # type: ignore[import-untyped]
 
 from shared.execution_logger import get_execution_logger
-from shared.models import ExecutionStatus
+from src.models.schemas import ExecutionStatus
 from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)

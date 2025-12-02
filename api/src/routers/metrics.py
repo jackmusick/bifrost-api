@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select, func
 
 from shared.discovery import scan_all_workflows, scan_all_forms
-from shared.models import DashboardMetricsResponse, ExecutionStats, RecentFailure
+from src.models.schemas import DashboardMetricsResponse, ExecutionStats, RecentFailure
 from src.core.auth import Context, CurrentActiveUser
 from src.models import Execution as ExecutionModel
 from src.models.enums import ExecutionStatus

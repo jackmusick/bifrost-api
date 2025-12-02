@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
 
-from shared.models import ScheduleInfo, SchedulesListResponse, ProcessSchedulesResponse
+from src.models.schemas import ScheduleInfo, SchedulesListResponse, ProcessSchedulesResponse
 from shared.discovery import scan_all_workflows
 from src.core.auth import Context, CurrentSuperuser
 
