@@ -779,7 +779,7 @@ curl -X POST \
 
 **Local Development:**
 
-1. Open https://localhost:5173 in your browser
+1. Open http://localhost:3000 in your browser
 2. Navigate to "Workflows"
 3. Find "Hello World" in the Examples category
 4. Click "Execute"
@@ -1058,14 +1058,14 @@ async def fetch_halo_tickets(context: OrganizationContext, status: str = "open")
     - Set appropriate cache TTL
 
 4. **Test Locally**
-    - Start local dev environment with `./start-dev.sh`
-    - Test via web UI at https://localhost:5173
+    - Start local dev environment with `docker compose up`
+    - Test via web UI at http://localhost:3000
     - Test via API with curl or Postman
     - Check logs and execution history
 
 5. **Deploy to Production**
     - Commit changes to Git
-    - Deploy to Azure using GitHub Actions
+    - Deploy using your preferred method
     - Test in production environment
     - Monitor execution logs
 

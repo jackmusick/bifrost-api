@@ -26,6 +26,7 @@ from src.models.schemas import (
     OAuthCallbackRequest,
     OAuthCallbackResponse,
 )
+from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser
 from src.models import OAuthProvider, OAuthToken
 
@@ -489,13 +490,13 @@ async def authorize_connection(
     state = secrets.token_urlsafe(32)
 
     # Build authorization URL
+    settings = get_settings()
     params = {
         "client_id": provider.client_id,
         "response_type": "code",
         "state": state,
         "scope": provider.scopes or "",
-        # TODO: Make redirect_uri configurable
-        "redirect_uri": f"http://localhost:5173/oauth/callback/{connection_name}",
+        "redirect_uri": f"{settings.frontend_url}/oauth/callback/{connection_name}",
     }
 
     authorization_url = f"{provider.authorization_url}?{urlencode(params)}"

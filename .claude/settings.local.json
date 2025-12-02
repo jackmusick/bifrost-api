@@ -377,9 +377,7 @@
     ],
     "ask": [],
     "additionalDirectories": [
-      "~/GitHub/bifrost-client/",
       "~/GitHub/bifrost-docs/",
-      "~/GitHub/bifrost-workspace",
       "~/GitHub/gocovi-bifrost-workspace"
     ]
   },

@@ -30,7 +30,7 @@ npm install
 npm run dev
 ```
 
-The app will run at `http://localhost:5173` and connect to your API endpoint (configure in `.env.local`).
+The app will run at `http://localhost:3000` and connect to your API endpoint (configure in `.env.local`).
 
 ### Option 2: Full Stack with Docker Compose
 

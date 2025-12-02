@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     # CORS
     # ==========================================================================
     cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:8000",
+        default="http://localhost:3000",
         description="Comma-separated list of allowed CORS origins"
     )
 
@@ -122,12 +122,12 @@ class Settings(BaseSettings):
     # ==========================================================================
     # File Storage
     # ==========================================================================
-    workspace_path: str = Field(
+    workspace_location: str = Field(
         default="/workspace",
         description="Path to workspace directory for user workflows"
     )
 
-    temp_path: str = Field(
+    temp_location: str = Field(
         default="/tmp/bifrost",
         description="Path to temporary storage directory"
     )
@@ -169,6 +169,53 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
+    # OAuth SSO (Single Sign-On)
+    # ==========================================================================
+    # Microsoft Entra ID (Azure AD)
+    microsoft_client_id: str | None = Field(
+        default=None,
+        description="Microsoft OAuth client ID"
+    )
+    microsoft_client_secret: str | None = Field(
+        default=None,
+        description="Microsoft OAuth client secret"
+    )
+    microsoft_tenant_id: str | None = Field(
+        default=None,
+        description="Microsoft tenant ID (or 'common' for multi-tenant)"
+    )
+
+    # Google OAuth
+    google_client_id: str | None = Field(
+        default=None,
+        description="Google OAuth client ID"
+    )
+    google_client_secret: str | None = Field(
+        default=None,
+        description="Google OAuth client secret"
+    )
+
+    # Generic OIDC Provider
+    oidc_discovery_url: str | None = Field(
+        default=None,
+        description="OIDC discovery URL (e.g., https://provider/.well-known/openid-configuration)"
+    )
+    oidc_client_id: str | None = Field(
+        default=None,
+        description="OIDC client ID"
+    )
+    oidc_client_secret: str | None = Field(
+        default=None,
+        description="OIDC client secret"
+    )
+
+    # Frontend URL (for OAuth redirects)
+    frontend_url: str = Field(
+        default="http://localhost:3000",
+        description="Frontend URL for OAuth callback redirects"
+    )
+
+    # ==========================================================================
     # Server
     # ==========================================================================
     host: str = Field(
@@ -184,6 +231,24 @@ class Settings(BaseSettings):
     # ==========================================================================
     # Computed Properties
     # ==========================================================================
+    @computed_field
+    @property
+    def microsoft_oauth_configured(self) -> bool:
+        """Check if Microsoft OAuth is configured."""
+        return bool(self.microsoft_client_id and self.microsoft_client_secret)
+
+    @computed_field
+    @property
+    def google_oauth_configured(self) -> bool:
+        """Check if Google OAuth is configured."""
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @computed_field
+    @property
+    def oidc_configured(self) -> bool:
+        """Check if generic OIDC is configured."""
+        return bool(self.oidc_discovery_url and self.oidc_client_id and self.oidc_client_secret)
+
     @computed_field
     @property
     def is_development(self) -> bool:
@@ -207,17 +272,17 @@ class Settings(BaseSettings):
         Validate that required filesystem paths exist.
 
         Raises:
-            ValueError: If workspace path doesn't exist
+            ValueError: If workspace location doesn't exist
         """
-        workspace = Path(self.workspace_path)
+        workspace = Path(self.workspace_location)
         if not workspace.exists():
             raise ValueError(
-                f"Workspace path does not exist: {self.workspace_path}. "
-                "Please create it or set WORKSPACE_PATH environment variable."
+                f"Workspace location does not exist: {self.workspace_location}. "
+                "Please create it or set BIFROST_WORKSPACE_LOCATION environment variable."
             )
 
-        # Create temp path if it doesn't exist
-        temp = Path(self.temp_path)
+        # Create temp location if it doesn't exist
+        temp = Path(self.temp_location)
         temp.mkdir(parents=True, exist_ok=True)
 
 

@@ -29,7 +29,7 @@ async def can_user_view_form(request_context, form_id: str) -> bool:
     from uuid import UUID
     from sqlalchemy import select, or_
     from src.core.database import get_session_factory
-    from src.models import Form, UserRole
+    from src.models import Form, UserRole, FormRole
 
     # Platform admins can view all forms
     if request_context.is_platform_admin:
@@ -40,7 +40,7 @@ async def can_user_view_form(request_context, form_id: str) -> bool:
         form_uuid = UUID(form_id)
         org_uuid = UUID(request_context.org_id) if request_context.org_id else None
 
-        # Get form with org scoping
+        # Get form with org scoping (user's org forms + global forms)
         query = select(Form).where(Form.id == form_uuid)
         if org_uuid:
             query = query.where(
@@ -61,17 +61,27 @@ async def can_user_view_form(request_context, form_id: str) -> bool:
 
         # Check access level
         access_level = form.access_level or "role_based"
+        if access_level == "public":
+            return True
         if access_level == "authenticated":
             return True
 
-        # Role-based: check user role membership
+        # Role-based: check if user has a role assigned to this form via FormRole table
         user_uuid = UUID(request_context.user_id)
         role_query = select(UserRole.role_id).where(UserRole.user_id == user_uuid)
         role_result = await db.execute(role_query)
-        user_role_ids = {str(r) for r in role_result.scalars().all()}
+        user_role_ids = list(role_result.scalars().all())
 
-        form_role_ids = {str(r) for r in (form.assigned_roles or [])}
-        return bool(user_role_ids & form_role_ids)
+        if not user_role_ids:
+            return False
+
+        # Check if any of user's roles are assigned to this form
+        form_role_query = select(FormRole).where(
+            FormRole.form_id == form_uuid,
+            FormRole.role_id.in_(user_role_ids),
+        )
+        form_role_result = await db.execute(form_role_query)
+        return form_role_result.scalar_one_or_none() is not None
 
 
 async def can_user_execute_form(request_context, form_id: str) -> bool:
@@ -84,13 +94,13 @@ async def get_user_visible_forms(request_context) -> list[dict]:
     from uuid import UUID
     from sqlalchemy import select, or_
     from src.core.database import get_session_factory
-    from src.models import Form, UserRole
+    from src.models import Form, UserRole, FormRole
 
     session_factory = get_session_factory()
     async with session_factory() as db:
         org_uuid = UUID(request_context.org_id) if request_context.org_id else None
 
-        # Base query with org scoping
+        # Base query with org scoping (user's org forms + global forms)
         query = select(Form)
         if org_uuid:
             query = query.where(
@@ -103,7 +113,7 @@ async def get_user_visible_forms(request_context) -> list[dict]:
         if request_context.is_platform_admin:
             result = await db.execute(query)
             forms = result.scalars().all()
-            return [_form_to_dict(f) for f in forms]
+            return [await _form_to_dict(db, f) for f in forms]
 
         # Regular user: filter to active forms
         query = query.where(Form.is_active)
@@ -114,40 +124,55 @@ async def get_user_visible_forms(request_context) -> list[dict]:
         user_uuid = UUID(request_context.user_id)
         role_query = select(UserRole.role_id).where(UserRole.user_id == user_uuid)
         role_result = await db.execute(role_query)
-        user_role_ids = {str(r) for r in role_result.scalars().all()}
+        user_role_ids = list(role_result.scalars().all())
+
+        # Get all form-role assignments for user's roles
+        form_role_query = select(FormRole.form_id).where(
+            FormRole.role_id.in_(user_role_ids)
+        ) if user_role_ids else select(FormRole.form_id).where(False)
+        form_role_result = await db.execute(form_role_query)
+        accessible_form_ids = {r for r in form_role_result.scalars().all()}
 
         # Filter by access level
         visible_forms = []
         for form in all_forms:
             access_level = form.access_level or "role_based"
-            if access_level == "authenticated":
+            if access_level == "public":
+                visible_forms.append(form)
+            elif access_level == "authenticated":
                 visible_forms.append(form)
             elif access_level == "role_based":
-                form_role_ids = {str(r) for r in (form.assigned_roles or [])}
-                if user_role_ids & form_role_ids:
+                if form.id in accessible_form_ids:
                     visible_forms.append(form)
 
-        return [_form_to_dict(f) for f in visible_forms]
+        return [await _form_to_dict(db, f) for f in visible_forms]
 
 
 async def get_form_role_ids(form_id: str) -> list[str]:
-    """Get role IDs assigned to a form."""
+    """Get role IDs assigned to a form via FormRole table."""
     from uuid import UUID
     from sqlalchemy import select
     from src.core.database import get_session_factory
-    from src.models import Form
+    from src.models import FormRole
 
     session_factory = get_session_factory()
     async with session_factory() as db:
         form_uuid = UUID(form_id)
-        query = select(Form.assigned_roles).where(Form.id == form_uuid)
+        query = select(FormRole.role_id).where(FormRole.form_id == form_uuid)
         result = await db.execute(query)
-        assigned_roles = result.scalar_one_or_none()
-        return [str(r) for r in (assigned_roles or [])]
+        return [str(r) for r in result.scalars().all()]
 
 
-def _form_to_dict(form) -> dict:
+async def _form_to_dict(db, form) -> dict:
     """Convert Form ORM object to dict for handler compatibility."""
+    from sqlalchemy import select
+    from src.models import FormRole
+
+    # Get assigned roles from FormRole table
+    role_query = select(FormRole.role_id).where(FormRole.form_id == form.id)
+    role_result = await db.execute(role_query)
+    assigned_role_ids = [str(r) for r in role_result.scalars().all()]
+
     return {
         "id": str(form.id),
         "name": form.name,
@@ -160,7 +185,7 @@ def _form_to_dict(form) -> dict:
         "form_schema": form.form_schema,
         "is_active": form.is_active,
         "access_level": form.access_level,
-        "assigned_roles": [str(r) for r in (form.assigned_roles or [])],
+        "assigned_role_ids": assigned_role_ids,
         "created_at": form.created_at.isoformat() if form.created_at else None,
         "updated_at": form.updated_at.isoformat() if form.updated_at else None,
     }

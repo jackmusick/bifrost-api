@@ -11,7 +11,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
@@ -35,22 +35,65 @@ async def list_forms(
     ctx: Context,
     db: DbSession,
 ) -> list[FormPublic]:
-    """List all forms visible to the user."""
-    query = select(FormORM).where(FormORM.is_active)
+    """List all forms visible to the user.
 
-    # Platform admins see all forms, org users see only their org's forms
+    - Platform admins see all forms
+    - Org users see: their org's forms + global forms (org_id IS NULL)
+    - Access is further filtered by access_level (public, authenticated, role_based)
+    """
+    # Base query - active forms only for non-admins
+    if ctx.user.is_superuser:
+        query = select(FormORM)
+    else:
+        query = select(FormORM).where(FormORM.is_active)
+
+    # Org scoping: user's org forms + global forms
     if not ctx.user.is_superuser:
         if ctx.org_id:
-            query = query.where(FormORM.organization_id == ctx.org_id)
+            query = query.where(
+                or_(FormORM.organization_id == ctx.org_id, FormORM.organization_id.is_(None))
+            )
         else:
-            # User has no org - no forms visible
-            return []
+            # User has no org - only global forms visible
+            query = query.where(FormORM.organization_id.is_(None))
 
     query = query.order_by(FormORM.name)
     result = await db.execute(query)
-    forms = result.scalars().all()
+    all_forms = list(result.scalars().all())
 
-    return [FormPublic.model_validate(f) for f in forms]
+    # Platform admins see all
+    if ctx.user.is_superuser:
+        return [FormPublic.model_validate(f) for f in all_forms]
+
+    # For regular users, filter by access level
+    # Get user's roles
+    role_query = select(UserRoleORM.role_id).where(UserRoleORM.user_id == ctx.user.user_id)
+    role_result = await db.execute(role_query)
+    user_role_ids = list(role_result.scalars().all())
+
+    # Get form IDs accessible via user's roles
+    if user_role_ids:
+        form_role_query = select(FormRoleORM.form_id).where(
+            FormRoleORM.role_id.in_(user_role_ids)
+        )
+        form_role_result = await db.execute(form_role_query)
+        accessible_form_ids = {r for r in form_role_result.scalars().all()}
+    else:
+        accessible_form_ids = set()
+
+    # Filter forms by access level
+    visible_forms = []
+    for form in all_forms:
+        access_level = form.access_level or "role_based"
+        if access_level == "public":
+            visible_forms.append(form)
+        elif access_level == "authenticated":
+            visible_forms.append(form)
+        elif access_level == "role_based":
+            if form.id in accessible_form_ids:
+                visible_forms.append(form)
+
+    return [FormPublic.model_validate(f) for f in visible_forms]
 
 
 @router.post(
@@ -118,15 +161,47 @@ async def get_form(
             detail="Form not found",
         )
 
-    # Check access
-    if not ctx.user.is_superuser:
-        if form.organization_id != ctx.org_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to form",
-            )
+    # Check access - admins can see all forms
+    if ctx.user.is_superuser:
+        return FormPublic.model_validate(form)
 
-    return FormPublic.model_validate(form)
+    # Non-admins can only see active forms
+    if not form.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form not found",
+        )
+
+    # Check org access - user can access their org's forms OR global forms (org_id is NULL)
+    if form.organization_id is not None and form.organization_id != ctx.org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to form",
+        )
+
+    # Check access level
+    access_level = form.access_level or "role_based"
+    if access_level == "public" or access_level == "authenticated":
+        return FormPublic.model_validate(form)
+
+    # Role-based: check if user has a role assigned to this form
+    role_query = select(UserRoleORM.role_id).where(UserRoleORM.user_id == ctx.user.user_id)
+    role_result = await db.execute(role_query)
+    user_role_ids = list(role_result.scalars().all())
+
+    if user_role_ids:
+        form_role_query = select(FormRoleORM).where(
+            FormRoleORM.form_id == form_id,
+            FormRoleORM.role_id.in_(user_role_ids),
+        )
+        form_role_result = await db.execute(form_role_query)
+        if form_role_result.scalar_one_or_none() is not None:
+            return FormPublic.model_validate(form)
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied to form",
+    )
 
 
 @router.patch(
@@ -173,8 +248,6 @@ async def update_form(
         form.is_active = request.is_active
     if request.access_level is not None:
         form.access_level = request.access_level
-    if request.assigned_roles is not None:
-        form.assigned_roles = request.assigned_roles
 
     form.updated_at = datetime.utcnow()
 

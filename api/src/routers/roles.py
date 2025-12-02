@@ -71,7 +71,6 @@ async def create_role(
     role = RoleORM(
         name=request.name,
         description=request.description,
-        permissions=request.permissions,
         is_active=request.is_active,
         organization_id=request.organization_id,
         created_by=user.email,
@@ -137,8 +136,6 @@ async def update_role(
         role.name = request.name
     if request.description is not None:
         role.description = request.description
-    if request.permissions is not None:
-        role.permissions = request.permissions
     if request.is_active is not None:
         role.is_active = request.is_active
 

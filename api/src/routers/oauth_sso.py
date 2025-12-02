@@ -221,7 +221,7 @@ async def oauth_callback(
     try:
         # Build redirect URI from frontend URL
         # The frontend callback URL must match what was used in init
-        frontend_url = settings.frontend_url or "http://localhost:5173"
+        frontend_url = settings.frontend_url or "http://localhost:3000"
         redirect_uri = f"{frontend_url}/auth/callback/{callback_data.provider}"
 
         # Exchange code for tokens

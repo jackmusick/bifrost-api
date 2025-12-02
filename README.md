@@ -3,9 +3,10 @@
 **Open-source automation platform for Integration Services** - Built to democratize best-in-class tooling before venture capital gets the chance to own something we're all incredibly passionate about.
 
 [![License: AGPL](https://img.shields.io/badge/License-AGPL-green.svg)](https://opensource.org/licenses/agpl)
-[![Azure Functions](https://img.shields.io/badge/Azure%20Functions-v4-blue.svg)](https://azure.microsoft.com/en-us/services/functions/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-blue.svg)](https://www.docker.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
 
 ---
 
@@ -46,7 +47,7 @@ Bifrost Integrations removes those limitations while preserving the light manage
 
 -   Automated OAuth refresh flows
 -   Key/value configuration storage per organization
--   Secure secrets management with Azure Key Vault
+-   Secure secrets management
 
 **Dynamic Forms and Workflows**
 
@@ -85,61 +86,111 @@ The platform handles the hard parts - OAuth flows, credential encryption, multi-
 
 -   **Multi-Tenant Architecture** - Complete data isolation per organization
 -   **OAuth Management** - Automated token refresh and credential storage
--   **Secrets Management** - Secure integration with Azure Key Vault
+-   **Secrets Management** - Encrypted secrets with Fernet encryption
 -   **Dynamic Workflows** - Python-based with full language capabilities
 -   **Reusable Integrations** - Build once, use across all customers
 -   **AI-Assisted Development** - Built for modern AI coding workflows
 -   **Version Control** - Git-based workflow management
--   **Cost-Effective** - ~$10-35/month for small-to-medium workloads
+-   **Hot Reload** - Workflows and forms reload automatically on file changes
+-   **Self-Hostable** - Run anywhere with Docker Compose
 
 ---
 
 ## Quick Start
 
-> **Note**: This repository contains the backend API. For the complete platform with frontend UI, see [bifrost-client](https://github.com/jackmusick/bifrost-client).
-
 ### Prerequisites
 
--   Python 3.11+
--   Azure Functions Core Tools v4
--   Docker (for dev container) or Azurite (for manual setup)
+-   Docker and Docker Compose
+-   Git
 
-### Local Development (Dev Container - Recommended)
-
-1. Open this repository in VS Code
-2. Click "Reopen in Container" when prompted
-3. Wait for container to build (~2 minutes)
-4. Run: `func start`
-
-The dev container includes all dependencies (Python, Azure Functions, Azurite, etc.)
-
-### Local Development (Manual Setup)
+### Running with Docker Compose (Recommended)
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-npm install -g azure-functions-core-tools@4 --unsafe-perm true
+# Clone the repository
+git clone https://github.com/jackmusick/bifrost-api.git
+cd bifrost-api
 
-# Start Azurite (Azure Storage Emulator)
-azurite --silent &
+# Run setup (creates .env with secure random secrets)
+./setup.sh
 
-# Configure local settings
-cp local.settings.example.json local.settings.json
-
-# Start the Functions runtime
-func start
+# Start all services
+docker compose up
 ```
 
-**Access the API:**
+This starts:
+-   **Client** (React) - http://localhost:3000
+-   **API** (FastAPI) - proxied through client
+-   **PostgreSQL** - Database
+-   **Redis** - Caching and sessions
+-   **RabbitMQ** - Message queue for async workflows
 
--   API: http://localhost:7071
--   OpenAPI Spec: http://localhost:7071/api/openapi.json
--   Health Check: http://localhost:7071/api/health
+**Access the Platform:**
+
+-   **Client UI**: http://localhost:3000
+-   **API Docs (Swagger)**: http://localhost:3000/api/docs
+-   **API Docs (ReDoc)**: http://localhost:3000/api/redoc
+
+---
+
+## Local Development
+
+### Docker (Recommended)
+
+The full stack runs in Docker with hot reload enabled for both API and client:
+
+```bash
+# Start all services with hot reload
+docker compose up
+
+# Or run in background
+docker compose up -d
+
+# View logs
+docker compose logs -f api
+docker compose logs -f client
+```
+
+Changes to files in `api/src/`, `api/shared/`, and `client/src/` automatically reload.
+
+**VS Code Debugging:**
+
+```bash
+# Start with debugger enabled (API waits for VS Code to attach)
+ENABLE_DEBUG=true docker compose up
+```
+
+Then attach VS Code debugger to port 5678. The API will wait for the debugger before starting.
+
+### Native
+
+For native development, run infrastructure in Docker and applications locally:
+
+```bash
+# Start infrastructure only
+docker compose up -d postgres redis rabbitmq
+
+# Set up Python virtual environment
+cd api
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Run database migrations
+alembic upgrade head
+
+# Start the API with hot reload
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+
+# In another terminal, start the client
+cd client
+npm install
+npm run dev
+```
 
 ### Running Tests
 
 ```bash
-# Run all tests (use ./test.sh, NOT pytest directly)
+# Run all tests (starts dependencies in Docker)
 ./test.sh
 
 # Run specific test file
@@ -147,7 +198,34 @@ func start
 
 # Run with coverage
 ./test.sh --coverage
+
+# Run E2E tests
+./test.sh --e2e
 ```
+
+---
+
+## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Client    │────▶│   FastAPI   │────▶│ PostgreSQL  │
+│   (React)   │     │    (API)    │     │  (Database) │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                           │
+                    ┌──────┴──────┐
+                    ▼             ▼
+              ┌─────────┐   ┌──────────┐
+              │  Redis  │   │ RabbitMQ │
+              │ (Cache) │   │ (Queue)  │
+              └─────────┘   └──────────┘
+```
+
+-   **FastAPI** - Async Python API with automatic OpenAPI documentation
+-   **PostgreSQL** - Primary data store with SQLAlchemy ORM
+-   **Redis** - Session storage and caching
+-   **RabbitMQ** - Async workflow execution queue
+-   **React** - Modern frontend with TypeScript
 
 ---
 
@@ -155,10 +233,8 @@ func start
 
 For detailed documentation on architecture, development, deployment, and usage:
 
--   **Platform Documentation**: [Coming Soon - Link to public docs]
--   **API Documentation**: https://bifrost.yourdomain.com/api/openapi.json (when deployed)
--   **Frontend Repository**: [bifrost-client](https://github.com/jackmusick/bifrost-client)
--   **Azure Functions Docs**: https://docs.microsoft.com/en-us/azure/azure-functions/
+-   **API Documentation**: http://localhost:8000/docs (when running)
+-   **Frontend Repository**: Included in `client/` directory
 
 ---
 

@@ -131,7 +131,6 @@ class RoleBase(BaseModel):
     """Shared role fields."""
     name: str = Field(max_length=100)
     description: str | None = Field(default=None)
-    permissions: list = Field(default_factory=list)
     is_active: bool = Field(default=True)
 
 
@@ -144,7 +143,6 @@ class RoleUpdate(BaseModel):
     """Input for updating a role."""
     name: str | None = None
     description: str | None = None
-    permissions: list | None = None
     is_active: bool | None = None
 
 
@@ -196,7 +194,6 @@ class FormUpdate(BaseModel):
     form_schema: dict | FormSchema | None = None
     is_active: bool | None = None
     access_level: FormAccessLevel | None = None
-    assigned_roles: list[str] | None = None
 
 
 class FormPublic(BaseModel):
@@ -214,7 +211,6 @@ class FormPublic(BaseModel):
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = None
     is_active: bool
-    assigned_roles: list[str] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

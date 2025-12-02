@@ -145,7 +145,6 @@ class Role(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, default=None)
-    permissions: Mapped[list] = mapped_column(JSONB, default=[])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
@@ -200,7 +199,6 @@ class Form(Base):
     default_launch_params: Mapped[dict | None] = mapped_column(JSONB, default=None)
     allowed_query_params: Mapped[list | None] = mapped_column(JSONB, default=None)
     form_schema: Mapped[dict | None] = mapped_column(JSONB, default=None)
-    assigned_roles: Mapped[list | None] = mapped_column(JSONB, default=None)
     access_level: Mapped[FormAccessLevel] = mapped_column(
         SQLAlchemyEnum(
             FormAccessLevel,

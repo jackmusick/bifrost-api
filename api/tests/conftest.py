@@ -79,8 +79,8 @@ def setup_test_environment(tmp_path_factory):
     # Set up workspace and temp locations for tests
     test_workspace = tmp_path_factory.mktemp("workspace")
     test_temp = tmp_path_factory.mktemp("temp")
-    os.environ["BIFROST_WORKSPACE_PATH"] = str(test_workspace)
-    os.environ["BIFROST_TEMP_PATH"] = str(test_temp)
+    os.environ["BIFROST_WORKSPACE_LOCATION"] = str(test_workspace)
+    os.environ["BIFROST_TEMP_LOCATION"] = str(test_temp)
 
     yield
 

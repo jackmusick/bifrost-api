@@ -1,13 +1,13 @@
 # Bifrost Docker Stack - Full Development Environment
 #
 # Usage:
-#   docker compose up              # Start all services (API, client, jobs, etc.)
+#   docker compose up              # Start all services with hot reload
 #   docker compose up -d           # Start in background
 #   docker compose logs -f api     # Follow API logs
 #
-# Debugging:
-#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up
-#   Then attach VS Code debugger to port 5678
+# Debugging with VS Code:
+#   ENABLE_DEBUG=true docker compose up
+#   Then attach VS Code debugger to port 5678 (API waits for debugger)
 #
 # Required environment variables for production:
 #   BIFROST_SECRET_KEY  - 32+ char secret for JWT signing and secret encryption
@@ -16,7 +16,7 @@
 #
 # The BIFROST_SECRET_KEY is critical - it's used for:
 #   - JWT token signing (HS256)
-#   - Fernet encryption of secrets stored in PostgreSQL (replaces Azure Key Vault)
+#   - Fernet encryption of secrets stored in PostgreSQL
 #   - Must be consistent across API and Jobs workers
 #   - Changing it will invalidate all existing tokens and secrets
 
@@ -79,31 +79,51 @@ services:
       dockerfile: api/Dockerfile.api
     container_name: bifrost-api
     environment:
+      # Core
+      BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
+      BIFROST_DEBUG: ${BIFROST_DEBUG:-false}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      # Database
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_MOUNTS_PATH: /mounts
-      BIFROST_ENVIRONMENT: development
-      # Default admin user (optional - uncomment to skip setup wizard)
-      # If not set, users will go through the setup wizard on first access.
-      # BIFROST_DEFAULT_USER_EMAIL: admin@localhost
-      # BIFROST_DEFAULT_USER_PASSWORD: admin
-      # JWT settings (optional, has defaults)
-      # BIFROST_ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      # BIFROST_REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # File Storage
+      BIFROST_WORKSPACE_LOCATION: /workspace
+      # CORS & Frontend
+      BIFROST_CORS_ORIGINS: ${BIFROST_CORS_ORIGINS:-http://localhost:3000}
+      BIFROST_FRONTEND_URL: ${BIFROST_FRONTEND_URL:-http://localhost:3000}
+      # JWT (optional, has defaults)
+      BIFROST_ACCESS_TOKEN_EXPIRE_MINUTES: ${BIFROST_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      BIFROST_REFRESH_TOKEN_EXPIRE_DAYS: ${BIFROST_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # MFA (optional, has defaults)
+      BIFROST_MFA_ENABLED: ${BIFROST_MFA_ENABLED:-true}
+      BIFROST_MFA_TOTP_ISSUER: ${BIFROST_MFA_TOTP_ISSUER:-Bifrost}
+      # Default admin user (optional - set in .env to skip setup wizard)
+      BIFROST_DEFAULT_USER_EMAIL: ${BIFROST_DEFAULT_USER_EMAIL:-}
+      BIFROST_DEFAULT_USER_PASSWORD: ${BIFROST_DEFAULT_USER_PASSWORD:-}
+      # OAuth SSO (optional - set in .env to enable)
+      BIFROST_MICROSOFT_CLIENT_ID: ${BIFROST_MICROSOFT_CLIENT_ID:-}
+      BIFROST_MICROSOFT_CLIENT_SECRET: ${BIFROST_MICROSOFT_CLIENT_SECRET:-}
+      BIFROST_MICROSOFT_TENANT_ID: ${BIFROST_MICROSOFT_TENANT_ID:-}
+      BIFROST_GOOGLE_CLIENT_ID: ${BIFROST_GOOGLE_CLIENT_ID:-}
+      BIFROST_GOOGLE_CLIENT_SECRET: ${BIFROST_GOOGLE_CLIENT_SECRET:-}
+      BIFROST_OIDC_DISCOVERY_URL: ${BIFROST_OIDC_DISCOVERY_URL:-}
+      BIFROST_OIDC_CLIENT_ID: ${BIFROST_OIDC_CLIENT_ID:-}
+      BIFROST_OIDC_CLIENT_SECRET: ${BIFROST_OIDC_CLIENT_SECRET:-}
+      # Debugging (optional - enables debugpy)
+      ENABLE_DEBUG: ${ENABLE_DEBUG:-false}
     ports:
-      - "8000:8000"
       - "5678:5678"  # debugpy port for VS Code attachment
+    # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     volumes:
       - ./api/src:/app/src
       - ./api/shared:/app/shared
+      - ./api/bifrost:/app/bifrost
       - ./api/platform:/app/platform
       - ./api/alembic:/app/alembic
-      - bifrost_files:/mounts/files
-      - bifrost_workspace:/mounts/workspace
-      - bifrost_temp:/mounts/temp
+      - bifrost_workspace:/workspace
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,7 +138,12 @@ services:
       retries: 5
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared"
+             if [ \"$$ENABLE_DEBUG\" = \"true\" ]; then
+               echo 'Starting with debugpy - waiting for VS Code to attach on port 5678...' &&
+               python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared;
+             else
+               uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared;
+             fi"
 
   # Frontend (Vite)
   client:
@@ -130,7 +155,7 @@ services:
       API_URL: http://api:8000
       WS_URL: ws://api:8000
     ports:
-      - "5173:5173"
+      - "3000:3000"
     volumes:
       - ./client/src:/app/src
       - ./client/public:/app/public
@@ -147,20 +172,23 @@ services:
       dockerfile: api/Dockerfile.jobs
     container_name: bifrost-jobs
     environment:
+      # Core (must match API)
+      BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      # Database
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_MOUNTS_PATH: /mounts
-      BIFROST_ENVIRONMENT: development
+      # File Storage
+      BIFROST_WORKSPACE_LOCATION: /workspace
     volumes:
       - ./api/src:/app/src
       - ./api/shared:/app/shared
+      - ./api/bifrost:/app/bifrost
       - ./api/platform:/app/platform
-      - bifrost_files:/mounts/files
-      - bifrost_workspace:/mounts/workspace
-      - bifrost_temp:/mounts/temp
+      - bifrost_workspace:/workspace
     depends_on:
       postgres:
         condition: service_healthy
@@ -175,6 +203,4 @@ volumes:
   postgres_data:
   rabbitmq_data:
   redis_data:
-  bifrost_files:
   bifrost_workspace:
-  bifrost_temp:
