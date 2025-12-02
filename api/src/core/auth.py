@@ -300,8 +300,13 @@ async def get_execution_context(
                     detail="Access denied to organization"
                 )
     else:
-        # No header - use user's default org (or None for superusers)
-        org_id = user.organization_id
+        # No header - superusers get GLOBAL scope, org users get their org
+        if user.is_superuser:
+            org_id = None  # Platform admins without X-Organization-Id use GLOBAL scope
+            logger.info(f"Superuser {user.email} using GLOBAL scope (no X-Organization-Id header)")
+        else:
+            org_id = user.organization_id
+            logger.info(f"User {user.email} using org scope: {org_id}")
 
     return ExecutionContext(
         user=user,

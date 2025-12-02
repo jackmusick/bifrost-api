@@ -35,17 +35,23 @@ class RabbitMQConnection:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    async def get_connection(self) -> RobustConnection:
-        """Get a connection from the pool."""
+    def get_connection(self):
+        """Get a connection context manager from the pool."""
         if self._connection_pool is None:
-            await self._init_pools()
-        return await self._connection_pool.acquire()
+            raise RuntimeError("Connection pool not initialized. Call init_pools() first.")
+        return self._connection_pool.acquire()
 
-    async def get_channel(self) -> RobustChannel:
-        """Get a channel from the pool."""
+    def get_channel(self):
+        """Get a channel context manager from the pool."""
         if self._channel_pool is None:
-            await self._init_pools()
-        return await self._channel_pool.acquire()
+            raise RuntimeError("Channel pool not initialized. Call init_pools() first.")
+        return self._channel_pool.acquire()
+
+    async def init_pools(self) -> None:
+        """Initialize connection and channel pools. Must be called before using the connection."""
+        if self._connection_pool is not None:
+            return  # Already initialized
+        await self._init_pools()
 
     async def _init_pools(self) -> None:
         """Initialize connection and channel pools."""
@@ -113,8 +119,11 @@ class BaseConsumer(ABC):
         """Start consuming messages."""
         self._running = True
 
-        # Get channel
-        connection = await rabbitmq.get_connection()
+        # Initialize pools and get a dedicated connection for this consumer
+        await rabbitmq.init_pools()
+        # Store the context manager so it stays open
+        self._connection_ctx = rabbitmq.get_connection()
+        connection = await self._connection_ctx.__aenter__()
         self._channel = await connection.channel()
         await self._channel.set_qos(prefetch_count=self.prefetch_count)
 
@@ -152,6 +161,8 @@ class BaseConsumer(ABC):
         self._running = False
         if self._channel:
             await self._channel.close()
+        if hasattr(self, '_connection_ctx') and self._connection_ctx:
+            await self._connection_ctx.__aexit__(None, None, None)
         logger.info(f"Consumer stopped for queue: {self.queue_name}")
 
     async def _on_message(self, message: IncomingMessage) -> None:
@@ -217,24 +228,48 @@ async def publish_message(
         message: Message body (will be JSON encoded)
         priority: Message priority (0-9, higher = more important)
     """
-    connection = await rabbitmq.get_connection()
-    channel = await connection.channel()
+    await rabbitmq.init_pools()
+    async with rabbitmq.get_connection() as connection:
+        channel = await connection.channel()
 
-    try:
-        # Declare queue (ensures it exists)
-        await channel.declare_queue(queue_name, durable=True)
+        try:
+            dead_letter_exchange = f"{queue_name}-dlx"
 
-        # Publish message
-        await channel.default_exchange.publish(
-            aio_pika.Message(
-                body=json.dumps(message).encode(),
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                priority=priority,
-            ),
-            routing_key=queue_name,
-        )
+            # Declare dead letter exchange
+            await channel.declare_exchange(
+                dead_letter_exchange,
+                aio_pika.ExchangeType.DIRECT,
+                durable=True,
+            )
 
-        logger.debug(f"Published message to {queue_name}")
+            # Declare dead letter queue
+            dlq = await channel.declare_queue(
+                f"{queue_name}-poison",
+                durable=True,
+            )
+            await dlq.bind(dead_letter_exchange, routing_key=queue_name)
 
-    finally:
-        await channel.close()
+            # Declare main queue with dead letter routing (matches consumer)
+            await channel.declare_queue(
+                queue_name,
+                durable=True,
+                arguments={
+                    "x-dead-letter-exchange": dead_letter_exchange,
+                    "x-dead-letter-routing-key": queue_name,
+                },
+            )
+
+            # Publish message
+            await channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(message).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                    priority=priority,
+                ),
+                routing_key=queue_name,
+            )
+
+            logger.debug(f"Published message to {queue_name}")
+
+        finally:
+            await channel.close()

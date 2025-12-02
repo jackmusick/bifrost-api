@@ -70,10 +70,9 @@ async def update_execution(
         # Get status value if it's an enum
         status_value = status.value if hasattr(status, "value") else status
 
-        # Build update values
-        update_values = {
+        # Build update values - only include columns that exist in Execution model
+        update_values: dict[str, Any] = {
             "status": status_value,
-            "updated_at": datetime.utcnow(),
         }
 
         if result is not None:
@@ -83,18 +82,17 @@ async def update_execution(
         if error_message is not None:
             update_values["error_message"] = error_message
 
-        if error_type is not None:
-            update_values["error_type"] = error_type
+        # Note: error_type is passed but not stored - Execution model doesn't have this column
+        # Error type can be inferred from error_message if needed
 
         if duration_ms is not None:
             update_values["duration_ms"] = duration_ms
             update_values["completed_at"] = datetime.utcnow()
 
-        if logs is not None:
-            update_values["logs"] = logs
-
         if variables is not None:
             update_values["variables"] = variables
+
+        # Note: logs are stored in ExecutionLog table, not directly on Execution
 
         # Execute update
         await db.execute(

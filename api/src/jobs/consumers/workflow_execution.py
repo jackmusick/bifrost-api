@@ -106,22 +106,16 @@ class WorkflowExecutionConsumer(BaseConsumer):
             config = {}
 
             if org_id:
-                from shared.storage import get_organization_async
-                from shared.middleware import load_config_for_partition
+                from shared.config_resolver import ConfigResolver
 
-                org_entity = await get_organization_async(org_id)
-                if org_entity:
-                    org_uuid = org_entity["RowKey"].split(":", 1)[1]
-                    org = Organization(
-                        id=org_uuid,
-                        name=org_entity["Name"],
-                        is_active=org_entity.get("IsActive", True),
-                    )
-                    config = await load_config_for_partition(org_id)
+                resolver = ConfigResolver()
+                org = await resolver.get_organization(org_id)
+                config = await resolver.load_config_for_scope(org_id)
             else:
-                from shared.middleware import load_config_for_partition
+                from shared.config_resolver import ConfigResolver
 
-                config = await load_config_for_partition("GLOBAL")
+                resolver = ConfigResolver()
+                config = await resolver.load_config_for_scope("GLOBAL")
 
             # Create Caller from message
             caller = Caller(user_id=user_id, email=user_email, name=user_name)

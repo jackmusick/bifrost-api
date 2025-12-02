@@ -36,7 +36,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           chmod +x test.sh
-          ./test.sh --coverage
+          ./test.sh --coverage --ci
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -63,4 +63,4 @@ jobs:
       - name: Run E2E tests
         run: |
           chmod +x test.sh
-          ./test.sh --e2e
+          ./test.sh --e2e --ci

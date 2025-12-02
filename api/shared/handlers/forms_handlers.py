@@ -768,7 +768,8 @@ async def execute_form_startup_handler(form_id: str, req: Any, request_context: 
 
 async def execute_form_handler(form_id: str, request_body: dict, request_context, workflow_context) -> tuple[dict, int]:
     """Execute a form and run the linked workflow"""
-    from shared.engine import execute_workflow_internal
+    from shared.execution_service import run_workflow, WorkflowNotFoundError, WorkflowLoadError
+    from src.models.schemas import ExecutionStatus
 
     logger.info(f"User {request_context.user_id} submitting form {form_id}")
 
@@ -802,17 +803,53 @@ async def execute_form_handler(form_id: str, request_body: dict, request_context
         form_data = request_body.get("form_data", {})
         logger.info(f"Executing workflow {linked_workflow} with form data: {form_data}")
 
-        # Delegate to shared workflow execution logic
-        # This handles async/sync execution, queueing, engine execution, etc.
-        response_dict, status_code = await execute_workflow_internal(
+        # Execute workflow via execution service
+        result = await run_workflow(
             context=workflow_context,
             workflow_name=linked_workflow,
-            parameters=form_data,
+            input_data=form_data,
             form_id=form_id,
             transient=False
         )
 
-        return response_dict, status_code
+        # Convert response to dict format for HTTP response
+        response_dict = {
+            "executionId": result.execution_id,
+            "status": result.status.value,
+        }
+
+        if result.status == ExecutionStatus.PENDING:
+            response_dict["message"] = "Workflow queued for async execution"
+            return response_dict, 202
+
+        # Add execution details for completed executions
+        if result.duration_ms is not None:
+            response_dict["durationMs"] = result.duration_ms
+        if result.started_at:
+            response_dict["startedAt"] = result.started_at.isoformat()
+        if result.completed_at:
+            response_dict["completedAt"] = result.completed_at.isoformat()
+
+        if result.status == ExecutionStatus.SUCCESS:
+            response_dict["result"] = result.result
+        if result.error:
+            response_dict["error"] = result.error
+        if result.error_type:
+            response_dict["errorType"] = result.error_type
+        if result.logs:
+            response_dict["logs"] = result.logs
+
+        return response_dict, 200
+
+    except WorkflowNotFoundError as e:
+        logger.error(f"Workflow not found: {str(e)}")
+        error = ErrorResponse(error="NotFound", message=str(e))
+        return error.model_dump(), 404
+
+    except WorkflowLoadError as e:
+        logger.error(f"Workflow load error: {str(e)}")
+        error = ErrorResponse(error="InternalServerError", message=str(e))
+        return error.model_dump(), 500
 
     except ValueError as e:
         logger.error(f"Error parsing request: {str(e)}")

@@ -99,35 +99,39 @@ async def execute_workflow(
     user: CurrentSuperuser,  # Platform admin only
 ) -> WorkflowExecutionResponse:
     """Execute a workflow or script with the provided parameters."""
-    # Import shared execution handler
-    from shared.handlers.workflows_logic import execute_workflow_logic, execute_code_logic
-    from src.models.schemas import ExecutionStatus
+    from uuid import uuid4
+    from shared.context import ExecutionContext as SharedContext, Organization
+    from shared.execution_service import (
+        run_workflow,
+        run_code,
+        WorkflowNotFoundError,
+        WorkflowLoadError,
+    )
+
+    # Build shared context for execution
+    org = None
+    if ctx.org_id:
+        org = Organization(id=str(ctx.org_id), name="", is_active=True)
+
+    logger.info(
+        f"Building execution context: org_id={ctx.org_id}, is_superuser={ctx.user.is_superuser}, scope={'GLOBAL' if not ctx.org_id else str(ctx.org_id)}"
+    )
+
+    shared_ctx = SharedContext(
+        user_id=str(ctx.user.user_id),
+        name=ctx.user.name,
+        email=ctx.user.email,
+        scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+        organization=org,
+        is_platform_admin=ctx.user.is_superuser,
+        is_function_key=False,
+        execution_id=str(uuid4()),
+    )
 
     try:
-        # Build context for execution
-        from uuid import uuid4
-        from shared.context import ExecutionContext as SharedContext, Organization
-
-        # Create organization object if org_id is set
-        org = None
-        if ctx.org_id:
-            org = Organization(id=str(ctx.org_id), name="", is_active=True)
-
-        # Create shared context compatible with existing handlers
-        shared_ctx = SharedContext(
-            user_id=str(ctx.user.user_id),
-            name=ctx.user.name,
-            email=ctx.user.email,
-            scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
-            organization=org,
-            is_platform_admin=ctx.user.is_superuser,
-            is_function_key=False,
-            execution_id=str(uuid4()),
-        )
-
         if request.code:
             # Execute inline code
-            result = await execute_code_logic(
+            result = await run_code(
                 context=shared_ctx,
                 code=request.code,
                 script_name=request.script_name or "inline_script",
@@ -142,7 +146,7 @@ async def execute_workflow(
                     detail="Either workflow_name or code must be provided",
                 )
 
-            result = await execute_workflow_logic(
+            result = await run_workflow(
                 context=shared_ctx,
                 workflow_name=request.workflow_name,
                 input_data=request.input_data,
@@ -164,6 +168,16 @@ async def execute_workflow(
 
         return result
 
+    except WorkflowNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+    except WorkflowLoadError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -173,7 +187,7 @@ async def execute_workflow(
         logger.error(f"Error executing workflow: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to execute workflow",
+            detail=f"Failed to execute workflow: {type(e).__name__}: {str(e)}",
         )
 
 

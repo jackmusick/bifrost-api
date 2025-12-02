@@ -78,7 +78,7 @@ class ExecutionLogger:
                 status=ExecutionStatusEnum.RUNNING,
                 executed_by=user_uuid,
                 executed_by_name=user_name,
-                input_data=input_data,
+                parameters=input_data,  # ORM uses 'parameters', not 'input_data'
                 form_id=form_uuid,
                 started_at=datetime.utcnow(),
             )
@@ -113,7 +113,7 @@ class ExecutionLogger:
                 "executedByName": execution.executed_by_name,
                 "startedAt": execution.started_at.isoformat() if execution.started_at else None,
                 "completedAt": execution.completed_at.isoformat() if execution.completed_at else None,
-                "inputData": execution.input_data,
+                "inputData": execution.parameters,  # ORM uses 'parameters'
                 "result": execution.result,
                 "errorMessage": execution.error_message,
                 "durationMs": execution.duration_ms,
@@ -268,7 +268,7 @@ class ExecutionLogger:
                 "executedByName": execution.executed_by_name,
                 "startedAt": execution.started_at.isoformat() if execution.started_at else None,
                 "completedAt": execution.completed_at.isoformat() if execution.completed_at else None,
-                "inputData": execution.input_data,
+                "inputData": execution.parameters,  # ORM uses 'parameters'
                 "result": execution.result,
                 "errorMessage": execution.error_message,
                 "durationMs": execution.duration_ms,

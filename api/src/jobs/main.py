@@ -28,6 +28,19 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+
+# Suppress noisy third-party loggers
+logging.getLogger("watchdog").setLevel(logging.WARNING)
+logging.getLogger("watchdog.observers.inotify_buffer").setLevel(logging.WARNING)
+logging.getLogger("aiormq").setLevel(logging.WARNING)
+logging.getLogger("aio_pika").setLevel(logging.WARNING)
+
+# Enable DEBUG for execution engine to troubleshoot workflows
+logging.getLogger("shared.engine").setLevel(logging.DEBUG)
+logging.getLogger("shared.execution_service").setLevel(logging.DEBUG)
+logging.getLogger("bifrost").setLevel(logging.DEBUG)
+logging.getLogger("src.jobs.consumers.workflow_execution").setLevel(logging.DEBUG)
+
 logger = logging.getLogger(__name__)
 
 

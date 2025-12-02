@@ -127,7 +127,7 @@ class ExecutionRepository:
             return None, "NotFound"
 
         # Check authorization - non-superusers can only see their own
-        if not user.is_superuser and execution.executed_by != user.email:
+        if not user.is_superuser and execution.executed_by != user.user_id:
             return None, "Forbidden"
 
         return self._to_pydantic(execution), None
@@ -150,7 +150,7 @@ class ExecutionRepository:
         if not row:
             return None, "NotFound"
 
-        if not user.is_superuser and row.executed_by != user.email:
+        if not user.is_superuser and row.executed_by != user.user_id:
             return None, "Forbidden"
 
         return row.result, None
@@ -170,7 +170,7 @@ class ExecutionRepository:
         if not row:
             return None, "NotFound"
 
-        if not user.is_superuser and row.executed_by != user.email:
+        if not user.is_superuser and row.executed_by != user.user_id:
             return None, "Forbidden"
 
         # Query logs from execution_logs table
@@ -210,15 +210,18 @@ class ExecutionRepository:
         if not user.is_superuser:
             return None, "Forbidden"
 
+        # Select id and variables to distinguish "not found" from "null variables"
         result = await self.db.execute(
-            select(ExecutionModel.variables).where(ExecutionModel.id == execution_id)
+            select(ExecutionModel.id, ExecutionModel.variables)
+            .where(ExecutionModel.id == execution_id)
         )
-        row = result.scalar_one_or_none()
+        row = result.one_or_none()
 
         if row is None:
             return None, "NotFound"
 
-        return row or {}, None
+        # row is a tuple of (id, variables)
+        return row[1] or {}, None
 
     async def cancel_execution(
         self,
@@ -234,7 +237,7 @@ class ExecutionRepository:
         if not execution:
             return None, "NotFound"
 
-        if not user.is_superuser and execution.executed_by != user.email:
+        if not user.is_superuser and execution.executed_by != user.user_id:
             return None, "Forbidden"
 
         # Can only cancel pending or running executions

@@ -5,9 +5,10 @@
 # All dependencies (PostgreSQL, RabbitMQ, Redis) are ephemeral and cleaned up after tests.
 #
 # Usage:
-#   ./test.sh                          # Run unit/integration tests
+#   ./test.sh                          # Run unit/integration tests (waits before cleanup)
 #   ./test.sh --e2e                    # Run E2E tests (starts API + Jobs workers)
 #   ./test.sh --coverage               # Run tests with coverage report
+#   ./test.sh --ci                     # Skip interactive wait (for CI/CD pipelines)
 #   ./test.sh tests/unit/ -v           # Run specific tests with pytest args
 #   ./test.sh tests/integration/api/test_auth.py::test_login -v  # Run single test
 
@@ -23,6 +24,7 @@ cd "$SCRIPT_DIR"
 COMPOSE_FILE="docker-compose.test.yml"
 E2E_MODE=false
 COVERAGE=false
+CI_MODE=false
 PYTEST_ARGS=()
 
 # Parse command line arguments
@@ -31,6 +33,8 @@ for arg in "$@"; do
         E2E_MODE=true
     elif [ "$arg" = "--coverage" ]; then
         COVERAGE=true
+    elif [ "$arg" = "--ci" ]; then
+        CI_MODE=true
     else
         PYTEST_ARGS+=("$arg")
     fi
@@ -201,5 +205,12 @@ else
     echo "Tests failed with exit code $TEST_EXIT_CODE"
 fi
 echo "============================================================"
+
+# In interactive mode, wait for user before cleanup
+if [ "$CI_MODE" = false ]; then
+    echo ""
+    echo "Press Enter to cleanup and exit (or Ctrl+C to keep containers running)..."
+    read -r
+fi
 
 exit $TEST_EXIT_CODE

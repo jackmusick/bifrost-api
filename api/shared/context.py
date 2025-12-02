@@ -169,6 +169,28 @@ class ExecutionContext:
         }
         self._integration_calls.append(call_record)
 
+    async def get_config(self, key: str, default: Any = ...) -> Any:
+        """
+        Get a configuration value.
+
+        Automatically handles:
+        - Org-scoped config lookup (org config overrides global)
+        - Secret decryption for secret-type configs
+        - Type parsing (int, bool, json)
+
+        Args:
+            key: Configuration key
+            default: Default value if key not found. If not provided, raises KeyError.
+
+        Returns:
+            Configuration value (with secrets decrypted if applicable)
+
+        Raises:
+            KeyError: If key not found and no default provided
+        """
+        org_id = self.scope if self.scope != "GLOBAL" else "GLOBAL"
+        return await self._config_resolver.get_config(org_id, key, self._config, default)
+
     async def finalize_execution(self) -> dict[str, Any]:
         """
         Get final execution state for persistence.

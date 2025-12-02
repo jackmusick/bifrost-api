@@ -10,8 +10,15 @@ import logging
 import os
 from datetime import datetime
 
-from azure.messaging.webpubsubservice import WebPubSubServiceClient
-from azure.identity import DefaultAzureCredential
+# Optional Azure SDK imports - gracefully degrade if not installed
+try:
+    from azure.messaging.webpubsubservice import WebPubSubServiceClient
+    from azure.identity import DefaultAzureCredential
+    AZURE_SDK_AVAILABLE = True
+except ImportError:
+    WebPubSubServiceClient = None  # type: ignore[misc, assignment]
+    DefaultAzureCredential = None  # type: ignore[misc, assignment]
+    AZURE_SDK_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +58,16 @@ class WebPubSubBroadcaster:
 
         Note: Client initialization is lazy to avoid event loop issues in tests.
         """
+        # Check if Azure SDK is available
+        if not AZURE_SDK_AVAILABLE:
+            logger.debug("Azure SDK not installed - Web PubSub broadcasts will be skipped")
+            self.enabled = False
+            self._client = None
+            self.hub_name = None
+            self.endpoint = None
+            self.connection_string = None
+            return
+
         # Get configuration
         self.hub_name = os.getenv('AZURE_WEBPUBSUB_HUB', 'bifrost')
         self.endpoint = os.getenv('AZURE_WEBPUBSUB_ENDPOINT')

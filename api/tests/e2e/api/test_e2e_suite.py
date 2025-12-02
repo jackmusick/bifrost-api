@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 # API base URL - set by test.sh --e2e
 API_BASE_URL = os.environ.get("TEST_API_URL", "http://localhost:18000")
+# WebSocket URL derived from API base URL
+WS_BASE_URL = API_BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
 
 
 @dataclass
@@ -292,14 +294,17 @@ class TestFullApplicationFlow:
             headers=State.platform_admin.headers,
             json={
                 "email": State.org1_user.email,
-                "displayName": State.org1_user.name,
-                "orgId": State.org1["id"],
-                "isPlatformAdmin": False,
+                "name": State.org1_user.name,
+                "organization_id": State.org1["id"],
+                "is_superuser": False,
             },
         )
         assert response.status_code == 201, f"Create user failed: {response.text}"
         data = response.json()
         State.org1_user.user_id = UUID(data["id"])
+        # Verify user was created with correct organization
+        assert data.get("organization_id") == State.org1["id"], \
+            f"User should have organization_id, got: {data}"
 
     def test_21_admin_creates_user_for_org2(self):
         """Platform admin pre-creates user for org2."""
@@ -315,14 +320,17 @@ class TestFullApplicationFlow:
             headers=State.platform_admin.headers,
             json={
                 "email": State.org2_user.email,
-                "displayName": State.org2_user.name,
-                "orgId": State.org2["id"],
-                "isPlatformAdmin": False,
+                "name": State.org2_user.name,
+                "organization_id": State.org2["id"],
+                "is_superuser": False,
             },
         )
         assert response.status_code == 201, f"Create user failed: {response.text}"
         data = response.json()
         State.org2_user.user_id = UUID(data["id"])
+        # Verify user was created with correct organization
+        assert data.get("organization_id") == State.org2["id"], \
+            f"User should have organization_id, got: {data}"
 
     def test_22_org1_user_completes_registration(self):
         """Org1 user completes registration with password."""
@@ -798,30 +806,22 @@ class TestFullApplicationFlow:
     # =========================================================================
 
     def test_110_list_workspace_files(self):
-        """Platform admin can list workspace files (if workspace configured)."""
+        """Platform admin can list workspace files."""
         response = State.client.get(
             "/api/editor/files?path=.",
             headers=State.platform_admin.headers,
         )
-        # Accept 200 (success) or 500 (workspace not configured in test env)
-        if response.status_code == 500:
-            State.workspace_available = False
-            pytest.skip("Workspace not available in test environment")
         assert response.status_code == 200, f"List files failed: {response.text}"
-        State.workspace_available = True
         files = response.json()
         assert isinstance(files, list)
 
     def test_111_create_workflow_file(self):
         """Platform admin creates a test workflow file."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         workflow_content = '''"""E2E Test Workflow"""
 import logging
 import time
 from shared.decorators import workflow, param
-from bifrost import config
 
 logger = logging.getLogger(__name__)
 
@@ -832,50 +832,48 @@ logger = logging.getLogger(__name__)
 )
 @param("message", "string", required=True)
 @param("count", "int", default_value=1)
-async def e2e_test_sync_workflow(ctx, message: str, count: int = 1):
+async def e2e_test_sync_workflow(context, message: str, count: int = 1):
     return {
         "status": "success",
         "message": message,
         "count": count,
-        "user": ctx.email,
+        "user": context.email,
     }
 
 @workflow(
     name="e2e_test_async_workflow",
-    description="E2E test workflow - async execution with config and logging",
+    description="E2E test workflow - async execution with logging",
     execution_mode="async"
 )
 @param("delay_seconds", "int", default_value=2)
-async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
+async def e2e_test_async_workflow(context, delay_seconds: int = 2):
     """
     Test workflow that:
     1. Logs at DEBUG level (to test log visibility)
-    2. Reads config via bifrost SDK (to test org vs global scoping)
-    3. Sleeps for delay_seconds (to test concurrency)
+    2. Sleeps for delay_seconds (to test concurrency)
+    3. Retrieves config to test config scoping
     """
     # DEBUG level log - org users should NOT see this
     logger.debug("DEBUG: Starting async workflow")
 
     # INFO level log - all users should see this
-    logger.info("INFO: Reading config key e2e_test_key")
-
-    # Read config - org users should get org-specific value, admins get global
-    config_value = await config.get("e2e_test_key", default="not_found")
-
-    logger.info(f"INFO: Config value resolved to: {config_value}")
+    logger.info("INFO: Starting workflow")
 
     # Sleep to test concurrency - if blocking, 10 workflows = 20+ seconds
     # If parallel, 10 workflows should complete in ~3-5 seconds
     time.sleep(delay_seconds)
+
+    # Retrieve config value to test config scoping
+    config_value = await context.get_config("e2e_test_key", default=None)
 
     logger.info("INFO: Workflow completed after sleep")
 
     return {
         "status": "completed",
         "delayed": delay_seconds,
-        "config_value": config_value,
-        "user_email": ctx.email,
-        "org_id": ctx.scope
+        "user_email": context.email,
+        "org_id": context.scope,
+        "config_value": config_value
     }
 '''
         response = State.client.put(
@@ -891,8 +889,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_112_workflow_immediately_available(self):
         """Workflow is immediately discoverable after file creation."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         response = State.client.get(
             "/api/workflows",
@@ -902,14 +898,11 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
         workflows = response.json()
 
         workflow_names = [w["name"] for w in workflows]
-        # Skip assertion if no workflows (test env without workspace)
-        if "e2e_test_sync_workflow" not in workflow_names:
-            pytest.skip("Test workflow not discovered - workspace may not be configured")
+        assert "e2e_test_sync_workflow" in workflow_names, \
+            f"Test workflow not discovered. Available: {workflow_names}"
 
     def test_113_read_file_content(self):
         """Platform admin can read file content back."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         response = State.client.get(
             "/api/editor/files/content?path=e2e_test_workflow.py",
@@ -921,8 +914,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_114_create_folder(self):
         """Platform admin can create a folder."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         response = State.client.post(
             "/api/editor/files/folder?path=e2e_test_folder",
@@ -942,8 +933,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_116_create_workspace_form_file(self):
         """Platform admin creates a form.json file via editor API."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         # Create a .form.json file for hot reload testing
         form_content = json.dumps({
@@ -973,8 +962,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_117_workspace_form_file_persists(self):
         """Workspace form file can be read back."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         # Read the form file back to verify it was created
         response = State.client.get(
@@ -982,9 +969,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
             headers=State.platform_admin.headers,
             params={"path": "e2e_test.form.json"},
         )
-        # May return 200 or 404 depending on whether file exists
-        if response.status_code == 404:
-            pytest.skip("Form file not found - may have been cleaned up")
         assert response.status_code == 200, f"Read form file failed: {response.text}"
 
         # Parse and verify content
@@ -1000,8 +984,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_120_execute_sync_workflow(self):
         """Platform admin executes sync workflow."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available - no workflows to execute")
 
         response = State.client.post(
             "/api/workflows/execute",
@@ -1026,8 +1008,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_121_sync_execution_returns_result(self):
         """Sync execution returns expected result."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
         if not State.sync_execution_id:
             pytest.skip("No previous execution - workflow not available")
 
@@ -1039,9 +1019,7 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
                 "input_data": {"message": "Test message", "count": 10},
             },
         )
-        if response.status_code in [404, 500]:
-            pytest.skip("Test workflow not available")
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Workflow execution failed: {response.text}"
         data = response.json()
 
         result = data.get("result", {})
@@ -1068,8 +1046,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_130_execute_async_workflow(self):
         """Platform admin executes async workflow."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available - no workflows to execute")
 
         response = State.client.post(
             "/api/workflows/execute",
@@ -1079,10 +1055,7 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
                 "input_data": {"delay_seconds": 1},
             },
         )
-        # Accept 200/202 (success), 404 (workflow not found), or 500 (execution env not configured)
-        if response.status_code in [404, 500]:
-            pytest.skip("Test workflow not available in test environment")
-        assert response.status_code in [200, 202], f"Execute failed: {response.text}"
+        assert response.status_code in [200, 202], f"Async workflow execute failed: {response.text}"
         data = response.json()
 
         # Store execution ID
@@ -1216,17 +1189,12 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
         """Org user with role can execute form."""
         if not State.e2e_form_id or not State.e2e_role_id:
             pytest.skip("Form or role not created")
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available - form execution would fail")
 
         response = State.client.post(
             f"/api/forms/{State.e2e_form_id}/execute",
             headers=State.org1_user.headers,
             json={"message": "Hello from org user"},
         )
-        # Accept 200 (success) or 500 (workflow not available in test env)
-        if response.status_code == 500:
-            pytest.skip("Form execution failed - workflow not available in test env")
         assert response.status_code == 200, f"Execute form failed: {response.text}"
         data = response.json()
 
@@ -1264,8 +1232,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
         """Any authenticated user can execute 'authenticated' access form."""
         if not getattr(State, 'authenticated_form_id', None):
             pytest.skip("Authenticated form not created")
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available - form execution would fail")
 
         # Org2 user (NOT assigned to any role for this form) should still be able to execute
         response = State.client.post(
@@ -1273,9 +1239,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
             headers=State.org2_user.headers,
             json={"message": "Hello from org2 user"},
         )
-        # Accept 200 (success) or 500 (workflow not available in test env)
-        if response.status_code == 500:
-            pytest.skip("Form execution failed - workflow not available in test env")
         assert response.status_code == 200, \
             f"Authenticated user should execute authenticated form: {response.status_code} - {response.text}"
 
@@ -1305,8 +1268,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
         """Any authenticated user can execute 'public' access form."""
         if not getattr(State, 'public_form_id', None):
             pytest.skip("Public form not created")
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available - form execution would fail")
 
         # Org2 user should be able to execute public form
         response = State.client.post(
@@ -1314,8 +1275,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
             headers=State.org2_user.headers,
             json={"message": "Hello from any user"},
         )
-        if response.status_code == 500:
-            pytest.skip("Form execution failed - workflow not available in test env")
         assert response.status_code == 200, \
             f"User should execute public form: {response.status_code} - {response.text}"
 
@@ -1473,10 +1432,8 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_178_setup_config_for_execution_tests(self):
         """Set up global and org-specific config for execution tests."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available - skipping execution behavior tests")
 
-        # Create global config
+        # Create global config (no X-Organization-Id header = GLOBAL scope)
         response = State.client.post(
             "/api/config",
             headers=State.platform_admin.headers,
@@ -1488,25 +1445,31 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
             },
         )
         assert response.status_code == 201, f"Create global config failed: {response.text}"
+        global_config = response.json()
+        assert global_config.get("scope") == "GLOBAL", \
+            f"Global config should have GLOBAL scope, got: {global_config}"
 
-        # Create org-specific config for org1
+        # Create org-specific config for org1 (use X-Organization-Id header for org scope)
         response = State.client.post(
             "/api/config",
-            headers=State.platform_admin.headers,
+            headers={
+                **State.platform_admin.headers,
+                "X-Organization-Id": State.org1["id"],
+            },
             json={
                 "key": "e2e_test_key",
                 "value": "org_value",
                 "type": "string",
                 "description": "E2E test config - org scope",
-                "organization_id": State.org1["id"],
             },
         )
         assert response.status_code == 201, f"Create org config failed: {response.text}"
+        org_config = response.json()
+        assert org_config.get("org_id") == State.org1["id"], \
+            f"Org config should have org_id={State.org1['id']}, got: {org_config}"
 
     def test_179_org_user_execution_uses_org_config(self):
         """Org user execution resolves org-specific config over global."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         # Create a form that links to e2e_test_async_workflow so org user can execute
         response = State.client.post(
@@ -1532,11 +1495,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
             headers=State.org1_user.headers,
             json={},
         )
-        if response.status_code == 500:
-            # Clean up form and skip
-            State.client.delete(f"/api/forms/{config_test_form_id}", headers=State.platform_admin.headers)
-            pytest.skip("Workflow execution failed - jobs worker may not be running")
-
         assert response.status_code == 200, f"Execute form failed: {response.text}"
         data = response.json()
         State.org_user_config_exec_id = data.get("execution_id") or data.get("executionId")
@@ -1546,8 +1504,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
 
     def test_180_admin_execution_uses_global_config(self):
         """Admin execution without org context uses global config."""
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         # Execute as platform admin (no org context) via direct execute
         response = State.client.post(
@@ -1558,10 +1514,7 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
                 "input_data": {},
             },
         )
-        if response.status_code in [404, 500]:
-            pytest.skip("Workflow not available or execution failed")
-
-        assert response.status_code in [200, 202], f"Execute failed: {response.text}"
+        assert response.status_code in [200, 202], f"Admin workflow execute failed: {response.text}"
         data = response.json()
         State.admin_config_exec_id = data.get("execution_id") or data.get("executionId")
 
@@ -1675,8 +1628,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
         """10 concurrent executions complete in parallel, not sequentially."""
         import time
 
-        if not getattr(State, 'workspace_available', False):
-            pytest.skip("Workspace not available")
 
         # Start 10 async executions simultaneously
         execution_ids = []
@@ -1689,8 +1640,6 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
                     "input_data": {},
                 },
             )
-            if response.status_code in [404, 500]:
-                pytest.skip("Workflow not available or execution failed")
             assert response.status_code in [200, 202], f"Execute #{i} failed: {response.text}"
             data = response.json()
             exec_id = data.get("execution_id") or data.get("executionId")
@@ -1796,13 +1745,12 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
     async def test_300_websocket_connect_with_valid_token(self):
         """Connect to WebSocket with valid JWT token."""
         import asyncio
-        import websockets
-        import json
+        from websockets.asyncio.client import connect
 
-        ws_url = f"ws://localhost:18000/ws/connect?token={State.platform_admin.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.platform_admin.access_token}"
 
         try:
-            async with websockets.connect(ws_url) as ws:
+            async with connect(ws_url) as ws:
                 # Should receive connected message
                 msg = await asyncio.wait_for(ws.recv(), timeout=5)
                 data = json.loads(msg)
@@ -1814,17 +1762,18 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
     @pytest.mark.asyncio
     async def test_301_websocket_connect_invalid_token(self):
         """Connect to WebSocket with invalid token should fail."""
-        import websockets
+        from websockets.asyncio.client import connect
+        from websockets.exceptions import InvalidStatus
 
-        ws_url = "ws://localhost:18000/ws/connect?token=invalid-token-12345"
+        ws_url = f"{WS_BASE_URL}/ws/connect?token=invalid-token-12345"
 
         try:
-            async with websockets.connect(ws_url) as _ws:
+            async with connect(ws_url) as _ws:
                 # Should not get here - connection should be rejected
                 pytest.fail("Connection should have been rejected")
-        except websockets.exceptions.InvalidStatusCode as e:
+        except InvalidStatus as e:
             # Expected - connection rejected
-            assert e.status_code in [401, 403, 4001], f"Unexpected status: {e.status_code}"
+            assert e.response.status_code in [401, 403, 4001], f"Unexpected status: {e.response.status_code}"
         except Exception:
             # Other rejection is acceptable
             pass
@@ -1833,13 +1782,12 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
     async def test_302_websocket_ping_pong(self):
         """WebSocket ping/pong works."""
         import asyncio
-        import websockets
-        import json
+        from websockets.asyncio.client import connect
 
-        ws_url = f"ws://localhost:18000/ws/connect?token={State.platform_admin.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.platform_admin.access_token}"
 
         try:
-            async with websockets.connect(ws_url) as ws:
+            async with connect(ws_url) as ws:
                 # Receive connected message first
                 await asyncio.wait_for(ws.recv(), timeout=5)
 
@@ -1857,16 +1805,15 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
     async def test_303_websocket_subscribe_to_execution(self):
         """Subscribe to execution channel."""
         import asyncio
-        import websockets
-        import json
+        from websockets.asyncio.client import connect
 
         if not State.sync_execution_id:
             pytest.skip("No execution ID to subscribe to")
 
-        ws_url = f"ws://localhost:18000/ws/connect?token={State.platform_admin.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.platform_admin.access_token}"
 
         try:
-            async with websockets.connect(ws_url) as ws:
+            async with connect(ws_url) as ws:
                 # Receive connected message
                 await asyncio.wait_for(ws.recv(), timeout=5)
 
@@ -1893,13 +1840,12 @@ async def e2e_test_async_workflow(ctx, delay_seconds: int = 2):
     async def test_304_org_user_websocket_access(self):
         """Org user can connect to WebSocket."""
         import asyncio
-        import websockets
-        import json
+        from websockets.asyncio.client import connect
 
-        ws_url = f"ws://localhost:18000/ws/connect?token={State.org1_user.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.org1_user.access_token}"
 
         try:
-            async with websockets.connect(ws_url) as ws:
+            async with connect(ws_url) as ws:
                 # Should receive connected message
                 msg = await asyncio.wait_for(ws.recv(), timeout=5)
                 data = json.loads(msg)

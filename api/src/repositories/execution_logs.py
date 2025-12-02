@@ -241,9 +241,14 @@ def get_execution_logs_repository() -> "ExecutionLogRepository":
                 self._repo = ExecutionLogRepository(self._session)
             return self._repo
 
-        async def append_log(self, execution_id, level, message, metadata=None, timestamp=None):
+        async def append_log(self, execution_id, level, message, metadata=None, timestamp=None, source=None):
             repo = await self._ensure_session()
             exec_uuid = UUID(execution_id) if isinstance(execution_id, str) else execution_id
+            # Include source in metadata if provided
+            if source and metadata is None:
+                metadata = {"source": source}
+            elif source and metadata:
+                metadata = {**metadata, "source": source}
             return await repo.append_log(exec_uuid, level, message, metadata, timestamp)
 
         async def get_logs(self, execution_id, since_timestamp=None, level_filter=None, limit=5000):

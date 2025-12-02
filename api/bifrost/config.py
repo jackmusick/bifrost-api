@@ -9,10 +9,13 @@ All methods are async and must be called with await.
 from __future__ import annotations
 
 import json as json_module
+import logging
 from typing import Any
 from uuid import UUID
 
 from ._internal import get_context
+
+logger = logging.getLogger(__name__)
 
 
 class config:
@@ -54,6 +57,11 @@ class config:
         session_factory = get_session_factory()
 
         target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        logger.debug(
+            f"config.get('{key}'): context.scope={getattr(context, 'scope', None)}, "
+            f"context.org_id={getattr(context, 'org_id', None)}, target_org_id={target_org_id}"
+        )
+
         org_uuid = None
         if target_org_id and target_org_id != "GLOBAL":
             try:
@@ -64,6 +72,7 @@ class config:
         async with session_factory() as db:
             # Try org-specific first, then GLOBAL fallback
             if org_uuid:
+                logger.debug(f"config.get('{key}'): querying with org_uuid={org_uuid} (org-specific + global fallback)")
                 query = select(ConfigModel).where(
                     ConfigModel.key == key,
                     or_(
@@ -72,6 +81,7 @@ class config:
                     )
                 ).order_by(ConfigModel.organization_id.desc().nulls_last())
             else:
+                logger.debug(f"config.get('{key}'): querying GLOBAL only (org_uuid is None)")
                 query = select(ConfigModel).where(
                     ConfigModel.key == key,
                     ConfigModel.organization_id.is_(None)
@@ -81,12 +91,17 @@ class config:
             cfg = result.scalars().first()
 
             if cfg is None:
+                logger.debug(f"config.get('{key}'): no config found, returning default={default}")
                 return default
 
             # Parse value based on config type
             config_value = cfg.value or {}
             raw_value = config_value.get("value", config_value)
             config_type = str(cfg.config_type.value) if cfg.config_type else "string"
+            logger.debug(
+                f"config.get('{key}'): found config with org_id={cfg.organization_id}, "
+                f"type={config_type}, value={raw_value if config_type != 'secret' else '[SECRET]'}"
+            )
 
             # Handle secret type - decrypt the value
             if config_type == "secret":

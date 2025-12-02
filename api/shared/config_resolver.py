@@ -148,3 +148,112 @@ class ConfigResolver:
                 return value
         except (ValueError, TypeError, json.JSONDecodeError) as e:
             raise ValueError(f"Could not parse value '{value}' as type '{config_type}': {e}") from e
+
+    async def get_organization(self, org_id: str) -> "Organization | None":
+        """
+        Get organization by ID from PostgreSQL.
+
+        Args:
+            org_id: Organization ID (UUID or "ORG:uuid" format)
+
+        Returns:
+            Organization object or None if not found
+        """
+        from uuid import UUID
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models.orm import Organization as OrgModel
+        from shared.context import Organization
+
+        # Parse org_id - may be "ORG:uuid" or just "uuid"
+        if org_id.startswith("ORG:"):
+            org_uuid = org_id[4:]
+        else:
+            org_uuid = org_id
+
+        try:
+            org_uuid_obj = UUID(org_uuid)
+        except ValueError:
+            logger.warning(f"Invalid organization ID format: {org_id}")
+            return None
+
+        session_factory = get_session_factory()
+
+        async with session_factory() as db:
+            result = await db.execute(
+                select(OrgModel).where(OrgModel.id == org_uuid_obj)
+            )
+            org_entity = result.scalar_one_or_none()
+
+            if not org_entity:
+                logger.debug(f"Organization not found: {org_id}")
+                return None
+
+            return Organization(
+                id=str(org_entity.id),
+                name=org_entity.name,
+                is_active=org_entity.is_active,
+            )
+
+    async def load_config_for_scope(self, scope: str) -> dict[str, Any]:
+        """
+        Load all config for a scope (org_id or "GLOBAL") from PostgreSQL.
+
+        Returns config as dict: {key: {"value": v, "type": t}, ...}
+
+        Args:
+            scope: "GLOBAL" or organization ID
+
+        Returns:
+            Configuration dictionary
+        """
+        from uuid import UUID
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models.orm import Config
+
+        session_factory = get_session_factory()
+        config_dict: dict[str, Any] = {}
+
+        async with session_factory() as db:
+            # For GLOBAL, get configs with no organization_id
+            # For org scope, get global + org-specific configs (org overrides global)
+            if scope == "GLOBAL":
+                result = await db.execute(
+                    select(Config).where(Config.organization_id.is_(None))
+                )
+            else:
+                # Parse org_id
+                if scope.startswith("ORG:"):
+                    org_uuid = scope[4:]
+                else:
+                    org_uuid = scope
+
+                try:
+                    org_uuid_obj = UUID(org_uuid)
+                except ValueError:
+                    logger.warning(f"Invalid scope format: {scope}")
+                    return config_dict
+
+                # Get global configs first
+                global_result = await db.execute(
+                    select(Config).where(Config.organization_id.is_(None))
+                )
+                for config in global_result.scalars():
+                    config_dict[config.key] = {
+                        "value": config.value.get("value") if isinstance(config.value, dict) else config.value,
+                        "type": config.config_type.value if config.config_type else "string",
+                    }
+
+                # Get org-specific configs (these override global)
+                result = await db.execute(
+                    select(Config).where(Config.organization_id == org_uuid_obj)
+                )
+
+            for config in result.scalars():
+                config_dict[config.key] = {
+                    "value": config.value.get("value") if isinstance(config.value, dict) else config.value,
+                    "type": config.config_type.value if config.config_type else "string",
+                }
+
+        return config_dict
