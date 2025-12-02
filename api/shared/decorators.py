@@ -325,7 +325,7 @@ def with_request_context(handler):
     Decorator to inject ExecutionContext into request.
 
     Automatically extracts user identity, org scope, and permissions
-    from Azure Functions request and injects as req.context.
+    from HTTP request and injects as req.context.
 
     Usage:
         @with_request_context
@@ -334,7 +334,7 @@ def with_request_context(handler):
             # Use context.user_id, context.org_id, context.scope, context.is_platform_admin
 
     Args:
-        handler: The Azure Functions handler to wrap
+        handler: The handler function to wrap
 
     Returns:
         Wrapped handler with context injection
@@ -408,7 +408,7 @@ def require_platform_admin(handler):
             # Only platform admins reach here
 
     Args:
-        handler: The Azure Functions handler to wrap
+        handler: The handler function to wrap
 
     Returns:
         Wrapped handler with admin check

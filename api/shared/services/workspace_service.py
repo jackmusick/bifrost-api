@@ -2,7 +2,7 @@
 Workspace Service
 
 Handles workspace file operations and workflow discovery.
-Works with mounted directories (/workspace) - no Azure SDK needed.
+Works with mounted directories (/workspace) - standard filesystem operations.
 """
 
 import logging
@@ -22,9 +22,9 @@ class WorkspaceService:
 
     The workspace directory is either:
     - Local directory (dev): ./workspace
-    - Mounted Azure Files (prod): /workspace
+    - Mounted volume (prod): /workspace
 
-    No Azure SDK needed - just standard filesystem operations.
+    Uses standard filesystem operations.
     """
 
     def __init__(self, workspace_path: str | None = None):

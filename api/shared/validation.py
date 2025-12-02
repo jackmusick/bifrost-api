@@ -85,10 +85,10 @@ def create_error_response(
 
 def check_key_vault_available(kv_manager) -> tuple[bool, func.HttpResponse | None]:
     """
-    Check if Key Vault manager is available.
+    Check if secrets manager is available.
 
     Args:
-        kv_manager: KeyVaultClient instance (or None if not initialized)
+        kv_manager: Secrets manager instance (or None if not initialized)
 
     Returns:
         Tuple of (is_available, error_response)
@@ -98,7 +98,7 @@ def check_key_vault_available(kv_manager) -> tuple[bool, func.HttpResponse | Non
     if not kv_manager:
         return False, create_error_response(
             error_type="ServiceUnavailable",
-            message="Key Vault service is not configured",
+            message="Secrets service is not configured",
             status_code=503
         )
 

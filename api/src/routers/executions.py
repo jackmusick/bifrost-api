@@ -2,7 +2,6 @@
 Executions Router
 
 Provides access to workflow execution history with filtering capabilities.
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

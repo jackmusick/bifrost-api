@@ -3,8 +3,6 @@ GitHub Integration Router
 
 Git/GitHub integration for workspace sync.
 Provides endpoints for connecting to repos, pulling, pushing, and syncing.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

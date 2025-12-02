@@ -4,8 +4,6 @@ Editor Files Router
 File operations for browser-based code editor.
 Provides safe file I/O with path validation.
 Platform admin resource - no org scoping.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging
@@ -17,9 +15,9 @@ from shared.editor.file_operations import (
     list_directory,
     read_file,
     write_file,
-    delete_file_or_folder,
+    delete_path,
     create_folder,
-    rename_file,
+    rename_path,
 )
 from src.core.auth import Context, CurrentSuperuser
 
@@ -234,7 +232,7 @@ async def delete_file_or_directory(
         Confirmation message
     """
     try:
-        await delete_file_or_folder(path)
+        delete_path(path)
         logger.info(f"Deleted: {path}")
         return {"message": f"Successfully deleted: {path}"}
     except ValueError as e:
@@ -278,7 +276,7 @@ async def rename_or_move(
         Updated file metadata
     """
     try:
-        file_meta = await rename_file(old_path, new_path)
+        file_meta = await rename_path(old_path, new_path)
         logger.info(f"Renamed: {old_path} -> {new_path}")
         return file_meta
     except ValueError as e:

@@ -11,9 +11,9 @@ python-multipart>=0.0.6  # Form data handling
 # =============================================================================
 # Database (PostgreSQL)
 # =============================================================================
+sqlmodel>=0.0.27  # Combines SQLAlchemy + Pydantic
 sqlalchemy[asyncio]>=2.0.25
 asyncpg>=0.29.0  # Async PostgreSQL driver
-psycopg2-binary>=2.9.0  # Sync PostgreSQL driver (for Alembic migrations)
 alembic>=1.13.0  # Database migrations
 greenlet>=3.0.0  # Required by SQLAlchemy async
 
@@ -32,16 +32,18 @@ aioredis>=2.0.1
 # Authentication & Security
 # =============================================================================
 pyjwt[crypto]>=2.8.0  # JWT tokens
-passlib[bcrypt]>=1.7.4  # Password hashing
+pwdlib[bcrypt]>=0.2.0  # Modern password hashing (replaces unmaintained passlib)
 python-jose[cryptography]>=3.3.0  # Alternative JWT (compatibility)
 cryptography>=41.0.0  # Encryption utilities
+pyotp>=2.9.0  # TOTP/HOTP for MFA
 
 # =============================================================================
 # Configuration
 # =============================================================================
-pydantic[email]>=2.5.0
+pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
+email-validator>=2.1.0  # Required by Pydantic for email validation
 
 # =============================================================================
 # HTTP & Async

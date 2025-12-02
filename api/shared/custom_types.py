@@ -1,5 +1,5 @@
 """
-Type definitions for Azure Functions with custom extensions
+Type definitions for HTTP requests with custom extensions
 """
 
 from typing import TYPE_CHECKING, Any, Protocol, Union, cast

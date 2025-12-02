@@ -2,7 +2,7 @@
 CRON Scheduler
 
 Processes scheduled workflows based on their CRON expressions.
-Replaces the Azure Timer trigger version.
+Replaces the Azure Timer trigger version with APScheduler cron job.
 
 Runs every 5 minutes to check for workflows that need to be executed.
 """

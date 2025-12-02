@@ -11,8 +11,8 @@ from pathlib import Path
 # This ensures we use the same ContextVar instance that storage module uses
 from bifrost._context import set_execution_context, clear_execution_context, get_execution_context
 
-# Skip this test module - it references the old Azure Functions app that no longer exists
-pytestmark = pytest.mark.skip(reason="Azure Functions app removed - test needs migration")
+# Skip this test module - it references the old Azure Functions app that has been migrated to FastAPI
+pytestmark = pytest.mark.skip(reason="Tests require migration from Azure Functions to FastAPI")
 
 
 @pytest.fixture

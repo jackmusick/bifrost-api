@@ -58,9 +58,9 @@ class ExecutionContext:
 
     The context parameter is OPTIONAL in workflow signatures:
     - Include it when you need direct access to org_id, user_id, email, etc.
-    - Omit it when only using SDK functions (config, secrets, storage, etc.)
+    - Omit it when only using SDK functions (config, secrets, files, etc.)
 
-    SDK functions (config.get(), secrets.get(), storage.download()) can access
+    SDK functions (config.get(), secrets.get(), files.read()) can access
     the context implicitly via ContextVar, so they work without the parameter.
 
     Provides access to:
@@ -366,7 +366,7 @@ class config:
     Configuration management SDK.
 
     Provides access to organization-scoped configuration with automatic
-    secret resolution from Azure Key Vault.
+    secret resolution.
 
     Example:
         from bifrost import config
@@ -460,30 +460,30 @@ class secrets:
     """
     Secret management SDK.
 
-    Provides access to Azure Key Vault secrets.
+    Provides access to encrypted secrets stored in PostgreSQL.
 
     Example:
         from bifrost import secrets
 
         # Get secret
-        api_key = await secrets.get("bifrost-org123-api-stripe-abc")
+        api_key = await secrets.get("stripe_api_key")
 
         # Set secret
-        await secrets.set("bifrost-org123-api-stripe-abc", "sk_live_xxxxx")
+        await secrets.set("stripe_api_key", "sk_live_xxxxx")
 
         # List secret keys (not values)
         keys = await secrets.list()
 
         # Delete secret
-        await secrets.delete("bifrost-org123-api-old-abc")
+        await secrets.delete("old_api_key")
     """
     @staticmethod
     async def get(key: str) -> str | None:
         """
-        Get decrypted secret value from Azure Key Vault.
+        Get decrypted secret value.
 
         Args:
-            key: Secret key (full Key Vault secret name)
+            key: Secret key name
 
         Returns:
             str | None: Decrypted secret value, or None if not found
@@ -496,12 +496,12 @@ class secrets:
     @staticmethod
     async def set(key: str, value: str) -> None:
         """
-        Set encrypted secret value in Azure Key Vault.
+        Set encrypted secret value.
 
         Requires: Permission to manage secrets (typically admin)
 
         Args:
-            key: Secret key (full Key Vault secret name)
+            key: Secret key name
             value: Secret value (will be encrypted)
 
         Raises:
@@ -529,12 +529,12 @@ class secrets:
     @staticmethod
     async def delete(key: str) -> bool:
         """
-        Delete secret from Azure Key Vault.
+        Delete secret.
 
         Requires: Permission to manage secrets (typically admin)
 
         Args:
-            key: Secret key (full Key Vault secret name)
+            key: Secret key name
 
         Returns:
             bool: True if deleted, False if not found
@@ -549,7 +549,7 @@ class oauth:
     """
     OAuth token management SDK.
 
-    Provides access to OAuth connections and tokens with automatic resolution from Azure Key Vault.
+    Provides access to OAuth connections and tokens stored in PostgreSQL.
 
     Example:
         from bifrost import oauth
@@ -824,142 +824,6 @@ class files:
         Raises:
             ValueError: If path is outside allowed directories
             RuntimeError: If no execution context
-        """
-        ...
-
-class storage:
-    """
-    Cloud storage operations SDK (Azure Blob Storage).
-
-    Provides access to Azure Blob Storage for workflows.
-    All methods use consistent (container, path) signature.
-
-    Containers:
-    - uploads: Form-uploaded files (temporary)
-    - files: Workflow-generated files (persistent)
-    - execution-data: Execution artifacts (internal)
-
-    Example:
-        from bifrost import storage
-
-        # Upload a file
-        blob_uri = await storage.upload(
-            container="files",
-            path="exports/report.csv",
-            data=csv_content.encode("utf-8"),
-            content_type="text/csv"
-        )
-
-        # Generate downloadable URL (24 hour expiry by default)
-        download_url = await storage.generate_url(
-            container="files",
-            path="exports/report.csv",
-            expiry_hours=24
-        )
-
-        # Download a file
-        file_data = await storage.download(
-            container="uploads",
-            path="user-files/input.xlsx"
-        )
-    """
-    @staticmethod
-    async def download(container: str, path: str) -> bytes:
-        """
-        Download a blob from storage.
-
-        Args:
-            container: Container name (uploads, files, execution-data)
-            path: Blob path within container (e.g., "exports/report.csv")
-
-        Returns:
-            bytes: Blob content as bytes
-
-        Raises:
-            ValueError: If context is invalid
-            FileNotFoundError: If blob doesn't exist
-        """
-        ...
-
-    @staticmethod
-    async def upload(
-        container: str,
-        path: str,
-        data: bytes,
-        content_type: str = "application/octet-stream"
-    ) -> str:
-        """
-        Upload a blob to storage.
-
-        Args:
-            container: Container name (uploads, files, execution-data)
-            path: Blob path within container (e.g., "exports/report.csv")
-            data: File content as bytes
-            content_type: MIME type (default: application/octet-stream)
-
-        Returns:
-            str: Blob URI
-
-        Raises:
-            ValueError: If context is invalid or data is not bytes
-        """
-        ...
-
-    @staticmethod
-    async def generate_url(
-        container: str,
-        path: str,
-        expiry_hours: int = 24
-    ) -> str:
-        """
-        Generate a time-limited SAS URL for downloading a blob.
-
-        Args:
-            container: Container name (uploads, files, execution-data)
-            path: Blob path within container
-            expiry_hours: URL expiry time in hours (default: 24)
-
-        Returns:
-            str: SAS URL with read permission and expiry
-
-        Raises:
-            ValueError: If context is invalid or expiry_hours <= 0
-            FileNotFoundError: If blob doesn't exist
-        """
-        ...
-
-    @staticmethod
-    async def get_metadata(container: str, path: str) -> dict[str, Any]:
-        """
-        Get blob metadata.
-
-        Args:
-            container: Container name (uploads, files, execution-data)
-            path: Blob path within container
-
-        Returns:
-            dict: Metadata with keys: name, size, content_type, last_modified, etag
-
-        Raises:
-            ValueError: If context is invalid
-            FileNotFoundError: If blob doesn't exist
-        """
-        ...
-
-    @staticmethod
-    async def delete(container: str, path: str) -> bool:
-        """
-        Delete a blob from storage.
-
-        Args:
-            container: Container name (uploads, files, execution-data)
-            path: Blob path within container
-
-        Returns:
-            bool: True if deleted, False if didn't exist
-
-        Raises:
-            ValueError: If context is invalid
         """
         ...
 

@@ -133,16 +133,39 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
-    # Development User (for local development only)
+    # Default User (for automated deployments and development)
     # ==========================================================================
-    dev_user_email: str = Field(
-        default="admin@localhost",
-        description="Default dev user email"
+    default_user_email: str | None = Field(
+        default=None,
+        description="Default admin user email (creates user on startup if set)"
     )
 
-    dev_user_password: str = Field(
-        default="admin",
-        description="Default dev user password"
+    default_user_password: str | None = Field(
+        default=None,
+        description="Default admin user password"
+    )
+
+    # ==========================================================================
+    # MFA Settings
+    # ==========================================================================
+    mfa_enabled: bool = Field(
+        default=True,
+        description="Whether MFA is required for password authentication"
+    )
+
+    mfa_totp_issuer: str = Field(
+        default="Bifrost",
+        description="Issuer name for TOTP QR codes"
+    )
+
+    mfa_recovery_code_count: int = Field(
+        default=10,
+        description="Number of recovery codes to generate for MFA"
+    )
+
+    mfa_trusted_device_days: int = Field(
+        default=30,
+        description="Number of days a device stays trusted after MFA verification"
     )
 
     # ==========================================================================

@@ -2,7 +2,6 @@
 Branding Router
 
 Platform and organization branding configuration.
-API-compatible with the existing Azure Functions implementation.
 
 Branding is stored in the configs table with key='branding'.
 Logo files are stored in the filesystem under /mounts/files/branding/{org_id}/.

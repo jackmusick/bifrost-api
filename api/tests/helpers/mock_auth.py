@@ -6,7 +6,7 @@ Provides reusable helpers to create mock authentication data for different user 
 - Organization User (tied to specific organization)
 - Function Key (system-to-system authentication)
 
-These helpers generate the X-MS-CLIENT-PRINCIPAL header format that Azure Static Web Apps uses.
+These helpers generate JWT tokens and headers for FastAPI authentication.
 """
 
 import base64

@@ -2,7 +2,6 @@
 Config Router
 
 Manage global and organization-specific configuration key-value pairs.
-API-compatible with the existing Azure Functions implementation.
 
 Uses OrgScopedRepository for standardized org scoping.
 """

@@ -1,7 +1,7 @@
 """Business logic handlers for secret management operations.
 
 This module contains the core business logic for:
-- Listing secrets from Key Vault
+- Listing secrets from encrypted storage
 - Creating new secrets
 - Updating existing secrets
 - Deleting secrets with dependency checking
@@ -57,7 +57,7 @@ async def handle_list_secrets(
     kv_manager: KeyVaultClient | None, org_id: str | None = None
 ) -> SecretListResponse:
     """
-    List available secrets from Key Vault.
+    List available secrets from encrypted storage.
 
     Args:
         kv_manager: Initialized KeyVaultClient instance
@@ -67,7 +67,7 @@ async def handle_list_secrets(
         SecretListResponse with list of secret names and count
 
     Raises:
-        SecretHandlerError: If Key Vault is unavailable
+        SecretHandlerError: If secret storage is unavailable
     """
     # Check if Key Vault is available
     is_available, error_response = check_key_vault_available(kv_manager)
@@ -101,7 +101,7 @@ async def handle_create_secret(
     user_id: str,
 ) -> SecretResponse:
     """
-    Create a new secret in Azure Key Vault.
+    Create a new secret in encrypted storage.
 
     Args:
         kv_manager: Initialized KeyVaultClient instance
@@ -112,7 +112,7 @@ async def handle_create_secret(
         SecretResponse with created secret details
 
     Raises:
-        SecretHandlerError: If Key Vault is unavailable
+        SecretHandlerError: If secret storage is unavailable
         SecretAlreadyExistsError: If secret already exists
     """
     # Check if Key Vault is available
@@ -182,7 +182,7 @@ async def handle_update_secret(
     user_id: str,
 ) -> SecretResponse:
     """
-    Update an existing secret in Azure Key Vault.
+    Update an existing secret in encrypted storage.
 
     Always creates a new version - never reuses the same ref.
 
@@ -196,7 +196,7 @@ async def handle_update_secret(
         SecretResponse with updated secret details
 
     Raises:
-        SecretHandlerError: If Key Vault is unavailable
+        SecretHandlerError: If secret storage is unavailable
         SecretNotFoundError: If secret does not exist
     """
     # Check if Key Vault is available
@@ -342,7 +342,7 @@ async def handle_delete_secret(
     user_id: str,
 ) -> SecretResponse:
     """
-    Delete a secret from Azure Key Vault.
+    Delete a secret from encrypted storage.
 
     Performs dependency checking to prevent deletion of secrets referenced in configs.
 
@@ -356,7 +356,7 @@ async def handle_delete_secret(
         SecretResponse with deletion confirmation
 
     Raises:
-        SecretHandlerError: If Key Vault unavailable
+        SecretHandlerError: If secret storage is unavailable
         SecretNotFoundError: If secret does not exist
         SecretHasDependenciesError: If secret is referenced in configs
     """

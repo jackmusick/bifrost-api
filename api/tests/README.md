@@ -5,7 +5,6 @@
 ```bash
 # Install dependencies
 pip install -r requirements-dev.txt
-npm install -g azurite  # For isolated test Azurite
 
 # Run all tests
 pytest
@@ -24,20 +23,20 @@ pytest --cov=shared --cov=functions
 
 ### Isolated Test Infrastructure
 
-Integration tests use **real HTTP requests** to a **real Azure Functions server** running on isolated infrastructure:
+Integration tests use **real HTTP requests** to a **FastAPI server** running on isolated infrastructure with Docker containers:
 
 | Service | Dev Ports | Test Ports |
 |---------|-----------|------------|
-| **Azurite Blob** | 10000 | 10100 |
-| **Azurite Queue** | 10001 | 10101 |
-| **Azurite Table** | 10002 | 10102 |
-| **Azure Functions** | 7071 | 8080 |
+| **PostgreSQL** | 5432 | 5433 |
+| **RabbitMQ** | 5672 | 5673 |
+| **Redis** | 6379 | 6380 |
+| **FastAPI** | 8000 | 8001 |
 
 This ensures:
 - **No conflicts** between dev and test environments (different ports)
 - **Real HTTP stack** - tests exercise actual code paths users will experience
 - **Fast startup** - infrastructure starts once per test session, then reused
-- **Clean isolation** - each test gets fresh data via table cleanup
+- **Clean isolation** - each test gets fresh data via database cleanup
 
 ### Key Principles
 
@@ -69,15 +68,16 @@ This ensures:
 ## Session Fixtures
 
 These initialize once per test session and are shared:
-- `test_azurite` - Isolated Azurite (ports 10100-10102)
-- `azure_functions_server` - Functions server (port 8080)
-- `mock_key_vault` - Mocked Key Vault (in-memory secrets)
+- `test_db` - Isolated PostgreSQL database (port 5433)
+- `test_rabbitmq` - Isolated RabbitMQ broker (port 5673)
+- `test_redis` - Isolated Redis cache (port 6380)
+- `fastapi_server` - FastAPI server (port 8001)
 
 ## Function Fixtures
 
 These create fresh state for each test:
-- `azurite_tables` - Initialize and cleanup all tables
-- `entities_service`, `config_service`, `users_service`, `relationships_service` - Table clients
+- `db_session` - Database session with automatic cleanup
+- Database fixture factories for creating test entities
 - `test_org`, `test_user`, `test_form` - Test entities
 
 ## Special Fixtures
@@ -129,13 +129,13 @@ pytest tests/integration/test_organization_journey.py::TestOrganizationJourney::
 ### User Journey
 ```python
 @pytest.mark.integration
-def test_user_creates_organization(azure_functions_server):
+def test_user_creates_organization(fastapi_server):
     # 1. User authenticates
     token = create_test_jwt(email="user@test.com")
 
     # 2. Create organization via HTTP
     response = requests.post(
-        f"{azure_functions_server}/api/organizations",
+        f"{fastapi_server}/api/organizations",
         json={"name": "Test Org"},
         headers=auth_headers(token)
     )
@@ -146,12 +146,12 @@ def test_user_creates_organization(azure_functions_server):
 ### Multi-User Scenario
 ```python
 @pytest.mark.integration
-def test_org_isolation(azure_functions_server):
+def test_org_isolation(fastapi_server):
     # Create two organizations
     admin_token = create_test_jwt(email="admin@platform.com")
 
     org_a = requests.post(
-        f"{azure_functions_server}/api/organizations",
+        f"{fastapi_server}/api/organizations",
         json={"name": "Org A"},
         headers=auth_headers(admin_token)
     ).json()
@@ -174,17 +174,21 @@ Integration tests follow real user workflows:
 
 ## Troubleshooting
 
-### "Azure Functions failed to start"
-- Ensure port 8080 is available
-- Check: `func --version`
-- Install: `npm install -g azure-functions-core-tools@4`
+### "FastAPI server failed to start"
+- Ensure port 8001 is available
+- Check Docker containers are running: `docker ps`
+- View logs: `docker logs bifrost-api-test`
 
-### "Azurite connection failed"
-- Ensure ports 10100-10102 are available
-- Check: `npx azurite --version`
+### "PostgreSQL connection failed"
+- Ensure port 5433 is available
+- Check database is healthy: `docker exec bifrost-postgres-test psql -U postgres -d bifrost_test -c "SELECT 1"`
+
+### "RabbitMQ connection failed"
+- Ensure port 5673 is available
+- Check: `docker ps | grep rabbitmq`
 
 ### Tests timeout
-- First run may be slow (infrastructure startup)
+- First run may be slow (container startup)
 - Increase timeout: `pytest --timeout=300`
 
 ### State pollution

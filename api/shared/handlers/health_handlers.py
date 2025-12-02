@@ -1,7 +1,6 @@
 """
 Health Check Handlers
 Business logic for system health monitoring
-Extracted from functions/health.py for unit testability
 """
 
 import logging
@@ -50,14 +49,14 @@ def check_api_health() -> HealthCheck:
 
 async def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[HealthCheck, HealthStatus]:
     """
-    Check Key Vault health and return health check result with status update.
+    Check secret manager health and return health check result with status update.
 
     Args:
         kv_manager: KeyVaultClient instance or None if not initialized
 
     Returns:
         tuple: (HealthCheck, overall_status_update)
-            - HealthCheck: Key Vault health status with metadata
+            - HealthCheck: Secret manager health status with metadata
             - overall_status_update: "healthy", "degraded", or "unhealthy"
 
     Raises:
@@ -66,11 +65,11 @@ async def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[H
     overall_status = "healthy"
 
     if kv_manager is None:
-        logger.warning("Key Vault manager not initialized")
+        logger.warning("Secret manager not initialized")
         return HealthCheck(
-            service="Key Vault",
+            service="Secret Manager",
             healthy=False,
-            message="Key Vault manager not initialized",
+            message="Secret manager not initialized",
             metadata={}
         ), "degraded"
 
@@ -86,9 +85,9 @@ async def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[H
             overall_status = "degraded"  # Not fully unhealthy since API still works
 
         check = HealthCheck(
-            service="Key Vault",
+            service="Secret Manager",
             healthy=kv_healthy,
-            message="Key Vault accessible" if kv_healthy else health_result.get("error", "Key Vault not accessible"),
+            message="Secret manager accessible" if kv_healthy else health_result.get("error", "Secret manager not accessible"),
             metadata={
                 "vaultUrl": kv_manager.vault_url if hasattr(kv_manager, 'vault_url') else None,
                 "canConnect": health_result.get("can_connect", False),
@@ -100,9 +99,9 @@ async def check_keyvault_health(kv_manager: Optional[KeyVaultClient]) -> tuple[H
         return check, overall_status
 
     except Exception as e:
-        logger.error(f"Key Vault health check failed: {e}", exc_info=True)
+        logger.error(f"Secret manager health check failed: {e}", exc_info=True)
         return HealthCheck(
-            service="Key Vault",
+            service="Secret Manager",
             healthy=False,
             message=f"Health check failed: {str(e)}",
             metadata={}
@@ -114,7 +113,7 @@ async def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> 
     Perform a comprehensive general health check.
 
     Args:
-        kv_manager: KeyVaultClient instance or None
+        kv_manager: Secret manager instance or None
 
     Returns:
         GeneralHealthResponse: Overall health status with all service checks
@@ -127,11 +126,11 @@ async def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> 
     # Check 1: API health
     checks.append(check_api_health())
 
-    # Check 2: Key Vault health
+    # Check 2: Secret Manager health
     kv_check, kv_status = await check_keyvault_health(kv_manager)
     checks.append(kv_check)
 
-    # Update overall status if Key Vault has issues
+    # Update overall status if Secret Manager has issues
     if kv_status != "healthy":
         overall_status = kv_status
 
@@ -155,25 +154,25 @@ async def perform_general_health_check(kv_manager: Optional[KeyVaultClient]) -> 
 
 async def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) -> KeyVaultHealthResponse:
     """
-    Perform a detailed Key Vault health check.
+    Perform a detailed secret manager health check.
 
     Args:
-        kv_manager: KeyVaultClient instance or None
+        kv_manager: Secret manager instance or None
 
     Returns:
-        KeyVaultHealthResponse: Detailed Key Vault health status
+        KeyVaultHealthResponse: Detailed secret manager health status
 
     Raises:
         Exception: If health check fails (logged and handled internally)
     """
-    logger.info("Performing Key Vault health check")
+    logger.info("Performing secret manager health check")
 
-    # Check if Key Vault manager is available
+    # Check if secret manager is available
     if not kv_manager:
-        logger.error("Key Vault manager not initialized")
+        logger.error("Secret manager not initialized")
         return KeyVaultHealthResponse(
             status="unhealthy",
-            message="Key Vault manager is not initialized. Check AZURE_KEY_VAULT_URL configuration.",
+            message="Secret manager is not initialized. Check secret manager configuration.",
             vaultUrl=None,
             canConnect=False,
             canListSecrets=False,
@@ -195,11 +194,11 @@ async def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) ->
 
         # Build status message
         if status == "healthy":
-            message = "Key Vault is accessible and all permissions are configured correctly"
+            message = "Secret manager is accessible and all permissions are configured correctly"
         elif status == "degraded":
-            message = "Key Vault is accessible but some permissions may be limited"
+            message = "Secret manager is accessible but some permissions may be limited"
         else:
-            message = health_result.get("error", "Key Vault is not accessible")
+            message = health_result.get("error", "Secret manager is not accessible")
 
         response = KeyVaultHealthResponse(
             status=status,
@@ -213,7 +212,7 @@ async def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) ->
         )
 
         logger.info(
-            f"Key Vault health check completed: {status}",
+            f"Secret manager health check completed: {status}",
             extra={
                 "status": status,
                 "can_connect": can_connect,
@@ -225,7 +224,7 @@ async def perform_keyvault_health_check(kv_manager: Optional[KeyVaultClient]) ->
         return response
 
     except Exception as e:
-        logger.error(f"Error during Key Vault health check: {e}", exc_info=True)
+        logger.error(f"Error during secret manager health check: {e}", exc_info=True)
         return KeyVaultHealthResponse(
             status="unhealthy",
             message=f"Failed to perform health check: {str(e)}",

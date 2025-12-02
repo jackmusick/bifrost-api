@@ -1,7 +1,7 @@
 """
 File Operation Utilities
 
-Utilities for file operations that work with Azure Files SMB limitations.
+Utilities for file operations on mounted storage volumes.
 """
 
 import logging
@@ -17,8 +17,8 @@ def manual_copy_tree(src: Path, dst: Path, exclude_patterns: list[str] | None = 
 
     This function copies files using simple read/write operations without
     attempting to preserve permissions, timestamps, or other metadata.
-    This is necessary for Azure Files SMB mounts which don't support
-    POSIX permission operations.
+    This approach is compatible with mounted storage volumes that may not
+    support all POSIX permission operations.
 
     Args:
         src: Source directory path
@@ -74,10 +74,10 @@ def get_system_tmp() -> Path:
     Get the system's actual temp directory.
 
     Returns the real /tmp directory (local ephemeral storage), NOT the
-    BIFROST_TEMP_LOCATION environment variable which may point to Azure Files.
+    BIFROST_TEMP_LOCATION environment variable which may point to mounted storage.
 
     This is important for operations that require local disk (like Git clones
-    with Dulwich) that don't work on Azure Files SMB mounts.
+    with Dulwich) that may not work on network-mounted storage.
 
     Returns:
         Path to system temp directory (e.g., /tmp on Linux)
@@ -92,9 +92,9 @@ def get_system_tmp() -> Path:
 
 def is_smb_metadata_file(filename: str) -> bool:
     """
-    Check if a file is SMB/macOS metadata file that should be ignored.
+    Check if a file is metadata file that should be ignored.
 
-    These files are created by macOS and Windows SMB clients and should
+    These files are created by macOS and Windows clients and should
     generally be excluded from Git operations.
 
     Args:

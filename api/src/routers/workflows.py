@@ -2,7 +2,6 @@
 Workflows Router
 
 Handles workflow discovery, execution, and validation.
-API-compatible with the existing Azure Functions implementation.
 
 Note: This router bridges to existing business logic in shared/ for workflow
 discovery and execution since that logic is tightly coupled to file system

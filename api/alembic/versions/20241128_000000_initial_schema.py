@@ -57,7 +57,6 @@ def upgrade() -> None:
         'organizations',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('slug', sa.String(100), nullable=False),
         sa.Column('domain', sa.String(255), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('settings', postgresql.JSONB(), nullable=False, server_default='{}'),
@@ -65,9 +64,7 @@ def upgrade() -> None:
         sa.Column('created_by', sa.String(255), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('slug')
     )
-    op.create_index('ix_organizations_slug', 'organizations', ['slug'])
     op.create_index('ix_organizations_domain', 'organizations', ['domain'])
 
     # Users table

@@ -313,12 +313,12 @@ def generate_openapi_spec() -> dict:
                 'description': 'Local development server'
             },
             {
-                'url': 'https://{environment}.azurewebsites.net',
-                'description': 'Azure deployment',
+                'url': 'https://{environment}.bifrost-platform.com',
+                'description': 'Production deployment',
                 'variables': {
                     'environment': {
-                        'default': 'msp-automation-api-dev',
-                        'enum': ['msp-automation-api-dev', 'msp-automation-api-prod']
+                        'default': 'api-dev',
+                        'enum': ['api-dev', 'api-prod']
                     }
                 }
             }

@@ -13,7 +13,7 @@ Key Features:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -21,7 +21,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
 from src.config import get_settings
-from src.core.auth import CurrentActiveUser
+from src.core.auth import CurrentActiveUser, UserPrincipal
 from src.core.database import DbSession
 from src.core.security import (
     create_access_token,
@@ -119,9 +119,9 @@ class UserCreate(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
-    db: DbSession,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    request: Request | None = None,
+    request: Request = None,
+    db: DbSession = None,
 ) -> LoginResponse:
     """
     Login with email and password.
@@ -230,8 +230,8 @@ async def login(
 @router.post("/mfa/login", response_model=LoginResponse)
 async def verify_mfa_login(
     mfa_request: MFAVerifyRequest,
-    db: DbSession,
-    request: Request | None = None,
+    request: Request = None,
+    db: DbSession = None,
 ) -> LoginResponse:
     """
     Complete MFA verification during login to get access tokens.
@@ -329,7 +329,7 @@ async def _generate_login_tokens(user, db) -> LoginResponse:
         LoginResponse with tokens
     """
     # Update last login
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     await db.commit()
 
     # Get user roles from database
@@ -377,7 +377,7 @@ async def _generate_login_tokens(user, db) -> LoginResponse:
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
     token_data: TokenRefresh,
-    db: DbSession,
+    db: DbSession = None,
 ) -> Token:
     """
     Refresh access token using refresh token.
@@ -486,7 +486,7 @@ async def get_current_user_info(
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
     user_data: UserCreate,
-    db: DbSession,
+    db: DbSession = None,
 ) -> UserResponse:
     """
     Register a new user with auto-provisioning.
@@ -630,7 +630,7 @@ class AuthStatusResponse(BaseModel):
 
 
 @router.get("/status", response_model=AuthStatusResponse)
-async def get_auth_status(db: DbSession) -> AuthStatusResponse:
+async def get_auth_status(db: DbSession = None) -> AuthStatusResponse:
     """
     Get authentication system status for the login page.
 
@@ -686,7 +686,7 @@ class OAuthLoginRequest(BaseModel):
 @router.post("/oauth/login", response_model=Token)
 async def oauth_login(
     login_data: OAuthLoginRequest,
-    db: DbSession,
+    db: DbSession = None,
 ) -> Token:
     """
     Login via OAuth/SSO provider.
@@ -730,7 +730,7 @@ async def oauth_login(
         )
 
     # Update last login
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     await db.commit()
 
     # Get user roles from database

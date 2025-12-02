@@ -3,22 +3,23 @@ Security Utilities
 
 Password hashing and JWT token handling using industry-standard libraries.
 Based on FastAPI's official security tutorial patterns.
+
+Uses pwdlib (modern replacement for unmaintained passlib) for password hashing.
 """
 
-import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.bcrypt import BcryptHasher
 
 from src.config import get_settings
 
-# Password hashing context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing using pwdlib with bcrypt
+# This is the modern replacement for passlib, recommended by FastAPI
+# We explicitly use BcryptHasher to avoid requiring argon2 dependency
+password_hash = PasswordHash((BcryptHasher(),))
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -32,7 +33,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    return password_hash.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
@@ -45,7 +46,7 @@ def get_password_hash(password: str) -> str:
     Returns:
         Hashed password string
     """
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 
 
 def create_access_token(
@@ -150,9 +151,69 @@ def decode_token(token: str) -> dict[str, Any] | None:
         return None
 
 
+def create_mfa_token(user_id: str, purpose: str = "mfa_verify") -> str:
+    """
+    Create a short-lived token for MFA verification step.
+
+    This token is returned after password verification and must be
+    provided along with the MFA code to complete login.
+
+    Args:
+        user_id: User ID
+        purpose: Token purpose (mfa_verify, mfa_setup)
+
+    Returns:
+        Encoded JWT token string
+    """
+    settings = get_settings()
+
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    to_encode = {
+        "sub": user_id,
+        "type": purpose,
+        "exp": expire,
+    }
+
+    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+
+
+def decode_mfa_token(token: str, expected_purpose: str = "mfa_verify") -> dict[str, Any] | None:
+    """
+    Decode and validate an MFA token.
+
+    Args:
+        token: JWT token string to decode
+        expected_purpose: Expected token purpose
+
+    Returns:
+        Decoded token payload or None if invalid/expired/wrong type
+    """
+    settings = get_settings()
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm]
+        )
+        if payload.get("type") != expected_purpose:
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
 # =============================================================================
 # Secret Encryption (for storing secrets in database)
 # =============================================================================
+
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
 def _get_fernet_key() -> bytes:

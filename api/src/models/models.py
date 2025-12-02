@@ -168,54 +168,58 @@ class RolePublic(RoleBase):
 # =============================================================================
 
 
-class FormBase(BaseModel):
-    """Shared form fields."""
-    name: str = Field(max_length=255)
-    slug: str = Field(max_length=100)
-    description: str | None = Field(default=None)
-    workflow_name: str = Field(max_length=255)
-    schema_: dict = Field(default_factory=dict, alias="schema")
-    access_level: FormAccessLevel = Field(default=FormAccessLevel.ROLE_BASED)
-    settings: dict = Field(default_factory=dict)
-    is_active: bool = Field(default=True)
+class FormSchema(BaseModel):
+    """Form schema with field definitions."""
+    fields: list[dict] = Field(default_factory=list)
 
 
 class FormCreate(BaseModel):
     """Input for creating a form."""
     name: str
-    slug: str
     description: str | None = None
-    workflow_name: str
-    schema_: dict = Field(alias="schema")
-    access_level: FormAccessLevel = FormAccessLevel.ROLE_BASED
-    settings: dict = Field(default_factory=dict)
-    organization_id: UUID | None = None
+    linked_workflow: str | None = None
+    launch_workflow_id: str | None = None
+    default_launch_params: dict | None = None
+    allowed_query_params: list[str] | None = None
+    form_schema: dict | FormSchema
+    access_level: FormAccessLevel | None = FormAccessLevel.ROLE_BASED
 
 
 class FormUpdate(BaseModel):
     """Input for updating a form."""
     name: str | None = None
-    slug: str | None = None
     description: str | None = None
-    workflow_name: str | None = None
-    schema_: dict | None = Field(default=None, alias="schema")
-    access_level: FormAccessLevel | None = None
-    settings: dict | None = None
+    linked_workflow: str | None = None
+    launch_workflow_id: str | None = None
+    default_launch_params: dict | None = None
+    allowed_query_params: list[str] | None = None
+    form_schema: dict | FormSchema | None = None
     is_active: bool | None = None
+    access_level: FormAccessLevel | None = None
+    assigned_roles: list[str] | None = None
 
 
-class FormPublic(FormBase):
+class FormPublic(BaseModel):
     """Form output for API responses."""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    organization_id: UUID | None
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
+    name: str
+    description: str | None = None
+    linked_workflow: str | None = None
+    launch_workflow_id: str | None = None
+    default_launch_params: dict | None = None
+    allowed_query_params: list[str] | None = None
+    form_schema: dict | None = None
+    access_level: FormAccessLevel | None = None
+    organization_id: UUID | None = None
+    is_active: bool
+    assigned_roles: list[str] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
+    def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 
 

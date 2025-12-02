@@ -1,7 +1,7 @@
 """
-Helper utilities for creating mock Azure Functions HttpRequest objects in tests.
+Helper utilities for creating mock FastAPI HttpRequest objects in tests.
 
-This module provides utilities for integration tests that call Azure Functions
+This module provides utilities for integration tests that call FastAPI endpoints
 directly without going through HTTP.
 """
 
@@ -22,7 +22,7 @@ def create_mock_request(
     query_params: dict[str, str] | None = None,
 ) -> func.HttpRequest:
     """
-    Create a mock HttpRequest object for testing Azure Functions.
+    Create a mock HttpRequest object for testing FastAPI.
 
     Args:
         method: HTTP method (GET, POST, PUT, DELETE, etc.)
@@ -33,7 +33,7 @@ def create_mock_request(
         query_params: Optional query parameters
 
     Returns:
-        Azure Functions HttpRequest object
+        FastAPI HttpRequest object
 
     Example:
         >>> req = create_mock_request(
@@ -136,10 +136,10 @@ def create_anonymous_headers() -> dict[str, str]:
 
 def parse_response(response: func.HttpResponse) -> tuple[int, dict[str, Any] | None]:
     """
-    Parse an Azure Functions HttpResponse.
+    Parse a FastAPI HttpResponse.
 
     Args:
-        response: HttpResponse object from Azure Function
+        response: HttpResponse object from FastAPI endpoint
 
     Returns:
         Tuple of (status_code, body_dict)

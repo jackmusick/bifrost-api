@@ -2,7 +2,7 @@
 Workflows Handlers V2 - Refactored to use unified engine
 Business logic for workflow execution using shared/engine.py
 
-Note: Azure Functions handlers have been removed - see FastAPI routers in src/routers/
+Note: HTTP handlers have been removed - see FastAPI routers in src/routers/
 """
 
 import base64
@@ -17,7 +17,7 @@ from shared.discovery import load_workflow
 from shared.engine import ExecutionRequest, execute
 from shared.models import ErrorResponse, ExecutionStatus
 
-# Lazy imports to avoid Azure blob storage dependency for validation-only use cases
+# Lazy imports to avoid unnecessary dependencies for validation-only use cases
 if TYPE_CHECKING:
     from shared.execution_logger import get_execution_logger
     from shared.webpubsub_broadcaster import WebPubSubBroadcaster
@@ -105,7 +105,7 @@ async def execute_workflow_internal(
     # Synchronous execution path
     execution_id = str(uuid.uuid4())
 
-    # Runtime imports to avoid Azure blob storage dependency at module load
+    # Runtime imports to avoid unnecessary dependencies at module load
     from shared.execution_logger import get_execution_logger
     from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
@@ -264,8 +264,8 @@ async def execute_workflow_internal(
         }, 200
 
 
-# Note: execute_workflow_handler (Azure Functions) has been removed.
-# Use FastAPI router in src/routers/workflows.py instead.
+# Note: HTTP handlers are implemented in FastAPI routers.
+# See src/routers/workflows.py for the HTTP endpoint implementation.
 
 
 async def validate_workflow_file(path: str, content: str | None = None):

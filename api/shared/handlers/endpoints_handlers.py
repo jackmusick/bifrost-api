@@ -1,15 +1,16 @@
 """
 Endpoints Handlers
 Business logic for workflow endpoint execution
-Extracted from functions/endpoints.py for unit testability
+Extracted from HTTP handlers for unit testability
 """
 
 import json
 import logging
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import azure.functions as func
+if TYPE_CHECKING:
+    import azure.functions as func
 
 from shared.async_executor import enqueue_workflow_execution
 from shared.context import ExecutionContext
@@ -31,7 +32,7 @@ async def execute_workflow_endpoint_handler(
     workflow_name: str,
     http_method: str,
     input_data: dict[str, Any],
-) -> tuple[func.HttpResponse, int]:
+) -> tuple["func.HttpResponse", int]:
     """
     Execute a workflow via HTTP endpoint.
 
@@ -146,7 +147,7 @@ async def _execute_async(
     context: ExecutionContext,
     workflow_name: str,
     input_data: dict[str, Any],
-) -> tuple[func.HttpResponse, int]:
+) -> tuple["func.HttpResponse", int]:
     """
     Execute workflow asynchronously via queue.
 
@@ -188,7 +189,7 @@ async def _execute_sync(
     input_data: dict[str, Any],
     workflow_func: Any,
     workflow_metadata: WorkflowMetadata,
-) -> tuple[func.HttpResponse, int]:
+) -> tuple["func.HttpResponse", int]:
     """
     Execute workflow synchronously.
 
@@ -340,7 +341,7 @@ async def _execute_sync(
         )
 
 
-def parse_input_data(req: func.HttpRequest) -> dict[str, Any]:
+def parse_input_data(req: "func.HttpRequest") -> dict[str, Any]:
     """
     Parse input data from query parameters and JSON body.
 

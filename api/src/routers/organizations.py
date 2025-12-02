@@ -2,7 +2,6 @@
 Organizations Router
 
 CRUD operations for client organizations.
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging
@@ -11,194 +10,70 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-# Import existing Pydantic models for API compatibility
-from shared.models import (
-    CreateOrganizationRequest,
-    Organization,
-    UpdateOrganizationRequest,
-)
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
-from src.models.database import Organization as OrganizationModel
+from src.models.orm import Organization as OrganizationORM
+from src.models.models import OrganizationCreate, OrganizationPublic, OrganizationUpdate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
 
 
-# =============================================================================
-# Repository (PostgreSQL implementation)
-# =============================================================================
-
-
-class OrganizationRepository:
-    """PostgreSQL-based organization repository."""
-
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def list_organizations(self, active_only: bool = True) -> list[Organization]:
-        """List all organizations."""
-        query = select(OrganizationModel)
-        if active_only:
-            query = query.where(OrganizationModel.is_active)
-        query = query.order_by(OrganizationModel.name)
-
-        result = await self.db.execute(query)
-        orgs = result.scalars().all()
-
-        return [self._to_pydantic(org) for org in orgs]
-
-    async def get_organization(self, org_id: UUID) -> Organization | None:
-        """Get organization by ID."""
-        result = await self.db.execute(
-            select(OrganizationModel).where(OrganizationModel.id == org_id)
-        )
-        org = result.scalar_one_or_none()
-
-        if org:
-            return self._to_pydantic(org)
-        return None
-
-    async def get_organization_by_domain(self, domain: str) -> Organization | None:
-        """Get organization by domain."""
-        result = await self.db.execute(
-            select(OrganizationModel)
-            .where(OrganizationModel.domain == domain.lower())
-            .where(OrganizationModel.is_active)
-        )
-        org = result.scalar_one_or_none()
-
-        if org:
-            return self._to_pydantic(org)
-        return None
-
-    async def create_organization(
-        self,
-        request: CreateOrganizationRequest,
-        created_by: str,
-    ) -> Organization:
-        """Create a new organization."""
-        now = datetime.utcnow()
-
-        org = OrganizationModel(
-            name=request.name,
-            domain=request.domain.lower() if request.domain else None,
-            is_active=True,
-            created_by=created_by,
-            created_at=now,
-            updated_at=now,
-        )
-
-        self.db.add(org)
-        await self.db.flush()
-        await self.db.refresh(org)
-
-        logger.info(f"Created organization {org.id}: {org.name}")
-        return self._to_pydantic(org)
-
-    async def update_organization(
-        self,
-        org_id: UUID,
-        request: UpdateOrganizationRequest,
-    ) -> Organization | None:
-        """Update an organization."""
-        result = await self.db.execute(
-            select(OrganizationModel).where(OrganizationModel.id == org_id)
-        )
-        org = result.scalar_one_or_none()
-
-        if not org:
-            return None
-
-        if request.name is not None:
-            org.name = request.name
-        if request.domain is not None:
-            org.domain = request.domain.lower() if request.domain else None
-        if request.isActive is not None:
-            org.is_active = request.isActive
-
-        org.updated_at = datetime.utcnow()
-
-        await self.db.flush()
-        await self.db.refresh(org)
-
-        logger.info(f"Updated organization {org_id}")
-        return self._to_pydantic(org)
-
-    async def delete_organization(self, org_id: UUID) -> bool:
-        """Soft delete an organization."""
-        result = await self.db.execute(
-            select(OrganizationModel).where(OrganizationModel.id == org_id)
-        )
-        org = result.scalar_one_or_none()
-
-        if not org:
-            return False
-
-        org.is_active = False
-        org.updated_at = datetime.utcnow()
-
-        await self.db.flush()
-        logger.info(f"Soft deleted organization {org_id}")
-        return True
-
-    def _to_pydantic(self, org: OrganizationModel) -> Organization:
-        """Convert SQLAlchemy model to Pydantic model."""
-        return Organization(
-            id=str(org.id),
-            name=org.name,
-            domain=org.domain,
-            isActive=org.is_active,
-            createdAt=org.created_at,
-            createdBy=org.created_by,
-            updatedAt=org.updated_at,
-        )
-
-
-# =============================================================================
-# HTTP Endpoints
-# =============================================================================
-
-
 @router.get(
     "",
-    response_model=list[Organization],
+    response_model=list[OrganizationPublic],
     summary="List all organizations",
     description="Get all organizations (Platform admin only)",
 )
 async def list_organizations(
     user: CurrentSuperuser,
     db: DbSession,
-) -> list[Organization]:
+) -> list[OrganizationPublic]:
     """List all organizations."""
-    repo = OrganizationRepository(db)
-    return await repo.list_organizations(active_only=True)
+    query = select(OrganizationORM).where(OrganizationORM.is_active).order_by(OrganizationORM.name)
+    result = await db.execute(query)
+    orgs = result.scalars().all()
+    return [OrganizationPublic.model_validate(org) for org in orgs]
 
 
 @router.post(
     "",
-    response_model=Organization,
+    response_model=OrganizationPublic,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new organization",
     description="Create a new client organization (Platform admin only)",
 )
 async def create_organization(
-    request: CreateOrganizationRequest,
+    request: OrganizationCreate,
     user: CurrentSuperuser,
     db: DbSession,
-) -> Organization:
+) -> OrganizationPublic:
     """Create a new client organization."""
-    repo = OrganizationRepository(db)
-    return await repo.create_organization(request, user.email)
+    now = datetime.utcnow()
+
+    org = OrganizationORM(
+        name=request.name,
+        domain=request.domain.lower() if request.domain else None,
+        is_active=request.is_active,
+        settings=request.settings,
+        created_by=user.email,
+        created_at=now,
+        updated_at=now,
+    )
+
+    db.add(org)
+    await db.flush()
+    await db.refresh(org)
+
+    logger.info(f"Created organization {org.id}: {org.name}")
+    return OrganizationPublic.model_validate(org)
 
 
 @router.get(
     "/{org_id}",
-    response_model=Organization,
+    response_model=OrganizationPublic,
     summary="Get organization by ID",
     description="Get a specific organization by ID (Platform admin only)",
 )
@@ -206,10 +81,12 @@ async def get_organization(
     org_id: UUID,
     user: CurrentSuperuser,
     db: DbSession,
-) -> Organization:
+) -> OrganizationPublic:
     """Get a specific organization by ID."""
-    repo = OrganizationRepository(db)
-    org = await repo.get_organization(org_id)
+    result = await db.execute(
+        select(OrganizationORM).where(OrganizationORM.id == org_id)
+    )
+    org = result.scalar_one_or_none()
 
     if not org:
         raise HTTPException(
@@ -217,24 +94,26 @@ async def get_organization(
             detail="Organization not found",
         )
 
-    return org
+    return OrganizationPublic.model_validate(org)
 
 
 @router.patch(
     "/{org_id}",
-    response_model=Organization,
+    response_model=OrganizationPublic,
     summary="Update an organization",
     description="Update an existing organization (Platform admin only)",
 )
 async def update_organization(
     org_id: UUID,
-    request: UpdateOrganizationRequest,
+    request: OrganizationUpdate,
     user: CurrentSuperuser,
     db: DbSession,
-) -> Organization:
+) -> OrganizationPublic:
     """Update an organization."""
-    repo = OrganizationRepository(db)
-    org = await repo.update_organization(org_id, request)
+    result = await db.execute(
+        select(OrganizationORM).where(OrganizationORM.id == org_id)
+    )
+    org = result.scalar_one_or_none()
 
     if not org:
         raise HTTPException(
@@ -242,14 +121,29 @@ async def update_organization(
             detail="Organization not found",
         )
 
-    return org
+    if request.name is not None:
+        org.name = request.name
+    if request.domain is not None:
+        org.domain = request.domain.lower() if request.domain else None
+    if request.is_active is not None:
+        org.is_active = request.is_active
+    if request.settings is not None:
+        org.settings = request.settings
+
+    org.updated_at = datetime.utcnow()
+
+    await db.flush()
+    await db.refresh(org)
+
+    logger.info(f"Updated organization {org_id}")
+    return OrganizationPublic.model_validate(org)
 
 
 @router.delete(
     "/{org_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an organization",
-    description="Soft delete an organization (sets IsActive=False, Platform admin only)",
+    description="Soft delete an organization (sets is_active=False, Platform admin only)",
 )
 async def delete_organization(
     org_id: UUID,
@@ -257,11 +151,19 @@ async def delete_organization(
     db: DbSession,
 ) -> None:
     """Soft delete an organization."""
-    repo = OrganizationRepository(db)
-    success = await repo.delete_organization(org_id)
+    result = await db.execute(
+        select(OrganizationORM).where(OrganizationORM.id == org_id)
+    )
+    org = result.scalar_one_or_none()
 
-    if not success:
+    if not org:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Organization not found",
         )
+
+    org.is_active = False
+    org.updated_at = datetime.utcnow()
+
+    await db.flush()
+    logger.info(f"Soft deleted organization {org_id}")

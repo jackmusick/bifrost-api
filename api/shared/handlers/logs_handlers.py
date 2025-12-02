@@ -33,7 +33,7 @@ async def list_system_logs_handler(
         end_date: Optional filter by end date (ISO format, inclusive)
         limit: Maximum number of results (default 50, max 1000)
         continuation_token: Opaque continuation token from previous page
-        connection_string: Azure Storage connection string (defaults to env var)
+        connection_string: Database connection string (defaults to env var)
 
     Returns:
         Tuple of (SystemLogsListResponse, HTTP status code)
@@ -175,7 +175,7 @@ async def get_system_log_handler(
     Args:
         category: Event category (partition key)
         row_key: Row key (timestamp_eventId)
-        connection_string: Azure Storage connection string (defaults to env var)
+        connection_string: Database connection string (defaults to env var)
 
     Returns:
         Tuple of (SystemLog or ErrorResponse, HTTP status code)

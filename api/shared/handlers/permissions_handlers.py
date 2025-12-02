@@ -6,9 +6,10 @@ Business logic for user permissions and roles
 import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import azure.functions as func
+if TYPE_CHECKING:
+    import azure.functions as func
 
 from shared.models import (
     CreateUserRequest,
@@ -30,7 +31,7 @@ async def list_users_handler(
     context: ExecutionContext,
     user_type_filter: str = "",
     org_id_filter: Optional[str] = None
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     List users with optional filtering based on scope.
 
@@ -139,7 +140,7 @@ async def list_users_handler(
 async def get_user_handler(
     context: ExecutionContext,
     user_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Get a specific user's details.
 
@@ -210,7 +211,7 @@ async def get_user_handler(
 async def get_user_permissions_handler(
     context: ExecutionContext,
     user_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Get user permissions (deprecated endpoint).
 
@@ -241,7 +242,7 @@ async def get_user_permissions_handler(
 async def get_org_permissions_handler(
     context: ExecutionContext,
     org_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Get organization permissions (deprecated endpoint).
 
@@ -271,7 +272,7 @@ async def get_org_permissions_handler(
 
 async def grant_permissions_handler(
     context: ExecutionContext
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Grant user permissions (deprecated endpoint).
 
@@ -304,7 +305,7 @@ async def revoke_permissions_handler(
     context: ExecutionContext,
     user_id: str,
     org_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Revoke user permissions (deprecated endpoint).
 
@@ -338,7 +339,7 @@ async def revoke_permissions_handler(
 async def get_user_roles_handler(
     context: ExecutionContext,
     user_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Get all roles assigned to a user.
 
@@ -391,7 +392,7 @@ async def get_user_roles_handler(
 async def get_user_forms_handler(
     context: ExecutionContext,
     user_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Get all forms a user can access based on their roles.
 
@@ -515,8 +516,8 @@ async def get_user_forms_handler(
 
 async def create_user_handler(
     context: ExecutionContext,
-    req: func.HttpRequest
-) -> func.HttpResponse:
+    req: "func.HttpRequest"
+) -> "func.HttpResponse":
     """
     Create a new user proactively (before first login).
 
@@ -654,8 +655,8 @@ async def create_user_handler(
 async def update_user_handler(
     context: ExecutionContext,
     user_id: str,
-    req: func.HttpRequest
-) -> func.HttpResponse:
+    req: "func.HttpRequest"
+) -> "func.HttpResponse":
     """
     Update user properties including role transitions.
 
@@ -822,7 +823,7 @@ async def update_user_handler(
 async def delete_user_handler(
     context: ExecutionContext,
     user_id: str
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Delete a user from the system.
 

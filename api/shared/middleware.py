@@ -19,7 +19,7 @@ async def load_config_for_partition(partition_key: str) -> dict:
     """
     Load configuration values for a given partition (org ID or GLOBAL).
 
-    Extracts config entities from Table Storage and parses JSON values.
+    Extracts config entities from database and parses JSON values.
 
     Args:
         partition_key: Partition to load config from (org ID or "GLOBAL")
@@ -135,7 +135,7 @@ async def load_organization_context(
     req: func.HttpRequest
 ) -> ExecutionContext:
     """
-    Load ExecutionContext from Table Storage.
+    Load ExecutionContext from database.
 
     T037: Organization validation is enforced when org_id is provided.
     T055-T056: Uses AuthenticationService to extract caller from authenticated principal.

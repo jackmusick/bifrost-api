@@ -1,5 +1,5 @@
 """
-OpenAPI decorators for Azure Functions endpoints.
+OpenAPI decorators for API endpoints.
 
 Provides a decorator-based system for automatically generating OpenAPI
 specifications from function metadata. Each endpoint decorated with @openapi_endpoint
@@ -88,7 +88,7 @@ def openapi_endpoint(
     responses: dict[int, dict[str, Any]] | None = None
 ) -> Callable:
     """
-    Decorator to mark an Azure Function endpoint for OpenAPI documentation.
+    Decorator to mark an API endpoint for OpenAPI documentation.
 
     Args:
         path: API path (e.g., "/organizations" or "/organizations/{orgId}")
@@ -270,7 +270,7 @@ def build_openapi_spec(
                     'type': 'http',
                     'scheme': 'bearer',
                     'bearerFormat': 'JWT',
-                    'description': 'Azure AD JWT token'
+                    'description': 'JWT bearer token'
                 }
             },
             'responses': _build_common_responses()

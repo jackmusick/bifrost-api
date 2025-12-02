@@ -2,7 +2,7 @@
 Workflow Execution Consumer
 
 Processes async workflow executions from RabbitMQ queue.
-Replaces the Azure Queue trigger version with full API compatibility.
+Replaces the Azure Queue trigger version with RabbitMQ consumer.
 """
 
 import asyncio

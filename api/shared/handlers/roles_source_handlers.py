@@ -1,7 +1,6 @@
 """
 Roles Source Handlers
-Business logic for Azure Static Web Apps role provisioning
-Extracted from functions/roles_source.py for unit testability
+Business logic for identity provider role provisioning
 """
 
 import logging
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class RolesSourceRequest(TypedDict, total=False):
-    """Type definition for SWA roles source request"""
+    """Type definition for identity provider roles source request"""
 
     identityProvider: str
     userId: str
@@ -22,22 +21,22 @@ class RolesSourceRequest(TypedDict, total=False):
 
 
 class RolesSourceResponse(TypedDict):
-    """Type definition for SWA roles source response"""
+    """Type definition for identity provider roles source response"""
 
     roles: list[str]
 
 
 def extract_user_info(request_body: dict) -> tuple[str | None, str | None, str | None]:
     """
-    Extract user ID, email, and display name from SWA request.
+    Extract user ID, email, and display name from identity provider request.
 
     Args:
-        request_body: Parsed JSON request body from SWA
+        request_body: Parsed JSON request body from identity provider
 
     Returns:
-        tuple: (entra_user_id, user_email, display_name) - any may be None if not provided
+        tuple: (user_id, user_email, display_name) - any may be None if not provided
     """
-    entra_user_id = request_body.get("userId")
+    user_id = request_body.get("userId")
     user_email = request_body.get("userDetails")
 
     # Try to extract display name from claims if available
@@ -48,12 +47,12 @@ def extract_user_info(request_body: dict) -> tuple[str | None, str | None, str |
             display_name = claim.get("val")
             break
 
-    return entra_user_id, user_email, display_name
+    return user_id, user_email, display_name
 
 
 async def get_roles_for_user(
     user_email: str,
-    entra_user_id: str | None = None,
+    user_id: str | None = None,
     display_name: str | None = None
 ) -> RolesSourceResponse:
     """
@@ -62,11 +61,11 @@ async def get_roles_for_user(
     This function:
     1. Ensures user exists in the system (creates if needed)
     2. Applies auto-provisioning rules (first user = admin, domain matching)
-    3. Returns SWA-compatible role list
+    3. Returns identity provider-compatible role list
 
     Args:
         user_email: User's email address from authentication provider
-        entra_user_id: Azure AD user object ID (oid claim), if available
+        user_id: User object ID from identity provider, if available
         display_name: User's display name from auth provider
 
     Returns:
@@ -75,11 +74,11 @@ async def get_roles_for_user(
     Raises:
         ValueError: If user cannot be provisioned (e.g., no domain match)
     """
-    logger.info(f"Getting roles for user: {user_email} (entra_id={entra_user_id})")
+    logger.info(f"Getting roles for user: {user_email} (user_id={user_id})")
 
     try:
         # Ensure user is provisioned (handles first user, domain-based join, etc.)
-        result = await ensure_user_provisioned(user_email, entra_user_id, display_name)
+        result = await ensure_user_provisioned(user_email, user_id, display_name)
 
         # Return roles based on provisioning result
         response: RolesSourceResponse = {"roles": result.roles}
@@ -95,15 +94,15 @@ async def get_roles_for_user(
 
 async def handle_roles_source_request(request_body: dict) -> RolesSourceResponse:
     """
-    Handle a complete roles source request from SWA.
+    Handle a complete roles source request from identity provider.
 
     This is the main entry point for the roles source endpoint.
     It orchestrates extracting user info, provisioning, and returning roles.
 
-    Request format from SWA (per Microsoft docs):
+    Request format from identity provider:
     {
       "identityProvider": "aad",
-      "userId": "user-id-from-azure-ad",
+      "userId": "user-id-from-provider",
       "userDetails": "user@example.com",
       "claims": [...]
     }
@@ -114,7 +113,7 @@ async def handle_roles_source_request(request_body: dict) -> RolesSourceResponse
     }
 
     Args:
-        request_body: Parsed JSON request body from SWA
+        request_body: Parsed JSON request body from identity provider
 
     Returns:
         RolesSourceResponse: Dictionary with "roles" key
@@ -122,10 +121,10 @@ async def handle_roles_source_request(request_body: dict) -> RolesSourceResponse
     Raises:
         ValueError: If request is missing required fields or user provisioning fails
     """
-    logger.info("Handling roles source request from SWA")
+    logger.info("Handling roles source request from identity provider")
 
     # Extract user information
-    entra_user_id, user_email, display_name = extract_user_info(request_body)
+    user_id, user_email, display_name = extract_user_info(request_body)
 
     if not user_email:
         logger.warning("No userDetails (email) provided in GetRoles request")
@@ -133,4 +132,4 @@ async def handle_roles_source_request(request_body: dict) -> RolesSourceResponse
         return {"roles": ["anonymous"]}
 
     # Get roles for the user
-    return await get_roles_for_user(user_email, entra_user_id, display_name)
+    return await get_roles_for_user(user_email, user_id, display_name)

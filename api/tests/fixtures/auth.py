@@ -2,7 +2,7 @@
 Test authentication helpers for integration tests.
 
 Provides JWT token generation and HTTP header helpers for testing
-authenticated endpoints with real HTTP requests to the Functions server.
+authenticated endpoints with real HTTP requests to the FastAPI server.
 """
 
 from datetime import datetime, timedelta
@@ -18,7 +18,7 @@ def create_test_jwt(
     """
     Create test JWT token for authentication.
 
-    In integration tests, this bypasses real Azure AD and allows
+    In integration tests, this bypasses real Azure AD/Entra and allows
     testing with any email/user combination.
 
     Args:

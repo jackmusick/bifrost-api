@@ -3,8 +3,6 @@ Schedules Router
 
 Manages scheduled workflow execution.
 Allows listing and triggering scheduled workflows.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

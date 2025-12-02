@@ -2,7 +2,7 @@
 Package Installation Consumer
 
 Processes package installation requests from RabbitMQ queue.
-Replaces the Azure Queue trigger version.
+Replaces the Azure Queue trigger version with RabbitMQ consumer.
 """
 
 import logging

@@ -3,8 +3,6 @@ Packages Router
 
 Python package management for the workflow runtime.
 Allows listing, installing, and uninstalling Python packages.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

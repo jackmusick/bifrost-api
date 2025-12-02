@@ -3,8 +3,6 @@ OAuth Connections Router
 
 Manages OAuth connections for workflow integrations.
 This is separate from oauth_sso.py which handles user authentication.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

@@ -5,9 +5,10 @@ Eliminates repetitive error response and success response patterns.
 """
 
 import json
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-import azure.functions as func
+if TYPE_CHECKING:
+    import azure.functions as func
 
 from shared.models import ErrorResponse
 
@@ -17,7 +18,7 @@ def error_response(
     message: str,
     status_code: int,
     details: Optional[dict] = None
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Create a standardized error response.
 
@@ -44,7 +45,7 @@ def error_response(
 def success_response(
     data: Any,
     status_code: int = 200
-) -> func.HttpResponse:
+) -> "func.HttpResponse":
     """
     Create a standardized success response.
 
@@ -70,7 +71,7 @@ def success_response(
 
 
 # Common error response shortcuts
-def not_found(resource: str, identifier: str) -> func.HttpResponse:
+def not_found(resource: str, identifier: str) -> "func.HttpResponse":
     """404 Not Found response"""
     return error_response(
         "NotFound",
@@ -79,7 +80,7 @@ def not_found(resource: str, identifier: str) -> func.HttpResponse:
     )
 
 
-def conflict(resource: str, identifier: str) -> func.HttpResponse:
+def conflict(resource: str, identifier: str) -> "func.HttpResponse":
     """409 Conflict response (duplicate)"""
     return error_response(
         "Conflict",
@@ -88,22 +89,22 @@ def conflict(resource: str, identifier: str) -> func.HttpResponse:
     )
 
 
-def validation_error(message: str = "Invalid request data", errors: Optional[list] = None) -> func.HttpResponse:
+def validation_error(message: str = "Invalid request data", errors: Optional[list] = None) -> "func.HttpResponse":
     """400 Validation Error response"""
     details = {"errors": errors} if errors else None
     return error_response("ValidationError", message, 400, details)
 
 
-def bad_request(message: str) -> func.HttpResponse:
+def bad_request(message: str) -> "func.HttpResponse":
     """400 Bad Request response"""
     return error_response("BadRequest", message, 400)
 
 
-def internal_error(message: str = "An internal error occurred") -> func.HttpResponse:
+def internal_error(message: str = "An internal error occurred") -> "func.HttpResponse":
     """500 Internal Server Error response"""
     return error_response("InternalServerError", message, 500)
 
 
-def service_unavailable(message: str) -> func.HttpResponse:
+def service_unavailable(message: str) -> "func.HttpResponse":
     """503 Service Unavailable response"""
     return error_response("ServiceUnavailable", message, 503)

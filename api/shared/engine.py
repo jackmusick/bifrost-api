@@ -611,7 +611,7 @@ async def _execute_workflow_with_trace(
             is_script_log = record.name.startswith('script.')
 
             # Only capture logs that originate from the workflow's file or workspace
-            # This prevents capturing Azure SDK, aiohttp, and infrastructure logs
+            # This prevents capturing third-party SDK, aiohttp, and infrastructure logs
             # Use basename comparison since dynamically loaded modules may have different path formats
             workflow_basename = os.path.basename(workflow_module_file)
             record_basename = os.path.basename(record.pathname)

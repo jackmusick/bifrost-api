@@ -1,7 +1,7 @@
 """
 Mock Request Helpers for Testing
 
-Provides reusable helpers to create mock Azure Functions HTTP requests with proper authentication.
+Provides reusable helpers to create mock FastAPI HTTP requests with proper authentication.
 These helpers simulate the actual HTTP requests that endpoints receive in production.
 """
 
@@ -15,7 +15,7 @@ from .mock_auth import TestUsers, create_function_key_headers, create_org_user_h
 
 
 class MockRequestHelper:
-    """Helper class for creating mock Azure Functions HTTP requests"""
+    """Helper class for creating mock FastAPI HTTP requests"""
 
     @staticmethod
     def create_mock_request(
@@ -28,7 +28,7 @@ class MockRequestHelper:
         org_id: str | None = None
     ) -> func.HttpRequest:
         """
-        Create a mock Azure Functions HTTP request with authentication.
+        Create a mock FastAPI HTTP request with authentication.
 
         Args:
             method: HTTP method (GET, POST, PUT, DELETE, etc.)

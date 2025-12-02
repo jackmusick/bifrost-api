@@ -3,11 +3,11 @@ Bifrost Platform SDK
 
 Provides Python API access to platform features from workflows.
 
-All methods interacting with Azure services (storage, secrets, config, organizations,
+All methods interacting with database services (secrets, config, organizations,
 roles, executions, forms, oauth) are async and must be called with await.
 
 Usage:
-    from bifrost import organizations, workflows, files, storage, forms, executions, roles
+    from bifrost import organizations, workflows, files, forms, executions, roles
     from bifrost import config, secrets, oauth
 
 Example:
@@ -16,11 +16,6 @@ Example:
 
     # Execute a workflow
     result = workflows.execute("process_order", {"order_id": "12345"})
-
-    # Cloud storage operations (async)
-    blob_uri = await storage.upload("files", "exports/report.csv", data, "text/csv")
-    download_url = await storage.generate_url("files", "exports/report.csv", expiry_hours=24)
-    file_data = await storage.download("uploads", "user-files/input.xlsx")
 
     # Local filesystem operations (async with aiofiles)
     await files.write("data/temp.txt", "content", location="temp")
@@ -54,7 +49,6 @@ from .oauth import oauth
 from .organizations import organizations
 from .roles import roles
 from .secrets import secrets
-from .storage import storage
 from .workflows import workflows
 
 # Import decorators and context from shared module
@@ -83,7 +77,6 @@ __all__ = [
     'organizations',
     'workflows',
     'files',
-    'storage',
     'forms',
     'executions',
     'roles',

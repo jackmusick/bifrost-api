@@ -1,9 +1,9 @@
 """
-Authentication and Authorization for Azure Functions
+Authentication and Authorization
 
 Unified authentication system supporting:
-- Azure Easy Auth (X-MS-CLIENT-PRINCIPAL) for user authentication
-- Function keys (x-functions-key header or ?code query param) for service-to-service
+- JWT tokens for user authentication
+- API keys for service-to-service authentication
 - Organization context derivation and validation
 """
 
@@ -26,11 +26,11 @@ def is_production() -> bool:
     Check if running in production environment.
 
     Returns:
-        True if in production (Azure), False if local development
+        True if in production, False if local development
     """
     return bool(
-        os.environ.get('WEBSITE_SITE_NAME') or  # Azure App Service
-        os.environ.get('AZURE_FUNCTIONS_ENVIRONMENT',
+        os.environ.get('WEBSITE_SITE_NAME') or  # App Service
+        os.environ.get('ENVIRONMENT',
                        '').lower() == 'production'
     )
 
@@ -57,7 +57,7 @@ class FunctionKeyPrincipal:
 @dataclass
 class UserPrincipal:
     """
-    Principal for user authentication via Azure Easy Auth.
+    Principal for user authentication via JWT token.
     Represents an authenticated end-user with identity and roles.
     """
     user_id: str
@@ -151,7 +151,7 @@ class AuthenticationService:
         return None
 
     async def _try_easy_auth(self, req: func.HttpRequest) -> UserPrincipal | None:
-        """Try to authenticate with Azure Easy Auth"""
+        """Try to authenticate with JWT token (legacy support for X-MS-CLIENT-PRINCIPAL)"""
         header = req.headers.get('X-MS-CLIENT-PRINCIPAL')
         if not header:
             return None
@@ -160,8 +160,7 @@ class AuthenticationService:
             # Decode base64 JSON
             data = json.loads(base64.b64decode(header).decode('utf-8'))
 
-            # SWA production provides userId, but local dev (SWA CLI) does not
-            # Fall back to userDetails (email) as user_id for local development
+            # Extract userId and email from principal
             user_id = data.get('userId')
             email = data.get('userDetails', '')
 

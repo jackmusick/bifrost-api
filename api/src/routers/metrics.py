@@ -3,8 +3,6 @@ Metrics Router
 
 Dashboard metrics and statistics.
 Provides overview of platform usage and system health.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

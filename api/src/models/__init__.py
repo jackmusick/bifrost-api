@@ -31,7 +31,7 @@ from src.models.orm import (
 )
 
 # Pydantic schemas (API request/response)
-from src.models.schemas import (
+from src.models.models import (
     # Organization
     OrganizationBase,
     OrganizationCreate,
@@ -48,7 +48,7 @@ from src.models.schemas import (
     RoleUpdate,
     RolePublic,
     # Form
-    FormBase,
+    FormSchema,
     FormCreate,
     FormUpdate,
     FormPublic,
@@ -124,7 +124,7 @@ __all__ = [
     "RoleUpdate",
     "RolePublic",
     # Form schemas
-    "FormBase",
+    "FormSchema",
     "FormCreate",
     "FormUpdate",
     "FormPublic",

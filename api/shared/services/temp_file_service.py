@@ -2,7 +2,7 @@
 Temporary File Service
 
 Provides temporary file/directory creation (similar to PowerShell's New-TemporaryFile).
-Works with mounted /tmp directory.
+Works with /tmp directory (mounted or local).
 """
 
 import logging
@@ -20,7 +20,7 @@ class TempFileService:
 
     Uses /tmp which is either:
     - Local /tmp (dev)
-    - Mounted Azure Files /tmp (prod)
+    - Mounted volume /tmp (prod)
     """
 
     def __init__(self, tmp_path: str | None = None):

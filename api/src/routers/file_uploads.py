@@ -8,9 +8,6 @@ Usage:
     1. Client calls POST /api/uploads to get upload metadata
     2. Client uploads file directly to the server
     3. Client includes file metadata in form submission
-
-Note: Unlike the Azure version which used SAS URLs for direct blob upload,
-this version handles uploads directly through the API server.
 """
 
 import logging

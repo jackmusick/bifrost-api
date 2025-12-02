@@ -5,8 +5,11 @@ Business logic for retrieving scheduled workflows
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-import azure.functions as func
+if TYPE_CHECKING:
+    import azure.functions as func
+
 from croniter import croniter
 
 from shared.async_executor import enqueue_workflow_execution
@@ -19,7 +22,7 @@ from shared.workflows.cron_parser import calculate_next_run, cron_to_human_reada
 logger = logging.getLogger(__name__)
 
 
-async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
+async def process_due_schedules_handler(req: "func.HttpRequest") -> "func.HttpResponse":
     """
     Process all schedules that are currently due to run.
 
@@ -163,7 +166,7 @@ async def process_due_schedules_handler(req: func.HttpRequest) -> func.HttpRespo
     )
 
 
-async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
+async def get_schedules_handler(req: "func.HttpRequest") -> "func.HttpResponse":
     """
     Get all scheduled workflows with their CRON information and state.
 
@@ -309,7 +312,7 @@ async def get_schedules_handler(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-async def trigger_schedule_handler(req: func.HttpRequest, workflow_name: str) -> func.HttpResponse:
+async def trigger_schedule_handler(req: "func.HttpRequest", workflow_name: str) -> "func.HttpResponse":
     """
     Manually trigger a scheduled workflow to run now.
 

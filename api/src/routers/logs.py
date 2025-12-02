@@ -3,8 +3,6 @@ Logs Router
 
 System logging endpoints.
 Stub implementation - proper logging to PostgreSQL coming later.
-
-API-compatible with the existing Azure Functions implementation.
 """
 
 import logging

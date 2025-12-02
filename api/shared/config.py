@@ -37,8 +37,8 @@ def validate_filesystem_config() -> None:
             "\n"
             "  How to fix:\n"
             "  → Local: Set in local.settings.json (e.g., '/Users/yourname/bifrost-workspace')\n"
-            "  → CI/CD: Export before starting function app: export BIFROST_WORKSPACE_LOCATION=\"$(mktemp -d)\"\n"
-            "  → Azure: Set in deployment/azuredeploy.json app settings (e.g., '/mounts/workspace')"
+            "  → Docker: Export in docker-compose.yml or .env file (e.g., './bifrost-workspace')\n"
+            "  → Production: Set in deployment configuration (e.g., '/mounts/workspace')"
         )
     else:
         workspace_path = Path(workspace_location)
@@ -47,14 +47,14 @@ def validate_filesystem_config() -> None:
                 f"FATAL: Cannot access workspace directory: {workspace_location}\n"
                 f"  Directory does not exist.\n"
                 f"  → Local: Create directory: mkdir -p '{workspace_location}'\n"
-                f"  → Azure: Check Azure Files mount configuration in deployment/azuredeploy.json"
+                f"  → Production: Check mounted volume configuration in deployment"
             )
         elif not os.access(workspace_path, os.R_OK | os.W_OK):
             errors.append(
                 f"FATAL: Cannot access workspace directory: {workspace_location}\n"
                 f"  Directory exists but is not readable/writable.\n"
                 f"  → Local: Check directory permissions: chmod 755 '{workspace_location}'\n"
-                f"  → Azure: Check Azure Files mount permissions"
+                f"  → Production: Check mounted volume permissions"
             )
         else:
             logger.info(f"✓ Workspace location validated: {workspace_location}")
@@ -73,8 +73,8 @@ def validate_filesystem_config() -> None:
             "\n"
             "  How to fix:\n"
             "  → Local: Set in local.settings.json (e.g., '/Users/yourname/bifrost-temp')\n"
-            "  → CI/CD: Export before starting function app: export BIFROST_TEMP_LOCATION=\"$(mktemp -d)\"\n"
-            "  → Azure: Set in deployment/azuredeploy.json app settings (e.g., '/mounts/tmp')"
+            "  → Docker: Export in docker-compose.yml or .env file (e.g., './bifrost-temp')\n"
+            "  → Production: Set in deployment configuration (e.g., '/mounts/tmp')"
         )
     else:
         temp_path = Path(temp_location)
@@ -91,14 +91,14 @@ def validate_filesystem_config() -> None:
                 f"FATAL: Cannot access temp directory: {temp_location}\n"
                 f"  Directory exists but is not writable.\n"
                 f"  → Local: Check directory permissions\n"
-                f"  → Azure: Check Azure Files mount permissions"
+                f"  → Production: Check mounted volume permissions"
             )
         except Exception as e:
             errors.append(
                 f"FATAL: Cannot access temp directory: {temp_location}\n"
                 f"  Error: {str(e)}\n"
                 f"  → Local: Ensure parent directory exists and is writable\n"
-                f"  → Azure: Check Azure Files mount configuration in deployment/azuredeploy.json"
+                f"  → Production: Check mounted volume configuration in deployment"
             )
 
     # If any errors, log them and exit
@@ -112,7 +112,7 @@ def validate_filesystem_config() -> None:
         error_msg += "Application cannot start with invalid configuration.\n"
         error_msg += "Please fix the errors above and restart.\n"
 
-        # Log to both logger (for Azure Functions logs) and stderr (for immediate visibility)
+        # Log to both logger and stderr (for immediate visibility)
         logger.error(error_msg)
         print(error_msg, file=sys.stderr)
         sys.exit(1)
