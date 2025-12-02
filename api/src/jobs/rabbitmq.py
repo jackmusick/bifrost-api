@@ -5,6 +5,7 @@ Provides the base consumer class and connection management for processing
 background jobs from RabbitMQ queues.
 """
 
+import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -169,7 +170,17 @@ class BaseConsumer(ABC):
         """
         Handle incoming message.
 
-        Automatically handles acknowledgment and error handling.
+        Spawns a task to process each message concurrently, allowing
+        multiple messages to be processed in parallel up to prefetch_count.
+        """
+        # Create task for concurrent processing - don't await here
+        asyncio.create_task(self._process_message_with_ack(message))
+
+    async def _process_message_with_ack(self, message: IncomingMessage) -> None:
+        """
+        Process a message with proper acknowledgment handling.
+
+        This runs as a separate task to enable concurrent message processing.
         """
         async with message.process(requeue=False):
             try:

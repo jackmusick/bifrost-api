@@ -37,9 +37,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
     """
 
     def __init__(self):
+        from src.config import get_settings
+        settings = get_settings()
         super().__init__(
             queue_name=QUEUE_NAME,
-            prefetch_count=1,  # Process one at a time for resource control
+            prefetch_count=settings.max_concurrency,  # Allow concurrent processing
         )
 
     async def process_message(self, message_data: dict[str, Any]) -> None:

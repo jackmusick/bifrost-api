@@ -316,6 +316,7 @@ class TestCrossOrgParameterUsage:
                 class MockConfig:
                     value = {"value": "other-value"}
                     config_type = type('obj', (object,), {'value': 'string'})()
+                    organization_id = "org-999"
 
                 mock_result.scalars.return_value.first.return_value = MockConfig()
                 mock_session.execute = AsyncMock(return_value=mock_result)
@@ -427,6 +428,7 @@ class TestCrossOrgParameterUsage:
                 # Create a mock config object that exists
                 class MockConfig:
                     key = "old_key"
+                    organization_id = "org-999"
 
                 # Mock execute to return existing config
                 from unittest.mock import MagicMock

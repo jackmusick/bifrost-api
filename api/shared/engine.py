@@ -3,6 +3,7 @@ Unified Execution Engine
 Single source of truth for all code execution (workflows, scripts, data providers)
 """
 
+import asyncio
 import inspect
 import logging
 import os
@@ -772,7 +773,8 @@ async def _execute_workflow_with_trace(
 
         return trace_func
 
-    # Install trace function (chain with existing trace if present, e.g., debugpy)
+    # Build trace function chain (with existing trace if present, e.g., debugpy)
+    # Note: trace is installed per-thread in _run_workflow_in_thread
     existing_trace = sys.gettrace()
 
     def chained_trace_func(frame, event, arg):
@@ -783,8 +785,6 @@ async def _execute_workflow_with_trace(
         if existing_trace:
             return existing_trace(frame, event, arg)
         return chained_trace_func
-
-    sys.settrace(chained_trace_func if existing_trace else trace_func)
 
     # Track extra params injected into globals for cleanup
     injected_extra_params: list[str] = []
@@ -845,12 +845,31 @@ async def _execute_workflow_with_trace(
             if not first_param_is_context and first_param.name == 'context':
                 first_param_is_context = True
 
-        if first_param_is_context:
-            # Explicit context parameter - pass it as first positional argument
-            result = await func(context, **accepted_params)
-        else:
-            # No context parameter - just pass parameters (context available via ContextVar)
-            result = await func(**accepted_params)
+        # Define the workflow execution function
+        async def _run_workflow_async():
+            if first_param_is_context:
+                return await func(context, **accepted_params)
+            else:
+                return await func(**accepted_params)
+
+        def _run_workflow_in_thread():
+            """
+            Run the async workflow in a separate thread with its own event loop.
+            This allows blocking code (like time.sleep) to not block the main event loop,
+            enabling concurrent workflow execution.
+            """
+            # Set up trace function in this thread (trace is per-thread)
+            sys.settrace(chained_trace_func if existing_trace else trace_func)
+            try:
+                # Run the async workflow in a new event loop for this thread
+                return asyncio.run(_run_workflow_async())
+            finally:
+                # Clear trace function
+                sys.settrace(None)
+
+        # Run user code in thread pool to handle blocking operations
+        # This allows multiple workflows to run concurrently even if they use blocking calls
+        result = await asyncio.to_thread(_run_workflow_in_thread)
     except TypeError as e:
         # Check if this is the "got multiple values" error caused by missing context parameter
         if "got multiple values for argument" in str(e):
@@ -908,8 +927,7 @@ async def _execute_workflow_with_trace(
         exception_to_raise = WorkflowExecutionException(e, captured_vars, workflow_logs)
         result = None
     finally:
-        # Restore original trace function (e.g., debugpy)
-        sys.settrace(existing_trace)
+        # Note: trace function cleanup is handled in _run_workflow_in_thread
         # Clean up the logging handler
         root_logger.removeHandler(handler)
         # Clean up injected extra params from globals to avoid polluting the module namespace

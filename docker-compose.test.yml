@@ -116,6 +116,7 @@ services:
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
       BIFROST_WORKSPACE_LOCATION: /workspace
+      BIFROST_MAX_CONCURRENCY: ${MAX_CONCURRENCY:-10}
     volumes:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro

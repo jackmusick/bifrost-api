@@ -183,6 +183,8 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       # File Storage
       BIFROST_WORKSPACE_LOCATION: /workspace
+      # Concurrency
+      BIFROST_MAX_CONCURRENCY: ${MAX_CONCURRENCY:-10}
     volumes:
       - ./api/src:/app/src
       - ./api/shared:/app/shared
