@@ -21,7 +21,7 @@ import { formatDate, formatDateShort } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 type User = components["schemas"]["UserPublic"];
 type UserRolesResponse = components["schemas"]["UserRolesResponse"];
-type UserFormsResponse = components["schemas"]["src__schemas__roles__RoleFormsResponse"];
+type UserFormsResponse = components["schemas"]["RoleFormsResponse"];
 
 interface UserDetailsDialogProps {
 	user?: User | undefined;
@@ -174,10 +174,10 @@ export function UserDetailsDialog({
 												))}
 											</div>
 										) : roles &&
-										  (roles as UserRolesResponse).role_ids &&
-										  (roles as UserRolesResponse).role_ids.length > 0 ? (
+										  (roles as UserRolesResponse).roleIds &&
+										  (roles as UserRolesResponse).roleIds.length > 0 ? (
 											<div className="space-y-2">
-												{(roles as UserRolesResponse).role_ids.map(
+												{(roles as UserRolesResponse).roleIds.map(
 													(roleId: string) => (
 														<div
 															key={roleId}
@@ -231,21 +231,10 @@ export function UserDetailsDialog({
 												))}
 											</div>
 										) : formsAccess &&
-										  (formsAccess as UserFormsResponse).form_ids ? (
-											(formsAccess as UserFormsResponse).role_ids &&
-											(formsAccess as UserFormsResponse).role_ids!.includes("*") ? (
-												<div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950">
-													<p className="text-sm font-medium text-green-900 dark:text-green-100">
-														Full Access
-													</p>
-													<p className="text-sm text-green-700 dark:text-green-300">
-														This user has access to
-														all forms
-													</p>
-												</div>
-											) : (formsAccess as UserFormsResponse).form_ids.length > 0 ? (
+										  (formsAccess as UserFormsResponse).formIds ? (
+										(formsAccess as UserFormsResponse).formIds.length > 0 ? (
 												<div className="space-y-2">
-													{(formsAccess as UserFormsResponse).form_ids.map(
+													{(formsAccess as UserFormsResponse).formIds.map(
 														(formId: string) => (
 															<div
 																key={formId}

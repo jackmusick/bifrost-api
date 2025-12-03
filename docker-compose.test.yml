@@ -102,6 +102,35 @@ services:
     user: root
     command: ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
 
+  # Discovery Service (Test) - Watches files and syncs to DB
+  discovery:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.jobs
+    container_name: bifrost-test-discovery
+    environment:
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_ENVIRONMENT: testing
+      BIFROST_WORKSPACE_LOCATION: /workspace
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
+      - test-workspace:/workspace  # Same workspace as API for hot reload
+    depends_on:
+      api:
+        condition: service_healthy  # Wait for API (which runs migrations)
+      redis:
+        condition: service_healthy
+    user: root
+    command: ["python", "-m", "src.discovery.main"]
+    profiles:
+      - e2e  # Only start in E2E mode
+
   # Background Jobs Worker (Test) - Only started for E2E tests
   jobs:
     build:
@@ -116,7 +145,7 @@ services:
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
       BIFROST_WORKSPACE_LOCATION: /workspace
-      BIFROST_MAX_CONCURRENCY: ${MAX_CONCURRENCY:-10}
+      BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-10}
     volumes:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
@@ -128,6 +157,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      discovery:
+        condition: service_started
       api:
         condition: service_healthy
     # Entrypoint handles permissions; run as root so it can fix volume ownership

@@ -7,10 +7,14 @@ Based on FastAPI's official security tutorial patterns.
 Uses pwdlib (modern replacement for unmaintained passlib) for password hashing.
 """
 
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
 
@@ -209,11 +213,6 @@ def decode_mfa_token(token: str, expected_purpose: str = "mfa_verify") -> dict[s
 # =============================================================================
 # Secret Encryption (for storing secrets in database)
 # =============================================================================
-
-import base64
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
 def _get_fernet_key() -> bytes:

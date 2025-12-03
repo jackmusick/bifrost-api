@@ -101,7 +101,8 @@ class BaseRepository(Generic[ModelT]):
         Args:
             entity: Entity to delete
         """
-        await self.session.delete(entity)
+        # Note: session.delete() is NOT async - it just marks for deletion
+        self.session.delete(entity)
         await self.session.flush()
 
     async def delete_by_id(self, id: UUID) -> bool:

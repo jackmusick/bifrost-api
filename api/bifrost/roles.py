@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from src.models.schemas import Role, CreateRoleRequest, UpdateRoleRequest
+from src.models.schemas import Role
 
 from ._internal import get_context, require_permission
 
@@ -52,7 +52,6 @@ class roles:
             ...     permissions=["customers.read", "customers.write"]
             ... )
         """
-        from sqlalchemy import select
         from src.core.database import get_session_factory
         from src.models import Role as RoleModel
 
@@ -115,7 +114,7 @@ class roles:
         from src.core.database import get_session_factory
         from src.models import Role as RoleModel
 
-        context = get_context()
+        get_context()  # Validates user is authenticated
         session_factory = get_session_factory()
 
         role_uuid = UUID(role_id)
@@ -230,7 +229,7 @@ class roles:
         from src.core.database import get_session_factory
         from src.models import Role as RoleModel
 
-        context = require_permission("roles.update")
+        require_permission("roles.update")
         session_factory = get_session_factory()
 
         role_uuid = UUID(role_id)
@@ -288,7 +287,7 @@ class roles:
         from src.core.database import get_session_factory
         from src.models import Role as RoleModel
 
-        context = require_permission("roles.delete")
+        require_permission("roles.delete")
         session_factory = get_session_factory()
 
         role_uuid = UUID(role_id)
@@ -330,7 +329,7 @@ class roles:
         from src.core.database import get_session_factory
         from src.models import Role as RoleModel, UserRole
 
-        context = get_context()
+        get_context()  # Validates user is authenticated
         session_factory = get_session_factory()
 
         role_uuid = UUID(role_id)
@@ -375,7 +374,7 @@ class roles:
         from src.core.database import get_session_factory
         from src.models import Role as RoleModel, FormRole
 
-        context = get_context()
+        get_context()  # Validates user is authenticated
         session_factory = get_session_factory()
 
         role_uuid = UUID(role_id)

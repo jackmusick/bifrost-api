@@ -137,7 +137,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const checkAuthStatus = useCallback(async () => {
 		try {
 			// Check if system needs initial setup
-			const statusRes = await fetch("/api/auth/status");
+			const statusRes = await fetch("/auth/status");
 			if (statusRes.ok) {
 				const status = await statusRes.json();
 				setNeedsSetup(status.needs_setup);
@@ -187,7 +187,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	// Internal refresh function (no hooks)
 	const refreshTokenInternal = async (): Promise<boolean> => {
 		try {
-			const res = await fetch("/api/auth/refresh", {
+			const res = await fetch("/auth/refresh", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				credentials: "include", // Include httpOnly cookie
@@ -222,7 +222,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			formData.append("username", email);
 			formData.append("password", password);
 
-			const res = await fetch("/api/auth/login", {
+			const res = await fetch("/auth/login", {
 				method: "POST",
 				body: formData,
 			});
@@ -274,14 +274,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		[],
 	);
 
-	// Complete MFA verification
+	// Complete MFA verification during login (for users with MFA already set up)
 	const loginWithMfa = useCallback(
 		async (
 			mfaToken: string,
 			code: string,
 			trustDevice: boolean = false,
 		): Promise<void> => {
-			const res = await fetch("/api/auth/mfa/verify", {
+			const res = await fetch("/auth/mfa/login", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
@@ -321,7 +321,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			state: string,
 			codeVerifier: string,
 		): Promise<void> => {
-			const res = await fetch("/api/auth/oauth/callback", {
+			const res = await fetch("/auth/oauth/callback", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
@@ -383,7 +383,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			"/login",
 			"/setup",
 			"/auth/callback",
-			"/auth/mfa-setup",
+			"/mfa-setup",
 		];
 		const isPublicRoute = publicRoutes.some((route) =>
 			location.pathname.startsWith(route),

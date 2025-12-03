@@ -49,7 +49,7 @@ export const rolesService = {
 		roleId: string,
 		request: RoleUpdate,
 	): Promise<RolePublic> {
-		const { data, error } = await apiClient.PUT("/api/roles/{role_id}", {
+		const { data, error } = await apiClient.PATCH("/api/roles/{role_id}", {
 			params: { path: { role_id: roleId } },
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			body: request as any, // OpenAPI spec incorrectly expects full Role instead of RoleUpdate
@@ -143,57 +143,10 @@ export const rolesService = {
 	 * This handles the form->roles relationship properly
 	 */
 	async assignRolesToForm(formId: string, roleIds: string[]): Promise<void> {
-		// Get currently assigned roles to this form
-		const currentRoles = await this.getFormRoles(formId);
-		const currentRoleIds = new Set(
-			Array.isArray(currentRoles)
-				? currentRoles.map((r: { id: string }) => r.id)
-				: [],
-		);
-		const newRoleIds = new Set(roleIds);
-
-		// Remove roles that are no longer selected
-		for (const currentRoleId of currentRoleIds) {
-			if (!newRoleIds.has(currentRoleId)) {
-				await this.removeFormFromRole(currentRoleId, formId);
-			}
-		}
-
-		// Add new roles
+		// TODO: Implement once form->roles endpoints are available
+		// For now, assign each role to this form
 		for (const roleId of roleIds) {
-			if (!currentRoleIds.has(roleId)) {
-				await this.assignFormsToRole(roleId, { form_ids: [formId] });
-			}
+			await this.assignFormsToRole(roleId, { formIds: [formId] });
 		}
-	},
-
-	/**
-	 * Get roles assigned to a form
-	 */
-	async getFormRoles(
-		formId: string,
-	): Promise<{ id: string; name: string }[]> {
-		const { data, error } = await apiClient.GET("/api/forms/{form_id}/roles", {
-			params: { path: { form_id: formId } },
-		});
-		if (error)
-			throw new Error(
-				getErrorMessage(error, "Failed to fetch form roles"),
-			);
-		return (data as unknown as { id: string; name: string }[]) || [];
-	},
-
-	/**
-	 * Remove a form from a role
-	 */
-	async removeFormFromRole(roleId: string, formId: string): Promise<void> {
-		const { data, error } = await apiClient.DELETE(
-			"/api/roles/{role_id}/forms/{form_id}",
-			{
-				params: { path: { role_id: roleId, form_id: formId } },
-			},
-		);
-		if (error) throw new Error(`Failed to remove form from role: ${error}`);
-		return data;
 	},
 };

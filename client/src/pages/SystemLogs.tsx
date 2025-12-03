@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSystemLogs } from "@/hooks/useSystemLogs";
 import { LogDetailsDialog } from "@/components/logs/LogDetailsDialog";
 import {

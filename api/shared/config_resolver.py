@@ -11,7 +11,7 @@ from typing import Any, TYPE_CHECKING
 from .models import ConfigType
 
 if TYPE_CHECKING:
-    pass
+    from shared.context import Organization
 
 logger = logging.getLogger(__name__)
 

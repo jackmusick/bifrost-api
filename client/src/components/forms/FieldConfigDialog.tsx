@@ -29,10 +29,11 @@ import {
 import { ContextViewer } from "@/components/ui/context-viewer";
 import { AlertCircle, PanelRightOpen, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { components } from "@/lib/v1";
-type FormField = components["schemas"]["FormField-Input"];
-type FormFieldType = components["schemas"]["FormFieldType"];
-type DataProviderInputConfig = components["schemas"]["DataProviderInputConfig"];
+import type {
+	FormField,
+	FormFieldType,
+	DataProviderInputConfig,
+} from "@/lib/client-types";
 
 import {
 	dataProvidersService,
@@ -130,7 +131,7 @@ export function FieldConfigDialog({
 			setName(field.name);
 			setLabel(field.label ?? "");
 			setType(field.type);
-			setRequired(field.required);
+			setRequired(field.required ?? false);
 			setPlaceholder(field.placeholder ?? "");
 			setHelpText(field.help_text ?? "");
 			setDefaultValue((field.default_value as string) ?? "");

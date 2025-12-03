@@ -26,7 +26,7 @@ import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 type DataProviderMetadata = components["schemas"]["DataProviderMetadata"];
-type WorkflowExecutionResponse = components["schemas"]["shared__models__WorkflowExecutionResponse"];
+type WorkflowExecutionResponse = components["schemas"]["WorkflowExecutionResponse"];
 type WorkflowValidationResponse = components["schemas"]["WorkflowValidationResponse"];
 type ValidationIssue = components["schemas"]["ValidationIssue"];
 

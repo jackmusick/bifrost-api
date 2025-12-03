@@ -210,7 +210,7 @@ export function SourceControlPanel() {
 		);
 	}
 
-	const hasChanges = status.changedFiles > 0;
+	const hasChanges = (status.changedFiles ?? 0) > 0;
 
 	return (
 		<div className="flex h-full flex-col">

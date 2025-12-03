@@ -2,16 +2,12 @@ import { Outlet } from "react-router-dom";
 import { useState } from "react";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { NoAccess } from "@/components/NoAccess";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useHealthStore } from "@/stores/healthStore";
-import { WorkflowEngineError } from "@/pages/WorkflowEngineError";
 
 export function ContentLayout() {
 	const { isLoading, isPlatformAdmin, isOrgUser } = useAuth();
-	const healthStatus = useHealthStore((state) => state.status);
-	const isServerUnhealthy = healthStatus === "unhealthy";
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
 		// Load collapsed state from localStorage
@@ -43,11 +39,6 @@ export function ContentLayout() {
 	const hasAccess = isPlatformAdmin || isOrgUser;
 	if (!hasAccess) {
 		return <NoAccess />;
-	}
-
-	// Show server error page if workflow engine is unavailable
-	if (isServerUnhealthy) {
-		return <WorkflowEngineError />;
 	}
 
 	const toggleSidebar = () => {

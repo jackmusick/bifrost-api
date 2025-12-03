@@ -8,6 +8,7 @@
  * Publishes issues to notification center for user visibility.
  */
 
+import { authFetch } from "@/lib/api-client";
 import { useNotificationStore } from "@/stores/notificationStore";
 
 // Type definitions (will be replaced with auto-generated types after npm run generate:types)
@@ -53,11 +54,8 @@ export const sdkScannerService = {
 	 * Scan entire workspace for SDK usage issues
 	 */
 	async scanWorkspace(): Promise<WorkspaceScanResponse> {
-		const response = await fetch("/api/workflows/scan", {
+		const response = await authFetch("/api/workflows/scan", {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 		});
 
 		if (!response.ok) {
@@ -71,11 +69,8 @@ export const sdkScannerService = {
 	 * Scan a single file for SDK usage issues
 	 */
 	async scanFile(request: FileScanRequest): Promise<WorkspaceScanResponse> {
-		const response = await fetch("/api/workflows/scan/file", {
+		const response = await authFetch("/api/workflows/scan/file", {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(request),
 		});
 

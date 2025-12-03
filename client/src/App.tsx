@@ -9,6 +9,7 @@ import { QuickAccess } from "@/components/quick-access/QuickAccess";
 import { PageLoader } from "@/components/PageLoader";
 import { useEditorStore } from "@/stores/editorStore";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { OrgScopeProvider, useOrgScope } from "@/contexts/OrgScopeContext";
 import {
 	KeyboardProvider,
@@ -58,14 +59,6 @@ const ExecutionDetails = lazy(() =>
 		default: m.ExecutionDetails,
 	})),
 );
-const WorkflowEngineError = lazy(() =>
-	import("@/pages/WorkflowEngineError").then((m) => ({
-		default: m.WorkflowEngineError,
-	})),
-);
-const Secrets = lazy(() =>
-	import("@/pages/Secrets").then((m) => ({ default: m.Secrets })),
-);
 const OAuthConnections = lazy(() =>
 	import("@/pages/OAuthConnections").then((m) => ({
 		default: m.OAuthConnections,
@@ -84,6 +77,18 @@ const Settings = lazy(() =>
 	import("@/pages/Settings").then((m) => ({ default: m.Settings })),
 );
 const SystemLogs = lazy(() => import("@/pages/SystemLogs"));
+const Login = lazy(() =>
+	import("@/pages/Login").then((m) => ({ default: m.Login })),
+);
+const Setup = lazy(() =>
+	import("@/pages/Setup").then((m) => ({ default: m.Setup })),
+);
+const MFASetup = lazy(() =>
+	import("@/pages/MFASetup").then((m) => ({ default: m.MFASetup })),
+);
+const AuthCallback = lazy(() =>
+	import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallback })),
+);
 
 function AppRoutes() {
 	const { brandingLoaded } = useOrgScope();
@@ -128,6 +133,12 @@ function AppRoutes() {
 
 			<Suspense fallback={<PageLoader />}>
 				<Routes>
+					{/* Public routes - no auth required */}
+					<Route path="login" element={<Login />} />
+					<Route path="setup" element={<Setup />} />
+					<Route path="mfa-setup" element={<MFASetup />} />
+					<Route path="auth/callback" element={<AuthCallback />} />
+
 					{/* OAuth Callback - Public (no auth, no layout) */}
 					<Route
 						path="oauth/callback/:connectionName"
@@ -137,12 +148,6 @@ function AppRoutes() {
 					<Route path="/" element={<Layout />}>
 						{/* Dashboard - PlatformAdmin only (OrgUsers redirected to /forms) */}
 						<Route index element={<Dashboard />} />
-
-						{/* Workflow Engine Error Page */}
-						<Route
-							path="workflow-engine-error"
-							element={<WorkflowEngineError />}
-						/>
 
 						{/* Workflows - PlatformAdmin only */}
 						<Route
@@ -248,15 +253,6 @@ function AppRoutes() {
 							}
 						/>
 
-						{/* Secrets - PlatformAdmin only */}
-						<Route
-							path="secrets"
-							element={
-								<ProtectedRoute requirePlatformAdmin>
-									<Secrets />
-								</ProtectedRoute>
-							}
-						/>
 
 						{/* OAuth Connections - PlatformAdmin only */}
 						<Route
@@ -339,11 +335,13 @@ function App() {
 	return (
 		<ErrorBoundary>
 			<BrowserRouter>
-				<OrgScopeProvider>
-					<KeyboardProvider>
-						<AppRoutes />
-					</KeyboardProvider>
-				</OrgScopeProvider>
+				<AuthProvider>
+					<OrgScopeProvider>
+						<KeyboardProvider>
+							<AppRoutes />
+						</KeyboardProvider>
+					</OrgScopeProvider>
+				</AuthProvider>
 			</BrowserRouter>
 		</ErrorBoundary>
 	);

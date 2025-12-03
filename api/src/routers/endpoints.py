@@ -9,6 +9,11 @@ Authentication:
     - Uses X-Bifrost-Key header with workflow API key
     - Keys can be global (work for all workflows) or workflow-specific
     - Keys are created via /api/workflow-keys endpoint by platform admins
+
+Architecture:
+    - API never executes workflow code directly
+    - Sync execution: Queue to RabbitMQ, wait on Redis BLPOP for result
+    - Async execution: Queue to RabbitMQ, return immediately
 """
 
 import logging
@@ -21,11 +26,8 @@ from pydantic import BaseModel
 
 from shared.context import ExecutionContext
 from shared.discovery import get_workflow
-from shared.workflow_endpoint_utils import (
-    coerce_parameter_types,
-    separate_workflow_params,
-)
 from src.core.database import get_db_context
+from src.core.redis_client import get_redis_client, DEFAULT_TIMEOUT_SECONDS
 from src.models import Execution
 from src.models.enums import ExecutionStatus as DbExecutionStatus
 from src.routers.workflow_keys import validate_workflow_key
@@ -206,7 +208,19 @@ async def _execute_sync(
     workflow_func: Any,
     workflow_metadata: Any,
 ) -> EndpointExecuteResponse:
-    """Execute workflow synchronously."""
+    """
+    Execute workflow synchronously via queue.
+
+    Instead of executing workflow directly (which would block and require
+    filesystem access), we:
+    1. Create execution record
+    2. Queue to RabbitMQ with sync=True
+    3. Wait for result via Redis BLPOP
+    4. Return result to caller
+
+    This allows the API to stay lightweight without filesystem access.
+    """
+    from shared.async_executor import enqueue_workflow_execution
     from src.core.database import get_session_factory
     from src.core.pubsub import publish_execution_update
 
@@ -219,80 +233,53 @@ async def _execute_sync(
         execution = Execution(
             id=execution_id,
             workflow_name=workflow_name,
-            status=DbExecutionStatus.RUNNING,
+            status=DbExecutionStatus.PENDING,
             parameters=input_data,
             executed_by=None,  # API key execution
             executed_by_name="API Key",
             created_at=start_time,
-            started_at=start_time,
         )
         db.add(execution)
         await db.commit()
 
-    await publish_execution_update(execution_id, "Running")
+    await publish_execution_update(execution_id, "Pending")
 
-    try:
-        # Apply type coercion
-        param_metadata = {param.name: param for param in workflow_metadata.parameters}
-        coerced_data = coerce_parameter_types(input_data, param_metadata)
+    # Get timeout from workflow metadata (default 5 minutes)
+    timeout_seconds = getattr(workflow_metadata, "timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
 
-        # Separate workflow params from extras
-        workflow_params, _ = separate_workflow_params(coerced_data, workflow_metadata)
+    # Queue execution with sync=True
+    await enqueue_workflow_execution(
+        context=context,
+        workflow_name=workflow_name,
+        parameters=input_data,
+        form_id=None,
+        execution_id=execution_id,
+        sync=True,
+    )
 
-        # Execute workflow
-        result = await workflow_func(context, **workflow_params)
+    logger.info(f"Queued sync workflow execution: {workflow_name} ({execution_id})")
 
-        # Update execution record
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+    # Wait for result from Redis
+    redis_client = get_redis_client()
+    result = await redis_client.wait_for_result(
+        execution_id=execution_id,
+        timeout_seconds=timeout_seconds,
+    )
 
-        async with session_factory() as db:
-            from sqlalchemy import select
-            exec_result = await db.execute(
-                select(Execution).where(Execution.id == execution_id)
-            )
-            execution = exec_result.scalar_one()
-            execution.status = DbExecutionStatus.SUCCESS
-            execution.result = result
-            execution.completed_at = end_time
-            execution.duration_ms = duration_ms
-            await db.commit()
-
-        await publish_execution_update(execution_id, "Success")
-
-        logger.info(f"Workflow endpoint executed: {workflow_name} ({duration_ms}ms)")
-
+    if result is None:
+        # Timeout waiting for result
+        logger.error(f"Timeout waiting for workflow result: {workflow_name} ({execution_id})")
         return EndpointExecuteResponse(
             execution_id=execution_id,
-            status="Success",
-            result=result,
-            duration_ms=duration_ms,
+            status="Timeout",
+            error=f"Workflow execution timed out after {timeout_seconds} seconds",
         )
 
-    except Exception as e:
-        # Update execution with error
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        async with session_factory() as db:
-            from sqlalchemy import select
-            exec_result = await db.execute(
-                select(Execution).where(Execution.id == execution_id)
-            )
-            execution = exec_result.scalar_one()
-            execution.status = DbExecutionStatus.FAILED
-            execution.error_message = str(e)
-            execution.completed_at = end_time
-            execution.duration_ms = duration_ms
-            await db.commit()
-
-        await publish_execution_update(execution_id, "Failed")
-
-        logger.error(f"Workflow endpoint failed: {workflow_name}: {e}", exc_info=True)
-
-        return EndpointExecuteResponse(
-            execution_id=execution_id,
-            status="Failed",
-            error=str(e),
-            duration_ms=duration_ms,
-        )
+    # Return result from worker
+    return EndpointExecuteResponse(
+        execution_id=execution_id,
+        status=result.get("status", "Unknown"),
+        result=result.get("result"),
+        error=result.get("error"),
+        duration_ms=result.get("duration_ms"),
+    )

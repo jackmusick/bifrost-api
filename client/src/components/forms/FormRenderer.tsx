@@ -18,11 +18,13 @@ import { Loader2, Upload } from "lucide-react";
 import DOMPurify from "dompurify";
 import ReactMarkdown from "react-markdown";
 import type { components } from "@/lib/v1";
+import type {
+	FormField,
+	FormSchema,
+	DataProviderInputConfig,
+} from "@/lib/client-types";
 
-type Form = components["schemas"]["FormRead"];
-type FormField = components["schemas"]["FormField-Output"];
-type FormSchema = components["schemas"]["FormSchema-Output"];
-type DataProviderInputConfig = components["schemas"]["DataProviderInputConfig"];
+type Form = components["schemas"]["FormPublic"];
 import { useSubmitForm } from "@/hooks/useForms";
 
 import {
@@ -44,7 +46,7 @@ function toComboboxOptions(
 	return options.map((opt) => ({
 		value: opt.value,
 		label: opt.label,
-		description: opt.description ?? undefined,
+		...(opt.description ? { description: opt.description } : {}),
 	}));
 }
 
@@ -71,10 +73,11 @@ function FormRendererInner({ form }: FormRendererProps) {
 	// Execute launch workflow if configured
 	useLaunchWorkflow({ form });
 
-	// Get typed fields array
-	const fields = isFormSchema(form.form_schema)
-		? form.form_schema.fields
-		: [];
+	// Get typed fields array - memoized to prevent unnecessary re-renders
+	const fields = useMemo(
+		() => (isFormSchema(form.form_schema) ? form.form_schema.fields : []),
+		[form.form_schema],
+	);
 
 	// Single state object for all data provider state to batch updates
 	const [dataProviderState, setDataProviderState] = useState<{
@@ -603,7 +606,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 				<DataProviderField
 					fieldName={field.name}
 					fieldLabel={field.label ?? null}
-					fieldRequired={field.required}
+					fieldRequired={field.required ?? false}
 					fieldPlaceholder={field.placeholder ?? null}
 					fieldHelpText={field.help_text ?? null}
 					options={toComboboxOptions(options)}

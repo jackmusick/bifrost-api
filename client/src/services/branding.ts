@@ -3,17 +3,15 @@
  */
 
 import type { BrandingSettings } from "@/lib/branding";
+import { authFetch } from "@/lib/api-client";
 
 export const brandingService = {
 	/**
 	 * Get current branding settings
 	 */
 	async getBranding(): Promise<BrandingSettings> {
-		const response = await fetch("/api/branding", {
-			headers: {
-				Accept: "application/json",
-			},
-		});
+		// Note: This is a public endpoint, but authFetch still works
+		const response = await authFetch("/api/branding");
 
 		if (!response.ok) {
 			throw new Error(`Failed to fetch branding: ${response.statusText}`);
@@ -28,12 +26,9 @@ export const brandingService = {
 	async updateBranding(settings: {
 		primaryColor: string;
 	}): Promise<BrandingSettings> {
-		const response = await fetch("/api/branding", {
+		const response = await authFetch("/api/branding", {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-				Accept: "application/json",
-			},
+			headers: { Accept: "application/json" },
 			body: JSON.stringify(settings),
 		});
 
@@ -54,11 +49,9 @@ export const brandingService = {
 	 * Upload logo
 	 */
 	async uploadLogo(type: "square" | "rectangle", file: File): Promise<void> {
-		const response = await fetch(`/api/branding/logo/${type}`, {
+		const response = await authFetch(`/api/branding/logo/${type}`, {
 			method: "POST",
-			headers: {
-				"Content-Type": file.type,
-			},
+			headers: { "Content-Type": file.type },
 			body: file,
 		});
 

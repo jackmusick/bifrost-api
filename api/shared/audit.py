@@ -11,9 +11,7 @@ for efficient time-range queries.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Optional
-from uuid import UUID
 
 logger = logging.getLogger(__name__)
 

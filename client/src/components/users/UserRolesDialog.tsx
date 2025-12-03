@@ -39,8 +39,8 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
 
 	// Initialize selected roles when data loads
 	useEffect(() => {
-		if (userRoles && (userRoles as UserRolesResponse).role_ids) {
-			setSelectedRoles(new Set((userRoles as UserRolesResponse).role_ids));
+		if (userRoles && (userRoles as UserRolesResponse).roleIds) {
+			setSelectedRoles(new Set((userRoles as UserRolesResponse).roleIds));
 		}
 	}, [userRoles]);
 
@@ -49,10 +49,10 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
 
 		try {
 			if (checked) {
-				// Assign role (useAssignUsersToRole expects { roleId, request: { user_ids } })
+				// Assign role (useAssignUsersToRole expects { roleId, request: { userIds } })
 				await assignMutation.mutateAsync({
 					roleId,
-					request: { user_ids: [user.id] },
+					request: { userIds: [user.id] },
 				});
 				setSelectedRoles((prev) => new Set([...prev, roleId]));
 			} else {

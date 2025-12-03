@@ -162,7 +162,8 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):
         if not config:
             return False
 
-        await self.session.delete(config)
+        # Note: session.delete() is NOT async - it just marks for deletion
+        self.session.delete(config)
         await self.session.flush()
 
         logger.info(f"Deleted config {key}")

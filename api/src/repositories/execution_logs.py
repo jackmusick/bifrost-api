@@ -123,7 +123,7 @@ class ExecutionLogRepository:
             query = query.where(ExecutionLog.timestamp > since_timestamp)
 
         if level_filter:
-            query = query.where(ExecutionLog.level.in_([l.upper() for l in level_filter]))
+            query = query.where(ExecutionLog.level.in_([lvl.upper() for lvl in level_filter]))
 
         result = await self.session.execute(query)
         return list(result.scalars().all())
@@ -158,7 +158,7 @@ class ExecutionLogRepository:
             query = query.where(ExecutionLog.timestamp > since_timestamp)
 
         if exclude_levels:
-            query = query.where(ExecutionLog.level.notin_([l.upper() for l in exclude_levels]))
+            query = query.where(ExecutionLog.level.notin_([lvl.upper() for lvl in exclude_levels]))
 
         result = await self.session.execute(query)
         logs = result.scalars().all()

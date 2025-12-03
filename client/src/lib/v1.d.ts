@@ -869,12 +869,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
         /**
-         * Update a role
-         * @description Update a role (Platform admin only)
+         * Get a role
+         * @description Get a role by ID (Platform admin only)
          */
-        put: operations["update_role_api_roles__role_id__put"];
+        get: operations["get_role_api_roles__role_id__get"];
+        put?: never;
         post?: never;
         /**
          * Delete a role
@@ -883,7 +883,11 @@ export interface paths {
         delete: operations["delete_role_api_roles__role_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update a role
+         * @description Update a role (Platform admin only)
+         */
+        patch: operations["update_role_api_roles__role_id__patch"];
         trace?: never;
     };
     "/api/roles/{role_id}/users": {
@@ -1270,11 +1274,7 @@ export interface paths {
          * @description Get a specific form by ID. User must have access to the form.
          */
         get: operations["get_form_api_forms__form_id__get"];
-        /**
-         * Update a form
-         * @description Update an existing form (Platform admin only)
-         */
-        put: operations["update_form_api_forms__form_id__put"];
+        put?: never;
         post?: never;
         /**
          * Delete a form
@@ -1290,50 +1290,6 @@ export interface paths {
         patch: operations["update_form_api_forms__form_id__patch"];
         trace?: never;
     };
-    "/api/forms/{form_id}/roles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get roles assigned to a form
-         * @description Get all roles that have access to this form (Platform admin only)
-         */
-        get: operations["get_form_roles_api_forms__form_id__roles_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/forms/{form_id}/startup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Execute form's launch workflow
-         * @description Execute the form's launch workflow to populate initial form context
-         */
-        get: operations["execute_form_startup_api_forms__form_id__startup_get"];
-        put?: never;
-        /**
-         * Execute form's launch workflow
-         * @description Execute the form's launch workflow to populate initial form context
-         */
-        post: operations["execute_form_startup_api_forms__form_id__startup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/forms/{form_id}/execute": {
         parameters: {
             query?: never;
@@ -1345,29 +1301,9 @@ export interface paths {
         put?: never;
         /**
          * Execute a form
-         * @description Execute a form and run the linked workflow
+         * @description Execute the workflow linked to a form. Requires appropriate access based on form's access_level.
          */
         post: operations["execute_form_api_forms__form_id__execute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/forms/{form_id}/data-providers/{provider_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute a data provider in the context of a form
-         * @description Execute a data provider to retrieve options for form fields
-         */
-        post: operations["execute_form_data_provider_api_forms__form_id__data_providers__provider_name__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1826,10 +1762,70 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Git status
-         * @description Get current Git repository status (stub)
+         * Get GitHub sync status
+         * @description Get current GitHub repository connection and sync status
          */
-        get: operations["get_git_status_api_github_status_get"];
+        get: operations["get_github_status_api_github_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull from GitHub
+         * @description Pull latest changes from the connected GitHub repository
+         */
+        post: operations["pull_from_github_api_github_pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push to GitHub
+         * @description Push local changes to the connected GitHub repository
+         */
+        post: operations["push_to_github_api_github_push_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get local changes
+         * @description List local changes not yet pushed to GitHub
+         */
+        get: operations["get_changes_api_github_changes_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1858,26 +1854,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/github/pull": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pull from remote
-         * @description Pull latest changes from the remote repository (stub)
-         */
-        post: operations["pull_from_remote_api_github_pull_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/github/commit": {
         parameters: {
             query?: never;
@@ -1892,46 +1868,6 @@ export interface paths {
          * @description Commit staged changes with a message (stub)
          */
         post: operations["commit_changes_api_github_commit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/push": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Push to remote
-         * @description Push committed changes to the remote repository (stub)
-         */
-        post: operations["push_to_remote_api_github_push_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/changes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get local changes
-         * @description List files with uncommitted changes (stub)
-         */
-        get: operations["get_changes_api_github_changes_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2201,22 +2137,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2332,16 +2268,16 @@ export interface components {
          * @description Request to assign forms to a role.
          */
         AssignFormsToRoleRequest: {
-            /** Form Ids */
-            form_ids: string[];
+            /** Formids */
+            formIds: string[];
         };
         /**
          * AssignUsersToRoleRequest
          * @description Request to assign users to a role.
          */
         AssignUsersToRoleRequest: {
-            /** User Ids */
-            user_ids: string[];
+            /** Userids */
+            userIds: string[];
         };
         /**
          * AuthStatusResponse
@@ -2519,12 +2455,35 @@ export interface components {
             failed: number;
         };
         /**
-         * CommitRequest
-         * @description Commit local changes.
+         * CommitInfo
+         * @description Information about a single commit
          */
-        CommitRequest: {
-            /** Message */
+        CommitInfo: {
+            /**
+             * Sha
+             * @description Commit SHA
+             */
+            sha: string;
+            /**
+             * Message
+             * @description Commit message
+             */
             message: string;
+            /**
+             * Author
+             * @description Commit author
+             */
+            author: string;
+            /**
+             * Timestamp
+             * @description ISO 8601 timestamp
+             */
+            timestamp: string;
+            /**
+             * Is Pushed
+             * @description Whether commit is pushed to remote
+             */
+            is_pushed: boolean;
         };
         /**
          * Config
@@ -2565,6 +2524,32 @@ export interface components {
          * @enum {string}
          */
         ConfigType: "string" | "int" | "bool" | "json" | "secret";
+        /**
+         * ConflictInfo
+         * @description Information about conflicts in a file (no markers written to disk)
+         */
+        ConflictInfo: {
+            /**
+             * File Path
+             * @description Relative path to conflicted file
+             */
+            file_path: string;
+            /**
+             * Current Content
+             * @description Local version of the file
+             */
+            current_content: string;
+            /**
+             * Incoming Content
+             * @description Remote version of the file
+             */
+            incoming_content: string;
+            /**
+             * Base Content
+             * @description Common ancestor version (if available)
+             */
+            base_content?: string | null;
+        };
         /**
          * CreateOAuthConnectionRequest
          * @description Request model for creating a new OAuth connection
@@ -2630,25 +2615,6 @@ export interface components {
             recent_failures: components["schemas"]["RecentFailure"][];
         };
         /**
-         * DataProviderInputConfig
-         * @description Configuration for a data provider input parameter.
-         */
-        DataProviderInputConfig: {
-            mode: components["schemas"]["DataProviderInputMode"];
-            /** Value */
-            value?: string | null;
-            /** Field Name */
-            field_name?: string | null;
-            /** Expression */
-            expression?: string | null;
-        };
-        /**
-         * DataProviderInputMode
-         * @description Data provider input configuration modes.
-         * @enum {string}
-         */
-        DataProviderInputMode: "static" | "fieldRef" | "expression";
-        /**
          * DataProviderMetadata
          * @description Data provider metadata from @data_provider decorator (T008)
          */
@@ -2682,54 +2648,6 @@ export interface components {
              * @description Workspace-relative file path (e.g., 'data_providers/my_provider.py')
              */
             relative_file_path?: string | null;
-        };
-        /**
-         * DataProviderOption
-         * @description Option returned by a data provider.
-         */
-        DataProviderOption: {
-            /** Value */
-            value: string;
-            /** Label */
-            label: string;
-            /** Description */
-            description?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * DataProviderRequest
-         * @description Request for executing a data provider.
-         */
-        DataProviderRequest: {
-            /**
-             * No Cache
-             * @default false
-             */
-            no_cache: boolean;
-            /** Inputs */
-            inputs?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * DataProviderResponse
-         * @description Response from data provider execution.
-         */
-        DataProviderResponse: {
-            /** Provider */
-            provider: string;
-            /** Options */
-            options?: components["schemas"]["DataProviderOption"][];
-            /**
-             * Cached
-             * @default false
-             */
-            cached: boolean;
-            /** Cache Expires At */
-            cache_expires_at?: string | null;
         };
         /**
          * DetailedHealthCheck
@@ -2796,6 +2714,12 @@ export interface components {
             avg_duration_seconds: number;
         };
         /**
+         * ExecutionStatus
+         * @description Workflow execution status
+         * @enum {string}
+         */
+        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
+        /**
          * ExecutionsListResponse
          * @description Response model for listing workflow executions with pagination
          */
@@ -2810,6 +2734,56 @@ export interface components {
              * @description Continuation token for next page (opaque, base64-encoded). Presence of token indicates more results available.
              */
             continuation_token?: string | null;
+        };
+        /**
+         * FileChange
+         * @description Represents a changed file in Git
+         */
+        FileChange: {
+            /**
+             * Path
+             * @description Relative path from workspace root
+             */
+            path: string;
+            /** @description Git status of the file */
+            status: components["schemas"]["GitFileStatus"];
+            /**
+             * Additions
+             * @description Number of lines added
+             */
+            additions?: number | null;
+            /**
+             * Deletions
+             * @description Number of lines deleted
+             */
+            deletions?: number | null;
+        };
+        /**
+         * FileContentRequest
+         * @description Request to write file content
+         */
+        FileContentRequest: {
+            /**
+             * Path
+             * @description Relative path from /home/repo
+             */
+            path: string;
+            /**
+             * Content
+             * @description File content (plain text or base64 encoded)
+             */
+            content: string;
+            /**
+             * Encoding
+             * @description Content encoding (utf-8 or base64)
+             * @default utf-8
+             */
+            encoding: string;
+            /**
+             * Expected Etag
+             * @description Expected ETag for conflict detection (optional)
+             */
+            expected_etag?: string | null;
         };
         /**
          * FileContentResponse
@@ -2961,7 +2935,7 @@ export interface components {
         FormAccessLevel: "public" | "authenticated" | "role_based";
         /**
          * FormCreate
-         * @description Schema for creating a form.
+         * @description Input for creating a form.
          */
         FormCreate: {
             /** Name */
@@ -2978,138 +2952,23 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            form_schema: components["schemas"]["FormSchema-Input"];
-            access_level?: components["schemas"]["FormAccessLevel"] | null;
-        };
-        /**
-         * FormExecuteRequest
-         * @description Request for executing a form.
-         */
-        FormExecuteRequest: {
-            /** Form Data */
-            form_data?: {
+            /** Form Schema */
+            form_schema: {
                 [key: string]: unknown;
-            };
+            } | components["schemas"]["FormSchema"];
+            /** @default role_based */
+            access_level: components["schemas"]["FormAccessLevel"] | null;
         };
         /**
-         * FormField
-         * @description Form field definition.
+         * FormPublic
+         * @description Form output for API responses.
          */
-        "FormField-Input": {
+        FormPublic: {
             /**
-             * Name
-             * @description Parameter name for workflow
+             * Id
+             * Format: uuid
              */
-            name: string;
-            /**
-             * Label
-             * @description Display label
-             */
-            label?: string | null;
-            type: components["schemas"]["FormFieldType"];
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            /** Validation */
-            validation?: {
-                [key: string]: unknown;
-            } | null;
-            /** Data Provider */
-            data_provider?: string | null;
-            /** Data Provider Inputs */
-            data_provider_inputs?: {
-                [key: string]: components["schemas"]["DataProviderInputConfig"];
-            } | null;
-            /** Default Value */
-            default_value?: unknown | null;
-            /** Placeholder */
-            placeholder?: string | null;
-            /** Help Text */
-            help_text?: string | null;
-            /** Visibility Expression */
-            visibility_expression?: string | null;
-            /** Options */
-            options?: {
-                [key: string]: string;
-            }[] | null;
-            /** Allowed Types */
-            allowed_types?: string[] | null;
-            /** Multiple */
-            multiple?: boolean | null;
-            /** Max Size Mb */
-            max_size_mb?: number | null;
-            /** Content */
-            content?: string | null;
-            /** Allow As Query Param */
-            allow_as_query_param?: boolean | null;
-        };
-        /**
-         * FormField
-         * @description Form field definition.
-         */
-        "FormField-Output": {
-            /**
-             * Name
-             * @description Parameter name for workflow
-             */
-            name: string;
-            /**
-             * Label
-             * @description Display label
-             */
-            label?: string | null;
-            type: components["schemas"]["FormFieldType"];
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            /** Validation */
-            validation?: {
-                [key: string]: unknown;
-            } | null;
-            /** Data Provider */
-            data_provider?: string | null;
-            /** Data Provider Inputs */
-            data_provider_inputs?: {
-                [key: string]: components["schemas"]["DataProviderInputConfig"];
-            } | null;
-            /** Default Value */
-            default_value?: unknown | null;
-            /** Placeholder */
-            placeholder?: string | null;
-            /** Help Text */
-            help_text?: string | null;
-            /** Visibility Expression */
-            visibility_expression?: string | null;
-            /** Options */
-            options?: {
-                [key: string]: string;
-            }[] | null;
-            /** Allowed Types */
-            allowed_types?: string[] | null;
-            /** Multiple */
-            multiple?: boolean | null;
-            /** Max Size Mb */
-            max_size_mb?: number | null;
-            /** Content */
-            content?: string | null;
-            /** Allow As Query Param */
-            allow_as_query_param?: boolean | null;
-        };
-        /**
-         * FormFieldType
-         * @description Form field types.
-         * @enum {string}
-         */
-        FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "datetime" | "markdown" | "html" | "file";
-        /**
-         * FormRead
-         * @description Schema for form response.
-         */
-        FormRead: {
+            id: string;
             /** Name */
             name: string;
             /** Description */
@@ -3125,18 +2984,14 @@ export interface components {
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
             /** Form Schema */
-            form_schema?: components["schemas"]["FormSchema-Output"] | {
+            form_schema?: {
                 [key: string]: unknown;
             } | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
-            /** Id */
-            id: string;
             /** Organization Id */
             organization_id?: string | null;
             /** Is Active */
             is_active: boolean;
-            /** Assigned Roles */
-            assigned_roles?: string[];
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -3146,31 +3001,15 @@ export interface components {
          * FormSchema
          * @description Form schema with field definitions.
          */
-        "FormSchema-Input": {
+        FormSchema: {
             /** Fields */
-            fields: components["schemas"]["FormField-Input"][];
-        };
-        /**
-         * FormSchema
-         * @description Form schema with field definitions.
-         */
-        "FormSchema-Output": {
-            /** Fields */
-            fields: components["schemas"]["FormField-Output"][];
-        };
-        /**
-         * FormStartupResponse
-         * @description Response from form startup workflow.
-         */
-        FormStartupResponse: {
-            /** Result */
-            result?: {
+            fields?: {
                 [key: string]: unknown;
-            };
+            }[];
         };
         /**
          * FormUpdate
-         * @description Schema for updating a form.
+         * @description Input for updating a form.
          */
         FormUpdate: {
             /** Name */
@@ -3187,12 +3026,13 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            form_schema?: components["schemas"]["FormSchema-Input"] | null;
+            /** Form Schema */
+            form_schema?: {
+                [key: string]: unknown;
+            } | components["schemas"]["FormSchema"] | null;
             /** Is Active */
             is_active?: boolean | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
-            /** Assigned Roles */
-            assigned_roles?: string[] | null;
         };
         /**
          * FormValidationIssue
@@ -3234,51 +3074,97 @@ export interface components {
             field_index?: number | null;
         };
         /**
-         * GitHubConnectRequest
-         * @description Request to connect to a GitHub repository.
+         * GitFileStatus
+         * @description Git file status
+         * @enum {string}
          */
-        GitHubConnectRequest: {
-            /** Repositoryurl */
-            repositoryUrl: string;
-            /** Authtoken */
-            authToken: string;
+        GitFileStatus: "M" | "A" | "D" | "U" | "C";
+        /**
+         * GitHubConfigRequest
+         * @description Request to configure GitHub integration - will always replace workspace with remote
+         */
+        GitHubConfigRequest: {
+            /**
+             * Repo Url
+             * @description GitHub repository URL (e.g., https://github.com/user/repo)
+             */
+            repo_url: string;
             /**
              * Branch
+             * @description Branch to sync with
              * @default main
              */
             branch: string;
         };
         /**
-         * GitStatusResponse
-         * @description Git status response.
+         * GitRefreshStatusResponse
+         * @description Unified response after fetching and getting complete Git status.
+         *     This combines fetch + status + commit history into a single response.
          */
-        GitStatusResponse: {
-            /** Isgitrepo */
-            isGitRepo: boolean;
-            /** Currentbranch */
-            currentBranch?: string | null;
+        GitRefreshStatusResponse: {
             /**
-             * Haschanges
+             * Success
+             * @description Whether refresh was successful
+             */
+            success: boolean;
+            /**
+             * Initialized
+             * @description Whether Git repository is initialized
+             */
+            initialized: boolean;
+            /**
+             * Configured
+             * @description Whether GitHub integration is configured
+             */
+            configured: boolean;
+            /**
+             * Current Branch
+             * @description Current branch name
+             */
+            current_branch?: string | null;
+            /**
+             * Changed Files
+             * @description List of locally changed files
+             */
+            changed_files?: components["schemas"]["FileChange"][];
+            /**
+             * Conflicts
+             * @description List of merge conflicts
+             */
+            conflicts?: components["schemas"]["ConflictInfo"][];
+            /**
+             * Merging
+             * @description Whether repository is in merge state (MERGE_HEAD exists)
              * @default false
              */
-            hasChanges: boolean;
+            merging: boolean;
             /**
-             * Changedfiles
+             * Commits Ahead
+             * @description Number of local commits ahead of remote (ready to push)
              * @default 0
              */
-            changedFiles: number;
+            commits_ahead: number;
             /**
-             * Commitsahead
+             * Commits Behind
+             * @description Number of commits behind remote (ready to pull)
              * @default 0
              */
-            commitsAhead: number;
+            commits_behind: number;
             /**
-             * Commitsbehind
-             * @default 0
+             * Commit History
+             * @description Recent commit history with pushed/unpushed status
              */
-            commitsBehind: number;
-            /** Lastsync */
-            lastSync?: string | null;
+            commit_history?: components["schemas"]["CommitInfo"][];
+            /**
+             * Last Synced
+             * @description ISO timestamp of when sync was performed
+             */
+            last_synced: string;
+            /**
+             * Error
+             * @description Error message if sync failed
+             */
+            error?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3775,11 +3661,11 @@ export interface components {
              */
             id: string;
             /** Created At */
-            created_at: string | null;
+            created_at: string;
             /** Created By */
             created_by: string;
             /** Updated At */
-            updated_at: string | null;
+            updated_at: string;
         };
         /**
          * OrganizationUpdate
@@ -3881,26 +3767,68 @@ export interface components {
             }[];
         };
         /**
-         * PullRequest
-         * @description Pull from remote request.
+         * PullFromGitHubRequest
+         * @description Request to pull from GitHub
          */
-        PullRequest: {
+        PullFromGitHubRequest: {
             /**
-             * Force
-             * @default false
+             * Connection Id
+             * @description WebPubSub connection ID for streaming logs
              */
-            force: boolean;
+            connection_id?: string | null;
         };
         /**
-         * PushRequest
-         * @description Push to remote request.
+         * PullFromGitHubResponse
+         * @description Response after pulling from GitHub
          */
-        PushRequest: {
+        PullFromGitHubResponse: {
             /**
-             * Message
-             * @default Updated from Bifrost
+             * Success
+             * @description Whether pull succeeded
              */
-            message: string;
+            success: boolean;
+            /**
+             * Updated Files
+             * @description List of updated file paths
+             */
+            updated_files?: string[];
+            /**
+             * Conflicts
+             * @description List of conflicts (if any)
+             */
+            conflicts?: components["schemas"]["ConflictInfo"][];
+            /**
+             * Error
+             * @description Error message if pull failed
+             */
+            error?: string | null;
+        };
+        /**
+         * PushToGitHubRequest
+         * @description Request to push to GitHub
+         */
+        PushToGitHubRequest: {
+            /**
+             * Connection Id
+             * @description WebPubSub connection ID for streaming logs
+             */
+            connection_id?: string | null;
+        };
+        /**
+         * PushToGitHubResponse
+         * @description Response after pushing to GitHub
+         */
+        PushToGitHubResponse: {
+            /**
+             * Success
+             * @description Whether push succeeded
+             */
+            success: boolean;
+            /**
+             * Error
+             * @description Error message if push failed
+             */
+            error?: string | null;
         };
         /**
          * RecentFailure
@@ -4040,16 +3968,6 @@ export interface components {
             mfa_code: string;
         };
         /**
-         * RenameRequest
-         * @description Request body for renaming/moving files.
-         */
-        RenameRequest: {
-            /** Oldpath */
-            oldPath: string;
-            /** Newpath */
-            newPath: string;
-        };
-        /**
          * RetryPolicy
          * @description Retry policy configuration for workflow execution
          */
@@ -4082,8 +4000,6 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
-            /** Permissions */
-            permissions?: unknown[];
             /**
              * Is Active
              * @default true
@@ -4091,6 +4007,14 @@ export interface components {
             is_active: boolean;
             /** Organization Id */
             organization_id?: string | null;
+        };
+        /**
+         * RoleFormsResponse
+         * @description Response for forms assigned to a role.
+         */
+        RoleFormsResponse: {
+            /** Formids */
+            formIds: string[];
         };
         /**
          * RolePublic
@@ -4101,8 +4025,6 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
-            /** Permissions */
-            permissions?: unknown[];
             /**
              * Is Active
              * @default true
@@ -4118,9 +4040,9 @@ export interface components {
             /** Created By */
             created_by: string;
             /** Created At */
-            created_at: string | null;
+            created_at: string;
             /** Updated At */
-            updated_at: string | null;
+            updated_at: string;
         };
         /**
          * RoleUpdate
@@ -4131,8 +4053,6 @@ export interface components {
             name?: string | null;
             /** Description */
             description?: string | null;
-            /** Permissions */
-            permissions?: unknown[] | null;
             /** Is Active */
             is_active?: boolean | null;
         };
@@ -4141,8 +4061,8 @@ export interface components {
          * @description Response for users assigned to a role.
          */
         RoleUsersResponse: {
-            /** User Ids */
-            user_ids: string[];
+            /** Userids */
+            userIds: string[];
         };
         /**
          * SDKUsageIssue
@@ -4491,11 +4411,11 @@ export interface components {
          * @description Response for user's accessible forms.
          */
         UserFormsResponse: {
-            user_type: components["schemas"]["UserType"];
-            /** Has Access To All Forms */
-            has_access_to_all_forms: boolean;
-            /** Form Ids */
-            form_ids: string[];
+            userType: components["schemas"]["UserType"];
+            /** Hasaccesstoallforms */
+            hasAccessToAllForms: boolean;
+            /** Formids */
+            formIds: string[];
         };
         /**
          * UserPublic
@@ -4582,8 +4502,8 @@ export interface components {
          * @description Response for user's assigned role IDs.
          */
         UserRolesResponse: {
-            /** Role Ids */
-            role_ids: string[];
+            /** Roleids */
+            roleIds: string[];
         };
         /**
          * UserType
@@ -4661,7 +4581,7 @@ export interface components {
             executed_by: string;
             /** Executed By Name */
             executed_by_name: string;
-            status: components["schemas"]["shared__models__ExecutionStatus"];
+            status: components["schemas"]["ExecutionStatus"];
             /** Input Data */
             input_data: {
                 [key: string]: unknown;
@@ -4727,6 +4647,48 @@ export interface components {
              * @description Optional: Name/identifier for the script (used for logging when code is provided)
              */
             script_name?: string | null;
+        };
+        /**
+         * WorkflowExecutionResponse
+         * @description Response model for workflow execution
+         */
+        WorkflowExecutionResponse: {
+            /** Execution Id */
+            execution_id: string;
+            /** Workflow Name */
+            workflow_name?: string | null;
+            status: components["schemas"]["ExecutionStatus"];
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | unknown[] | string | null;
+            /** Error */
+            error?: string | null;
+            /** Error Type */
+            error_type?: string | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Logs */
+            logs?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Variables */
+            variables?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Is Transient
+             * @default false
+             */
+            is_transient: boolean;
         };
         /**
          * WorkflowKeyCreateRequest
@@ -4995,97 +4957,10 @@ export interface components {
             valid_forms: number;
         };
         /**
-         * WriteFileRequest
-         * @description Request body for writing file content.
-         */
-        WriteFileRequest: {
-            /** Path */
-            path: string;
-            /** Content */
-            content: string;
-            /**
-             * Encoding
-             * @default utf-8
-             */
-            encoding: string;
-        };
-        /**
-         * ExecutionStatus
-         * @description Workflow execution status
-         * @enum {string}
-         */
-        shared__models__ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
-        /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        shared__models__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-        };
-        /**
-         * WorkflowExecutionResponse
-         * @description Response model for workflow execution
-         */
-        shared__models__WorkflowExecutionResponse: {
-            /** Execution Id */
-            execution_id: string;
-            /** Workflow Name */
-            workflow_name?: string | null;
-            status: components["schemas"]["shared__models__ExecutionStatus"];
-            /** Result */
-            result?: {
-                [key: string]: unknown;
-            } | unknown[] | string | null;
-            /** Error */
-            error?: string | null;
-            /** Error Type */
-            error_type?: string | null;
-            /** Details */
-            details?: {
-                [key: string]: unknown;
-            } | null;
-            /** Duration Ms */
-            duration_ms?: number | null;
-            /** Started At */
-            started_at?: string | null;
-            /** Completed At */
-            completed_at?: string | null;
-            /** Logs */
-            logs?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Variables */
-            variables?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Is Transient
-             * @default false
-             */
-            is_transient: boolean;
-        };
-        /**
-         * RoleFormsResponse
-         * @description Response for forms assigned to a role.
-         */
-        src__models__schemas__RoleFormsResponse: {
-            /** Form Ids */
-            form_ids: string[];
-        };
-        /**
          * UserCreate
          * @description Input for creating a user.
          */
-        src__models__schemas__UserCreate: {
+        src__models__models__UserCreate: {
             /**
              * Email
              * Format: email
@@ -5109,6 +4984,22 @@ export interface components {
             user_type: components["schemas"]["UserType"];
             /** Organization Id */
             organization_id?: string | null;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        src__models__schemas__OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
+            code: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
         };
         /**
          * MFAVerifyRequest
@@ -5187,31 +5078,6 @@ export interface components {
             display_name: string;
             /** Icon */
             icon?: string | null;
-        };
-        /**
-         * WorkflowExecutionResponse
-         * @description Response from workflow execution.
-         */
-        src__schemas__executions__WorkflowExecutionResponse: {
-            /** Execution Id */
-            execution_id: string;
-            status: components["schemas"]["shared__models__ExecutionStatus"];
-            /** Result */
-            result?: {
-                [key: string]: unknown;
-            } | null;
-            /** Error */
-            error?: string | null;
-        };
-        /**
-         * RoleFormsResponse
-         * @description Response for forms assigned to a role.
-         */
-        src__schemas__roles__RoleFormsResponse: {
-            /** Form Ids */
-            form_ids: string[];
-            /** Role Ids */
-            role_ids?: string[] | null;
         };
     };
     responses: never;
@@ -6067,7 +5933,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__schemas__UserCreate"];
+                "application/json": components["schemas"]["src__models__models__UserCreate"];
             };
         };
         responses: {
@@ -6301,7 +6167,7 @@ export interface operations {
             };
         };
     };
-    update_role_api_roles__role_id__put: {
+    get_role_api_roles__role_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6310,11 +6176,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RoleUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -6353,6 +6215,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_role_api_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolePublic"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -6476,7 +6373,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__models__schemas__RoleFormsResponse"];
+                    "application/json": components["schemas"]["RoleFormsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6869,7 +6766,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["shared__models__WorkflowExecutionResponse"];
+                    "application/json": components["schemas"]["WorkflowExecutionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6984,7 +6881,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FormRead"][];
+                    "application/json": components["schemas"]["FormPublic"][];
                 };
             };
         };
@@ -7008,7 +6905,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FormRead"];
+                    "application/json": components["schemas"]["FormPublic"];
                 };
             };
             /** @description Validation Error */
@@ -7039,42 +6936,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FormRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_form_api_forms__form_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FormUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormRead"];
+                    "application/json": components["schemas"]["FormPublic"];
                 };
             };
             /** @description Validation Error */
@@ -7138,100 +7000,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FormRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_form_roles_api_forms__form_id__roles_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["src__schemas__roles__RoleFormsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_form_startup_api_forms__form_id__startup_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormStartupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_form_startup_api_forms__form_id__startup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormStartupResponse"];
+                    "application/json": components["schemas"]["FormPublic"];
                 };
             };
             /** @description Validation Error */
@@ -7254,9 +7023,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["FormExecuteRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
@@ -7266,43 +7037,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__schemas__executions__WorkflowExecutionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_form_data_provider_api_forms__form_id__data_providers__provider_name__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-                provider_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DataProviderRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataProviderResponse"];
+                    "application/json": components["schemas"]["WorkflowExecutionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7549,9 +7284,9 @@ export interface operations {
     };
     list_files_api_editor_files_get: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Directory path relative to workspace root */
-                path?: string;
+                path: string;
             };
             header?: never;
             path?: never;
@@ -7654,7 +7389,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WriteFileRequest"];
+                "application/json": components["schemas"]["FileContentRequest"];
             };
         };
         responses: {
@@ -7712,16 +7447,17 @@ export interface operations {
     };
     rename_or_move_api_editor_files_rename_post: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Current path relative to workspace root */
+                old_path: string;
+                /** @description New path relative to workspace root */
+                new_path: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RenameRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -8096,7 +7832,7 @@ export interface operations {
             };
         };
     };
-    get_git_status_api_github_status_get: {
+    get_github_status_api_github_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -8111,45 +7847,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitStatusResponse"];
+                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
                 };
             };
         };
     };
-    init_repo_api_github_init_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConnectRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    pull_from_remote_api_github_pull_post: {
+    pull_from_github_api_github_pull_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -8158,7 +7861,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["PullRequest"] | null;
+                "application/json": components["schemas"]["PullFromGitHubRequest"] | null;
             };
         };
         responses: {
@@ -8168,9 +7871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PullFromGitHubResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8184,7 +7885,7 @@ export interface operations {
             };
         };
     };
-    commit_changes_api_github_commit_post: {
+    push_to_github_api_github_push_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -8193,7 +7894,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CommitRequest"];
+                "application/json": components["schemas"]["PushToGitHubRequest"];
             };
         };
         responses: {
@@ -8203,44 +7904,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    push_to_remote_api_github_push_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PushRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PushToGitHubResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8269,9 +7933,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
+                };
+            };
+        };
+    };
+    init_repo_api_github_init_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitHubConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_changes_api_github_commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushToGitHubRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8279,7 +8009,9 @@ export interface operations {
     get_commits_api_github_commits_get: {
         parameters: {
             query?: {
+                /** @description Number of commits to return */
                 limit?: number;
+                /** @description Offset for pagination */
                 offset?: number;
             };
             header?: never;
@@ -8606,7 +8338,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["shared__models__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__models__schemas__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -8701,7 +8433,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -8734,7 +8466,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -8767,7 +8499,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -8800,7 +8532,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {

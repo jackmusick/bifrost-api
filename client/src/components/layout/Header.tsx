@@ -3,15 +3,12 @@ import {
 	LogOut,
 	Settings,
 	User,
-	Circle,
-	RefreshCw,
 	Menu,
 	PanelLeftClose,
 	PanelLeft,
 	Terminal,
 	Search,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -21,19 +18,11 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { useAuth, logout } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { useScopeStore } from "@/stores/scopeStore";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { OrgScopeSwitcher } from "@/components/OrgScopeSwitcher";
-import { useWorkflowEngineHealth } from "@/hooks/useWorkflowEngineHealth";
-import { useHealthStore } from "@/stores/healthStore";
 import { useEditorStore } from "@/stores/editorStore";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
@@ -51,8 +40,7 @@ export function Header({
 	onSidebarToggle,
 	isSidebarCollapsed = false,
 }: HeaderProps = {}) {
-	const navigate = useNavigate();
-	const { user } = useAuth();
+	const { user, logout, isPlatformAdmin } = useAuth();
 	const scope = useScopeStore((state) => state.scope);
 	const setScope = useScopeStore((state) => state.setScope);
 	const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
@@ -61,11 +49,8 @@ export function Header({
 		(state) => state.openQuickAccess,
 	);
 
-	const userEmail = user?.userDetails || "Loading...";
-	const userName = user?.userDetails?.split("@")[0] || "UserPublic";
-
-	// Check if user is platform admin
-	const isPlatformAdmin = user?.userRoles?.includes("PlatformAdmin") ?? false;
+	const userEmail = user?.email || "Loading...";
+	const userName = user?.name || user?.email?.split("@")[0] || "User";
 
 	// Only fetch organizations if user is a platform admin
 	const { data: organizationData, isLoading: orgsLoading } = useOrganizations(
@@ -76,58 +61,6 @@ export function Header({
 	const organizations: Organization[] = Array.isArray(organizationData)
 		? organizationData
 		: [];
-
-	// Get health status from store and query
-	const healthStatus = useHealthStore((state) => state.status);
-	const { refetch, isRefetching } = useWorkflowEngineHealth();
-
-	// Determine status color and message based on store state
-	const getServerStatus = () => {
-		if (healthStatus === "checking" || isRefetching) {
-			return {
-				color: "text-yellow-500",
-				status: "checking",
-				message: "Checking server status...",
-				canClick: false,
-			};
-		}
-
-		if (healthStatus === "healthy") {
-			return {
-				color: "text-green-500",
-				status: "healthy",
-				message: "Server is healthy",
-				canClick: true,
-			};
-		}
-
-		if (healthStatus === "unhealthy") {
-			return {
-				color: "text-red-500",
-				status: "unhealthy",
-				message: "Server is unavailable",
-				canClick: true,
-			};
-		}
-
-		// Unknown state - hasn't been checked yet
-		return {
-			color: "text-gray-500",
-			status: "unknown",
-			message: "Server status unknown",
-			canClick: true,
-		};
-	};
-
-	const serverStatus = getServerStatus();
-
-	const handleStatusClick = () => {
-		if (serverStatus.status === "unhealthy") {
-			navigate("/workflow-engine-error");
-		} else if (serverStatus.canClick) {
-			refetch();
-		}
-	};
 
 	return (
 		<header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -176,49 +109,6 @@ export function Header({
 
 				{/* Spacer */}
 				<div className="flex-1" />
-
-				{/* Server Status Indicator */}
-				<TooltipProvider>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								variant="ghost"
-								size="sm"
-								className={`mr-4 gap-2 ${
-									serverStatus.canClick
-										? "cursor-pointer"
-										: "cursor-default"
-								}`}
-								onClick={handleStatusClick}
-								disabled={!serverStatus.canClick}
-							>
-								{isRefetching ? (
-									<RefreshCw className="h-4 w-4 animate-spin text-yellow-500" />
-								) : (
-									<Circle
-										className={`h-4 w-4 fill-current ${serverStatus.color}`}
-									/>
-								)}
-								<span className="hidden sm:inline-block text-sm">
-									Server
-								</span>
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>{serverStatus.message}</p>
-							{serverStatus.status === "healthy" && (
-								<p className="text-xs text-muted-foreground mt-1">
-									Click to refresh
-								</p>
-							)}
-							{serverStatus.status === "unhealthy" && (
-								<p className="text-xs text-muted-foreground mt-1">
-									Click for details
-								</p>
-							)}
-						</TooltipContent>
-					</Tooltip>
-				</TooltipProvider>
 
 				{/* Search Button */}
 				<Button

@@ -5,8 +5,6 @@ Business logic for workflow execution using shared/engine.py
 Note: HTTP handlers have been removed - see FastAPI routers in src/routers/
 """
 
-import base64
-import json
 import logging
 import uuid
 from datetime import datetime
@@ -19,8 +17,7 @@ from src.models.schemas import ErrorResponse, ExecutionStatus
 
 # Lazy imports to avoid unnecessary dependencies for validation-only use cases
 if TYPE_CHECKING:
-    from shared.execution_logger import get_execution_logger
-    from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+    pass
 
 logger = logging.getLogger(__name__)
 

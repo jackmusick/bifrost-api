@@ -45,9 +45,9 @@ async def list_users(
 
     if type:
         if type.lower() == "platform":
-            query = query.where(UserORM.is_superuser == True)
+            query = query.where(UserORM.is_superuser.is_(True))
         elif type.lower() == "org":
-            query = query.where(UserORM.is_superuser == False)
+            query = query.where(UserORM.is_superuser.is_(False))
 
     if orgId:
         query = query.where(UserORM.organization_id == orgId)

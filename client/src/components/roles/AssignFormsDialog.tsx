@@ -15,7 +15,7 @@ import { useForms } from "@/hooks/useForms";
 import { useAssignFormsToRole } from "@/hooks/useRoles";
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
-type FormResponse = components["schemas"]["FormRead"];
+type FormResponse = components["schemas"]["FormPublic"];
 
 interface AssignFormsDialogProps {
 	role?: Role | undefined;
@@ -46,7 +46,7 @@ export function AssignFormsDialog({
 
 		await assignForms.mutateAsync({
 			roleId: role.id,
-			request: { form_ids: selectedFormIds },
+			request: { formIds: selectedFormIds },
 		});
 
 		setSelectedFormIds([]);

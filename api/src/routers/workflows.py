@@ -3,17 +3,16 @@ Workflows Router
 
 Handles workflow discovery, execution, and validation.
 
-Note: This router bridges to existing business logic in shared/ for workflow
-discovery and execution since that logic is tightly coupled to file system
-scanning and Python execution runtime.
+Note: Workflows are discovered by the Discovery container and synced to the
+database. This router queries the database for workflow metadata, providing
+fast O(1) lookups instead of file system scanning.
 """
 
 import logging
 import os
-from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import ValidationError
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
 from src.models.schemas import (
@@ -21,11 +20,12 @@ from src.models.schemas import (
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowMetadata,
+    WorkflowParameter,
     WorkflowValidationRequest,
     WorkflowValidationResponse,
-    WorkspaceScanRequest,
     WorkspaceScanResponse,
 )
+from src.models import Workflow as WorkflowORM
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
@@ -41,11 +41,38 @@ router = APIRouter(prefix="/api/workflows", tags=["Workflows"])
 # =============================================================================
 
 
-def _convert_workflow_metadata_to_model(workflow_meta) -> WorkflowMetadata:
-    """Convert internal workflow metadata to Pydantic model."""
-    # Import here to avoid circular imports at module load time
-    from shared.handlers.discovery_handlers import convert_workflow_metadata_to_model
-    return convert_workflow_metadata_to_model(workflow_meta)
+def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
+    """Convert ORM model to Pydantic schema for API response."""
+    from typing import Literal
+
+    # Convert parameters from JSONB to WorkflowParameter objects
+    parameters = []
+    for param in workflow.parameters_schema or []:
+        if isinstance(param, dict):
+            parameters.append(WorkflowParameter(**param))
+
+    # Validate execution_mode - default to "sync" if invalid
+    raw_mode = workflow.execution_mode or "sync"
+    execution_mode: Literal["sync", "async"] = "async" if raw_mode == "async" else "sync"
+
+    return WorkflowMetadata(
+        name=workflow.name,
+        description=workflow.description or "",
+        category=workflow.category or "General",
+        tags=workflow.tags or [],
+        parameters=parameters,
+        execution_mode=execution_mode,
+        timeout_seconds=1800,  # Default timeout
+        retry_policy=None,
+        schedule=workflow.schedule,
+        endpoint_enabled=workflow.endpoint_enabled or False,
+        allowed_methods=workflow.allowed_methods or ["POST"],
+        disable_global_key=False,
+        public_endpoint=False,
+        source=None,
+        source_file_path=workflow.file_path,
+        relative_file_path=None,
+    )
 
 
 # =============================================================================
@@ -61,23 +88,29 @@ def _convert_workflow_metadata_to_model(workflow_meta) -> WorkflowMetadata:
 )
 async def list_workflows(
     user: CurrentActiveUser,
-    reload_file: str | None = Query(None, description="Optional file path to reload"),
+    db: DbSession,
 ) -> list[WorkflowMetadata]:
-    """List all registered workflows."""
-    # Import shared discovery module
-    from shared.discovery import scan_all_workflows
+    """List all registered workflows from the database.
 
+    Workflows are discovered by the Discovery container and synced to the
+    database. This endpoint queries the database for fast lookups.
+    """
     try:
-        workflows = []
-        for w in scan_all_workflows():
+        # Query active workflows from database
+        query = select(WorkflowORM).where(WorkflowORM.is_active.is_(True))
+        result = await db.execute(query)
+        workflows = result.scalars().all()
+
+        # Convert ORM models to Pydantic schemas
+        workflow_list = []
+        for w in workflows:
             try:
-                workflow_model = _convert_workflow_metadata_to_model(w)
-                workflows.append(workflow_model)
+                workflow_list.append(_convert_workflow_orm_to_schema(w))
             except Exception as e:
                 logger.error(f"Failed to convert workflow '{w.name}': {e}")
 
-        logger.info(f"Returning {len(workflows)} workflows")
-        return workflows
+        logger.info(f"Returning {len(workflow_list)} workflows")
+        return workflow_list
 
     except Exception as e:
         logger.error(f"Error retrieving workflows: {str(e)}", exc_info=True)

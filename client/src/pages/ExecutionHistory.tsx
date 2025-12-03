@@ -71,7 +71,7 @@ import type { DateRange } from "react-day-picker";
 // import { useOrganizations } from '@/hooks/useOrganizations'
 import type { components } from "@/lib/v1";
 type ExecutionStatus =
-	| components["schemas"]["shared__models__ExecutionStatus"]
+	| components["schemas"]["ExecutionStatus"]
 	| "Cancelling"
 	| "Cancelled";
 

@@ -9,11 +9,9 @@
 
 import { useEffect, useMemo } from "react";
 import { useFormContext } from "@/contexts/FormContext";
-import { formsService } from "@/services/forms";
 import type { components } from "@/lib/v1";
-import { toast } from "sonner";
 
-type Form = components["schemas"]["FormRead"];
+type Form = components["schemas"]["FormPublic"];
 
 interface UseLaunchWorkflowOptions {
 	form: Form;
@@ -23,6 +21,9 @@ interface UseLaunchWorkflowOptions {
 
 /**
  * Execute launch workflow if form has launchWorkflowId
+ *
+ * NOTE: The form startup endpoint is currently not implemented in the API.
+ * This hook is a placeholder for when that endpoint is available.
  */
 export function useLaunchWorkflow({
 	form,
@@ -47,42 +48,10 @@ export function useLaunchWorkflow({
 			return;
 		}
 
-		const executeLaunchWorkflow = async () => {
-			try {
-				setIsLoadingLaunchWorkflow(true);
+		// TODO: Implement form startup endpoint when available
+		// For now, set empty results so form fields work
+		setWorkflowResults({});
 
-				// Merge query params and workflow params for inputData
-				// Execute via form startup endpoint (respects form permissions)
-				const result = await formsService.executeFormStartup(form.id);
-
-				// Extract workflow result and update context
-				const workflowOutput =
-					(result.result as Record<string, unknown>) || {};
-				setWorkflowResults(workflowOutput);
-			} catch (error) {
-				// Extract error message from response
-				const errorResponse = error as {
-					response?: { data?: { message?: string } };
-				} & Error;
-				const errorMessage =
-					errorResponse?.response?.data?.message ||
-					errorResponse?.message ||
-					"Failed to load form data";
-
-				// Show toast notification
-				toast.error(`Launch workflow failed: ${errorMessage}`);
-
-				// On error, set empty results (form fields may hide/show based on missing data)
-				setWorkflowResults({});
-			} finally {
-				setIsLoadingLaunchWorkflow(false);
-			}
-		};
-
-		executeLaunchWorkflow();
-		// Re-run if query params or workflow params change
-		// We use serialized versions to deep-compare objects (context.query, workflowParams)
-		 
 	}, [
 		form.id,
 		form.launch_workflow_id,

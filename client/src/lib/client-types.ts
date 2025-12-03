@@ -15,7 +15,7 @@ export interface ExecutionLog {
 }
 
 export interface ExecutionFilters {
-	status?: components["schemas"]["shared__models__ExecutionStatus"];
+	status?: components["schemas"]["ExecutionStatus"];
 	workflow_name?: string;
 	start_date?: string;
 	end_date?: string;
@@ -31,6 +31,77 @@ export interface ExecutionListResponse {
 
 // ==================== FORM TYPES ====================
 
+/**
+ * Form field types - mirrors backend FormFieldType enum
+ */
+export type FormFieldType =
+	| "text"
+	| "email"
+	| "number"
+	| "select"
+	| "checkbox"
+	| "textarea"
+	| "radio"
+	| "datetime"
+	| "markdown"
+	| "html"
+	| "file";
+
+/**
+ * Data provider input configuration modes
+ */
+export type DataProviderInputMode = "static" | "fieldRef" | "expression";
+
+/**
+ * Configuration for a single data provider input parameter
+ */
+export interface DataProviderInputConfig {
+	mode: DataProviderInputMode;
+	value?: string | null;
+	field_name?: string | null;
+	expression?: string | null;
+}
+
+/**
+ * Form field validation rules
+ */
+export interface FormFieldValidation {
+	pattern?: string | null;
+	min?: number | null;
+	max?: number | null;
+	message?: string | null;
+}
+
+/**
+ * Form field definition (input for creating/editing)
+ */
+export interface FormField {
+	name: string;
+	label?: string | null;
+	type: FormFieldType;
+	required?: boolean;
+	validation?: FormFieldValidation | null;
+	data_provider?: string | null;
+	data_provider_inputs?: Record<string, DataProviderInputConfig> | null;
+	default_value?: unknown;
+	placeholder?: string | null;
+	help_text?: string | null;
+	visibility_expression?: string | null;
+	options?: Array<{ label: string; value: string }> | null;
+	allowed_types?: string[] | null;
+	multiple?: boolean | null;
+	max_size_mb?: number | null;
+	content?: string | null;
+	allow_as_query_param?: boolean | null;
+}
+
+/**
+ * Form schema with field definitions
+ */
+export interface FormSchema {
+	fields: FormField[];
+}
+
 export interface FormSubmission {
 	form_id: string;
 	form_data: Record<string, unknown>;
@@ -38,7 +109,7 @@ export interface FormSubmission {
 
 export interface FormExecutionResponse {
 	execution_id: string;
-	status: components["schemas"]["shared__models__ExecutionStatus"];
+	status: components["schemas"]["ExecutionStatus"];
 	result?: unknown;
 	error_message?: string;
 }

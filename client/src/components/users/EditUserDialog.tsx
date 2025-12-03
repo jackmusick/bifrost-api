@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Shield, AlertCircle, Loader2, AlertTriangle } from "lucide-react";
 import { useUpdateUser } from "@/hooks/useUsers";
 import { useOrganizations } from "@/hooks/useOrganizations";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
@@ -46,11 +46,10 @@ export function EditUserDialog({
 	const { user: currentUser } = useAuth();
 
 	// Check if editing own account
-	// user.id is the UUID, currentUser.userDetails is the email from Azure AD
 	const isEditingSelf = !!(
 		user &&
 		currentUser &&
-		user.id === currentUser.userDetails
+		user.id === currentUser.id
 	);
 
 	// Load user data when dialog opens

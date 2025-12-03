@@ -17,22 +17,19 @@ import {
 	useCreateForm,
 	useUpdateForm,
 } from "@/hooks/useForms";
-import { formsService } from "@/services/forms";
 import { rolesService } from "@/services/roles";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
-import { useMutation } from "@tanstack/react-query";
 import { FormInfoDialog } from "@/components/forms/FormInfoDialog";
 import { FieldsPanelDnD } from "@/components/forms/FieldsPanelDnD";
 import { FormPreview } from "@/components/forms/FormPreview";
 import { WorkflowParametersForm } from "@/components/workflows/WorkflowParametersForm";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import type { components } from "@/lib/v1";
-type FormField = components["schemas"]["FormField-Output"];
+import type { FormField } from "@/lib/client-types";
 type FormCreate = components["schemas"]["FormCreate"];
 type FormUpdate = components["schemas"]["FormUpdate"];
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
-type FormStartupResponse = components["schemas"]["FormStartupResponse"];
 import { toast } from "sonner";
 
 export function FormBuilder() {
@@ -46,13 +43,6 @@ export function FormBuilder() {
 	const createForm = useCreateForm();
 	const updateForm = useUpdateForm();
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
-
-	// Mutation for testing form startup workflow
-	const testStartupWorkflow = useMutation<FormStartupResponse, Error, { formId: string }>({
-		mutationFn: async ({ formId }: { formId: string }) => {
-			return await formsService.executeFormStartup(formId);
-		},
-	});
 
 	// Form state
 	const [formName, setFormName] = useState("");
@@ -77,7 +67,7 @@ export function FormBuilder() {
 		useState(false);
 	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
 		useState(false);
-	const [workflowResults, setWorkflowResults] = useState<Record<
+	const [workflowResults] = useState<Record<
 		string,
 		unknown
 	> | null>(null);
@@ -99,7 +89,8 @@ export function FormBuilder() {
 				existingForm.form_schema !== null &&
 				"fields" in existingForm.form_schema
 			) {
-				setFields(existingForm.form_schema.fields as FormField[]);
+				const schema = existingForm.form_schema as { fields: unknown[] };
+				setFields(schema.fields as FormField[]);
 			}
 		}
 	}, [existingForm]);
@@ -107,21 +98,8 @@ export function FormBuilder() {
 	// Load form roles when editing
 	useEffect(() => {
 		if (formId && isEditing) {
-			// Fetch roles for this form using the correct endpoint
-			rolesService
-				.getFormRoles(formId)
-				.then((data) => {
-					// The response contains role entities assigned to this form
-					// Extract role IDs
-					if (data && Array.isArray(data)) {
-						setSelectedRoleIds(
-							data.map((role: { id: string }) => role.id),
-						);
-					}
-				})
-				.catch(() => {
-					// Silently fail - roles are optional
-				});
+			// TODO: Implement getFormRoles when form->roles endpoints are available
+			// For now, roles for a form cannot be fetched
 		}
 	}, [formId, isEditing]);
 
@@ -302,25 +280,10 @@ export function FormBuilder() {
 			return;
 		}
 
-		try {
-			// Use workflow params directly (just like workflow execution)
-			const result = await testStartupWorkflow.mutateAsync({
-				formId,
-			});
-
-			// Extract result from response
-			if (result && typeof result === "object" && "result" in result) {
-				setWorkflowResults(result.result as Record<string, unknown>);
-			}
-			setWorkflowResultsDialogOpen(true);
-			toast.success("Launch workflow executed successfully");
-		} catch (error) {
-			const errorMessage =
-				error instanceof Error
-					? error.message
-					: "Failed to execute launch workflow";
-			toast.error(errorMessage);
-		}
+		// TODO: Implement when form startup endpoint is available
+		toast.error(
+			"Launch workflow testing is not yet implemented. The form startup endpoint is not available in the API.",
+		);
 	};
 
 	// Get workflow metadata for launch workflow
@@ -333,8 +296,8 @@ export function FormBuilder() {
 	const previewContext = useMemo(() => {
 		// Build workflow context with real user data or workflow results if available
 		const workflowContext = workflowResults || {
-			user_id: user?.userId || "user-123",
-			user_email: user?.userDetails || "user@example.com",
+			user_id: user?.id || "user-123",
+			user_email: user?.email || "user@example.com",
 			organization_id: scope.orgId || null,
 		};
 
@@ -421,14 +384,8 @@ export function FormBuilder() {
 										handleTestLaunchWorkflow();
 									}
 								}}
-								disabled={
-									testStartupWorkflow.isPending || !formId
-								}
-								title={
-									testStartupWorkflow.isPending
-										? "Testing..."
-										: "Test Launch Workflow"
-								}
+								disabled={!formId}
+								title="Test Launch Workflow"
 								className="rounded-none border-l-0"
 							>
 								<Play className="h-4 w-4" />
@@ -564,7 +521,7 @@ export function FormBuilder() {
 							await handleTestLaunchWorkflow();
 							setWorkflowParamsDialogOpen(false);
 						}}
-						isExecuting={testStartupWorkflow.isPending}
+						isExecuting={false}
 						executeButtonText="Run & View Results"
 					/>
 				</DialogContent>

@@ -18,7 +18,7 @@ export const formsService = {
 	/**
 	 * Get all forms
 	 */
-	async getForms(): Promise<components["schemas"]["FormRead"][]> {
+	async getForms(): Promise<components["schemas"]["FormPublic"][]> {
 		const { data, error } = await apiClient.GET("/api/forms");
 		if (error)
 			throw new Error(getErrorMessage(error, "Failed to fetch forms"));
@@ -28,7 +28,7 @@ export const formsService = {
 	/**
 	 * Get a specific form by ID
 	 */
-	async getForm(formId: string): Promise<components["schemas"]["FormRead"]> {
+	async getForm(formId: string): Promise<components["schemas"]["FormPublic"]> {
 		const { data, error } = await apiClient.GET("/api/forms/{form_id}", {
 			params: { path: { form_id: formId } },
 		});
@@ -42,7 +42,7 @@ export const formsService = {
 	 */
 	async createForm(
 		request: components["schemas"]["FormCreate"],
-	): Promise<components["schemas"]["FormRead"]> {
+	): Promise<components["schemas"]["FormPublic"]> {
 		const { data, error } = await apiClient.POST("/api/forms", {
 			body: request,
 		});
@@ -57,8 +57,8 @@ export const formsService = {
 	async updateForm(
 		formId: string,
 		request: components["schemas"]["FormUpdate"],
-	): Promise<components["schemas"]["FormRead"]> {
-		const { data, error } = await apiClient.PUT("/api/forms/{form_id}", {
+	): Promise<components["schemas"]["FormPublic"]> {
+		const { data, error } = await apiClient.PATCH("/api/forms/{form_id}", {
 			params: { path: { form_id: formId } },
 			body: request,
 		});
@@ -97,23 +97,4 @@ export const formsService = {
 		return data as FormExecutionResponse;
 	},
 
-	/**
-	 * Execute form's launch workflow to get initial context
-	 * @param formId - Form ID
-	 */
-	async executeFormStartup(formId: string) {
-		const { data, error } = await apiClient.POST(
-			"/api/forms/{form_id}/startup",
-			{
-				params: {
-					path: { form_id: formId },
-				},
-			},
-		);
-		if (error || !data)
-			throw new Error(
-				getErrorMessage(error, "Failed to execute form startup"),
-			);
-		return data;
-	},
 };

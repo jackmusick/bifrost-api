@@ -888,18 +888,29 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         assert response.status_code == 200, f"Create file failed: {response.text}"
 
     def test_112_workflow_immediately_available(self):
-        """Workflow is immediately discoverable after file creation."""
+        """Workflow is discoverable after file creation (with discovery sync)."""
+        import time
 
-        response = State.client.get(
-            "/api/workflows",
-            headers=State.platform_admin.headers,
-        )
-        assert response.status_code == 200, f"List workflows failed: {response.text}"
-        workflows = response.json()
+        # Poll for workflow to appear (discovery container syncs every few seconds)
+        max_attempts = 15  # 15 seconds max wait
+        workflow_names = []
 
-        workflow_names = [w["name"] for w in workflows]
+        for attempt in range(max_attempts):
+            response = State.client.get(
+                "/api/workflows",
+                headers=State.platform_admin.headers,
+            )
+            assert response.status_code == 200, f"List workflows failed: {response.text}"
+            workflows = response.json()
+            workflow_names = [w["name"] for w in workflows]
+
+            if "e2e_test_sync_workflow" in workflow_names:
+                break
+
+            time.sleep(1)
+
         assert "e2e_test_sync_workflow" in workflow_names, \
-            f"Test workflow not discovered. Available: {workflow_names}"
+            f"Test workflow not discovered after {max_attempts}s. Available: {workflow_names}"
 
     def test_113_read_file_content(self):
         """Platform admin can read file content back."""

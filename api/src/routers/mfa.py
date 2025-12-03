@@ -142,13 +142,16 @@ async def get_mfa_status(
 # MFA Setup and Verification (Simplified Routes)
 # =============================================================================
 
-@router.post("/setup", response_model=MFASetupResponse)
+@router.post("/totp/setup", response_model=MFASetupResponse)
 async def setup_mfa(
     current_user: CurrentActiveUser,
     db: DbSession = None,
 ) -> MFASetupResponse:
     """
-    Initialize MFA enrollment.
+    Initialize MFA enrollment for an authenticated user.
+
+    This endpoint is for users who are already logged in and want to add/reset TOTP.
+    For initial MFA enrollment during login, use POST /auth/mfa/setup instead.
 
     Generates a new TOTP secret and returns the provisioning URI for QR code generation.
     The MFA method is created in PENDING status until verified.
@@ -170,14 +173,17 @@ async def setup_mfa(
     return MFASetupResponse(**setup_data)
 
 
-@router.post("/verify", response_model=MFAVerifyResponse)
+@router.post("/totp/verify", response_model=MFAVerifyResponse)
 async def verify_mfa(
     request: MFAVerifyRequest,
     current_user: CurrentActiveUser,
     db: DbSession = None,
 ) -> MFAVerifyResponse:
     """
-    Verify MFA code to complete enrollment.
+    Verify MFA code to complete enrollment for an authenticated user.
+
+    This endpoint is for users who are already logged in and want to complete TOTP setup.
+    For initial MFA enrollment during login, use POST /auth/mfa/verify instead.
 
     On success:
     - Activates the MFA method

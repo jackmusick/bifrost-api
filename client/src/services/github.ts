@@ -7,14 +7,39 @@
  * Full Git integration features are not yet implemented in the Docker deployment.
  */
 
-import type { components } from "@/lib/v1";
+import { authFetch } from "@/lib/api-client";
 
-// Re-export types for convenience
-export type GitHubConnectRequest = components["schemas"]["GitHubConnectRequest"];
-export type GitStatusResponse = components["schemas"]["GitStatusResponse"];
-export type PullRequest = components["schemas"]["PullRequest"];
-export type PushRequest = components["schemas"]["PushRequest"];
-export type CommitRequest = components["schemas"]["CommitRequest"];
+// Local types since they're not in the OpenAPI spec
+export interface GitHubConnectRequest {
+	repositoryUrl?: string;
+	remote_url?: string;
+	authToken?: string;
+	branch?: string;
+}
+
+export interface GitStatusResponse {
+	status?: string;
+	message?: string;
+	isGitRepo?: boolean;
+	currentBranch?: string;
+	changedFiles?: number;
+	commitsAhead?: number;
+	commitsBehind?: number;
+}
+
+export interface PullRequest {
+	branch?: string;
+}
+
+export interface PushRequest {
+	branch?: string;
+	force?: boolean;
+}
+
+export interface CommitRequest {
+	message: string;
+	author?: string;
+}
 
 // Additional types for UI components (not in backend yet)
 // These will be replaced with generated types when Git integration is fully implemented
@@ -38,7 +63,7 @@ export const githubService = {
 	 * Get current Git status
 	 */
 	async getStatus(): Promise<GitStatusResponse> {
-		const response = await fetch("/api/github/status");
+		const response = await authFetch("/api/github/status");
 
 		if (!response.ok) {
 			throw new Error("Failed to get Git status");
@@ -53,9 +78,8 @@ export const githubService = {
 	async initRepo(
 		config: GitHubConnectRequest,
 	): Promise<GitStatusResponse> {
-		const response = await fetch("/api/github/init", {
+		const response = await authFetch("/api/github/init", {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(config),
 		});
 
@@ -71,10 +95,9 @@ export const githubService = {
 	 * Pull changes from remote repository
 	 */
 	async pull(request?: PullRequest): Promise<unknown> {
-		const response = await fetch("/api/github/pull", {
+		const response = await authFetch("/api/github/pull", {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: request ? JSON.stringify(request) : undefined,
+			...(request ? { body: JSON.stringify(request) } : {}),
 		});
 
 		if (!response.ok) {
@@ -89,9 +112,8 @@ export const githubService = {
 	 * Commit local changes
 	 */
 	async commit(message: string): Promise<unknown> {
-		const response = await fetch("/api/github/commit", {
+		const response = await authFetch("/api/github/commit", {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ message } as CommitRequest),
 		});
 
@@ -107,10 +129,9 @@ export const githubService = {
 	 * Push committed changes to remote repository
 	 */
 	async push(request?: PushRequest): Promise<unknown> {
-		const response = await fetch("/api/github/push", {
+		const response = await authFetch("/api/github/push", {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: request ? JSON.stringify(request) : undefined,
+			...(request ? { body: JSON.stringify(request) } : {}),
 		});
 
 		if (!response.ok) {
@@ -129,7 +150,7 @@ export const githubService = {
 		changes: FileChange[];
 		totalChanges: number;
 	}> {
-		const response = await fetch("/api/github/changes");
+		const response = await authFetch("/api/github/changes");
 
 		if (!response.ok) {
 			throw new Error("Failed to get local changes");
@@ -148,7 +169,7 @@ export const githubService = {
 		isGitRepo: boolean;
 		commits: CommitInfo[];
 	}> {
-		const response = await fetch(
+		const response = await authFetch(
 			`/api/github/commits?limit=${limit}&offset=${offset}`,
 		);
 
@@ -167,7 +188,7 @@ export const githubService = {
 		conflicts: unknown[];
 		totalConflicts: number;
 	}> {
-		const response = await fetch("/api/github/conflicts");
+		const response = await authFetch("/api/github/conflicts");
 
 		if (!response.ok) {
 			throw new Error("Failed to get merge conflicts");
@@ -180,7 +201,7 @@ export const githubService = {
 	 * Abort current merge operation
 	 */
 	async abortMerge(): Promise<unknown> {
-		const response = await fetch("/api/github/abort-merge", {
+		const response = await authFetch("/api/github/abort-merge", {
 			method: "POST",
 		});
 

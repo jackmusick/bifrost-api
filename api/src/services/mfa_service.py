@@ -449,24 +449,30 @@ class MFAService:
     # ========================================================================
 
     async def _get_pending_totp(self, user_id: UUID) -> UserMFAMethod | None:
-        """Get pending TOTP method for user."""
+        """Get pending TOTP method for user (most recent if multiple exist)."""
         result = await self.db.execute(
-            select(UserMFAMethod).where(
+            select(UserMFAMethod)
+            .where(
                 UserMFAMethod.user_id == user_id,
                 UserMFAMethod.method_type == MFAMethodType.TOTP,
                 UserMFAMethod.status == MFAMethodStatus.PENDING
             )
+            .order_by(UserMFAMethod.created_at.desc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
     async def _get_active_totp(self, user_id: UUID) -> UserMFAMethod | None:
-        """Get active TOTP method for user."""
+        """Get active TOTP method for user (most recent if multiple exist)."""
         result = await self.db.execute(
-            select(UserMFAMethod).where(
+            select(UserMFAMethod)
+            .where(
                 UserMFAMethod.user_id == user_id,
                 UserMFAMethod.method_type == MFAMethodType.TOTP,
                 UserMFAMethod.status == MFAMethodStatus.ACTIVE
             )
+            .order_by(UserMFAMethod.created_at.desc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

@@ -22,8 +22,7 @@ from src.models.schemas import (
     CleanupTriggeredResponse,
 )
 
-from src.core.auth import Context, CurrentActiveUser, UserPrincipal
-from src.core.database import DbSession
+from src.core.auth import Context, UserPrincipal
 from src.core.pubsub import publish_execution_update
 from src.models import Execution as ExecutionModel, ExecutionLog
 

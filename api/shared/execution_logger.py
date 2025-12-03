@@ -59,7 +59,6 @@ class ExecutionLogger:
         Returns:
             Created execution entity (as dict for compatibility)
         """
-        from sqlalchemy import select
         from src.core.database import get_session_factory
         from src.models import Execution
         from src.models.enums import ExecutionStatus as ExecutionStatusEnum

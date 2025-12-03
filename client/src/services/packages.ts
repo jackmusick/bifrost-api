@@ -34,37 +34,21 @@ export const packagesService = {
 
 	/**
 	 * Install a package or all packages from requirements.txt
+	 *
+	 * Installation is queued via RabbitMQ and progress is streamed via WebSocket
+	 * to the package:{user_id} channel.
+	 *
 	 * @param packageName - Name of package to install (optional - if not provided, installs from requirements.txt)
 	 * @param version - Optional version to install (e.g., "2.31.0")
-	 * @param connectionId - WebPubSub connection ID for streaming logs to terminal
 	 */
-	async installPackage(
-		packageName?: string,
-		version?: string,
-		connectionId?: string,
-	) {
-		const headers: Record<string, string> = {};
-		if (connectionId) {
-			headers["X-PubSub-ConnectionId"] = connectionId;
-		}
-
+	async installPackage(packageName?: string, version?: string) {
 		const body: InstallPackageRequest = packageName
 			? { package: packageName, version: version ?? null }
 			: ({} as InstallPackageRequest);
 
-		const requestOptions: {
-			body: InstallPackageRequest;
-			headers?: Record<string, string>;
-		} = { body };
-
-		if (connectionId) {
-			requestOptions.headers = headers;
-		}
-
-		const { data, error } = await apiClient.POST(
-			"/api/packages/install",
-			requestOptions,
-		);
+		const { data, error } = await apiClient.POST("/api/packages/install", {
+			body,
+		});
 
 		if (error) throw new Error(`Failed to install package: ${error}`);
 		return data;

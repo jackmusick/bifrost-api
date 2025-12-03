@@ -2,6 +2,8 @@
  * Workflow Keys API service - fully type-safe with openapi-fetch
  */
 
+import { apiClient } from "@/lib/api-client";
+
 // Inline types until v1.d.ts is regenerated from API
 export interface WorkflowKeyCreateRequest {
 	workflow_id?: string | undefined;
@@ -30,31 +32,24 @@ export const workflowKeysService = {
 		workflowId?: string;
 		includeRevoked?: boolean;
 	}): Promise<WorkflowKeyResponse[]> {
-		// Temporary: Use fetch directly since apiClient types are incomplete
-		const orgId = localStorage.getItem("selectedOrgId");
-		const url = new URL("/api/workflow-keys", window.location.origin);
-		if (params?.workflowId) {
-			url.searchParams.set("workflowId", params.workflowId);
-		}
-		if (params?.includeRevoked !== undefined) {
-			url.searchParams.set(
-				"includeRevoked",
-				params.includeRevoked.toString(),
-			);
-		}
+		// Build query string manually since params aren't in OpenAPI spec
+		const queryParams = new URLSearchParams();
+		if (params?.workflowId) queryParams.set("workflow_id", params.workflowId);
+		if (params?.includeRevoked !== undefined)
+			queryParams.set("include_revoked", String(params.includeRevoked));
 
-		const response = await fetch(url.toString(), {
-			headers: {
-				"X-Organization-Id": orgId || "",
-			},
-		});
+		const queryString = queryParams.toString();
+		const url = queryString
+			? `/api/workflow-keys?${queryString}`
+			: "/api/workflow-keys";
 
-		if (!response.ok) {
-			const error = await response.text();
+		const { data, error } = await apiClient.GET(url as "/api/workflow-keys");
+
+		if (error) {
 			throw new Error(`Failed to list workflow keys: ${error}`);
 		}
 
-		return response.json();
+		return (data as WorkflowKeyResponse[]) || [];
 	},
 
 	/**
@@ -63,38 +58,26 @@ export const workflowKeysService = {
 	async createWorkflowKey(
 		request: WorkflowKeyCreateRequest,
 	): Promise<WorkflowKeyResponse> {
-		const orgId = localStorage.getItem("selectedOrgId");
-		const response = await fetch("/api/workflow-keys", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"X-Organization-Id": orgId || "",
-			},
-			body: JSON.stringify(request),
+		const { data, error } = await apiClient.POST("/api/workflow-keys", {
+			body: request as never,
 		});
 
-		if (!response.ok) {
-			const error = await response.text();
+		if (error) {
 			throw new Error(`Failed to create workflow key: ${error}`);
 		}
 
-		return response.json();
+		return data as WorkflowKeyResponse;
 	},
 
 	/**
 	 * Revoke a workflow API key
 	 */
 	async revokeWorkflowKey(keyId: string): Promise<void> {
-		const orgId = localStorage.getItem("selectedOrgId");
-		const response = await fetch(`/api/workflow-keys/${keyId}`, {
-			method: "DELETE",
-			headers: {
-				"X-Organization-Id": orgId || "",
-			},
+		const { error } = await apiClient.DELETE("/api/workflow-keys/{key_id}", {
+			params: { path: { key_id: keyId } },
 		});
 
-		if (!response.ok) {
-			const error = await response.text();
+		if (error) {
 			throw new Error(`Failed to revoke workflow key: ${error}`);
 		}
 	},

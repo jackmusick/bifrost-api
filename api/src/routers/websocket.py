@@ -61,6 +61,13 @@ async def websocket_connect(
         elif channel.startswith("execution:"):
             # TODO: Validate user has access to this execution
             allowed_channels.append(channel)
+        elif channel.startswith("package:"):
+            # Package installation channels - users can subscribe to their own
+            if channel == f"package:{user.user_id}":
+                allowed_channels.append(channel)
+        elif channel.startswith("history:"):
+            # History channels for real-time updates
+            allowed_channels.append(channel)
         elif channel == "system":
             allowed_channels.append(channel)
 

@@ -39,7 +39,7 @@ import {
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { useUsers, useDeleteUser } from "@/hooks/useUsers";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { CreateUserDialog } from "@/components/users/CreateUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
@@ -255,7 +255,7 @@ export function Users() {
 															!!(
 																currentUser &&
 																user.id ===
-																	currentUser.userDetails
+																	currentUser.id
 															)
 														}
 													>

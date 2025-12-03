@@ -17,10 +17,12 @@ import {
 } from "@/components/ui/select";
 import { ExpressionEditor } from "@/components/ui/expression-editor";
 import type { components } from "@/lib/v1";
+import type {
+	DataProviderInputConfig,
+	DataProviderInputMode,
+} from "@/lib/client-types";
 
 type DataProviderMetadata = components["schemas"]["DataProviderMetadata"];
-type DataProviderInputConfig = components["schemas"]["DataProviderInputConfig"];
-type DataProviderInputMode = components["schemas"]["DataProviderInputMode"];
 
 interface DataProviderInputsConfigProps {
 	provider: DataProviderMetadata;

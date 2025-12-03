@@ -47,8 +47,6 @@ logging.basicConfig(
 )
 
 # Suppress noisy third-party loggers
-logging.getLogger("watchdog").setLevel(logging.WARNING)
-logging.getLogger("watchdog.observers.inotify_buffer").setLevel(logging.WARNING)
 logging.getLogger("aiormq").setLevel(logging.WARNING)
 logging.getLogger("aio_pika").setLevel(logging.WARNING)
 
@@ -76,31 +74,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     logger.info("Database connection established")
 
-    # Initialize discovery watcher for hot reload
-    logger.info("Initializing workspace file watcher...")
-    try:
-        from shared.discovery import get_workspace_paths
-        from shared.discovery_watcher import (
-            build_initial_index,
-            start_watcher,
-            stop_watcher,
-            get_index_stats,
-        )
-
-        workspace_paths = get_workspace_paths()
-        if workspace_paths:
-            build_initial_index(workspace_paths)
-            start_watcher(workspace_paths)
-            stats = get_index_stats()
-            logger.info(
-                f"Workspace watcher started: {stats['workflows']} workflows, "
-                f"{stats['providers']} providers, {stats['forms']} forms indexed"
-            )
-        else:
-            logger.warning("No workspace paths configured - watcher not started")
-    except Exception as e:
-        logger.warning(f"Failed to initialize workspace watcher: {e}")
-        stop_watcher = None  # Ensure we don't try to stop on shutdown
+    # NOTE: File watching and DB sync is handled by the Discovery container.
+    # API queries workflows/providers/forms from the database.
 
     # Create default admin user if configured via environment variables
     if settings.default_user_email and settings.default_user_password:
@@ -112,13 +87,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down Bifrost API...")
-
-    # Stop workspace watcher
-    try:
-        from shared.discovery_watcher import stop_watcher
-        stop_watcher()
-    except Exception as e:
-        logger.warning(f"Error stopping workspace watcher: {e}")
 
     await pubsub_manager.close()
     await close_db()

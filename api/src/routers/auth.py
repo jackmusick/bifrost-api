@@ -13,7 +13,7 @@ Key Features:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -21,7 +21,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
 from src.config import get_settings
-from src.core.auth import CurrentActiveUser, UserPrincipal
+from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
 from src.core.security import (
     create_access_token,
@@ -227,6 +227,215 @@ async def login(
     )
 
 
+class MFASetupTokenRequest(BaseModel):
+    """Request with MFA token for initial setup."""
+    mfa_token: str
+
+
+class MFASetupResponse(BaseModel):
+    """MFA setup response with secret."""
+    secret: str
+    qr_code_uri: str
+    provisioning_uri: str
+    issuer: str
+    account_name: str
+
+
+class MFAEnrollVerifyRequest(BaseModel):
+    """Request to verify MFA during initial enrollment."""
+    mfa_token: str
+    code: str
+
+
+class MFAEnrollVerifyResponse(BaseModel):
+    """Response after completing MFA enrollment."""
+    success: bool
+    recovery_codes: list[str]
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+@router.post("/mfa/setup", response_model=MFASetupResponse)
+async def mfa_initial_setup(
+    db: DbSession = None,
+    request: Request = None,
+) -> MFASetupResponse:
+    """
+    Initialize MFA enrollment during first-time setup.
+
+    This endpoint is for users who just logged in with password for the first time
+    and need to enroll in MFA. Requires an mfa_token with purpose "mfa_setup"
+    in the Authorization header.
+
+    Returns:
+        MFA setup data including secret and QR code URI
+
+    Raises:
+        HTTPException: If MFA token is invalid or expired
+    """
+    from src.services.mfa_service import MFAService
+
+    # Get mfa_token from Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+        )
+
+    mfa_token = auth_header.replace("Bearer ", "")
+
+    # Validate MFA token with purpose "mfa_setup"
+    payload = decode_mfa_token(mfa_token, "mfa_setup")
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired MFA setup token",
+        )
+
+    user_id = UUID(payload["sub"])
+
+    # Get user from database
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(user_id)
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    mfa_service = MFAService(db)
+    setup_data = await mfa_service.setup_totp(user)
+    await db.commit()
+
+    logger.info(
+        f"MFA setup initiated for user: {user.email}",
+        extra={"user_id": str(user.id)}
+    )
+
+    return MFASetupResponse(**setup_data)
+
+
+@router.post("/mfa/verify", response_model=MFAEnrollVerifyResponse)
+async def mfa_initial_verify(
+    db: DbSession = None,
+    request: Request = None,
+) -> MFAEnrollVerifyResponse:
+    """
+    Verify MFA code to complete initial enrollment.
+
+    This endpoint is for users completing their first MFA setup after password login.
+    Requires an mfa_token with purpose "mfa_setup" in the Authorization header.
+
+    On success:
+    - Activates the MFA method
+    - Generates recovery codes (shown only once!)
+    - Returns access tokens for auto-login
+
+    Returns:
+        Success status, recovery codes, and access tokens
+
+    Raises:
+        HTTPException: If MFA token is invalid or code verification fails
+    """
+    from src.services.mfa_service import MFAService
+
+    logger.info("MFA initial verify endpoint called")
+
+    # Get mfa_token from Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    logger.info(f"Auth header present: {bool(auth_header)}, starts with Bearer: {auth_header.startswith('Bearer ')}")
+
+    if not auth_header.startswith("Bearer "):
+        logger.warning("Missing or invalid Authorization header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+        )
+
+    mfa_token = auth_header.replace("Bearer ", "")
+    logger.info(f"MFA token length: {len(mfa_token)}")
+
+    # Validate MFA token with purpose "mfa_setup"
+    payload = decode_mfa_token(mfa_token, "mfa_setup")
+    logger.info(f"MFA token decode result: {payload is not None}")
+    if not payload:
+        logger.warning("Invalid or expired MFA setup token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired MFA setup token",
+        )
+
+    user_id = UUID(payload["sub"])
+
+    # Get code from request body
+    body = await request.json()
+    code = body.get("code", "")
+
+    if not code or len(code) != 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid MFA code format",
+        )
+
+    # Get user from database
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(user_id)
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    mfa_service = MFAService(db)
+
+    try:
+        recovery_codes = await mfa_service.verify_totp_enrollment(user, code)
+        await db.commit()
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    logger.info(
+        f"MFA enrollment completed for user: {user.email}",
+        extra={"user_id": str(user.id)}
+    )
+
+    # Generate tokens for auto-login after MFA enrollment
+    db_roles = await get_user_roles(db, user.id)
+    roles = ["authenticated"]
+    if user.is_superuser:
+        roles.append("PlatformAdmin")
+    else:
+        roles.append("OrgUser")
+    roles.extend(db_roles)
+
+    token_data = {
+        "sub": str(user.id),
+        "email": user.email,
+        "name": user.name or user.email.split("@")[0],
+        "user_type": user.user_type.value,
+        "is_superuser": user.is_superuser,
+        "org_id": str(user.organization_id) if user.organization_id else None,
+        "roles": roles,
+    }
+
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    return MFAEnrollVerifyResponse(
+        success=True,
+        recovery_codes=recovery_codes,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
 @router.post("/mfa/login", response_model=LoginResponse)
 async def verify_mfa_login(
     mfa_request: MFAVerifyRequest,
@@ -328,8 +537,8 @@ async def _generate_login_tokens(user, db) -> LoginResponse:
     Returns:
         LoginResponse with tokens
     """
-    # Update last login
-    user.last_login = datetime.now(timezone.utc)
+    # Update last login (use naive datetime for DB compatibility)
+    user.last_login = datetime.utcnow()
     await db.commit()
 
     # Get user roles from database
@@ -729,8 +938,8 @@ async def oauth_login(
             detail="Account is inactive",
         )
 
-    # Update last login
-    user.last_login = datetime.now(timezone.utc)
+    # Update last login (use naive datetime for DB compatibility)
+    user.last_login = datetime.utcnow()
     await db.commit()
 
     # Get user roles from database

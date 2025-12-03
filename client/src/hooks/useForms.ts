@@ -10,17 +10,21 @@ import type { FormSubmission } from "@/lib/client-types";
 
 type FormCreate = components["schemas"]["FormCreate"];
 type FormUpdate = components["schemas"]["FormUpdate"];
-type FormRead = components["schemas"]["FormRead"];
+type FormPublic = components["schemas"]["FormPublic"];
 
 import { toast } from "sonner";
 import { useScopeStore } from "@/stores/scopeStore";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function useForms() {
 	const orgId = useScopeStore((state) => state.scope.orgId);
+	const { user } = useAuth();
 
-	return useQuery<FormRead[]>({
+	return useQuery<FormPublic[]>({
 		queryKey: ["forms", orgId],
 		queryFn: () => formsService.getForms(),
+		// Only fetch when authenticated
+		enabled: !!user,
 		// Don't use cached data from previous scope
 		staleTime: 0,
 		// Always refetch when component mounts (navigating to page)
@@ -29,7 +33,7 @@ export function useForms() {
 }
 
 export function useForm(formId: string | undefined) {
-	return useQuery<FormRead>({
+	return useQuery<FormPublic>({
 		queryKey: ["forms", formId],
 		queryFn: () => formsService.getForm(formId!),
 		enabled: !!formId,

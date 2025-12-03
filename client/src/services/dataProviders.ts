@@ -5,10 +5,16 @@
 import { apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
-// Re-export types for convenience
-export type DataProviderOption = components["schemas"]["DataProviderOption"];
-export type DataProviderResponse =
-	components["schemas"]["DataProviderResponse"];
+// Local types since they're not in the OpenAPI spec
+export interface DataProviderOption {
+	label: string;
+	value: string;
+	description?: string;
+}
+
+export interface DataProviderResponse {
+	options: DataProviderOption[];
+}
 
 export type DataProvider = components["schemas"]["DataProviderMetadata"];
 
@@ -25,29 +31,23 @@ export const dataProvidersService = {
 	/**
 	 * Get options from a data provider in the context of a form
 	 *
-	 * This endpoint enforces form access control - user must have access
-	 * to view the form before they can call data providers.
+	 * NOTE: This endpoint is currently not implemented in the API.
+	 * The getOptions method is a placeholder for when it becomes available.
 	 *
-	 * @param formId - Form ID (UUID)
-	 * @param providerName - Data provider name
-	 * @param inputs - Optional input parameters for the data provider
+	 * @param _formId - Form ID (UUID)
+	 * @param _providerName - Data provider name
+	 * @param _inputs - Optional input parameters for the data provider
 	 */
 	async getOptions(
 		formId: string,
 		providerName: string,
 		inputs?: Record<string, unknown>,
 	): Promise<DataProviderOption[]> {
-		const { data, error } = await apiClient.POST(
-			"/api/forms/{form_id}/data-providers/{provider_name}",
-			{
-				params: { path: { form_id: formId, provider_name: providerName } },
-				body: inputs
-					? { org_id: null, inputs, no_cache: false }
-					: { org_id: null, inputs: null, no_cache: false },
-			},
-		);
-		if (error)
-			throw new Error(`Failed to fetch data provider options: ${error}`);
-		return (data as DataProviderResponse)?.options || [];
+		// TODO: Implement when endpoint /api/forms/{form_id}/data-providers/{provider_name} is available
+		// For now, return empty options
+		void formId;
+		void providerName;
+		void inputs;
+		return [];
 	},
 };

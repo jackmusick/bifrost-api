@@ -4,6 +4,7 @@
  */
 
 import type { components } from "@/lib/v1";
+import { authFetch } from "@/lib/api-client";
 
 // Re-export types for convenience
 export type FileMetadata = components["schemas"]["FileMetadata"];
@@ -37,13 +38,8 @@ export const fileService = {
 	 * List files and folders in a directory
 	 */
 	async listFiles(path: string = ""): Promise<FileMetadata[]> {
-		const response = await fetch(
+		const response = await authFetch(
 			`/api/editor/files?path=${encodeURIComponent(path)}`,
-			{
-				headers: {
-					"Content-Type": "application/json",
-				},
-			},
 		);
 
 		if (!response.ok) {
@@ -57,13 +53,8 @@ export const fileService = {
 	 * Read file content
 	 */
 	async readFile(path: string): Promise<FileContentResponse> {
-		const response = await fetch(
+		const response = await authFetch(
 			`/api/editor/files/content?path=${encodeURIComponent(path)}`,
-			{
-				headers: {
-					"Content-Type": "application/json",
-				},
-			},
 		);
 
 		if (!response.ok) {
@@ -89,11 +80,8 @@ export const fileService = {
 			expected_etag: expectedEtag ?? null,
 		};
 
-		const response = await fetch("/api/editor/files/content", {
+		const response = await authFetch("/api/editor/files/content", {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(body),
 		});
 
@@ -115,14 +103,9 @@ export const fileService = {
 	 * Create a new folder
 	 */
 	async createFolder(path: string): Promise<FileMetadata> {
-		const response = await fetch(
+		const response = await authFetch(
 			`/api/editor/folder?path=${encodeURIComponent(path)}`,
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-			},
+			{ method: "POST" },
 		);
 
 		if (!response.ok) {
@@ -136,14 +119,9 @@ export const fileService = {
 	 * Delete a file or folder
 	 */
 	async deletePath(path: string): Promise<void> {
-		const response = await fetch(
+		const response = await authFetch(
 			`/api/editor/path?path=${encodeURIComponent(path)}`,
-			{
-				method: "DELETE",
-				headers: {
-					"Content-Type": "application/json",
-				},
-			},
+			{ method: "DELETE" },
 		);
 
 		if (!response.ok) {
@@ -155,14 +133,9 @@ export const fileService = {
 	 * Rename or move a file or folder
 	 */
 	async renamePath(oldPath: string, newPath: string): Promise<FileMetadata> {
-		const response = await fetch(
+		const response = await authFetch(
 			`/api/editor/path/rename?oldPath=${encodeURIComponent(oldPath)}&newPath=${encodeURIComponent(newPath)}`,
-			{
-				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-				},
-			},
+			{ method: "PUT" },
 		);
 
 		if (!response.ok) {

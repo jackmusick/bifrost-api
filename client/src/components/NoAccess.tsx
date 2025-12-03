@@ -1,9 +1,11 @@
 import { ShieldAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { logout } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 
 export function NoAccess() {
+	const { logout } = useAuth();
+
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center p-4">
 			<Card className="max-w-md w-full">

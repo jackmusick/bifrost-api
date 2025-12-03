@@ -1,13 +1,17 @@
 /**
- * React hook for real-time execution updates via Azure Web PubSub
+ * React hook for real-time execution updates via WebSocket
  *
- * Automatically connects to Web PubSub and subscribes to updates for a specific execution.
+ * Automatically connects to WebSocket and subscribes to updates for a specific execution.
  * When the execution completes, it triggers a refetch of the full execution data.
  */
 
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { webPubSubService, type HistoryUpdate } from "@/services/webpubsub";
+import {
+	webSocketService,
+	type HistoryUpdate,
+	type ExecutionLog,
+} from "@/services/websocket";
 import {
 	useExecutionStreamStore,
 	type StreamingLog,
@@ -28,7 +32,7 @@ interface UseExecutionStreamOptions {
 
 	/**
 	 * Whether to enable streaming (default: true)
-	 * Set to false to disable Web PubSub connection
+	 * Set to false to disable WebSocket connection
 	 */
 	enabled?: boolean;
 }
@@ -51,44 +55,41 @@ export function useExecutionStream(options: UseExecutionStreamOptions) {
 			store.startStreaming(executionId);
 		}
 
-		let unsubscribe: (() => void) | null = null;
-		let currentGroupName: string | null = null;
+		let unsubscribeUpdate: (() => void) | null = null;
+		let unsubscribeLog: (() => void) | null = null;
 
 		// Connect and subscribe
 		const init = async () => {
 			try {
-				performance.mark(`pubsub-connect-start-${executionId}`);
+				performance.mark(`ws-connect-start-${executionId}`);
 
-				// Connect to Web PubSub
-				await webPubSubService.connect();
+				// Connect to WebSocket with execution channel
+				const channel = `execution:${executionId}`;
+				await webSocketService.connect([channel]);
 
-				performance.mark(`pubsub-connect-end-${executionId}`);
+				performance.mark(`ws-connect-end-${executionId}`);
 				performance.measure(
-					`pubsub-connect-${executionId}`,
-					`pubsub-connect-start-${executionId}`,
-					`pubsub-connect-end-${executionId}`,
+					`ws-connect-${executionId}`,
+					`ws-connect-start-${executionId}`,
+					`ws-connect-end-${executionId}`,
 				);
 
-				// Check if actually connected (negotiate may have gracefully failed)
-				if (!webPubSubService.isConnected()) {
+				// Check if actually connected
+				if (!webSocketService.isConnected()) {
 					console.warn(
-						`[useExecutionStream] Web PubSub not connected for ${executionId}`,
+						`[useExecutionStream] WebSocket not connected for ${executionId}`,
 					);
 					store.setConnectionStatus(executionId, false);
 					return;
 				}
 
-				// Join the execution-specific group
-				currentGroupName = `execution:${executionId}`;
-				await webPubSubService.joinGroup(currentGroupName);
-
 				store.setConnectionStatus(executionId, true);
 				setConnectionError(null);
 
 				// Subscribe to execution updates
-				unsubscribe = webPubSubService.onExecutionUpdate((update) => {
-					// Only process updates for THIS execution
-					if (update["executionId"] === executionId) {
+				unsubscribeUpdate = webSocketService.onExecutionUpdate(
+					executionId,
+					(update) => {
 						// Get fresh store reference for each update
 						const currentStore = useExecutionStreamStore.getState();
 
@@ -98,24 +99,6 @@ export function useExecutionStream(options: UseExecutionStreamOptions) {
 								executionId,
 								update.status as ExecutionStatus,
 							);
-						}
-
-						// Append new logs
-						if (update.latestLogs && update.latestLogs.length > 0) {
-							const logs: StreamingLog[] = update.latestLogs.map(
-								(log) => {
-									const streamingLog: StreamingLog = {
-										level: log.level,
-										message: log.message,
-										timestamp: log.timestamp,
-									};
-									if (log.sequence !== undefined) {
-										streamingLog.sequence = log.sequence;
-									}
-									return streamingLog;
-								},
-							);
-							currentStore.appendLogs(executionId, logs);
 						}
 
 						// If execution is complete, mark as complete in store
@@ -131,8 +114,26 @@ export function useExecutionStream(options: UseExecutionStreamOptions) {
 								onComplete(executionId);
 							}
 						}
-					}
-				});
+					},
+				);
+
+				// Subscribe to execution logs
+				unsubscribeLog = webSocketService.onExecutionLog(
+					executionId,
+					(log: ExecutionLog) => {
+						const currentStore = useExecutionStreamStore.getState();
+
+						const streamingLog: StreamingLog = {
+							level: log.level,
+							message: log.message,
+							timestamp: log.timestamp,
+						};
+						if (log.sequence !== undefined) {
+							streamingLog.sequence = log.sequence;
+						}
+						currentStore.appendLogs(executionId, [streamingLog]);
+					},
+				);
 			} catch (error) {
 				console.error("[useExecutionStream] Failed to connect:", error);
 				const errorMessage =
@@ -149,22 +150,20 @@ export function useExecutionStream(options: UseExecutionStreamOptions) {
 
 		// Cleanup on unmount or when executionId changes
 		return () => {
-			if (unsubscribe) {
-				unsubscribe();
+			if (unsubscribeUpdate) {
+				unsubscribeUpdate();
 			}
-			if (currentGroupName) {
-				webPubSubService.leaveGroup(currentGroupName);
+			if (unsubscribeLog) {
+				unsubscribeLog();
 			}
-			// NOTE: We don't call clearStream here because:
-			// 1. It would cause infinite loops when currentExecutionId changes
-			// 2. The consumer (RunPanel) should manage when to clear the stream
-			// 3. Multiple components might be watching the same execution
+			// Unsubscribe from the channel
+			webSocketService.unsubscribe(`execution:${executionId}`);
 		};
 	}, [executionId, enabled, onComplete]);
 
 	return {
 		/**
-		 * Whether Web PubSub is connected
+		 * Whether WebSocket is connected
 		 */
 		isConnected:
 			useExecutionStreamStore.getState().streams[executionId]
@@ -180,7 +179,7 @@ export function useExecutionStream(options: UseExecutionStreamOptions) {
 /**
  * React hook for monitoring new executions (for History screen)
  *
- * Automatically connects to Web PubSub and listens for new execution notifications.
+ * Automatically connects to WebSocket and listens for new execution notifications.
  */
 export function useNewExecutions(options: { enabled?: boolean } = {}) {
 	const { enabled = true } = options;
@@ -196,11 +195,11 @@ export function useNewExecutions(options: { enabled?: boolean } = {}) {
 
 		const init = async () => {
 			try {
-				await webPubSubService.connect();
-				setIsConnected(true);
+				await webSocketService.connect();
+				setIsConnected(webSocketService.isConnected());
 
 				// Subscribe to new execution notifications
-				unsubscribe = webPubSubService.onNewExecution((execution) => {
+				unsubscribe = webSocketService.onNewExecution((execution) => {
 					setNewExecutions((prev) => [
 						execution.execution_id,
 						...prev,
@@ -228,7 +227,7 @@ export function useNewExecutions(options: { enabled?: boolean } = {}) {
 		newExecutions,
 
 		/**
-		 * Whether Web PubSub is connected
+		 * Whether WebSocket is connected
 		 */
 		isConnected,
 
@@ -242,7 +241,7 @@ export function useNewExecutions(options: { enabled?: boolean } = {}) {
 /**
  * React hook for real-time history page updates
  *
- * Subscribes to a scope-specific history group and updates React Query cache
+ * Subscribes to a scope-specific history channel and updates React Query cache
  * when new executions are created or existing ones complete.
  */
 export function useExecutionHistory(
@@ -258,26 +257,22 @@ export function useExecutionHistory(
 		}
 
 		let unsubscribe: (() => void) | null = null;
-		let currentGroupName: string | null = null;
 
 		const init = async () => {
 			try {
-				// Connect to Web PubSub
-				await webPubSubService.connect();
+				// Connect to WebSocket with history channel
+				const channel = `history:${scope}`;
+				await webSocketService.connect([channel]);
 
-				if (!webPubSubService.isConnected()) {
+				if (!webSocketService.isConnected()) {
 					setIsConnected(false);
 					return;
 				}
 
-				// Join the scope-specific history group
-				currentGroupName = `history:${scope}`;
-				await webPubSubService.joinGroup(currentGroupName);
-
 				setIsConnected(true);
 
 				// Subscribe to history updates
-				unsubscribe = webPubSubService.onHistoryUpdate(
+				unsubscribe = webSocketService.onHistoryUpdate(
 					(update: HistoryUpdate) => {
 						// Optimistically update ALL executions queries (handles different filters/pages)
 						// We use setQueriesData to update all matching queries, but only for the first page
@@ -359,15 +354,13 @@ export function useExecutionHistory(
 			if (unsubscribe) {
 				unsubscribe();
 			}
-			if (currentGroupName) {
-				webPubSubService.leaveGroup(currentGroupName);
-			}
+			webSocketService.unsubscribe(`history:${scope}`);
 		};
 	}, [scope, enabled, queryClient]);
 
 	return {
 		/**
-		 * Whether Web PubSub is connected for history updates
+		 * Whether WebSocket is connected for history updates
 		 */
 		isConnected,
 	};

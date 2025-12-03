@@ -51,6 +51,7 @@ services:
       - "15672:15672"  # Management UI
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_running"]
       interval: 10s
@@ -165,12 +166,77 @@ services:
       api:
         condition: service_healthy
 
-  # Background Jobs Worker
-  jobs:
+  # Discovery Service (File Watcher + DB Sync)
+  # MUST run as single instance - owns file watching and DB sync exclusively
+  discovery:
     build:
       context: .
       dockerfile: api/Dockerfile.jobs
-    container_name: bifrost-jobs
+    container_name: bifrost-discovery
+    environment:
+      # Core (must match API)
+      BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      # Database
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # File Storage (read-only - only watches for changes)
+      BIFROST_WORKSPACE_LOCATION: /workspace
+    volumes:
+      - ./api/src:/app/src
+      - ./api/shared:/app/shared
+      - ./api/bifrost:/app/bifrost
+      - ./api/platform:/app/platform
+      - bifrost_workspace:/workspace:ro  # Read-only for discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      replicas: 1  # MUST be single instance
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.discovery.main
+
+  # Scheduler Service (APScheduler only)
+  # MUST run as single instance - handles CRON jobs, cleanup tasks, OAuth refresh
+  scheduler:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.jobs
+    container_name: bifrost-scheduler
+    environment:
+      # Core (must match API)
+      BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      # Database
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # Message Queue
+      BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+    volumes:
+      - ./api/src:/app/src
+      - ./api/shared:/app/shared
+      - ./api/bifrost:/app/bifrost
+      - ./api/platform:/app/platform
+      # No workspace mount - scheduler only runs scheduled jobs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      discovery:
+        condition: service_started
+    deploy:
+      replicas: 1  # MUST be single instance
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.scheduler.main
+
+  # Worker Service (RabbitMQ Consumers)
+  # Can be scaled horizontally for increased throughput
+  worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.jobs
+    container_name: bifrost-worker
     environment:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
@@ -181,10 +247,10 @@ services:
       # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
-      # File Storage
+      # File Storage (read-write for git sync)
       BIFROST_WORKSPACE_LOCATION: /workspace
       # Concurrency
-      BIFROST_MAX_CONCURRENCY: ${MAX_CONCURRENCY:-10}
+      BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-10}
     volumes:
       - ./api/src:/app/src
       - ./api/shared:/app/shared
@@ -196,10 +262,14 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      api:
+      redis:
         condition: service_healthy
+      discovery:
+        condition: service_started
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
     command: >
-      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.jobs.main
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.worker.main
 
 volumes:
   postgres_data:

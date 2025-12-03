@@ -47,7 +47,7 @@ export function AssignUsersDialog({
 
 		await assignUsers.mutateAsync({
 			roleId: role.id,
-			request: { user_ids: selectedUserIds },
+			request: { userIds: selectedUserIds },
 		});
 
 		setSelectedUserIds([]);

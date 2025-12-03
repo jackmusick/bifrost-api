@@ -46,23 +46,24 @@ import {
 } from "@/components/ui/table";
 import { useForms, useDeleteForm, useUpdateForm } from "@/hooks/useForms";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import type { components } from "@/lib/v1";
+import type { FormSchema } from "@/lib/client-types";
 
-type FormRead = components["schemas"]["FormRead"];
-type FormSchemaOutput = components["schemas"]["FormSchema-Output"];
+type FormPublic = components["schemas"]["FormPublic"];
 
-// Type guard to check if form_schema is a FormSchema-Output
+// Type guard to check if form_schema is a FormSchema
 function isFormSchema(
-	schema: FormRead["form_schema"],
-): schema is FormSchemaOutput {
+	schema: unknown,
+): schema is FormSchema {
 	return (
 		schema !== null &&
 		schema !== undefined &&
+		typeof schema === "object" &&
 		"fields" in schema &&
-		Array.isArray((schema as FormSchemaOutput).fields)
+		Array.isArray((schema as unknown as FormSchema).fields)
 	);
 }
 
@@ -95,7 +96,7 @@ export function Forms() {
 		>();
 
 		forms?.forEach((form) => {
-			const formWithParams = form as FormRead & {
+			const formWithParams = form as FormPublic & {
 				missingRequiredParams?: string[];
 			};
 			const missingParams = formWithParams.missingRequiredParams || [];
@@ -155,7 +156,6 @@ export function Forms() {
 				launch_workflow_id: null,
 				allowed_query_params: null,
 				default_launch_params: null,
-				assigned_roles: null,
 			},
 		});
 		setIsDisableDialogOpen(false);

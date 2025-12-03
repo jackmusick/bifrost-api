@@ -130,8 +130,8 @@ done
 # =============================================================================
 if [ "$E2E_MODE" = true ]; then
     echo ""
-    echo "E2E Mode: Starting API and Jobs workers..."
-    docker compose -f "$COMPOSE_FILE" --profile e2e up -d api jobs
+    echo "E2E Mode: Starting API, Discovery, and Jobs workers..."
+    docker compose -f "$COMPOSE_FILE" --profile e2e up -d api discovery jobs
 
     # Wait for API to be healthy
     echo "Waiting for API to be ready..."
@@ -148,6 +148,10 @@ if [ "$E2E_MODE" = true ]; then
         echo "  Waiting for API... (attempt $i/120)"
         sleep 1
     done
+
+    # Wait for Discovery to sync initial index
+    echo "Waiting for Discovery to sync..."
+    sleep 3  # Give discovery time to build initial index and sync to DB
 fi
 
 # =============================================================================

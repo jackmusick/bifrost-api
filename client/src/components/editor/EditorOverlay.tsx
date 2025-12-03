@@ -1,5 +1,5 @@
 import { useEditorStore } from "@/stores/editorStore";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { EditorLayout } from "./EditorLayout";
 
 /**
@@ -11,10 +11,7 @@ import { EditorLayout } from "./EditorLayout";
 export function EditorOverlay() {
 	const isOpen = useEditorStore((state) => state.isOpen);
 	const layoutMode = useEditorStore((state) => state.layoutMode);
-	const { user } = useAuth();
-
-	// Check if user is platform admin
-	const isPlatformAdmin = user?.userRoles?.includes("PlatformAdmin") ?? false;
+	const { isPlatformAdmin } = useAuth();
 
 	if (!isOpen || !isPlatformAdmin) {
 		return null;

@@ -93,7 +93,7 @@ export function Login() {
 
 			if (result.mfaSetupRequired) {
 				// Redirect to MFA setup with the token
-				navigate("/auth/mfa-setup", {
+				navigate("/mfa-setup", {
 					state: { mfaToken: result.mfaToken, from },
 				});
 				return;

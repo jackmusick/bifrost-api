@@ -6,7 +6,6 @@ Business logic for organization management
 import logging
 from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
 
 from src.models.schemas import (
     CreateOrganizationRequest,

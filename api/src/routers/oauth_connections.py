@@ -7,14 +7,13 @@ This is separate from oauth_sso.py which handles user authentication.
 
 import logging
 import secrets
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.schemas import (
@@ -202,12 +201,13 @@ class OAuthConnectionRepository:
             return False
 
         # Delete associated tokens first
+        # Note: session.delete() is NOT async - it just marks for deletion
         token_query = select(OAuthToken).where(OAuthToken.provider_id == provider.id)
         token_result = await self.db.execute(token_query)
         for token in token_result.scalars().all():
-            await self.db.delete(token)
+            self.db.delete(token)
 
-        await self.db.delete(provider)
+        self.db.delete(provider)
         await self.db.flush()
 
         return True

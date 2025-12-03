@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "./useAuth";
+import { useAuth } from "@/contexts/AuthContext";
+import { authFetch } from "@/lib/api-client";
 
 interface UserDetails {
 	id: string;
@@ -23,13 +24,13 @@ export function useUserPermissions() {
 		isLoading: detailsLoading,
 		error,
 	} = useQuery<UserDetails>({
-		queryKey: ["user", user?.userId],
+		queryKey: ["user", user?.id],
 		queryFn: async () => {
-			if (!user?.userId) {
+			if (!user?.id) {
 				throw new Error("No user ID available");
 			}
 
-			const response = await fetch(`/api/users/${user.userId}`);
+			const response = await authFetch(`/api/users/${user.id}`);
 
 			if (!response.ok) {
 				// User doesn't exist in database - treat as unauthorized
@@ -38,7 +39,7 @@ export function useUserPermissions() {
 
 			return response.json();
 		},
-		enabled: !!user?.userId,
+		enabled: !!user?.id,
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		retry: false, // Don't retry on 404
 	});

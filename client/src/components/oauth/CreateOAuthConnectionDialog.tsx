@@ -86,7 +86,7 @@ export function CreateOAuthConnectionDialog({
 				oauth_flow_type: existingConnection.oauth_flow_type,
 				client_id: existingConnection.client_id,
 				client_secret: "", // Don't populate for security
-				authorization_url: existingConnection.authorization_url,
+				authorization_url: existingConnection.authorization_url ?? null,
 				token_url: existingConnection.token_url,
 				scopes: existingConnection.scopes || "",
 			});

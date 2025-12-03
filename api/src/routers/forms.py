@@ -40,60 +40,61 @@ async def list_forms(
     - Platform admins see all forms
     - Org users see: their org's forms + global forms (org_id IS NULL)
     - Access is further filtered by access_level (public, authenticated, role_based)
+
+    This endpoint uses a single optimized query with SQL-level filtering
+    instead of multiple roundtrips and Python filtering.
     """
-    # Base query - active forms only for non-admins
+    # Platform admins see all forms
     if ctx.user.is_superuser:
-        query = select(FormORM)
-    else:
-        query = select(FormORM).where(FormORM.is_active)
+        query = select(FormORM).order_by(FormORM.name)
+        result = await db.execute(query)
+        return [FormPublic.model_validate(f) for f in result.scalars().all()]
 
-    # Org scoping: user's org forms + global forms
-    if not ctx.user.is_superuser:
-        if ctx.org_id:
-            query = query.where(
-                or_(FormORM.organization_id == ctx.org_id, FormORM.organization_id.is_(None))
-            )
-        else:
-            # User has no org - only global forms visible
-            query = query.where(FormORM.organization_id.is_(None))
+    # Build subquery for forms accessible via user's roles
+    # This finds form IDs where the user has a matching role
+    user_accessible_forms_subquery = (
+        select(FormRoleORM.form_id)
+        .join(UserRoleORM, UserRoleORM.role_id == FormRoleORM.role_id)
+        .where(UserRoleORM.user_id == ctx.user.user_id)
+        .distinct()
+    )
 
-    query = query.order_by(FormORM.name)
-    result = await db.execute(query)
-    all_forms = list(result.scalars().all())
-
-    # Platform admins see all
-    if ctx.user.is_superuser:
-        return [FormPublic.model_validate(f) for f in all_forms]
-
-    # For regular users, filter by access level
-    # Get user's roles
-    role_query = select(UserRoleORM.role_id).where(UserRoleORM.user_id == ctx.user.user_id)
-    role_result = await db.execute(role_query)
-    user_role_ids = list(role_result.scalars().all())
-
-    # Get form IDs accessible via user's roles
-    if user_role_ids:
-        form_role_query = select(FormRoleORM.form_id).where(
-            FormRoleORM.role_id.in_(user_role_ids)
+    # Build main query with all access logic in SQL
+    # A form is visible if:
+    # 1. It's active AND
+    # 2. It belongs to user's org OR is global (org_id IS NULL) AND
+    # 3. Access level is 'public' OR 'authenticated' OR
+    #    (access level is 'role_based' AND user has a matching role)
+    if ctx.org_id:
+        org_filter = or_(
+            FormORM.organization_id == ctx.org_id,
+            FormORM.organization_id.is_(None)
         )
-        form_role_result = await db.execute(form_role_query)
-        accessible_form_ids = {r for r in form_role_result.scalars().all()}
     else:
-        accessible_form_ids = set()
+        # User has no org - only global forms visible
+        org_filter = FormORM.organization_id.is_(None)
 
-    # Filter forms by access level
-    visible_forms = []
-    for form in all_forms:
-        access_level = form.access_level or "role_based"
-        if access_level == "public":
-            visible_forms.append(form)
-        elif access_level == "authenticated":
-            visible_forms.append(form)
-        elif access_level == "role_based":
-            if form.id in accessible_form_ids:
-                visible_forms.append(form)
+    query = (
+        select(FormORM)
+        .where(FormORM.is_active)
+        .where(org_filter)
+        .where(
+            or_(
+                FormORM.access_level == "public",
+                FormORM.access_level == "authenticated",
+                # role_based access: user must have a role assigned to the form
+                # Also include forms with NULL access_level (defaults to role_based)
+                or_(
+                    FormORM.access_level == "role_based",
+                    FormORM.access_level.is_(None)
+                ) & FormORM.id.in_(user_accessible_forms_subquery)
+            )
+        )
+        .order_by(FormORM.name)
+    )
 
-    return [FormPublic.model_validate(f) for f in visible_forms]
+    result = await db.execute(query)
+    return [FormPublic.model_validate(f) for f in result.scalars().all()]
 
 
 @router.post(

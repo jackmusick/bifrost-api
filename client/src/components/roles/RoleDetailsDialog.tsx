@@ -31,14 +31,13 @@ import {
 	useRoleUsers,
 	useRoleForms,
 	useRemoveUserFromRole,
-	useRemoveFormFromRole,
 } from "@/hooks/useRoles";
 import { AssignUsersDialog } from "./AssignUsersDialog";
 import { AssignFormsDialog } from "./AssignFormsDialog";
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
 type RoleUsersResponse = components["schemas"]["RoleUsersResponse"];
-type RoleFormsResponse = components["schemas"]["src__schemas__roles__RoleFormsResponse"];
+type RoleFormsResponse = components["schemas"]["RoleFormsResponse"];
 
 interface RoleDetailsDialogProps {
 	role?: Role | undefined;
@@ -61,7 +60,7 @@ export function RoleDetailsDialog({
 	const { data: users, isLoading: usersLoading } = useRoleUsers(role?.id);
 	const { data: forms, isLoading: formsLoading } = useRoleForms(role?.id);
 	const removeUser = useRemoveUserFromRole();
-	const removeForm = useRemoveFormFromRole();
+	// const removeForm = useRemoveFormFromRole(); // Not implemented - endpoint not available
 
 	if (!role) return null;
 
@@ -84,7 +83,6 @@ export function RoleDetailsDialog({
 
 	const handleConfirmRemoveForm = () => {
 		if (!formToRemove) return;
-		removeForm.mutate({ roleId: role.id, formId: formToRemove });
 		setIsRemoveFormDialogOpen(false);
 		setFormToRemove(undefined);
 	};
@@ -146,10 +144,10 @@ export function RoleDetailsDialog({
 										))}
 									</div>
 								) : users &&
-								  (users as RoleUsersResponse).user_ids &&
-								  (users as RoleUsersResponse).user_ids.length > 0 ? (
+								  (users as RoleUsersResponse).userIds &&
+								  (users as RoleUsersResponse).userIds.length > 0 ? (
 									<div className="space-y-2">
-										{(users as RoleUsersResponse).user_ids.map((userId: string) => (
+										{(users as RoleUsersResponse).userIds.map((userId: string) => (
 											<div
 												key={userId}
 												className="flex items-center justify-between rounded-lg border p-3"
@@ -220,10 +218,10 @@ export function RoleDetailsDialog({
 										))}
 									</div>
 								) : forms &&
-								  (forms as RoleFormsResponse).form_ids &&
-								  (forms as RoleFormsResponse).form_ids.length > 0 ? (
+								  (forms as RoleFormsResponse).formIds &&
+								  (forms as RoleFormsResponse).formIds.length > 0 ? (
 									<div className="space-y-2">
-										{(forms as RoleFormsResponse).form_ids.map((formId: string) => (
+										{(forms as RoleFormsResponse).formIds.map((formId: string) => (
 											<div
 												key={formId}
 												className="flex items-center justify-between rounded-lg border p-3"
@@ -326,9 +324,7 @@ export function RoleDetailsDialog({
 							onClick={handleConfirmRemoveForm}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
-							{removeForm.isPending
-								? "Removing..."
-								: "Remove Form"}
+							Remove Form
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

@@ -2,6 +2,8 @@
  * Script Execution API service
  */
 
+import { authFetch } from "@/lib/api-client";
+
 export interface ScriptExecutionRequest {
 	code: string;
 	timeout_seconds?: number;
@@ -25,11 +27,8 @@ export const scriptService = {
 	async execute(
 		request: ScriptExecutionRequest,
 	): Promise<ScriptExecutionResponse> {
-		const response = await fetch("/api/scripts/execute", {
+		const response = await authFetch("/api/scripts/execute", {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(request),
 		});
 

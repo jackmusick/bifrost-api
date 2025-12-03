@@ -37,7 +37,7 @@ import {
 	useExecutionLogs,
 	useExecutionVariables,
 } from "@/hooks/useExecutions";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { executionsService } from "@/services/executions";
 import { workflowsService } from "@/services/workflows";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
@@ -56,14 +56,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useRef, useCallback } from "react";
 
 type ExecutionStatus =
-	| components["schemas"]["shared__models__ExecutionStatus"]
+	| components["schemas"]["ExecutionStatus"]
 	| "Cancelling"
 	| "Cancelled";
 type WorkflowExecution = components["schemas"]["WorkflowExecution"];
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 type FileMetadata = components["schemas"]["FileMetadata"];
 type WorkflowExecutionResponse =
-	components["schemas"]["shared__models__WorkflowExecutionResponse"];
+	components["schemas"]["WorkflowExecutionResponse"];
 
 
 // Type for metadata response from useWorkflowsMetadata hook

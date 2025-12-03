@@ -8,6 +8,7 @@ Allows listing, installing, and uninstalling Python packages.
 import logging
 import subprocess
 import json
+import uuid
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -20,6 +21,7 @@ from src.models.schemas import (
     PackageUpdatesResponse,
 )
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
+from src.jobs.rabbitmq import publish_message
 
 logger = logging.getLogger(__name__)
 
@@ -181,60 +183,52 @@ async def install_package(
     user: CurrentSuperuser,
 ) -> PackageInstallResponse:
     """
-    Install a Python package.
+    Install a Python package via RabbitMQ job queue.
 
-    In production, this would queue a RabbitMQ job for background installation.
-    For now, it attempts direct installation.
+    Queues the installation job and returns immediately. Installation progress
+    is streamed via WebSocket to the package:{user_id} channel.
 
     Args:
         request: Package install request with name and optional version
 
     Returns:
-        Installation response
+        Installation response with job_id for tracking
     """
     try:
+        job_id = str(uuid.uuid4())
         package_spec = request.package
         if request.version:
             package_spec = f"{request.package}=={request.version}"
 
-        logger.info(f"Installing package: {package_spec}")
+        logger.info(f"Queueing package installation: {package_spec}", extra={"job_id": job_id})
 
-        # In production, this would be queued as a job
-        # For now, attempt direct installation
-        result = subprocess.run(
-            ["pip", "install", package_spec],
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minute timeout
+        # Queue the installation job to RabbitMQ
+        # The connection_id is the user_id so they can subscribe to package:{user_id}
+        await publish_message(
+            queue_name="package-installations",
+            message={
+                "type": "package_install",
+                "job_id": job_id,
+                "package": request.package if request.package else None,
+                "version": request.version if request.version else None,
+                "connection_id": str(user.user_id),  # User subscribes to package:{user_id}
+                "user_id": str(user.user_id),
+                "user_email": user.email,
+            },
         )
 
-        if result.returncode != 0:
-            logger.error(f"pip install failed: {result.stderr}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Package installation failed: {result.stderr}",
-            )
-
-        logger.info(f"Successfully installed package: {package_spec}")
+        logger.info(f"Package installation queued: {package_spec}", extra={"job_id": job_id})
 
         return PackageInstallResponse(
-            job_id=request.package,
+            job_id=job_id,
             status="queued",
         )
 
-    except subprocess.TimeoutExpired:
-        logger.error(f"Package installation timed out: {request.package}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Package installation timed out",
-        )
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error installing package: {str(e)}", exc_info=True)
+        logger.error(f"Error queueing package installation: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to install package",
+            detail="Failed to queue package installation",
         )
 
 

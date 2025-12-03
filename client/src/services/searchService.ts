@@ -4,6 +4,8 @@
  * Local types defined since search endpoints aren't in OpenAPI spec
  */
 
+import { authFetch } from "@/lib/api-client";
+
 // Define local types since search models aren't exposed via OpenAPI endpoints
 export interface SearchRequest {
 	query: string;
@@ -34,11 +36,8 @@ export const searchService = {
 	 * Search file contents for text or regex patterns
 	 */
 	async searchFiles(request: SearchRequest): Promise<SearchResponse> {
-		const response = await fetch("/api/editor/search", {
+		const response = await authFetch("/api/editor/search", {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(request),
 		});
 

@@ -7,6 +7,7 @@ import { workflowsService } from "@/services/workflows";
 import { dataProvidersService } from "@/services/dataProviders";
 import { toast } from "sonner";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Fetch workflow and data provider metadata.
@@ -18,6 +19,7 @@ import { useWorkflowsStore } from "@/stores/workflowsStore";
  */
 export function useWorkflowsMetadata() {
 	const setWorkflows = useWorkflowsStore((state) => state.setWorkflows);
+	const { user } = useAuth();
 
 	return useQuery({
 		queryKey: ["workflows", "metadata"],
@@ -39,6 +41,8 @@ export function useWorkflowsMetadata() {
 				dataProviders: dataProviders || [],
 			};
 		},
+		// Only fetch when authenticated
+		enabled: !!user,
 		// Cache for 1 minute - workflows don't change often
 		staleTime: 60000,
 	});

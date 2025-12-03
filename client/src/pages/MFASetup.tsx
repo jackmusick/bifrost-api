@@ -37,9 +37,20 @@ export function MFASetup() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Get MFA token from location state
-	const mfaToken = (location.state as { mfaToken?: string })?.mfaToken;
+	// Get MFA token from location state or sessionStorage (backup for page refreshes)
+	const locationMfaToken = (location.state as { mfaToken?: string })?.mfaToken;
 	const from = (location.state as { from?: string })?.from || "/";
+
+	// Use location state token if available, otherwise fall back to sessionStorage
+	const [mfaToken] = useState<string | undefined>(() => {
+		if (locationMfaToken) {
+			// Store in sessionStorage as backup
+			sessionStorage.setItem("mfa_setup_token", locationMfaToken);
+			return locationMfaToken;
+		}
+		// Try to recover from sessionStorage
+		return sessionStorage.getItem("mfa_setup_token") || undefined;
+	});
 
 	// MFA state
 	const [totpSetup, setTotpSetup] = useState<TOTPSetup | null>(null);
@@ -51,13 +62,20 @@ export function MFASetup() {
 		setIsLoading(true);
 		try {
 			// Call setup endpoint with the MFA setup token
-			const res = await fetch("/api/auth/mfa/totp/setup", {
+			const res = await fetch("/auth/mfa/setup", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${mfaToken}`,
 				},
 			});
+
+			// 401 means the MFA token is expired or invalid - redirect to login
+			if (res.status === 401) {
+				sessionStorage.removeItem("mfa_setup_token");
+				navigate("/login", { state: { from } });
+				return;
+			}
 
 			if (!res.ok) throw new Error("Failed to initialize MFA setup");
 
@@ -71,7 +89,7 @@ export function MFASetup() {
 		} finally {
 			setIsLoading(false);
 		}
-	}, [mfaToken]);
+	}, [mfaToken, navigate, from]);
 
 	// Redirect if no MFA token
 	useEffect(() => {
@@ -90,7 +108,7 @@ export function MFASetup() {
 		setIsLoading(true);
 
 		try {
-			const res = await fetch("/api/auth/mfa/totp/verify", {
+			const res = await fetch("/auth/mfa/verify", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -99,6 +117,13 @@ export function MFASetup() {
 				body: JSON.stringify({ code: mfaCode }),
 			});
 
+			// 401 means the MFA token is expired or invalid - redirect to login
+			if (res.status === 401) {
+				sessionStorage.removeItem("mfa_setup_token");
+				navigate("/login", { state: { from } });
+				return;
+			}
+
 			if (!res.ok) {
 				const error = await res.json().catch(() => ({}));
 				throw new Error(error.detail || "Invalid code");
@@ -106,6 +131,8 @@ export function MFASetup() {
 
 			const data = await res.json();
 			if (data.success) {
+				// Clear the MFA setup token from sessionStorage
+				sessionStorage.removeItem("mfa_setup_token");
 				setRecoveryCodes(data.recovery_codes);
 				setStep("recovery-codes");
 			}

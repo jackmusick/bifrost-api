@@ -8,7 +8,7 @@ import { executionsService } from "@/services/executions";
 import type { components } from "@/lib/v1";
 
 type WorkflowExecution = components["schemas"]["WorkflowExecution"];
-type ExecutionStatus = components["schemas"]["shared__models__ExecutionStatus"];
+type ExecutionStatus = components["schemas"]["ExecutionStatus"];
 
 export interface WorkflowPollingOptions {
 	/** List of execution IDs to monitor */

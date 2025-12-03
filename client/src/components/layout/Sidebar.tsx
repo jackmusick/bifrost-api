@@ -8,7 +8,6 @@ import {
 	FileCode,
 	Key,
 	UserCog,
-	Shield,
 	BookOpen,
 	Link2,
 	Clock,
@@ -17,7 +16,7 @@ import {
 	FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "@/components/branding/Logo";
 import { Button } from "@/components/ui/button";
 
@@ -82,12 +81,6 @@ const navSections: NavSection[] = [
 				title: "Config",
 				href: "/config",
 				icon: Key,
-				requiresPlatformAdmin: true,
-			},
-			{
-				title: "Secrets",
-				href: "/secrets",
-				icon: Shield,
 				requiresPlatformAdmin: true,
 			},
 			{

@@ -20,9 +20,9 @@ import {
 	ReactNode,
 } from "react";
 import type { components } from "@/lib/v1";
+import type { FormField } from "@/lib/client-types";
 
-type Form = components["schemas"]["FormRead"];
-type FormField = components["schemas"]["FormField-Output"];
+type Form = components["schemas"]["FormPublic"];
 
 /**
  * Form context shape matching backend spec

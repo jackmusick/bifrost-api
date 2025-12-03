@@ -6,15 +6,13 @@ Provides overview of platform usage and system health.
 """
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case, literal_column
 
-from shared.discovery import scan_all_workflows, scan_all_forms
 from src.models.schemas import DashboardMetricsResponse, ExecutionStats, RecentFailure
 from src.core.auth import Context, CurrentActiveUser
-from src.models import Execution as ExecutionModel
+from src.models import Execution as ExecutionModel, Workflow, Form, DataProvider
 from src.models.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)
@@ -44,68 +42,91 @@ async def get_metrics(
         Dashboard metrics including workflow/form counts, execution stats, etc.
     """
     try:
-        # Scan workflows and forms
-        workflows = list(scan_all_workflows())
-        forms = list(scan_all_forms())
-
-        # Query execution statistics from database
-        datetime.utcnow()
-
-        # Total executions
-        total_query = select(func.count(ExecutionModel.id))
-        total_result = await ctx.db.execute(total_query)
-        total_executions = total_result.scalar() or 0
-
-        # Success count
-        success_query = select(func.count(ExecutionModel.id)).where(
-            ExecutionModel.status == ExecutionStatus.SUCCESS.value,
+        # Single query for all entity counts using subqueries
+        counts_query = select(
+            select(func.count(Workflow.id))
+            .where(Workflow.is_active.is_(True))
+            .correlate(None)
+            .scalar_subquery()
+            .label("workflow_count"),
+            select(func.count(Form.id))
+            .where(Form.is_active.is_(True))
+            .correlate(None)
+            .scalar_subquery()
+            .label("form_count"),
+            select(func.count(DataProvider.id))
+            .where(DataProvider.is_active.is_(True))
+            .correlate(None)
+            .scalar_subquery()
+            .label("provider_count"),
         )
-        success_result = await ctx.db.execute(success_query)
-        success_count = success_result.scalar() or 0
+        counts_result = await ctx.db.execute(counts_query)
+        counts_row = counts_result.one()
+        workflow_count = counts_row.workflow_count or 0
+        form_count = counts_row.form_count or 0
+        provider_count = counts_row.provider_count or 0
 
-        # Failed count
-        failed_query = select(func.count(ExecutionModel.id)).where(
-            ExecutionModel.status == ExecutionStatus.FAILED.value,
+        # Single query for all execution stats using conditional aggregation
+        exec_stats_query = select(
+            func.count(ExecutionModel.id).label("total"),
+            func.sum(
+                case(
+                    (ExecutionModel.status == ExecutionStatus.SUCCESS.value, 1),
+                    else_=0,
+                )
+            ).label("success_count"),
+            func.sum(
+                case(
+                    (ExecutionModel.status == ExecutionStatus.FAILED.value, 1),
+                    else_=0,
+                )
+            ).label("failed_count"),
+            func.sum(
+                case(
+                    (ExecutionModel.status == ExecutionStatus.RUNNING.value, 1),
+                    else_=0,
+                )
+            ).label("running_count"),
+            func.sum(
+                case(
+                    (ExecutionModel.status == ExecutionStatus.PENDING.value, 1),
+                    else_=0,
+                )
+            ).label("pending_count"),
+            func.avg(
+                case(
+                    (ExecutionModel.status == ExecutionStatus.SUCCESS.value, ExecutionModel.duration_ms),
+                    else_=literal_column("NULL"),
+                )
+            ).label("avg_duration_ms"),
         )
-        failed_result = await ctx.db.execute(failed_query)
-        failed_count = failed_result.scalar() or 0
+        exec_result = await ctx.db.execute(exec_stats_query)
+        exec_row = exec_result.one()
 
-        # Running count
-        running_query = select(func.count(ExecutionModel.id)).where(
-            ExecutionModel.status == ExecutionStatus.RUNNING.value,
-        )
-        running_result = await ctx.db.execute(running_query)
-        running_count = running_result.scalar() or 0
+        total_executions = exec_row.total or 0
+        success_count = exec_row.success_count or 0
+        failed_count = exec_row.failed_count or 0
+        running_count = exec_row.running_count or 0
+        pending_count = exec_row.pending_count or 0
+        avg_duration_ms = exec_row.avg_duration_ms or 0
 
-        # Pending count
-        pending_query = select(func.count(ExecutionModel.id)).where(
-            ExecutionModel.status == ExecutionStatus.PENDING.value,
-        )
-        pending_result = await ctx.db.execute(pending_query)
-        pending_count = pending_result.scalar() or 0
-
-        # Success rate
         success_rate = (success_count / total_executions * 100) if total_executions > 0 else 0.0
-
-        # Average execution time (successful executions, in seconds)
-        avg_time_query = select(func.avg(ExecutionModel.duration_ms)).where(
-            ExecutionModel.status == ExecutionStatus.SUCCESS.value,
-        )
-        avg_time_result = await ctx.db.execute(avg_time_query)
-        avg_duration_ms = avg_time_result.scalar() or 0
         avg_duration_seconds = float(avg_duration_ms) / 1000.0 if avg_duration_ms else 0.0
 
-        # Get recent failures
+        # Get recent failures (separate query - needs full rows)
         failures_query = (
-            select(ExecutionModel)
-            .where(
-                ExecutionModel.status == ExecutionStatus.FAILED.value,
+            select(
+                ExecutionModel.id,
+                ExecutionModel.workflow_name,
+                ExecutionModel.error_message,
+                ExecutionModel.started_at,
             )
+            .where(ExecutionModel.status == ExecutionStatus.FAILED.value)
             .order_by(ExecutionModel.started_at.desc())
             .limit(5)
         )
         failures_result = await ctx.db.execute(failures_query)
-        failures_models = failures_result.scalars().all()
+        failures_rows = failures_result.all()
 
         recent_failures = [
             RecentFailure(
@@ -114,7 +135,7 @@ async def get_metrics(
                 error_message=f.error_message,
                 started_at=f.started_at.isoformat() if f.started_at else None,
             )
-            for f in failures_models
+            for f in failures_rows
         ]
 
         # Execution statistics
@@ -130,16 +151,16 @@ async def get_metrics(
 
         # Create response
         response = DashboardMetricsResponse(
-            workflow_count=len(workflows),
-            form_count=len(forms),
-            data_provider_count=0,  # Would scan data providers if available
+            workflow_count=workflow_count,
+            form_count=form_count,
+            data_provider_count=provider_count,
             execution_stats=execution_stats,
             recent_failures=recent_failures,
         )
 
         logger.info(
-            f"Dashboard metrics: {len(workflows)} workflows, {len(forms)} forms, "
-            f"{total_executions} total executions"
+            f"Dashboard metrics: {workflow_count} workflows, {form_count} forms, "
+            f"{provider_count} providers, {total_executions} total executions"
         )
 
         return response

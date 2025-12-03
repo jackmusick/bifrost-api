@@ -9,7 +9,7 @@ import {
 	type InstalledPackage,
 	type PackageUpdate,
 } from "@/services/packages";
-import { webPubSubService } from "@/services/webpubsub";
+import { webSocketService } from "@/services/websocket";
 import { useEditorStore } from "@/stores/editorStore";
 import { useExecutionStreamStore } from "@/stores/executionStreamStore";
 
@@ -44,27 +44,27 @@ export function PackagePanel() {
 			: undefined,
 	);
 
-	// Connect to WebPubSub for real-time package installation logs
+	// Connect to WebSocket for real-time package installation logs
 	useEffect(() => {
 		const init = async () => {
 			try {
-				await webPubSubService.connect();
+				await webSocketService.connect();
 
-				if (!webPubSubService.isConnected()) {
+				if (!webSocketService.isConnected()) {
 					setIsConnected(false);
 					return;
 				}
 
 				setIsConnected(true);
 
-				// Get connection ID
-				const connId = webPubSubService.getConnectionId();
-				if (connId) {
-					setConnectionId(connId);
+				// Get user ID (replaces connection ID)
+				const userId = webSocketService.getUserId();
+				if (userId) {
+					setConnectionId(userId);
 				} else {
-					// Poll for connection ID (set after 'connected' system message)
+					// Poll for user ID (set after 'connected' message)
 					const checkId = setInterval(() => {
-						const id = webPubSubService.getConnectionId();
+						const id = webSocketService.getUserId();
 						if (id) {
 							setConnectionId(id);
 							clearInterval(checkId);
@@ -95,40 +95,50 @@ export function PackagePanel() {
 		}
 	}, []);
 
-	// Subscribe to package messages
+	// Subscribe to package channel for streaming logs
 	useEffect(() => {
-		const unsubscribe = webPubSubService.onPackageMessage((message) => {
-			if (!currentInstallationId) return;
+		if (!connectionId || !isConnected) {
+			return;
+		}
 
-			const store = useExecutionStreamStore.getState();
+		// Subscribe to package channel
+		const packageChannel = `package:${connectionId}`;
+		webSocketService.subscribe(packageChannel);
 
-			if (message.type === "log") {
-				// Append log to execution stream store
+		// Handle package logs
+		const unsubscribeLog = webSocketService.onPackageLog((log) => {
+			if (currentInstallationId) {
+				const store = useExecutionStreamStore.getState();
 				store.appendLog(currentInstallationId, {
-					level: message.level?.toUpperCase() || "INFO",
-					message: message.message,
+					level: log.level.toUpperCase(),
+					message: log.message,
 					timestamp: new Date().toISOString(),
 				});
-			} else if (message.type === "complete") {
-				// Just mark the stream as complete - the useEffect will handle cleanup
-				if (message.status === "success") {
-					store.completeExecution(
-						currentInstallationId,
-						undefined,
-						"Success",
-					);
-				} else {
-					store.completeExecution(
-						currentInstallationId,
-						undefined,
-						"Failed",
-					);
-				}
 			}
 		});
 
-		return unsubscribe;
-	}, [loadPackages, currentInstallationId]);
+		// Handle package completion
+		const unsubscribeComplete = webSocketService.onPackageComplete(
+			(complete) => {
+				if (currentInstallationId) {
+					const store = useExecutionStreamStore.getState();
+					store.completeExecution(
+						currentInstallationId,
+						undefined,
+						complete.status === "success" ? "Success" : "Failed",
+					);
+				}
+				// Reload packages after installation completes
+				loadPackages();
+			},
+		);
+
+		return () => {
+			unsubscribeLog();
+			unsubscribeComplete();
+			webSocketService.unsubscribe(packageChannel);
+		};
+	}, [connectionId, isConnected, currentInstallationId, loadPackages]);
 
 	// Load packages on mount
 	useEffect(() => {
@@ -233,25 +243,28 @@ export function PackagePanel() {
 			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
-			await packagesService.installPackage(
-				pkgName,
-				pkgVersion || undefined,
-				connectionId || undefined,
-			);
+			await packagesService.installPackage(pkgName, pkgVersion || undefined);
 
 			// Clear form
 			setPackageName("");
 			setVersion("");
 
+			// Add initial message
+			store.appendLog(installationId, {
+				level: "INFO",
+				message: `Installing ${pkgName}${pkgVersion ? `==${pkgVersion}` : ""}...`,
+				timestamp: new Date().toISOString(),
+			});
+
 			if (!isConnected) {
-				// If not connected to WebPubSub, add a queued message
+				// If not connected to WebSocket, add a queued message
 				store.appendLog(installationId, {
 					level: "INFO",
-					message: "Package installation queued",
+					message: "Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
-				// Stop installing spinner immediately if not connected to WebPubSub
+				// Stop installing spinner immediately if not connected
 				setIsInstalling(false);
 				setCurrentInstallationId(null);
 				// Reload packages after a delay to see new installations
@@ -285,21 +298,24 @@ export function PackagePanel() {
 			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
-			await packagesService.installPackage(
-				undefined, // No package name = install from requirements.txt
-				undefined,
-				connectionId || undefined,
-			);
+			await packagesService.installPackage();
+
+			// Add initial message
+			store.appendLog(installationId, {
+				level: "INFO",
+				message: "Installing packages from requirements.txt...",
+				timestamp: new Date().toISOString(),
+			});
 
 			if (!isConnected) {
-				// If not connected to WebPubSub, add a queued message
+				// If not connected to WebSocket, add a queued message
 				store.appendLog(installationId, {
 					level: "INFO",
-					message: "Package installation queued",
+					message: "Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
-				// Stop installing spinner immediately if not connected to WebPubSub
+				// Stop installing spinner immediately if not connected
 				setIsInstalling(false);
 				setCurrentInstallationId(null);
 				// Reload packages after a delay to see new installations

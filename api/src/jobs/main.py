@@ -1,6 +1,14 @@
 """
 Bifrost Jobs - Background Worker Service
 
+DEPRECATED: This combined jobs container is replaced by separate containers:
+- Discovery: File watching and DB sync (src.discovery.main)
+- Scheduler: APScheduler for cron jobs (src.scheduler.main)
+- Worker: RabbitMQ consumers for background tasks (src.worker.main)
+
+This module is kept for backward compatibility during the transition.
+New deployments should use the separate containers in docker-compose.yml.
+
 Main entry point for the background job worker.
 Handles RabbitMQ message consumption and scheduled tasks.
 """

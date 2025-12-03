@@ -115,7 +115,7 @@ export function useAssignUsersToRole() {
 				queryKey: ["roles", variables.roleId, "users"],
 			});
 			toast.success("Users assigned", {
-				description: `${variables.request.user_ids.length} user(s) assigned to role`,
+				description: `${variables.request.userIds.length} user(s) assigned to role`,
 			});
 		},
 		onError: (error: Error) => {
@@ -172,7 +172,7 @@ export function useAssignFormsToRole() {
 				queryKey: ["roles", variables.roleId, "forms"],
 			});
 			toast.success("Forms assigned", {
-				description: `${variables.request.form_ids.length} form(s) assigned to role`,
+				description: `${variables.request.formIds.length} form(s) assigned to role`,
 			});
 		},
 		onError: (error: Error) => {
@@ -183,24 +183,28 @@ export function useAssignFormsToRole() {
 	});
 }
 
-export function useRemoveFormFromRole() {
-	const queryClient = useQueryClient();
+/**
+ * Remove a form from a role
+ * NOTE: Not implemented - the endpoint is not available in the API
+ */
+// export function useRemoveFormFromRole() {
+// 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({ roleId, formId }: { roleId: string; formId: string }) =>
-			rolesService.removeFormFromRole(roleId, formId),
-		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({
-				queryKey: ["roles", variables.roleId, "forms"],
-			});
-			toast.success("Form removed", {
-				description: "Form has been removed from the role",
-			});
-		},
-		onError: (error: Error) => {
-			toast.error("Failed to remove form", {
-				description: error.message,
-			});
-		},
-	});
-}
+// 	return useMutation({
+// 		mutationFn: ({ roleId, formId }: { roleId: string; formId: string }) =>
+// 			rolesService.removeFormFromRole(roleId, formId),
+// 		onSuccess: (_, variables) => {
+// 			queryClient.invalidateQueries({
+// 				queryKey: ["roles", variables.roleId, "forms"],
+// 			});
+// 			toast.success("Form removed", {
+// 				description: "Form has been removed from the role",
+// 			});
+// 		},
+// 		onError: (error: Error) => {
+// 			toast.error("Failed to remove form", {
+// 				description: error.message,
+// 			});
+// 		},
+// 	});
+// }

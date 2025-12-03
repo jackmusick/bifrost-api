@@ -39,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FieldConfigDialog } from "./FieldConfigDialog";
 import type { components } from "@/lib/v1";
-type FormField = components["schemas"]["FormField-Input"];
+import type { FormField } from "@/lib/client-types";
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 type WorkflowParameter = components["schemas"]["WorkflowParameter"];
 import {

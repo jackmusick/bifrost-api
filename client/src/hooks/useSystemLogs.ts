@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getSystemLogs, type GetSystemLogsParams } from "@/services/logs";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function useSystemLogs(params: GetSystemLogsParams = {}) {
 	const { user } = useAuth();
