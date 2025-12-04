@@ -29,11 +29,9 @@ baseClient.use({
 			request.headers.set("X-User-Id", userId);
 		}
 
-		// Add access token to Authorization header
-		const token = localStorage.getItem("bifrost_access_token");
-		if (token) {
-			request.headers.set("Authorization", `Bearer ${token}`);
-		}
+		// Authentication via HttpOnly cookie (set by backend on login)
+		// No need to manually add Authorization header - cookies are sent automatically
+		// For service-to-service auth, clients can still use Authorization: Bearer header
 
 		return request;
 	},
@@ -41,9 +39,7 @@ baseClient.use({
 		// Handle 401 Unauthorized - token expired or invalid
 		// Only redirect if it's a true authentication failure, not a permission issue
 		if (response.status === 401) {
-			// Clear auth state
-			localStorage.removeItem("bifrost_access_token");
-			localStorage.removeItem("bifrost_user");
+			// Clear session storage (cookies are HttpOnly and handled by backend)
 			sessionStorage.removeItem("userId");
 			sessionStorage.removeItem("current_org_id");
 
@@ -72,9 +68,7 @@ export const apiClient = baseClient;
  */
 function handle401Response(response: Response): Response {
 	if (response.status === 401) {
-		// Clear auth state
-		localStorage.removeItem("bifrost_access_token");
-		localStorage.removeItem("bifrost_user");
+		// Clear session storage (cookies are HttpOnly and handled by backend)
 		sessionStorage.removeItem("userId");
 		sessionStorage.removeItem("current_org_id");
 
@@ -104,10 +98,7 @@ export function withOrgContext(orgId: string) {
 				request.headers.set("X-User-Id", userId);
 			}
 
-			const token = localStorage.getItem("bifrost_access_token");
-			if (token) {
-				request.headers.set("Authorization", `Bearer ${token}`);
-			}
+			// Auth via cookie (sent automatically)
 
 			return request;
 		},
@@ -136,10 +127,7 @@ export function withUserContext(userId: string) {
 
 			request.headers.set("X-User-Id", userId);
 
-			const token = localStorage.getItem("bifrost_access_token");
-			if (token) {
-				request.headers.set("Authorization", `Bearer ${token}`);
-			}
+			// Auth via cookie (sent automatically)
 
 			return request;
 		},
@@ -164,10 +152,7 @@ export function withContext(orgId: string, userId: string) {
 			request.headers.set("X-Organization-Id", orgId);
 			request.headers.set("X-User-Id", userId);
 
-			const token = localStorage.getItem("bifrost_access_token");
-			if (token) {
-				request.headers.set("Authorization", `Bearer ${token}`);
-			}
+			// Auth via cookie (sent automatically)
 
 			return request;
 		},
@@ -192,7 +177,8 @@ export { ApiError };
 
 /**
  * Authenticated fetch wrapper for endpoints not in OpenAPI spec
- * Automatically injects auth headers and handles 401 responses
+ * Automatically injects context headers and handles 401 responses
+ * Auth is handled via HttpOnly cookies (sent automatically by browser)
  */
 export async function authFetch(
 	url: string,
@@ -200,11 +186,8 @@ export async function authFetch(
 ): Promise<Response> {
 	const headers = new Headers(options.headers);
 
-	// Add auth token
-	const token = localStorage.getItem("bifrost_access_token");
-	if (token) {
-		headers.set("Authorization", `Bearer ${token}`);
-	}
+	// Auth via cookie (sent automatically by browser)
+	// No need to manually add Authorization header
 
 	// Add org context
 	const orgId = sessionStorage.getItem("current_org_id");
@@ -228,20 +211,13 @@ export async function authFetch(
 		headers.set("Content-Type", "application/json");
 	}
 
-	const response = await fetch(url, { ...options, headers });
+	// Ensure credentials are sent (required for cookies in cross-origin scenarios)
+	const response = await fetch(url, {
+		...options,
+		headers,
+		credentials: "same-origin"  // Send cookies for same-origin requests
+	});
 
 	// Handle 401 the same way as apiClient
-	if (response.status === 401) {
-		localStorage.removeItem("bifrost_access_token");
-		localStorage.removeItem("bifrost_user");
-		sessionStorage.removeItem("userId");
-		sessionStorage.removeItem("current_org_id");
-
-		const currentPath = window.location.pathname;
-		if (currentPath !== "/login" && currentPath !== "/setup") {
-			window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
-		}
-	}
-
-	return response;
+	return handle401Response(response);
 }

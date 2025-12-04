@@ -1,7 +1,7 @@
 """simplify branding table
 
-Revision ID: 010_simplify_branding
-Revises: 009_execution_log_sequence
+Revision ID: 009_simplify_branding
+Revises: 008_branding
 Create Date: 2024-12-04
 
 """
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = '010_simplify_branding'
-down_revision = '009_execution_log_sequence'
+revision = '009_simplify_branding'
+down_revision = '008_branding'
 branch_labels = None
 depends_on = None
 

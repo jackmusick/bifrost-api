@@ -207,7 +207,11 @@ class WorkspaceEventHandler(FileSystemEventHandler):
         _db_sync_event.set()
 
     def _index_python_file(self, path: Path, event_type: str) -> None:
-        """Parse Python file and update workflow/provider indexes with full metadata."""
+        """Parse Python file and update workflow/provider indexes with full metadata.
+
+        Note: We use regex for quick indexing but rely on periodic full sync for parameters.
+        When a file changes, we just mark that a sync is needed.
+        """
         try:
             content = path.read_text(encoding="utf-8")
             file_str = str(path)
@@ -225,52 +229,21 @@ class WorkspaceEventHandler(FileSystemEventHandler):
                         if name in _provider_metadata:
                             del _provider_metadata[name]
 
-                # Extract workflows with full metadata
+                # Extract workflows with basic regex (name only for quick indexing)
                 for match in WORKFLOW_PATTERN.finditer(content):
                     name = match.group(1)
                     _workflow_index[name] = file_str
+                    logger.debug(f"Detected workflow '{name}' from {path.name} ({event_type})")
 
-                    # Extract additional metadata
-                    desc_match = WORKFLOW_DESCRIPTION_PATTERN.search(content)
-                    cat_match = WORKFLOW_CATEGORY_PATTERN.search(content)
-                    sched_match = WORKFLOW_SCHEDULE_PATTERN.search(content)
-                    endpoint_match = WORKFLOW_ENDPOINT_ENABLED_PATTERN.search(content)
-                    mode_match = WORKFLOW_EXECUTION_MODE_PATTERN.search(content)
-
-                    metadata = WorkflowMetadata(
-                        name=name,
-                        file_path=file_str,
-                        description=desc_match.group(1) if desc_match else None,
-                        category=cat_match.group(1) if cat_match else "General",
-                        schedule=sched_match.group(1) if sched_match else None,
-                        endpoint_enabled=endpoint_match.group(1) == "True" if endpoint_match else False,
-                        execution_mode=mode_match.group(1) if mode_match else "sync",
-                    )
-                    _workflow_metadata[name] = metadata
-
-                    # Queue DB upsert
-                    _pending_db_ops.append(("upsert", "workflow", metadata))
-                    logger.debug(f"Indexed workflow '{name}' from {path.name} ({event_type})")
-
-                # Extract providers with metadata
+                # Extract providers with basic regex
                 for match in PROVIDER_PATTERN.finditer(content):
                     name = match.group(1)
                     _provider_index[name] = file_str
+                    logger.debug(f"Detected provider '{name}' from {path.name} ({event_type})")
 
-                    desc_match = PROVIDER_DESCRIPTION_PATTERN.search(content)
-                    metadata = ProviderMetadata(
-                        name=name,
-                        file_path=file_str,
-                        description=desc_match.group(1) if desc_match else None,
-                    )
-                    _provider_metadata[name] = metadata
-
-                    _pending_db_ops.append(("upsert", "provider", metadata))
-                    logger.debug(f"Indexed provider '{name}' from {path.name} ({event_type})")
-
-            # Signal pending DB operations (outside lock)
-            if _pending_db_ops:
-                _db_sync_event.set()
+            # Trigger a full DB sync to get complete metadata with parameters
+            # The sync_to_database() function will do a full import-based scan
+            _db_sync_event.set()
 
         except Exception as e:
             logger.warning(f"Failed to index {path}: {e}")
@@ -480,18 +453,26 @@ async def sync_to_database() -> dict[str, int]:
     from src.core.database import get_db_context
     from src.models import Workflow, DataProvider, Form
     from sqlalchemy import select
+    from shared.discovery import scan_all_workflows, scan_all_data_providers
 
     counts = {"workflows": 0, "providers": 0, "forms": 0}
     now = datetime.utcnow()
 
     async with get_db_context() as db:
-        # Get all current metadata from indexes
+        # Do full import-based scan to get complete metadata with parameters
+        # This imports modules and executes decorators to get full metadata
+        workflows_list = scan_all_workflows()
+        providers_list = scan_all_data_providers()
+
+        # Convert list to dict by name
+        workflow_data = {w.name: w for w in workflows_list}
+        provider_data = {p.name: p for p in providers_list}
+
+        # Get forms from in-memory index (forms are JSON, no import needed)
         with _lock:
-            workflow_data = dict(_workflow_metadata)
-            provider_data = dict(_provider_metadata)
             form_data = dict(_form_metadata)
-            workflow_names = set(_workflow_index.keys())
-            provider_names = set(_provider_index.keys())
+            workflow_names = set(workflow_data.keys())
+            provider_names = set(provider_data.keys())
 
         # --- Sync Workflows ---
         # Get existing workflows from DB
@@ -500,14 +481,21 @@ async def sync_to_database() -> dict[str, int]:
 
         # Upsert workflows from index
         for name, meta in workflow_data.items():
+            # Serialize parameters to dicts for JSONB storage
+            from dataclasses import asdict
+            parameters_json = [asdict(p) for p in meta.parameters] if meta.parameters else []
+
             if name in existing_workflows:
                 # Update existing
                 wf = existing_workflows[name]
-                wf.file_path = meta.file_path
+                wf.file_path = meta.source_file_path or ""
                 wf.description = meta.description
                 wf.category = meta.category
                 wf.schedule = meta.schedule
+                wf.parameters_schema = parameters_json
+                wf.tags = meta.tags
                 wf.endpoint_enabled = meta.endpoint_enabled
+                wf.allowed_methods = meta.allowed_methods
                 wf.execution_mode = meta.execution_mode
                 wf.is_active = True
                 wf.last_seen_at = now
@@ -516,11 +504,11 @@ async def sync_to_database() -> dict[str, int]:
                 wf = Workflow(
                     id=uuid4(),
                     name=name,
-                    file_path=meta.file_path,
+                    file_path=meta.source_file_path or "",
                     description=meta.description,
                     category=meta.category,
                     schedule=meta.schedule,
-                    parameters_schema=meta.parameters,
+                    parameters_schema=parameters_json,
                     tags=meta.tags,
                     endpoint_enabled=meta.endpoint_enabled,
                     allowed_methods=meta.allowed_methods,
@@ -544,7 +532,7 @@ async def sync_to_database() -> dict[str, int]:
         for name, meta in provider_data.items():
             if name in existing_providers:
                 dp = existing_providers[name]
-                dp.file_path = meta.file_path
+                dp.file_path = meta.source_file_path or ""
                 dp.description = meta.description
                 dp.is_active = True
                 dp.last_seen_at = now
@@ -552,7 +540,7 @@ async def sync_to_database() -> dict[str, int]:
                 dp = DataProvider(
                     id=uuid4(),
                     name=name,
-                    file_path=meta.file_path,
+                    file_path=meta.source_file_path or "",
                     description=meta.description,
                     is_active=True,
                     last_seen_at=now,

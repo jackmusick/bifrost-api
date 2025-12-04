@@ -82,7 +82,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             from src.models.schemas import ExecutionStatus
 
             # Check if execution was already cancelled before we started
-            from src.jobs.consumers._helpers import (
+            from shared.consumers._helpers import (
                 get_execution_status,
                 update_execution,
             )
@@ -375,7 +375,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             error_type = type(e).__name__
 
             from src.models.schemas import ExecutionStatus
-            from src.jobs.consumers._helpers import update_execution
+            from shared.consumers._helpers import update_execution
 
             await update_execution(
                 execution_id=execution_id,

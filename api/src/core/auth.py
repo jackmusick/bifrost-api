@@ -91,11 +91,16 @@ class ExecutionContext:
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: DbSession,
 ) -> UserPrincipal | None:
     """
     Get the current user from JWT token (optional).
+
+    Checks for authentication in this order:
+    1. Authorization: Bearer header (for API clients/service-to-service)
+    2. access_token cookie (for browser clients)
 
     User info is extracted from JWT claims when available (preferred),
     with database lookup as fallback for tokens without embedded claims.
@@ -104,16 +109,25 @@ async def get_current_user_optional(
     Does not raise an exception for unauthenticated requests.
 
     Args:
+        request: FastAPI request object
         credentials: HTTP Bearer credentials from request
         db: Database session
 
     Returns:
         UserPrincipal if authenticated, None otherwise
     """
-    if credentials is None:
+    token = None
+
+    # Try Authorization header first (API clients)
+    if credentials:
+        token = credentials.credentials
+    # Fall back to cookie (browser clients)
+    elif "access_token" in request.cookies:
+        token = request.cookies["access_token"]
+
+    if not token:
         return None
 
-    token = credentials.credentials
     payload = decode_token(token)
 
     if payload is None:
@@ -174,6 +188,7 @@ async def get_current_user_optional(
 
 
 async def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: DbSession,
 ) -> UserPrincipal:
@@ -183,6 +198,7 @@ async def get_current_user(
     Raises HTTPException if not authenticated.
 
     Args:
+        request: FastAPI request object
         credentials: HTTP Bearer credentials from request
         db: Database session
 
@@ -192,7 +208,7 @@ async def get_current_user(
     Raises:
         HTTPException: If not authenticated or token is invalid
     """
-    user = await get_current_user_optional(credentials, db)
+    user = await get_current_user_optional(request, credentials, db)
 
     if user is None:
         raise HTTPException(
@@ -360,9 +376,10 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     """
     Get current user from WebSocket connection.
 
-    Checks for token in:
-    1. Query parameter: ?token=xxx
-    2. Authorization header (if supported by client)
+    Checks for token in this order:
+    1. Cookie: access_token (for browser clients - most common)
+    2. Query parameter: ?token=xxx (backwards compatibility for service clients)
+    3. Authorization header (if supported by client)
 
     Args:
         websocket: FastAPI WebSocket connection
@@ -370,12 +387,15 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     Returns:
         UserPrincipal if authenticated, None otherwise
     """
-    from fastapi import WebSocket
+    token = None
 
-    websocket: WebSocket = websocket
+    # Try cookie first (browser clients)
+    if "access_token" in websocket.cookies:
+        token = websocket.cookies["access_token"]
 
-    # Try to get token from query params
-    token = websocket.query_params.get("token")
+    # Try query param (backwards compatibility for service-to-service)
+    if not token:
+        token = websocket.query_params.get("token")
 
     # Try Authorization header (some WebSocket clients support this)
     if not token:

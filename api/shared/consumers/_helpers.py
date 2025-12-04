@@ -114,12 +114,11 @@ async def update_execution(
         if logs:
             from src.models.database import ExecutionLog
 
-            for idx, log_entry in enumerate(logs):
+            for log_entry in logs:
                 log_record = ExecutionLog(
                     execution_id=UUID(execution_id),
-                    sequence=idx,
                     timestamp=datetime.fromisoformat(log_entry["timestamp"]) if isinstance(log_entry.get("timestamp"), str) else datetime.utcnow(),
-                    level=log_entry.get("level", "info"),
+                    level=log_entry.get("level", "info").upper(),
                     message=log_entry.get("message", ""),
                     log_metadata=log_entry.get("data"),
                 )

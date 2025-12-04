@@ -117,18 +117,20 @@ class Discovery:
 
     async def _db_sync_loop(self) -> None:
         """
-        Background task to process pending DB operations from file watcher.
+        Background task to sync workflows/providers to database.
 
-        The file watcher queues operations when files change. This loop
-        periodically flushes those operations to the database.
+        Performs a full import-based scan to capture parameters and complete metadata.
+        Runs every 5 seconds to catch file changes from the watcher.
         """
-        from shared.discovery_watcher import process_pending_db_ops
+        from shared.discovery_watcher import sync_to_database
 
         logger.info("Starting DB sync loop...")
 
         while self.running:
             try:
-                await process_pending_db_ops()
+                # Do full sync - imports modules and executes decorators
+                # This captures parameters and all metadata
+                await sync_to_database()
                 await asyncio.sleep(5)  # Check every 5 seconds
             except Exception as e:
                 logger.error(f"Error in DB sync loop: {e}", exc_info=True)

@@ -77,7 +77,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: api/Dockerfile.api
+      dockerfile: api/Dockerfile.dev
     container_name: bifrost-api
     environment:
       # Core
@@ -119,11 +119,12 @@ services:
       - "5678:5678"  # debugpy port for VS Code attachment
     # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     volumes:
-      - ./api/src:/app/src
-      - ./api/shared:/app/shared
-      - ./api/bifrost:/app/bifrost
-      - ./api/platform:/app/platform
-      - ./api/alembic:/app/alembic
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
       - bifrost_workspace:/workspace
     depends_on:
       postgres:
@@ -171,7 +172,7 @@ services:
   discovery:
     build:
       context: .
-      dockerfile: api/Dockerfile.jobs
+      dockerfile: api/Dockerfile.dev
     container_name: bifrost-discovery
     environment:
       # Core (must match API)
@@ -183,13 +184,15 @@ services:
       # File Storage (read-only - only watches for changes)
       BIFROST_WORKSPACE_LOCATION: /workspace
     volumes:
-      - ./api/src:/app/src
-      - ./api/shared:/app/shared
-      - ./api/bifrost:/app/bifrost
-      - ./api/platform:/app/platform
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
       - bifrost_workspace:/workspace:ro  # Read-only for discovery
     depends_on:
       postgres:
+        condition: service_healthy
+      api:
         condition: service_healthy
     deploy:
       replicas: 1  # MUST be single instance
@@ -201,7 +204,7 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: api/Dockerfile.jobs
+      dockerfile: api/Dockerfile.dev
     container_name: bifrost-scheduler
     environment:
       # Core (must match API)
@@ -213,15 +216,17 @@ services:
       # Message Queue
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
     volumes:
-      - ./api/src:/app/src
-      - ./api/shared:/app/shared
-      - ./api/bifrost:/app/bifrost
-      - ./api/platform:/app/platform
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
       # No workspace mount - scheduler only runs scheduled jobs
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      api:
         condition: service_healthy
       discovery:
         condition: service_started
@@ -235,7 +240,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: api/Dockerfile.jobs
+      dockerfile: api/Dockerfile.dev
     container_name: bifrost-worker
     environment:
       # Core (must match API)
@@ -252,10 +257,10 @@ services:
       # Concurrency
       BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-10}
     volumes:
-      - ./api/src:/app/src
-      - ./api/shared:/app/shared
-      - ./api/bifrost:/app/bifrost
-      - ./api/platform:/app/platform
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
       - bifrost_workspace:/workspace
     depends_on:
       postgres:
@@ -263,6 +268,8 @@ services:
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      api:
         condition: service_healthy
       discovery:
         condition: service_started

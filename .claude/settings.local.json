@@ -285,7 +285,15 @@
       "Bash(pyright src/jobs/schedulers/execution_cleanup.py)",
       "Bash(./test.sh api/tests/unit/jobs/ -v)",
       "WebFetch(domain:www.rabbitmq.com)",
-      "Bash(pyright src/routers/branding.py)"
+      "Bash(pyright src/routers/branding.py)",
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(pyright src/routers/auth.py)",
+      "Bash(pyright src/core/auth.py)",
+      "Bash(./test.sh --ci tests/unit/jobs/ -v)",
+      "Bash(./test.sh --ci)",
+      "Bash(./test.sh --e2e --ci tests/e2e/api/test_e2e_suite.py::TestFullApplicationFlow::test_184_org_user_cannot_see_debug_logs -v)",
+      "Bash(./test.sh tests/integration/engine/test_workflow_parameters_sync.py -v)",
+      "Bash(./test.sh tests/integration/engine/test_workflow_parameters_sync.py::TestWorkflowParametersSync::test_parameters_synced_to_database -v)"
     ],
     "deny": [
       "Bash(rm -rf /)",

@@ -912,6 +912,42 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         assert "e2e_test_sync_workflow" in workflow_names, \
             f"Test workflow not discovered after {max_attempts}s. Available: {workflow_names}"
 
+    def test_112b_workflow_parameters_returned(self):
+        """Workflow parameters are included in API response."""
+        response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"List workflows failed: {response.text}"
+        workflows = response.json()
+
+        # Find e2e_test_sync_workflow (created in test_111)
+        test_workflow = next(
+            (w for w in workflows if w["name"] == "e2e_test_sync_workflow"), None
+        )
+        assert test_workflow is not None, "e2e_test_sync_workflow workflow not found"
+
+        # Verify parameters are present
+        assert "parameters" in test_workflow, "Workflow missing parameters field"
+        parameters = test_workflow["parameters"]
+        assert len(parameters) == 2, f"Expected 2 parameters, got {len(parameters)}"
+
+        # Verify parameter structure
+        param_names = [p["name"] for p in parameters]
+        assert "message" in param_names, "Missing 'message' parameter"
+        assert "count" in param_names, "Missing 'count' parameter"
+
+        # Verify first parameter details (required string)
+        message_param = next(p for p in parameters if p["name"] == "message")
+        assert message_param["type"] == "string"
+        assert message_param["required"] is True
+
+        # Verify second parameter with default value
+        count_param = next(p for p in parameters if p["name"] == "count")
+        assert count_param["type"] == "int"
+        assert count_param["required"] is False
+        assert count_param["default_value"] == 1
+
     def test_113_read_file_content(self):
         """Platform admin can read file content back."""
 

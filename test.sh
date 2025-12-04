@@ -130,8 +130,8 @@ done
 # =============================================================================
 if [ "$E2E_MODE" = true ]; then
     echo ""
-    echo "E2E Mode: Starting API, Discovery, and Jobs workers..."
-    docker compose -f "$COMPOSE_FILE" --profile e2e up -d api discovery jobs
+    echo "E2E Mode: Starting API, Discovery, and Worker..."
+    docker compose -f "$COMPOSE_FILE" --profile e2e up -d api discovery worker
 
     # Wait for API to be healthy
     echo "Waiting for API to be ready..."

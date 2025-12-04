@@ -157,6 +157,7 @@ class WebSocketService {
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
 
 			// Create WebSocket connection
+			// Note: Cookies (including access_token) are automatically sent by the browser
 			this.ws = new WebSocket(wsUrl);
 
 			// Set up WebSocket handlers

@@ -16,7 +16,7 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
@@ -38,6 +38,52 @@ from src.services.user_provisioning import ensure_user_provisioned, get_user_rol
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+# =============================================================================
+# Cookie Configuration
+# =============================================================================
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    """
+    Set HttpOnly authentication cookies.
+
+    Cookies are secure, SameSite=Lax, and HttpOnly for XSS protection.
+    This provides automatic auth for browser clients while still allowing
+    service-to-service auth via Authorization header.
+    """
+    settings = get_settings()
+
+    # Determine if we're in production (HTTPS)
+    secure = not settings.is_development
+
+    # Access token cookie (short-lived)
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=30 * 60,  # 30 minutes (matches JWT expiry)
+        path="/",
+    )
+
+    # Refresh token cookie (long-lived)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,  # 7 days (matches JWT expiry)
+        path="/",
+    )
+
+
+def clear_auth_cookies(response: Response):
+    """Clear authentication cookies on logout."""
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/")
 
 
 # =============================================================================
@@ -119,6 +165,7 @@ class UserCreate(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     request: Request = None,
     db: DbSession = None,
@@ -209,7 +256,7 @@ async def login(
                 f"Trusted device login for user: {user.email}",
                 extra={"user_id": str(user.id)}
             )
-            return await _generate_login_tokens(user, db)
+            return await _generate_login_tokens(user, db, response)
 
     # MFA verification required
     mfa_token = create_mfa_token(str(user.id), purpose="mfa_verify")
@@ -320,6 +367,7 @@ async def mfa_initial_setup(
 
 @router.post("/mfa/verify", response_model=MFAEnrollVerifyResponse)
 async def mfa_initial_verify(
+    response: Response,
     db: DbSession = None,
     request: Request = None,
 ) -> MFAEnrollVerifyResponse:
@@ -426,18 +474,22 @@ async def mfa_initial_verify(
     }
 
     access_token = create_access_token(data=token_data)
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    refresh_token_str = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set cookies for browser clients
+    set_auth_cookies(response, access_token, refresh_token_str)
 
     return MFAEnrollVerifyResponse(
         success=True,
         recovery_codes=recovery_codes,
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=refresh_token_str,
     )
 
 
 @router.post("/mfa/login", response_model=LoginResponse)
 async def verify_mfa_login(
+    response: Response,
     mfa_request: MFAVerifyRequest,
     request: Request = None,
     db: DbSession = None,
@@ -523,16 +575,20 @@ async def verify_mfa_login(
         extra={"user_id": str(user.id)}
     )
 
-    return await _generate_login_tokens(user, db)
+    return await _generate_login_tokens(user, db, response)
 
 
-async def _generate_login_tokens(user, db) -> LoginResponse:
+async def _generate_login_tokens(user, db, response: Response | None = None) -> LoginResponse:
     """
     Generate login response with access and refresh tokens.
+
+    Sets HttpOnly cookies for browser clients when response is provided.
+    Also returns tokens in response body for service-to-service auth.
 
     Args:
         user: User model
         db: Database session
+        response: FastAPI Response object (optional, for setting cookies)
 
     Returns:
         LoginResponse with tokens
@@ -565,7 +621,11 @@ async def _generate_login_tokens(user, db) -> LoginResponse:
 
     # Generate tokens
     access_token = create_access_token(data=token_data)
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    refresh_token_str = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set cookies for browser clients
+    if response:
+        set_auth_cookies(response, access_token, refresh_token_str)
 
     logger.info(
         f"User logged in: {user.email}",
@@ -579,12 +639,13 @@ async def _generate_login_tokens(user, db) -> LoginResponse:
 
     return LoginResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=refresh_token_str,
     )
 
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
+    response: Response,
     token_data: TokenRefresh,
     db: DbSession = None,
 ) -> Token:
@@ -657,6 +718,9 @@ async def refresh_token(
     # Generate new tokens
     access_token = create_access_token(data=new_token_data)
     new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set cookies for browser clients
+    set_auth_cookies(response, access_token, new_refresh_token)
 
     return Token(
         access_token=access_token,
@@ -894,6 +958,7 @@ class OAuthLoginRequest(BaseModel):
 
 @router.post("/oauth/login", response_model=Token)
 async def oauth_login(
+    response: Response,
     login_data: OAuthLoginRequest,
     db: DbSession = None,
 ) -> Token:
@@ -962,7 +1027,10 @@ async def oauth_login(
 
     # Generate tokens
     access_token = create_access_token(data=token_data)
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    refresh_token_str = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set cookies for browser clients
+    set_auth_cookies(response, access_token, refresh_token_str)
 
     logger.info(
         f"OAuth login: {user.email}",
@@ -976,5 +1044,5 @@ async def oauth_login(
 
     return Token(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=refresh_token_str,
     )

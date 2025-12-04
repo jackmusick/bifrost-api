@@ -286,7 +286,7 @@ export function useExecutionHistory(
 						caches.forEach(([queryKey, oldData]) => {
 							// Only update first page queries (no continuation token)
 							const hasContinuationToken = queryKey[3]; // queryKey is ["executions", orgId, filters, continuationToken]
-							if (hasContinuationToken || !oldData) return;
+							if (hasContinuationToken || !oldData || !oldData.executions) return;
 
 							const existingIndex = oldData.executions.findIndex(
 								(exec) =>

@@ -7,7 +7,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getOAuthProviders, initOAuth, getOAuthVerifier } from "@/services/auth";
+import {
+	getOAuthProviders,
+	initOAuth,
+	getOAuthVerifier,
+} from "@/services/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +38,12 @@ interface MFAState {
 export function Login() {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { login, loginWithMfa, isAuthenticated, isLoading: authLoading } = useAuth();
+	const {
+		login,
+		loginWithMfa,
+		isAuthenticated,
+		isLoading: authLoading,
+	} = useAuth();
 
 	const [step, setStep] = useState<LoginStep>("credentials");
 	const [mfaState, setMfaState] = useState<MFAState | null>(null);
@@ -117,7 +126,9 @@ export function Login() {
 			await loginWithMfa(mfaState.mfaToken, mfaCode, trustDevice);
 			navigate(from, { replace: true });
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "MFA verification failed");
+			setError(
+				err instanceof Error ? err.message : "MFA verification failed",
+			);
 		} finally {
 			setIsLoading(false);
 		}
@@ -151,7 +162,11 @@ export function Login() {
 			// Redirect to OAuth provider
 			window.location.href = authorization_url;
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "OAuth initialization failed");
+			setError(
+				err instanceof Error
+					? err.message
+					: "OAuth initialization failed",
+			);
 			setIsLoading(false);
 		}
 	};
@@ -162,9 +177,27 @@ export function Login() {
 				return (
 					<svg className="w-5 h-5" viewBox="0 0 21 21" fill="none">
 						<rect x="1" y="1" width="9" height="9" fill="#F25022" />
-						<rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-						<rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-						<rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+						<rect
+							x="11"
+							y="1"
+							width="9"
+							height="9"
+							fill="#7FBA00"
+						/>
+						<rect
+							x="1"
+							y="11"
+							width="9"
+							height="9"
+							fill="#00A4EF"
+						/>
+						<rect
+							x="11"
+							y="11"
+							width="9"
+							height="9"
+							fill="#FFB900"
+						/>
 					</svg>
 				);
 			case "google":
@@ -217,166 +250,205 @@ export function Login() {
 							transition={{ delay: 0.1, duration: 0.3 }}
 							className="flex justify-center"
 						>
-							<Logo type="square" className="h-16 w-16" alt="Bifrost" />
+							<Logo
+								type="square"
+								className="h-16 w-16"
+								alt="Bifrost"
+							/>
 						</motion.div>
 						<div className="space-y-1">
-							<h1 className="text-2xl font-bold tracking-tight">Bifrost</h1>
+							<h1 className="text-2xl font-bold tracking-tight">
+								Bifrost
+							</h1>
 							<CardDescription className="text-base">
-								{step === "credentials" && "Sign in to your account"}
+								{step === "credentials" &&
+									"Sign in to your account"}
 								{step === "mfa" && "Two-Factor Authentication"}
-								{step === "mfa-setup" && "Set up Two-Factor Authentication"}
+								{step === "mfa-setup" &&
+									"Set up Two-Factor Authentication"}
 							</CardDescription>
 						</div>
 					</CardHeader>
-				<CardContent>
-					{error && (
-						<Alert variant="destructive" className="mb-4">
-							<AlertDescription>{error}</AlertDescription>
-						</Alert>
-					)}
+					<CardContent>
+						{error && (
+							<Alert variant="destructive" className="mb-4">
+								<AlertDescription>{error}</AlertDescription>
+							</Alert>
+						)}
 
-					{step === "credentials" && (
-						<>
-							<form onSubmit={handleCredentialsSubmit} className="space-y-4">
+						{step === "credentials" && (
+							<>
+								<form
+									onSubmit={handleCredentialsSubmit}
+									className="space-y-4"
+								>
+									<div className="space-y-2">
+										<Label htmlFor="email">Email</Label>
+										<div className="relative">
+											<Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+											<Input
+												id="email"
+												type="email"
+												placeholder="you@example.com"
+												value={email}
+												onChange={(e) =>
+													setEmail(e.target.value)
+												}
+												className="pl-10"
+												required
+												autoFocus
+											/>
+										</div>
+									</div>
+									<div className="space-y-2">
+										<Label htmlFor="password">
+											Password
+										</Label>
+										<div className="relative">
+											<Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+											<Input
+												id="password"
+												type="password"
+												placeholder="Enter your password"
+												value={password}
+												onChange={(e) =>
+													setPassword(e.target.value)
+												}
+												className="pl-10"
+												required
+											/>
+										</div>
+									</div>
+									<Button
+										type="submit"
+										className="w-full"
+										disabled={
+											isLoading || !email || !password
+										}
+									>
+										{isLoading ? (
+											<Loader2 className="h-4 w-4 animate-spin mr-2" />
+										) : null}
+										Sign In
+									</Button>
+								</form>
+
+								{oauthProviders.length > 0 && (
+									<>
+										<div className="relative my-6">
+											<div className="absolute inset-0 flex items-center">
+												<span className="w-full border-t" />
+											</div>
+											<div className="relative flex justify-center text-xs uppercase">
+												<span className="bg-background px-2 text-muted-foreground">
+													Or continue with
+												</span>
+											</div>
+										</div>
+
+										<div className="grid gap-2">
+											{oauthProviders.map((provider) => (
+												<Button
+													key={provider.name}
+													variant="outline"
+													onClick={() =>
+														handleOAuthLogin(
+															provider.name,
+														)
+													}
+													disabled={isLoading}
+													className="w-full"
+												>
+													{getProviderIcon(
+														provider.name,
+													)}
+													<span className="ml-2">
+														{provider.display_name}
+													</span>
+													<ExternalLink className="ml-auto h-4 w-4 text-muted-foreground" />
+												</Button>
+											))}
+										</div>
+									</>
+								)}
+							</>
+						)}
+
+						{step === "mfa" && (
+							<form
+								onSubmit={handleMfaSubmit}
+								className="space-y-4"
+							>
 								<div className="space-y-2">
-									<Label htmlFor="email">Email</Label>
+									<Label htmlFor="mfaCode">
+										Authentication Code
+									</Label>
 									<div className="relative">
-										<Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+										<KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 										<Input
-											id="email"
-											type="email"
-											placeholder="you@example.com"
-											value={email}
-											onChange={(e) => setEmail(e.target.value)}
-											className="pl-10"
-											required
+											id="mfaCode"
+											type="text"
+											placeholder="Enter 6-digit code"
+											value={mfaCode}
+											onChange={(e) =>
+												setMfaCode(e.target.value)
+											}
+											className="pl-10 text-center text-lg tracking-widest"
+											maxLength={8}
 											autoFocus
 										/>
 									</div>
+									<p className="text-xs text-muted-foreground">
+										Enter the code from your authenticator
+										app, or use a recovery code.
+									</p>
 								</div>
-								<div className="space-y-2">
-									<Label htmlFor="password">Password</Label>
-									<div className="relative">
-										<Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-										<Input
-											id="password"
-											type="password"
-											placeholder="Enter your password"
-											value={password}
-											onChange={(e) => setPassword(e.target.value)}
-											className="pl-10"
-											required
-										/>
-									</div>
+
+								<div className="flex items-center space-x-2">
+									<input
+										type="checkbox"
+										id="trustDevice"
+										checked={trustDevice}
+										onChange={(e) =>
+											setTrustDevice(e.target.checked)
+										}
+										className="rounded border-gray-300"
+									/>
+									<Label
+										htmlFor="trustDevice"
+										className="text-sm font-normal"
+									>
+										Trust this device for 30 days
+									</Label>
 								</div>
+
 								<Button
 									type="submit"
 									className="w-full"
-									disabled={isLoading || !email || !password}
+									disabled={isLoading || mfaCode.length < 6}
 								>
 									{isLoading ? (
 										<Loader2 className="h-4 w-4 animate-spin mr-2" />
 									) : null}
-									Sign In
+									Verify
+								</Button>
+
+								<Button
+									type="button"
+									variant="ghost"
+									className="w-full"
+									onClick={() => {
+										setStep("credentials");
+										setMfaCode("");
+										setMfaState(null);
+									}}
+								>
+									Back to login
 								</Button>
 							</form>
-
-							{oauthProviders.length > 0 && (
-								<>
-									<div className="relative my-6">
-										<div className="absolute inset-0 flex items-center">
-											<span className="w-full border-t" />
-										</div>
-										<div className="relative flex justify-center text-xs uppercase">
-											<span className="bg-background px-2 text-muted-foreground">
-												Or continue with
-											</span>
-										</div>
-									</div>
-
-									<div className="grid gap-2">
-										{oauthProviders.map((provider) => (
-											<Button
-												key={provider.name}
-												variant="outline"
-												onClick={() => handleOAuthLogin(provider.name)}
-												disabled={isLoading}
-												className="w-full"
-											>
-												{getProviderIcon(provider.name)}
-												<span className="ml-2">{provider.display_name}</span>
-												<ExternalLink className="ml-auto h-4 w-4 text-muted-foreground" />
-											</Button>
-										))}
-									</div>
-								</>
-							)}
-						</>
-					)}
-
-					{step === "mfa" && (
-						<form onSubmit={handleMfaSubmit} className="space-y-4">
-							<div className="space-y-2">
-								<Label htmlFor="mfaCode">Authentication Code</Label>
-								<div className="relative">
-									<KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-									<Input
-										id="mfaCode"
-										type="text"
-										placeholder="Enter 6-digit code"
-										value={mfaCode}
-										onChange={(e) => setMfaCode(e.target.value)}
-										className="pl-10 text-center text-lg tracking-widest"
-										maxLength={8}
-										autoFocus
-									/>
-								</div>
-								<p className="text-xs text-muted-foreground">
-									Enter the code from your authenticator app, or use a recovery
-									code.
-								</p>
-							</div>
-
-							<div className="flex items-center space-x-2">
-								<input
-									type="checkbox"
-									id="trustDevice"
-									checked={trustDevice}
-									onChange={(e) => setTrustDevice(e.target.checked)}
-									className="rounded border-gray-300"
-								/>
-								<Label htmlFor="trustDevice" className="text-sm font-normal">
-									Trust this device for 30 days
-								</Label>
-							</div>
-
-							<Button
-								type="submit"
-								className="w-full"
-								disabled={isLoading || mfaCode.length < 6}
-							>
-								{isLoading ? (
-									<Loader2 className="h-4 w-4 animate-spin mr-2" />
-								) : null}
-								Verify
-							</Button>
-
-							<Button
-								type="button"
-								variant="ghost"
-								className="w-full"
-								onClick={() => {
-									setStep("credentials");
-									setMfaCode("");
-									setMfaState(null);
-								}}
-							>
-								Back to login
-							</Button>
-						</form>
-					)}
-				</CardContent>
-			</Card>
+						)}
+					</CardContent>
+				</Card>
 			</motion.div>
 		</div>
 	);
