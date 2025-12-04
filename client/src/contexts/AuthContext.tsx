@@ -70,6 +70,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = "bifrost_access_token";
+const REFRESH_TOKEN_KEY = "bifrost_refresh_token";
 const USER_KEY = "bifrost_user";
 
 // JWT payload structure
@@ -187,11 +188,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	// Internal refresh function (no hooks)
 	const refreshTokenInternal = async (): Promise<boolean> => {
 		try {
-			const res = await fetch("/auth/refresh", {
+			const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+			if (!refreshToken) return false;
+
+			const res = await fetch("/api/auth/refresh", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				credentials: "include", // Include httpOnly cookie
-				body: JSON.stringify({}),
+				body: JSON.stringify({ refresh_token: refreshToken }),
 			});
 
 			if (!res.ok) return false;
@@ -199,6 +202,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			const data = await res.json();
 			if (data.access_token) {
 				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+				if (data.refresh_token) {
+					localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+				}
 
 				const payload = parseJwt(data.access_token);
 				if (payload) {
@@ -257,6 +263,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			// Success - store tokens
 			if (data.access_token) {
 				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+				if (data.refresh_token) {
+					localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+				}
 
 				const payload = parseJwt(data.access_token);
 				if (payload) {

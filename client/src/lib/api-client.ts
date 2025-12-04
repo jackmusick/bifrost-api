@@ -219,9 +219,11 @@ export async function authFetch(
 	}
 
 	// Default to JSON content type for POST/PUT/PATCH
+	// BUT: Don't set Content-Type if body is FormData (browser will set it with boundary)
 	if (
 		["POST", "PUT", "PATCH"].includes(options.method?.toUpperCase() || "") &&
-		!headers.has("Content-Type")
+		!headers.has("Content-Type") &&
+		!(options.body instanceof FormData)
 	) {
 		headers.set("Content-Type", "application/json");
 	}

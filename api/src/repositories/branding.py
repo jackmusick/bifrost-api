@@ -44,9 +44,6 @@ class BrandingRepository:
         rectangle_logo_data: bytes | None = None,
         rectangle_logo_content_type: str | None = None,
         primary_color: str | None = None,
-        secondary_color: str | None = None,
-        custom_css: str | None = None,
-        font_family: str | None = None,
     ) -> GlobalBranding:
         """
         Create or update global branding configuration (upsert).
@@ -57,9 +54,6 @@ class BrandingRepository:
             rectangle_logo_data: Rectangle logo image bytes
             rectangle_logo_content_type: Rectangle logo MIME type (e.g., 'image/png')
             primary_color: Hex color code (e.g., '#0066CC')
-            secondary_color: Secondary hex color code
-            custom_css: Custom CSS overrides
-            font_family: Font family name
 
         Returns:
             Created or updated GlobalBranding record
@@ -78,12 +72,6 @@ class BrandingRepository:
                 existing.rectangle_logo_content_type = rectangle_logo_content_type
             if primary_color is not None:
                 existing.primary_color = primary_color
-            if secondary_color is not None:
-                existing.secondary_color = secondary_color
-            if custom_css is not None:
-                existing.custom_css = custom_css
-            if font_family is not None:
-                existing.font_family = font_family
 
             await self.session.flush()
             await self.session.refresh(existing)
@@ -97,9 +85,6 @@ class BrandingRepository:
                 rectangle_logo_data=rectangle_logo_data,
                 rectangle_logo_content_type=rectangle_logo_content_type,
                 primary_color=primary_color,
-                secondary_color=secondary_color,
-                custom_css=custom_css,
-                font_family=font_family,
             )
             self.session.add(branding)
             await self.session.flush()

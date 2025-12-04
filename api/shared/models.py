@@ -1343,13 +1343,10 @@ class ProcessSchedulesResponse(BaseModel):
 # ==================== PLATFORM BRANDING (T004, T071 - User Story 7) ====================
 
 class BrandingSettings(BaseModel):
-    """Organization branding configuration"""
-    org_id: str | None = Field(None, description="Organization ID or 'GLOBAL' for platform default")
+    """Global platform branding configuration"""
     square_logo_url: str | None = Field(None, description="Square logo URL (for icons, 1:1 ratio)")
     rectangle_logo_url: str | None = Field(None, description="Rectangle logo URL (for headers, 16:9 ratio)")
     primary_color: str | None = Field(None, description="Primary brand color (hex format, e.g., #FF5733)")
-    updated_by: str | None = Field(None, description="User email who last updated branding")
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     @field_validator('primary_color')
     @classmethod
@@ -1366,11 +1363,8 @@ class BrandingSettings(BaseModel):
         return v
 
 class BrandingUpdateRequest(BaseModel):
-    """Request model for updating branding settings"""
-    org_id: str | None = Field(None, description="Organization ID (defaults to current user's org)")
-    square_logo_url: str | None = None
-    rectangle_logo_url: str | None = None
-    primary_color: str | None = None
+    """Request model for updating primary color only - logos use POST /logo/{type}"""
+    primary_color: str | None = Field(None, description="Primary color (hex code, e.g., #0066CC)")
 
 
 # ==================== ERROR MODEL ====================

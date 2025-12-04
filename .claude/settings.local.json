@@ -281,7 +281,11 @@
       "TodoRead",
       "TodoWrite",
       "Task",
-      "Bash(./test.sh --e2e --ci)"
+      "Bash(./test.sh --e2e --ci)",
+      "Bash(pyright src/jobs/schedulers/execution_cleanup.py)",
+      "Bash(./test.sh api/tests/unit/jobs/ -v)",
+      "WebFetch(domain:www.rabbitmq.com)",
+      "Bash(pyright src/routers/branding.py)"
     ],
     "deny": [
       "Bash(rm -rf /)",

@@ -21,6 +21,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, KeyRound, Mail, Lock, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
 import type { OAuthProvider } from "@/services/auth";
+import { Logo } from "@/components/branding/Logo";
 
 type LoginStep = "credentials" | "mfa" | "mfa-setup";
 
@@ -216,11 +217,7 @@ export function Login() {
 							transition={{ delay: 0.1, duration: 0.3 }}
 							className="flex justify-center"
 						>
-							<img
-								src="/logo.svg"
-								alt="Bifrost"
-								className="h-16 w-auto"
-							/>
+							<Logo type="square" className="h-16 w-16" alt="Bifrost" />
 						</motion.div>
 						<div className="space-y-1">
 							<h1 className="text-2xl font-bold tracking-tight">Bifrost</h1>

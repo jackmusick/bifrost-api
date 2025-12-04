@@ -10,6 +10,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# Import branding models from shared (source of truth)
+from shared.models import BrandingSettings, BrandingUpdateRequest
+
 # ==================== PUBLIC API ====================
 # All models exported for OpenAPI spec generation
 
@@ -1341,36 +1344,7 @@ class ProcessSchedulesResponse(BaseModel):
 
 
 # ==================== PLATFORM BRANDING (T004, T071 - User Story 7) ====================
-
-class BrandingSettings(BaseModel):
-    """Organization branding configuration"""
-    org_id: str | None = Field(None, description="Organization ID or 'GLOBAL' for platform default")
-    square_logo_url: str | None = Field(None, description="Square logo URL (for icons, 1:1 ratio)")
-    rectangle_logo_url: str | None = Field(None, description="Rectangle logo URL (for headers, 16:9 ratio)")
-    primary_color: str | None = Field(None, description="Primary brand color (hex format, e.g., #FF5733)")
-    updated_by: str | None = Field(None, description="User email who last updated branding")
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-    @field_validator('primary_color')
-    @classmethod
-    def validate_hex_color(cls, v):
-        """Validate hex color format"""
-        if v is None:
-            return v
-        if not v.startswith('#') or len(v) not in [4, 7]:
-            raise ValueError("Primary color must be a valid hex color (e.g., #FFF or #FF5733)")
-        try:
-            int(v[1:], 16)
-        except ValueError:
-            raise ValueError("Primary color must be a valid hex color")
-        return v
-
-class BrandingUpdateRequest(BaseModel):
-    """Request model for updating branding settings"""
-    org_id: str | None = Field(None, description="Organization ID (defaults to current user's org)")
-    square_logo_url: str | None = None
-    rectangle_logo_url: str | None = None
-    primary_color: str | None = None
+# Branding models are imported from shared.models (lines 13-14) to ensure single source of truth
 
 
 # ==================== ERROR MODEL ====================

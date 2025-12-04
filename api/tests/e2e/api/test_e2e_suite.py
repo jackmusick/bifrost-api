@@ -892,7 +892,7 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         import time
 
         # Poll for workflow to appear (discovery container syncs every few seconds)
-        max_attempts = 15  # 15 seconds max wait
+        max_attempts = 30  # 30 seconds max wait
         workflow_names = []
 
         for attempt in range(max_attempts):
@@ -1424,6 +1424,16 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         )
         assert response.status_code == 200, f"Get result failed: {response.text}"
 
+        # Verify result structure
+        result_data = response.json()
+        assert "result" in result_data, "Result should have 'result' field"
+        assert "result_type" in result_data, "Result should have 'result_type' field"
+
+        # Verify the actual result content
+        assert result_data["result"] is not None, "Result should not be None"
+        if isinstance(result_data["result"], dict):
+            assert "status" in result_data["result"], "E2E workflow should return status field"
+
     def test_177_get_execution_logs_endpoint(self):
         """Execution logs endpoint works."""
         if not State.sync_execution_id:
@@ -1435,7 +1445,15 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         )
         assert response.status_code == 200, f"Get logs failed: {response.text}"
         logs = response.json()
-        assert isinstance(logs, list)
+        assert isinstance(logs, list), "Logs should be a list"
+
+        # Verify log structure (if logs exist)
+        # Note: e2e_test_sync_workflow doesn't log anything, so logs may be empty
+        for log in logs:
+            assert "level" in log, "Log entry should have 'level' field"
+            assert "message" in log, "Log entry should have 'message' field"
+            assert "timestamp" in log, "Log entry should have 'timestamp' field"
+            assert log["level"] in ["debug", "info", "warning", "error", "traceback"], f"Invalid log level: {log['level']}"
 
     # =========================================================================
     # PHASE 18B: Execution Behavior Tests (Config Scoping, Debug Logs, Concurrency)
@@ -1908,23 +1926,68 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         assert response.status_code == 403, \
             f"Org user should not update branding: {response.status_code}"
 
-    def test_324_get_logo_public(self):
-        """Get logo without authentication."""
-        response = State.client.get("/api/branding/logo/square")
-        # Accept 200 (has logo) or 404 (no logo)
-        assert response.status_code in [200, 404], f"Get logo failed: {response.text}"
+    def test_324_upload_square_logo_superuser(self):
+        """Superuser can upload square logo."""
+        import os
+        logo_path = os.path.join(os.path.dirname(__file__), "../logos/square.png")
 
-    def test_325_upload_logo_org_user_denied(self):
+        with open(logo_path, "rb") as f:
+            logo_data = f.read()
+
+        response = State.client.post(
+            "/api/branding/logo/square",
+            headers={
+                "Authorization": f"Bearer {State.platform_admin.access_token}",
+            },
+            files={"file": ("square.png", logo_data, "image/png")},
+        )
+        assert response.status_code in [200, 201], f"Upload square logo failed: {response.text}"
+
+    def test_325_upload_rectangle_logo_superuser(self):
+        """Superuser can upload rectangle logo."""
+        import os
+        logo_path = os.path.join(os.path.dirname(__file__), "../logos/rectangle.png")
+
+        with open(logo_path, "rb") as f:
+            logo_data = f.read()
+
+        response = State.client.post(
+            "/api/branding/logo/rectangle",
+            headers={
+                "Authorization": f"Bearer {State.platform_admin.access_token}",
+            },
+            files={"file": ("rectangle.png", logo_data, "image/png")},
+        )
+        assert response.status_code in [200, 201], f"Upload rectangle logo failed: {response.text}"
+
+    def test_326_get_square_logo_public(self):
+        """Get square logo without authentication after upload."""
+        response = State.client.get("/api/branding/logo/square")
+        assert response.status_code == 200, f"Get square logo failed: {response.text}"
+        assert response.headers.get("content-type") == "image/png", "Logo should be PNG"
+        assert len(response.content) > 0, "Logo content should not be empty"
+
+    def test_327_get_rectangle_logo_public(self):
+        """Get rectangle logo without authentication after upload."""
+        response = State.client.get("/api/branding/logo/rectangle")
+        assert response.status_code == 200, f"Get rectangle logo failed: {response.text}"
+        assert response.headers.get("content-type") == "image/png", "Logo should be PNG"
+        assert len(response.content) > 0, "Logo content should not be empty"
+
+    def test_328_upload_logo_org_user_denied(self):
         """Org user cannot upload logo (403)."""
-        # Create a simple 1x1 PNG
-        png_data = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+        import os
+        logo_path = os.path.join(os.path.dirname(__file__), "../logos/square.png")
+
+        with open(logo_path, "rb") as f:
+            logo_data = f.read()
 
         response = State.client.post(
             "/api/branding/logo/square",
             headers={
                 "Authorization": f"Bearer {State.org1_user.access_token}",
             },
-            files={"file": ("logo.png", png_data, "image/png")},
+            files={"file": ("logo.png", logo_data, "image/png")},
         )
         assert response.status_code == 403, \
             f"Org user should not upload logo: {response.status_code}"

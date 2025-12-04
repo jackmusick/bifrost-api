@@ -3,14 +3,9 @@
  * Applies organization-specific branding (logos and colors) via CSS variables
  */
 
-export interface BrandingSettings {
-	orgId: string;
-	squareLogoUrl: string | null;
-	rectangleLogoUrl: string | null;
-	primaryColor: string | null;
-	updatedBy: string;
-	updatedAt: string;
-}
+import type { components } from "@/lib/v1";
+
+export type BrandingSettings = components["schemas"]["BrandingSettings"];
 
 /**
  * Convert hex color to OKLCH format
@@ -89,7 +84,7 @@ export function applyBrandingTheme(branding: BrandingSettings | null) {
 	// Default branding (fallback) - teal color from theme
 	const defaultColor = "#0066CC";
 
-	const primaryColor = branding?.primaryColor || defaultColor;
+	const primaryColor = branding?.primary_color || defaultColor;
 	const oklchColor = hexToOklch(primaryColor);
 
 	// Debug: log the conversion
@@ -189,19 +184,19 @@ export function applyBrandingTheme(branding: BrandingSettings | null) {
   `;
 
 	// Apply logo URLs as CSS variables (for use in background-image)
-	if (branding?.squareLogoUrl) {
+	if (branding?.square_logo_url) {
 		root.style.setProperty(
 			"--logo-square-url",
-			`url('${branding.squareLogoUrl}')`,
+			`url('${branding.square_logo_url}')`,
 		);
 	} else {
 		root.style.removeProperty("--logo-square-url");
 	}
 
-	if (branding?.rectangleLogoUrl) {
+	if (branding?.rectangle_logo_url) {
 		root.style.setProperty(
 			"--logo-rectangle-url",
-			`url('${branding.rectangleLogoUrl}')`,
+			`url('${branding.rectangle_logo_url}')`,
 		);
 	} else {
 		root.style.removeProperty("--logo-rectangle-url");

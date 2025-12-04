@@ -15,7 +15,7 @@ from sqlalchemy import select, and_
 
 from src.core.database import get_session_factory
 from src.core.pubsub import publish_execution_update
-from src.models.database import Execution as ExecutionModel
+from src.models.orm import Execution as ExecutionModel, ExecutionLog
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                 select(ExecutionModel).where(
                     and_(
                         ExecutionModel.status == ExecutionStatus.CANCELLING.value,
-                        ExecutionModel.updated_at < cancelling_cutoff,
+                        ExecutionModel.started_at < cancelling_cutoff,
                     )
                 )
             )
@@ -132,29 +132,22 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                     )
 
                     # Update execution
-                    execution.status = final_status.value
+                    execution.status = final_status.value  # type: ignore[assignment]
                     execution.error_message = timeout_reason
-                    execution.error_type = (
-                        "ExecutionTimeout"
-                        if final_status == ExecutionStatus.TIMEOUT
-                        else "CancellationTimeout"
-                    )
                     execution.completed_at = now
-                    execution.updated_at = now
 
                     # Add timeout log entry
-                    if execution.logs is None:
-                        execution.logs = []
-
-                    execution.logs.append({
-                        "timestamp": now.isoformat(),
-                        "level": "error",
-                        "message": timeout_reason,
-                        "data": {
+                    log_entry = ExecutionLog(
+                        execution_id=execution.id,
+                        level="error",
+                        message=timeout_reason,
+                        log_metadata={
                             "timeout_type": "automatic_cleanup",
                             "original_status": execution.status,
                         },
-                    })
+                        timestamp=now,
+                    )
+                    db.add(log_entry)
 
                     results["total_cleaned"] += 1
 

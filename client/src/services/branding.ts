@@ -24,7 +24,7 @@ export const brandingService = {
 	 * Update branding settings
 	 */
 	async updateBranding(settings: {
-		primaryColor: string;
+		primary_color: string;
 	}): Promise<BrandingSettings> {
 		const response = await authFetch("/api/branding", {
 			method: "PUT",
@@ -49,10 +49,13 @@ export const brandingService = {
 	 * Upload logo
 	 */
 	async uploadLogo(type: "square" | "rectangle", file: File): Promise<void> {
+		const formData = new FormData();
+		formData.append("file", file);
+
 		const response = await authFetch(`/api/branding/logo/${type}`, {
 			method: "POST",
-			headers: { "Content-Type": file.type },
-			body: file,
+			body: formData,
+			// Don't set Content-Type header - browser will set it with boundary for multipart/form-data
 		});
 
 		if (!response.ok) {

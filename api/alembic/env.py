@@ -17,7 +17,7 @@ from src.config import get_settings
 from src.core.database import Base
 
 # Import all models so they're registered with Base.metadata
-from src.models.database import (  # noqa: F401
+from src.models.orm import (  # noqa: F401
     Organization,
     User,
     Role,
@@ -27,6 +27,8 @@ from src.models.database import (  # noqa: F401
     Execution,
     ExecutionLog,
     Config,
+    Workflow,
+    DataProvider,
     WorkflowKey,
     OAuthProvider,
     OAuthToken,
@@ -35,6 +37,7 @@ from src.models.database import (  # noqa: F401
     MFARecoveryCode,
     TrustedDevice,
     UserOAuthAccount,
+    GlobalBranding,
 )
 
 # Alembic Config object

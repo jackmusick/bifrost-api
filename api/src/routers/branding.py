@@ -1,10 +1,10 @@
 """
 Branding Router
 
-Platform and organization branding configuration.
+Global platform branding configuration.
 
-Branding is stored in the configs table with key='branding'.
-Logo files are stored in the filesystem under /mounts/files/branding/{org_id}/.
+Branding settings (colors, fonts, CSS) and logo binary data are stored
+in the global_branding table. Logo images are served via GET /logo/{type} endpoints.
 """
 
 import logging
@@ -13,77 +13,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import select
 
 from src.models.schemas import BrandingSettings, BrandingUpdateRequest
 from src.core.auth import Context, CurrentActiveUser
 from src.core.database import AsyncSession, get_db
-from src.models import Config as ConfigModel
-from src.services.file_storage import get_file_storage
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/branding", tags=["Branding"])
 
-# Branding config key
-BRANDING_KEY = "branding"
-
 # Allowed image types for logo upload
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/svg+xml"}
 MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
-
-
-async def get_branding_config(
-    db: AsyncSession,
-    org_id: str | None = None
-) -> ConfigModel | None:
-    """
-    Get branding config with cascade logic.
-
-    1. Try org-specific config first
-    2. Fall back to global (org_id=NULL) config
-    """
-    # Try org-specific first
-    if org_id:
-        query = select(ConfigModel).where(
-            ConfigModel.key == BRANDING_KEY,
-            ConfigModel.organization_id == org_id,
-        )
-        result = await db.execute(query)
-        config = result.scalar_one_or_none()
-        if config:
-            return config
-
-    # Fall back to global
-    query = select(ConfigModel).where(
-        ConfigModel.key == BRANDING_KEY,
-        ConfigModel.organization_id.is_(None),
-    )
-    result = await db.execute(query)
-    return result.scalar_one_or_none()
-
-
-def config_to_branding(config: ConfigModel | None) -> BrandingSettings:
-    """Convert config model to BrandingSettings."""
-    if not config or not config.value:
-        return BrandingSettings(
-            org_id="GLOBAL",
-            square_logo_url=None,
-            rectangle_logo_url=None,
-            primary_color=None,
-            updated_by="system",
-            updated_at=datetime.utcnow(),
-        )
-
-    value = config.value
-    return BrandingSettings(
-        org_id=str(config.organization_id) if config.organization_id else "GLOBAL",
-        square_logo_url=value.get("square_logo_url"),
-        rectangle_logo_url=value.get("rectangle_logo_url"),
-        primary_color=value.get("primary_color"),
-        updated_by=value.get("updated_by", "system"),
-        updated_at=config.updated_at or datetime.utcnow(),
-    )
 
 
 # =============================================================================
@@ -106,8 +47,23 @@ async def get_branding(
     Returns global branding settings for the platform.
     Used on login page before authentication.
     """
-    config = await get_branding_config(db)
-    return config_to_branding(config)
+    from src.repositories.branding import BrandingRepository
+    branding_repo = BrandingRepository(db)
+    branding = await branding_repo.get_branding()
+
+    if not branding:
+        # Return defaults if no branding configured
+        return BrandingSettings(
+            square_logo_url=None,
+            rectangle_logo_url=None,
+            primary_color=None,
+        )
+
+    return BrandingSettings(
+        primary_color=branding.primary_color,
+        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
+        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
+    )
 
 
 # =============================================================================
@@ -118,8 +74,8 @@ async def get_branding(
 @router.put(
     "",
     response_model=BrandingSettings,
-    summary="Update branding settings",
-    description="Update platform branding settings (superuser only)",
+    summary="Update primary color",
+    description="Update platform primary color (superuser only)",
 )
 async def update_branding(
     request: BrandingUpdateRequest,
@@ -127,59 +83,31 @@ async def update_branding(
     user: CurrentActiveUser,
 ) -> BrandingSettings:
     """
-    Update branding settings.
+    Update primary color only.
 
     Only superusers can update global branding.
-    Org admins can update their org's branding.
+    Use POST /logo/{type} to upload logos.
     """
-    # For now, only allow global branding updates by superusers
     if not user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only superusers can update branding",
         )
 
-    # Get existing config or create new
-    config = await get_branding_config(ctx.db, org_id=None)
+    from src.repositories.branding import BrandingRepository
+    branding_repo = BrandingRepository(ctx.db)
 
-    now = datetime.utcnow()
+    # Update primary color only
+    branding = await branding_repo.set_branding(primary_color=request.primary_color)
 
-    if config:
-        # Update existing
-        value = config.value or {}
-        if request.primary_color is not None:
-            value["primary_color"] = request.primary_color
-        if request.square_logo_url is not None:
-            value["square_logo_url"] = request.square_logo_url
-        if request.rectangle_logo_url is not None:
-            value["rectangle_logo_url"] = request.rectangle_logo_url
-        value["updated_by"] = user.email
+    await ctx.db.commit()
+    logger.info(f"Primary color updated by {user.email}")
 
-        config.value = value
-        config.updated_at = now
-        config.updated_by = user.email
-    else:
-        # Create new
-        config = ConfigModel(
-            key=BRANDING_KEY,
-            organization_id=None,  # Global
-            value={
-                "primary_color": request.primary_color,
-                "square_logo_url": request.square_logo_url,
-                "rectangle_logo_url": request.rectangle_logo_url,
-                "updated_by": user.email,
-            },
-            updated_by=user.email,
-            created_at=now,
-            updated_at=now,
-        )
-        ctx.db.add(config)
-
-    await ctx.db.flush()
-    await ctx.db.refresh(config)
-
-    logger.info(f"Branding updated by {user.email}")
-    return config_to_branding(config)
+    return BrandingSettings(
+        primary_color=branding.primary_color,
+        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
+        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
+    )
 
 
 @router.post(
@@ -228,66 +156,29 @@ async def upload_logo(
             detail=f"File too large. Maximum size: {MAX_LOGO_SIZE // 1024 // 1024}MB",
         )
 
-    # Determine file extension
-    ext_map = {
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/jpg": "jpg",
-        "image/svg+xml": "svg",
-    }
-    extension = ext_map.get(file.content_type, "png")
+    # Save logo binary data to database
+    from src.repositories.branding import BrandingRepository
+    branding_repo = BrandingRepository(ctx.db)
 
-    # Use "GLOBAL" for platform-wide branding
-    org_id = "GLOBAL"
-    filename = f"{logo_type}-logo.{extension}"
-
-    # Save to filesystem storage
-    file_storage = get_file_storage()
-    await file_storage.save_branding_file(
-        org_id=org_id,
-        filename=filename,
-        content=content,
-        content_type=file.content_type,
-    )
-
-    # Generate URL - this will be served by the API
-    logo_url = f"/api/branding/logo/{logo_type}"
-
-    # Update branding config
-    config = await get_branding_config(ctx.db, org_id=None)
-    now = datetime.utcnow()
-
-    if config:
-        value = config.value or {}
-        if logo_type == "square":
-            value["square_logo_url"] = logo_url
-        else:
-            value["rectangle_logo_url"] = logo_url
-        value["updated_by"] = user.email
-
-        config.value = value
-        config.updated_at = now
-        config.updated_by = user.email
-    else:
-        config = ConfigModel(
-            key=BRANDING_KEY,
-            organization_id=None,
-            value={
-                "square_logo_url": logo_url if logo_type == "square" else None,
-                "rectangle_logo_url": logo_url if logo_type == "rectangle" else None,
-                "updated_by": user.email,
-            },
-            updated_by=user.email,
-            created_at=now,
-            updated_at=now,
+    if logo_type == "square":
+        branding = await branding_repo.set_branding(
+            square_logo_data=content,
+            square_logo_content_type=file.content_type,
         )
-        ctx.db.add(config)
+    else:  # rectangle
+        branding = await branding_repo.set_branding(
+            rectangle_logo_data=content,
+            rectangle_logo_content_type=file.content_type,
+        )
 
-    await ctx.db.flush()
-    await ctx.db.refresh(config)
-
+    await ctx.db.commit()
     logger.info(f"Logo '{logo_type}' uploaded by {user.email}")
-    return config_to_branding(config)
+
+    return BrandingSettings(
+        primary_color=branding.primary_color,
+        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
+        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
+    )
 
 
 @router.get(
@@ -299,40 +190,41 @@ async def upload_logo(
         404: {"description": "Logo not found"},
     },
 )
-async def get_logo(logo_type: str):
-    """Serve logo image file from filesystem storage."""
+async def get_logo(logo_type: str, db: AsyncSession = Depends(get_db)):
+    """Serve logo image from database."""
     if logo_type not in ("square", "rectangle"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="logo_type must be 'square' or 'rectangle'",
         )
 
-    try:
-        file_storage = get_file_storage()
-        org_id = "GLOBAL"
+    from src.repositories.branding import BrandingRepository
+    branding_repo = BrandingRepository(db)
+    branding = await branding_repo.get_branding()
 
-        # Check for logo file with various extensions
-        for ext in ["svg", "png", "jpg", "jpeg"]:
-            filename = f"{logo_type}-logo.{ext}"
-            content = await file_storage.get_branding_file(org_id, filename)
-            if content:
-                media_type = {
-                    "svg": "image/svg+xml",
-                    "png": "image/png",
-                    "jpg": "image/jpeg",
-                    "jpeg": "image/jpeg",
-                }.get(ext, "application/octet-stream")
-                return Response(content=content, media_type=media_type)
-
+    if not branding:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Logo '{logo_type}' not found",
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting logo: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Logo '{logo_type}' not found",
+
+    if logo_type == "square":
+        if not branding.square_logo_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Logo '{logo_type}' not found",
+            )
+        return Response(
+            content=branding.square_logo_data,
+            media_type=branding.square_logo_content_type or "application/octet-stream",
+        )
+    else:  # rectangle
+        if not branding.rectangle_logo_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Logo '{logo_type}' not found",
+            )
+        return Response(
+            content=branding.rectangle_logo_data,
+            media_type=branding.rectangle_logo_content_type or "application/octet-stream",
         )

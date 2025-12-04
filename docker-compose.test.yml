@@ -86,6 +86,7 @@ services:
       - ./api/platform:/app/platform:ro  # Built-in platform workflows (read-only)
       - ./api/alembic:/app/alembic:ro
       - test-workspace:/workspace  # Writable workspace for E2E tests (hot reload)
+      - test-mounts:/mounts  # File storage for uploads, branding, etc.
     depends_on:
       postgres:
         condition: service_healthy
@@ -212,3 +213,4 @@ services:
 # Named volumes for test data - ephemeral within test session
 volumes:
   test-workspace:  # Writable workspace for testing hot reload
+  test-mounts:  # File storage for uploads, branding, etc.

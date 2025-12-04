@@ -152,7 +152,7 @@ class ExecutionRepository:
         if not user.is_superuser and row.executed_by != user.user_id:
             return None, "Forbidden"
 
-        return row.result, None
+        return {"result": row.result, "result_type": row.result_type}, None
 
     async def get_execution_logs(
         self,

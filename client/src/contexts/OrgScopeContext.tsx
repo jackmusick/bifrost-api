@@ -21,6 +21,7 @@ interface OrgScopeContextType {
 	logoLoaded: boolean;
 	squareLogoUrl: string | null;
 	rectangleLogoUrl: string | null;
+	refreshBranding: () => void;
 }
 
 const OrgScopeContext = createContext<OrgScopeContextType | undefined>(
@@ -49,6 +50,12 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 	const [rectangleLogoUrl, setRectangleLogoUrl] = useState<string | null>(
 		null,
 	);
+	const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+	// Function to trigger a branding refresh
+	const refreshBranding = () => {
+		setRefreshTrigger((prev) => prev + 1);
+	};
 
 	// Persist to localStorage and sessionStorage when scope changes
 	useEffect(() => {
@@ -84,8 +91,8 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 				}
 
 				const branding = await response.json();
-				const rectUrl = branding.rectangleLogoUrl;
-				const sqUrl = branding.squareLogoUrl;
+				const rectUrl = branding.rectangle_logo_url;
+				const sqUrl = branding.square_logo_url;
 
 				// Preload both logos if they exist
 				const preloadPromises: Promise<void>[] = [];
@@ -137,7 +144,7 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 		}
 
 		loadBrandingAndLogo();
-	}, [scope.orgId]);
+	}, [scope.orgId, refreshTrigger]);
 
 	const isGlobalScope = scope.type === "global";
 
@@ -151,6 +158,7 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 				logoLoaded,
 				squareLogoUrl,
 				rectangleLogoUrl,
+				refreshBranding,
 			}}
 		>
 			{children}

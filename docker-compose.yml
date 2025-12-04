@@ -48,7 +48,7 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-bifrost_dev}
     ports:
       - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI
+      - "15672:15672"  # Management UI (for debugging only)
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro

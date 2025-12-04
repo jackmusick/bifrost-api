@@ -33,8 +33,8 @@ export function Branding() {
 			try {
 				const data = await brandingService.getBranding();
 				setBranding(data);
-				if (data.primaryColor) {
-					setPrimaryColor(data.primaryColor);
+				if (data.primary_color) {
+					setPrimaryColor(data.primary_color);
 				}
 			} catch {
 				toast.error("Failed to load branding settings");
@@ -51,7 +51,7 @@ export function Branding() {
 		setSaving(true);
 		try {
 			const updated = await brandingService.updateBranding({
-				primaryColor,
+				primary_color: primaryColor,
 			});
 			setBranding(updated);
 			applyBrandingTheme(updated);
@@ -265,10 +265,10 @@ export function Branding() {
 									}
 									className="hidden"
 								/>
-								{branding?.squareLogoUrl ? (
+								{branding?.square_logo_url ? (
 									<div className="flex flex-col items-center gap-3">
 										<img
-											src={branding.squareLogoUrl}
+											src={branding.square_logo_url}
 											alt="Square logo"
 											className="h-24 w-24 object-contain"
 										/>
@@ -327,10 +327,10 @@ export function Branding() {
 									}
 									className="hidden"
 								/>
-								{branding?.rectangleLogoUrl ? (
+								{branding?.rectangle_logo_url ? (
 									<div className="flex flex-col items-center gap-3">
 										<img
-											src={branding.rectangleLogoUrl}
+											src={branding.rectangle_logo_url}
 											alt="Rectangle logo"
 											className="h-12 w-48 object-contain"
 										/>

@@ -95,19 +95,19 @@ export function useBranding(): BrandingState {
 			// Preload logos
 			const preloadPromises: Promise<void>[] = [];
 
-			if (branding.rectangleLogoUrl) {
-				preloadPromises.push(preloadImage(branding.rectangleLogoUrl));
+			if (branding.rectangle_logo_url) {
+				preloadPromises.push(preloadImage(branding.rectangle_logo_url));
 			}
 
-			if (branding.squareLogoUrl) {
-				preloadPromises.push(preloadImage(branding.squareLogoUrl));
+			if (branding.square_logo_url) {
+				preloadPromises.push(preloadImage(branding.square_logo_url));
 			}
 
 			await Promise.all(preloadPromises);
 
 			// Store logo URLs
-			setSquareLogoUrl(branding.squareLogoUrl || null);
-			setRectangleLogoUrl(branding.rectangleLogoUrl || null);
+			setSquareLogoUrl(branding.square_logo_url || null);
+			setRectangleLogoUrl(branding.rectangle_logo_url || null);
 
 			// Apply theme colors
 			applyBrandingTheme(branding);
