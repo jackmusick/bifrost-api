@@ -15,14 +15,9 @@ type WorkflowsListResponse = paths["/api/workflows"]["get"]["responses"]["200"][
 export const workflowsService = {
 	/**
 	 * Get all workflows metadata
-	 * @param reloadFile - Optional: relative path to a single file to reload (incremental discovery)
 	 */
-	async getWorkflows(reloadFile?: string): Promise<WorkflowsListResponse> {
-		const { data, error } = await apiClient.GET("/api/workflows", {
-			params: {
-				query: reloadFile ? { reload_file: reloadFile } : {},
-			},
-		});
+	async getWorkflows(): Promise<WorkflowsListResponse> {
+		const { data, error } = await apiClient.GET("/api/workflows", {});
 		if (error) throw new Error(`Failed to fetch workflows: ${error}`);
 		return data!;
 	},

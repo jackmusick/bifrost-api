@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from shared.error_handling import WorkflowError
-from src.models.schemas import (
+from shared.models import (
     CreateFormRequest,
     ErrorResponse,
     UpdateFormRequest,
@@ -769,7 +769,7 @@ async def execute_form_startup_handler(form_id: str, req: Any, request_context: 
 async def execute_form_handler(form_id: str, request_body: dict, request_context, workflow_context) -> tuple[dict, int]:
     """Execute a form and run the linked workflow"""
     from shared.execution_service import run_workflow, WorkflowNotFoundError, WorkflowLoadError
-    from src.models.schemas import ExecutionStatus
+    from shared.models import ExecutionStatus
 
     logger.info(f"User {request_context.user_id} submitting form {form_id}")
 

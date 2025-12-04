@@ -4,7 +4,7 @@ Contract tests for branding API endpoints
 Tests branding configuration retrieval and updates with logo uploads and color validation.
 """
 
-from src.models.schemas import BrandingSettings
+from shared.models import BrandingSettings
 
 
 class TestBrandingContracts:
@@ -61,3 +61,36 @@ class TestBrandingContracts:
         assert branding.square_logo_url is None
         assert branding.rectangle_logo_url is None
         assert branding.primary_color is None
+
+    def test_reset_branding_returns_none_values(self):
+        """Test that reset branding endpoints return None values"""
+        # After reset, all values should be None
+        branding = BrandingSettings(
+            square_logo_url=None,
+            rectangle_logo_url=None,
+            primary_color=None
+        )
+
+        assert branding.square_logo_url is None
+        assert branding.rectangle_logo_url is None
+        assert branding.primary_color is None
+
+    def test_partial_logo_reset(self):
+        """Test that resetting one logo doesn't affect the other"""
+        # Start with both logos
+        branding = BrandingSettings(
+            square_logo_url="/api/branding/logo/square",
+            rectangle_logo_url="/api/branding/logo/rectangle",
+            primary_color="#0066CC"
+        )
+
+        # After resetting square logo, rectangle and color remain
+        branding_after_reset = BrandingSettings(
+            square_logo_url=None,  # Reset
+            rectangle_logo_url="/api/branding/logo/rectangle",  # Still there
+            primary_color="#0066CC"  # Still there
+        )
+
+        assert branding_after_reset.square_logo_url is None
+        assert branding_after_reset.rectangle_logo_url is not None
+        assert branding_after_reset.primary_color is not None

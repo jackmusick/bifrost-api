@@ -110,7 +110,7 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 					max_results: 50,
 				});
 
-				const scriptResults = scriptsResponse.results.map((result) => ({
+				const scriptResults = scriptsResponse.results.map((result: any) => ({
 					type: "script" as const,
 					name: result.file_path.split("/").pop() || result.file_path,
 					description: result.line_text

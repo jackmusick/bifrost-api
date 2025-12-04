@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from shared.async_storage import AsyncTableStorageService
-from src.models.schemas import SystemLog, SystemLogsListResponse, ErrorResponse
+from shared.models import SystemLog, SystemLogsListResponse, ErrorResponse
 
 logger = logging.getLogger(__name__)
 

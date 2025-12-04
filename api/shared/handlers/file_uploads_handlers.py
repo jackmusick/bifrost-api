@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from shared.context import ExecutionContext
 from shared.exceptions import FileUploadError
-from src.models.schemas import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
+from shared.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
 from src.services.file_storage import get_file_storage
 
 logger = logging.getLogger(__name__)

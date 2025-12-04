@@ -89,9 +89,9 @@ export function useReloadWorkflowFile() {
 	const setWorkflows = useWorkflowsStore((state) => state.setWorkflows);
 
 	return useMutation({
-		mutationFn: async (filePath: string) => {
-			// Call API with reload_file query param
-			const workflows = await workflowsService.getWorkflows(filePath);
+		mutationFn: async () => {
+			// Reload all workflows (incremental reload not supported by API)
+			const workflows = await workflowsService.getWorkflows();
 			return workflows;
 		},
 		onSuccess: (workflows) => {

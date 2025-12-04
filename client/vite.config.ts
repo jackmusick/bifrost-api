@@ -130,6 +130,11 @@ export default defineConfig({
 		},
 		proxy: {
 			// Use API_URL env var for Docker (api:8000) or default to localhost:8000 for local dev
+			// Proxy OpenAPI spec for type generation
+			"/openapi.json": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
 			// Rewrite /api/auth/* to /auth/* since backend auth routes don't have /api prefix
 			"/api/auth": {
 				target: process.env.API_URL || "http://localhost:8000",

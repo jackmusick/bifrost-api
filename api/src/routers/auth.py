@@ -32,6 +32,7 @@ from src.core.security import (
     get_password_hash,
     verify_password,
 )
+from shared.models import OAuthProviderInfo, AuthStatusResponse
 from src.repositories.users import UserRepository
 from src.services.user_provisioning import ensure_user_provisioned, get_user_roles
 
@@ -877,29 +878,6 @@ async def register_user(
         organization_id=str(user.organization_id) if user.organization_id else None,
         roles=result.roles,
     )
-
-
-class OAuthProviderInfo(BaseModel):
-    """OAuth provider info for login page."""
-    name: str
-    display_name: str
-    icon: str | None = None
-
-
-class AuthStatusResponse(BaseModel):
-    """
-    Pre-login status response.
-
-    Provides all information the client needs to render the login page:
-    - Whether initial setup is required (no users exist)
-    - Whether password login is available
-    - Whether MFA is required for password login
-    - Available OAuth/SSO providers
-    """
-    needs_setup: bool
-    password_login_enabled: bool
-    mfa_required_for_password: bool
-    oauth_providers: list[OAuthProviderInfo]
 
 
 @router.get("/status", response_model=AuthStatusResponse)

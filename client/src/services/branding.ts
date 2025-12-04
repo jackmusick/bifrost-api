@@ -64,4 +64,70 @@ export const brandingService = {
 			);
 		}
 	},
+
+	/**
+	 * Reset a specific logo to default
+	 */
+	async resetLogo(type: "square" | "rectangle"): Promise<BrandingSettings> {
+		const response = await authFetch(`/api/branding/logo/${type}`, {
+			method: "DELETE",
+			headers: { Accept: "application/json" },
+		});
+
+		if (!response.ok) {
+			const error = await response
+				.json()
+				.catch(() => ({ error: "Unknown error" }));
+			throw new Error(
+				error.message ||
+					`Failed to reset ${type} logo: ${response.statusText}`,
+			);
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Reset primary color to default
+	 */
+	async resetColor(): Promise<BrandingSettings> {
+		const response = await authFetch("/api/branding/color", {
+			method: "DELETE",
+			headers: { Accept: "application/json" },
+		});
+
+		if (!response.ok) {
+			const error = await response
+				.json()
+				.catch(() => ({ error: "Unknown error" }));
+			throw new Error(
+				error.message ||
+					`Failed to reset primary color: ${response.statusText}`,
+			);
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Reset all branding to defaults
+	 */
+	async resetAll(): Promise<BrandingSettings> {
+		const response = await authFetch("/api/branding", {
+			method: "DELETE",
+			headers: { Accept: "application/json" },
+		});
+
+		if (!response.ok) {
+			const error = await response
+				.json()
+				.catch(() => ({ error: "Unknown error" }));
+			throw new Error(
+				error.message ||
+					`Failed to reset branding: ${response.statusText}`,
+			);
+		}
+
+		return response.json();
+	},
 };

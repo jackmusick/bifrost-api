@@ -51,7 +51,8 @@ export function HttpTriggerDialog({
 	const handleGenerateKey = async () => {
 		try {
 			const result = await createKeyMutation.mutateAsync({
-				workflow_id: workflow.name,
+				workflow_name: workflow.name,
+				disable_global_key: false,
 			});
 			if (result.raw_key) {
 				setNewlyGeneratedKey(result.raw_key);

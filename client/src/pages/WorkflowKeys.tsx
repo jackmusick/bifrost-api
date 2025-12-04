@@ -115,7 +115,7 @@ export function WorkflowKeys() {
 
 		// Get set of workflow IDs that already have keys
 		const workflowsWithKeys = new Set(
-			keys.filter((k) => k.workflow_id).map((k) => k.workflow_id),
+			keys.filter((k) => k.workflow_name).map((k) => k.workflow_name),
 		);
 
 		return workflowsData.workflows
@@ -138,16 +138,16 @@ export function WorkflowKeys() {
 
 		return [...keys].sort((a, b) => {
 			// Global keys first
-			const aIsGlobal = !a.workflow_id;
-			const bIsGlobal = !b.workflow_id;
+			const aIsGlobal = !a.workflow_name;
+			const bIsGlobal = !b.workflow_name;
 			if (aIsGlobal && !bIsGlobal) return -1;
 			if (!aIsGlobal && bIsGlobal) return 1;
 
 			// Then check for orphaned keys (workflow-specific but workflow doesn't exist)
 			const aIsOrphaned =
-				a.workflow_id && !workflowNames.has(a.workflow_id);
+				a.workflow_name && !workflowNames.has(a.workflow_name);
 			const bIsOrphaned =
-				b.workflow_id && !workflowNames.has(b.workflow_id);
+				b.workflow_name && !workflowNames.has(b.workflow_name);
 			if (!aIsOrphaned && bIsOrphaned) return -1;
 			if (aIsOrphaned && !bIsOrphaned) return 1;
 
@@ -161,8 +161,8 @@ export function WorkflowKeys() {
 
 	// Check if a key is orphaned
 	const isOrphaned = (key: WorkflowKeyResponse) => {
-		if (!key.workflow_id) return false;
-		return !workflows.includes(key.workflow_id);
+		if (!key.workflow_name) return false;
+		return !workflows.includes(key.workflow_name);
 	};
 
 	// Check if form is valid
@@ -194,11 +194,12 @@ export function WorkflowKeys() {
 
 		try {
 			const result = await createMutation.mutateAsync({
-				workflow_id: formData.isGlobal ? undefined : formData.workflowId,
+				workflow_name: formData.isGlobal ? undefined : formData.workflowId,
 				expires_in_days: formData.expiresInDays
 					? parseInt(formData.expiresInDays)
 					: undefined,
 				description: formData.description,
+				disable_global_key: false,
 			});
 
 			setIsCreateDialogOpen(false);
@@ -313,7 +314,7 @@ export function WorkflowKeys() {
 													className="hover:bg-muted/50"
 												>
 													<TableCell>
-														{!key.workflow_id ? (
+														{!key.workflow_name ? (
 															<Badge
 																variant="default"
 																className="text-xs font-semibold"
@@ -327,7 +328,7 @@ export function WorkflowKeys() {
 																className="font-mono text-xs"
 															>
 																<AlertTriangle className="mr-1 h-3 w-3" />
-																{key.workflow_id}
+																{key.workflow_name}
 															</Badge>
 														) : (
 															<Badge
@@ -335,7 +336,7 @@ export function WorkflowKeys() {
 																className="font-mono text-xs"
 															>
 																<WorkflowIcon className="mr-1 h-3 w-3" />
-																{key.workflow_id}
+																{key.workflow_name}
 															</Badge>
 														)}
 													</TableCell>
@@ -664,7 +665,7 @@ export function WorkflowKeys() {
 									<code>{`curl -X POST ${
 										window.location.protocol
 									}//${window.location.host}/api/workflows/${
-										createdKey?.workflow_id ||
+										createdKey?.workflow_name ||
 										"{workflowName}"
 									} \\
   -H "Authorization: Bearer ${createdKey?.raw_key}" \\
@@ -689,12 +690,12 @@ export function WorkflowKeys() {
 									Scope
 								</Label>
 								<p className="mt-1">
-									{createdKey?.workflow_id ? (
+									{createdKey?.workflow_name ? (
 										<Badge
 											variant="outline"
 											className="font-mono"
 										>
-											{createdKey.workflow_id}
+											{createdKey.workflow_name}
 										</Badge>
 									) : (
 										<Badge variant="default">Global</Badge>

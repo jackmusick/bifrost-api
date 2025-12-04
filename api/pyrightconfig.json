@@ -10,9 +10,10 @@
         "**/.pytest_cache",
         "**/node_modules",
         "**/.venv",
-        "**/venv",
         "**/stubs"
     ],
+    "venvPath": "..",
+    "venv": "venv",
     "pythonVersion": "3.11",
     "pythonPlatform": "Linux",
     "typeCheckingMode": "basic",

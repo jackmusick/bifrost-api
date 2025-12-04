@@ -103,7 +103,8 @@ class BrandingRepository:
         if not branding:
             return False
 
-        await self.session.delete(branding)
+        # Note: session.delete() is NOT async - it just marks for deletion
+        self.session.delete(branding)
         await self.session.flush()
         logger.info("Global branding deleted")
         return True

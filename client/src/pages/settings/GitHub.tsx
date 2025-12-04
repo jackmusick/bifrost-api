@@ -33,7 +33,7 @@ export function GitHub() {
 	const [connecting, setConnecting] = useState(false);
 
 	// Form state
-	const [repositoryUrl, setRepositoryUrl] = useState("");
+	const [repoUrl, setRepoUrl] = useState("");
 	const [authToken, setAuthToken] = useState("");
 	const [branch, setBranch] = useState("main");
 
@@ -58,7 +58,7 @@ export function GitHub() {
 
 	// Handle repository connection (will fail with 501 Not Implemented)
 	const handleConnect = async () => {
-		if (!repositoryUrl.trim()) {
+		if (!repoUrl.trim()) {
 			toast.error("Please enter a repository URL");
 			return;
 		}
@@ -71,8 +71,8 @@ export function GitHub() {
 		setConnecting(true);
 		try {
 			await githubService.initRepo({
-				repositoryUrl,
-				authToken,
+				repo_url: repoUrl,
+				auth_token: authToken,
 				branch,
 			});
 
@@ -85,7 +85,7 @@ export function GitHub() {
 			});
 
 			// Clear form
-			setRepositoryUrl("");
+			setRepoUrl("");
 			setAuthToken("");
 			setBranch("main");
 		} catch (error) {
@@ -126,21 +126,21 @@ export function GitHub() {
 				</CardHeader>
 				<CardContent className="space-y-6">
 					{/* Current Status */}
-					{status?.isGitRepo ? (
+					{status?.initialized ? (
 						<div className="space-y-4">
 							<div className="rounded-lg border bg-muted/50 p-4">
 								<div className="space-y-1 text-sm text-muted-foreground">
 									<div>
-										<strong>Branch:</strong> {status.currentBranch || "Unknown"}
+										<strong>Branch:</strong> {status.current_branch || "Unknown"}
 									</div>
 									<div>
-										<strong>Changes:</strong> {status.changedFiles} file(s)
+										<strong>Changes:</strong> {status.changed_files?.length || 0} file(s)
 									</div>
 									<div>
-										<strong>Commits ahead:</strong> {status.commitsAhead}
+										<strong>Commits ahead:</strong> {status.commits_ahead}
 									</div>
 									<div>
-										<strong>Commits behind:</strong> {status.commitsBehind}
+										<strong>Commits behind:</strong> {status.commits_behind}
 									</div>
 								</div>
 							</div>
@@ -156,8 +156,8 @@ export function GitHub() {
 									id="repository-url"
 									type="text"
 									placeholder="https://github.com/username/repo.git"
-									value={repositoryUrl}
-									onChange={(e) => setRepositoryUrl(e.target.value)}
+									value={repoUrl}
+									onChange={(e) => setRepoUrl(e.target.value)}
 								/>
 								<p className="text-xs text-muted-foreground">
 									Enter the full URL of your GitHub repository
@@ -210,7 +210,7 @@ export function GitHub() {
 									onClick={handleConnect}
 									disabled={
 										connecting ||
-										!repositoryUrl.trim() ||
+										!repoUrl.trim() ||
 										!authToken.trim()
 									}
 								>

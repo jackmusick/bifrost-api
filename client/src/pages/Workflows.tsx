@@ -76,8 +76,8 @@ export function Workflows() {
 
 		const workflowSet = new Set<string>();
 		apiKeys.forEach((key) => {
-			if (key.workflow_id && !key.revoked_at) {
-				workflowSet.add(key.workflow_id);
+			if (key.workflow_name && !key.revoked) {
+				workflowSet.add(key.workflow_name);
 			}
 		});
 		return workflowSet;
@@ -85,7 +85,7 @@ export function Workflows() {
 
 	const hasGlobalKey = useMemo(() => {
 		if (!apiKeys) return false;
-		return apiKeys.some((key) => !key.workflow_id && !key.revoked_at);
+		return apiKeys.some((key) => !key.workflow_name && !key.revoked);
 	}, [apiKeys]);
 
 	const handleExecute = (workflowName: string) => {

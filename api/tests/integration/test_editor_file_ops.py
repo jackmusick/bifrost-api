@@ -14,7 +14,7 @@ from shared.editor.file_operations import (
     read_file,
     write_file,
 )
-from src.models.schemas import FileType
+from shared.models import FileType
 
 
 class TestFileOperations:

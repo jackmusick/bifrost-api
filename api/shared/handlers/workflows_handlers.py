@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from shared.context import Caller
 from shared.discovery import get_workflow
 from shared.engine import ExecutionRequest, execute
-from src.models.schemas import ErrorResponse, ExecutionStatus
+from shared.models import ErrorResponse, ExecutionStatus
 
 # Lazy imports to avoid unnecessary dependencies for validation-only use cases
 if TYPE_CHECKING:
@@ -281,7 +281,7 @@ async def validate_workflow_file(path: str, content: str | None = None):
     import os
     import re
     from pydantic import ValidationError
-    from src.models.schemas import WorkflowValidationResponse, ValidationIssue
+    from shared.models import WorkflowValidationResponse, ValidationIssue
     from shared.handlers.discovery_handlers import convert_workflow_metadata_to_model
     from shared.discovery import import_module_fresh, WorkflowMetadata
     from shared.decorators import VALID_PARAM_TYPES

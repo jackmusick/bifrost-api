@@ -10,7 +10,7 @@ from typing import List
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.models.schemas import SearchRequest, SearchResult, SearchResponse
+from shared.models import SearchRequest, SearchResult, SearchResponse
 from shared.editor.file_operations import get_base_path, validate_and_resolve_path
 
 
@@ -123,12 +123,12 @@ def search_file(
                     context_after = lines[line_num].rstrip('\n\r')
 
                 results.append(SearchResult(
-                    filePath=relative_path,
+                    file_path=relative_path,
                     line=line_num,
                     column=match.start(),
-                    matchText=line_content,
-                    contextBefore=context_before,
-                    contextAfter=context_after
+                    match_text=line_content,
+                    context_before=context_before,
+                    context_after=context_after
                 ))
 
     except (UnicodeDecodeError, PermissionError, OSError):
@@ -188,15 +188,15 @@ def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
         search_root = get_base_path()
 
     # Validate regex if enabled
-    if request.regex:
+    if request.is_regex:
         try:
-            flags = 0 if request.caseSensitive else re.IGNORECASE
+            flags = 0 if request.case_sensitive else re.IGNORECASE
             re.compile(request.query, flags)
         except re.error as e:
             raise ValueError(f"Invalid regex pattern: {str(e)}")
 
     # Collect files to search
-    files = collect_files(search_root, request.filePattern or "**/*")
+    files = collect_files(search_root, request.include_pattern or "**/*")
     files_searched = len(files)
 
     # Search files in parallel
@@ -213,8 +213,8 @@ def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
                 search_file,
                 file_path,
                 request.query,
-                request.caseSensitive,
-                request.regex,
+                request.case_sensitive,
+                request.is_regex,
                 base_path
             ): file_path
             for file_path in files
@@ -227,7 +227,7 @@ def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
                 all_results.extend(file_results)
 
                 # Stop if we've hit the max results limit
-                if len(all_results) >= request.maxResults:
+                if len(all_results) >= request.max_results:
                     # Cancel remaining tasks
                     for f in future_to_file:
                         f.cancel()
@@ -237,17 +237,17 @@ def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
                 pass
 
     # Truncate results if needed
-    truncated = len(all_results) > request.maxResults
-    results = all_results[:request.maxResults]
+    truncated = len(all_results) > request.max_results
+    results = all_results[:request.max_results]
 
     # Calculate search time
     search_time_ms = int((time.time() - start_time) * 1000)
 
     return SearchResponse(
         query=request.query,
-        totalMatches=len(results),
-        filesSearched=files_searched,
+        total_matches=len(results),
+        files_searched=files_searched,
         results=results,
         truncated=truncated,
-        searchTimeMs=search_time_ms
+        search_time_ms=search_time_ms
     )

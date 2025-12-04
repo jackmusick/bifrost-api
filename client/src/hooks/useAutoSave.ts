@@ -85,7 +85,7 @@ export function useAutoSave() {
 					);
 					// Incrementally reload workflows for this file
 					// This updates the workflows store to reflect workflow changes
-					reloadWorkflowFile(openFile.path);
+					reloadWorkflowFile();
 				}
 			},
 			(reason) => {

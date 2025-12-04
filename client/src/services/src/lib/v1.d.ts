@@ -1608,26 +1608,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/editor/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Search file contents
-         * @description Search for text or regex patterns in files (Platform admin only)
-         */
-        post: operations["search_file_contents_api_editor_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/schedules": {
         parameters: {
             query?: never;
@@ -2415,7 +2395,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["shared__models__OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["src__routers__auth__OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -2789,22 +2769,6 @@ export interface components {
             error?: string | null;
             /** Duration Ms */
             duration_ms?: number | null;
-        };
-        /**
-         * ExecutionLog
-         * @description Single log entry from workflow execution
-         */
-        ExecutionLog: {
-            /** Timestamp */
-            timestamp: string;
-            /** Level */
-            level: string;
-            /** Message */
-            message: string;
-            /** Data */
-            data?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * ExecutionStats
@@ -4314,113 +4278,6 @@ export interface components {
             total_count: number;
         };
         /**
-         * SearchRequest
-         * @description Search query request
-         */
-        SearchRequest: {
-            /**
-             * Query
-             * @description Search text or regex pattern
-             */
-            query: string;
-            /**
-             * Case Sensitive
-             * @description Case-sensitive matching
-             * @default false
-             */
-            case_sensitive: boolean;
-            /**
-             * Is Regex
-             * @description Treat query as regex
-             * @default false
-             */
-            is_regex: boolean;
-            /**
-             * Include Pattern
-             * @description Glob pattern for files to search
-             * @default **\/*
-             */
-            include_pattern: string | null;
-            /**
-             * Max Results
-             * @description Maximum results to return
-             * @default 1000
-             */
-            max_results: number;
-        };
-        /**
-         * SearchResponse
-         * @description Search results response
-         */
-        SearchResponse: {
-            /**
-             * Query
-             * @description Original search query
-             */
-            query: string;
-            /**
-             * Total Matches
-             * @description Total matches found
-             */
-            total_matches: number;
-            /**
-             * Files Searched
-             * @description Number of files searched
-             */
-            files_searched: number;
-            /**
-             * Results
-             * @description Array of search results
-             */
-            results: components["schemas"]["SearchResult"][];
-            /**
-             * Truncated
-             * @description Whether results were truncated
-             */
-            truncated: boolean;
-            /**
-             * Search Time Ms
-             * @description Search duration in milliseconds
-             */
-            search_time_ms: number;
-        };
-        /**
-         * SearchResult
-         * @description Single search match result
-         */
-        SearchResult: {
-            /**
-             * File Path
-             * @description Relative path to file containing match
-             */
-            file_path: string;
-            /**
-             * Line
-             * @description Line number (1-indexed)
-             */
-            line: number;
-            /**
-             * Column
-             * @description Column number (0-indexed)
-             */
-            column: number;
-            /**
-             * Match Text
-             * @description The matched text
-             */
-            match_text: string;
-            /**
-             * Context Before
-             * @description Line before match
-             */
-            context_before?: string | null;
-            /**
-             * Context After
-             * @description Line after match
-             */
-            context_after?: string | null;
-        };
-        /**
          * SetConfigRequest
          * @description Request model for setting config
          */
@@ -4925,30 +4782,21 @@ export interface components {
         };
         /**
          * WorkflowKeyCreateRequest
-         * @description Request model for creating a workflow API key
+         * @description Request to create a workflow key.
          */
         WorkflowKeyCreateRequest: {
             /**
              * Workflow Name
-             * @description Workflow-specific key, or None for global
+             * @description Workflow name for scoped key, or null for global key
              */
             workflow_name?: string | null;
             /**
              * Expires In Days
-             * @description Days until key expires (default: no expiration)
+             * @description Days until expiration (null = never expires)
              */
             expires_in_days?: number | null;
-            /**
-             * Description
-             * @description Optional key description
-             */
+            /** Description */
             description?: string | null;
-            /**
-             * Disable Global Key
-             * @description If true, workflow opts out of global API keys
-             * @default false
-             */
-            disable_global_key: boolean;
         };
         /**
          * WorkflowKeyCreatedResponse
@@ -4957,15 +4805,12 @@ export interface components {
         WorkflowKeyCreatedResponse: {
             /** Id */
             id: string;
-            /** Raw Key */
-            raw_key: string;
-            /**
-             * Masked Key
-             * @description Last 4 characters for display
-             */
-            masked_key?: string | null;
             /** Workflow Name */
             workflow_name?: string | null;
+            /** Masked Key */
+            masked_key: string;
+            /** Description */
+            description?: string | null;
             /** Created By */
             created_by: string;
             /**
@@ -4975,38 +4820,32 @@ export interface components {
             created_at: string;
             /** Last Used At */
             last_used_at?: string | null;
-            /** Revoked */
-            revoked: boolean;
             /** Expires At */
             expires_at?: string | null;
-            /** Description */
-            description?: string | null;
             /**
-             * Disable Global Key
-             * @description If true, workflow opts out of global API keys
+             * Revoked
              * @default false
              */
-            disable_global_key: boolean;
+            revoked: boolean;
+            /**
+             * Raw Key
+             * @description The API key - save this, it won't be shown again
+             */
+            raw_key: string;
         };
         /**
          * WorkflowKeyResponse
-         * @description Response model for workflow key (includes raw key on creation only)
+         * @description Response for workflow key operations.
          */
         WorkflowKeyResponse: {
             /** Id */
             id: string;
-            /**
-             * Raw Key
-             * @description Raw API key (only returned on creation)
-             */
-            raw_key?: string | null;
-            /**
-             * Masked Key
-             * @description Last 4 characters for display
-             */
-            masked_key?: string | null;
             /** Workflow Name */
             workflow_name?: string | null;
+            /** Masked Key */
+            masked_key: string;
+            /** Description */
+            description?: string | null;
             /** Created By */
             created_by: string;
             /**
@@ -5016,18 +4855,13 @@ export interface components {
             created_at: string;
             /** Last Used At */
             last_used_at?: string | null;
-            /** Revoked */
-            revoked: boolean;
             /** Expires At */
             expires_at?: string | null;
-            /** Description */
-            description?: string | null;
             /**
-             * Disable Global Key
-             * @description If true, workflow opts out of global API keys
+             * Revoked
              * @default false
              */
-            disable_global_key: boolean;
+            revoked: boolean;
         };
         /**
          * WorkflowMetadata
@@ -5213,34 +5047,6 @@ export interface components {
             valid_forms: number;
         };
         /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        shared__models__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
-         */
-        shared__models__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
          * UserCreate
          * @description Input for creating a user.
          */
@@ -5270,6 +5076,22 @@ export interface components {
             organization_id?: string | null;
         };
         /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        src__models__schemas__OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
+            code: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+        };
+        /**
          * MFAVerifyRequest
          * @description Request to verify MFA code during login.
          */
@@ -5285,6 +5107,18 @@ export interface components {
             trust_device: boolean;
             /** Device Name */
             device_name?: string | null;
+        };
+        /**
+         * OAuthProviderInfo
+         * @description OAuth provider info for login page.
+         */
+        src__routers__auth__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
         /**
          * UserCreate
@@ -6883,7 +6717,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutionLog"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
@@ -7848,39 +7684,6 @@ export interface operations {
             };
         };
     };
-    search_file_contents_api_editor_search_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_schedules_api_schedules_get: {
         parameters: {
             query?: never;
@@ -8740,7 +8543,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["shared__models__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__models__schemas__OAuthCallbackRequest"];
             };
         };
         responses: {

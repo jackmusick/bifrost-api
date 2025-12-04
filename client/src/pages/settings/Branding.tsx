@@ -9,18 +9,39 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Loader2, Upload, Palette } from "lucide-react";
+import { Loader2, Upload, Palette, RotateCcw } from "lucide-react";
 import { brandingService } from "@/services/branding";
 import { applyBrandingTheme, type BrandingSettings } from "@/lib/branding";
+import { useOrgScope } from "@/contexts/OrgScopeContext";
 
-export function Branding() {
+interface BrandingProps {
+	onActionsChange?: (actions: React.ReactNode) => void;
+}
+
+export function Branding({ onActionsChange }: BrandingProps) {
+	const { refreshBranding } = useOrgScope();
 	const [branding, setBranding] = useState<BrandingSettings | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [uploading, setUploading] = useState<"square" | "rectangle" | null>(
 		null,
 	);
+	const [resetting, setResetting] = useState<
+		"square" | "rectangle" | "color" | "all" | null
+	>(null);
+	const [resetDialogOpen, setResetDialogOpen] = useState(false);
 	const [primaryColor, setPrimaryColor] = useState("#0066CC");
 
 	// Drag states
@@ -55,6 +76,7 @@ export function Branding() {
 			});
 			setBranding(updated);
 			applyBrandingTheme(updated);
+			refreshBranding();
 
 			toast.success("Branding updated", {
 				description: "Primary color has been updated successfully",
@@ -99,6 +121,7 @@ export function Branding() {
 				const updated = await brandingService.getBranding();
 				setBranding(updated);
 				applyBrandingTheme(updated);
+				refreshBranding();
 
 				toast.success("Logo uploaded", {
 					description: `${
@@ -116,7 +139,7 @@ export function Branding() {
 				setUploading(null);
 			}
 		},
-		[],
+		[refreshBranding],
 	);
 
 	// Drag and drop handlers
@@ -162,6 +185,145 @@ export function Branding() {
 		[handleLogoUpload],
 	);
 
+	// Reset handlers
+	const handleResetLogo = useCallback(
+		async (type: "square" | "rectangle") => {
+			setResetting(type);
+			try {
+				const updated = await brandingService.resetLogo(type);
+				setBranding(updated);
+				applyBrandingTheme(updated);
+				refreshBranding();
+
+				toast.success("Logo reset", {
+					description: `${
+						type === "square" ? "Square" : "Rectangle"
+					} logo has been reset to default`,
+				});
+			} catch (err) {
+				toast.error("Error", {
+					description:
+						err instanceof Error
+							? err.message
+							: "Failed to reset logo",
+				});
+			} finally {
+				setResetting(null);
+			}
+		},
+		[refreshBranding],
+	);
+
+	const handleResetColor = useCallback(async () => {
+		setResetting("color");
+		try {
+			const updated = await brandingService.resetColor();
+			setBranding(updated);
+			setPrimaryColor(updated.primary_color || "#0066CC");
+			applyBrandingTheme(updated);
+			refreshBranding();
+
+			toast.success("Color reset", {
+				description: "Primary color has been reset to default",
+			});
+		} catch (err) {
+			toast.error("Error", {
+				description:
+					err instanceof Error
+						? err.message
+						: "Failed to reset color",
+			});
+		} finally {
+			setResetting(null);
+		}
+	}, [refreshBranding]);
+
+	const handleResetAll = useCallback(async () => {
+		setResetting("all");
+		try {
+			const updated = await brandingService.resetAll();
+			setBranding(updated);
+			setPrimaryColor(updated.primary_color || "#0066CC");
+			applyBrandingTheme(updated);
+			refreshBranding();
+
+			toast.success("Branding reset", {
+				description: "All branding has been reset to defaults",
+			});
+			setResetDialogOpen(false);
+		} catch (err) {
+			toast.error("Error", {
+				description:
+					err instanceof Error
+						? err.message
+						: "Failed to reset branding",
+			});
+		} finally {
+			setResetting(null);
+		}
+	}, [refreshBranding]);
+
+	// Set tab actions
+	useEffect(() => {
+		if (onActionsChange) {
+			onActionsChange(
+				<AlertDialog
+					open={resetDialogOpen}
+					onOpenChange={setResetDialogOpen}
+				>
+					<AlertDialogTrigger asChild>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={resetting === "all"}
+						>
+							{resetting === "all" ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : (
+								<RotateCcw className="mr-2 h-4 w-4" />
+							)}
+							Reset Branding
+						</Button>
+					</AlertDialogTrigger>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>
+								Reset all branding?
+							</AlertDialogTitle>
+							<AlertDialogDescription>
+								This will reset all branding settings (logos and
+								primary color) back to platform defaults. This
+								action cannot be undone.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel disabled={resetting === "all"}>
+								Cancel
+							</AlertDialogCancel>
+							<AlertDialogAction
+								onClick={handleResetAll}
+								disabled={resetting === "all"}
+								className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							>
+								{resetting === "all" ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : null}
+								Reset All
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>,
+			);
+		}
+
+		// Cleanup: remove actions when component unmounts
+		return () => {
+			if (onActionsChange) {
+				onActionsChange(null);
+			}
+		};
+	}, [onActionsChange, resetting, resetDialogOpen, handleResetAll]);
+
 	if (loading) {
 		return (
 			<div className="flex items-center justify-center h-64">
@@ -206,16 +368,31 @@ export function Branding() {
 							/>
 						</div>
 					</div>
-					<Button
-						onClick={handleColorUpdate}
-						disabled={saving}
-						variant="default"
-					>
-						{saving ? (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						) : null}
-						Update Color
-					</Button>
+					<div className="flex gap-2">
+						<Button
+							onClick={handleColorUpdate}
+							disabled={saving || resetting === "color"}
+							variant="default"
+						>
+							{saving ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : null}
+							Update Color
+						</Button>
+						<Button
+							onClick={handleResetColor}
+							disabled={saving || resetting === "color"}
+							variant="outline"
+							size="icon"
+							title="Reset to default color"
+						>
+							{resetting === "color" ? (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							) : (
+								<RotateCcw className="h-4 w-4" />
+							)}
+						</Button>
+					</div>
 				</CardContent>
 			</Card>
 
@@ -235,14 +412,37 @@ export function Branding() {
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 						{/* Square Logo */}
 						<div className="space-y-3">
-							<Label>Square Logo (1:1 ratio)</Label>
+							<div className="flex items-center justify-between">
+								<Label>Square Logo (1:1 ratio)</Label>
+								{branding?.square_logo_url && (
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={(e) => {
+											e.stopPropagation();
+											handleResetLogo("square");
+										}}
+										disabled={
+											uploading === "square" ||
+											resetting === "square"
+										}
+									>
+										{resetting === "square" ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<RotateCcw className="h-4 w-4" />
+										)}
+									</Button>
+								)}
+							</div>
 							<div
-								className={`relative border-2 border-dashed rounded-lg p-6 transition-colors ${
+								className={`relative border-2 border-dashed rounded-lg p-6 transition-colors h-48 flex items-center justify-center ${
 									dragActiveSquare
 										? "border-primary bg-primary/5"
 										: "border-border"
 								} ${
-									uploading === "square"
+									uploading === "square" ||
+									resetting === "square"
 										? "opacity-50 pointer-events-none"
 										: "cursor-pointer hover:border-primary/50"
 								}`}
@@ -266,11 +466,11 @@ export function Branding() {
 									className="hidden"
 								/>
 								{branding?.square_logo_url ? (
-									<div className="flex flex-col items-center gap-3">
+									<div className="flex flex-col items-center gap-3 w-full">
 										<img
 											src={branding.square_logo_url}
 											alt="Square logo"
-											className="h-24 w-24 object-contain"
+											className="max-h-24 max-w-24 object-contain"
 										/>
 										<p className="text-xs text-muted-foreground">
 											Click or drag to replace
@@ -297,14 +497,37 @@ export function Branding() {
 
 						{/* Rectangle Logo */}
 						<div className="space-y-3">
-							<Label>Rectangle Logo (16:9 ratio)</Label>
+							<div className="flex items-center justify-between">
+								<Label>Rectangle Logo (16:9 ratio)</Label>
+								{branding?.rectangle_logo_url && (
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={(e) => {
+											e.stopPropagation();
+											handleResetLogo("rectangle");
+										}}
+										disabled={
+											uploading === "rectangle" ||
+											resetting === "rectangle"
+										}
+									>
+										{resetting === "rectangle" ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : (
+											<RotateCcw className="h-4 w-4" />
+										)}
+									</Button>
+								)}
+							</div>
 							<div
-								className={`relative border-2 border-dashed rounded-lg p-6 transition-colors ${
+								className={`relative border-2 border-dashed rounded-lg p-6 transition-colors h-48 flex items-center justify-center ${
 									dragActiveRectangle
 										? "border-primary bg-primary/5"
 										: "border-border"
 								} ${
-									uploading === "rectangle"
+									uploading === "rectangle" ||
+									resetting === "rectangle"
 										? "opacity-50 pointer-events-none"
 										: "cursor-pointer hover:border-primary/50"
 								}`}
@@ -328,11 +551,11 @@ export function Branding() {
 									className="hidden"
 								/>
 								{branding?.rectangle_logo_url ? (
-									<div className="flex flex-col items-center gap-3">
+									<div className="flex flex-col items-center gap-3 w-full">
 										<img
 											src={branding.rectangle_logo_url}
 											alt="Rectangle logo"
-											className="h-12 w-48 object-contain"
+											className="max-h-12 max-w-48 object-contain"
 										/>
 										<p className="text-xs text-muted-foreground">
 											Click or drag to replace

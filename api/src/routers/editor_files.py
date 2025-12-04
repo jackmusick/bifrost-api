@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Query, HTTPException, status
 
-from src.models.schemas import FileContentRequest, FileContentResponse, FileMetadata
+from shared.models import FileContentRequest, FileContentResponse, FileMetadata, SearchRequest, SearchResponse
 from shared.editor.file_operations import (
     list_directory,
     read_file,
@@ -19,6 +19,7 @@ from shared.editor.file_operations import (
     create_folder,
     rename_path,
 )
+from shared.editor.search import search_files
 from src.core.auth import Context, CurrentSuperuser
 
 logger = logging.getLogger(__name__)
@@ -290,4 +291,41 @@ async def rename_or_move(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to rename file or folder",
+        )
+
+
+@router.post(
+    "/search",
+    response_model=SearchResponse,
+    summary="Search file contents",
+    description="Search for text or regex patterns in files (Platform admin only)",
+)
+async def search_file_contents(
+    request: SearchRequest,
+    ctx: Context = None,
+    user: CurrentSuperuser = None,
+) -> SearchResponse:
+    """
+    Search file contents for text or regex patterns.
+
+    Args:
+        request: Search request with query and options
+
+    Returns:
+        Search results with matches and metadata
+    """
+    try:
+        results = search_files(request, root_path="")
+        logger.info(f"Search complete: {results.total_matches} matches in {len(results.results)} files")
+        return results
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Error searching files: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to search files",
         )

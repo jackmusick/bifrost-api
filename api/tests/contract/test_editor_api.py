@@ -6,7 +6,7 @@ Tests file operations, search, and editor-related models.
 
 import pytest
 from pydantic import ValidationError
-from src.models.schemas import (
+from shared.models import (
     FileMetadata,
     FileType,
     FileContentRequest,
@@ -98,26 +98,26 @@ class TestEditorModelContracts:
         """Test SearchRequest model structure"""
         request = SearchRequest(
             query="def run",
-            caseSensitive=False,
+            case_sensitive=False,
             regex=False,
-            filePattern="**/*.py",
-            maxResults=100,
+            include_pattern="**/*.py",
+            max_results=100,
         )
 
         assert request.query == "def run"
-        assert request.caseSensitive is False
-        assert request.regex is False
-        assert request.filePattern == "**/*.py"
-        assert request.maxResults == 100
+        assert request.case_sensitive is False
+        assert request.is_regex is False
+        assert request.include_pattern == "**/*.py"
+        assert request.max_results == 100
 
     def test_search_request_defaults(self):
         """Test SearchRequest default values"""
         request = SearchRequest(query="test")
 
-        assert request.caseSensitive is False
-        assert request.regex is False
-        assert request.filePattern == "**/*"
-        assert request.maxResults == 1000
+        assert request.case_sensitive is False
+        assert request.is_regex is False
+        assert request.include_pattern == "**/*"
+        assert request.max_results == 1000
 
     def test_search_request_validates_query_not_empty(self):
         """Test SearchRequest rejects empty query"""
@@ -125,18 +125,18 @@ class TestEditorModelContracts:
             SearchRequest(query="")
 
     def test_search_request_validates_max_results_range(self):
-        """Test SearchRequest validates maxResults is within range"""
+        """Test SearchRequest validates max_results is within range"""
         # Valid range
-        SearchRequest(query="test", maxResults=1)
-        SearchRequest(query="test", maxResults=10000)
+        SearchRequest(query="test", max_results=1)
+        SearchRequest(query="test", max_results=10000)
 
         # Too low
         with pytest.raises(ValidationError):
-            SearchRequest(query="test", maxResults=0)
+            SearchRequest(query="test", max_results=0)
 
         # Too high
         with pytest.raises(ValidationError):
-            SearchRequest(query="test", maxResults=10001)
+            SearchRequest(query="test", max_results=10001)
 
     def test_search_result_model(self):
         """Test SearchResult model structure"""
@@ -227,32 +227,32 @@ class TestEditorModelContracts:
 
         response = SearchResponse(
             query="test",
-            totalMatches=2,
-            filesSearched=50,
+            total_matches=2,
+            files_searched=50,
             results=results,
             truncated=False,
-            searchTimeMs=123,
+            search_time_ms=123,
         )
 
         assert response.query == "test"
-        assert response.totalMatches == 2
-        assert response.filesSearched == 50
+        assert response.total_matches == 2
+        assert response.files_searched == 50
         assert len(response.results) == 2
         assert response.truncated is False
-        assert response.searchTimeMs == 123
+        assert response.search_time_ms == 123
 
     def test_search_response_truncated_results(self):
         """Test SearchResponse with truncated results"""
         response = SearchResponse(
             query="test",
-            totalMatches=5000,
-            filesSearched=1000,
+            total_matches=5000,
+            files_searched=1000,
             results=[],  # Truncated
             truncated=True,
-            searchTimeMs=456,
+            search_time_ms=456,
         )
 
-        assert response.totalMatches == 5000
+        assert response.total_matches == 5000
         assert len(response.results) == 0
         assert response.truncated is True
 

@@ -2,61 +2,21 @@
  * GitHub Integration API service
  *
  * Types are auto-generated from OpenAPI spec via `npm run generate:types`
- *
- * NOTE: This is a stub implementation matching the backend GitHub router.
- * Full Git integration features are not yet implemented in the Docker deployment.
  */
 
 import { authFetch } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
 
-// Local types since they're not in the OpenAPI spec
-export interface GitHubConnectRequest {
-	repositoryUrl?: string;
-	remote_url?: string;
-	authToken?: string;
-	branch?: string;
-}
+// =============================================================================
+// Types - Auto-generated from OpenAPI spec
+// =============================================================================
 
-export interface GitStatusResponse {
-	status?: string;
-	message?: string;
-	isGitRepo?: boolean;
-	currentBranch?: string;
-	changedFiles?: number;
-	commitsAhead?: number;
-	commitsBehind?: number;
-}
-
-export interface PullRequest {
-	branch?: string;
-}
-
-export interface PushRequest {
-	branch?: string;
-	force?: boolean;
-}
-
-export interface CommitRequest {
-	message: string;
-	author?: string;
-}
-
-// Additional types for UI components (not in backend yet)
-// These will be replaced with generated types when Git integration is fully implemented
-export interface FileChange {
-	path: string;
-	status: string;
-	additions: number | null;
-	deletions: number | null;
-}
-
-export interface CommitInfo {
-	sha: string;
-	message: string;
-	author: string;
-	timestamp: string;
-	is_pushed: boolean;
-}
+export type GitHubConnectRequest = components["schemas"]["GitHubConfigRequest"];
+export type GitStatusResponse = components["schemas"]["GitRefreshStatusResponse"];
+export type PullRequest = components["schemas"]["PullFromGitHubRequest"];
+export type PushRequest = components["schemas"]["PushToGitHubRequest"];
+export type FileChange = components["schemas"]["FileChange"];
+export type CommitInfo = components["schemas"]["CommitInfo"];
 
 export const githubService = {
 	/**
@@ -114,7 +74,7 @@ export const githubService = {
 	async commit(message: string): Promise<unknown> {
 		const response = await authFetch("/api/github/commit", {
 			method: "POST",
-			body: JSON.stringify({ message } as CommitRequest),
+			body: JSON.stringify({ message }),
 		});
 
 		if (!response.ok) {

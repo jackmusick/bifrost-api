@@ -8,7 +8,7 @@ import logging
 from typing import Any, TYPE_CHECKING
 
 from pydantic import ValidationError
-from src.models.schemas import DataProviderMetadata as DataProviderMetadataModel, FormDiscoveryMetadata, MetadataResponse, WorkflowMetadata as WorkflowMetadataModel
+from shared.models import DataProviderMetadata as DataProviderMetadataModel, FormDiscoveryMetadata, MetadataResponse, WorkflowMetadata as WorkflowMetadataModel
 from shared.discovery import scan_all_workflows, scan_all_data_providers, scan_all_forms
 
 if TYPE_CHECKING:

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 # ==================== PUBLIC API ====================
 # All models exported for OpenAPI spec generation
@@ -49,6 +49,21 @@ __all__ = [
     'RoleFormsResponse',
     'AssignUsersToRoleRequest',
     'AssignFormsToRoleRequest',
+
+    # Auth & MFA
+    'OAuthProviderInfo',
+    'AuthStatusResponse',
+    'MFARequiredResponse',
+    'MFASetupRequiredResponse',
+    'MFAVerifyRequest',
+    'LoginResponse',
+    'TokenRefresh',
+    'UserResponse',
+    'MFASetupTokenRequest',
+    'MFASetupResponse',
+    'MFAEnrollVerifyRequest',
+    'MFAEnrollVerifyResponse',
+    'OAuthLoginRequest',
 
     # Permissions
     'UserPermission',
@@ -165,6 +180,10 @@ __all__ = [
     'SearchRequest',
     'SearchResult',
     'SearchResponse',
+
+    # Script Execution
+    'ScriptExecutionRequest',
+    'ScriptExecutionResponse',
 
     # Package Management
     'InstallPackageRequest',
@@ -476,6 +495,119 @@ class UpdateUserRequest(BaseModel):
         if self.is_platform_admin is False and not self.org_id:
             raise ValueError("org_id is required when setting is_platform_admin to false")
         return self
+
+
+# ==================== AUTH & MFA MODELS ====================
+
+class OAuthProviderInfo(BaseModel):
+    """OAuth provider information for login page"""
+    name: str
+    display_name: str
+    icon: str | None = None
+
+
+class AuthStatusResponse(BaseModel):
+    """
+    Pre-login status response.
+
+    Provides all information the client needs to render the login page:
+    - Whether initial setup is required (no users exist)
+    - Whether password login is available
+    - Whether MFA is required for password login
+    - Available OAuth/SSO providers
+    """
+    needs_setup: bool
+    password_login_enabled: bool
+    mfa_required_for_password: bool
+    oauth_providers: list[OAuthProviderInfo]
+
+
+class MFARequiredResponse(BaseModel):
+    """Response when MFA verification is required."""
+    mfa_required: bool = True
+    mfa_token: str
+    available_methods: list[str]
+    expires_in: int = 300  # 5 minutes
+
+
+class MFASetupRequiredResponse(BaseModel):
+    """Response when MFA enrollment is required."""
+    mfa_setup_required: bool = True
+    mfa_token: str
+    expires_in: int = 300  # 5 minutes
+
+
+class MFAVerifyRequest(BaseModel):
+    """Request to verify MFA code during login."""
+    mfa_token: str
+    code: str
+    trust_device: bool = False
+    device_name: str | None = None
+
+
+class LoginResponse(BaseModel):
+    """Unified login response that can be Token or MFA response."""
+    # Token fields (when MFA not required or after MFA verification)
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    # MFA fields (when MFA required)
+    mfa_required: bool = False
+    mfa_setup_required: bool = False
+    mfa_token: str | None = None
+    available_methods: list[str] | None = None
+    expires_in: int | None = None
+
+
+class TokenRefresh(BaseModel):
+    """Token refresh request model."""
+    refresh_token: str
+
+
+class UserResponse(BaseModel):
+    """User response model."""
+    id: str
+    email: str
+    name: str
+    is_active: bool
+    is_superuser: bool
+    is_verified: bool
+
+
+class MFASetupTokenRequest(BaseModel):
+    """Request with MFA token for initial setup."""
+    mfa_token: str
+
+
+class MFASetupResponse(BaseModel):
+    """MFA setup response with secret."""
+    secret: str
+    qr_code_uri: str
+    provisioning_uri: str
+    issuer: str
+    account_name: str
+
+
+class MFAEnrollVerifyRequest(BaseModel):
+    """Request to verify MFA during initial enrollment."""
+    mfa_token: str
+    code: str
+
+
+class MFAEnrollVerifyResponse(BaseModel):
+    """Response after completing MFA enrollment."""
+    success: bool
+    recovery_codes: list[str]
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class OAuthLoginRequest(BaseModel):
+    """OAuth/SSO login request model."""
+    email: EmailStr
+    name: str
+    provider: str
 
 
 # ==================== ROLE MODELS ====================
@@ -1208,7 +1340,7 @@ class WorkflowKey(BaseModel):
 
 class WorkflowKeyCreateRequest(BaseModel):
     """Request model for creating a workflow API key"""
-    workflow_id: str | None = Field(None, description="Workflow-specific key, or None for global")
+    workflow_name: str | None = Field(None, description="Workflow-specific key, or None for global")
     expires_in_days: int | None = Field(None, description="Days until key expires (default: no expiration)")
     description: str | None = Field(None, description="Optional key description")
     disable_global_key: bool = Field(default=False, description="If true, workflow opts out of global API keys")
@@ -1218,7 +1350,7 @@ class WorkflowKeyResponse(BaseModel):
     id: str
     raw_key: str | None = Field(None, description="Raw API key (only returned on creation)")
     masked_key: str | None = Field(None, description="Last 4 characters for display")
-    workflow_id: str | None = None
+    workflow_name: str | None = None
     created_by: str
     created_at: datetime
     last_used_at: datetime | None = None
@@ -1928,10 +2060,10 @@ class FileConflictResponse(BaseModel):
 class SearchRequest(BaseModel):
     """Search query request"""
     query: str = Field(..., min_length=1, description="Search text or regex pattern")
-    caseSensitive: bool = Field(default=False, description="Case-sensitive matching")
-    regex: bool = Field(default=False, description="Treat query as regex")
-    filePattern: str | None = Field(default="**/*", description="Glob pattern for files to search")
-    maxResults: int = Field(default=1000, ge=1, le=10000, description="Maximum results to return")
+    case_sensitive: bool = Field(default=False, description="Case-sensitive matching")
+    is_regex: bool = Field(default=False, description="Treat query as regex")
+    include_pattern: str | None = Field(default="**/*", description="Glob pattern for files to search")
+    max_results: int = Field(default=1000, ge=1, le=10000, description="Maximum results to return")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1951,13 +2083,33 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     """Search results response"""
     query: str = Field(..., description="Original search query")
-    totalMatches: int = Field(..., description="Total matches found")
-    filesSearched: int = Field(..., description="Number of files searched")
+    total_matches: int = Field(..., description="Total matches found")
+    files_searched: int = Field(..., description="Number of files searched")
     results: list[SearchResult] = Field(..., description="Array of search results")
     truncated: bool = Field(..., description="Whether results were truncated")
-    searchTimeMs: int = Field(..., description="Search duration in milliseconds")
+    search_time_ms: int = Field(..., description="Search duration in milliseconds")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== SCRIPT EXECUTION MODELS ====================
+
+class ScriptExecutionRequest(BaseModel):
+    """Request model for executing a Python script"""
+    code: str = Field(..., description="Python code to execute")
+    timeout_seconds: int | None = Field(None, description="Optional timeout in seconds")
+
+
+class ScriptExecutionResponse(BaseModel):
+    """Response model for script execution"""
+    execution_id: str = Field(..., description="Unique execution identifier")
+    status: Literal["Success", "Failed"] = Field(..., description="Execution status")
+    output: str = Field(..., description="Combined stdout/stderr output")
+    result: dict[str, str] | None = Field(None, description="Execution result data")
+    error: str | None = Field(None, description="Error message if execution failed")
+    duration_ms: int = Field(..., description="Execution duration in milliseconds")
+    started_at: datetime = Field(..., description="Execution start timestamp")
+    completed_at: datetime = Field(..., description="Execution completion timestamp")
 
 
 # ==================== PACKAGE MANAGEMENT MODELS ====================
@@ -2044,6 +2196,7 @@ class ConflictInfo(BaseModel):
 class GitHubConfigRequest(BaseModel):
     """Request to configure GitHub integration - will always replace workspace with remote"""
     repo_url: str = Field(..., min_length=1, description="GitHub repository URL (e.g., https://github.com/user/repo)")
+    auth_token: str = Field(..., description="GitHub personal access token")
     branch: str = Field(default="main", description="Branch to sync with")
 
     model_config = ConfigDict(from_attributes=True)
@@ -2171,6 +2324,7 @@ class CommitAndPushResponse(BaseModel):
 
 class PushToGitHubRequest(BaseModel):
     """Request to push to GitHub"""
+    message: str | None = Field(None, description="Commit message")
     connection_id: str | None = Field(None, description="WebPubSub connection ID for streaming logs")
 
     model_config = ConfigDict(from_attributes=True)

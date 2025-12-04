@@ -5,18 +5,16 @@
 import { apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
-// Local types since they're not in the OpenAPI spec
-export interface DataProviderOption {
+// Auto-generated types from OpenAPI spec
+export type DataProvider = components["schemas"]["DataProviderMetadata"];
+
+// TODO: These types will be added when the data provider options endpoint is implemented
+export type DataProviderOption = {
 	label: string;
 	value: string;
 	description?: string;
-}
-
-export interface DataProviderResponse {
-	options: DataProviderOption[];
-}
-
-export type DataProvider = components["schemas"]["DataProviderMetadata"];
+};
+export type DataProviderResponse = { options: DataProviderOption[] };
 
 export const dataProvidersService = {
 	/**

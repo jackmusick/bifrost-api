@@ -10,7 +10,7 @@ from typing import Any
 from shared.context import ExecutionContext
 from shared.discovery import WorkflowMetadata
 from shared.execution_logger import ExecutionLogger
-from src.models.schemas import ExecutionStatus, WorkflowExecutionResponse
+from shared.models import ExecutionStatus, WorkflowExecutionResponse
 
 logger = logging.getLogger(__name__)
 

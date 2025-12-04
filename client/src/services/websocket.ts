@@ -10,6 +10,9 @@
  * - User notifications
  */
 
+import type { components } from "@/lib/v1";
+
+// Frontend-specific WebSocket event types (wrappers around backend messages)
 export interface ExecutionUpdate {
 	executionId: string;
 	status: string;
@@ -20,13 +23,13 @@ export interface ExecutionUpdate {
 	duration_ms?: number;
 }
 
-export interface ExecutionLog {
+// ExecutionLog from backend (auto-generated from OpenAPI)
+export type ExecutionLogMessage = components["schemas"]["ExecutionLog"];
+
+// Frontend wrapper with execution context
+export interface ExecutionLog extends ExecutionLogMessage {
 	executionId: string;
-	timestamp: string;
-	level: string;
-	message: string;
 	sequence?: number;
-	data?: Record<string, unknown>;
 }
 
 export interface NewExecution {

@@ -37,7 +37,7 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
     """
     logger.info("Starting execution cleanup")
 
-    from src.models.schemas import ExecutionStatus
+    from shared.models import ExecutionStatus
 
     results = {
         "pending_timeouts": 0,

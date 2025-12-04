@@ -178,7 +178,7 @@ export function SourceControlPanel() {
 		);
 	}
 
-	if (!status?.isGitRepo) {
+	if (!status?.initialized) {
 		return (
 			<div className="flex h-full flex-col p-4">
 				<div className="flex items-center gap-2 mb-4">
@@ -210,7 +210,7 @@ export function SourceControlPanel() {
 		);
 	}
 
-	const hasChanges = (status.changedFiles ?? 0) > 0;
+	const hasChanges = (status.changed_files?.length ?? 0) > 0;
 
 	return (
 		<div className="flex h-full flex-col">
@@ -222,9 +222,9 @@ export function SourceControlPanel() {
 						<h3 className="text-sm font-semibold">
 							Source Control
 						</h3>
-						{status.currentBranch && (
+						{status.current_branch && (
 							<span className="text-xs text-muted-foreground">
-								{status.currentBranch}
+								{status.current_branch}
 							</span>
 						)}
 					</div>
@@ -245,9 +245,9 @@ export function SourceControlPanel() {
 
 			{/* Status info */}
 			<div className="px-4 py-3 border-b space-y-1 text-xs text-muted-foreground">
-				<div>Changes: {status.changedFiles} file(s)</div>
-				<div>Commits ahead: {status.commitsAhead}</div>
-				<div>Commits behind: {status.commitsBehind}</div>
+				<div>Changes: {status.changed_files?.length ?? 0} file(s)</div>
+				<div>Commits ahead: {status.commits_ahead}</div>
+				<div>Commits behind: {status.commits_behind}</div>
 			</div>
 
 			{/* Commit section */}
@@ -255,7 +255,7 @@ export function SourceControlPanel() {
 				<div className="px-4 py-3 border-b space-y-2">
 					<Input
 						id="commit-message"
-						placeholder={`Message (#Enter to commit on "${status.currentBranch || "main"}")`}
+						placeholder={`Message (#Enter to commit on "${status.current_branch || "main"}")`}
 						value={commitMessage}
 						onChange={(e) => setCommitMessage(e.target.value)}
 						onKeyDown={(e) => {

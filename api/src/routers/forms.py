@@ -18,7 +18,7 @@ from src.core.database import DbSession
 from src.core.pubsub import publish_execution_update
 from src.models.orm import Form as FormORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models.models import FormCreate, FormUpdate, FormPublic
-from src.models.schemas import WorkflowExecutionResponse
+from shared.models import WorkflowExecutionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +387,7 @@ async def execute_form(
     """
     from shared.context import ExecutionContext as SharedContext, Organization
     from shared.handlers.workflows_handlers import execute_workflow_internal
-    from src.models.schemas import ExecutionStatus
+    from shared.models import ExecutionStatus
 
     # Get the form
     result = await db.execute(select(FormORM).where(FormORM.id == form_id))

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     import azure.functions as func
 
-from src.models.schemas import (
+from shared.models import (
     CreateUserRequest,
     ErrorResponse,
     UpdateUserRequest,

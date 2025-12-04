@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from src.models.schemas import Form
+from shared.models import Form
 from src.repositories.forms_file import FormsFileRepository
 
 if TYPE_CHECKING:

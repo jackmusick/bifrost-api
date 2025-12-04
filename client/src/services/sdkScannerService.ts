@@ -10,38 +10,13 @@
 
 import { authFetch } from "@/lib/api-client";
 import { useNotificationStore } from "@/stores/notificationStore";
+import type { components } from "@/lib/v1";
 
-// Type definitions (will be replaced with auto-generated types after npm run generate:types)
-export interface SDKUsageIssue {
-	file_path: string;
-	file_name: string;
-	type: "config" | "secret" | "oauth";
-	key: string;
-	line_number: number;
-}
-
-export interface FormValidationIssue {
-	file_path: string;
-	file_name: string;
-	form_name: string | null;
-	error_message: string;
-	field_name: string | null;
-	field_index: number | null;
-}
-
-export interface WorkspaceScanResponse {
-	issues: SDKUsageIssue[];
-	scanned_files: number;
-	// Form validation (added fields)
-	form_issues: FormValidationIssue[];
-	scanned_forms: number;
-	valid_forms: number;
-}
-
-export interface FileScanRequest {
-	file_path: string;
-	content?: string;
-}
+// Auto-generated types from OpenAPI spec
+export type SDKUsageIssue = components["schemas"]["SDKUsageIssue"];
+export type FormValidationIssue = components["schemas"]["FormValidationIssue"];
+export type WorkspaceScanResponse = components["schemas"]["WorkspaceScanResponse"];
+export type FileScanRequest = components["schemas"]["FileScanRequest"];
 
 const typeDescriptions: Record<string, string> = {
 	config: "Config",
@@ -96,7 +71,7 @@ export const sdkScannerService = {
 			const updatedSourceFiles = new Set<string>();
 
 			// 1. Process SDK usage issues
-			const sdkNotifications = result.issues.map((issue) => ({
+			const sdkNotifications = (result.issues || []).map((issue) => ({
 				title: issue.file_name,
 				status: "error" as const,
 				body: `Missing ${typeDescriptions[issue.type] || issue.type}: "${issue.key}" on line ${issue.line_number}`,
@@ -172,10 +147,10 @@ export const sdkScannerService = {
 			}
 
 			// Log summary if there are issues
-			const totalIssues = result.issues.length + formIssues.length;
+			const totalIssues = (result.issues || []).length + formIssues.length;
 			if (totalIssues > 0) {
 				console.warn(
-					`Workspace scan: ${result.scanned_files} files/${result.issues.length} SDK issues, ` +
+					`Workspace scan: ${result.scanned_files} files/${(result.issues || []).length} SDK issues, ` +
 						`${result.scanned_forms || 0} forms/${formIssues.length} form issues`,
 				);
 			}
@@ -199,7 +174,7 @@ export const sdkScannerService = {
 			const store = useNotificationStore.getState();
 
 			// Convert issues to notifications
-			const notifications = result.issues.map((issue) => ({
+			const notifications = (result.issues || []).map((issue) => ({
 				title: issue.file_name,
 				status: "error" as const,
 				body: `Missing ${typeDescriptions[issue.type] || issue.type}: "${issue.key}" on line ${issue.line_number}`,
@@ -211,9 +186,9 @@ export const sdkScannerService = {
 			store.replaceForSourceFile(filePath, notifications);
 
 			// Only log if there are issues (using allowed console.warn)
-			if (result.issues.length > 0) {
+			if ((result.issues || []).length > 0) {
 				console.warn(
-					`SDK file scan: ${filePath}, ${result.issues.length} issues found`,
+					`SDK file scan: ${filePath}, ${(result.issues || []).length} issues found`,
 				);
 			}
 		} catch (error) {

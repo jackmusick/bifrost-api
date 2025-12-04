@@ -21,7 +21,7 @@ from dulwich.errors import NotGitRepository
 from dulwich.objects import Commit as DulwichCommit, Blob, Tree, ShaFile
 from github import Github, GithubException
 
-from src.models.schemas import (
+from shared.models import (
     FileChange,
     GitFileStatus,
     ConflictInfo,
@@ -87,13 +87,17 @@ class GitIntegrationService:
             return False
         return True
 
-    def is_git_repo(self) -> bool:
-        """Check if workspace is a Git repository"""
+    def is_connected(self) -> bool:
+        """Check if workspace is a Git repository (connected to Git)"""
         try:
             DulwichRepo(str(self.workspace_path))
             return True
         except NotGitRepository:
             return False
+
+    def is_git_repo(self) -> bool:
+        """Alias for is_connected() for backwards compatibility"""
+        return self.is_connected()
 
     def get_repo(self) -> DulwichRepo:
         """Get Dulwich repository instance"""
@@ -652,7 +656,7 @@ class GitIntegrationService:
             logger.error(f"Failed to get commit history: {e}", exc_info=True)
             return {"commits": [], "total": 0, "has_more": False}
 
-    async def get_changed_files(self) -> list[FileChange]:
+    async def get_changes(self) -> list[FileChange]:
         """
         Get list of changed files in workspace.
 
@@ -728,6 +732,10 @@ class GitIntegrationService:
 
         # Filter out conflicted files - they should only appear in conflicts array
         return [c for c in changes if c.path not in conflicted_paths]
+
+    async def get_changed_files(self) -> list[FileChange]:
+        """Alias for get_changes() for backwards compatibility"""
+        return await self.get_changes()
 
     async def get_conflicts(self) -> list[ConflictInfo]:
         """
@@ -842,6 +850,42 @@ class GitIntegrationService:
                 "files_committed": 0,
                 "error": f"Failed to commit changes: {str(e)}"
             }
+
+    async def commit_and_push(
+        self,
+        context: Any,
+        message: str = "Updated from Bifrost",
+        connection_id: str | None = None
+    ) -> dict:
+        """
+        Commit all changes and push to remote in one operation.
+
+        Args:
+            context: Organization context for retrieving GitHub configuration
+            message: Commit message (default: "Updated from Bifrost")
+            connection_id: Optional WebPubSub connection ID for streaming logs
+
+        Returns:
+            dict with success status
+        """
+        # Check for changes
+        changes = await self.get_changes()
+
+        if not changes:
+            return {
+                "success": True,
+                "commits_pushed": 0,
+                "error": None
+            }
+
+        # Commit changes
+        commit_result = await self.commit(message=message)
+        if not commit_result.get("success"):
+            return commit_result
+
+        # Push to remote
+        push_result = await self.push(context, connection_id)
+        return push_result
 
     async def push(self, context: Any, connection_id: str | None = None) -> dict:
         """
@@ -1573,6 +1617,21 @@ class GitIntegrationService:
                 "conflicts": [],
                 "error": full_error_msg
             }
+
+    async def get_repo_info(self, context: Any, fetch: bool = False) -> dict:
+        """
+        Get repository information including connection status, branch, and repository details.
+
+        This is a simpler version of refresh_status() focused on repo metadata.
+
+        Args:
+            context: Organization context for retrieving GitHub configuration
+            fetch: If True, fetch from remote before getting status (default: False)
+
+        Returns:
+            dict with repository info
+        """
+        return await self.refresh_status(context, fetch)
 
     async def refresh_status(self, context: Any, fetch: bool = False) -> dict:
         """

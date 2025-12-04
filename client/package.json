@@ -17,7 +17,7 @@
 		"lint": "eslint .",
 		"format": "prettier --write .",
 		"deploy": "npm run build:prod && swa deploy",
-		"generate:types": "npx openapi-typescript http://localhost:8000/openapi.json -o src/lib/v1.d.ts",
+		"generate:types": "npx openapi-typescript http://localhost:3000/openapi.json -o src/lib/v1.d.ts",
 		"test:e2e": "playwright test",
 		"test:e2e:ui": "playwright test --ui",
 		"test:e2e:headed": "playwright test --headed",

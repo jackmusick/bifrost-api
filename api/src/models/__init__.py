@@ -10,7 +10,7 @@ Pydantic schemas (API request/response):
     from src.models.models import OrganizationCreate, OrganizationPublic
 
 Legacy API schemas (from shared/models.py, now in src/models/schemas.py):
-    from src.models.schemas import WorkflowExecution, ExecutionStatus
+    from shared.models import WorkflowExecution, ExecutionStatus
 """
 
 # ORM models (database tables)

@@ -14,7 +14,7 @@ Both import styles work at runtime. Use bifrost.pyi for development type hints.
 # Re-export everything from shared modules
 from shared.context import Caller, Organization, OrganizationContext
 from shared.decorators import data_provider, param, workflow
-from src.models.schemas import (
+from shared.models import (
     ConfigType,
     ExecutionStatus,
     FormFieldType,

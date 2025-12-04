@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from src.models.schemas import BrandingSettings, FileUploadResponse, UploadedFileMetadata
+from shared.models import BrandingSettings, FileUploadResponse, UploadedFileMetadata
 from shared.blob_storage import get_blob_service
 from shared.async_storage import AsyncTableStorageService
 
@@ -121,12 +121,9 @@ async def get_branding() -> BrandingSettings:
 
     # Return default branding (all None - frontend handles defaults)
     default_branding = BrandingSettings(
-        orgId="GLOBAL",
-        squareLogoUrl=None,
-        rectangleLogoUrl=None,
-        primaryColor=None,
-        updatedBy="system",
-        updatedAt=datetime.utcnow()
+        square_logo_url=None,
+        rectangle_logo_url=None,
+        primary_color=None
     )
     _cache_branding("GLOBAL", default_branding)  # Cache default to avoid repeated queries
     return default_branding
@@ -164,18 +161,14 @@ async def update_branding(
 
     if not branding_data:
         branding_data = {
-            "orgId": org_id,
-            "squareLogoUrl": None,
-            "rectangleLogoUrl": None,
-            "primaryColor": None
+            "square_logo_url": None,
+            "rectangle_logo_url": None,
+            "primary_color": None
         }
 
     # Update fields
     if primary_color is not None:
-        branding_data["primaryColor"] = primary_color
-
-    branding_data["updatedBy"] = updated_by
-    branding_data["updatedAt"] = datetime.utcnow()
+        branding_data["primary_color"] = primary_color
 
     # Save to table
     entity = {
@@ -246,20 +239,16 @@ async def upload_logo(
 
     if not branding_data:
         branding_data = {
-            "orgId": org_id,
-            "squareLogoUrl": None,
-            "rectangleLogoUrl": None,
-            "primaryColor": None
+            "square_logo_url": None,
+            "rectangle_logo_url": None,
+            "primary_color": None
         }
 
     # Update appropriate logo URL
     if logo_type == "square":
-        branding_data["squareLogoUrl"] = blob_url
+        branding_data["square_logo_url"] = blob_url
     elif logo_type == "rectangle":
-        branding_data["rectangleLogoUrl"] = blob_url
-
-    branding_data["updatedBy"] = updated_by
-    branding_data["updatedAt"] = datetime.utcnow()
+        branding_data["rectangle_logo_url"] = blob_url
 
     # Save to table
     entity = {
@@ -293,33 +282,25 @@ def _entity_to_branding(entity: dict) -> BrandingSettings:
     """Convert table entity to BrandingSettings model"""
     org_id = entity.get("PartitionKey", "GLOBAL")
     return BrandingSettings(
-        orgId=org_id,
-        squareLogoUrl=_transform_blob_url_to_proxy(entity.get("SquareLogoUrl"), org_id),
-        rectangleLogoUrl=_transform_blob_url_to_proxy(entity.get("RectangleLogoUrl"), org_id),
-        primaryColor=entity.get("PrimaryColor"),
-        updatedBy=entity.get("UpdatedBy", "system"),
-        updatedAt=entity.get("UpdatedAt", datetime.utcnow())
+        square_logo_url=_transform_blob_url_to_proxy(entity.get("SquareLogoUrl"), org_id),
+        rectangle_logo_url=_transform_blob_url_to_proxy(entity.get("RectangleLogoUrl"), org_id),
+        primary_color=entity.get("PrimaryColor")
     )
 
 
 def _entity_to_dict(entity: dict) -> dict:
     """Convert table entity to dict"""
     return {
-        "orgId": entity.get("PartitionKey", "GLOBAL"),
-        "squareLogoUrl": entity.get("SquareLogoUrl"),
-        "rectangleLogoUrl": entity.get("RectangleLogoUrl"),
-        "primaryColor": entity.get("PrimaryColor"),
-        "updatedBy": entity.get("UpdatedBy", "system"),
-        "updatedAt": entity.get("UpdatedAt", datetime.utcnow())
+        "square_logo_url": entity.get("SquareLogoUrl"),
+        "rectangle_logo_url": entity.get("RectangleLogoUrl"),
+        "primary_color": entity.get("PrimaryColor")
     }
 
 
 def _branding_to_dict(branding_data: dict) -> dict:
     """Convert branding data to table entity dict"""
     return {
-        "SquareLogoUrl": branding_data.get("squareLogoUrl"),
-        "RectangleLogoUrl": branding_data.get("rectangleLogoUrl"),
-        "PrimaryColor": branding_data.get("primaryColor"),
-        "UpdatedBy": branding_data.get("updatedBy", "system"),
-        "UpdatedAt": branding_data.get("updatedAt", datetime.utcnow())
+        "SquareLogoUrl": branding_data.get("square_logo_url"),
+        "RectangleLogoUrl": branding_data.get("rectangle_logo_url"),
+        "PrimaryColor": branding_data.get("primary_color")
     }

@@ -14,17 +14,19 @@ from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing Pydantic models for API compatibility
-from src.models.schemas import (
+from shared.models import (
     ExecutionStatus,
     ExecutionsListResponse,
     WorkflowExecution,
     StuckExecutionsResponse,
     CleanupTriggeredResponse,
+    ExecutionLog,
 )
 
 from src.core.auth import Context, UserPrincipal
 from src.core.pubsub import publish_execution_update
-from src.models import Execution as ExecutionModel, ExecutionLog
+from src.models import Execution as ExecutionModel
+from src.models import ExecutionLog as ExecutionLogORM
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +160,7 @@ class ExecutionRepository:
         self,
         execution_id: UUID,
         user: UserPrincipal,
-    ) -> tuple[list[dict] | None, str | None]:
+    ) -> tuple[list[ExecutionLog] | None, str | None]:
         """Get execution logs from the execution_logs table."""
         # First check if execution exists and user has access
         result = await self.db.execute(
@@ -174,27 +176,26 @@ class ExecutionRepository:
 
         # Query logs from execution_logs table
         logs_query = (
-            select(ExecutionLog)
-            .where(ExecutionLog.execution_id == execution_id)
-            .order_by(ExecutionLog.timestamp)
+            select(ExecutionLogORM)
+            .where(ExecutionLogORM.execution_id == execution_id)
+            .order_by(ExecutionLogORM.timestamp)
         )
 
         # Filter debug logs for non-superusers
         if not user.is_superuser:
-            logs_query = logs_query.where(ExecutionLog.level.notin_(["DEBUG", "TRACEBACK"]))
+            logs_query = logs_query.where(ExecutionLogORM.level.notin_(["DEBUG", "TRACEBACK"]))
 
         logs_result = await self.db.execute(logs_query)
         log_entries = logs_result.scalars().all()
 
-        # Convert to dict format expected by API
+        # Convert ORM models to Pydantic models
         logs = [
-            {
-                "id": log.id,
-                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                "level": log.level,
-                "message": log.message,
-                "data": log.log_metadata,
-            }
+            ExecutionLog(
+                timestamp=log.timestamp.isoformat() if log.timestamp else "",
+                level=log.level or "info",
+                message=log.message or "",
+                data=log.log_metadata,
+            )
             for log in log_entries
         ]
 
@@ -395,11 +396,12 @@ async def get_execution_result(
     "/{execution_id}/logs",
     summary="Get execution logs only",
     description="Get only the logs of a specific execution (progressive loading)",
+    response_model=list[ExecutionLog],
 )
 async def get_execution_logs(
     execution_id: UUID,
     ctx: Context,
-) -> list[dict]:
+) -> list[ExecutionLog]:
     """Get execution logs."""
     repo = ExecutionRepository(ctx.db)
     logs, error = await repo.get_execution_logs(execution_id, ctx.user)

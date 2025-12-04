@@ -6,24 +6,16 @@
 import type { components } from "@/lib/v1";
 import { authFetch } from "@/lib/api-client";
 
-// Re-export types for convenience
+// Auto-generated types from OpenAPI spec
 export type FileMetadata = components["schemas"]["FileMetadata"];
+export type FileContentRequest = components["schemas"]["FileContentRequest"];
 export type FileContentResponse = components["schemas"]["FileContentResponse"];
 
-// Define types locally since they're not in the OpenAPI spec
-export interface FileContentRequest {
-	path: string;
-	content: string;
-	encoding: "utf-8" | "base64";
-	expected_etag?: string | null;
-}
-
-export interface FileConflictResponse {
+// TODO: Add FileConflictResponse to OpenAPI spec when file conflict endpoint is implemented
+export type FileConflictResponse = {
+	reason: "content_changed" | "path_not_found";
 	message: string;
-	current_content?: string;
-	current_etag?: string;
-	reason?: string;
-}
+};
 
 // Custom error for file conflicts
 export class FileConflictError extends Error {

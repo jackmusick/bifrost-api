@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
-from src.models.schemas import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
+from shared.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
 from src.core.auth import Context, CurrentActiveUser
 from src.services.file_storage import get_file_storage
 

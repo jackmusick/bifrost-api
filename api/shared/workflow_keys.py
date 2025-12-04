@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from src.models.schemas import WorkflowKey
+from shared.models import WorkflowKey
 
 
 def generate_workflow_key(

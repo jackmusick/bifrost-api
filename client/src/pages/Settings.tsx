@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabActions } from "@/components/ui/tab-actions";
 import { WorkflowKeys } from "@/pages/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { GitHub } from "@/pages/settings/GitHub";
@@ -8,6 +9,7 @@ import { GitHub } from "@/pages/settings/GitHub";
 export function Settings() {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const [tabActions, setTabActions] = useState<React.ReactNode>(null);
 
 	// Parse the current tab from the URL path
 	const currentTab =
@@ -36,13 +38,17 @@ export function Settings() {
 			</div>
 
 			<Tabs value={currentTab} onValueChange={handleTabChange}>
-				<TabsList>
-					<TabsTrigger value="workflow-keys">
-						Workflow Keys
-					</TabsTrigger>
-					<TabsTrigger value="github">GitHub</TabsTrigger>
-					<TabsTrigger value="branding">Branding</TabsTrigger>
-				</TabsList>
+				<div className="flex items-center justify-between">
+					<TabsList>
+						<TabsTrigger value="workflow-keys">
+							Workflow Keys
+						</TabsTrigger>
+						<TabsTrigger value="github">GitHub</TabsTrigger>
+						<TabsTrigger value="branding">Branding</TabsTrigger>
+					</TabsList>
+
+					{tabActions && <TabActions>{tabActions}</TabActions>}
+				</div>
 
 				<TabsContent value="workflow-keys" className="mt-6">
 					<WorkflowKeys />
@@ -53,7 +59,7 @@ export function Settings() {
 				</TabsContent>
 
 				<TabsContent value="branding" className="mt-6">
-					<Branding />
+					<Branding onActionsChange={setTabActions} />
 				</TabsContent>
 			</Tabs>
 		</div>

@@ -11,7 +11,7 @@ from typing import Any, TYPE_CHECKING
 from shared.context import Caller
 from shared.discovery import get_data_provider, scan_all_data_providers
 from shared.engine import ExecutionRequest, execute
-from src.models.schemas import ErrorResponse, ExecutionStatus
+from shared.models import ErrorResponse, ExecutionStatus
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext

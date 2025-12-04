@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select, func, case, literal_column
 
-from src.models.schemas import DashboardMetricsResponse, ExecutionStats, RecentFailure
+from shared.models import DashboardMetricsResponse, ExecutionStats, RecentFailure
 from src.core.auth import Context, CurrentActiveUser
 from src.models import Execution as ExecutionModel, Workflow, Form, DataProvider
 from src.models.enums import ExecutionStatus

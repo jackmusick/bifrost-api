@@ -17,7 +17,7 @@ from shared.context import ExecutionContext
 from shared.discovery import get_workflow, WorkflowMetadata
 from shared.error_handling import WorkflowError
 from shared.execution_logger import get_execution_logger
-from src.models.schemas import ErrorResponse, ExecutionStatus
+from shared.models import ErrorResponse, ExecutionStatus
 from shared.workflow_endpoint_utils import (
     coerce_parameter_types,
     record_workflow_execution_result,

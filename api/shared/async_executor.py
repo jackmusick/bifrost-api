@@ -13,7 +13,7 @@ import uuid
 from typing import Any
 
 from shared.execution_logger import get_execution_logger
-from src.models.schemas import ExecutionStatus
+from shared.models import ExecutionStatus
 from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)

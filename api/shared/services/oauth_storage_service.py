@@ -10,7 +10,7 @@ from uuid import UUID
 
 from cryptography.fernet import Fernet
 
-from src.models.schemas import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
+from shared.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
 
 logger = logging.getLogger(__name__)
 
@@ -243,8 +243,8 @@ class OAuthStorageService:
                 delete(OAuthToken).where(OAuthToken.provider_id == provider.id)
             )
 
-            # Delete provider
-            await db.delete(provider)
+            # Delete provider (session.delete() is NOT async)
+            db.delete(provider)
             await db.commit()
 
             return True

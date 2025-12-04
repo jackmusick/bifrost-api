@@ -16,12 +16,12 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy import select, or_
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
 from src.models import WorkflowKey
+from shared.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
 
 logger = logging.getLogger(__name__)
 
@@ -32,39 +32,10 @@ router = APIRouter(prefix="/api/workflow-keys", tags=["Workflow Keys"])
 # Request/Response Models
 # =============================================================================
 
-
-class WorkflowKeyCreateRequest(BaseModel):
-    """Request to create a workflow key."""
-    workflow_name: str | None = Field(
-        default=None,
-        description="Workflow name for scoped key, or null for global key"
-    )
-    expires_in_days: int | None = Field(
-        default=None,
-        description="Days until expiration (null = never expires)"
-    )
-    description: str | None = None
-
-
-class WorkflowKeyResponse(BaseModel):
-    """Response for workflow key operations."""
-    id: str
-    workflow_name: str | None = None
-    masked_key: str
-    description: str | None = None
-    created_by: str
-    created_at: datetime
-    last_used_at: datetime | None = None
-    expires_at: datetime | None = None
-    revoked: bool = False
-
-    class Config:
-        from_attributes = True
-
-
+# WorkflowKeyResponse with raw_key for creation
 class WorkflowKeyCreatedResponse(WorkflowKeyResponse):
     """Response when creating a key - includes the raw key (shown only once)."""
-    raw_key: str = Field(..., description="The API key - save this, it won't be shown again")
+    raw_key: str
 
 
 # =============================================================================

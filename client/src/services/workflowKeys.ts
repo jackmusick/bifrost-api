@@ -1,28 +1,16 @@
 /**
  * Workflow Keys API service - fully type-safe with openapi-fetch
+ * Uses auto-generated types from OpenAPI spec
+ *
+ * NOTE: Workflow keys may be moving to workflows table - review this service
  */
 
 import { apiClient } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
 
-// Inline types until v1.d.ts is regenerated from API
-export interface WorkflowKeyCreateRequest {
-	workflow_id?: string | undefined;
-	expires_in_days?: number | undefined;
-	description?: string | undefined;
-}
-
-export interface WorkflowKeyResponse {
-	id: string;
-	workflow_id?: string | null;
-	masked_key: string;
-	raw_key?: string | null; // Only present on creation
-	description?: string | null;
-	created_at?: string | null;
-	created_by?: string | null;
-	expires_at?: string | null;
-	revoked_at?: string | null;
-	last_used_at?: string | null;
-}
+// Auto-generated types from OpenAPI spec
+export type WorkflowKeyCreateRequest = components["schemas"]["WorkflowKeyCreateRequest"];
+export type WorkflowKeyResponse = components["schemas"]["WorkflowKeyResponse"];
 
 export const workflowKeysService = {
 	/**

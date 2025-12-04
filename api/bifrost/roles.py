@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from src.models.schemas import Role
+from shared.models import Role
 
 from ._internal import get_context, require_permission
 
@@ -82,12 +82,10 @@ class roles:
                 id=str(role.id),
                 name=role.name,
                 description=role.description,
-                permissions=role.permissions or [],
-                orgId=str(role.organization_id) if role.organization_id else None,
-                isActive=role.is_active,
-                createdBy=role.created_by,
-                createdAt=role.created_at,
-                updatedAt=role.updated_at,
+                is_active=role.is_active,
+                created_by=role.created_by,
+                created_at=role.created_at,
+                updated_at=role.updated_at,
             )
 
     @staticmethod
@@ -132,12 +130,10 @@ class roles:
                 id=str(role.id),
                 name=role.name,
                 description=role.description,
-                permissions=role.permissions or [],
-                orgId=str(role.organization_id) if role.organization_id else None,
-                isActive=role.is_active,
-                createdBy=role.created_by,
-                createdAt=role.created_at,
-                updatedAt=role.updated_at,
+                is_active=role.is_active,
+                created_by=role.created_by,
+                created_at=role.created_at,
+                updated_at=role.updated_at,
             )
 
     @staticmethod
@@ -256,12 +252,10 @@ class roles:
                 id=str(role.id),
                 name=role.name,
                 description=role.description,
-                permissions=role.permissions or [],
-                orgId=str(role.organization_id) if role.organization_id else None,
-                isActive=role.is_active,
-                createdBy=role.created_by,
-                createdAt=role.created_at,
-                updatedAt=role.updated_at,
+                is_active=role.is_active,
+                created_by=role.created_by,
+                created_at=role.created_at,
+                updated_at=role.updated_at,
             )
 
     @staticmethod

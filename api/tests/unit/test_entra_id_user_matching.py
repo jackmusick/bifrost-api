@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.models.schemas import User, UserType
+from shared.models import User, UserType
 from shared.user_provisioning import ensure_user_provisioned
 
 
@@ -324,7 +324,7 @@ class TestNewUserCreationWithEntraId:
     @pytest.mark.asyncio
     async def test_create_org_user_with_entra_id(self, mock_user_repo_class, mock_org_repo_class):
         """New org user created with Entra ID"""
-        from src.models.schemas import Organization
+        from shared.models import Organization
 
         mock_user_repo = Mock()
         mock_org_repo = Mock()

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from shared.context import Caller
 from shared.discovery import get_workflow, get_data_provider
 from shared.engine import ExecutionRequest, execute
-from src.models.schemas import ExecutionStatus, WorkflowExecutionResponse
+from shared.models import ExecutionStatus, WorkflowExecutionResponse
 
 if TYPE_CHECKING:
     from shared.context import ExecutionContext

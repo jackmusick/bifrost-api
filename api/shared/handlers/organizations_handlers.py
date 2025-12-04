@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 
-from src.models.schemas import (
+from shared.models import (
     CreateOrganizationRequest,
     Organization,
     UpdateOrganizationRequest,

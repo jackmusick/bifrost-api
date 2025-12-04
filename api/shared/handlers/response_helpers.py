@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     import azure.functions as func
 
-from src.models.schemas import ErrorResponse
+from shared.models import ErrorResponse
 
 
 def error_response(

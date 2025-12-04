@@ -8,7 +8,7 @@ It's separated from request_context.py (which handles HTTP concerns).
 import logging
 from datetime import datetime, timedelta
 
-from src.models.schemas import User, UserType
+from shared.models import User, UserType
 from src.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)

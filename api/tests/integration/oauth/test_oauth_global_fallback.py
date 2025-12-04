@@ -11,7 +11,7 @@ import pytest
 from datetime import datetime, timedelta
 from uuid import uuid4
 from shared.services.oauth_storage_service import OAuthStorageService
-from src.models.schemas import CreateOAuthConnectionRequest
+from shared.models import CreateOAuthConnectionRequest
 
 
 pytestmark = pytest.mark.skip(reason="Database connection not available in isolated test environment")

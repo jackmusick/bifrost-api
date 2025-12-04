@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from src.models.schemas import (
+from shared.models import (
     GitHubConfigRequest,
     PullFromGitHubRequest,
     PullFromGitHubResponse,
@@ -60,21 +60,12 @@ async def get_github_status(
     try:
         git_service = get_git_service()
 
-        # Get current status
-        is_connected = await git_service.is_connected()
-        repo_info = None
+        # Use get_repo_info to get repository status
+        status_dict = await git_service.get_repo_info(ctx, fetch=False)
 
-        if is_connected:
-            repo_info = await git_service.get_repo_info()
+        logger.info(f"GitHub status retrieved")
 
-        logger.info(f"GitHub status retrieved (connected: {is_connected})")
-
-        return GitRefreshStatusResponse(
-            is_connected=is_connected,
-            last_sync=datetime.utcnow(),
-            repository=repo_info,
-            status="connected" if is_connected else "not_connected",
-        )
+        return GitRefreshStatusResponse(**status_dict)
 
     except Exception as e:
         logger.error(f"Error getting GitHub status: {str(e)}", exc_info=True)
@@ -91,9 +82,9 @@ async def get_github_status(
     description="Pull latest changes from the connected GitHub repository",
 )
 async def pull_from_github(
+    ctx: Context,
+    user: CurrentSuperuser,
     request: PullFromGitHubRequest | None = None,
-    ctx: Context = None,
-    user: CurrentSuperuser = None,
 ) -> PullFromGitHubResponse:
     """
     Pull latest changes from GitHub.
@@ -104,17 +95,13 @@ async def pull_from_github(
     try:
         git_service = get_git_service()
 
-        # Pull from repository
-        changes = await git_service.pull()
+        # Pull from repository - pull() returns a dict with result info
+        connection_id = request.connection_id if request else None
+        result = await git_service.pull(ctx, connection_id)
 
-        logger.info(f"Pulled from GitHub ({len(changes)} changes)")
+        logger.info(f"Pulled from GitHub")
 
-        return PullFromGitHubResponse(
-            message=f"Successfully pulled {len(changes)} changes from GitHub",
-            changes=changes,
-            conflicts=[],
-            timestamp=datetime.utcnow(),
-        )
+        return PullFromGitHubResponse(**result)
 
     except Exception as e:
         logger.error(f"Error pulling from GitHub: {str(e)}", exc_info=True)
@@ -131,9 +118,9 @@ async def pull_from_github(
     description="Push local changes to the connected GitHub repository",
 )
 async def push_to_github(
+    ctx: Context,
+    user: CurrentSuperuser,
     request: PushToGitHubRequest,
-    ctx: Context = None,
-    user: CurrentSuperuser = None,
 ) -> PushToGitHubResponse:
     """
     Push local changes to GitHub.
@@ -147,28 +134,16 @@ async def push_to_github(
     try:
         git_service = get_git_service()
 
-        # Get local changes
-        changes = await git_service.get_changes()
-
-        if not changes:
-            return PushToGitHubResponse(
-                message="No changes to push",
-                changeCount=0,
-                timestamp=datetime.utcnow(),
-            )
-
-        # Commit and push
-        await git_service.commit_and_push(
+        # Commit and push in one operation
+        result = await git_service.commit_and_push(
+            ctx,
             message=request.message or "Updated from Bifrost",
-            author=request.author or "Bifrost Admin",
+            connection_id=None
         )
 
-        logger.info(f"Pushed {len(changes)} changes to GitHub")
-
         return PushToGitHubResponse(
-            message=f"Successfully pushed {len(changes)} changes to GitHub",
-            changeCount=len(changes),
-            timestamp=datetime.utcnow(),
+            success=result.get("success", True),
+            error=result.get("error")
         )
 
     except ValueError as e:
@@ -191,8 +166,8 @@ async def push_to_github(
     description="List local changes not yet pushed to GitHub",
 )
 async def get_changes(
-    ctx: Context = None,
-    user: CurrentSuperuser = None,
+    ctx: Context,
+    user: CurrentSuperuser,
 ) -> GitRefreshStatusResponse:
     """
     Get list of local changes.
@@ -203,15 +178,12 @@ async def get_changes(
     try:
         git_service = get_git_service()
 
-        changes = await git_service.get_changes()
+        # Use get_repo_info to get complete status including changes
+        status_dict = await git_service.get_repo_info(ctx, fetch=False)
 
-        logger.info(f"Retrieved {len(changes)} local changes")
+        logger.info(f"Retrieved local changes")
 
-        return GitRefreshStatusResponse(
-            is_connected=True,
-            last_sync=datetime.utcnow(),
-            status="changes_available" if changes else "up_to_date",
-        )
+        return GitRefreshStatusResponse(**status_dict)
 
     except Exception as e:
         logger.error(f"Error getting changes: {str(e)}", exc_info=True)
@@ -240,20 +212,22 @@ async def init_repo(
     try:
         git_service = get_git_service()
 
-        # Connect to repository (acts as init)
-        await git_service.connect(
+        # Get token from request (should be provided)
+        if not request.auth_token:
+            raise ValueError("auth_token is required to initialize repository")
+
+        # Initialize repository with the provided config
+        result = await git_service.initialize_repo(
+            token=request.auth_token,
             repo_url=request.repo_url,
-            auth_token=request.auth_token,
             branch=request.branch or "main",
         )
 
         logger.info(f"Initialized git repository: {request.repo_url}")
 
-        return GitRefreshStatusResponse(
-            is_connected=True,
-            last_sync=datetime.utcnow(),
-            status="initialized",
-        )
+        # Get current status after initialization
+        status_dict = await git_service.get_repo_info(ctx, fetch=False)
+        return GitRefreshStatusResponse(**status_dict)
 
     except ValueError as e:
         raise HTTPException(
@@ -296,13 +270,12 @@ async def commit_changes(
                 "commit_hash": None,
             }
 
-        # For now, just return success - actual commit happens in push
-        logger.info(f"Staging {len(changes)} changes for commit")
+        # Commit the changes
+        result = await git_service.commit(message=request.message or "Update from Bifrost")
 
-        return {
-            "message": f"Staged {len(changes)} changes",
-            "files_changed": len(changes),
-        }
+        logger.info(f"Committed {len(changes)} changes")
+
+        return result
 
     except Exception as e:
         logger.error(f"Error committing changes: {str(e)}", exc_info=True)

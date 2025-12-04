@@ -2,68 +2,22 @@
  * Auth Service
  *
  * API methods for authentication, MFA, and OAuth operations.
- *
- * Note: Uses direct fetch calls rather than the typed API client because
- * these auth endpoints were added after the last type generation.
- * Once the API is running, regenerate types with: npm run generate:types
+ * Uses auto-generated types from OpenAPI spec.
  */
 
+import type { components } from "@/lib/v1";
+
 // =============================================================================
-// Types
+// Types - Auto-generated from OpenAPI spec
 // =============================================================================
 
-export interface OAuthProvider {
-	name: string;
-	display_name: string;
-	icon: string | null;
-}
-
-export interface AuthStatus {
-	needs_setup: boolean;
-	password_login_enabled: boolean;
-	mfa_required_for_password: boolean;
-	oauth_providers: OAuthProvider[];
-}
-
-export interface OAuthInitResponse {
-	authorization_url: string;
-	state: string;
-}
-
-export interface MFAStatus {
-	mfa_enabled: boolean;
-	mfa_required: boolean;
-	enforcement_deadline: string | null;
-	enrolled_methods: string[];
-	recovery_codes_remaining: number;
-}
-
-export interface TOTPSetupResponse {
-	secret: string;
-	qr_code_uri: string;
-	provisioning_uri: string;
-	issuer: string;
-	account_name: string;
-}
-
-export interface TOTPVerifyResponse {
-	success: boolean;
-	recovery_codes: string[];
-}
-
-export interface RecoveryCodesCount {
-	total: number;
-	remaining: number;
-}
-
-export interface TrustedDevice {
-	id: string;
-	device_name: string | null;
-	created_at: string;
-	expires_at: string;
-	last_used_at: string | null;
-	is_current: boolean;
-}
+export type OAuthProvider = components["schemas"]["shared__models__OAuthProviderInfo"];
+export type AuthStatus = components["schemas"]["AuthStatusResponse"];
+export type OAuthInitResponse = components["schemas"]["OAuthInitResponse"];
+export type MFAStatus = components["schemas"]["MFAStatusResponse"];
+export type TOTPSetupResponse = components["schemas"]["src__routers__mfa__MFASetupResponse"];
+export type TOTPVerifyResponse = components["schemas"]["MFAVerifyResponse"];
+export type RecoveryCodesCount = components["schemas"]["RecoveryCodesCountResponse"];
 
 // =============================================================================
 // Auth Status
@@ -173,27 +127,8 @@ export async function regenerateRecoveryCodes(
 // =============================================================================
 // Trusted Devices
 // =============================================================================
-
-export async function getTrustedDevices(): Promise<TrustedDevice[]> {
-	const res = await fetch("/auth/mfa/trusted-devices");
-	if (!res.ok) throw new Error("Failed to get trusted devices");
-	const data = await res.json();
-	return data.devices;
-}
-
-export async function revokeTrustedDevice(deviceId: string): Promise<void> {
-	const res = await fetch(`/auth/mfa/trusted-devices/${deviceId}`, {
-		method: "DELETE",
-	});
-	if (!res.ok) throw new Error("Failed to revoke device");
-}
-
-export async function revokeAllTrustedDevices(): Promise<void> {
-	const res = await fetch("/auth/mfa/trusted-devices", {
-		method: "DELETE",
-	});
-	if (!res.ok) throw new Error("Failed to revoke all devices");
-}
+// Note: Trusted devices API endpoints not yet implemented
+// TrustedDevice ORM model exists but no API routes exposed yet
 
 // =============================================================================
 // User Registration (for setup)

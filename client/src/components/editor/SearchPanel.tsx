@@ -57,8 +57,8 @@ export function SearchPanel() {
 				toast.success(
 					`Found ${response.total_matches} match${
 						response.total_matches === 1 ? "" : "es"
-					} in ${response.total_files_searched} file${
-						response.total_files_searched === 1 ? "" : "s"
+					} in ${response.files_searched} file${
+						response.files_searched === 1 ? "" : "s"
 					}`,
 				);
 			}
@@ -192,8 +192,8 @@ export function SearchPanel() {
 						{searchResults.total_matches === 1
 							? "result"
 							: "results"}{" "}
-						in {searchResults.total_files_searched}{" "}
-						{searchResults.total_files_searched === 1
+						in {searchResults.files_searched}{" "}
+						{searchResults.files_searched === 1
 							? "file"
 							: "files"}
 						{searchResults.truncated && " (truncated)"}
@@ -207,7 +207,7 @@ export function SearchPanel() {
 					<div className="divide-y">
 						{searchResults.results.map((result: SearchResult, index: number) => (
 							<SearchResultItem
-								key={`${result.file_path}-${result.line_number}-${index}`}
+								key={`${result.file_path}-${result.line}-${index}`}
 								result={result}
 								query={query}
 								onClick={() => handleResultClick(result)}
@@ -269,10 +269,10 @@ function SearchResultItem({
 			className="w-full text-left p-2 hover:bg-muted/50 transition-colors focus:bg-muted/70 focus:outline-none"
 		>
 			<div className="text-xs text-muted-foreground truncate mb-1">
-				{result.file_path}:{result.line_number}
+				{result.file_path}:{result.line}
 			</div>
 			<div className="text-sm font-mono truncate">
-				{highlightMatch(result.line_text)}
+				{highlightMatch(result.match_text)}
 			</div>
 		</button>
 	);
