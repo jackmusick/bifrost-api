@@ -1,0 +1,25 @@
+# Development overrides for docker-compose.yml
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# This file adds development-specific configuration:
+# - Hot reload with volume mounts
+# - Development build targets
+# - Watch mode for services
+
+services:
+  # Override client for development with hot reload
+  client:
+    build:
+      target: development
+    volumes:
+      - ./client/src:/app/src
+      - ./client/public:/app/public
+      - ./client/index.html:/app/index.html
+      - ./client/vite.config.ts:/app/vite.config.ts
+      - ./client/tsconfig.json:/app/tsconfig.json
+      - ./client/tsconfig.app.json:/app/tsconfig.app.json
+      - ./client/tsconfig.node.json:/app/tsconfig.node.json
+      - ./client/tailwind.config.ts:/app/tailwind.config.ts
+      - ./client/postcss.config.js:/app/postcss.config.js

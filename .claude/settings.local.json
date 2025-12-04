@@ -280,7 +280,8 @@
       "WebSearch",
       "TodoRead",
       "TodoWrite",
-      "Task"
+      "Task",
+      "Bash(./test.sh --e2e --ci)"
     ],
     "deny": [
       "Bash(rm -rf /)",
