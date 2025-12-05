@@ -166,12 +166,13 @@ export function CreateOAuthConnectionDialog({
 
 		if (isEditMode) {
 			// Update existing connection
+			// Backend accepts scopes as string (comma/space separated) via Pydantic validator
 			const updateData: UpdateOAuthConnectionRequest = {
 				client_id: formData.client_id,
 				client_secret: formData.client_secret || null,
 				authorization_url: formData.authorization_url || null,
 				token_url: formData.token_url,
-				scopes: formData.scopes,
+				scopes: formData.scopes as unknown as string[],
 			};
 
 			await updateMutation.mutateAsync({

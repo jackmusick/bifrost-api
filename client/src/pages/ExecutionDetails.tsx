@@ -31,12 +31,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PageLoader } from "@/components/PageLoader";
-import {
-	useExecution,
-	useExecutionResult,
-	useExecutionLogs,
-	useExecutionVariables,
-} from "@/hooks/useExecutions";
+import { useExecution } from "@/hooks/useExecutions";
 import { useAuth } from "@/contexts/AuthContext";
 import { executionsService } from "@/services/executions";
 import { workflowsService } from "@/services/workflows";
@@ -50,7 +45,7 @@ import { useExecutionStreamStore } from "@/stores/executionStreamStore";
 import { PrettyInputDisplay } from "@/components/execution/PrettyInputDisplay";
 import { SafeHTMLRenderer } from "@/components/execution/SafeHTMLRenderer";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatBytes } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -128,8 +123,7 @@ export function ExecutionDetails() {
 	// Cast execution data to the correct type
 	const execution = executionData as WorkflowExecution | undefined;
 
-	// Progressive loading: Load result, logs, and variables separately
-	// Only fetch when execution is complete (to avoid loading during streaming)
+	// Execution status and completion check
 	const executionStatus = execution?.status as ExecutionStatus | undefined;
 	const isComplete =
 		executionStatus === "Success" ||
@@ -138,18 +132,19 @@ export function ExecutionDetails() {
 		executionStatus === "Timeout" ||
 		executionStatus === "Cancelled";
 
-	const { data: resultData, isLoading: isLoadingResult } = useExecutionResult(
-		executionId,
-		isComplete,
-	);
+	// Data now comes from single API call - create adapter variables for compatibility
+	const resultData = execution
+		? { result: execution.result, result_type: execution.result_type }
+		: undefined;
+	const logsData = execution?.logs as ExecutionLogEntry[] | undefined;
+	const variablesData = execution?.variables as
+		| Record<string, unknown>
+		| undefined;
 
-	const { data: logsData, isLoading: isLoadingLogs } = useExecutionLogs(
-		executionId,
-		true, // All users can view logs (DEBUG filtered server-side for non-admins)
-	);
-
-	const { data: variablesData, isLoading: isLoadingVariables } =
-		useExecutionVariables(executionId, isComplete && isPlatformAdmin);
+	// Loading states - all data comes at once now
+	const isLoadingResult = isLoading;
+	const isLoadingLogs = isLoading;
+	const isLoadingVariables = isLoading;
 
 	// Enable Web PubSub once we know the execution status
 	useEffect(() => {
@@ -1173,6 +1168,68 @@ export function ExecutionDetails() {
 								</Card>
 							</motion.div>
 						)}
+
+						{/* Resource Metrics Card - Platform admins only */}
+						{isPlatformAdmin &&
+							isComplete &&
+							(execution?.peak_memory_bytes ||
+								execution?.cpu_total_seconds) && (
+								<motion.div
+									initial={{ opacity: 0, y: 20 }}
+									animate={{ opacity: 1, y: 0 }}
+									transition={{ duration: 0.3, delay: 0.2 }}
+								>
+									<Card>
+										<CardHeader>
+											<CardTitle>Resource Usage</CardTitle>
+											<CardDescription>
+												Execution resource metrics
+											</CardDescription>
+										</CardHeader>
+										<CardContent className="space-y-3">
+											{execution?.peak_memory_bytes && (
+												<div>
+													<p className="text-sm font-medium text-muted-foreground">
+														Peak Memory
+													</p>
+													<p className="text-sm font-mono">
+														{formatBytes(
+															execution.peak_memory_bytes,
+														)}
+													</p>
+												</div>
+											)}
+											{execution?.cpu_total_seconds && (
+												<div>
+													<p className="text-sm font-medium text-muted-foreground">
+														CPU Time
+													</p>
+													<p className="text-sm font-mono">
+														{execution.cpu_total_seconds.toFixed(
+															3,
+														)}
+														s
+													</p>
+												</div>
+											)}
+											{execution?.duration_ms && (
+												<div>
+													<p className="text-sm font-medium text-muted-foreground">
+														Duration
+													</p>
+													<p className="text-sm font-mono">
+														{(
+															execution.duration_ms /
+															1000
+														).toFixed(2)}
+														s
+													</p>
+												</div>
+											)}
+										</CardContent>
+									</Card>
+								</motion.div>
+							)}
 					</div>
 				</div>
 			</div>

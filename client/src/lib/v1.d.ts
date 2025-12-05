@@ -5725,6 +5725,10 @@ export interface components {
             variables?: {
                 [key: string]: unknown;
             } | null;
+            /** Peak Memory Bytes */
+            peak_memory_bytes?: number | null;
+            /** Cpu Total Seconds */
+            cpu_total_seconds?: number | null;
         };
         /**
          * WorkflowExecutionRequest

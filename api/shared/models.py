@@ -925,6 +925,9 @@ class WorkflowExecution(BaseModel):
     completed_at: datetime | None = None
     logs: list[dict[str, Any]] | None = None  # Structured logger output (replaces old ExecutionLog format)
     variables: dict[str, Any] | None = None  # Runtime variables captured from execution scope
+    # Resource metrics (admin only, null for non-admins)
+    peak_memory_bytes: int | None = None
+    cpu_total_seconds: float | None = None
 
 
 class WorkflowExecutionRequest(BaseModel):

@@ -117,9 +117,13 @@ class ExecutionRepository:
         """
         Get execution by ID with authorization.
 
+        Returns all execution details including logs (with DEBUG filtered for non-admins),
+        and admin-only fields (variables, resource metrics).
+
         Returns:
             Tuple of (execution, error_code) where error_code is None on success
         """
+        # 1. Fetch base execution
         result = await self.db.execute(
             select(ExecutionModel).where(ExecutionModel.id == execution_id)
         )
@@ -132,7 +136,51 @@ class ExecutionRepository:
         if not user.is_superuser and execution.executed_by != user.user_id:
             return None, "Forbidden"
 
-        return self._to_pydantic(execution), None
+        # 2. Fetch logs (DEBUG/TRACEBACK filtered for non-admins)
+        logs_query = (
+            select(ExecutionLogORM)
+            .where(ExecutionLogORM.execution_id == execution_id)
+            .order_by(ExecutionLogORM.sequence)
+        )
+        if not user.is_superuser:
+            logs_query = logs_query.where(
+                ExecutionLogORM.level.notin_(["DEBUG", "TRACEBACK"])
+            )
+        logs_result = await self.db.execute(logs_query)
+        log_entries = logs_result.scalars().all()
+
+        logs = [
+            ExecutionLog(
+                timestamp=log.timestamp.isoformat() if log.timestamp else "",
+                level=log.level or "info",
+                message=log.message or "",
+                data=log.log_metadata,
+            )
+            for log in log_entries
+        ]
+
+        # 3. Build response with conditional admin-only fields
+        return WorkflowExecution(
+            execution_id=str(execution.id),
+            workflow_name=execution.workflow_name,
+            org_id=str(execution.organization_id) if execution.organization_id else None,
+            form_id=str(execution.form_id) if execution.form_id else None,
+            executed_by=str(execution.executed_by),
+            executed_by_name=execution.executed_by_name or str(execution.executed_by),
+            status=ExecutionStatus(execution.status),
+            input_data=execution.parameters or {},
+            result=execution.result,
+            result_type=execution.result_type,
+            error_message=execution.error_message,
+            duration_ms=execution.duration_ms,
+            started_at=execution.started_at,
+            completed_at=execution.completed_at,
+            logs=[log.model_dump() for log in logs],
+            # Admin-only fields (null for non-admins)
+            variables=execution.variables if user.is_superuser else None,
+            peak_memory_bytes=execution.peak_memory_bytes if user.is_superuser else None,
+            cpu_total_seconds=execution.cpu_total_seconds if user.is_superuser else None,
+        ), None
 
     async def get_execution_result(
         self,
