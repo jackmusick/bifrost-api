@@ -3,40 +3,35 @@ Bifrost Platform SDK
 
 Provides Python API access to platform features from workflows.
 
-All methods interacting with database services (secrets, config, organizations,
-roles, executions, forms, oauth) are async and must be called with await.
+All methods are synchronous and can be called directly (no await needed).
 
 Usage:
     from bifrost import organizations, workflows, files, forms, executions, roles
-    from bifrost import config, secrets, oauth
+    from bifrost import config, oauth
 
 Example:
-    # Create an organization (async)
-    org = await organizations.create("Acme Corp", domain="acme.com")
+    # Create an organization
+    org = organizations.create("Acme Corp", domain="acme.com")
 
-    # Execute a workflow
-    result = workflows.execute("process_order", {"order_id": "12345"})
+    # List workflows
+    wf_list = workflows.list()
 
-    # Local filesystem operations (async with aiofiles)
-    await files.write("data/temp.txt", "content", location="temp")
-    data = await files.read("data/customers.csv", location="workspace")
+    # Local filesystem operations
+    files.write("data/temp.txt", "content", location="temp")
+    data = files.read("data/customers.csv", location="workspace")
 
-    # List executions (async)
-    recent = await executions.list(limit=10)
+    # List executions
+    recent = executions.list(limit=10)
 
-    # Create a role (async)
-    role = await roles.create("Manager", permissions=["users.read", "users.write"])
+    # Create a role
+    role = roles.create("Manager", permissions=["users.read", "users.write"])
 
-    # Manage configuration (async)
-    await config.set("api_url", "https://api.example.com")
-    url = await config.get("api_url")
+    # Manage configuration
+    config.set("api_url", "https://api.example.com")
+    url = config.get("api_url")
 
-    # Manage secrets (async)
-    await secrets.set("api_key", "sk_live_xxxxx")
-    key = await secrets.get("api_key")
-
-    # Manage OAuth tokens (async)
-    token = await oauth.get_token("microsoft")
+    # Get OAuth tokens (for secrets, use config with is_secret=True)
+    conn = oauth.get("microsoft")
 """
 
 from dataclasses import dataclass
@@ -48,7 +43,6 @@ from .forms import forms
 from .oauth import oauth
 from .organizations import organizations
 from .roles import roles
-from .secrets import secrets
 from .workflows import workflows
 
 # Import decorators and context from shared module
@@ -81,7 +75,6 @@ __all__ = [
     'executions',
     'roles',
     'config',
-    'secrets',
     'oauth',
     'workflow',
     'param',

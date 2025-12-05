@@ -166,6 +166,39 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def publish_to_redis_sync(channel: str, message: dict[str, Any]) -> None:
+    """
+    Publish to Redis using sync client.
+
+    This avoids event loop affinity issues when publishing from
+    worker threads. Uses a thread-local connection for efficiency.
+
+    Args:
+        channel: Channel name (without bifrost: prefix)
+        message: Message payload
+    """
+    import threading
+    import redis as redis_sync  # Sync redis client
+
+    # Thread-local storage for Redis connections
+    if not hasattr(publish_to_redis_sync, '_local'):
+        publish_to_redis_sync._local = threading.local()
+
+    local = publish_to_redis_sync._local
+
+    # Get or create connection for this thread
+    if not hasattr(local, 'redis') or local.redis is None:
+        settings = get_settings()
+        local.redis = redis_sync.from_url(settings.redis_url)
+
+    try:
+        local.redis.publish(f"bifrost:{channel}", json.dumps(message))
+    except Exception as e:
+        logger.warning(f"Failed to publish to Redis (sync): {e}")
+        # Reset connection on error
+        local.redis = None
+
+
 # Convenience functions for common pubsub operations
 
 async def publish_execution_update(
@@ -190,6 +223,31 @@ async def publish_execution_update(
     await manager.broadcast(f"execution:{execution_id}", message)
 
 
+def publish_execution_log_sync(
+    execution_id: str | UUID,
+    level: str,
+    message: str,
+    data: dict[str, Any] | None = None
+) -> None:
+    """
+    Publish execution log entry (sync version for worker threads).
+
+    Args:
+        execution_id: Execution ID
+        level: Log level (debug, info, warning, error)
+        message: Log message
+        data: Additional log data
+    """
+    log_entry = {
+        "type": "execution_log",
+        "executionId": str(execution_id),
+        "level": level,
+        "message": message,
+        "data": data
+    }
+    publish_to_redis_sync(f"execution:{execution_id}", log_entry)
+
+
 async def publish_execution_log(
     execution_id: str | UUID,
     level: str,
@@ -197,7 +255,7 @@ async def publish_execution_log(
     data: dict[str, Any] | None = None
 ) -> None:
     """
-    Publish execution log entry.
+    Publish execution log entry (async version).
 
     Args:
         execution_id: Execution ID

@@ -44,7 +44,9 @@
       "Bash(../venv/bin/python -c \"from src.models.models import FormPublic; from shared.models import FormSchema; print(''Import successful'')\")",
       "Bash(pyright src/routers/forms.py src/models/models.py src/models/orm.py)",
       "Bash(pyright:*)",
-      "Bash(./test.sh:*)"
+      "Bash(./test.sh:*)",
+      "Bash(../venv/bin/alembic revision:*)",
+      "Bash(../venv/bin/python:*)"
     ],
     "deny": [],
     "ask": [],

@@ -35,7 +35,8 @@ export function useOAuthConnections() {
 		queryKey: oauthKeys.list(orgId),
 		queryFn: async () => {
 			const result = await oauthService.listConnections();
-			return result as unknown as components["schemas"]["OAuthConnectionSummary"][];
+			// API returns { connections: [...] }, extract the array
+			return result.connections ?? [];
 		},
 		// Don't use cached data from previous scope
 		staleTime: 0,

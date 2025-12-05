@@ -16,8 +16,9 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { Clock, CheckCircle2, XCircle, FileText } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface RefreshJobStatusProps {
 	className?: string;
@@ -49,9 +50,8 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 					<CardDescription>No job runs yet</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<p className="text-sm text-muted-foreground">
-						The automatic token refresh job runs every 15 minutes to
-						keep OAuth tokens up to date.
+					<p className="text-xs text-muted-foreground">
+						The automatic token refresh job runs every 15 minutes.
 					</p>
 				</CardContent>
 			</Card>
@@ -60,108 +60,87 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 
 	// Check if this is an error result (job itself failed, not individual connection failures)
 	const isError = jobStatus.error != null;
+	const hasFailures = jobStatus.refresh_failed > 0;
+	const isSuccess = !isError && !hasFailures;
 
 	if (isError) {
 		return (
 			<Card className={className}>
 				<CardHeader className="pb-3">
 					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle className="text-sm font-medium">
-								Token Refresh Job
-							</CardTitle>
-							<CardDescription className="flex items-center gap-2 mt-1">
-								<Clock className="h-3 w-3" />
-								<span>
-									Last run:{" "}
-									{formatDistanceToNow(
-										new Date(jobStatus.updated_at),
-										{ addSuffix: true },
-									)}
-								</span>
-							</CardDescription>
-						</div>
-						<Badge variant="destructive">Error</Badge>
+						<CardTitle className="text-sm font-medium">
+							Token Refresh Job
+						</CardTitle>
+						<Badge variant="destructive" className="text-xs">
+							Error
+						</Badge>
 					</div>
+					<CardDescription>
+						{formatDistanceToNow(new Date(jobStatus.updated_at), {
+							addSuffix: true,
+						})}
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="flex items-start gap-2 text-sm">
-						<XCircle className="h-4 w-4 text-destructive mt-0.5" />
-						<div>
-							<p className="font-medium">Job failed</p>
-							<p className="text-muted-foreground">
-								{jobStatus.error}
-							</p>
-						</div>
+					<div className="flex items-start gap-2 text-sm text-destructive">
+						<XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+						<span className="text-xs">{jobStatus.error}</span>
 					</div>
 				</CardContent>
 			</Card>
 		);
 	}
 
-	const successRate =
-		jobStatus.needs_refresh > 0
-			? Math.round(
-					(jobStatus.refreshed_successfully /
-						jobStatus.needs_refresh) *
-						100,
-				)
-			: 100;
-
-	const hasErrors = jobStatus.refresh_failed > 0;
-
 	return (
 		<Card className={className}>
 			<CardHeader className="pb-2">
-				<CardTitle className="text-sm font-medium">
-					Token Refresh Job
-				</CardTitle>
-			</CardHeader>
-			<CardContent className="space-y-3">
-				{/* Status and Time */}
 				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-2 text-xs text-muted-foreground">
-						<Clock className="h-3 w-3" />
-						<span>
-							{formatDistanceToNow(
-								new Date(jobStatus.updated_at + "Z"),
-								{ addSuffix: true },
-							)}
-						</span>
-					</div>
+					<CardTitle className="text-sm font-medium">
+						Token Refresh Job
+					</CardTitle>
 					<Badge
-						variant={hasErrors ? "destructive" : "default"}
-						className="text-xs"
+						variant={hasFailures ? "destructive" : "outline"}
+						className={cn(
+							"text-xs",
+							isSuccess &&
+								"border-green-600 text-green-600 bg-green-600/10",
+						)}
 					>
-						{successRate}% Success
+						{isSuccess ? (
+							<>
+								<CheckCircle2 className="h-3 w-3 mr-1" />
+								OK
+							</>
+						) : (
+							<>
+								<AlertCircle className="h-3 w-3 mr-1" />
+								{jobStatus.refresh_failed} Failed
+							</>
+						)}
 					</Badge>
 				</div>
-
+				<CardDescription>
+					{formatDistanceToNow(new Date(jobStatus.updated_at + "Z"), {
+						addSuffix: true,
+					})}
+				</CardDescription>
+			</CardHeader>
+			<CardContent className="space-y-3">
 				{/* Summary Stats */}
-				<div className="flex items-center justify-between text-sm">
-					<div className="flex items-center gap-1.5">
-						<span className="text-muted-foreground">Total:</span>
-						<span className="font-semibold">
+				<div className="flex items-center gap-4 text-sm">
+					<div>
+						<span className="text-muted-foreground">Total: </span>
+						<span className="font-medium">
 							{jobStatus.total_connections}
 						</span>
 					</div>
-					{jobStatus.needs_refresh > 0 && (
-						<div className="flex items-center gap-1.5">
+					{jobStatus.refreshed_successfully > 0 && (
+						<div>
 							<span className="text-muted-foreground">
-								Refreshed:
+								Refreshed:{" "}
 							</span>
-							<span className="font-semibold text-green-600">
+							<span className="font-medium text-green-600">
 								{jobStatus.refreshed_successfully}
-							</span>
-						</div>
-					)}
-					{hasErrors && (
-						<div className="flex items-center gap-1.5">
-							<span className="text-muted-foreground">
-								Failed:
-							</span>
-							<span className="font-semibold text-destructive">
-								{jobStatus.refresh_failed}
 							</span>
 						</div>
 					)}
@@ -232,7 +211,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 							</div>
 
 							{/* Errors */}
-							{hasErrors &&
+							{hasFailures &&
 								jobStatus.errors &&
 								jobStatus.errors.length > 0 && (
 									<div>
@@ -290,11 +269,11 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 								)}
 
 							{/* Success Message */}
-							{!hasErrors && jobStatus.needs_refresh > 0 && (
-								<div className="border border-green-200 bg-green-50 rounded-lg p-4">
+							{!hasFailures && jobStatus.needs_refresh > 0 && (
+								<div className="border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 rounded-lg p-4">
 									<div className="flex items-center gap-2">
 										<CheckCircle2 className="h-5 w-5 text-green-600" />
-										<p className="text-sm font-medium text-green-900">
+										<p className="text-sm font-medium text-green-900 dark:text-green-100">
 											All tokens refreshed successfully!
 										</p>
 									</div>

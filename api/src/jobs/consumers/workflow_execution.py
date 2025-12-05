@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from src.core.pubsub import publish_execution_update, publish_execution_log
+from src.core.pubsub import publish_execution_update, publish_execution_log_sync
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import BaseConsumer
 
@@ -224,8 +224,30 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     self.exec_id = exec_id
                     self.enabled = True
 
-                async def broadcast_log(self, level: str, message: str, data: dict = None):
-                    await publish_execution_log(self.exec_id, level, message, data)
+                def broadcast_log(self, level: str, message: str, data: dict = None):
+                    """Sync broadcast - called from worker thread."""
+                    publish_execution_log_sync(self.exec_id, level, message, data)
+
+                def broadcast_execution_update(
+                    self,
+                    execution_id: str,
+                    status: str,
+                    executed_by: str | None = None,
+                    scope: str | None = None,
+                    latest_logs: list | None = None,
+                    is_complete: bool = False,
+                    **kwargs
+                ):
+                    """Sync bridge to pubsub for real-time log streaming."""
+                    # Send logs via pubsub (sync)
+                    if latest_logs:
+                        for log_entry in latest_logs:
+                            publish_execution_log_sync(
+                                self.exec_id,
+                                log_entry.get("level", "INFO"),
+                                log_entry.get("message", ""),
+                                log_entry
+                            )
 
                 def close(self):
                     pass

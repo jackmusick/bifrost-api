@@ -105,17 +105,17 @@ def convert_workflow_metadata_to_model(
         category=workflow_metadata.category,
         tags=workflow_metadata.tags,
         parameters=parameters,
-        executionMode=workflow_metadata.execution_mode,
-        timeoutSeconds=workflow_metadata.timeout_seconds,
-        retryPolicy=workflow_metadata.retry_policy,
+        execution_mode=workflow_metadata.execution_mode,
+        timeout_seconds=workflow_metadata.timeout_seconds,
+        retry_policy=workflow_metadata.retry_policy,
         schedule=workflow_metadata.schedule,
-        endpointEnabled=workflow_metadata.endpoint_enabled,
-        allowedMethods=workflow_metadata.allowed_methods,
-        disableGlobalKey=workflow_metadata.disable_global_key,
-        publicEndpoint=workflow_metadata.public_endpoint,
-        source=workflow_metadata.source,
-        sourceFilePath=workflow_metadata.source_file_path,
-        relativeFilePath=extract_relative_path(workflow_metadata.source_file_path),
+        endpoint_enabled=workflow_metadata.endpoint_enabled,
+        allowed_methods=workflow_metadata.allowed_methods,
+        disable_global_key=workflow_metadata.disable_global_key,
+        public_endpoint=workflow_metadata.public_endpoint,
+        is_platform=workflow_metadata.is_platform,
+        source_file_path=workflow_metadata.source_file_path,
+        relative_file_path=extract_relative_path(workflow_metadata.source_file_path),
     )
 
 
@@ -207,7 +207,7 @@ async def get_discovery_metadata(context: 'ExecutionContext | None' = None) -> M
                     item_type="workflow",
                     item_name=w.name,
                     error=str(e),
-                    source=w.source
+                    source="platform" if w.is_platform else "workspace"
                 ))
                 # Suppress exceptions in fire-and-forget task
                 task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)

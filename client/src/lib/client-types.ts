@@ -223,12 +223,12 @@ export function isExpired(expires_at?: string): boolean {
 
 export function expiresSoon(
 	expires_at?: string,
-	hoursThreshold: number = 4,
+	minutesThreshold: number = 45,
 ): boolean {
 	if (!expires_at) return true;
 	const expiresDate = new Date(expires_at);
 	const thresholdDate = new Date(
-		Date.now() + hoursThreshold * 60 * 60 * 1000,
+		Date.now() + minutesThreshold * 60 * 1000,
 	);
 	return expiresDate <= thresholdDate;
 }

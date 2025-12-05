@@ -3,7 +3,7 @@ Roles management SDK for Bifrost.
 
 Provides Python API for role operations (CRUD + user/form assignments).
 
-All methods are async and must be called with await.
+All methods are synchronous and can be called directly (no await needed).
 """
 
 from __future__ import annotations
@@ -11,9 +11,26 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from shared.models import Role
+from sqlalchemy import select, or_
 
+from shared.models import Role as RoleSchema
+from src.models.orm import Role, UserRole, FormRole
+
+from ._db import get_sync_session
 from ._internal import get_context, require_permission
+
+
+def _role_to_schema(role: Role) -> RoleSchema:
+    """Convert ORM Role to Pydantic RoleSchema."""
+    return RoleSchema(
+        id=str(role.id),
+        name=role.name,
+        description=role.description,
+        is_active=role.is_active,
+        created_by=role.created_by,
+        created_at=role.created_at,
+        updated_at=role.updated_at,
+    )
 
 
 class roles:
@@ -21,11 +38,11 @@ class roles:
     Role management operations.
 
     Provides CRUD operations for roles and user/form assignments.
-    All methods are async and must be awaited.
+    All methods are synchronous - no await needed.
     """
 
     @staticmethod
-    async def create(name: str, description: str = "", permissions: list[str] | None = None) -> Role:
+    def create(name: str, description: str = "") -> RoleSchema:
         """
         Create a new role.
 
@@ -34,7 +51,6 @@ class roles:
         Args:
             name: Role name
             description: Role description (optional)
-            permissions: List of permission strings (optional)
 
         Returns:
             Role: Created role object
@@ -48,15 +64,10 @@ class roles:
             >>> from bifrost import roles
             >>> role = roles.create(
             ...     "Customer Manager",
-            ...     description="Can manage customer data",
-            ...     permissions=["customers.read", "customers.write"]
+            ...     description="Can manage customer data"
             ... )
         """
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel
-
         context = require_permission("roles.create")
-        session_factory = get_session_factory()
 
         org_uuid = None
         if context.org_id and context.org_id != "GLOBAL":
@@ -65,31 +76,21 @@ class roles:
             except ValueError:
                 pass
 
-        async with session_factory() as db:
-            role = RoleModel(
+        with get_sync_session() as db:
+            role = Role(
                 name=name,
                 description=description,
-                permissions=permissions or [],
                 organization_id=org_uuid,
                 created_by=context.user_id,
+                is_active=True,
             )
             db.add(role)
-            await db.flush()
-            await db.refresh(role)
-            await db.commit()
-
-            return Role(
-                id=str(role.id),
-                name=role.name,
-                description=role.description,
-                is_active=role.is_active,
-                created_by=role.created_by,
-                created_at=role.created_at,
-                updated_at=role.updated_at,
-            )
+            db.flush()  # Get the ID
+            db.refresh(role)
+            return _role_to_schema(role)
 
     @staticmethod
-    async def get(role_id: str) -> Role:
+    def get(role_id: str) -> RoleSchema:
         """
         Get role by ID.
 
@@ -108,36 +109,17 @@ class roles:
             >>> role = roles.get("role-123")
             >>> print(role.name)
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel
-
         get_context()  # Validates user is authenticated
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
-
+        with get_sync_session() as db:
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
-
-            return Role(
-                id=str(role.id),
-                name=role.name,
-                description=role.description,
-                is_active=role.is_active,
-                created_by=role.created_by,
-                created_at=role.created_at,
-                updated_at=role.updated_at,
-            )
+            return _role_to_schema(role)
 
     @staticmethod
-    async def list() -> list[Role]:
+    def list() -> list[RoleSchema]:
         """
         List all roles in the current organization.
 
@@ -151,14 +133,9 @@ class roles:
             >>> from bifrost import roles
             >>> all_roles = roles.list()
             >>> for role in all_roles:
-            ...     print(f"{role.name}: {len(role.permissions)} permissions")
+            ...     print(f"{role.name}: {role.description}")
         """
-        from sqlalchemy import select, or_
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel
-
         context = get_context()
-        session_factory = get_session_factory()
 
         org_uuid = None
         if context.org_id and context.org_id != "GLOBAL":
@@ -167,35 +144,27 @@ class roles:
             except ValueError:
                 pass
 
-        async with session_factory() as db:
-            query = select(RoleModel).where(
-                RoleModel.is_active == True,  # noqa: E712
-                or_(
-                    RoleModel.organization_id == org_uuid,
-                    RoleModel.organization_id.is_(None)
+        with get_sync_session() as db:
+            if org_uuid:
+                query = (
+                    select(Role)
+                    .where(Role.is_active == True)
+                    .where(or_(Role.organization_id == org_uuid, Role.organization_id.is_(None)))
+                    .order_by(Role.name)
                 )
-            ).order_by(RoleModel.name)
-
-            result = await db.execute(query)
-            role_models = result.scalars().all()
-
-            return [
-                Role(
-                    id=str(r.id),
-                    name=r.name,
-                    description=r.description,
-                    permissions=r.permissions or [],
-                    orgId=str(r.organization_id) if r.organization_id else None,
-                    isActive=r.is_active,
-                    createdBy=r.created_by,
-                    createdAt=r.created_at,
-                    updatedAt=r.updated_at,
+            else:
+                query = (
+                    select(Role)
+                    .where(Role.is_active == True)
+                    .where(Role.organization_id.is_(None))
+                    .order_by(Role.name)
                 )
-                for r in role_models
-            ]
+
+            result = db.execute(query)
+            return [_role_to_schema(r) for r in result.scalars().all()]
 
     @staticmethod
-    async def update(role_id: str, **updates: Any) -> Role:
+    def update(role_id: str, **updates: Any) -> RoleSchema:
         """
         Update a role.
 
@@ -203,7 +172,7 @@ class roles:
 
         Args:
             role_id: Role ID
-            **updates: Fields to update (name, description, permissions)
+            **updates: Fields to update (name, description)
 
         Returns:
             Role: Updated role object
@@ -217,51 +186,30 @@ class roles:
             >>> from bifrost import roles
             >>> role = roles.update(
             ...     "role-123",
-            ...     description="Updated description",
-            ...     permissions=["customers.read"]
+            ...     description="Updated description"
             ... )
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel
-
         require_permission("roles.update")
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
-
+        with get_sync_session() as db:
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
 
-            # Apply updates
-            for field, value in updates.items():
-                if hasattr(role, field):
-                    setattr(role, field, value)
+            if 'name' in updates:
+                role.name = updates['name']
+            if 'description' in updates:
+                role.description = updates['description']
 
-            await db.flush()
-            await db.refresh(role)
-            await db.commit()
-
-            return Role(
-                id=str(role.id),
-                name=role.name,
-                description=role.description,
-                is_active=role.is_active,
-                created_by=role.created_by,
-                created_at=role.created_at,
-                updated_at=role.updated_at,
-            )
+            db.flush()
+            db.refresh(role)
+            return _role_to_schema(role)
 
     @staticmethod
-    async def delete(role_id: str) -> None:
+    def delete(role_id: str) -> None:
         """
-        Delete a role.
+        Delete a role (soft delete - sets is_active to false).
 
         Requires: Platform admin or organization admin privileges
 
@@ -277,29 +225,17 @@ class roles:
             >>> from bifrost import roles
             >>> roles.delete("role-123")
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel
-
         require_permission("roles.delete")
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
-
+        with get_sync_session() as db:
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
-
             role.is_active = False
-            await db.commit()
 
     @staticmethod
-    async def list_users(role_id: str) -> list[str]:
+    def list_users(role_id: str) -> list[str]:
         """
         List all user IDs assigned to a role.
 
@@ -319,32 +255,21 @@ class roles:
             >>> for user_id in user_ids:
             ...     print(user_id)
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel, UserRole
-
         get_context()  # Validates user is authenticated
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
+        with get_sync_session() as db:
             # Verify role exists
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
 
-            # Get user IDs
-            result = await db.execute(
-                select(UserRole.user_id).where(UserRole.role_id == role_uuid)
-            )
-            return [str(uid) for uid in result.scalars().all()]
+            query = select(UserRole.user_id).where(UserRole.role_id == role_uuid)
+            result = db.execute(query)
+            return [str(row[0]) for row in result.all()]
 
     @staticmethod
-    async def list_forms(role_id: str) -> list[str]:
+    def list_forms(role_id: str) -> list[str]:
         """
         List all form IDs assigned to a role.
 
@@ -364,32 +289,21 @@ class roles:
             >>> for form_id in form_ids:
             ...     print(form_id)
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel, FormRole
-
         get_context()  # Validates user is authenticated
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
+        with get_sync_session() as db:
             # Verify role exists
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
 
-            # Get form IDs
-            result = await db.execute(
-                select(FormRole.form_id).where(FormRole.role_id == role_uuid)
-            )
-            return [str(fid) for fid in result.scalars().all()]
+            query = select(FormRole.form_id).where(FormRole.role_id == role_uuid)
+            result = db.execute(query)
+            return [str(row[0]) for row in result.all()]
 
     @staticmethod
-    async def assign_users(role_id: str, user_ids: list[str]) -> None:
+    def assign_users(role_id: str, user_ids: list[str]) -> None:
         """
         Assign users to a role.
 
@@ -408,21 +322,12 @@ class roles:
             >>> from bifrost import roles
             >>> roles.assign_users("role-123", ["user-1", "user-2"])
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel, UserRole
-
         context = require_permission("roles.assign_users")
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
+        with get_sync_session() as db:
             # Verify role exists
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
 
@@ -430,26 +335,22 @@ class roles:
                 user_uuid = UUID(user_id)
 
                 # Check if already assigned
-                existing = await db.execute(
-                    select(UserRole).where(
-                        UserRole.user_id == user_uuid,
-                        UserRole.role_id == role_uuid,
+                existing = db.execute(
+                    select(UserRole)
+                    .where(UserRole.user_id == user_uuid)
+                    .where(UserRole.role_id == role_uuid)
+                ).scalars().first()
+
+                if not existing:
+                    user_role = UserRole(
+                        user_id=user_uuid,
+                        role_id=role_uuid,
+                        assigned_by=context.user_id,
                     )
-                )
-                if existing.scalar_one_or_none():
-                    continue
-
-                user_role = UserRole(
-                    user_id=user_uuid,
-                    role_id=role_uuid,
-                    assigned_by=context.user_id,
-                )
-                db.add(user_role)
-
-            await db.commit()
+                    db.add(user_role)
 
     @staticmethod
-    async def assign_forms(role_id: str, form_ids: list[str]) -> None:
+    def assign_forms(role_id: str, form_ids: list[str]) -> None:
         """
         Assign forms to a role.
 
@@ -468,21 +369,12 @@ class roles:
             >>> from bifrost import roles
             >>> roles.assign_forms("role-123", ["form-1", "form-2"])
         """
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Role as RoleModel, FormRole
-
         context = require_permission("roles.assign_forms")
-        session_factory = get_session_factory()
-
         role_uuid = UUID(role_id)
 
-        async with session_factory() as db:
+        with get_sync_session() as db:
             # Verify role exists
-            result = await db.execute(
-                select(RoleModel).where(RoleModel.id == role_uuid)
-            )
-            role = result.scalar_one_or_none()
+            role = db.get(Role, role_uuid)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
 
@@ -490,20 +382,16 @@ class roles:
                 form_uuid = UUID(form_id)
 
                 # Check if already assigned
-                existing = await db.execute(
-                    select(FormRole).where(
-                        FormRole.form_id == form_uuid,
-                        FormRole.role_id == role_uuid,
+                existing = db.execute(
+                    select(FormRole)
+                    .where(FormRole.form_id == form_uuid)
+                    .where(FormRole.role_id == role_uuid)
+                ).scalars().first()
+
+                if not existing:
+                    form_role = FormRole(
+                        form_id=form_uuid,
+                        role_id=role_uuid,
+                        assigned_by=context.user_id,
                     )
-                )
-                if existing.scalar_one_or_none():
-                    continue
-
-                form_role = FormRole(
-                    form_id=form_uuid,
-                    role_id=role_uuid,
-                    assigned_by=context.user_id,
-                )
-                db.add(form_role)
-
-            await db.commit()
+                    db.add(form_role)

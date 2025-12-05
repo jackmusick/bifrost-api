@@ -1,12 +1,61 @@
 /**
  * Custom error class for API errors
  * Preserves the structured error response from the API
+ * Handles both custom error format and FastAPI validation errors
  */
 
 export interface ApiErrorResponse {
 	error: string;
 	message: string;
 	details?: Record<string, unknown>;
+}
+
+/**
+ * FastAPI validation error format (Pydantic v2)
+ */
+interface FastAPIValidationError {
+	detail: Array<{
+		type: string;
+		loc: (string | number)[];
+		msg: string;
+		input?: unknown;
+	}>;
+}
+
+/**
+ * Check if error is a FastAPI validation error
+ */
+function isFastAPIValidationError(
+	error: unknown,
+): error is FastAPIValidationError {
+	return (
+		error !== null &&
+		typeof error === "object" &&
+		"detail" in error &&
+		Array.isArray((error as FastAPIValidationError).detail) &&
+		(error as FastAPIValidationError).detail.length > 0 &&
+		typeof (error as FastAPIValidationError).detail[0] === "object" &&
+		"msg" in (error as FastAPIValidationError).detail[0]
+	);
+}
+
+/**
+ * Convert FastAPI validation errors to a human-readable message
+ */
+function formatValidationErrors(error: FastAPIValidationError): string {
+	const messages = error.detail.map((err) => {
+		// Get the field name from location (skip 'body' prefix)
+		const fieldPath = err.loc
+			.filter((part) => part !== "body")
+			.join(".");
+		const fieldName = fieldPath || "request";
+		return `${fieldName}: ${err.msg}`;
+	});
+
+	if (messages.length === 1) {
+		return messages[0];
+	}
+	return `Validation failed: ${messages.join("; ")}`;
 }
 
 export class ApiError extends Error {
@@ -62,11 +111,41 @@ export class ApiError extends Error {
 
 /**
  * Helper to parse error responses from openapi-fetch
+ * Handles both custom error format and FastAPI validation errors
  */
 export function parseApiError(error: unknown, statusCode?: number): ApiError {
 	// If it's already an ApiError, return it
 	if (error instanceof ApiError) {
 		return error;
+	}
+
+	// Handle FastAPI validation errors (422 Unprocessable Entity)
+	if (isFastAPIValidationError(error)) {
+		const message = formatValidationErrors(error);
+		return new ApiError(
+			{
+				error: "ValidationError",
+				message,
+				details: { validation_errors: error.detail },
+			},
+			statusCode ?? 422,
+		);
+	}
+
+	// Handle FastAPI HTTPException with string detail
+	if (
+		error &&
+		typeof error === "object" &&
+		"detail" in error &&
+		typeof (error as { detail: unknown }).detail === "string"
+	) {
+		return new ApiError(
+			{
+				error: "RequestError",
+				message: (error as { detail: string }).detail,
+			},
+			statusCode,
+		);
 	}
 
 	// If it's a structured error response with error/message fields

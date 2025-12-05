@@ -1,64 +1,29 @@
 """
 Workflows SDK for Bifrost.
 
-Provides Python API for workflow operations (list, execute, get status).
+Provides Python API for workflow operations (list, get status).
+
+All methods are synchronous and can be called directly (no await needed).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from shared.handlers.workflows_logic import get_workflow_status_logic, list_workflows_logic
+from shared.handlers.workflows_logic import list_workflows_logic
 
 from ._internal import get_context
+from .executions import executions
 
 
 class workflows:
     """
     Workflow operations.
 
-    Allows workflows to trigger other workflows and query execution status.
+    Allows workflows to query available workflows and execution status.
+
+    All methods are synchronous - no await needed.
     """
-
-    @staticmethod
-    def execute(workflow_name: str, parameters: dict[str, Any] | None = None) -> dict[str, Any]:
-        """
-        Execute another workflow programmatically.
-
-        Args:
-            workflow_name: Name of workflow to execute
-            parameters: Workflow parameters (optional)
-
-        Returns:
-            dict: Execution result
-
-        Raises:
-            ValueError: If workflow not found
-            RuntimeError: If no execution context
-
-        Example:
-            >>> from bifrost import workflows
-            >>> result = workflows.execute("process_order", {"order_id": "12345"})
-        """
-        import asyncio
-
-        from shared.discovery import get_workflow
-
-        context = get_context()
-
-        # Dynamically load workflow (always fresh)
-        load_result = get_workflow(workflow_name)
-
-        if not load_result:
-            raise ValueError(f"Workflow not found: {workflow_name}")
-
-        # Execute workflow function directly (avoids HTTP overhead)
-        workflow_func, _ = load_result
-
-        # Execute workflow synchronously (workflows are async)
-        result = asyncio.run(workflow_func(context, **(parameters or {})))
-
-        return result
 
     @staticmethod
     def list() -> list[dict[str, Any]]:
@@ -101,11 +66,5 @@ class workflows:
             >>> execution = workflows.get("exec-123")
             >>> print(execution["status"])
         """
-        context = get_context()
-
-        execution = get_workflow_status_logic(context, execution_id)
-
-        if not execution:
-            raise ValueError(f"Execution not found: {execution_id}")
-
-        return execution
+        # Use the sync executions SDK
+        return executions.get(execution_id)

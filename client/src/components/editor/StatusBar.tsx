@@ -1,7 +1,9 @@
 import { useEditorStore } from "@/stores/editorStore";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
-import { Circle, Workflow } from "lucide-react";
+import { useUploadProgress } from "@/hooks/useUploadProgress";
+import { Circle, Workflow, Loader2, CheckCircle, AlertCircle, X } from "lucide-react";
 import { useMemo } from "react";
+import { Progress } from "@/components/ui/progress";
 
 /**
  * Status bar showing file info, cursor position, and save status
@@ -10,6 +12,7 @@ export function StatusBar() {
 	const tabs = useEditorStore((state) => state.tabs);
 	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
 	const isWorkflowFile = useWorkflowsStore((state) => state.isWorkflowFile);
+	const { state: uploadState, resetState: resetUpload } = useUploadProgress();
 
 	// Compute active tab from state
 	const activeTab =
@@ -46,46 +49,93 @@ export function StatusBar() {
 
 	const saveStatusText = getSaveStatusText();
 
+	// Check if we should show upload state
+	const showUploadProgress = uploadState.isUploading || uploadState.totalCount > 0;
+	const uploadSuccessCount = uploadState.totalCount - uploadState.failures.length;
+	const uploadProgressPercent = uploadState.totalCount > 0
+		? Math.round((uploadState.completedCount / uploadState.totalCount) * 100)
+		: 0;
+
 	return (
 		<div className="flex h-6 items-center justify-between border-t bg-muted/50 px-4 text-xs text-muted-foreground">
-			<div className="flex items-center gap-4">
-				{/* File path */}
-				{openFile && <span className="font-mono">{openFile.path}</span>}
+			<div className="flex items-center gap-4 flex-1 min-w-0">
+				{/* Upload progress - takes priority when active */}
+				{showUploadProgress ? (
+					<div className="flex items-center gap-2 flex-1 min-w-0">
+						{uploadState.isUploading ? (
+							<>
+								<Loader2 className="h-3 w-3 animate-spin shrink-0" />
+								<span className="truncate max-w-32">
+									{uploadState.currentFile || "Preparing..."}
+								</span>
+								<span className="shrink-0 text-muted-foreground">
+									{uploadState.completedCount}/{uploadState.totalCount}
+								</span>
+								<Progress value={uploadProgressPercent} className="h-1.5 w-24" />
+							</>
+						) : (
+							<>
+								{uploadState.failures.length === 0 ? (
+									<CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+								) : (
+									<AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
+								)}
+								<span>
+									{uploadState.failures.length === 0
+										? `Uploaded ${uploadSuccessCount} file${uploadSuccessCount !== 1 ? "s" : ""}`
+										: `Uploaded ${uploadSuccessCount}/${uploadState.totalCount} (${uploadState.failures.length} failed)`}
+								</span>
+								<button
+									onClick={resetUpload}
+									className="p-0.5 hover:bg-muted rounded shrink-0"
+									title="Dismiss"
+								>
+									<X className="h-3 w-3" />
+								</button>
+							</>
+						)}
+					</div>
+				) : (
+					<>
+						{/* File path */}
+						{openFile && <span className="font-mono truncate">{openFile.path}</span>}
 
-				{/* File type badge */}
-				{openFile && openFile.path.endsWith(".py") && (
-					<span
-						className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium ${
-							isWorkflow
-								? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-								: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-						}`}
-					>
-						{isWorkflow && <Workflow className="h-3 w-3" />}
-						{isWorkflow ? "Workflow" : "Python Script"}
-					</span>
-				)}
+						{/* File type badge */}
+						{openFile && openFile.path.endsWith(".py") && (
+							<span
+								className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium shrink-0 ${
+									isWorkflow
+										? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+										: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+								}`}
+							>
+								{isWorkflow && <Workflow className="h-3 w-3" />}
+								{isWorkflow ? "Workflow" : "Python Script"}
+							</span>
+						)}
 
-				{/* Save status */}
-				{saveStatusText && (
-					<span
-						className={`flex items-center gap-1 ${
-							saveState === "conflict"
-								? "text-orange-600"
-								: saveState === "saved"
-									? "text-green-600"
-									: saveState === "saving"
-										? "text-blue-600"
-										: "text-amber-600"
-						}`}
-					>
-						<Circle className="h-2 w-2 fill-current" />
-						{saveStatusText}
-					</span>
+						{/* Save status */}
+						{saveStatusText && (
+							<span
+								className={`flex items-center gap-1 shrink-0 ${
+									saveState === "conflict"
+										? "text-orange-600"
+										: saveState === "saved"
+											? "text-green-600"
+											: saveState === "saving"
+												? "text-blue-600"
+												: "text-amber-600"
+								}`}
+							>
+								<Circle className="h-2 w-2 fill-current" />
+								{saveStatusText}
+							</span>
+						)}
+					</>
 				)}
 			</div>
 
-			<div className="flex items-center gap-4">
+			<div className="flex items-center gap-4 shrink-0">
 				{/* Language */}
 				{selectedLanguage && (
 					<span className="capitalize">{selectedLanguage}</span>

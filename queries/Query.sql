@@ -1,1 +1,2 @@
-select * from users;
+select *
+from forms

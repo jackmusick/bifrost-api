@@ -14,9 +14,105 @@ import {
 import { useFileTree, type FileTreeNode } from "@/hooks/useFileTree";
 import { useEditorStore } from "@/stores/editorStore";
 import { fileService, type FileMetadata } from "@/services/fileService";
+import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+
+/**
+ * Interface for a file with its relative path from the drop target
+ */
+interface FileWithPath {
+	file: File;
+	relativePath: string;
+}
+
+/**
+ * Recursively traverse a FileSystemEntry to collect all files with their relative paths.
+ * Supports both files and folders dropped from the filesystem.
+ */
+async function traverseFileSystemEntry(
+	entry: FileSystemEntry,
+	basePath: string = "",
+): Promise<FileWithPath[]> {
+	const results: FileWithPath[] = [];
+
+	if (entry.isFile) {
+		const fileEntry = entry as FileSystemFileEntry;
+		const file = await new Promise<File>((resolve, reject) => {
+			fileEntry.file(resolve, reject);
+		});
+		results.push({
+			file,
+			relativePath: basePath ? `${basePath}/${entry.name}` : entry.name,
+		});
+	} else if (entry.isDirectory) {
+		const dirEntry = entry as FileSystemDirectoryEntry;
+		const reader = dirEntry.createReader();
+
+		// readEntries may return partial results, so we need to loop until empty
+		const readAllEntries = async (): Promise<FileSystemEntry[]> => {
+			const entries: FileSystemEntry[] = [];
+			let batch: FileSystemEntry[];
+			do {
+				batch = await new Promise((resolve, reject) => {
+					reader.readEntries(resolve, reject);
+				});
+				entries.push(...batch);
+			} while (batch.length > 0);
+			return entries;
+		};
+
+		const entries = await readAllEntries();
+		const newBasePath = basePath ? `${basePath}/${entry.name}` : entry.name;
+
+		for (const childEntry of entries) {
+			const childResults = await traverseFileSystemEntry(
+				childEntry,
+				newBasePath,
+			);
+			results.push(...childResults);
+		}
+	}
+
+	return results;
+}
+
+/**
+ * Convert a FileContentResponse to a FileMetadata for optimistic updates
+ */
+function responseToMetadata(
+	path: string,
+	size: number,
+	modified: string,
+): FileMetadata {
+	const name = path.split("/").pop()!;
+	const lastDot = name.lastIndexOf(".");
+	return {
+		path,
+		name,
+		type: "file",
+		size,
+		extension: lastDot > 0 ? name.substring(lastDot + 1) : null,
+		modified,
+		isReadOnly: false,
+	};
+}
+
+/**
+ * Detect if a file is text-based (can be read as UTF-8)
+ */
+function isTextFile(file: File): boolean {
+	return (
+		file.type.startsWith("text/") ||
+		file.type === "application/json" ||
+		file.type === "application/javascript" ||
+		file.type === "application/xml" ||
+		!!file.name.match(
+			/\.(txt|md|json|js|jsx|ts|tsx|py|java|c|cpp|h|hpp|css|scss|html|xml|yaml|yml|sh|bash|sql|log|csv)$/i,
+		)
+	);
+}
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -48,7 +144,14 @@ export function FileTree() {
 		toggleFolder,
 		isFolderExpanded,
 		refreshAll,
+		addFilesOptimistically,
 	} = useFileTree();
+	const {
+		startUpload,
+		updateProgress,
+		recordFailure,
+		finishUpload,
+	} = useUploadProgress();
 	const tabs = useEditorStore((state) => state.tabs);
 	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
 	const setOpenFile = useEditorStore((state) => state.setOpenFile);
@@ -439,73 +542,119 @@ export function FileTree() {
 			e.preventDefault();
 			setDragOverFolder(null);
 
+			const targetPath = targetFolder || "";
+
 			// Check if this is an external file drop (not internal move)
-			const files = e.dataTransfer.files;
-			if (files && files.length > 0) {
-				// External file upload
-				try {
-					setIsProcessing(true);
-					const targetPath = targetFolder || "";
-					let uploadedCount = 0;
+			// Use DataTransferItemList to support folder uploads via webkitGetAsEntry
+			const items = e.dataTransfer.items;
+			const hasExternalFiles =
+				items &&
+				items.length > 0 &&
+				Array.from(items).some((item) => item.kind === "file");
 
-					for (let i = 0; i < files.length; i++) {
-						const file = files[i];
-						if (!file) continue;
+			if (hasExternalFiles) {
+				// External file upload - collect all files including from folders
+				const allFiles: FileWithPath[] = [];
 
-						const filePath = targetPath
-							? `${targetPath}/${file.name}`
-							: file.name;
+				for (let i = 0; i < items.length; i++) {
+					const item = items[i];
+					if (item.kind !== "file") continue;
 
-						// Detect if file is text or binary
-						const isTextFile =
-							file.type.startsWith("text/") ||
-							file.type === "application/json" ||
-							file.type === "application/javascript" ||
-							file.type === "application/xml" ||
-							file.name.match(
-								/\.(txt|md|json|js|jsx|ts|tsx|py|java|c|cpp|h|hpp|css|scss|html|xml|yaml|yml|sh|bash|sql|log|csv)$/i,
-							);
+					// Try to get FileSystemEntry for folder support
+					const entry = item.webkitGetAsEntry?.();
+					if (entry) {
+						try {
+							const filesFromEntry =
+								await traverseFileSystemEntry(entry);
+							allFiles.push(...filesFromEntry);
+						} catch {
+							// Fallback: get as regular file
+							const file = item.getAsFile();
+							if (file) {
+								allFiles.push({
+									file,
+									relativePath: file.name,
+								});
+							}
+						}
+					} else {
+						// Browser doesn't support webkitGetAsEntry, fallback to regular file
+						const file = item.getAsFile();
+						if (file) {
+							allFiles.push({ file, relativePath: file.name });
+						}
+					}
+				}
 
+				if (allFiles.length === 0) return;
+
+				// Start upload progress tracking
+				startUpload(allFiles.length);
+				const uploadedFiles: FileMetadata[] = [];
+
+				for (let i = 0; i < allFiles.length; i++) {
+					const { file, relativePath } = allFiles[i];
+					const filePath = targetPath
+						? `${targetPath}/${relativePath}`
+						: relativePath;
+
+					updateProgress(file.name, i);
+
+					try {
 						let content: string;
 						let encoding: "utf-8" | "base64";
 
-						if (isTextFile) {
+						if (isTextFile(file)) {
 							// Read as text
 							content = await file.text();
 							encoding = "utf-8";
 						} else {
 							// Read as binary and encode to base64
+							// Use chunked encoding to avoid stack overflow with large files
 							const arrayBuffer = await file.arrayBuffer();
 							const bytes = new Uint8Array(arrayBuffer);
-							content = btoa(String.fromCharCode(...bytes));
+							const chunkSize = 8192;
+							let binary = "";
+							for (let i = 0; i < bytes.length; i += chunkSize) {
+								const chunk = bytes.subarray(
+									i,
+									Math.min(i + chunkSize, bytes.length),
+								);
+								binary += String.fromCharCode(...chunk);
+							}
+							content = btoa(binary);
 							encoding = "base64";
 						}
 
-						// Upload file
-						await fileService.writeFile(
+						// Upload file (backend creates parent directories automatically)
+						const response = await fileService.writeFile(
 							filePath,
 							content,
 							encoding,
 						);
-						uploadedCount++;
-					}
 
-					// Reload the target folder
-					await loadFiles(targetPath);
-
-					if (uploadedCount === 1 && files[0]) {
-						toast.success(`Uploaded ${files[0].name}`);
-					} else {
-						toast.success(`Uploaded ${uploadedCount} files`);
-					}
-				} catch (err) {
-					toast.error("Failed to upload files", {
-						description:
+						// Convert response to FileMetadata for optimistic update
+						const metadata = responseToMetadata(
+							response.path,
+							response.size,
+							response.modified,
+						);
+						uploadedFiles.push(metadata);
+					} catch (err) {
+						recordFailure(
+							filePath,
 							err instanceof Error ? err.message : String(err),
-					});
-				} finally {
-					setIsProcessing(false);
+						);
+						// Continue with next file
+					}
 				}
+
+				// Optimistically add all uploaded files to tree
+				if (uploadedFiles.length > 0) {
+					addFilesOptimistically(uploadedFiles, targetPath);
+				}
+
+				finishUpload();
 				return;
 			}
 
@@ -559,7 +708,15 @@ export function FileTree() {
 				setIsProcessing(false);
 			}
 		},
-		[loadFiles, updateTabPath],
+		[
+			loadFiles,
+			updateTabPath,
+			startUpload,
+			updateProgress,
+			recordFailure,
+			finishUpload,
+			addFilesOptimistically,
+		],
 	);
 
 	return (

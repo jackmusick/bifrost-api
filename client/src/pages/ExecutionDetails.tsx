@@ -93,6 +93,7 @@ export function ExecutionDetails() {
 	const [signalrEnabled, setSignalrEnabled] = useState(false);
 	const logsEndRef = useRef<HTMLDivElement>(null);
 	const logsContainerRef = useRef<HTMLDivElement>(null);
+	const [autoScroll, setAutoScroll] = useState(true);
 
 	// Get streaming logs from store
 	// Use stable selector to avoid infinite loops
@@ -193,6 +194,24 @@ export function ExecutionDetails() {
 			);
 		}
 	}, [streamState, executionId, queryClient]);
+
+	// Auto-scroll to bottom when new streaming logs arrive
+	useEffect(() => {
+		if (autoScroll && logsEndRef.current && streamingLogs.length > 0) {
+			logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+		}
+	}, [streamingLogs.length, autoScroll]);
+
+	// Handle scroll to detect if user has scrolled up (pause auto-scroll)
+	const handleLogsScroll = useCallback(() => {
+		const container = logsContainerRef.current;
+		if (!container) return;
+
+		// Check if scrolled to bottom (with 50px threshold)
+		const isAtBottom =
+			container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+		setAutoScroll(isAtBottom);
+	}, []);
 
 	const getStatusBadge = (status: ExecutionStatus) => {
 		switch (status) {
@@ -746,6 +765,7 @@ export function ExecutionDetails() {
 											return (
 												<div
 													ref={logsContainerRef}
+													onScroll={handleLogsScroll}
 													className="space-y-2 max-h-[600px] overflow-y-auto"
 												>
 													{logsToDisplay.map(
@@ -1074,7 +1094,7 @@ export function ExecutionDetails() {
 							<CardContent>
 								<PrettyInputDisplay
 									inputData={execution.input_data}
-									showToggle={false}
+									showToggle={true}
 									defaultView="pretty"
 								/>
 							</CardContent>

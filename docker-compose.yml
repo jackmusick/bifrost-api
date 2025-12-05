@@ -47,8 +47,8 @@ services:
       RABBITMQ_DEFAULT_USER: bifrost
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-bifrost_dev}
     ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI (for debugging only)
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI (for debugging only)
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
@@ -116,10 +116,10 @@ services:
       # Debugging (optional - enables debugpy)
       ENABLE_DEBUG: ${ENABLE_DEBUG:-false}
     ports:
-      - "5678:5678"  # debugpy port for VS Code attachment
+      - "5678:5678" # debugpy port for VS Code attachment
     # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     volumes:
-      - bifrost_workspace:/workspace
+      - ~/GitHub/gocovi-bifrost-workspace:/workspace
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,14 +169,14 @@ services:
       # File Storage (read-only - only watches for changes)
       BIFROST_WORKSPACE_LOCATION: /workspace
     volumes:
-      - bifrost_workspace:/workspace:ro  # Read-only for discovery
+      - ~/GitHub/gocovi-bifrost-workspace:/workspace:ro # Read-only for discovery
     depends_on:
       postgres:
         condition: service_healthy
       api:
         condition: service_healthy
     deploy:
-      replicas: 1  # MUST be single instance
+      replicas: 1 # MUST be single instance
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.discovery.main
 
@@ -207,7 +207,7 @@ services:
       discovery:
         condition: service_started
     deploy:
-      replicas: 1  # MUST be single instance
+      replicas: 1 # MUST be single instance
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.scheduler.main
 
@@ -233,7 +233,7 @@ services:
       # Concurrency
       BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-10}
     volumes:
-      - bifrost_workspace:/workspace
+      - ~/GitHub/gocovi-bifrost-workspace:/workspace
     depends_on:
       postgres:
         condition: service_healthy

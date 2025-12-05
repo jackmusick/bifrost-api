@@ -90,7 +90,7 @@ export const formsService = {
 			"/api/forms/{form_id}/execute",
 			{
 				params: { path: { form_id: submission.form_id } },
-				body: { form_data: submission.form_data },
+				body: submission.form_data,
 			},
 		);
 		if (error || !data) {

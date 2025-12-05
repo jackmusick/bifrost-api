@@ -3,14 +3,56 @@ Execution history SDK for Bifrost.
 
 Provides Python API for execution history operations (list, get).
 
-All methods are async and must be called with await.
+All methods are synchronous and can be called directly (no await needed).
 """
 
+from __future__ import annotations
+
 from typing import Any
+from uuid import UUID
 
-from shared.handlers.executions_handlers import get_execution_handler, list_executions_handler
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
+from src.models.orm import Execution, ExecutionLog
+
+from ._db import get_sync_session
 from ._internal import get_context
+
+
+def _execution_to_dict(execution: Execution, include_logs: bool = False) -> dict[str, Any]:
+    """Convert ORM Execution to dictionary."""
+    # Map status enum to string value
+    status_value = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
+
+    result: dict[str, Any] = {
+        "id": str(execution.id),
+        "workflow_name": execution.workflow_name,
+        "workflow_version": execution.workflow_version,
+        "status": status_value,
+        "executed_by": str(execution.executed_by),
+        "executed_by_name": execution.executed_by_name,
+        "parameters": execution.parameters,
+        "result": execution.result,
+        "error_message": execution.error_message,
+        "created_at": execution.created_at.isoformat() if execution.created_at else None,
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+        "duration_ms": execution.duration_ms,
+    }
+
+    if include_logs and hasattr(execution, 'logs'):
+        result["logs"] = [
+            {
+                "level": log.level,
+                "message": log.message,
+                "metadata": log.log_metadata,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            }
+            for log in sorted(execution.logs, key=lambda x: x.timestamp or x.id)
+        ]
+
+    return result
 
 
 class executions:
@@ -19,11 +61,11 @@ class executions:
 
     Allows workflows to query execution history.
 
-    All methods are async and must be awaited.
+    All methods are synchronous - no await needed.
     """
 
     @staticmethod
-    async def list(
+    def list(
         workflow_name: str | None = None,
         status: str | None = None,
         start_date: str | None = None,
@@ -51,27 +93,58 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> recent = await executions.list(limit=10)
-            >>> failed = await executions.list(status="Failed")
-            >>> workflow_execs = await executions.list(workflow_name="create_customer")
+            >>> recent = executions.list(limit=10)
+            >>> failed = executions.list(status="Failed")
+            >>> workflow_execs = executions.list(workflow_name="create_customer")
         """
         context = get_context()
 
-        # Use the handler to get filtered executions
-        execs, _ = await list_executions_handler(
-            context=context,
-            workflow_name=workflow_name,
-            status=status,
-            start_date=start_date,
-            end_date=end_date,
-            limit=limit,
-            continuation_token=None
-        )
+        org_uuid = None
+        if context.org_id and context.org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(context.org_id)
+            except ValueError:
+                pass
 
-        return execs
+        # Cap limit
+        limit = min(limit, 1000)
+
+        with get_sync_session() as db:
+            query = (
+                select(Execution)
+                .order_by(Execution.created_at.desc())
+                .limit(limit)
+            )
+
+            # Organization filter
+            if org_uuid:
+                query = query.where(Execution.organization_id == org_uuid)
+            else:
+                query = query.where(Execution.organization_id.is_(None))
+
+            # User filter for non-admins
+            if not context.is_platform_admin:
+                user_uuid = UUID(context.user_id)
+                query = query.where(Execution.executed_by == user_uuid)
+
+            # Optional filters
+            if workflow_name:
+                query = query.where(Execution.workflow_name == workflow_name)
+
+            if status:
+                query = query.where(Execution.status == status)
+
+            if start_date:
+                query = query.where(Execution.created_at >= start_date)
+
+            if end_date:
+                query = query.where(Execution.created_at <= end_date)
+
+            result = db.execute(query)
+            return [_execution_to_dict(e) for e in result.scalars().all()]
 
     @staticmethod
-    async def get(execution_id: str) -> dict[str, Any]:
+    def get(execution_id: str) -> dict[str, Any]:
         """
         Get execution details by ID.
 
@@ -82,7 +155,7 @@ class executions:
             execution_id: Execution ID (UUID)
 
         Returns:
-            dict: Execution details
+            dict: Execution details including logs
 
         Raises:
             ValueError: If execution not found or access denied
@@ -90,21 +163,40 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> exec_details = await executions.get("exec-123")
+            >>> exec_details = executions.get("exec-123")
             >>> print(exec_details["status"])
             >>> print(exec_details["result"])
         """
         context = get_context()
+        exec_uuid = UUID(execution_id)
 
-        execution, error = await get_execution_handler(context, execution_id)
+        org_uuid = None
+        if context.org_id and context.org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(context.org_id)
+            except ValueError:
+                pass
 
-        if error:
-            if error == "NotFound":
+        with get_sync_session() as db:
+            query = (
+                select(Execution)
+                .options(joinedload(Execution.logs))
+                .where(Execution.id == exec_uuid)
+            )
+            result = db.execute(query)
+            execution = result.scalars().unique().first()
+
+            if not execution:
                 raise ValueError(f"Execution not found: {execution_id}")
-            elif error == "Forbidden":
+
+            # Check org access
+            if org_uuid and execution.organization_id != org_uuid:
                 raise PermissionError(f"Access denied to execution: {execution_id}")
-            else:
-                raise ValueError(f"Error retrieving execution: {error}")
 
-        return execution or {}
+            # Check user access for non-admins
+            if not context.is_platform_admin:
+                user_uuid = UUID(context.user_id)
+                if execution.executed_by != user_uuid:
+                    raise PermissionError(f"Access denied to execution: {execution_id}")
 
+            return _execution_to_dict(execution, include_logs=True)

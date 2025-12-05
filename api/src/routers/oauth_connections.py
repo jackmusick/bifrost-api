@@ -7,7 +7,7 @@ This is separate from oauth_sso.py which handles user authentication.
 
 import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -24,6 +24,8 @@ from shared.models import (
     OAuthCredentialsResponse,
     OAuthCallbackRequest,
     OAuthCallbackResponse,
+    OAuthFlowType,
+    OAuthStatus,
 )
 from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser
@@ -114,7 +116,11 @@ class OAuthConnectionRepository:
         result = await self.db.execute(query)
         providers = result.scalars().all()
 
-        return [self._to_summary(p) for p in providers]
+        # Convert to summaries (async method)
+        summaries = []
+        for p in providers:
+            summaries.append(await self._to_summary(p))
+        return summaries
 
     async def get_connection(
         self,
@@ -180,6 +186,14 @@ class OAuthConnectionRepository:
             provider.display_name = request.name
         if request.client_id is not None:
             provider.client_id = request.client_id
+        if request.client_secret is not None:
+            # Encrypt the new client secret
+            from src.core.security import encrypt_secret
+            provider.encrypted_client_secret = encrypt_secret(request.client_secret).encode()
+        if request.authorization_url is not None:
+            provider.authorization_url = request.authorization_url
+        if request.token_url is not None:
+            provider.token_url = request.token_url
         if request.scopes is not None:
             provider.scopes = request.scopes
 
@@ -201,13 +215,12 @@ class OAuthConnectionRepository:
             return False
 
         # Delete associated tokens first
-        # Note: session.delete() is NOT async - it just marks for deletion
         token_query = select(OAuthToken).where(OAuthToken.provider_id == provider.id)
         token_result = await self.db.execute(token_query)
         for token in token_result.scalars().all():
-            self.db.delete(token)
+            await self.db.delete(token)
 
-        self.db.delete(provider)
+        await self.db.delete(provider)
         await self.db.flush()
 
         return True
@@ -255,24 +268,38 @@ class OAuthConnectionRepository:
         access_token: str,
         refresh_token: str | None,
         expires_at: datetime,
-        token_type: str = "Bearer",
+        scopes: list[str] | None = None,
     ) -> OAuthToken | None:
         """Store a new token for a connection."""
+        from src.core.security import encrypt_secret
+
         provider = await self.get_connection(connection_name, org_id)
         if not provider:
             return None
 
-        # Create new token (could also update existing)
-        token = OAuthToken(
-            provider_id=provider.id,
-            # In production, tokens should be encrypted
-            access_token_ref=f"oauth/{connection_name}/access_token",
-            refresh_token_ref=f"oauth/{connection_name}/refresh_token" if refresh_token else None,
-            token_type=token_type,
-            expires_at=expires_at,
-        )
+        # Encrypt tokens for storage
+        encrypted_access = encrypt_secret(access_token).encode()
+        encrypted_refresh = encrypt_secret(refresh_token).encode() if refresh_token else None
 
-        self.db.add(token)
+        # Check for existing token and update, or create new
+        existing_token = await self.get_token(connection_name, org_id)
+
+        if existing_token:
+            existing_token.encrypted_access_token = encrypted_access
+            existing_token.encrypted_refresh_token = encrypted_refresh
+            existing_token.expires_at = expires_at
+            existing_token.scopes = scopes or []
+            token = existing_token
+        else:
+            token = OAuthToken(
+                organization_id=org_id,
+                provider_id=provider.id,
+                encrypted_access_token=encrypted_access,
+                encrypted_refresh_token=encrypted_refresh,
+                expires_at=expires_at,
+                scopes=scopes or [],
+            )
+            self.db.add(token)
 
         # Update provider status
         provider.status = "completed"
@@ -285,20 +312,24 @@ class OAuthConnectionRepository:
 
         return token
 
-    def _to_summary(self, provider: OAuthProvider) -> OAuthConnectionSummary:
+    async def _to_summary(self, provider: OAuthProvider) -> OAuthConnectionSummary:
         """Convert to summary model."""
-        # Get latest token expiry if available
+        # Get latest token expiry - query directly to avoid lazy load issues
         expires_at = None
-        if provider.tokens:
-            latest_token = max(provider.tokens, key=lambda t: t.created_at)
-            expires_at = latest_token.expires_at
+        token = await self.get_token(provider.provider_name, provider.organization_id)
+        if token:
+            expires_at = token.expires_at
+
+        # Cast string values to literal types for Pydantic
+        oauth_flow_type: OAuthFlowType = provider.oauth_flow_type  # type: ignore[assignment]
+        status: OAuthStatus = provider.status or "not_connected"  # type: ignore[assignment]
 
         return OAuthConnectionSummary(
             connection_name=provider.provider_name,
             name=provider.display_name,
             provider=provider.provider_name,
-            oauth_flow_type=provider.oauth_flow_type,
-            status=provider.status or "not_connected",
+            oauth_flow_type=oauth_flow_type,
+            status=status,
             status_message=provider.status_message,
             expires_at=expires_at,
             last_refresh_at=provider.last_token_refresh,
@@ -306,16 +337,44 @@ class OAuthConnectionRepository:
             updated_at=provider.updated_at,
         )
 
-    def _to_detail(self, provider: OAuthProvider) -> OAuthConnectionDetail:
+    async def _to_detail(self, provider: OAuthProvider) -> OAuthConnectionDetail:
         """Convert to detail model."""
-        summary = self._to_summary(provider)
+        # Get latest token expiry - query directly to avoid lazy load issues
+        expires_at = None
+        token = await self.get_token(provider.provider_name, provider.organization_id)
+        if token:
+            expires_at = token.expires_at
+
+        # Cast string values to literal types for Pydantic
+        oauth_flow_type: OAuthFlowType = provider.oauth_flow_type  # type: ignore[assignment]
+        status: OAuthStatus = provider.status or "not_connected"  # type: ignore[assignment]
+
+        # Build redirect_uri
+        settings = get_settings()
+        redirect_uri = f"{settings.frontend_url}/oauth/callback/{provider.provider_name}"
+
+        # Convert scopes list to space-separated string
+        scopes_str = " ".join(provider.scopes) if provider.scopes else ""
+
         return OAuthConnectionDetail(
-            **summary.model_dump(),
+            connection_name=provider.provider_name,
+            name=provider.display_name,
+            provider=provider.provider_name,
+            description=provider.description,
+            oauth_flow_type=oauth_flow_type,
             client_id=provider.client_id,
             authorization_url=provider.authorization_url,
-            token_url=provider.token_url,
-            scopes=provider.scopes,
-            description=provider.description,
+            token_url=provider.token_url or "",
+            scopes=scopes_str,
+            redirect_uri=redirect_uri,
+            status=status,
+            status_message=provider.status_message,
+            expires_at=expires_at,
+            last_refresh_at=provider.last_token_refresh,
+            last_test_at=None,
+            created_at=provider.created_at,
+            created_by=provider.created_by or "",
+            updated_at=provider.updated_at,
         )
 
 
@@ -364,7 +423,7 @@ async def get_connection(
             detail=f"OAuth connection '{connection_name}' not found",
         )
 
-    return repo._to_detail(provider)
+    return await repo._to_detail(provider)
 
 
 @router.post(
@@ -399,7 +458,7 @@ async def create_connection(
 
     logger.info(f"Created OAuth connection: {request.connection_name}")
 
-    return repo._to_detail(provider)
+    return await repo._to_detail(provider)
 
 
 @router.put(
@@ -428,7 +487,7 @@ async def update_connection(
 
     logger.info(f"Updated OAuth connection: {connection_name}")
 
-    return repo._to_detail(provider)
+    return await repo._to_detail(provider)
 
 
 @router.delete(
@@ -491,11 +550,13 @@ async def authorize_connection(
 
     # Build authorization URL
     settings = get_settings()
+    # Convert scopes list to space-separated string (OAuth standard format)
+    scopes_str = " ".join(provider.scopes) if provider.scopes else ""
     params = {
         "client_id": provider.client_id,
         "response_type": "code",
         "state": state,
-        "scope": provider.scopes or "",
+        "scope": scopes_str,
         "redirect_uri": f"{settings.frontend_url}/oauth/callback/{connection_name}",
     }
 
@@ -546,9 +607,9 @@ async def cancel_authorization(
         status_message="Authorization cancelled",
     )
 
-    # Refresh provider
-    provider = await repo.get_connection(connection_name, org_id)
-    return repo._to_detail(provider)
+    # Refresh provider to get updated data
+    await ctx.db.refresh(provider)
+    return await repo._to_detail(provider)
 
 
 @router.post(
@@ -562,7 +623,10 @@ async def refresh_token(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> RefreshTokenResponse:
-    """Refresh OAuth token."""
+    """Refresh OAuth token using refresh token."""
+    from src.core.security import decrypt_secret, encrypt_secret
+    from shared.services.oauth_provider import OAuthProviderClient
+
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id
 
@@ -574,20 +638,74 @@ async def refresh_token(
             detail=f"OAuth connection '{connection_name}' not found",
         )
 
+    if not provider.token_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No token URL configured for this connection",
+        )
+
     token = await repo.get_token(connection_name, org_id)
 
-    if not token or not token.refresh_token_ref:
+    if not token or not token.encrypted_refresh_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No refresh token available for this connection",
         )
 
-    # TODO: Implement actual token refresh using the OAuth provider
-    # For now, return a placeholder response
+    # Decrypt secrets
+    try:
+        refresh_token_value = decrypt_secret(token.encrypted_refresh_token.decode())
+        client_secret = None
+        if provider.encrypted_client_secret:
+            client_secret = decrypt_secret(provider.encrypted_client_secret.decode())
+    except Exception as e:
+        logger.error(f"Failed to decrypt credentials: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to decrypt credentials",
+        )
+
+    # Call OAuth provider to refresh token
+    oauth_client = OAuthProviderClient()
+    success, result = await oauth_client.refresh_access_token(
+        token_url=provider.token_url,
+        refresh_token=refresh_token_value,
+        client_id=provider.client_id,
+        client_secret=client_secret,
+    )
+
+    if not success:
+        error_msg = result.get("error_description", result.get("error", "Refresh failed"))
+        provider.status = "failed"
+        provider.status_message = error_msg
+        await ctx.db.flush()
+        return RefreshTokenResponse(
+            success=False,
+            message=error_msg,
+            expires_at=None,
+        )
+
+    # Update token in database
+    token.encrypted_access_token = encrypt_secret(result["access_token"]).encode()
+    if result.get("refresh_token"):
+        token.encrypted_refresh_token = encrypt_secret(result["refresh_token"]).encode()
+    new_expires_at = result.get("expires_at")
+    token.expires_at = new_expires_at
+
+    # Update provider
+    provider.status = "completed"
+    provider.status_message = None
+    provider.last_token_refresh = datetime.utcnow()
+
+    await ctx.db.flush()
+
+    logger.info(f"Token refreshed successfully for {connection_name}")
+
+    expires_at_str = new_expires_at.isoformat() if new_expires_at else None
     return RefreshTokenResponse(
         success=True,
-        message="Token refresh not yet implemented in FastAPI migration",
-        expires_at=None,
+        message="Token refreshed successfully",
+        expires_at=expires_at_str,
     )
 
 
@@ -602,7 +720,10 @@ async def oauth_callback(
     request: OAuthCallbackRequest,
     ctx: Context,
 ) -> OAuthCallbackResponse:
-    """Handle OAuth callback."""
+    """Handle OAuth callback and exchange authorization code for tokens."""
+    from src.core.security import decrypt_secret
+    from shared.services.oauth_provider import OAuthProviderClient
+
     repo = OAuthConnectionRepository(ctx.db)
     # Callbacks may come from non-authenticated contexts
     org_id = None
@@ -615,19 +736,105 @@ async def oauth_callback(
             detail=f"OAuth connection '{connection_name}' not found",
         )
 
-    # TODO: Implement actual token exchange
-    # For now, just update status
-    await repo.update_status(
+    if not provider.token_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No token URL configured for this connection",
+        )
+
+    # Decrypt client secret
+    client_secret = None
+    if provider.encrypted_client_secret:
+        try:
+            client_secret = decrypt_secret(provider.encrypted_client_secret.decode())
+        except Exception as e:
+            logger.error(f"Failed to decrypt client secret: {e}")
+
+    # Build redirect URI
+    settings = get_settings()
+    redirect_uri = f"{settings.frontend_url}/oauth/callback/{connection_name}"
+
+    # Exchange authorization code for tokens
+    oauth_client = OAuthProviderClient()
+    success, result = await oauth_client.exchange_code_for_token(
+        token_url=provider.token_url,
+        code=request.code,
+        client_id=provider.client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+    )
+
+    if not success:
+        error_msg = result.get("error_description", result.get("error", "Token exchange failed"))
+        await repo.update_status(
+            connection_name=connection_name,
+            org_id=org_id,
+            status="failed",
+            status_message=error_msg,
+        )
+        return OAuthCallbackResponse(
+            success=False,
+            message="Token exchange failed",
+            status="failed",
+            connection_name=connection_name,
+            error_message=error_msg,
+            warning_message=None,
+        )
+
+    # Extract tokens from result
+    access_token = result.get("access_token")
+    refresh_token = result.get("refresh_token")
+    expires_at = result.get("expires_at")
+    scope = result.get("scope", "")
+    scopes = scope.split() if scope else list(provider.scopes or [])
+
+    if not access_token:
+        await repo.update_status(
+            connection_name=connection_name,
+            org_id=org_id,
+            status="failed",
+            status_message="No access token in response",
+        )
+        return OAuthCallbackResponse(
+            success=False,
+            message="Token exchange failed - no access token received",
+            status="failed",
+            connection_name=connection_name,
+            error_message="No access token in response",
+            warning_message=None,
+        )
+
+    if not expires_at:
+        # Default to 1 hour from now if no expiry provided
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+
+    # Store tokens
+    await repo.store_token(
         connection_name=connection_name,
         org_id=org_id,
-        status="completed",
-        status_message="Callback received (token exchange not yet implemented)",
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+        scopes=scopes,
     )
+
+    logger.info(f"OAuth callback completed for {connection_name}")
+
+    # Build response with optional warning
+    warning_msg = None
+    if not refresh_token:
+        warning_msg = (
+            "No refresh token received. The connection may require re-authorization "
+            "when the access token expires."
+        )
 
     return OAuthCallbackResponse(
         success=True,
-        message="OAuth callback processed",
+        message="OAuth connection completed successfully",
+        status="completed",
         connection_name=connection_name,
+        warning_message=warning_msg,
+        error_message=None,
     )
 
 
@@ -642,7 +849,10 @@ async def get_credentials(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> OAuthCredentialsResponse:
-    """Get OAuth credentials."""
+    """Get OAuth credentials for use in workflows."""
+    from src.core.security import decrypt_secret
+    from shared.models import OAuthCredentialsModel
+
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id
 
@@ -656,18 +866,47 @@ async def get_credentials(
 
     token = await repo.get_token(connection_name, org_id)
 
+    # If no token, return response with null credentials
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No token available for this connection",
+        status_val: OAuthStatus = provider.status or "not_connected"  # type: ignore[assignment]
+        return OAuthCredentialsResponse(
+            connection_name=connection_name,
+            credentials=None,
+            status=status_val,
+            expires_at=None,
         )
 
-    # In production, we'd decrypt the token here
+    # Decrypt tokens
+    try:
+        access_token = decrypt_secret(token.encrypted_access_token.decode())
+        refresh_token = None
+        if token.encrypted_refresh_token:
+            refresh_token = decrypt_secret(token.encrypted_refresh_token.decode())
+    except Exception as e:
+        logger.error(f"Failed to decrypt token: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to decrypt token",
+        )
+
+    expires_at_str = token.expires_at.isoformat() if token.expires_at else None
+    scopes = " ".join(token.scopes) if token.scopes else ""
+
+    credentials = OAuthCredentialsModel(
+        connection_name=connection_name,
+        access_token=access_token,
+        token_type="Bearer",
+        expires_at=expires_at_str or "",
+        refresh_token=refresh_token,
+        scopes=scopes,
+    )
+
+    status_val: OAuthStatus = provider.status or "completed"  # type: ignore[assignment]
     return OAuthCredentialsResponse(
         connection_name=connection_name,
-        access_token="[REDACTED - token storage not yet migrated]",
-        token_type=token.token_type,
-        expires_at=token.expires_at,
+        credentials=credentials,
+        status=status_val,
+        expires_at=expires_at_str,
     )
 
 
@@ -681,13 +920,46 @@ async def get_refresh_job_status(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> RefreshJobStatusResponse:
-    """Get refresh job status."""
-    # In production, this would query the scheduler/job history
-    # For now, return a basic status indicating no jobs have run
+    """Get refresh job status from stored job history."""
+    from src.models import SystemConfig
+
+    # Query for the last job status
+    query = select(SystemConfig).where(
+        SystemConfig.category == "oauth",
+        SystemConfig.key == "refresh_job_status",
+        SystemConfig.organization_id.is_(None),  # Global system config
+    )
+    result = await ctx.db.execute(query)
+    config = result.scalar_one_or_none()
+
+    if not config or not config.value_json:
+        return RefreshJobStatusResponse(
+            enabled=True,
+            last_run=None,
+            next_run=None,
+        )
+
+    job_data = config.value_json
+
+    # Build last_run from stored data
+    last_run = None
+    if job_data.get("start_time"):
+        last_run = RefreshJobRun(
+            status="completed" if not job_data.get("errors") else "completed_with_errors",
+            start_time=datetime.fromisoformat(job_data["start_time"]) if job_data.get("start_time") else None,
+            end_time=datetime.fromisoformat(job_data["end_time"]) if job_data.get("end_time") else None,
+            connections_checked=job_data.get("total_connections", 0),
+            refreshed_successfully=job_data.get("refreshed_successfully", 0),
+            refresh_failed=job_data.get("refresh_failed", 0),
+            needs_refresh=job_data.get("needs_refresh", 0),
+            total_connections=job_data.get("total_connections", 0),
+            errors=job_data.get("errors", []),
+        )
+
     return RefreshJobStatusResponse(
         enabled=True,
-        last_run=None,
-        next_run=None,
+        last_run=last_run,
+        next_run=None,  # Could calculate from scheduler if needed
     )
 
 
@@ -702,15 +974,45 @@ async def trigger_refresh_all(
     user: CurrentSuperuser,
 ) -> RefreshAllResponse:
     """Trigger refresh of all OAuth tokens."""
-    # In production, this would queue refresh jobs
-    repo = OAuthConnectionRepository(ctx.db)
-    org_id = ctx.org_id
+    from src.jobs.schedulers.oauth_token_refresh import run_refresh_job
+    from src.models import SystemConfig
 
-    connections = await repo.list_connections(org_id)
-    completed_count = len([c for c in connections if c.status == "completed"])
+    logger.info(f"User {ctx.user.email} manually triggering OAuth refresh job")
+
+    # Run the refresh job (manual trigger refreshes all connections)
+    results = await run_refresh_job(
+        trigger_type="manual",
+        trigger_user=ctx.user.email,
+        refresh_threshold_minutes=None,  # Refresh all, not just expiring
+    )
+
+    # Store job status in SystemConfig for later retrieval
+    query = select(SystemConfig).where(
+        SystemConfig.category == "oauth",
+        SystemConfig.key == "refresh_job_status",
+        SystemConfig.organization_id.is_(None),
+    )
+    result = await ctx.db.execute(query)
+    config = result.scalar_one_or_none()
+
+    if config:
+        config.value_json = results
+        config.updated_at = datetime.utcnow()
+    else:
+        config = SystemConfig(
+            category="oauth",
+            key="refresh_job_status",
+            value_json=results,
+            organization_id=None,
+        )
+        ctx.db.add(config)
+
+    await ctx.db.flush()
 
     return RefreshAllResponse(
         triggered=True,
-        message=f"Queued {completed_count} connections for refresh",
-        connections_queued=completed_count,
+        message=f"Refreshed {results['refreshed_successfully']} of {results['needs_refresh']} connections",
+        connections_queued=results["needs_refresh"],
+        refreshed_successfully=results["refreshed_successfully"],
+        refresh_failed=results["refresh_failed"],
     )

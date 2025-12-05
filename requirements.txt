@@ -14,6 +14,7 @@ python-multipart>=0.0.6  # Form data handling
 sqlmodel>=0.0.27  # Combines SQLAlchemy + Pydantic
 sqlalchemy[asyncio]>=2.0.25
 asyncpg>=0.29.0  # Async PostgreSQL driver
+psycopg2-binary>=2.9.9  # Sync PostgreSQL driver (for SDK/workflow threads)
 alembic>=1.13.0  # Database migrations
 greenlet>=3.0.0  # Required by SQLAlchemy async
 

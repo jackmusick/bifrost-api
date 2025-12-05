@@ -77,6 +77,8 @@ class State:
     # Execution behavior tests
     org_user_config_exec_id: str | None = None
     admin_config_exec_id: str | None = None
+    # OAuth connection tests
+    e2e_oauth_connection_name: str | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -2423,6 +2425,170 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         )
         assert response.status_code == 200, f"List forms failed: {response.text}"
         # Response should be filtered to assigned forms only
+
+    # =========================================================================
+    # PHASE: OAuth Connection CRUD Tests (Platform Admin)
+    # =========================================================================
+
+    def test_370_create_oauth_connection(self):
+        """Platform admin can create an OAuth connection."""
+        State.e2e_oauth_connection_name = "e2e_test_oauth"
+
+        response = State.client.post(
+            "/api/oauth/connections",
+            headers=State.platform_admin.headers,
+            json={
+                "connection_name": State.e2e_oauth_connection_name,
+                "name": "E2E Test OAuth Connection",
+                "description": "Test OAuth connection for E2E tests",
+                "oauth_flow_type": "authorization_code",
+                "client_id": "e2e-test-client-id",
+                "client_secret": "e2e-test-client-secret",
+                "authorization_url": "https://example.com/oauth/authorize",
+                "token_url": "https://example.com/oauth/token",
+                "scopes": "read write offline_access",
+            },
+        )
+        assert response.status_code == 201, f"Create OAuth connection failed: {response.text}"
+
+        data = response.json()
+        assert data["connection_name"] == State.e2e_oauth_connection_name
+        assert data["client_id"] == "e2e-test-client-id"
+        assert data["status"] == "not_connected"
+        # client_secret should NOT be returned
+        assert "client_secret" not in data or data.get("client_secret") is None
+
+    def test_371_list_oauth_connections(self):
+        """Platform admin can list OAuth connections."""
+        response = State.client.get(
+            "/api/oauth/connections",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"List OAuth connections failed: {response.text}"
+
+        data = response.json()
+        assert "connections" in data
+        connections = data["connections"]
+        assert isinstance(connections, list)
+
+        # Find our test connection
+        test_conn = next(
+            (c for c in connections if c["connection_name"] == State.e2e_oauth_connection_name),
+            None
+        )
+        assert test_conn is not None, "Test OAuth connection not found in list"
+
+    def test_372_get_oauth_connection_detail(self):
+        """Platform admin can get OAuth connection details."""
+        response = State.client.get(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Get OAuth connection failed: {response.text}"
+
+        data = response.json()
+        assert data["connection_name"] == State.e2e_oauth_connection_name
+        assert data["oauth_flow_type"] == "authorization_code"
+        assert data["authorization_url"] == "https://example.com/oauth/authorize"
+        assert data["token_url"] == "https://example.com/oauth/token"
+        # Scopes should be returned (as stored)
+        assert "scopes" in data
+
+    def test_373_update_oauth_connection(self):
+        """Platform admin can update an OAuth connection."""
+        response = State.client.put(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}",
+            headers=State.platform_admin.headers,
+            json={
+                "name": "Updated E2E OAuth Connection",
+                "client_id": "updated-client-id",
+                "authorization_url": "https://example.com/oauth/v2/authorize",
+                "token_url": "https://example.com/oauth/v2/token",
+                "scopes": "read,write,admin",  # Test comma-separated format
+            },
+        )
+        assert response.status_code == 200, f"Update OAuth connection failed: {response.text}"
+
+        data = response.json()
+        assert data["name"] == "Updated E2E OAuth Connection"
+        assert data["client_id"] == "updated-client-id"
+
+    def test_374_verify_oauth_connection_updated(self):
+        """Verify OAuth connection was updated correctly."""
+        response = State.client.get(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["name"] == "Updated E2E OAuth Connection"
+        assert data["client_id"] == "updated-client-id"
+        assert data["authorization_url"] == "https://example.com/oauth/v2/authorize"
+        assert data["token_url"] == "https://example.com/oauth/v2/token"
+
+    def test_375_update_oauth_connection_scopes_space_separated(self):
+        """Update OAuth connection with space-separated scopes."""
+        response = State.client.put(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}",
+            headers=State.platform_admin.headers,
+            json={
+                "scopes": "openid profile email",  # Space-separated
+            },
+        )
+        assert response.status_code == 200, f"Update scopes failed: {response.text}"
+
+    def test_376_initiate_oauth_authorization(self):
+        """Platform admin can initiate OAuth authorization flow."""
+        response = State.client.post(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}/authorize",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Initiate authorization failed: {response.text}"
+
+        data = response.json()
+        assert "authorization_url" in data
+        assert "state" in data
+        # Verify the authorization URL contains expected components
+        auth_url = data["authorization_url"]
+        assert "client_id=" in auth_url
+        assert "redirect_uri=" in auth_url
+        assert "scope=" in auth_url
+        assert "state=" in auth_url
+
+    def test_377_cancel_oauth_authorization(self):
+        """Platform admin can cancel OAuth authorization."""
+        response = State.client.post(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}/cancel",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Cancel authorization failed: {response.text}"
+
+        data = response.json()
+        assert data["status"] == "not_connected"
+
+    def test_378_oauth_connection_not_found(self):
+        """Get non-existent OAuth connection returns 404."""
+        response = State.client.get(
+            "/api/oauth/connections/nonexistent_oauth_connection",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 404
+
+    def test_379_delete_oauth_connection(self):
+        """Platform admin can delete an OAuth connection."""
+        response = State.client.delete(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 204, f"Delete OAuth connection failed: {response.text}"
+
+        # Verify it's gone
+        response = State.client.get(
+            f"/api/oauth/connections/{State.e2e_oauth_connection_name}",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 404
 
     # =========================================================================
     # PHASE 28: Cleanup (Cleanup last)

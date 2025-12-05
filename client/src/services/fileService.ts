@@ -96,7 +96,7 @@ export const fileService = {
 	 */
 	async createFolder(path: string): Promise<FileMetadata> {
 		const response = await authFetch(
-			`/api/editor/folder?path=${encodeURIComponent(path)}`,
+			`/api/editor/files/folder?path=${encodeURIComponent(path)}`,
 			{ method: "POST" },
 		);
 
@@ -112,7 +112,7 @@ export const fileService = {
 	 */
 	async deletePath(path: string): Promise<void> {
 		const response = await authFetch(
-			`/api/editor/path?path=${encodeURIComponent(path)}`,
+			`/api/editor/files?path=${encodeURIComponent(path)}`,
 			{ method: "DELETE" },
 		);
 
@@ -126,8 +126,8 @@ export const fileService = {
 	 */
 	async renamePath(oldPath: string, newPath: string): Promise<FileMetadata> {
 		const response = await authFetch(
-			`/api/editor/path/rename?oldPath=${encodeURIComponent(oldPath)}&newPath=${encodeURIComponent(newPath)}`,
-			{ method: "PUT" },
+			`/api/editor/files/rename?old_path=${encodeURIComponent(oldPath)}&new_path=${encodeURIComponent(newPath)}`,
+			{ method: "POST" },
 		);
 
 		if (!response.ok) {

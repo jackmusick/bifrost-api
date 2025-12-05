@@ -14,7 +14,9 @@ from typing import Any
 from sqlalchemy import select
 
 from src.core.database import get_db_context
+from src.core.security import decrypt_secret, encrypt_secret
 from src.models import OAuthToken, OAuthProvider
+from shared.services.oauth_provider import OAuthProviderClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,34 +31,74 @@ async def refresh_expiring_tokens() -> dict[str, Any]:
     Returns:
         Summary of refresh results
     """
-    logger.info("OAuth token refresh job started")
+    return await run_refresh_job(trigger_type="automatic", refresh_threshold_minutes=30)
 
-    results = {
-        "total_checked": 0,
-        "refreshed": 0,
-        "failed": 0,
+
+async def run_refresh_job(
+    trigger_type: str = "automatic",
+    trigger_user: str | None = None,
+    refresh_threshold_minutes: int | None = None,
+) -> dict[str, Any]:
+    """
+    Run the OAuth token refresh job.
+
+    This method contains the shared logic for refreshing expiring OAuth tokens.
+    Can be called by both the scheduler and HTTP endpoint.
+
+    Args:
+        trigger_type: Type of trigger ("automatic" or "manual")
+        trigger_user: Email of user who triggered (for manual triggers)
+        refresh_threshold_minutes: Threshold in minutes (default: 30 for automatic, None for manual refreshes all)
+
+    Returns:
+        Dictionary with job results
+    """
+    start_time = datetime.utcnow()
+    logger.info(f"OAuth token refresh job started (trigger={trigger_type})")
+
+    results: dict[str, Any] = {
+        "total_connections": 0,
+        "needs_refresh": 0,
+        "refreshed_successfully": 0,
+        "refresh_failed": 0,
         "errors": [],
+        "trigger_type": trigger_type,
+        "trigger_user": trigger_user,
     }
 
     try:
-        # Find tokens expiring within 30 minutes
-        expiry_threshold = datetime.utcnow() + timedelta(minutes=30)
-
         async with get_db_context() as db:
-            # Query tokens that have refresh tokens and are expiring soon
+            # Get all tokens with refresh tokens
             query = (
                 select(OAuthToken)
-                .where(OAuthToken.expires_at.isnot(None))
-                .where(OAuthToken.expires_at <= expiry_threshold)
                 .where(OAuthToken.encrypted_refresh_token.isnot(None))
             )
             result = await db.execute(query)
-            expiring_tokens = result.scalars().all()
+            all_tokens = result.scalars().all()
 
-            results["total_checked"] = len(expiring_tokens)
-            logger.info(f"Found {len(expiring_tokens)} tokens expiring within 30 minutes")
+            results["total_connections"] = len(all_tokens)
+            logger.info(f"Found {len(all_tokens)} total OAuth connections with refresh tokens")
 
-            for token in expiring_tokens:
+            # Determine which tokens need refresh
+            now = datetime.utcnow()
+
+            if refresh_threshold_minutes is not None:
+                # Automatic: only refresh tokens expiring within threshold
+                refresh_threshold = now + timedelta(minutes=refresh_threshold_minutes)
+                tokens_to_refresh = [
+                    t for t in all_tokens
+                    if t.expires_at and t.expires_at <= refresh_threshold
+                ]
+                logger.info(f"Using refresh threshold: {refresh_threshold_minutes} minutes")
+            else:
+                # Manual: refresh all completed connections
+                tokens_to_refresh = list(all_tokens)
+                logger.info("Manual trigger: refreshing all connections with tokens")
+
+            results["needs_refresh"] = len(tokens_to_refresh)
+            logger.info(f"Found {len(tokens_to_refresh)} tokens needing refresh")
+
+            for token in tokens_to_refresh:
                 try:
                     # Get the provider configuration
                     provider_query = select(OAuthProvider).where(
@@ -66,26 +108,22 @@ async def refresh_expiring_tokens() -> dict[str, Any]:
                     provider = provider_result.scalar_one_or_none()
 
                     if not provider:
-                        logger.warning(
-                            f"Provider not found for token {token.id}"
-                        )
+                        logger.warning(f"Provider not found for token {token.id}")
                         results["errors"].append({
                             "token_id": str(token.id),
                             "error": "Provider not found",
                         })
-                        results["failed"] += 1
+                        results["refresh_failed"] += 1
                         continue
 
                     # Attempt to refresh the token
                     success = await _refresh_single_token(db, token, provider)
 
                     if success:
-                        results["refreshed"] += 1
-                        logger.info(
-                            f"Refreshed token for provider '{provider.provider_name}'"
-                        )
+                        results["refreshed_successfully"] += 1
+                        logger.info(f"Refreshed token for provider '{provider.provider_name}'")
                     else:
-                        results["failed"] += 1
+                        results["refresh_failed"] += 1
                         results["errors"].append({
                             "token_id": str(token.id),
                             "provider": provider.provider_name,
@@ -93,23 +131,28 @@ async def refresh_expiring_tokens() -> dict[str, Any]:
                         })
 
                 except Exception as e:
-                    results["failed"] += 1
+                    results["refresh_failed"] += 1
                     results["errors"].append({
                         "token_id": str(token.id),
                         "error": str(e),
                     })
-                    logger.error(
-                        f"Error refreshing token {token.id}: {e}",
-                        exc_info=True,
-                    )
+                    logger.error(f"Error refreshing token {token.id}: {e}", exc_info=True)
 
             await db.commit()
 
+        # Calculate duration
+        end_time = datetime.utcnow()
+        duration_seconds = (end_time - start_time).total_seconds()
+        results["duration_seconds"] = duration_seconds
+        results["start_time"] = start_time.isoformat()
+        results["end_time"] = end_time.isoformat()
+
         logger.info(
-            f"OAuth token refresh completed: "
-            f"Checked={results['total_checked']}, "
-            f"Refreshed={results['refreshed']}, "
-            f"Failed={results['failed']}"
+            f"OAuth token refresh completed in {duration_seconds:.2f}s: "
+            f"Total={results['total_connections']}, "
+            f"NeedsRefresh={results['needs_refresh']}, "
+            f"Success={results['refreshed_successfully']}, "
+            f"Failed={results['refresh_failed']}"
         )
 
     except Exception as e:
@@ -135,18 +178,18 @@ async def _refresh_single_token(
     Returns:
         True if refresh succeeded, False otherwise
     """
-    import httpx
-
-    from src.core.security import decrypt_data, encrypt_data
-
     try:
         # Decrypt the refresh token
-        refresh_token = decrypt_data(token.encrypted_refresh_token)
-        client_secret = decrypt_data(provider.encrypted_client_secret)
-
-        if not refresh_token or not client_secret:
-            logger.warning(f"Missing refresh token or client secret for token {token.id}")
+        if not token.encrypted_refresh_token:
+            logger.warning(f"No refresh token for token {token.id}")
             return False
+
+        refresh_token = decrypt_secret(token.encrypted_refresh_token.decode())
+
+        # Get client secret if exists
+        client_secret = None
+        if provider.encrypted_client_secret:
+            client_secret = decrypt_secret(provider.encrypted_client_secret.decode())
 
         # Build refresh request
         token_url = provider.token_url
@@ -154,61 +197,43 @@ async def _refresh_single_token(
             logger.warning(f"No token URL configured for provider {provider.provider_name}")
             return False
 
-        data = {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": provider.client_id,
-            "client_secret": client_secret,
-        }
+        # Use the shared OAuth provider client
+        oauth_client = OAuthProviderClient()
+        success, result = await oauth_client.refresh_access_token(
+            token_url=token_url,
+            refresh_token=refresh_token,
+            client_id=provider.client_id,
+            client_secret=client_secret,
+        )
 
-        # Add scopes if available
-        if token.scopes:
-            data["scope"] = " ".join(token.scopes)
-
-        # Make the refresh request
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                token_url,
-                data=data,
-                timeout=30.0,
-            )
-
-        if response.status_code != 200:
-            logger.error(
-                f"Token refresh failed for {provider.provider_name}: "
-                f"Status {response.status_code}, Body: {response.text[:200]}"
-            )
+        if not success:
+            error_msg = result.get("error_description", result.get("error", "Refresh failed"))
+            logger.error(f"Token refresh failed for {provider.provider_name}: {error_msg}")
+            provider.status = "failed"
+            provider.status_message = f"Token refresh failed: {error_msg}"
             return False
 
-        token_data = response.json()
-
-        # Update the token
-        new_access_token = token_data.get("access_token")
-        new_refresh_token = token_data.get("refresh_token", refresh_token)
-        expires_in = token_data.get("expires_in")
+        # Update token in database
+        new_access_token = result.get("access_token")
+        new_refresh_token = result.get("refresh_token") or refresh_token  # Keep old if not returned
+        expires_at = result.get("expires_at")
 
         if not new_access_token:
             logger.error(f"No access token in refresh response for {provider.provider_name}")
             return False
 
         # Encrypt and store new tokens
-        token.encrypted_access_token = encrypt_data(new_access_token)
-        token.encrypted_refresh_token = encrypt_data(new_refresh_token)
-
-        # Update expiration
-        if expires_in:
-            token.expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
-        else:
-            # Default to 1 hour if not specified
-            token.expires_at = datetime.utcnow() + timedelta(hours=1)
+        token.encrypted_access_token = encrypt_secret(new_access_token).encode()
+        token.encrypted_refresh_token = encrypt_secret(new_refresh_token).encode()
+        token.expires_at = expires_at
 
         # Update scopes if returned
-        new_scopes = token_data.get("scope")
+        new_scopes = result.get("scope")
         if new_scopes:
             token.scopes = new_scopes.split(" ")
 
         # Update provider status
-        provider.status = "connected"
+        provider.status = "completed"
         provider.last_token_refresh = datetime.utcnow()
         provider.status_message = None
 
@@ -217,6 +242,6 @@ async def _refresh_single_token(
     except Exception as e:
         logger.error(f"Error refreshing token: {e}", exc_info=True)
         # Update provider status to indicate error
-        provider.status = "error"
+        provider.status = "failed"
         provider.status_message = f"Token refresh failed: {str(e)[:200]}"
         return False

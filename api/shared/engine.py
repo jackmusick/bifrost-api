@@ -23,6 +23,14 @@ from src.repositories.execution_logs import get_execution_logs_repository
 
 logger = logging.getLogger(__name__)
 
+# Import sync logging for real-time log persistence from workflow threads
+try:
+    from bifrost._db import append_log_sync
+    SYNC_LOGGING_AVAILABLE = True
+except ImportError:
+    SYNC_LOGGING_AVAILABLE = False
+    append_log_sync = None  # type: ignore
+
 # Import bifrost context management for SDK support
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
@@ -656,33 +664,29 @@ async def _execute_workflow_with_trace(
                 # Persist and broadcast immediately - direct synchronous calls
                 # This ensures real-time log streaming (not buffered until end)
                 try:
-                    logs_repo = get_execution_logs_repository()
+                    # Use sync logging (psycopg2) to avoid event loop issues
+                    # Workflows run in separate threads with their own event loop,
+                    # so async DB calls would fail with "attached to different loop"
+                    if SYNC_LOGGING_AVAILABLE and append_log_sync:
+                        append_log_sync(
+                            execution_id=execution_id,
+                            level=record.levelname,
+                            message=record.getMessage(),
+                        )
+                    # Fallback: skip real-time persistence (logs saved in batch at end)
 
-                    # Direct synchronous calls - no async/await
-                    # Synchronous execution is critical for real-time streaming
-                    logs_repo.append_log(
-                        execution_id=execution_id,
-                        level=record.levelname,
-                        message=record.getMessage(),
-                        source="workflow"
-                    )
-
-                    # Fire off async broadcast in background thread (non-blocking)
-                    # Using threading.Thread instead of ThreadPoolExecutor to avoid blocking
-                    import asyncio
-
+                    # Broadcast log in background thread (non-blocking)
+                    # Broadcaster is sync so we can call directly
                     def run_broadcast():
-                        """Run async broadcast in separate thread with its own event loop"""
+                        """Run sync broadcast in background thread"""
                         try:
-                            asyncio.run(
-                                broadcaster.broadcast_execution_update(
-                                    execution_id=execution_id,
-                                    status="Running",
-                                    executed_by=context.user_id,
-                                    scope=context.org_id or "GLOBAL",
-                                    latest_logs=[log_dict],
-                                    is_complete=False
-                                )
+                            broadcaster.broadcast_execution_update(
+                                execution_id=execution_id,
+                                status="Running",
+                                executed_by=context.user_id,
+                                scope=context.org_id or "GLOBAL",
+                                latest_logs=[log_dict],
+                                is_complete=False
                             )
                         except Exception:
                             # Silently ignore errors in background thread
@@ -858,6 +862,11 @@ async def _execute_workflow_with_trace(
             This allows blocking code (like time.sleep) to not block the main event loop,
             enabling concurrent workflow execution.
             """
+            # Propagate ContextVar to this thread for SDK support
+            # ContextVars don't automatically cross thread boundaries
+            if BIFROST_CONTEXT_AVAILABLE:
+                set_execution_context(context)
+
             # Set up trace function in this thread (trace is per-thread)
             sys.settrace(chained_trace_func if existing_trace else trace_func)
             try:
@@ -866,6 +875,9 @@ async def _execute_workflow_with_trace(
             finally:
                 # Clear trace function
                 sys.settrace(None)
+                # Clear context in this thread
+                if BIFROST_CONTEXT_AVAILABLE:
+                    clear_execution_context()
 
         # Run user code in thread pool to handle blocking operations
         # This allows multiple workflows to run concurrently even if they use blocking calls

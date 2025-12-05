@@ -11,6 +11,7 @@ import { SourceControlPanel } from "./SourceControlPanel";
 import { FileTabs } from "./FileTabs";
 import { useEditorStore } from "@/stores/editorStore";
 import { useCmdCtrlShortcut } from "@/contexts/KeyboardContext";
+import { UploadProgressProvider } from "@/hooks/useUploadProgress";
 import {
 	X,
 	Save,
@@ -190,123 +191,125 @@ export function EditorLayout() {
 	}
 
 	return (
-		<div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
-			{/* Top bar with close button */}
-			<div className="flex h-10 items-center justify-between border-b bg-muted/30 px-3">
-				<div className="flex items-center gap-2">
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-6 w-6"
-						onClick={() => setSidebarVisible(!sidebarVisible)}
-						title={`${
-							sidebarVisible ? "Hide" : "Show"
-						} Sidebar (Cmd+B)`}
-					>
-						{sidebarVisible ? (
-							<PanelLeftClose className="h-4 w-4" />
-						) : (
-							<PanelLeft className="h-4 w-4" />
-						)}
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-6 w-6"
-						onClick={manualSave}
-						disabled={!unsavedChanges || saveState === "saving"}
-						title="Save (Cmd+S)"
-					>
-						<Save className="h-4 w-4" />
-					</Button>
-					{openFile && (
-						<span className="text-sm">{openFile.path}</span>
-					)}
-				</div>
-				<div className="flex gap-1">
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-6 w-6"
-						onClick={minimizeEditor}
-						title="Minimize"
-					>
-						<Minus className="h-3 w-3" />
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-6 w-6"
-						onClick={() => closeEditor()}
-						title="Close"
-					>
-						<X className="h-3 w-3" />
-					</Button>
-				</div>
-			</div>
-
-			{/* Main content area */}
-			<div className="flex flex-1 overflow-hidden">
-				{/* Left sidebar with icon navigation */}
-				{sidebarVisible && <Sidebar />}
-
-				{/* Panel content area */}
-				{sidebarVisible && (
-					<div
-						ref={sidebarRef}
-						className="flex flex-col overflow-hidden border-r relative"
-						style={{ width: `${sidebarWidth}px` }}
-					>
-						<div className="flex-1 overflow-hidden">
-							{sidebarPanel === "files" && <FileTree />}
-							{sidebarPanel === "search" && <SearchPanel />}
-							{sidebarPanel === "sourceControl" && (
-								<SourceControlPanel />
+		<UploadProgressProvider>
+			<div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
+				{/* Top bar with close button */}
+				<div className="flex h-10 items-center justify-between border-b bg-muted/30 px-3">
+					<div className="flex items-center gap-2">
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-6 w-6"
+							onClick={() => setSidebarVisible(!sidebarVisible)}
+							title={`${
+								sidebarVisible ? "Hide" : "Show"
+							} Sidebar (Cmd+B)`}
+						>
+							{sidebarVisible ? (
+								<PanelLeftClose className="h-4 w-4" />
+							) : (
+								<PanelLeft className="h-4 w-4" />
 							)}
-							{sidebarPanel === "run" && <RunPanel />}
-							{sidebarPanel === "packages" && <PackagePanel />}
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-6 w-6"
+							onClick={manualSave}
+							disabled={!unsavedChanges || saveState === "saving"}
+							title="Save (Cmd+S)"
+						>
+							<Save className="h-4 w-4" />
+						</Button>
+						{openFile && (
+							<span className="text-sm">{openFile.path}</span>
+						)}
+					</div>
+					<div className="flex gap-1">
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-6 w-6"
+							onClick={minimizeEditor}
+							title="Minimize"
+						>
+							<Minus className="h-3 w-3" />
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-6 w-6"
+							onClick={() => closeEditor()}
+							title="Close"
+						>
+							<X className="h-3 w-3" />
+						</Button>
+					</div>
+				</div>
+
+				{/* Main content area */}
+				<div className="flex flex-1 overflow-hidden">
+					{/* Left sidebar with icon navigation */}
+					{sidebarVisible && <Sidebar />}
+
+					{/* Panel content area */}
+					{sidebarVisible && (
+						<div
+							ref={sidebarRef}
+							className="flex flex-col overflow-hidden border-r relative"
+							style={{ width: `${sidebarWidth}px` }}
+						>
+							<div className="flex-1 overflow-hidden">
+								{sidebarPanel === "files" && <FileTree />}
+								{sidebarPanel === "search" && <SearchPanel />}
+								{sidebarPanel === "sourceControl" && (
+									<SourceControlPanel />
+								)}
+								{sidebarPanel === "run" && <RunPanel />}
+								{sidebarPanel === "packages" && <PackagePanel />}
+							</div>
+
+							{/* Resize handle */}
+							<div
+								className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors"
+								onMouseDown={handleMouseDown}
+								style={{
+									cursor: isResizing
+										? "col-resize"
+										: "col-resize",
+								}}
+							/>
+						</div>
+					)}
+
+					{/* Editor area with tabs and terminal */}
+					<div
+						className="flex flex-1 flex-col overflow-hidden"
+						ref={editorRef}
+					>
+						{/* File tabs */}
+						<FileTabs />
+
+						{/* Editor */}
+						<div className="flex-1 overflow-hidden">
+							<CodeEditor />
 						</div>
 
-						{/* Resize handle */}
+						{/* Terminal area (resizable, under editor only) */}
 						<div
-							className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors"
-							onMouseDown={handleMouseDown}
-							style={{
-								cursor: isResizing
-									? "col-resize"
-									: "col-resize",
-							}}
-						/>
-					</div>
-				)}
-
-				{/* Editor area with tabs and terminal */}
-				<div
-					className="flex flex-1 flex-col overflow-hidden"
-					ref={editorRef}
-				>
-					{/* File tabs */}
-					<FileTabs />
-
-					{/* Editor */}
-					<div className="flex-1 overflow-hidden">
-						<CodeEditor />
-					</div>
-
-					{/* Terminal area (resizable, under editor only) */}
-					<div
-						className="border-t overflow-hidden"
-						style={{ height: `${terminalHeight}px` }}
-					>
-						<TerminalPanel
-							onResizeStart={handleTerminalMouseDown}
-						/>
+							className="border-t overflow-hidden"
+							style={{ height: `${terminalHeight}px` }}
+						>
+							<TerminalPanel
+								onResizeStart={handleTerminalMouseDown}
+							/>
+						</div>
 					</div>
 				</div>
-			</div>
 
-			{/* Status bar */}
-			<StatusBar />
-		</div>
+				{/* Status bar (includes upload progress) */}
+				<StatusBar />
+			</div>
+		</UploadProgressProvider>
 	);
 }

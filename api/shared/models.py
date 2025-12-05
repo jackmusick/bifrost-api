@@ -1663,6 +1663,11 @@ class CreateOAuthConnectionRequest(BaseModel):
         max_length=100,
         description="Unique connection identifier (alphanumeric, underscores, hyphens)"
     )
+    name: str | None = Field(
+        None,
+        max_length=255,
+        description="Display name for the connection (defaults to connection_name)"
+    )
     description: str | None = Field(
         None,
         max_length=500,
@@ -1740,11 +1745,26 @@ class UpdateOAuthConnectionRequest(BaseModel):
     Request model for updating an OAuth connection
     PUT /api/oauth/connections/{connection_name}
     """
+    name: str | None = Field(None, max_length=255, description="Display name")
     client_id: str | None = Field(None, min_length=1)
     client_secret: str | None = Field(None, min_length=1)
     authorization_url: str | None = Field(None, pattern=r"^https://")
     token_url: str | None = Field(None, pattern=r"^https://")
-    scopes: str | None = None
+    scopes: list[str] | None = Field(None, description="List of OAuth scopes")
+
+    @field_validator('scopes', mode='before')
+    @classmethod
+    def parse_scopes(cls, v):
+        """Accept scopes as string (space or comma separated) or list."""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            # Handle both comma-separated and space-separated
+            # First replace commas with spaces, then split
+            return [s.strip() for s in v.replace(',', ' ').split() if s.strip()]
+        return v
 
 
 class OAuthConnectionSummary(BaseModel):
@@ -1755,6 +1775,8 @@ class OAuthConnectionSummary(BaseModel):
     Does not include sensitive fields or detailed configuration
     """
     connection_name: str
+    name: str | None = Field(None, description="Display name for the connection")
+    provider: str | None = Field(None, description="Provider identifier (same as connection_name)")
     description: str | None = None
     oauth_flow_type: OAuthFlowType
     status: OAuthStatus
@@ -1768,6 +1790,7 @@ class OAuthConnectionSummary(BaseModel):
         description="Last successful token refresh"
     )
     created_at: datetime
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1780,6 +1803,8 @@ class OAuthConnectionDetail(BaseModel):
     Includes configuration details but masks sensitive fields
     """
     connection_name: str
+    name: str | None = Field(None, description="Display name for the connection")
+    provider: str | None = Field(None, description="Provider identifier")
     description: str | None = None
     oauth_flow_type: OAuthFlowType
     client_id: str = Field(
@@ -1905,19 +1930,24 @@ class OAuthConnection(BaseModel):
         """Convert to summary response model"""
         return OAuthConnectionSummary(
             connection_name=self.connection_name,
+            name=None,
+            provider=self.connection_name,
             description=self.description,
             oauth_flow_type=self.oauth_flow_type,
             status=self.status,
             status_message=self.status_message,
             expires_at=self.expires_at,
             last_refresh_at=self.last_refresh_at,
-            created_at=self.created_at
+            created_at=self.created_at,
+            updated_at=self.updated_at,
         )
 
     def to_detail(self) -> OAuthConnectionDetail:
         """Convert to detail response model (masks secrets)"""
         return OAuthConnectionDetail(
             connection_name=self.connection_name,
+            name=None,
+            provider=self.connection_name,
             description=self.description,
             oauth_flow_type=self.oauth_flow_type,
             client_id=self.client_id,
@@ -1932,7 +1962,7 @@ class OAuthConnection(BaseModel):
             last_test_at=self.last_test_at,
             created_at=self.created_at,
             created_by=self.created_by,
-            updated_at=self.updated_at
+            updated_at=self.updated_at,
         )
 
     model_config = ConfigDict(from_attributes=True)

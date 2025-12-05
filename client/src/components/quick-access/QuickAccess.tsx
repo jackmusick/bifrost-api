@@ -5,7 +5,7 @@ import { useEditorStore } from "@/stores/editorStore";
 import { useForms } from "@/hooks/useForms";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { fileService } from "@/services/fileService";
-import { searchService } from "@/services/searchService";
+import { searchService, type SearchResult as ApiSearchResult } from "@/services/searchService";
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -111,13 +111,13 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 				});
 
 				const scriptResults = scriptsResponse.results.map(
-					(result: any) => ({
+					(result: ApiSearchResult) => ({
 						type: "script" as const,
 						name:
 							result.file_path.split("/").pop() ||
 							result.file_path,
-						description: result.line_text
-							? `Line ${result.line_number}: ${result.line_text.trim()}`
+						description: result.match_text
+							? `Line ${result.line}: ${result.match_text.trim()}`
 							: "",
 						path: result.file_path,
 					}),

@@ -243,7 +243,15 @@ def import_module_fresh(file_path: Path) -> ModuleType:
     if not module_name:
         module_name = file_path.stem
 
-    # 5. Fresh import
+    # 5. Add workspace paths to sys.path for relative imports (e.g., from modules.rewst import ...)
+    # NOTE: We keep these paths in sys.path permanently (like function_app.py did on Azure)
+    # because workflows need them during execution, not just during import
+    for wp in workspace_paths:
+        wp_str = str(wp)
+        if wp_str not in sys.path:
+            sys.path.insert(0, wp_str)
+
+    # 6. Fresh import
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if not spec or not spec.loader:
         raise ImportError(f"Could not create module spec for {file_path}")
@@ -684,10 +692,13 @@ def _convert_parameters(params: list) -> list[WorkflowParameter]:
 
 def _import_file_fresh(file_path: Path) -> ModuleType:
     """
-    Import a single file fresh - O(1) not O(n).
+    Import a single file fresh with proper cache clearing.
 
-    Unlike import_module_fresh() which clears ALL workspace modules,
-    this only clears and reimports the specific file requested.
+    This function ensures the latest code is always executed by:
+    1. Clearing ALL workspace modules from sys.modules (not just the target file)
+    2. Deleting .pyc files for the target module
+    3. Adding workspace paths to sys.path for relative imports
+    4. Invalidating import caches
 
     Args:
         file_path: Path to the Python file to import
@@ -695,13 +706,15 @@ def _import_file_fresh(file_path: Path) -> ModuleType:
     Returns:
         The imported module
     """
+    workspace_paths = get_workspace_paths()
+
+    # Clear ALL workspace modules to ensure dependent modules are also reloaded
+    # This is critical for workflows that import from helper modules
+    _clear_workspace_modules(workspace_paths)
+
     module_name = file_path.stem
 
-    # Remove ONLY this module from sys.modules
-    if module_name in sys.modules:
-        del sys.modules[module_name]
-
-    # Delete ONLY this file's .pyc files
+    # Delete this file's .pyc files
     pycache = file_path.parent / '__pycache__'
     if pycache.exists():
         for pyc in pycache.glob(f'{module_name}.*.pyc'):
@@ -712,34 +725,44 @@ def _import_file_fresh(file_path: Path) -> ModuleType:
 
     importlib.invalidate_caches()
 
-    # Fresh import
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if not spec or not spec.loader:
-        raise ImportError(f"Could not create module spec for {file_path}")
-
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
+    # Add workspace paths to sys.path for relative imports (e.g., from modules.rewst import ...)
+    paths_added: list[str] = []
+    for wp in workspace_paths:
+        wp_str = str(wp)
+        if wp_str not in sys.path:
+            sys.path.insert(0, wp_str)
+            paths_added.append(wp_str)
 
     try:
-        spec.loader.exec_module(module)
-    except Exception as e:
-        if module_name in sys.modules:
-            del sys.modules[module_name]
-        raise ImportError(f"Failed to import {file_path}: {e}") from e
+        # Fresh import
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if not spec or not spec.loader:
+            raise ImportError(f"Could not create module spec for {file_path}")
 
-    return module
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+
+        try:
+            spec.loader.exec_module(module)
+        except Exception as e:
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+            raise ImportError(f"Failed to import {file_path}: {e}") from e
+
+        return module
+    finally:
+        # Clean up: remove workspace paths we added to sys.path
+        for p in paths_added:
+            if p in sys.path:
+                sys.path.remove(p)
 
 
 def get_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
     """
-    Get a workflow by name using watchdog index.
+    Get a workflow by name.
 
-    This is the efficient version that:
-    1. Uses O(1) index lookup to find the file
-    2. Imports only that single file fresh
-    3. Returns the function and metadata
-
-    Falls back to full scan if watchdog isn't running.
+    Uses the same import logic as load_workflow() to ensure correct
+    module paths and __file__ resolution.
 
     Args:
         name: Workflow name
@@ -747,42 +770,17 @@ def get_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
     Returns:
         Tuple of (function, metadata) or None if not found
     """
-    # Try watchdog index first
-    try:
-        from shared.discovery_watcher import get_workflow_path
-
-        file_path = get_workflow_path(name)
-        if file_path:
-            module = _import_file_fresh(Path(file_path))
-
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if callable(attr) and hasattr(attr, '_workflow_metadata'):
-                    metadata = attr._workflow_metadata
-                    if hasattr(metadata, 'name') and metadata.name == name:
-                        if isinstance(metadata, WorkflowMetadata):
-                            return (attr, metadata)
-                        else:
-                            return (attr, _convert_workflow_metadata(metadata))
-
-    except ImportError:
-        # Watchdog not available, fall back to full scan
-        logger.debug("Watchdog not available, falling back to load_workflow()")
-
-    # Fall back to full scan
+    # Use load_workflow which properly handles module imports
+    # This ensures __file__ and sys.path are set correctly
     return load_workflow(name)
 
 
 def get_data_provider(name: str) -> tuple[Callable, DataProviderMetadata] | None:
     """
-    Get a data provider by name using watchdog index.
+    Get a data provider by name.
 
-    This is the efficient version that:
-    1. Uses O(1) index lookup to find the file
-    2. Imports only that single file fresh
-    3. Returns the function and metadata
-
-    Falls back to full scan if watchdog isn't running.
+    Uses the same import logic as load_data_provider() to ensure correct
+    module paths and __file__ resolution.
 
     Args:
         name: Data provider name
@@ -790,29 +788,7 @@ def get_data_provider(name: str) -> tuple[Callable, DataProviderMetadata] | None
     Returns:
         Tuple of (function, metadata) or None if not found
     """
-    # Try watchdog index first
-    try:
-        from shared.discovery_watcher import get_provider_path
-
-        file_path = get_provider_path(name)
-        if file_path:
-            module = _import_file_fresh(Path(file_path))
-
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if callable(attr) and hasattr(attr, '_data_provider_metadata'):
-                    metadata = attr._data_provider_metadata
-                    if hasattr(metadata, 'name') and metadata.name == name:
-                        if isinstance(metadata, DataProviderMetadata):
-                            return (attr, metadata)
-                        else:
-                            return (attr, _convert_data_provider_metadata(metadata))
-
-    except ImportError:
-        # Watchdog not available, fall back to full scan
-        logger.debug("Watchdog not available, falling back to load_data_provider()")
-
-    # Fall back to full scan
+    # Use load_data_provider which properly handles module imports
     return load_data_provider(name)
 
 

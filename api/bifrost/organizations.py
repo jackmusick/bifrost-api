@@ -3,23 +3,34 @@ Organization management SDK for Bifrost.
 
 Provides Python API for organization operations from workflows.
 
-All methods are async and must be called with await.
+All methods are synchronous and can be called directly (no await needed).
 """
 
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
-from shared.handlers.organizations_handlers import (
-    create_organization_logic,
-    delete_organization_logic,
-    get_organization_logic,
-    list_organizations_logic,
-    update_organization_logic,
-)
-from shared.models import Organization
+from sqlalchemy import select
 
+from shared.models import Organization as OrganizationSchema
+from src.models.orm import Organization
+
+from ._db import get_sync_session
 from ._internal import get_context, require_admin
+
+
+def _org_to_schema(org: Organization) -> OrganizationSchema:
+    """Convert ORM Organization to Pydantic OrganizationSchema."""
+    return OrganizationSchema(
+        id=str(org.id),
+        name=org.name,
+        domain=org.domain,
+        is_active=org.is_active,
+        created_by=org.created_by,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+    )
 
 
 class organizations:
@@ -27,11 +38,11 @@ class organizations:
     Organization management operations.
 
     All methods enforce permissions via the execution context.
-    All methods are async and must be awaited.
+    All methods are synchronous - no await needed.
     """
 
     @staticmethod
-    async def create(name: str, domain: str | None = None, is_active: bool = True) -> Organization:
+    def create(name: str, domain: str | None = None, is_active: bool = True) -> OrganizationSchema:
         """
         Create a new organization.
 
@@ -52,19 +63,24 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> org = await organizations.create("Acme Corp", domain="acme.com")
+            >>> org = organizations.create("Acme Corp", domain="acme.com")
         """
         context = require_admin()
 
-        return await create_organization_logic(
-            context=context,
-            name=name,
-            domain=domain,
-            is_active=is_active
-        )
+        with get_sync_session() as db:
+            org = Organization(
+                name=name,
+                domain=domain,
+                is_active=is_active,
+                created_by=context.user_id,
+            )
+            db.add(org)
+            db.flush()
+            db.refresh(org)
+            return _org_to_schema(org)
 
     @staticmethod
-    async def get(org_id: str) -> Organization:
+    def get(org_id: str) -> OrganizationSchema:
         """
         Get organization by ID.
 
@@ -80,20 +96,20 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> org = await organizations.get("org-123")
+            >>> org = organizations.get("org-123")
             >>> print(org.name)
         """
-        context = get_context()
+        get_context()  # Validates user is authenticated
+        org_uuid = UUID(org_id)
 
-        org = await get_organization_logic(context, org_id)
-
-        if not org:
-            raise ValueError(f"Organization not found: {org_id}")
-
-        return org
+        with get_sync_session() as db:
+            org = db.get(Organization, org_uuid)
+            if not org:
+                raise ValueError(f"Organization not found: {org_id}")
+            return _org_to_schema(org)
 
     @staticmethod
-    async def list() -> list[Organization]:
+    def list() -> list[OrganizationSchema]:
         """
         List all organizations.
 
@@ -108,16 +124,23 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> orgs = await organizations.list()
+            >>> orgs = organizations.list()
             >>> for org in orgs:
             ...     print(f"{org.name}: {org.domain}")
         """
-        context = require_admin()
+        require_admin()
 
-        return await list_organizations_logic(context)
+        with get_sync_session() as db:
+            query = (
+                select(Organization)
+                .where(Organization.is_active == True)
+                .order_by(Organization.name)
+            )
+            result = db.execute(query)
+            return [_org_to_schema(o) for o in result.scalars().all()]
 
     @staticmethod
-    async def update(org_id: str, **updates: Any) -> Organization:
+    def update(org_id: str, **updates: Any) -> OrganizationSchema:
         """
         Update an organization.
 
@@ -125,7 +148,7 @@ class organizations:
 
         Args:
             org_id: Organization ID
-            **updates: Fields to update (name, domain, isActive)
+            **updates: Fields to update (name, domain, is_active)
 
         Returns:
             Organization: Updated organization object
@@ -137,25 +160,31 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> org = await organizations.update("org-123", name="New Name")
+            >>> org = organizations.update("org-123", name="New Name")
         """
-        context = require_admin()
+        require_admin()
+        org_uuid = UUID(org_id)
 
-        org = await update_organization_logic(
-            context=context,
-            org_id=org_id,
-            **updates
-        )
+        with get_sync_session() as db:
+            org = db.get(Organization, org_uuid)
+            if not org:
+                raise ValueError(f"Organization not found: {org_id}")
 
-        if not org:
-            raise ValueError(f"Organization not found: {org_id}")
+            if 'name' in updates:
+                org.name = updates['name']
+            if 'domain' in updates:
+                org.domain = updates['domain']
+            if 'is_active' in updates:
+                org.is_active = updates['is_active']
 
-        return org
+            db.flush()
+            db.refresh(org)
+            return _org_to_schema(org)
 
     @staticmethod
-    async def delete(org_id: str) -> bool:
+    def delete(org_id: str) -> bool:
         """
-        Delete an organization.
+        Delete an organization (soft delete - sets is_active to false).
 
         Requires: Platform admin privileges
 
@@ -172,8 +201,14 @@ class organizations:
 
         Example:
             >>> from bifrost import organizations
-            >>> deleted = await organizations.delete("org-123")
+            >>> deleted = organizations.delete("org-123")
         """
-        context = require_admin()
+        require_admin()
+        org_uuid = UUID(org_id)
 
-        return await delete_organization_logic(context, org_id)
+        with get_sync_session() as db:
+            org = db.get(Organization, org_uuid)
+            if not org:
+                raise ValueError(f"Organization not found: {org_id}")
+            org.is_active = False
+            return True
