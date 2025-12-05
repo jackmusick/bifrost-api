@@ -217,19 +217,20 @@ class TestWorkflowParameterExecution:
             )
 
     @pytest.mark.asyncio
-    async def test_extra_parameters_injected_as_globals(self, mock_context):
-        """Test that extra parameters (not in function signature) are injected as globals"""
+    async def test_extra_parameters_stored_in_context(self, mock_context):
+        """Test that extra parameters (not in function signature) are stored in context.parameters"""
         @workflow(name="extra_params_workflow", description="Extra params")
         @param("expected_param", type="string", required=True)
         async def extra_params_workflow(
             context: ExecutionContext,
             expected_param: str
         ):
-            # extra_global_var should be available even though not in signature
-            # because engine injects it into function's globals
+            # extra params are now available via context.parameters (not globals)
+            # This avoids race conditions when concurrent workflows share the same module
             return {
                 "expected": expected_param,
-                "has_extra": "extra_global_var" in globals()
+                "extra_from_context": context.parameters.get("extra_param"),
+                "all_extra_params": dict(context.parameters)
             }
 
         result, captured_vars, _ = await _execute_workflow_with_trace(
@@ -237,14 +238,17 @@ class TestWorkflowParameterExecution:
             mock_context,
             {
                 "expected_param": "value1",
-                "extra_global_var": "value2"
+                "extra_param": "value2"
             }
         )
 
         assert result["expected"] == "value1"
-        # Extra params should be captured in variables
-        assert "extra_global_var" in captured_vars
-        assert captured_vars["extra_global_var"] == "value2"
+        # Extra params should be accessible via context.parameters
+        assert result["extra_from_context"] == "value2"
+        assert result["all_extra_params"] == {"extra_param": "value2"}
+        # Extra params should also be captured in variables for execution details
+        assert "extra_param" in captured_vars
+        assert captured_vars["extra_param"] == "value2"
 
     @pytest.mark.asyncio
     async def test_workflow_with_var_keyword_accepts_all_params(self, mock_context):

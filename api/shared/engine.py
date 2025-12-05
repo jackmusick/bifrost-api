@@ -66,9 +66,17 @@ except ImportError:
     cleanup_execution_cache = None  # type: ignore
     flush_pending_changes = None  # type: ignore
 
-
-# Simple in-memory cache for data provider results
-_cache: dict[str, dict[str, Any]] = {}
+# Import Redis-backed data provider cache
+try:
+    from shared.cache import (
+        get_cached_data_provider,
+        cache_data_provider_result,
+    )
+    DATA_PROVIDER_CACHE_AVAILABLE = True
+except ImportError:
+    DATA_PROVIDER_CACHE_AVAILABLE = False
+    get_cached_data_provider = None  # type: ignore
+    cache_data_provider_result = None  # type: ignore
 
 
 @dataclass
@@ -214,14 +222,14 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
 
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            # Check cache for data providers
-            if is_data_provider and not request.no_cache:
-                cache_key = _compute_cache_key(
+            # Check Redis cache for data providers
+            if is_data_provider and not request.no_cache and DATA_PROVIDER_CACHE_AVAILABLE and get_cached_data_provider:
+                org_id = request.organization.id if request.organization else None
+                cached_result = await get_cached_data_provider(
+                    org_id,
                     request.name or "",
-                    request.parameters,
-                    request.organization.id if request.organization else None
+                    request.parameters
                 )
-                cached_result = _check_cache(cache_key)
                 if cached_result:
                     return _build_cached_result(
                         request.execution_id,
@@ -247,15 +255,17 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                 broadcaster=request.broadcaster
             )
 
-            # Cache if data provider
-            if is_data_provider:
-                cache_key = _compute_cache_key(
+            # Cache result to Redis if data provider
+            if is_data_provider and DATA_PROVIDER_CACHE_AVAILABLE and cache_data_provider_result:
+                org_id = request.organization.id if request.organization else None
+                expires_at = await cache_data_provider_result(
+                    org_id,
                     request.name or "",
                     request.parameters,
-                    request.organization.id if request.organization else None
+                    result,
+                    request.cache_ttl_seconds
                 )
-                expires_at = _cache_result(cache_key, result, request.cache_ttl_seconds)
-                cache_expires_at_str = expires_at.isoformat() + "Z"
+                cache_expires_at_str = expires_at.isoformat()
 
         # Process captured logs (from scripts or workflows with platform admin)
         logger.info(
@@ -835,9 +845,6 @@ async def _execute_workflow_with_trace(
             return existing_trace(frame, event, arg)
         return chained_trace_func
 
-    # Track extra params injected into globals for cleanup
-    injected_extra_params: list[str] = []
-
     try:
         # Inspect function signature to determine if it expects context parameter
         sig = inspect.signature(func)
@@ -865,16 +872,13 @@ async def _execute_workflow_with_trace(
                 k: v for k, v in parameters.items() if k not in accepted_param_names
             }
 
-        # Inject extra params into the function's module globals
-        # This makes them available as variables in the workflow and captured in execution trace
-        # Similar to PowerShell's Set-Variable for dynamic variable injection
+        # Store extra params in context.parameters instead of injecting into globals
+        # This avoids race conditions when concurrent workflows share the same module
+        # Workflows can access via: context.parameters.get('param_name')
         if extra_params:
-            func_globals = func.__globals__
+            context.parameters = extra_params
+            # Also add to captured_vars so they appear in execution details
             for key, value in extra_params.items():
-                # Track what we inject for cleanup
-                injected_extra_params.append(key)
-                func_globals[key] = value
-                # Also add to captured_vars so they appear in execution details
                 captured_vars[key] = remove_circular_refs(value)
 
         # Check if first parameter is for context (by type annotation OR by name as fallback)
@@ -1000,92 +1004,14 @@ async def _execute_workflow_with_trace(
         # Note: trace function cleanup is handled in _run_workflow_in_thread
         # Clean up the logging handler
         root_logger.removeHandler(handler)
-        # Clean up injected extra params from globals to avoid polluting the module namespace
-        if injected_extra_params:
-            func_globals = func.__globals__
-            for key in injected_extra_params:
-                func_globals.pop(key, None)
+        # Note: Extra params are now stored in context.parameters instead of being
+        # injected into func.__globals__, so no cleanup needed here
 
     # Re-raise exception if one occurred (after cleanup and variable capture)
     if exception_to_raise:
         raise exception_to_raise
 
     return result, captured_vars, workflow_logs
-
-
-def _compute_cache_key(name: str, parameters: dict[str, Any], org_id: str | None) -> str:
-    """
-    Compute cache key for data provider.
-
-    Args:
-        name: Function name
-        parameters: Input parameters
-        org_id: Organization ID (optional)
-
-    Returns:
-        Cache key string
-    """
-    import hashlib
-    import json
-
-    if not parameters:
-        return f"{org_id}:{name}" if org_id else name
-
-    # Sort keys for deterministic hash
-    param_str = json.dumps(parameters, sort_keys=True)
-    param_hash = hashlib.sha256(param_str.encode()).hexdigest()[:16]
-
-    if org_id:
-        return f"{org_id}:{name}:{param_hash}"
-    else:
-        return f"{name}:{param_hash}"
-
-
-def _check_cache(cache_key: str) -> Any | None:
-    """
-    Check if cached result exists and is still valid.
-
-    Args:
-        cache_key: Cache key to check
-
-    Returns:
-        Cached result if valid, None otherwise
-    """
-    if cache_key not in _cache:
-        return None
-
-    cached_entry = _cache[cache_key]
-    expires_at = cached_entry['expires_at']
-
-    # Check if cache is still valid
-    if datetime.utcnow() < expires_at:
-        logger.info(f"Cache hit for key: {cache_key}")
-        return cached_entry
-    else:
-        # Cache expired, remove it
-        del _cache[cache_key]
-        return None
-
-
-def _cache_result(cache_key: str, result: Any, ttl_seconds: int) -> datetime:
-    """
-    Cache execution result.
-
-    Args:
-        cache_key: Cache key
-        result: Result to cache
-        ttl_seconds: Time to live in seconds
-
-    Returns:
-        Expiration datetime
-    """
-    expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
-    _cache[cache_key] = {
-        'data': result,
-        'expires_at': expires_at
-    }
-    logger.info(f"Cached result for key: {cache_key} (TTL: {ttl_seconds}s)")
-    return expires_at
 
 
 def _build_cached_result(
@@ -1098,7 +1024,7 @@ def _build_cached_result(
 
     Args:
         execution_id: Execution ID
-        cached_entry: Cached entry with data and expires_at
+        cached_entry: Cached entry with 'data' and 'expires_at' (string) keys
         start_time: Execution start time
 
     Returns:
@@ -1106,6 +1032,11 @@ def _build_cached_result(
     """
     end_time = datetime.utcnow()
     duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+    # expires_at comes as ISO string from Redis cache
+    expires_at = cached_entry.get('expires_at', '')
+    if not expires_at.endswith('Z') and '+' not in expires_at:
+        expires_at = expires_at + 'Z'
 
     return ExecutionResult(
         execution_id=execution_id,
@@ -1116,5 +1047,5 @@ def _build_cached_result(
         variables=None,
         integration_calls=[],
         cached=True,
-        cache_expires_at=cached_entry['expires_at'].isoformat() + "Z"
+        cache_expires_at=expires_at
     )

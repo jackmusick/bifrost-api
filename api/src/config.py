@@ -82,6 +82,26 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
+    # Process Isolation (Execution Workers)
+    # ==========================================================================
+    worker_pool_size: int = Field(
+        default=4,
+        description="Number of worker processes in the execution pool"
+    )
+    execution_timeout_seconds: int = Field(
+        default=300,
+        description="Default execution timeout in seconds (5 minutes)"
+    )
+    graceful_shutdown_seconds: int = Field(
+        default=3,
+        description="Seconds to wait after SIGTERM before SIGKILL"
+    )
+    cancel_check_interval_ms: int = Field(
+        default=250,
+        description="How often to check for cancellation (milliseconds)"
+    )
+
+    # ==========================================================================
     # Redis
     # ==========================================================================
     redis_url: str = Field(

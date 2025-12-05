@@ -270,6 +270,11 @@ async def get_current_superuser(
     return user
 
 
+# Dependency for requiring platform admin access
+# Usage: dependencies=[RequirePlatformAdmin]
+RequirePlatformAdmin = Depends(get_current_superuser)
+
+
 async def get_execution_context(
     request: Request,
     user: Annotated[UserPrincipal, Depends(get_current_active_user)],

@@ -49,6 +49,7 @@ async def update_execution(
     duration_ms: int | None = None,
     logs: list[dict] | None = None,
     variables: dict | None = None,
+    metrics: dict | None = None,
 ) -> None:
     """
     Update an execution record.
@@ -64,6 +65,7 @@ async def update_execution(
         duration_ms: Execution duration in milliseconds
         logs: Execution logs
         variables: Runtime variables
+        metrics: Resource metrics (peak_memory_bytes, cpu_user_seconds, etc.)
     """
     session_factory = get_session_factory()
     async with session_factory() as db:
@@ -102,6 +104,17 @@ async def update_execution(
 
         if variables is not None:
             update_values["variables"] = variables
+
+        # Resource metrics
+        if metrics is not None:
+            if "peak_memory_bytes" in metrics:
+                update_values["peak_memory_bytes"] = metrics["peak_memory_bytes"]
+            if "cpu_user_seconds" in metrics:
+                update_values["cpu_user_seconds"] = metrics["cpu_user_seconds"]
+            if "cpu_system_seconds" in metrics:
+                update_values["cpu_system_seconds"] = metrics["cpu_system_seconds"]
+            if "cpu_total_seconds" in metrics:
+                update_values["cpu_total_seconds"] = metrics["cpu_total_seconds"]
 
         # Execute update
         await db.execute(

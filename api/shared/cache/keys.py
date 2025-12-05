@@ -153,6 +153,38 @@ def orgs_list_key() -> str:
 
 
 # =============================================================================
+# Execution-Scoped Keys (Process Isolation)
+# =============================================================================
+
+
+def execution_context_key(execution_id: str) -> str:
+    """
+    Key for execution context (read by worker process).
+
+    Structure: JSON serialized context data
+    """
+    return f"bifrost:exec:{execution_id}:context"
+
+
+def execution_result_key(execution_id: str) -> str:
+    """
+    Key for execution result (written by worker process).
+
+    Structure: JSON serialized result data
+    """
+    return f"bifrost:exec:{execution_id}:result"
+
+
+def execution_cancel_key(execution_id: str) -> str:
+    """
+    Key for cancellation flag.
+
+    Structure: "1" if cancelled
+    """
+    return f"bifrost:exec:{execution_id}:cancel"
+
+
+# =============================================================================
 # Execution-Scoped Keys (Write Buffer)
 # =============================================================================
 

@@ -303,9 +303,9 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
             if not entries:
                 return 0
 
-            # Parse entries
+            # Parse entries - enumerate to preserve insertion order
             logs_to_insert = []
-            for entry_id, data in entries:
+            for seq, (entry_id, data) in enumerate(entries):
                 try:
                     log_entry = ExecutionLog(
                         execution_id=exec_uuid,
@@ -313,6 +313,7 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
                         message=data.get("message", ""),
                         log_metadata=json.loads(data.get("metadata", "{}")),
                         timestamp=datetime.fromisoformat(data.get("timestamp", datetime.utcnow().isoformat())),
+                        sequence=seq,
                     )
                     logs_to_insert.append(log_entry)
                 except Exception as e:

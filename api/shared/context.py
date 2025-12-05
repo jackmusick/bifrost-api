@@ -87,6 +87,11 @@ class ExecutionContext:
     # Database session for SDK operations (injected during execution)
     _db: "AsyncSession | None" = field(default=None, repr=False)
 
+    # ==================== EXECUTION PARAMETERS ====================
+    # Extra parameters passed to the workflow/script that don't match function signature
+    # Access via context.parameters.get('param_name')
+    parameters: dict[str, Any] = field(default_factory=dict)
+
     # ==================== WORKFLOW STATE (private) ====================
     _config: dict[str, Any] = field(default_factory=dict)
     _config_resolver: ConfigResolver = field(default_factory=ConfigResolver)

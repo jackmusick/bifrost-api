@@ -3,16 +3,39 @@ Metrics Router
 
 Dashboard metrics and statistics.
 Provides overview of platform usage and system health.
+
+Endpoint Structure:
+- GET /api/metrics - Main dashboard metrics (uses pre-computed snapshot for instant loads)
+- GET /api/metrics/executions/daily - Daily execution trends (platform admin only)
+- GET /api/metrics/organizations - Organization breakdown (platform admin only)
+- GET /api/metrics/resources - Resource usage trends (platform admin only)
 """
 
 import logging
+from datetime import date, timedelta
 
-from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select, func, case, literal_column
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import select, func
 
-from shared.models import DashboardMetricsResponse, ExecutionStats, RecentFailure
-from src.core.auth import Context, CurrentActiveUser
-from src.models import Execution as ExecutionModel, Workflow, Form, DataProvider
+from shared.models import (
+    DashboardMetricsResponse,
+    ExecutionStats,
+    RecentFailure,
+    PlatformMetricsSnapshot,
+    DailyMetricsEntry,
+    DailyMetricsResponse,
+    OrganizationMetricsSummary,
+    OrganizationMetricsResponse,
+    ResourceMetricsEntry,
+    ResourceMetricsResponse,
+)
+from src.core.auth import Context, CurrentActiveUser, RequirePlatformAdmin
+from src.models import Execution as ExecutionModel
+from src.models.orm import (
+    ExecutionMetricsDaily,
+    PlatformMetricsSnapshot as PlatformMetricsSnapshotModel,
+    Organization,
+)
 from src.models.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)
@@ -29,7 +52,7 @@ router = APIRouter(prefix="/api/metrics", tags=["Metrics"])
     "",
     response_model=DashboardMetricsResponse,
     summary="Get dashboard metrics",
-    description="Get platform metrics for the dashboard",
+    description="Get platform metrics for the dashboard. Uses pre-computed snapshot for instant loads.",
 )
 async def get_metrics(
     ctx: Context,
@@ -38,132 +61,51 @@ async def get_metrics(
     """
     Get dashboard metrics.
 
+    Uses the pre-computed platform_metrics_snapshot table for instant response.
+    Falls back to direct queries if snapshot is not available.
+
     Returns:
         Dashboard metrics including workflow/form counts, execution stats, etc.
     """
     try:
-        # Single query for all entity counts using subqueries
-        counts_query = select(
-            select(func.count(Workflow.id))
-            .where(Workflow.is_active.is_(True))
-            .correlate(None)
-            .scalar_subquery()
-            .label("workflow_count"),
-            select(func.count(Form.id))
-            .where(Form.is_active.is_(True))
-            .correlate(None)
-            .scalar_subquery()
-            .label("form_count"),
-            select(func.count(DataProvider.id))
-            .where(DataProvider.is_active.is_(True))
-            .correlate(None)
-            .scalar_subquery()
-            .label("provider_count"),
+        # Try to use pre-computed snapshot first (instant)
+        snapshot_query = select(PlatformMetricsSnapshotModel).where(
+            PlatformMetricsSnapshotModel.id == 1
         )
-        counts_result = await ctx.db.execute(counts_query)
-        counts_row = counts_result.one()
-        workflow_count = counts_row.workflow_count or 0
-        form_count = counts_row.form_count or 0
-        provider_count = counts_row.provider_count or 0
+        snapshot_result = await ctx.db.execute(snapshot_query)
+        snapshot = snapshot_result.scalar_one_or_none()
 
-        # Single query for all execution stats using conditional aggregation
-        exec_stats_query = select(
-            func.count(ExecutionModel.id).label("total"),
-            func.sum(
-                case(
-                    (ExecutionModel.status == ExecutionStatus.SUCCESS.value, 1),
-                    else_=0,
-                )
-            ).label("success_count"),
-            func.sum(
-                case(
-                    (ExecutionModel.status == ExecutionStatus.FAILED.value, 1),
-                    else_=0,
-                )
-            ).label("failed_count"),
-            func.sum(
-                case(
-                    (ExecutionModel.status == ExecutionStatus.RUNNING.value, 1),
-                    else_=0,
-                )
-            ).label("running_count"),
-            func.sum(
-                case(
-                    (ExecutionModel.status == ExecutionStatus.PENDING.value, 1),
-                    else_=0,
-                )
-            ).label("pending_count"),
-            func.avg(
-                case(
-                    (ExecutionModel.status == ExecutionStatus.SUCCESS.value, ExecutionModel.duration_ms),
-                    else_=literal_column("NULL"),
-                )
-            ).label("avg_duration_ms"),
-        )
-        exec_result = await ctx.db.execute(exec_stats_query)
-        exec_row = exec_result.one()
-
-        total_executions = exec_row.total or 0
-        success_count = exec_row.success_count or 0
-        failed_count = exec_row.failed_count or 0
-        running_count = exec_row.running_count or 0
-        pending_count = exec_row.pending_count or 0
-        avg_duration_ms = exec_row.avg_duration_ms or 0
-
-        success_rate = (success_count / total_executions * 100) if total_executions > 0 else 0.0
-        avg_duration_seconds = float(avg_duration_ms) / 1000.0 if avg_duration_ms else 0.0
-
-        # Get recent failures (separate query - needs full rows)
-        failures_query = (
-            select(
-                ExecutionModel.id,
-                ExecutionModel.workflow_name,
-                ExecutionModel.error_message,
-                ExecutionModel.started_at,
+        if snapshot:
+            # Use snapshot data
+            execution_stats = ExecutionStats(
+                total_executions=snapshot.total_executions,
+                success_count=snapshot.total_success,
+                failed_count=snapshot.total_failed,
+                running_count=snapshot.running_count,
+                pending_count=snapshot.pending_count,
+                success_rate=snapshot.success_rate_all_time,
+                avg_duration_seconds=float(snapshot.avg_duration_ms_24h) / 1000.0,
             )
-            .where(ExecutionModel.status == ExecutionStatus.FAILED.value)
-            .order_by(ExecutionModel.started_at.desc())
-            .limit(5)
-        )
-        failures_result = await ctx.db.execute(failures_query)
-        failures_rows = failures_result.all()
 
-        recent_failures = [
-            RecentFailure(
-                execution_id=str(f.id),
-                workflow_name=f.workflow_name or "Unknown",
-                error_message=f.error_message,
-                started_at=f.started_at.isoformat() if f.started_at else None,
+            # Still need to fetch recent failures (they change frequently)
+            recent_failures = await _get_recent_failures(ctx)
+
+            response = DashboardMetricsResponse(
+                workflow_count=snapshot.workflow_count,
+                form_count=snapshot.form_count,
+                data_provider_count=snapshot.data_provider_count,
+                execution_stats=execution_stats,
+                recent_failures=recent_failures,
             )
-            for f in failures_rows
-        ]
 
-        # Execution statistics
-        execution_stats = ExecutionStats(
-            total_executions=total_executions,
-            success_count=success_count,
-            failed_count=failed_count,
-            running_count=running_count,
-            pending_count=pending_count,
-            success_rate=success_rate,
-            avg_duration_seconds=avg_duration_seconds,
-        )
+            logger.debug(
+                f"Dashboard metrics from snapshot (refreshed {snapshot.refreshed_at})"
+            )
+            return response
 
-        # Create response
-        response = DashboardMetricsResponse(
-            workflow_count=workflow_count,
-            form_count=form_count,
-            data_provider_count=provider_count,
-            execution_stats=execution_stats,
-            recent_failures=recent_failures,
-        )
-
-        logger.info(
-            f"Dashboard metrics: {workflow_count} workflows, {form_count} forms, "
-            f"{provider_count} providers, {total_executions} total executions"
-        )
-
-        return response
+        # Fallback: compute metrics directly (slower, for when snapshot doesn't exist)
+        logger.warning("Snapshot not available, computing metrics directly")
+        return await _compute_metrics_directly(ctx)
 
     except Exception as e:
         logger.error(f"Error getting metrics: {str(e)}", exc_info=True)
@@ -171,3 +113,431 @@ async def get_metrics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get metrics",
         )
+
+
+@router.get(
+    "/snapshot",
+    response_model=PlatformMetricsSnapshot,
+    summary="Get full platform metrics snapshot",
+    description="Get the complete pre-computed metrics snapshot. Platform admin only.",
+    dependencies=[RequirePlatformAdmin],
+)
+async def get_metrics_snapshot(
+    ctx: Context,
+    user: CurrentActiveUser,
+) -> PlatformMetricsSnapshot:
+    """
+    Get the full platform metrics snapshot.
+
+    Returns all pre-computed metrics including organization counts,
+    24h stats, resource usage, etc.
+
+    Platform admin only.
+    """
+    try:
+        snapshot_query = select(PlatformMetricsSnapshotModel).where(
+            PlatformMetricsSnapshotModel.id == 1
+        )
+        snapshot_result = await ctx.db.execute(snapshot_query)
+        snapshot = snapshot_result.scalar_one_or_none()
+
+        if not snapshot:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Metrics snapshot not available",
+            )
+
+        return PlatformMetricsSnapshot(
+            workflow_count=snapshot.workflow_count,
+            form_count=snapshot.form_count,
+            data_provider_count=snapshot.data_provider_count,
+            organization_count=snapshot.organization_count,
+            user_count=snapshot.user_count,
+            total_executions=snapshot.total_executions,
+            total_success=snapshot.total_success,
+            total_failed=snapshot.total_failed,
+            executions_24h=snapshot.executions_24h,
+            success_24h=snapshot.success_24h,
+            failed_24h=snapshot.failed_24h,
+            running_count=snapshot.running_count,
+            pending_count=snapshot.pending_count,
+            avg_duration_ms_24h=snapshot.avg_duration_ms_24h,
+            total_memory_bytes_24h=snapshot.total_memory_bytes_24h,
+            total_cpu_seconds_24h=snapshot.total_cpu_seconds_24h,
+            success_rate_all_time=snapshot.success_rate_all_time,
+            success_rate_24h=snapshot.success_rate_24h,
+            refreshed_at=snapshot.refreshed_at.isoformat(),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting metrics snapshot: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get metrics snapshot",
+        )
+
+
+@router.get(
+    "/executions/daily",
+    response_model=DailyMetricsResponse,
+    summary="Get daily execution metrics",
+    description="Get daily execution metrics for trends. Platform admin only.",
+    dependencies=[RequirePlatformAdmin],
+)
+async def get_daily_metrics(
+    ctx: Context,
+    user: CurrentActiveUser,
+    days: int = Query(default=30, ge=1, le=365, description="Number of days to include"),
+    organization_id: str | None = Query(default=None, description="Filter by organization"),
+) -> DailyMetricsResponse:
+    """
+    Get daily execution metrics for trends and charts.
+
+    Platform admin only.
+
+    Args:
+        days: Number of days to include (default 30, max 365)
+        organization_id: Optional filter by organization
+
+    Returns:
+        Daily metrics entries for the requested period
+    """
+    try:
+        start_date = date.today() - timedelta(days=days)
+
+        query = (
+            select(ExecutionMetricsDaily)
+            .where(ExecutionMetricsDaily.date >= start_date)
+            .order_by(ExecutionMetricsDaily.date.desc())
+        )
+
+        if organization_id:
+            # Parse org ID
+            from uuid import UUID
+            org_uuid = UUID(organization_id.replace("ORG:", ""))
+            query = query.where(ExecutionMetricsDaily.organization_id == org_uuid)
+        else:
+            # Get global metrics only (org_id is NULL)
+            query = query.where(ExecutionMetricsDaily.organization_id.is_(None))
+
+        result = await ctx.db.execute(query)
+        rows = result.scalars().all()
+
+        entries = [
+            DailyMetricsEntry(
+                date=row.date.isoformat(),
+                organization_id=f"ORG:{row.organization_id}" if row.organization_id else None,
+                execution_count=row.execution_count,
+                success_count=row.success_count,
+                failed_count=row.failed_count,
+                timeout_count=row.timeout_count,
+                cancelled_count=row.cancelled_count,
+                avg_duration_ms=row.avg_duration_ms,
+                max_duration_ms=row.max_duration_ms,
+                peak_memory_bytes=row.peak_memory_bytes,
+                total_memory_bytes=row.total_memory_bytes,
+                peak_cpu_seconds=row.peak_cpu_seconds,
+                total_cpu_seconds=row.total_cpu_seconds,
+            )
+            for row in rows
+        ]
+
+        return DailyMetricsResponse(
+            days=entries,
+            total_days=len(entries),
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting daily metrics: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get daily metrics",
+        )
+
+
+@router.get(
+    "/organizations",
+    response_model=OrganizationMetricsResponse,
+    summary="Get organization metrics breakdown",
+    description="Get execution metrics grouped by organization. Platform admin only.",
+    dependencies=[RequirePlatformAdmin],
+)
+async def get_organization_metrics(
+    ctx: Context,
+    user: CurrentActiveUser,
+    days: int = Query(default=30, ge=1, le=365, description="Number of days to include"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max organizations to return"),
+) -> OrganizationMetricsResponse:
+    """
+    Get execution metrics breakdown by organization.
+
+    Platform admin only.
+
+    Args:
+        days: Number of days to aggregate (default 30)
+        limit: Max organizations to return (default 20)
+
+    Returns:
+        Organization metrics sorted by total executions (descending)
+    """
+    try:
+        start_date = date.today() - timedelta(days=days)
+
+        # Aggregate metrics per organization
+        query = (
+            select(
+                ExecutionMetricsDaily.organization_id,
+                Organization.name.label("org_name"),
+                func.sum(ExecutionMetricsDaily.execution_count).label("total_executions"),
+                func.sum(ExecutionMetricsDaily.success_count).label("success_count"),
+                func.sum(ExecutionMetricsDaily.failed_count).label("failed_count"),
+                func.sum(ExecutionMetricsDaily.total_memory_bytes).label("total_memory"),
+                func.sum(ExecutionMetricsDaily.total_cpu_seconds).label("total_cpu"),
+                func.sum(ExecutionMetricsDaily.total_duration_ms).label("total_duration"),
+            )
+            .join(Organization, ExecutionMetricsDaily.organization_id == Organization.id)
+            .where(ExecutionMetricsDaily.date >= start_date)
+            .where(ExecutionMetricsDaily.organization_id.isnot(None))
+            .group_by(ExecutionMetricsDaily.organization_id, Organization.name)
+            .order_by(func.sum(ExecutionMetricsDaily.execution_count).desc())
+            .limit(limit)
+        )
+
+        result = await ctx.db.execute(query)
+        rows = result.all()
+
+        organizations = []
+        for row in rows:
+            total = row.total_executions or 0
+            success = row.success_count or 0
+            success_rate = (success / total * 100) if total > 0 else 0.0
+            avg_duration = int(row.total_duration / total) if total > 0 else 0
+
+            organizations.append(
+                OrganizationMetricsSummary(
+                    organization_id=f"ORG:{row.organization_id}",
+                    organization_name=row.org_name or "Unknown",
+                    total_executions=total,
+                    success_count=success,
+                    failed_count=row.failed_count or 0,
+                    success_rate=round(success_rate, 2),
+                    total_memory_bytes=row.total_memory or 0,
+                    total_cpu_seconds=float(row.total_cpu or 0),
+                    avg_duration_ms=avg_duration,
+                )
+            )
+
+        return OrganizationMetricsResponse(
+            organizations=organizations,
+            total_organizations=len(organizations),
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting organization metrics: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get organization metrics",
+        )
+
+
+@router.get(
+    "/resources",
+    response_model=ResourceMetricsResponse,
+    summary="Get resource usage trends",
+    description="Get memory and CPU usage trends. Platform admin only.",
+    dependencies=[RequirePlatformAdmin],
+)
+async def get_resource_metrics(
+    ctx: Context,
+    user: CurrentActiveUser,
+    days: int = Query(default=30, ge=1, le=365, description="Number of days to include"),
+) -> ResourceMetricsResponse:
+    """
+    Get resource usage trends (memory, CPU).
+
+    Platform admin only.
+
+    Args:
+        days: Number of days to include (default 30)
+
+    Returns:
+        Daily resource metrics for the requested period
+    """
+    try:
+        start_date = date.today() - timedelta(days=days)
+
+        # Get global metrics (org_id is NULL)
+        query = (
+            select(ExecutionMetricsDaily)
+            .where(ExecutionMetricsDaily.date >= start_date)
+            .where(ExecutionMetricsDaily.organization_id.is_(None))
+            .order_by(ExecutionMetricsDaily.date.desc())
+        )
+
+        result = await ctx.db.execute(query)
+        rows = result.scalars().all()
+
+        entries = []
+        for row in rows:
+            exec_count = row.execution_count or 1  # Avoid division by zero
+            entries.append(
+                ResourceMetricsEntry(
+                    date=row.date.isoformat(),
+                    peak_memory_bytes=row.peak_memory_bytes,
+                    total_memory_bytes=row.total_memory_bytes,
+                    avg_memory_bytes=int(row.total_memory_bytes / exec_count),
+                    peak_cpu_seconds=row.peak_cpu_seconds,
+                    total_cpu_seconds=row.total_cpu_seconds,
+                    avg_cpu_seconds=round(row.total_cpu_seconds / exec_count, 3),
+                    execution_count=row.execution_count,
+                )
+            )
+
+        return ResourceMetricsResponse(
+            days=entries,
+            total_days=len(entries),
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting resource metrics: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get resource metrics",
+        )
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+async def _get_recent_failures(ctx: Context, limit: int = 5) -> list[RecentFailure]:
+    """Get recent failed executions."""
+    failures_query = (
+        select(
+            ExecutionModel.id,
+            ExecutionModel.workflow_name,
+            ExecutionModel.error_message,
+            ExecutionModel.started_at,
+        )
+        .where(ExecutionModel.status == ExecutionStatus.FAILED.value)
+        .order_by(ExecutionModel.started_at.desc())
+        .limit(limit)
+    )
+    failures_result = await ctx.db.execute(failures_query)
+    failures_rows = failures_result.all()
+
+    return [
+        RecentFailure(
+            execution_id=str(f.id),
+            workflow_name=f.workflow_name or "Unknown",
+            error_message=f.error_message,
+            started_at=f.started_at.isoformat() if f.started_at else None,
+        )
+        for f in failures_rows
+    ]
+
+
+async def _compute_metrics_directly(ctx: Context) -> DashboardMetricsResponse:
+    """
+    Compute metrics directly from tables.
+
+    Fallback when snapshot is not available.
+    """
+    from sqlalchemy import case, literal_column
+    from src.models import Workflow, Form, DataProvider
+
+    # Single query for all entity counts using subqueries
+    counts_query = select(
+        select(func.count(Workflow.id))
+        .where(Workflow.is_active.is_(True))
+        .correlate(None)
+        .scalar_subquery()
+        .label("workflow_count"),
+        select(func.count(Form.id))
+        .where(Form.is_active.is_(True))
+        .correlate(None)
+        .scalar_subquery()
+        .label("form_count"),
+        select(func.count(DataProvider.id))
+        .where(DataProvider.is_active.is_(True))
+        .correlate(None)
+        .scalar_subquery()
+        .label("provider_count"),
+    )
+    counts_result = await ctx.db.execute(counts_query)
+    counts_row = counts_result.one()
+    workflow_count = counts_row.workflow_count or 0
+    form_count = counts_row.form_count or 0
+    provider_count = counts_row.provider_count or 0
+
+    # Single query for all execution stats using conditional aggregation
+    exec_stats_query = select(
+        func.count(ExecutionModel.id).label("total"),
+        func.sum(
+            case(
+                (ExecutionModel.status == ExecutionStatus.SUCCESS.value, 1),
+                else_=0,
+            )
+        ).label("success_count"),
+        func.sum(
+            case(
+                (ExecutionModel.status == ExecutionStatus.FAILED.value, 1),
+                else_=0,
+            )
+        ).label("failed_count"),
+        func.sum(
+            case(
+                (ExecutionModel.status == ExecutionStatus.RUNNING.value, 1),
+                else_=0,
+            )
+        ).label("running_count"),
+        func.sum(
+            case(
+                (ExecutionModel.status == ExecutionStatus.PENDING.value, 1),
+                else_=0,
+            )
+        ).label("pending_count"),
+        func.avg(
+            case(
+                (ExecutionModel.status == ExecutionStatus.SUCCESS.value, ExecutionModel.duration_ms),
+                else_=literal_column("NULL"),
+            )
+        ).label("avg_duration_ms"),
+    )
+    exec_result = await ctx.db.execute(exec_stats_query)
+    exec_row = exec_result.one()
+
+    total_executions = exec_row.total or 0
+    success_count = exec_row.success_count or 0
+    failed_count = exec_row.failed_count or 0
+    running_count = exec_row.running_count or 0
+    pending_count = exec_row.pending_count or 0
+    avg_duration_ms = exec_row.avg_duration_ms or 0
+
+    success_rate = (success_count / total_executions * 100) if total_executions > 0 else 0.0
+    avg_duration_seconds = float(avg_duration_ms) / 1000.0 if avg_duration_ms else 0.0
+
+    # Get recent failures
+    recent_failures = await _get_recent_failures(ctx)
+
+    # Execution statistics
+    execution_stats = ExecutionStats(
+        total_executions=total_executions,
+        success_count=success_count,
+        failed_count=failed_count,
+        running_count=running_count,
+        pending_count=pending_count,
+        success_rate=success_rate,
+        avg_duration_seconds=avg_duration_seconds,
+    )
+
+    return DashboardMetricsResponse(
+        workflow_count=workflow_count,
+        form_count=form_count,
+        data_provider_count=provider_count,
+        execution_stats=execution_stats,
+        recent_failures=recent_failures,
+    )

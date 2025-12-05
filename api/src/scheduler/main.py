@@ -112,6 +112,20 @@ class Scheduler:
         except ImportError:
             logger.warning("OAuth token refresh job not available")
 
+        # Metrics snapshot refresh - every 2 minutes
+        try:
+            from src.jobs.schedulers.metrics_refresh import refresh_metrics_snapshot
+            scheduler.add_job(
+                refresh_metrics_snapshot,
+                IntervalTrigger(minutes=2),
+                id="metrics_refresh",
+                name="Refresh platform metrics snapshot",
+                replace_existing=True,
+            )
+            logger.info("Metrics snapshot refresh job scheduled")
+        except ImportError:
+            logger.warning("Metrics snapshot refresh job not available")
+
         scheduler.start()
         self._scheduler = scheduler
         logger.info("APScheduler started with scheduled jobs")

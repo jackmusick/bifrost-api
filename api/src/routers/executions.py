@@ -174,11 +174,11 @@ class ExecutionRepository:
         if not user.is_superuser and row.executed_by != user.user_id:
             return None, "Forbidden"
 
-        # Query logs from execution_logs table
+        # Query logs from execution_logs table (order by sequence for guaranteed ordering)
         logs_query = (
             select(ExecutionLogORM)
             .where(ExecutionLogORM.execution_id == execution_id)
-            .order_by(ExecutionLogORM.timestamp)
+            .order_by(ExecutionLogORM.sequence)
         )
 
         # Filter debug logs for non-superusers

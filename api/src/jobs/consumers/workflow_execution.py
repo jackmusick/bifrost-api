@@ -2,7 +2,7 @@
 Workflow Execution Consumer
 
 Processes async workflow executions from RabbitMQ queue.
-Replaces the Azure Queue trigger version with RabbitMQ consumer.
+Uses process isolation for execution with guaranteed cancellation via SIGKILL.
 
 For sync execution requests (sync=True in message):
 - Pushes result to Redis after completion
@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from src.core.pubsub import publish_execution_update, publish_execution_log_sync
+from src.core.pubsub import publish_execution_update
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import BaseConsumer
 
@@ -47,7 +47,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         settings = get_settings()
         super().__init__(
             queue_name=QUEUE_NAME,
-            prefetch_count=settings.max_concurrency,  # Allow concurrent processing
+            prefetch_count=settings.max_concurrency,
         )
         self._redis_client = get_redis_client()
 
@@ -56,7 +56,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         execution_id = message_data.get("execution_id", "")
         org_id = message_data.get("org_id")
         user_id = message_data.get("user_id", "")
-        is_sync = message_data.get("sync", False)  # If True, push result to Redis
+        is_sync = message_data.get("sync", False)
         start_time = datetime.utcnow()
 
         try:
@@ -67,7 +67,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             parameters = message_data.get("parameters", {})
 
             logger.info(
-                f"Processing async workflow execution: {workflow_name}",
+                f"Processing workflow execution: {workflow_name}",
                 extra={
                     "execution_id": execution_id,
                     "workflow_name": workflow_name,
@@ -75,18 +75,14 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 },
             )
 
-            # Import shared modules for execution
-            from shared.context import Caller
             from shared.discovery import get_workflow
-            from shared.engine import ExecutionRequest, execute
             from shared.models import ExecutionStatus
-
-            # Check if execution was already cancelled before we started
             from shared.consumers._helpers import (
                 get_execution_status,
                 update_execution,
             )
 
+            # Check if execution was already cancelled before we started
             current_status = await get_execution_status(execution_id, org_id)
 
             if current_status == ExecutionStatus.CANCELLING.value:
@@ -100,7 +96,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     duration_ms=0,
                 )
                 await publish_execution_update(execution_id, "Cancelled")
-                # Push to Redis for sync callers
                 if is_sync:
                     await self._redis_client.push_result(
                         execution_id=execution_id,
@@ -119,8 +114,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
             )
             await publish_execution_update(execution_id, "Running")
 
-            # Recreate organization context
+            # Load organization and config
             org = None
+            org_data = None
             config = {}
 
             if org_id:
@@ -129,22 +125,23 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 resolver = ConfigResolver()
                 org = await resolver.get_organization(org_id)
                 config = await resolver.load_config_for_scope(org_id)
+                if org:
+                    org_data = {
+                        "id": org.id,
+                        "name": org.name,
+                        "is_active": org.is_active,
+                    }
             else:
                 from shared.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
                 config = await resolver.load_config_for_scope("GLOBAL")
 
-            # Create Caller from message
-            caller = Caller(user_id=user_id, email=user_email, name=user_name)
-
             # Determine if this is a script or workflow execution
             is_script = bool(code_base64)
 
-            # Load workflow function and metadata
-            workflow_func = None
-            metadata = None
-
+            # Get timeout from workflow metadata
+            timeout_seconds = 1800  # Default 30 minutes
             if not is_script:
                 try:
                     result = get_workflow(workflow_name)
@@ -170,7 +167,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                             "Failed",
                             {"error": error_msg},
                         )
-                        # Push to Redis for sync callers
                         if is_sync:
                             await self._redis_client.push_result(
                                 execution_id=execution_id,
@@ -181,7 +177,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                             )
                         return
 
-                    workflow_func, metadata = result
+                    _, metadata = result
+                    timeout_seconds = metadata.timeout_seconds if metadata else 1800
 
                 except Exception as e:
                     logger.error(f"Failed to load workflow {workflow_name}: {e}")
@@ -203,7 +200,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     await publish_execution_update(
                         execution_id, "Failed", {"error": str(e)}
                     )
-                    # Push to Redis for sync callers
                     if is_sync:
                         await self._redis_client.push_result(
                             execution_id=execution_id,
@@ -214,175 +210,141 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         )
                     return
 
-            timeout_seconds = metadata.timeout_seconds if metadata else 1800
+            # Build context for worker process
+            context_data = {
+                "execution_id": execution_id,
+                "name": workflow_name,
+                "code": code_base64,
+                "parameters": parameters,
+                "caller": {
+                    "user_id": user_id,
+                    "email": user_email,
+                    "name": user_name,
+                },
+                "organization": org_data,
+                "config": config,
+                "tags": ["workflow"] if not is_script else [],
+                "timeout_seconds": timeout_seconds,
+                "transient": False,
+                "is_platform_admin": False,
+            }
 
-            # Create pubsub broadcaster adapter for the engine
-            class PubSubBroadcaster:
-                """Adapter to bridge engine broadcasts to our WebSocket pubsub."""
+            # Execute in isolated process
+            from shared.execution import get_execution_pool
 
-                def __init__(self, exec_id: str):
-                    self.exec_id = exec_id
-                    self.enabled = True
+            pool = get_execution_pool()
 
-                def broadcast_log(self, level: str, message: str, data: dict = None):
-                    """Sync broadcast - called from worker thread."""
-                    publish_execution_log_sync(self.exec_id, level, message, data)
-
-                def broadcast_execution_update(
-                    self,
-                    execution_id: str,
-                    status: str,
-                    executed_by: str | None = None,
-                    scope: str | None = None,
-                    latest_logs: list | None = None,
-                    is_complete: bool = False,
-                    **kwargs
-                ):
-                    """Sync bridge to pubsub for real-time log streaming."""
-                    # Send logs via pubsub (sync)
-                    if latest_logs:
-                        for log_entry in latest_logs:
-                            publish_execution_log_sync(
-                                self.exec_id,
-                                log_entry.get("level", "INFO"),
-                                log_entry.get("message", ""),
-                                log_entry
-                            )
-
-                def close(self):
-                    pass
-
-            broadcaster = PubSubBroadcaster(execution_id)
-
-            # Build execution request
-            request = ExecutionRequest(
-                execution_id=execution_id,
-                caller=caller,
-                organization=org,
-                config=config,
-                func=workflow_func if not is_script else None,
-                code=code_base64 if is_script else None,
-                name=workflow_name,
-                tags=["workflow"] if not is_script else [],
-                timeout_seconds=timeout_seconds,
-                parameters=parameters,
-                transient=False,
-                is_platform_admin=False,
-                broadcaster=broadcaster,
-            )
-
-            # Create execution task
-            execution_task = asyncio.create_task(execute(request))
-
-            # Monitoring loop for cancellation and timeout
-            check_interval = 1.0
-
-            while not execution_task.done():
-                # Check for user-initiated cancellation
-                current_status = await get_execution_status(execution_id, org_id)
-
-                if current_status == ExecutionStatus.CANCELLING.value:
-                    logger.info(f"Cancellation requested for execution {execution_id}")
-                    execution_task.cancel()
-
-                    duration_ms = int(
-                        (datetime.utcnow() - start_time).total_seconds() * 1000
-                    )
-                    await update_execution(
+            try:
+                result = await pool.execute(
+                    execution_id=execution_id,
+                    context_data=context_data,
+                    timeout_seconds=timeout_seconds,
+                )
+            except asyncio.CancelledError:
+                # Cancelled via Redis flag
+                duration_ms = int(
+                    (datetime.utcnow() - start_time).total_seconds() * 1000
+                )
+                await update_execution(
+                    execution_id=execution_id,
+                    org_id=org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.CANCELLED,
+                    error_message="Execution cancelled by user",
+                    duration_ms=duration_ms,
+                )
+                await publish_execution_update(execution_id, "Cancelled")
+                if is_sync:
+                    await self._redis_client.push_result(
                         execution_id=execution_id,
-                        org_id=org_id,
-                        user_id=user_id,
-                        status=ExecutionStatus.CANCELLED,
-                        error_message="Execution cancelled by user",
+                        status="Cancelled",
+                        error="Execution cancelled by user",
                         duration_ms=duration_ms,
                     )
-                    await publish_execution_update(execution_id, "Cancelled")
-                    # Push to Redis for sync callers
-                    if is_sync:
-                        await self._redis_client.push_result(
-                            execution_id=execution_id,
-                            status="Cancelled",
-                            error="Execution cancelled by user",
-                            duration_ms=duration_ms,
-                        )
-                    return
-
-                # Check for timeout
-                elapsed_seconds = (datetime.utcnow() - start_time).total_seconds()
-                if elapsed_seconds > timeout_seconds:
-                    logger.warning(
-                        f"Execution {execution_id} exceeded timeout of {timeout_seconds}s"
-                    )
-                    execution_task.cancel()
-
-                    duration_ms = int(elapsed_seconds * 1000)
-                    error_msg = f"Execution exceeded timeout of {timeout_seconds} seconds"
-                    await update_execution(
+                return
+            except TimeoutError as e:
+                # Timeout from pool
+                duration_ms = int(
+                    (datetime.utcnow() - start_time).total_seconds() * 1000
+                )
+                error_msg = str(e)
+                await update_execution(
+                    execution_id=execution_id,
+                    org_id=org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.TIMEOUT,
+                    error_message=error_msg,
+                    error_type="TimeoutError",
+                    duration_ms=duration_ms,
+                )
+                await publish_execution_update(execution_id, "Timeout")
+                if is_sync:
+                    await self._redis_client.push_result(
                         execution_id=execution_id,
-                        org_id=org_id,
-                        user_id=user_id,
-                        status=ExecutionStatus.TIMEOUT,
-                        error_message=error_msg,
+                        status="Timeout",
+                        error=error_msg,
                         error_type="TimeoutError",
                         duration_ms=duration_ms,
                     )
-                    await publish_execution_update(execution_id, "Timeout")
-                    # Push to Redis for sync callers
-                    if is_sync:
-                        await self._redis_client.push_result(
-                            execution_id=execution_id,
-                            status="Timeout",
-                            error=error_msg,
-                            error_type="TimeoutError",
-                            duration_ms=duration_ms,
-                        )
-                    return
+                return
 
-                await asyncio.sleep(check_interval)
+            # Map result dict to ExecutionStatus
+            status_str = result.get("status", "Failed")
+            status = ExecutionStatus(status_str) if status_str in [s.value for s in ExecutionStatus] else ExecutionStatus.FAILED
 
-            # Execution completed - get result
-            result = await execution_task
-
-            # Update execution with result
+            # Update execution with result and metrics
             await update_execution(
                 execution_id=execution_id,
                 org_id=org_id,
                 user_id=user_id,
-                status=result.status,
-                result=result.result,
-                error_message=result.error_message,
-                error_type=result.error_type,
-                duration_ms=result.duration_ms,
-                logs=result.logs,
-                variables=result.variables,
+                status=status,
+                result=result.get("result"),
+                error_message=result.get("error_message"),
+                error_type=result.get("error_type"),
+                duration_ms=result.get("duration_ms", 0),
+                logs=result.get("logs", []),
+                variables=result.get("variables"),
+                metrics=result.get("metrics"),
             )
 
             await publish_execution_update(
                 execution_id,
-                result.status.value,
+                status.value,
                 {
-                    "result": result.result,
-                    "durationMs": result.duration_ms,
+                    "result": result.get("result"),
+                    "durationMs": result.get("duration_ms", 0),
                 },
             )
 
-            # Push to Redis for sync callers
             if is_sync:
                 await self._redis_client.push_result(
                     execution_id=execution_id,
-                    status=result.status.value,
-                    result=result.result,
-                    error=result.error_message,
-                    error_type=result.error_type,
-                    duration_ms=result.duration_ms,
+                    status=status.value,
+                    result=result.get("result"),
+                    error=result.get("error_message"),
+                    error_type=result.get("error_type"),
+                    duration_ms=result.get("duration_ms", 0),
                 )
 
+            # Update daily metrics for dashboards
+            metrics = result.get("metrics", {})
+            from shared.metrics import update_daily_metrics
+            await update_daily_metrics(
+                org_id=org_id,
+                status=status.value,
+                duration_ms=result.get("duration_ms", 0),
+                peak_memory_bytes=metrics.get("peak_memory_bytes") if metrics else None,
+                cpu_total_seconds=metrics.get("cpu_total_seconds") if metrics else None,
+            )
+
             logger.info(
-                f"Async workflow execution completed: {workflow_name}",
+                f"Workflow execution completed: {workflow_name}",
                 extra={
                     "execution_id": execution_id,
-                    "status": result.status.value,
-                    "duration_ms": result.duration_ms,
+                    "status": status.value,
+                    "duration_ms": result.get("duration_ms", 0),
+                    "peak_memory_mb": round(metrics.get("peak_memory_bytes", 0) / 1024 / 1024, 1) if metrics else None,
+                    "cpu_seconds": metrics.get("cpu_total_seconds") if metrics else None,
                 },
             )
 
@@ -415,7 +377,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 {"error": error_msg, "errorType": error_type},
             )
 
-            # Push to Redis for sync callers
             if is_sync:
                 await self._redis_client.push_result(
                     execution_id=execution_id,
@@ -426,7 +387,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 )
 
             logger.error(
-                f"Async workflow execution error: {execution_id}",
+                f"Workflow execution error: {execution_id}",
                 extra={
                     "execution_id": execution_id,
                     "error": error_msg,

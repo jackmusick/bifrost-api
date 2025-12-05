@@ -80,6 +80,18 @@ from .invalidation import (
 # Pre-warming
 from .warming import prewarm_sdk_cache
 
+# Data provider cache
+from .data_provider_cache import (
+    TTL_DATA_PROVIDER,
+    cache_result as cache_data_provider_result,
+    compute_param_hash,
+    data_provider_cache_key,
+    get_cached_result as get_cached_data_provider,
+    invalidate_data_provider,
+    acquire_compute_lock,
+    release_compute_lock,
+)
+
 __all__ = [
     # Keys
     "config_hash_key",
@@ -126,4 +138,13 @@ __all__ = [
     "cleanup_execution_cache",
     # Pre-warming
     "prewarm_sdk_cache",
+    # Data provider cache
+    "TTL_DATA_PROVIDER",
+    "data_provider_cache_key",
+    "compute_param_hash",
+    "get_cached_data_provider",
+    "cache_data_provider_result",
+    "invalidate_data_provider",
+    "acquire_compute_lock",
+    "release_compute_lock",
 ]

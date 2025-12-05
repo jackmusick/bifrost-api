@@ -2208,6 +2208,133 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
         assert response.status_code == 401, \
             f"Unauthenticated should be 401: {response.status_code}"
 
+    def test_334_get_metrics_snapshot_superuser(self):
+        """Superuser can get full metrics snapshot."""
+        response = State.client.get(
+            "/api/metrics/snapshot",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Get snapshot failed: {response.text}"
+        data = response.json()
+
+        # Verify snapshot structure
+        assert "workflow_count" in data
+        assert "form_count" in data
+        assert "data_provider_count" in data
+        assert "organization_count" in data
+        assert "user_count" in data
+        assert "total_executions" in data
+        assert "executions_24h" in data
+        assert "success_rate_all_time" in data
+        assert "success_rate_24h" in data
+        assert "refreshed_at" in data
+
+    def test_335_get_metrics_snapshot_org_user_denied(self):
+        """Org user cannot access metrics snapshot (403)."""
+        response = State.client.get(
+            "/api/metrics/snapshot",
+            headers=State.org1_user.headers,
+        )
+        assert response.status_code == 403, \
+            f"Org user should not access snapshot: {response.status_code}"
+
+    def test_336_get_daily_metrics_superuser(self):
+        """Superuser can get daily execution metrics."""
+        response = State.client.get(
+            "/api/metrics/executions/daily",
+            headers=State.platform_admin.headers,
+            params={"days": 7},
+        )
+        assert response.status_code == 200, f"Get daily metrics failed: {response.text}"
+        data = response.json()
+
+        # Verify response structure
+        assert "days" in data
+        assert "total_days" in data
+        assert isinstance(data["days"], list)
+
+        # If there are days, verify entry structure
+        if data["days"]:
+            entry = data["days"][0]
+            assert "date" in entry
+            assert "execution_count" in entry
+            assert "success_count" in entry
+            assert "failed_count" in entry
+
+    def test_337_get_daily_metrics_org_user_denied(self):
+        """Org user cannot access daily metrics (403)."""
+        response = State.client.get(
+            "/api/metrics/executions/daily",
+            headers=State.org1_user.headers,
+        )
+        assert response.status_code == 403, \
+            f"Org user should not access daily metrics: {response.status_code}"
+
+    def test_338_get_organization_metrics_superuser(self):
+        """Superuser can get organization metrics breakdown."""
+        response = State.client.get(
+            "/api/metrics/organizations",
+            headers=State.platform_admin.headers,
+            params={"days": 30, "limit": 10},
+        )
+        assert response.status_code == 200, f"Get org metrics failed: {response.text}"
+        data = response.json()
+
+        # Verify response structure
+        assert "organizations" in data
+        assert "total_organizations" in data
+        assert isinstance(data["organizations"], list)
+
+        # If there are organizations, verify entry structure
+        if data["organizations"]:
+            org = data["organizations"][0]
+            assert "organization_id" in org
+            assert "organization_name" in org
+            assert "total_executions" in org
+            assert "success_rate" in org
+
+    def test_339_get_organization_metrics_org_user_denied(self):
+        """Org user cannot access organization metrics (403)."""
+        response = State.client.get(
+            "/api/metrics/organizations",
+            headers=State.org1_user.headers,
+        )
+        assert response.status_code == 403, \
+            f"Org user should not access org metrics: {response.status_code}"
+
+    def test_339a_get_resource_metrics_superuser(self):
+        """Superuser can get resource usage metrics."""
+        response = State.client.get(
+            "/api/metrics/resources",
+            headers=State.platform_admin.headers,
+            params={"days": 7},
+        )
+        assert response.status_code == 200, f"Get resource metrics failed: {response.text}"
+        data = response.json()
+
+        # Verify response structure
+        assert "days" in data
+        assert "total_days" in data
+        assert isinstance(data["days"], list)
+
+        # If there are days, verify entry structure
+        if data["days"]:
+            entry = data["days"][0]
+            assert "date" in entry
+            assert "peak_memory_bytes" in entry
+            assert "total_memory_bytes" in entry
+            assert "peak_cpu_seconds" in entry
+            assert "execution_count" in entry
+
+    def test_339b_get_resource_metrics_org_user_denied(self):
+        """Org user cannot access resource metrics (403)."""
+        response = State.client.get(
+            "/api/metrics/resources",
+            headers=State.org1_user.headers,
+        )
+        assert response.status_code == 403, \
+            f"Org user should not access resource metrics: {response.status_code}"
+
     # =========================================================================
     # PHASE 26: Logs Tests
     # =========================================================================

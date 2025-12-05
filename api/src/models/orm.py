@@ -12,15 +12,19 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum as SQLAlchemyEnum,
+    Float,
     ForeignKey,
     Index,
     Integer,
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -316,6 +320,13 @@ class Execution(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     duration_ms: Mapped[int | None] = mapped_column(Integer, default=None)
+
+    # Resource metrics (captured from worker process)
+    peak_memory_bytes: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    cpu_user_seconds: Mapped[float | None] = mapped_column(Float, default=None)
+    cpu_system_seconds: Mapped[float | None] = mapped_column(Float, default=None)
+    cpu_total_seconds: Mapped[float | None] = mapped_column(Float, default=None)
+
     executed_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     executed_by_name: Mapped[str] = mapped_column(String(255))
     organization_id: Mapped[UUID | None] = mapped_column(
@@ -352,12 +363,13 @@ class ExecutionLog(Base):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
 
     # Relationships
     execution: Mapped[Execution] = relationship(back_populates="logs")
 
     __table_args__ = (
-        Index("ix_execution_logs_exec_time", "execution_id", "timestamp"),
+        Index("ix_execution_logs_exec_seq", "execution_id", "sequence"),
     )
 
 
@@ -798,3 +810,105 @@ class SystemConfig(Base):
 
     # Relationships
     organization: Mapped["Organization | None"] = relationship("Organization", back_populates="system_configs")
+
+
+# =============================================================================
+# Platform Metrics
+# =============================================================================
+
+
+class ExecutionMetricsDaily(Base):
+    """
+    Daily aggregated execution metrics.
+
+    Populated by the consumer on each execution completion.
+    Used for trend charts and organization usage reports.
+    """
+    __tablename__ = "execution_metrics_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Execution counts
+    execution_count: Mapped[int] = mapped_column(Integer, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    timeout_count: Mapped[int] = mapped_column(Integer, default=0)
+    cancelled_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Duration metrics (milliseconds)
+    total_duration_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    avg_duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    max_duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Resource metrics
+    total_memory_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    peak_memory_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_cpu_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    peak_cpu_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
+        onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("date", "organization_id", name="uq_metrics_daily_date_org"),
+        Index("ix_metrics_daily_date", "date"),
+        Index("ix_metrics_daily_org", "organization_id"),
+    )
+
+
+class PlatformMetricsSnapshot(Base):
+    """
+    Current platform metrics snapshot.
+
+    Refreshed periodically by the scheduler (every 1-5 minutes).
+    Used for instant dashboard loads without expensive queries.
+    Single row table - always id=1.
+    """
+    __tablename__ = "platform_metrics_snapshot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+
+    # Entity counts
+    workflow_count: Mapped[int] = mapped_column(Integer, default=0)
+    form_count: Mapped[int] = mapped_column(Integer, default=0)
+    data_provider_count: Mapped[int] = mapped_column(Integer, default=0)
+    organization_count: Mapped[int] = mapped_column(Integer, default=0)
+    user_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Execution stats (all time)
+    total_executions: Mapped[int] = mapped_column(Integer, default=0)
+    total_success: Mapped[int] = mapped_column(Integer, default=0)
+    total_failed: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Execution stats (last 24 hours)
+    executions_24h: Mapped[int] = mapped_column(Integer, default=0)
+    success_24h: Mapped[int] = mapped_column(Integer, default=0)
+    failed_24h: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Current state
+    running_count: Mapped[int] = mapped_column(Integer, default=0)
+    pending_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Performance (last 24 hours)
+    avg_duration_ms_24h: Mapped[int] = mapped_column(Integer, default=0)
+    total_memory_bytes_24h: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_cpu_seconds_24h: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Success rate
+    success_rate_all_time: Mapped[float] = mapped_column(Float, default=0.0)
+    success_rate_24h: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Timestamp
+    refreshed_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
