@@ -2193,6 +2193,13 @@ class ConflictInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ValidateTokenRequest(BaseModel):
+    """Request to validate GitHub token"""
+    token: str = Field(..., description="GitHub personal access token to validate")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GitHubConfigRequest(BaseModel):
     """Request to configure GitHub integration - will always replace workspace with remote"""
     repo_url: str = Field(..., min_length=1, description="GitHub repository URL (e.g., https://github.com/user/repo)")
@@ -2224,9 +2231,18 @@ class GitHubRepoInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DetectedRepoInfo(BaseModel):
+    """Information about auto-detected existing repository"""
+    full_name: str = Field(..., description="Repository full name (owner/repo)")
+    branch: str = Field(..., description="Current branch")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GitHubReposResponse(BaseModel):
     """Response with list of GitHub repositories"""
     repositories: list[GitHubRepoInfo] = Field(..., description="List of accessible repositories")
+    detected_repo: DetectedRepoInfo | None = Field(None, description="Auto-detected existing repository")
 
     model_config = ConfigDict(from_attributes=True)
 

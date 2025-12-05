@@ -11,7 +11,12 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, status
 
 from shared.models import (
+    ValidateTokenRequest,
+    DetectedRepoInfo,
     GitHubConfigRequest,
+    GitHubConfigResponse,
+    GitHubReposResponse,
+    GitHubBranchesResponse,
     PullFromGitHubRequest,
     PullFromGitHubResponse,
     PushToGitHubRequest,
@@ -20,6 +25,9 @@ from shared.models import (
     CommitHistoryResponse,
     DiscardUnpushedCommitsResponse,
     DiscardCommitRequest,
+    WorkspaceAnalysisResponse,
+    CreateRepoRequest,
+    CreateRepoResponse,
 )
 from shared.services.git_integration_service import GitIntegrationService
 from src.core.auth import Context, CurrentSuperuser
@@ -75,6 +83,43 @@ async def get_github_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get GitHub status",
+        )
+
+
+@router.post(
+    "/refresh",
+    response_model=GitRefreshStatusResponse,
+    summary="Refresh Git status",
+    description="Get complete Git status including local changes, conflicts, and commit history",
+)
+async def refresh_github_status(
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> GitRefreshStatusResponse:
+    """
+    Refresh Git status.
+
+    Returns complete status including changed files, conflicts, ahead/behind counts,
+    and commit history. Does not fetch from remote by default (fast operation).
+
+    Returns:
+        Complete Git status response
+    """
+    try:
+        git_service = get_git_service()
+
+        # Call refresh_status directly to get complete status including changed files
+        status_dict = await git_service.refresh_status(ctx, fetch=False)
+
+        logger.info("GitHub status refreshed")
+
+        return GitRefreshStatusResponse(**status_dict)
+
+    except Exception as e:
+        logger.error(f"Error refreshing GitHub status: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to refresh GitHub status",
         )
 
 
@@ -459,4 +504,383 @@ async def discard_commit(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to discard commit",
+        )
+
+
+# =============================================================================
+# GitHub Configuration Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/config",
+    response_model=GitHubConfigResponse,
+    summary="Get GitHub configuration",
+    description="Retrieve current GitHub integration configuration",
+)
+async def get_github_config(
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> GitHubConfigResponse:
+    """Get current GitHub configuration."""
+    try:
+        git_service = get_git_service()
+
+        # Check if configured by trying to get config
+        github_config = await git_service._get_github_config(ctx)
+
+        if not github_config:
+            # No configuration exists yet
+            return GitHubConfigResponse(
+                configured=False,
+                token_saved=False,
+                repo_url=None,
+                branch=None,
+                backup_path=None
+            )
+
+        # Return configuration
+        return GitHubConfigResponse(
+            configured=True,
+            token_saved=True,
+            repo_url=github_config.get("repo_url"),
+            branch=github_config.get("branch"),
+            backup_path=None
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get GitHub config: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get GitHub configuration",
+        )
+
+
+@router.post(
+    "/validate",
+    response_model=GitHubReposResponse,
+    summary="Validate GitHub token",
+    description="Validate GitHub token and save to database, returns accessible repositories",
+)
+async def validate_github_token(
+    request: ValidateTokenRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> GitHubReposResponse:
+    """Validate GitHub token, save to database, and list repositories."""
+    try:
+        if not request.token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub token required"
+            )
+
+        logger.info("Validating GitHub token")
+
+        # Test the token by listing repositories
+        git_service = get_git_service()
+        repositories = git_service.list_repositories(request.token)
+
+        # Detect existing Git repository configuration
+        detected_repo = None
+        detected_info = git_service.get_detected_repo_info()
+
+        if detected_info:
+            # Verify token has access to the detected repo
+            repo_full_name = detected_info["repo_full_name"]
+            has_access = any(r.full_name == repo_full_name for r in repositories)
+
+            if has_access:
+                detected_repo = DetectedRepoInfo(
+                    full_name=repo_full_name,
+                    branch=detected_info["branch"]
+                )
+                logger.info(f"Detected existing repo: {repo_full_name} (branch: {detected_info['branch']})")
+
+                # Save token with detected repo info
+                await git_service._save_github_config(
+                    context=ctx,
+                    repo_url=detected_info["repo_url"],
+                    token=request.token,
+                    branch=detected_info["branch"],
+                    updated_by=user.email
+                )
+            else:
+                logger.warning(f"Detected repo {repo_full_name} but token doesn't have access")
+                # Save token without repo info
+                await git_service._save_github_config(
+                    context=ctx,
+                    repo_url="",
+                    token=request.token,
+                    branch="main",
+                    updated_by=user.email
+                )
+        else:
+            # No existing repo detected, save token only
+            await git_service._save_github_config(
+                context=ctx,
+                repo_url="",
+                token=request.token,
+                branch="main",
+                updated_by=user.email
+            )
+
+        logger.info("GitHub token validated and saved successfully")
+
+        return GitHubReposResponse(
+            repositories=repositories,
+            detected_repo=detected_repo
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to validate GitHub token: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to validate GitHub token: {str(e)}",
+        )
+
+
+@router.post(
+    "/configure",
+    response_model=GitHubConfigResponse,
+    summary="Configure GitHub integration",
+    description="Save GitHub repository configuration and initialize sync",
+)
+async def configure_github(
+    request: GitHubConfigRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> GitHubConfigResponse:
+    """Configure GitHub integration."""
+    try:
+        logger.info(f"Configuring GitHub integration for repo: {request.repo_url}")
+
+        # Get existing config to retrieve token
+        git_service = get_git_service()
+        existing_config = await git_service._get_github_config(ctx)
+
+        if not existing_config or not existing_config.get("token"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub token not found. Please validate your token first."
+            )
+
+        token = existing_config["token"]
+
+        # First, try to initialize the Git repository
+        backup_info = None
+        try:
+            backup_info = await git_service.initialize_repo(
+                token=token,
+                repo_url=request.repo_url,
+                branch=request.branch or "main"
+            )
+        except Exception as git_error:
+            logger.error(f"Git initialization failed: {git_error}")
+            raise
+
+        # Only save configuration if Git initialization succeeded
+        await git_service._save_github_config(
+            context=ctx,
+            repo_url=request.repo_url,
+            token=token,
+            branch=request.branch or "main",
+            updated_by=user.email
+        )
+
+        logger.info("GitHub integration configured successfully")
+
+        return GitHubConfigResponse(
+            configured=True,
+            backup_path=backup_info.get("backup_path") if backup_info else None,
+            token_saved=True,
+            repo_url=request.repo_url,
+            branch=request.branch or "main"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to configure GitHub: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to configure GitHub: {str(e)}",
+        )
+
+
+@router.get(
+    "/repositories",
+    response_model=GitHubReposResponse,
+    summary="List GitHub repositories",
+    description="List accessible repositories using the saved GitHub token",
+)
+async def list_github_repos(
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> GitHubReposResponse:
+    """List user's GitHub repositories using saved token."""
+    try:
+        # Get token from database
+        git_service = get_git_service()
+        github_config = await git_service._get_github_config(ctx)
+
+        if not github_config or not github_config.get("token"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub token not found. Please validate your token first."
+            )
+
+        repositories = git_service.list_repositories(github_config["token"])
+
+        return GitHubReposResponse(repositories=repositories, detected_repo=None)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list repositories: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list repositories",
+        )
+
+
+@router.get(
+    "/branches",
+    response_model=GitHubBranchesResponse,
+    summary="List repository branches",
+    description="List branches in a GitHub repository using saved token",
+)
+async def list_github_branches(
+    ctx: Context,
+    user: CurrentSuperuser,
+    repo: str = Query(..., description="Repository full name (owner/repo)"),
+) -> GitHubBranchesResponse:
+    """List branches in a repository using saved token."""
+    try:
+        if not repo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Repository name required"
+            )
+
+        # Get token from database
+        git_service = get_git_service()
+        github_config = await git_service._get_github_config(ctx)
+
+        if not github_config or not github_config.get("token"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub token not found. Please validate your token first."
+            )
+
+        branches = git_service.list_branches(github_config["token"], repo)
+
+        return GitHubBranchesResponse(branches=branches)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list branches: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list branches",
+        )
+
+
+@router.post(
+    "/analyze-workspace",
+    response_model=WorkspaceAnalysisResponse,
+    summary="Analyze workspace",
+    description="Analyze workspace for potential conflicts before configuring GitHub",
+)
+async def analyze_workspace(
+    request: GitHubConfigRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> WorkspaceAnalysisResponse:
+    """Analyze workspace before configuring GitHub."""
+    try:
+        git_service = get_git_service()
+        result = await git_service.analyze_workspace(
+            token=request.auth_token,
+            repo_url=request.repo_url,
+            branch=request.branch
+        )
+
+        return WorkspaceAnalysisResponse(**result)
+
+    except Exception as e:
+        logger.error(f"Failed to analyze workspace: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to analyze workspace",
+        )
+
+
+@router.post(
+    "/create-repository",
+    response_model=CreateRepoResponse,
+    summary="Create GitHub repository",
+    description="Create a new GitHub repository using saved token",
+)
+async def create_github_repository(
+    request: CreateRepoRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> CreateRepoResponse:
+    """Create new GitHub repository."""
+    try:
+        # Get token from database
+        git_service = get_git_service()
+        github_config = await git_service._get_github_config(ctx)
+
+        if not github_config or not github_config.get("token"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub token not found. Please validate your token first."
+            )
+
+        result = git_service.create_repository(
+            token=github_config["token"],
+            name=request.name,
+            description=request.description,
+            private=request.private,
+            organization=request.organization
+        )
+
+        return CreateRepoResponse(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create repository: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create repository",
+        )
+
+
+@router.post(
+    "/disconnect",
+    summary="Disconnect GitHub integration",
+    description="Remove GitHub integration configuration",
+)
+async def disconnect_github(
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> dict:
+    """Disconnect GitHub integration."""
+    try:
+        git_service = get_git_service()
+        await git_service._delete_github_config(ctx)
+
+        logger.info("GitHub integration disconnected")
+
+        return {"success": True, "message": "GitHub integration disconnected"}
+
+    except Exception as e:
+        logger.error(f"Failed to disconnect GitHub: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to disconnect GitHub",
         )

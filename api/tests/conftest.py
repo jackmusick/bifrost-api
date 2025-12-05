@@ -289,6 +289,47 @@ def sample_workflow_data() -> dict[str, Any]:
     }
 
 
+@pytest.fixture
+def cleanup_workspace_files():
+    """
+    Fixture to track and clean up test files created in workspace.
+    Yields paths to clean up, then removes them after test completes.
+    """
+    from pathlib import Path
+    import shutil
+
+    workspace_path = Path(os.environ.get("BIFROST_WORKSPACE_LOCATION", "/tmp/workspace"))
+    cleanup_paths = []
+
+    def register_cleanup(path: str):
+        """Register a path for cleanup."""
+        cleanup_paths.append(path)
+
+    yield register_cleanup
+
+    # Cleanup after test
+    for path_str in cleanup_paths:
+        full_path = workspace_path / path_str
+        if full_path.exists():
+            if full_path.is_dir():
+                shutil.rmtree(full_path)
+            else:
+                full_path.unlink()
+
+    # Also clean up common test directories
+    test_dirs = ["test_files", "test_folders", "test_listings", "forms"]
+    for test_dir in test_dirs:
+        dir_path = workspace_path / test_dir
+        if dir_path.exists():
+            # Only remove test files, not the whole directory structure
+            for item in dir_path.glob("*"):
+                if "test" in item.name.lower() or item.suffix == ".tmp":
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+
+
 # ==================== MARKERS ====================
 
 def pytest_configure(config):

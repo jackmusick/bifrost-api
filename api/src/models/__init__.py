@@ -21,6 +21,7 @@ from src.models.orm import (
     Role,
     UserRole,
     Form,
+    FormField,
     FormRole,
     Execution,
     ExecutionLog,
@@ -34,6 +35,7 @@ from src.models.orm import (
     MFARecoveryCode,
     TrustedDevice,
     UserOAuthAccount,
+    SystemConfig,
 )
 
 # Pydantic schemas (API request/response)
@@ -115,6 +117,7 @@ __all__ = [
     "MFARecoveryCode",
     "TrustedDevice",
     "UserOAuthAccount",
+    "SystemConfig",
     # Organization schemas
     "OrganizationBase",
     "OrganizationCreate",

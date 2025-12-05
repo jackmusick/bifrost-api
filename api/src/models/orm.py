@@ -23,7 +23,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from src.models.enums import (
@@ -72,6 +72,7 @@ class Organization(Base):
     forms: Mapped[list["Form"]] = relationship(back_populates="organization")
     executions: Mapped[list["Execution"]] = relationship(back_populates="organization")
     configs: Mapped[list["Config"]] = relationship(back_populates="organization")
+    system_configs: Mapped[list["SystemConfig"]] = relationship(back_populates="organization")
 
     __table_args__ = (
         Index("ix_organizations_domain", "domain"),
@@ -187,6 +188,49 @@ class UserRole(Base):
 # =============================================================================
 
 
+class FormField(Base):
+    """Form field database table."""
+    __tablename__ = "form_fields"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    form_id: Mapped[UUID] = mapped_column(ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(200), default=None)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Optional field properties
+    placeholder: Mapped[str | None] = mapped_column(String(500), default=None)
+    help_text: Mapped[str | None] = mapped_column(Text, default=None)
+    default_value: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+    # For select/radio fields
+    options: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+    # For data provider integration
+    data_provider: Mapped[str | None] = mapped_column(String(100), default=None)
+    data_provider_inputs: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+    # Advanced features
+    visibility_expression: Mapped[str | None] = mapped_column(Text, default=None)
+    validation: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+    # For file fields
+    allowed_types: Mapped[list | None] = mapped_column(ARRAY(Text), default=None)
+    multiple: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    max_size_mb: Mapped[int | None] = mapped_column(Integer, default=None)
+
+    # For markdown/html fields
+    content: Mapped[str | None] = mapped_column(Text, default=None)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=text("NOW()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=text("NOW()"), onupdate=datetime.utcnow)
+
+    # Relationships
+    form: Mapped["Form"] = relationship(back_populates="fields")
+
+
 class Form(Base):
     """Form database table."""
     __tablename__ = "forms"
@@ -198,7 +242,6 @@ class Form(Base):
     launch_workflow_id: Mapped[str | None] = mapped_column(String(255), default=None)
     default_launch_params: Mapped[dict | None] = mapped_column(JSONB, default=None)
     allowed_query_params: Mapped[list | None] = mapped_column(JSONB, default=None)
-    form_schema: Mapped[dict | None] = mapped_column(JSONB, default=None)
     access_level: Mapped[FormAccessLevel] = mapped_column(
         SQLAlchemyEnum(
             FormAccessLevel,
@@ -229,6 +272,7 @@ class Form(Base):
     # Relationships
     organization: Mapped[Organization | None] = relationship(back_populates="forms")
     executions: Mapped[list["Execution"]] = relationship(back_populates="form")
+    fields: Mapped[list["FormField"]] = relationship(back_populates="form", cascade="all, delete-orphan", order_by="FormField.position")
 
 
 class FormRole(Base):
@@ -706,3 +750,51 @@ class GlobalBranding(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()"),
         onupdate=datetime.utcnow
     )
+
+
+# =============================================================================
+# System Configuration
+# =============================================================================
+
+
+class SystemConfig(Base):
+    """
+    System-level configuration storage.
+
+    Stores system settings like GitHub integration, branding assets, etc.
+    Uses category+key for organization:
+    - GitHub: category='github', key='integration'
+    - Branding: category='branding', key='logo'
+
+    value_json: For JSON config data
+    value_bytes: For binary data (logos, files, etc.)
+
+    Services handle their own encryption as needed.
+    """
+    __tablename__ = "system_configs"
+    __table_args__ = (
+        Index('ix_system_configs_category', 'category'),
+        Index('ix_system_configs_category_key', 'category', 'key'),
+        Index('ix_system_configs_org_id', 'organization_id'),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    value_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
+        onupdate=datetime.utcnow
+    )
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Relationships
+    organization: Mapped["Organization | None"] = relationship("Organization", back_populates="system_configs")

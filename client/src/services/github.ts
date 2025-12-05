@@ -12,6 +12,14 @@ import type { components } from "@/lib/v1";
 // =============================================================================
 
 export type GitHubConnectRequest = components["schemas"]["GitHubConfigRequest"];
+export type GitHubConfigResponse =
+	components["schemas"]["GitHubConfigResponse"];
+export type GitHubRepoInfo = components["schemas"]["GitHubRepoInfo"];
+export type GitHubBranchInfo = components["schemas"]["GitHubBranchInfo"];
+export type WorkspaceAnalysisResponse =
+	components["schemas"]["WorkspaceAnalysisResponse"];
+export type CreateRepoRequest = components["schemas"]["CreateRepoRequest"];
+export type CreateRepoResponse = components["schemas"]["CreateRepoResponse"];
 export type GitStatusResponse =
 	components["schemas"]["GitRefreshStatusResponse"];
 export type PullRequest = components["schemas"]["PullFromGitHubRequest"];
@@ -19,8 +27,10 @@ export type PushRequest = components["schemas"]["PushToGitHubRequest"];
 export type FileChange = components["schemas"]["FileChange"];
 export type CommitInfo = components["schemas"]["CommitInfo"];
 export type ConflictInfo = components["schemas"]["ConflictInfo"];
-export type CommitHistoryResponse = components["schemas"]["CommitHistoryResponse"];
-export type DiscardCommitsResponse = components["schemas"]["DiscardUnpushedCommitsResponse"];
+export type CommitHistoryResponse =
+	components["schemas"]["CommitHistoryResponse"];
+export type DiscardCommitsResponse =
+	components["schemas"]["DiscardUnpushedCommitsResponse"];
 
 export const githubService = {
 	/**
@@ -34,6 +44,163 @@ export const githubService = {
 		}
 
 		return response.json();
+	},
+
+	/**
+	 * Refresh Git status - uses GitHub API to get complete Git status
+	 * Fast synchronous operation that returns status immediately
+	 */
+	async refreshStatus(): Promise<GitStatusResponse> {
+		const response = await authFetch("/api/github/refresh", {
+			method: "POST",
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.message || "Failed to refresh Git status");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Get current GitHub configuration
+	 */
+	async getConfig(): Promise<components["schemas"]["GitHubConfigResponse"]> {
+		const response = await authFetch("/api/github/config");
+
+		if (!response.ok) {
+			throw new Error("Failed to get GitHub configuration");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Validate GitHub token and list repositories
+	 */
+	async validate(
+		token: string,
+	): Promise<components["schemas"]["GitHubReposResponse"]> {
+		const response = await authFetch("/api/github/validate", {
+			method: "POST",
+			body: JSON.stringify({ token }),
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.message || "Failed to validate token");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Configure GitHub integration
+	 */
+	async configure(config: {
+		repo_url: string;
+		branch: string;
+	}): Promise<components["schemas"]["GitHubConfigResponse"]> {
+		const response = await authFetch("/api/github/configure", {
+			method: "POST",
+			body: JSON.stringify(config),
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.message || "Failed to configure GitHub");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * List repositories accessible with saved token
+	 */
+	async listRepositories(): Promise<
+		components["schemas"]["GitHubRepoInfo"][]
+	> {
+		const response = await authFetch("/api/github/repositories");
+
+		if (!response.ok) {
+			throw new Error("Failed to list repositories");
+		}
+
+		const data = await response.json();
+		return data.repositories;
+	},
+
+	/**
+	 * List branches for a repository
+	 */
+	async listBranches(
+		repoFullName: string,
+	): Promise<components["schemas"]["GitHubBranchInfo"][]> {
+		const response = await authFetch(
+			`/api/github/branches?repo=${encodeURIComponent(repoFullName)}`,
+		);
+
+		if (!response.ok) {
+			throw new Error("Failed to list branches");
+		}
+
+		const data = await response.json();
+		return data.branches;
+	},
+
+	/**
+	 * Analyze workspace before configuration
+	 */
+	async analyzeWorkspace(config: {
+		repo_url: string;
+		branch: string;
+	}): Promise<components["schemas"]["WorkspaceAnalysisResponse"]> {
+		const response = await authFetch("/api/github/analyze-workspace", {
+			method: "POST",
+			body: JSON.stringify(config),
+		});
+
+		if (!response.ok) {
+			throw new Error("Failed to analyze workspace");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Create a new GitHub repository
+	 */
+	async createRepository(request: {
+		name: string;
+		description: string | null;
+		private: boolean;
+		organization: string | null;
+	}): Promise<components["schemas"]["CreateRepoResponse"]> {
+		const response = await authFetch("/api/github/create-repository", {
+			method: "POST",
+			body: JSON.stringify(request),
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.message || "Failed to create repository");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Disconnect GitHub integration
+	 */
+	async disconnect(): Promise<void> {
+		const response = await authFetch("/api/github/disconnect", {
+			method: "POST",
+		});
+
+		if (!response.ok) {
+			throw new Error("Failed to disconnect GitHub");
+		}
 	},
 
 	/**
@@ -149,7 +316,9 @@ export const githubService = {
 
 		if (!response.ok) {
 			const error = await response.json();
-			throw new Error(error.message || "Failed to discard unpushed commits");
+			throw new Error(
+				error.message || "Failed to discard unpushed commits",
+			);
 		}
 
 		return response.json();

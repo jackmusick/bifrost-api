@@ -117,24 +117,51 @@ class Discovery:
 
     async def _db_sync_loop(self) -> None:
         """
-        Background task to sync workflows/providers to database.
+        Background task to process file watcher events and sync to database.
 
-        Performs a full import-based scan to capture parameters and complete metadata.
-        Runs every 5 seconds to catch file changes from the watcher.
+        Event-driven: waits for file change events instead of polling.
+        - For form changes: processes pending operations (fast)
+        - For Python file changes: does full import-based scan (needed for parameters)
         """
-        from shared.discovery_watcher import sync_to_database
+        from shared.discovery_watcher import (
+            wait_for_db_ops,
+            process_pending_db_ops,
+            has_pending_db_ops,
+            python_files_need_sync,
+            sync_to_database,
+        )
 
-        logger.info("Starting DB sync loop...")
+        logger.info("Starting event-driven DB sync loop...")
 
         while self.running:
             try:
-                # Do full sync - imports modules and executes decorators
-                # This captures parameters and all metadata
-                await sync_to_database()
-                await asyncio.sleep(5)  # Check every 5 seconds
+                # Wait for file change events (blocks until event or timeout)
+                # Timeout allows periodic check of self.running for graceful shutdown
+                event_triggered = await asyncio.get_event_loop().run_in_executor(
+                    None, wait_for_db_ops, 30.0  # 30 second timeout
+                )
+
+                if not self.running:
+                    break
+
+                if event_triggered or has_pending_db_ops():
+                    # Check if Python files changed - need full import scan
+                    if python_files_need_sync():
+                        logger.info("Python files changed, running full sync...")
+                        counts = await sync_to_database()
+                        logger.info(
+                            f"Full sync complete: {counts['workflows']} workflows, "
+                            f"{counts['providers']} providers, {counts['forms']} forms"
+                        )
+                    else:
+                        # Just process pending form operations (fast)
+                        processed = await process_pending_db_ops()
+                        if processed > 0:
+                            logger.info(f"Processed {processed} file change events")
+
             except Exception as e:
                 logger.error(f"Error in DB sync loop: {e}", exc_info=True)
-                await asyncio.sleep(10)  # Back off on error
+                await asyncio.sleep(5)  # Back off on error
 
     async def stop(self) -> None:
         """Stop the discovery service gracefully."""

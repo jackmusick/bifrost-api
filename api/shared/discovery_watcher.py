@@ -31,6 +31,7 @@ Usage:
 
 import json
 import logging
+import os
 import re
 import threading
 from dataclasses import dataclass, field
@@ -43,6 +44,35 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 logger = logging.getLogger(__name__)
+
+
+def _get_workspace_relative_path(absolute_path: str) -> str:
+    """
+    Convert an absolute file path to a workspace-relative path.
+
+    Args:
+        absolute_path: Full path like '/workspace/forms/foo.form.json'
+
+    Returns:
+        Workspace-relative path like 'forms/foo.form.json'
+    """
+    workspace_loc = os.getenv("BIFROST_WORKSPACE_LOCATION", "/workspace")
+    # Ensure workspace_loc doesn't have trailing slash
+    workspace_loc = workspace_loc.rstrip("/")
+
+    if absolute_path.startswith(workspace_loc):
+        # Remove workspace prefix and leading slash
+        relative = absolute_path[len(workspace_loc):]
+        if relative.startswith("/"):
+            relative = relative[1:]
+        return relative
+
+    # If not under workspace, return just the filename part under forms/
+    path = Path(absolute_path)
+    if path.suffix == ".json" and "form" in path.name.lower():
+        return f"forms/{path.name}"
+
+    return absolute_path  # Fallback to original
 
 
 # =============================================================================
@@ -82,6 +112,14 @@ class FormMetadata:
     name: str | None = None
     description: str | None = None
     linked_workflow: str | None = None
+    form_schema: dict | None = None  # Full form_schema for field extraction
+    is_active: bool = True
+    organization_id: str | None = None
+    access_level: str | None = None
+    created_by: str = "system:discovery"
+    launch_workflow_id: str | None = None
+    allowed_query_params: list[str] | None = None
+    default_launch_params: dict | None = None
 
 # =============================================================================
 # Thread-safe indexes (kept for backward compatibility + fast lookups)
@@ -100,6 +138,13 @@ _form_metadata: dict[str, FormMetadata] = {}  # id → metadata
 # Pending DB operations (batched for efficiency)
 _pending_db_ops: list[tuple[str, str, Any]] = []  # (op_type, entity_type, data)
 _db_sync_event = threading.Event()
+
+# Track whether Python files changed (requires full import scan)
+_python_files_changed = threading.Event()
+
+# Track files being written to prevent re-triggering on our own writes
+_files_being_written: set[str] = set()
+_write_lock = threading.Lock()
 
 # =============================================================================
 # Regex patterns for extracting metadata without importing
@@ -134,7 +179,7 @@ PROVIDER_DESCRIPTION_PATTERN = re.compile(
 )
 
 # Global observer instance
-_observer: Observer | None = None
+_observer: Observer | None = None  # type: ignore[type-arg]
 
 
 class WorkspaceEventHandler(FileSystemEventHandler):
@@ -143,24 +188,24 @@ class WorkspaceEventHandler(FileSystemEventHandler):
     def on_created(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        self._handle_file_change(event.src_path, "created")
+        self._handle_file_change(str(event.src_path), "created")
 
     def on_modified(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        self._handle_file_change(event.src_path, "modified")
+        self._handle_file_change(str(event.src_path), "modified")
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        self._handle_file_delete(event.src_path)
+        self._handle_file_delete(str(event.src_path))
 
     def on_moved(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        self._handle_file_delete(event.src_path)
+        self._handle_file_delete(str(event.src_path))
         if hasattr(event, "dest_path"):
-            self._handle_file_change(event.dest_path, "moved")
+            self._handle_file_change(str(event.dest_path), "moved")
 
     def _handle_file_change(self, file_path: str, event_type: str) -> None:
         """Update index when a file is created/modified."""
@@ -169,6 +214,16 @@ class WorkspaceEventHandler(FileSystemEventHandler):
         # Skip __pycache__ and hidden files
         if "__pycache__" in file_path or path.name.startswith("."):
             return
+
+        # Skip .tmp files (used for atomic writes)
+        if path.suffix == ".tmp":
+            return
+
+        # Skip files we're currently writing to prevent infinite loops
+        with _write_lock:
+            if file_path in _files_being_written:
+                logger.debug(f"Skipping self-triggered event for {path.name}")
+                return
 
         if path.suffix == ".py" and not path.name.startswith("_"):
             self._index_python_file(path, event_type)
@@ -244,6 +299,7 @@ class WorkspaceEventHandler(FileSystemEventHandler):
 
             # Trigger a full DB sync to get complete metadata with parameters
             # The sync_to_database() function will do a full import-based scan
+            _python_files_changed.set()
             _db_sync_event.set()
 
         except Exception as e:
@@ -254,31 +310,76 @@ class WorkspaceEventHandler(FileSystemEventHandler):
         try:
             content = path.read_text(encoding="utf-8")
             data = json.loads(content)
-            form_id = data.get("id") or f"workspace-{path.stem}"
+
+            # Get or generate form ID
+            form_id = data.get("id")
+            id_was_generated = False
+            if not form_id:
+                form_id = str(uuid4())
+                id_was_generated = True
+
             file_str = str(path)
+            # Store workspace-relative path in database
+            relative_path = _get_workspace_relative_path(file_str)
 
             with _lock:
                 # Remove old entry if this file had a different form_id before
                 for fid, fpath in list(_form_index.items()):
-                    if fpath == file_str:
+                    if fpath == file_str or fpath == relative_path:
                         del _form_index[fid]
                         if fid in _form_metadata:
                             del _form_metadata[fid]
 
-                _form_index[form_id] = file_str
+                _form_index[form_id] = file_str  # Keep absolute for lookups
 
-                # Extract metadata from form JSON
+                # Extract comprehensive metadata from form JSON
+                org_id = data.get("org_id") or data.get("organization_id")
+                if org_id == "GLOBAL":
+                    org_id = None
+
                 metadata = FormMetadata(
                     form_id=form_id,
-                    file_path=file_str,
+                    file_path=relative_path,  # Store workspace-relative path
                     name=data.get("name"),
                     description=data.get("description"),
                     linked_workflow=data.get("linkedWorkflow") or data.get("linked_workflow"),
+                    form_schema=data.get("form_schema"),
+                    is_active=data.get("is_active", True),
+                    organization_id=org_id,
+                    access_level=data.get("access_level"),
+                    created_by=data.get("created_by", "system:discovery"),
+                    launch_workflow_id=data.get("launch_workflow_id"),
+                    allowed_query_params=data.get("allowed_query_params"),
+                    default_launch_params=data.get("default_launch_params"),
                 )
                 _form_metadata[form_id] = metadata
 
                 _pending_db_ops.append(("upsert", "form", metadata))
                 logger.debug(f"Indexed form '{form_id}' from {path.name} ({event_type})")
+
+            # If we generated an ID, write it back to the file
+            if id_was_generated:
+                data["id"] = form_id
+                # Mark file as being written to prevent re-triggering
+                with _write_lock:
+                    _files_being_written.add(file_str)
+                try:
+                    # Write atomically
+                    temp_file = path.with_suffix('.tmp')
+                    temp_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
+                    temp_file.replace(path)
+                    logger.info(f"Generated ID {form_id} for form file: {path.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to write generated ID to {path}: {e}")
+                    if temp_file.exists():
+                        temp_file.unlink()
+                finally:
+                    # Allow a small delay before removing from write set
+                    # to let the filesystem settle
+                    import time
+                    time.sleep(0.1)
+                    with _write_lock:
+                        _files_being_written.discard(file_str)
 
             # Signal pending DB operations
             if _pending_db_ops:
@@ -339,17 +440,18 @@ def start_watcher(workspace_paths: list[Path]) -> None:
         logger.warning("Watcher already running")
         return
 
-    _observer = Observer()
+    observer = Observer()
     handler = WorkspaceEventHandler()
 
     for path in workspace_paths:
         if path.exists():
-            _observer.schedule(handler, str(path), recursive=True)
+            observer.schedule(handler, str(path), recursive=True)
             logger.info(f"Watching directory: {path}")
         else:
             logger.warning(f"Cannot watch non-existent path: {path}")
 
-    _observer.start()
+    observer.start()
+    _observer = observer
     logger.info("Workspace file watcher started")
 
 
@@ -613,13 +715,16 @@ async def process_pending_db_ops() -> int:
     Process pending database operations from file watcher events.
 
     This is called by a background task to batch DB updates.
+    For forms, this creates/updates FormField records from form_schema.
 
     Returns:
         Number of operations processed
     """
     from src.core.database import get_db_context
-    from src.models import Workflow, DataProvider, Form
-    from sqlalchemy import select
+    from src.models import Workflow, DataProvider, Form, FormField
+    from src.models.enums import FormAccessLevel
+    from sqlalchemy import select, delete
+    from uuid import UUID as UUIDType
 
     with _lock:
         ops = list(_pending_db_ops)
@@ -637,38 +742,38 @@ async def process_pending_db_ops() -> int:
             try:
                 if entity_type == "workflow":
                     if op_type == "upsert":
-                        meta: WorkflowMetadata = data
+                        wf_meta = WorkflowMetadata(**data.__dict__) if hasattr(data, '__dict__') else data
                         result = await db.execute(
-                            select(Workflow).where(Workflow.name == meta.name)
+                            select(Workflow).where(Workflow.name == wf_meta.name)
                         )
                         wf = result.scalar_one_or_none()
                         if wf:
-                            wf.file_path = meta.file_path
-                            wf.description = meta.description
-                            wf.category = meta.category
-                            wf.schedule = meta.schedule
-                            wf.endpoint_enabled = meta.endpoint_enabled
-                            wf.execution_mode = meta.execution_mode
+                            wf.file_path = wf_meta.file_path
+                            wf.description = wf_meta.description
+                            wf.category = wf_meta.category
+                            wf.schedule = wf_meta.schedule
+                            wf.endpoint_enabled = wf_meta.endpoint_enabled
+                            wf.execution_mode = wf_meta.execution_mode
                             wf.is_active = True
                             wf.last_seen_at = now
                         else:
                             wf = Workflow(
                                 id=uuid4(),
-                                name=meta.name,
-                                file_path=meta.file_path,
-                                description=meta.description,
-                                category=meta.category,
-                                schedule=meta.schedule,
-                                endpoint_enabled=meta.endpoint_enabled,
-                                execution_mode=meta.execution_mode,
+                                name=wf_meta.name,
+                                file_path=wf_meta.file_path,
+                                description=wf_meta.description,
+                                category=wf_meta.category,
+                                schedule=wf_meta.schedule,
+                                endpoint_enabled=wf_meta.endpoint_enabled,
+                                execution_mode=wf_meta.execution_mode,
                                 is_active=True,
                                 last_seen_at=now,
                             )
                             db.add(wf)
                     elif op_type == "deactivate":
-                        name: str = data
+                        wf_name: str = data
                         result = await db.execute(
-                            select(Workflow).where(Workflow.name == name)
+                            select(Workflow).where(Workflow.name == wf_name)
                         )
                         wf = result.scalar_one_or_none()
                         if wf:
@@ -676,30 +781,30 @@ async def process_pending_db_ops() -> int:
 
                 elif entity_type == "provider":
                     if op_type == "upsert":
-                        meta: ProviderMetadata = data
+                        prov_meta: ProviderMetadata = data
                         result = await db.execute(
-                            select(DataProvider).where(DataProvider.name == meta.name)
+                            select(DataProvider).where(DataProvider.name == prov_meta.name)
                         )
                         dp = result.scalar_one_or_none()
                         if dp:
-                            dp.file_path = meta.file_path
-                            dp.description = meta.description
+                            dp.file_path = prov_meta.file_path
+                            dp.description = prov_meta.description
                             dp.is_active = True
                             dp.last_seen_at = now
                         else:
                             dp = DataProvider(
                                 id=uuid4(),
-                                name=meta.name,
-                                file_path=meta.file_path,
-                                description=meta.description,
+                                name=prov_meta.name,
+                                file_path=prov_meta.file_path,
+                                description=prov_meta.description,
                                 is_active=True,
                                 last_seen_at=now,
                             )
                             db.add(dp)
                     elif op_type == "deactivate":
-                        name: str = data
+                        prov_name: str = data
                         result = await db.execute(
-                            select(DataProvider).where(DataProvider.name == name)
+                            select(DataProvider).where(DataProvider.name == prov_name)
                         )
                         dp = result.scalar_one_or_none()
                         if dp:
@@ -707,48 +812,145 @@ async def process_pending_db_ops() -> int:
 
                 elif entity_type == "form":
                     if op_type == "upsert":
-                        meta: FormMetadata = data
-                        form_name = meta.name or meta.form_id
+                        form_meta: FormMetadata = data
+                        form_name = form_meta.name or form_meta.form_id
+
+                        # Use the form_id from file if it looks like a UUID
+                        try:
+                            form_uuid = UUIDType(form_meta.form_id)
+                        except (ValueError, TypeError):
+                            form_uuid = uuid4()
+
+                        # Try to find by ID first (for updates), then by name
                         result = await db.execute(
-                            select(Form).where(Form.name == form_name)
+                            select(Form).where(Form.id == form_uuid)
                         )
                         form = result.scalar_one_or_none()
+
+                        if not form:
+                            # Check by name if not found by ID
+                            result = await db.execute(
+                                select(Form).where(Form.name == form_name)
+                            )
+                            form = result.scalar_one_or_none()
+
+                        # Parse organization_id
+                        org_uuid = None
+                        if form_meta.organization_id:
+                            try:
+                                org_uuid = UUIDType(form_meta.organization_id)
+                            except (ValueError, TypeError):
+                                pass
+
+                        # Parse access_level string to enum (default to ROLE_BASED)
+                        access_level_enum = FormAccessLevel.ROLE_BASED
+                        if form_meta.access_level:
+                            try:
+                                access_level_enum = FormAccessLevel(form_meta.access_level)
+                            except ValueError:
+                                pass
+
                         if form:
-                            form.file_path = meta.file_path
-                            form.description = meta.description
-                            form.linked_workflow = meta.linked_workflow
-                            form.is_active = True
+                            # Update existing form
+                            form.name = form_name
+                            form.file_path = form_meta.file_path
+                            form.description = form_meta.description
+                            form.linked_workflow = form_meta.linked_workflow
+                            form.is_active = form_meta.is_active
+                            form.organization_id = org_uuid
+                            form.access_level = access_level_enum
+                            form.launch_workflow_id = form_meta.launch_workflow_id
+                            form.allowed_query_params = form_meta.allowed_query_params
+                            form.default_launch_params = form_meta.default_launch_params
                             form.last_seen_at = now
+                            form.updated_at = now
                         else:
+                            # Create new form
                             form = Form(
-                                id=uuid4(),
+                                id=form_uuid,
                                 name=form_name,
-                                file_path=meta.file_path,
-                                description=meta.description,
-                                linked_workflow=meta.linked_workflow,
-                                is_active=True,
+                                file_path=form_meta.file_path,
+                                description=form_meta.description,
+                                linked_workflow=form_meta.linked_workflow,
+                                is_active=form_meta.is_active,
+                                organization_id=org_uuid,
+                                access_level=access_level_enum,
+                                created_by=form_meta.created_by,
+                                launch_workflow_id=form_meta.launch_workflow_id,
+                                allowed_query_params=form_meta.allowed_query_params,
+                                default_launch_params=form_meta.default_launch_params,
                                 last_seen_at=now,
-                                created_by="system:discovery",
+                                created_at=now,
+                                updated_at=now,
                             )
                             db.add(form)
+                            await db.flush()  # Get the ID
+
+                        # Sync form_fields from form_schema
+                        if form_meta.form_schema and "fields" in form_meta.form_schema:
+                            # Delete existing fields
+                            await db.execute(
+                                delete(FormField).where(FormField.form_id == form.id)
+                            )
+                            await db.flush()
+
+                            # Create new fields from schema
+                            for position, field_data in enumerate(form_meta.form_schema["fields"]):
+                                field = FormField(
+                                    form_id=form.id,
+                                    name=field_data.get("name", f"field_{position}"),
+                                    label=field_data.get("label"),
+                                    type=field_data.get("type", "text"),
+                                    required=field_data.get("required", False),
+                                    position=position,
+                                    placeholder=field_data.get("placeholder"),
+                                    help_text=field_data.get("help_text"),
+                                    default_value=field_data.get("default_value"),
+                                    options=field_data.get("options"),
+                                    data_provider=field_data.get("data_provider"),
+                                    data_provider_inputs=field_data.get("data_provider_inputs"),
+                                    visibility_expression=field_data.get("visibility_expression"),
+                                    validation=field_data.get("validation"),
+                                    allowed_types=field_data.get("allowed_types"),
+                                    multiple=field_data.get("multiple"),
+                                    max_size_mb=field_data.get("max_size_mb"),
+                                    content=field_data.get("content"),
+                                )
+                                db.add(field)
+
+                        logger.debug(f"Synced form '{form_name}' from file")
+
                     elif op_type == "deactivate":
-                        form_id: str = data
-                        # Try to find by name first, then by file path pattern
-                        result = await db.execute(
-                            select(Form).where(Form.name == form_id)
-                        )
-                        form = result.scalar_one_or_none()
+                        form_id_str: str = data
+                        # Try to find by ID first
+                        try:
+                            form_uuid = UUIDType(form_id_str)
+                            result = await db.execute(
+                                select(Form).where(Form.id == form_uuid)
+                            )
+                            form = result.scalar_one_or_none()
+                        except (ValueError, TypeError):
+                            form = None
+
+                        # Try by name if not found
+                        if not form:
+                            result = await db.execute(
+                                select(Form).where(Form.name == form_id_str)
+                            )
+                            form = result.scalar_one_or_none()
+
                         if form:
                             form.is_active = False
 
                 processed += 1
 
             except Exception as e:
-                logger.error(f"Error processing DB op ({op_type}, {entity_type}): {e}")
+                logger.error(f"Error processing DB op ({op_type}, {entity_type}): {e}", exc_info=True)
 
         await db.commit()
 
-    logger.debug(f"Processed {processed} pending DB operations")
+    if processed > 0:
+        logger.debug(f"Processed {processed} pending DB operations")
     return processed
 
 
@@ -765,3 +967,15 @@ def wait_for_db_ops(timeout: float = 5.0) -> bool:
     Returns True if there are ops to process, False if timeout.
     """
     return _db_sync_event.wait(timeout=timeout)
+
+
+def python_files_need_sync() -> bool:
+    """
+    Check if Python files changed and need a full import-based sync.
+
+    Returns True if Python files changed since last check, and clears the flag.
+    """
+    if _python_files_changed.is_set():
+        _python_files_changed.clear()
+        return True
+    return False

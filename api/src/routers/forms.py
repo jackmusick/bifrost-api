@@ -20,11 +20,12 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, HTTPException, status
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.core.pubsub import publish_execution_update
-from src.models.orm import Form as FormORM, FormRole as FormRoleORM, UserRole as UserRoleORM
+from src.models.orm import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models.models import FormCreate, FormUpdate, FormPublic
 from shared.models import WorkflowExecutionResponse
 
@@ -57,6 +58,100 @@ def _generate_form_filename(form_name: str, form_id: str) -> str:
     return f"{slug[:50]}-{short_id}.form.json"
 
 
+def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldORM]:
+    """
+    Convert FormSchema dict to list of FormField ORM objects.
+
+    Args:
+        form_schema: FormSchema dict with 'fields' key
+        form_id: Parent form UUID
+
+    Returns:
+        List of FormField ORM objects
+    """
+    from shared.models import FormSchema
+
+    # Validate structure
+    schema = FormSchema.model_validate(form_schema)
+
+    fields = []
+    for position, field in enumerate(schema.fields):
+        field_orm = FormFieldORM(
+            form_id=form_id,
+            name=field.name,
+            label=field.label,
+            type=field.type.value,
+            required=field.required,
+            position=position,
+            placeholder=field.placeholder,
+            help_text=field.help_text,
+            default_value=field.default_value,
+            options=field.options,
+            data_provider=field.data_provider,
+            data_provider_inputs=field.data_provider_inputs,
+            visibility_expression=field.visibility_expression,
+            validation=field.validation,
+            allowed_types=field.allowed_types,
+            multiple=field.multiple,
+            max_size_mb=field.max_size_mb,
+            content=field.content,
+        )
+        fields.append(field_orm)
+
+    return fields
+
+
+def _fields_to_form_schema(fields: list[FormFieldORM]) -> dict:
+    """
+    Convert list of FormField ORM objects to FormSchema dict.
+
+    Args:
+        fields: List of FormField ORM objects (should be ordered by position)
+
+    Returns:
+        FormSchema dict with 'fields' key
+    """
+    fields_data = []
+    for field in fields:
+        field_data = {
+            "name": field.name,
+            "type": field.type,
+            "required": field.required,
+        }
+
+        # Add optional fields if they're set
+        if field.label:
+            field_data["label"] = field.label
+        if field.placeholder:
+            field_data["placeholder"] = field.placeholder
+        if field.help_text:
+            field_data["help_text"] = field.help_text
+        if field.default_value is not None:
+            field_data["default_value"] = field.default_value
+        if field.options:
+            field_data["options"] = field.options
+        if field.data_provider:
+            field_data["data_provider"] = field.data_provider
+        if field.data_provider_inputs:
+            field_data["data_provider_inputs"] = field.data_provider_inputs
+        if field.visibility_expression:
+            field_data["visibility_expression"] = field.visibility_expression
+        if field.validation:
+            field_data["validation"] = field.validation
+        if field.allowed_types:
+            field_data["allowed_types"] = field.allowed_types
+        if field.multiple is not None:
+            field_data["multiple"] = field.multiple
+        if field.max_size_mb:
+            field_data["max_size_mb"] = field.max_size_mb
+        if field.content:
+            field_data["content"] = field.content
+
+        fields_data.append(field_data)
+
+    return {"fields": fields_data}
+
+
 async def _write_form_to_file(form: FormORM) -> str:
     """
     Write form to file system as *.form.json.
@@ -65,22 +160,28 @@ async def _write_form_to_file(form: FormORM) -> str:
         form: Form ORM instance
 
     Returns:
-        File path relative to workspace
+        Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')
 
     Raises:
         Exception: If file write fails
     """
     # Generate filename
     filename = _generate_form_filename(form.name, str(form.id))
-    file_path = WORKSPACE_LOCATION / filename
+    # Forms are stored in the 'forms' subdirectory
+    forms_dir = WORKSPACE_LOCATION / "forms"
+    forms_dir.mkdir(exist_ok=True)
+    file_path = forms_dir / filename
 
     # Build form JSON (using snake_case for consistency with Python conventions)
+    # Convert fields to form_schema format for file storage
+    form_schema = _fields_to_form_schema(form.fields)
+
     form_data = {
         "id": str(form.id),
         "name": form.name,
         "description": form.description,
         "linked_workflow": form.linked_workflow,
-        "form_schema": form.form_schema,
+        "form_schema": form_schema,
         "is_active": form.is_active,
         "is_global": form.organization_id is None,
         "org_id": str(form.organization_id) if form.organization_id else "GLOBAL",
@@ -98,8 +199,9 @@ async def _write_form_to_file(form: FormORM) -> str:
     try:
         temp_file.write_text(json.dumps(form_data, indent=2), encoding='utf-8')
         temp_file.replace(file_path)
-        logger.info(f"Wrote form to file: {filename}")
-        return filename
+        logger.info(f"Wrote form to file: forms/{filename}")
+        # Return workspace-relative path
+        return f"forms/{filename}"
     except Exception as e:
         # Clean up temp file if it exists
         if temp_file.exists():
@@ -113,14 +215,15 @@ async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
 
     Args:
         form: Updated form ORM instance
-        old_file_path: Previous file path (if known)
+        old_file_path: Previous workspace-relative file path (if known)
 
     Returns:
-        New file path relative to workspace
+        New workspace-relative file path
     """
     # Generate new filename
     new_filename = _generate_form_filename(form.name, str(form.id))
-    new_file_path = WORKSPACE_LOCATION / new_filename
+    new_relative_path = f"forms/{new_filename}"
+    new_file_path = WORKSPACE_LOCATION / "forms" / new_filename
 
     # If we have the old file path and it's different, delete the old file
     if old_file_path:
@@ -130,8 +233,7 @@ async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
             logger.info(f"Deleted old form file: {old_file_path}")
 
     # Write the updated form
-    await _write_form_to_file(form)
-    return new_filename
+    return await _write_form_to_file(form)
 
 
 async def _deactivate_form_file(form_id: str) -> None:
@@ -141,8 +243,13 @@ async def _deactivate_form_file(form_id: str) -> None:
     Args:
         form_id: Form UUID
     """
-    # Find the form file by scanning for the ID
-    for form_file in WORKSPACE_LOCATION.glob("*.form.json"):
+    # Find the form file by scanning for the ID in the forms directory
+    forms_dir = WORKSPACE_LOCATION / "forms"
+    if not forms_dir.exists():
+        logger.warning(f"Forms directory not found, cannot deactivate form: {form_id}")
+        return
+
+    for form_file in forms_dir.glob("*.form.json"):
         try:
             content = form_file.read_text(encoding='utf-8')
             data = json.loads(content)
@@ -155,7 +262,7 @@ async def _deactivate_form_file(form_id: str) -> None:
                 temp_file = form_file.with_suffix('.tmp')
                 temp_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
                 temp_file.replace(form_file)
-                logger.info(f"Deactivated form file: {form_file.name}")
+                logger.info(f"Deactivated form file: forms/{form_file.name}")
                 return
         except Exception as e:
             logger.warning(f"Error processing form file {form_file}: {e}")
@@ -185,7 +292,7 @@ async def list_forms(
     """
     # Platform admins see all forms
     if ctx.user.is_superuser:
-        query = select(FormORM).order_by(FormORM.name)
+        query = select(FormORM).options(selectinload(FormORM.fields)).order_by(FormORM.name)
         result = await db.execute(query)
         return [FormPublic.model_validate(f) for f in result.scalars().all()]
 
@@ -215,6 +322,7 @@ async def list_forms(
 
     query = (
         select(FormORM)
+        .options(selectinload(FormORM.fields))
         .where(FormORM.is_active)
         .where(org_filter)
         .where(
@@ -259,11 +367,7 @@ async def create_form(
     """
     now = datetime.utcnow()
 
-    # Convert form_schema to dict if it's a FormSchema model
-    form_schema_data: dict = request.form_schema  # type: ignore[assignment]
-    if hasattr(form_schema_data, 'model_dump'):
-        form_schema_data = form_schema_data.model_dump()  # type: ignore[union-attr]
-
+    # Create form record
     form = FormORM(
         name=request.name,
         description=request.description,
@@ -271,7 +375,6 @@ async def create_form(
         launch_workflow_id=request.launch_workflow_id,
         default_launch_params=request.default_launch_params,
         allowed_query_params=request.allowed_query_params,
-        form_schema=form_schema_data,
         access_level=request.access_level,
         is_active=True,
         created_by=ctx.user.email,
@@ -280,8 +383,26 @@ async def create_form(
     )
 
     db.add(form)
+    await db.flush()  # Get the form ID
+
+    # Convert form_schema to FormField records
+    form_schema_data: dict = request.form_schema  # type: ignore[assignment]
+    if hasattr(form_schema_data, 'model_dump'):
+        form_schema_data = form_schema_data.model_dump()  # type: ignore[union-attr]
+
+    field_records = _form_schema_to_fields(form_schema_data, form.id)
+    for field in field_records:
+        db.add(field)
+
     await db.flush()
-    await db.refresh(form)
+
+    # Reload form with fields eager-loaded
+    result = await db.execute(
+        select(FormORM)
+        .options(selectinload(FormORM.fields))
+        .where(FormORM.id == form.id)
+    )
+    form = result.scalar_one()
 
     # Write to file system (dual-write pattern)
     try:
@@ -309,7 +430,11 @@ async def get_form(
     db: DbSession,
 ) -> FormPublic:
     """Get a specific form by ID."""
-    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    result = await db.execute(
+        select(FormORM)
+        .options(selectinload(FormORM.fields))
+        .where(FormORM.id == form_id)
+    )
     form = result.scalar_one_or_none()
 
     if not form:
@@ -380,7 +505,11 @@ async def update_form(
     Updates are written to BOTH database AND file system.
     If the form name changes, the file is renamed to match.
     """
-    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    result = await db.execute(
+        select(FormORM)
+        .options(selectinload(FormORM.fields))
+        .where(FormORM.id == form_id)
+    )
     form = result.scalar_one_or_none()
 
     if not form:
@@ -405,10 +534,23 @@ async def update_form(
     if request.allowed_query_params is not None:
         form.allowed_query_params = request.allowed_query_params
     if request.form_schema is not None:
+        # Delete all existing fields and recreate them
+        await db.execute(
+            select(FormFieldORM).where(FormFieldORM.form_id == form_id)
+        )
+        for field in form.fields:
+            await db.delete(field)
+        await db.flush()
+
+        # Convert new form_schema to FormField records
         form_schema_data: dict = request.form_schema  # type: ignore[assignment]
         if hasattr(form_schema_data, 'model_dump'):
             form_schema_data = form_schema_data.model_dump()  # type: ignore[union-attr]
-        form.form_schema = form_schema_data  # type: ignore[assignment]
+
+        field_records = _form_schema_to_fields(form_schema_data, form_id)
+        for field in field_records:
+            db.add(field)
+
     if request.is_active is not None:
         form.is_active = request.is_active
     if request.access_level is not None:
@@ -417,7 +559,14 @@ async def update_form(
     form.updated_at = datetime.utcnow()
 
     await db.flush()
-    await db.refresh(form)
+
+    # Reload form with fields eager-loaded
+    result = await db.execute(
+        select(FormORM)
+        .options(selectinload(FormORM.fields))
+        .where(FormORM.id == form_id)
+    )
+    form = result.scalar_one()
 
     # Update file system (dual-write pattern)
     try:

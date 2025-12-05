@@ -83,7 +83,7 @@ export function SourceControlPanel() {
 		isLoadingRef.current = true;
 		setIsLoading(true);
 		try {
-			const result = await githubService.getStatus();
+			const result = await githubService.refreshStatus();
 			setStatus(result);
 
 			// Load commit history if available in status response
@@ -476,59 +476,53 @@ export function SourceControlPanel() {
 				</button>
 			</div>
 
-			{/* Sync controls - only show when there's something to sync */}
-			{(status.commits_ahead > 0 || status.commits_behind > 0) && (
-				<div className="border-b">
-					<button
-						onClick={handleSync}
-						disabled={isSyncing || isLoading}
-						className="w-full px-4 py-3 flex flex-col items-start gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
-					>
-						<div className="flex items-center justify-between w-full">
-							<div className="flex items-center gap-2">
-								{isSyncing ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<RefreshCw className="h-4 w-4" />
-								)}
-								<span className="text-sm font-medium">
-									Sync with GitHub
+			{/* Sync controls - only show when configured and there's something to sync */}
+			{status.configured &&
+				(status.commits_ahead > 0 || status.commits_behind > 0) && (
+					<div className="border-b">
+						<button
+							onClick={handleSync}
+							disabled={isSyncing || isLoading}
+							className="w-full px-4 py-3 flex flex-col items-start gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+						>
+							<div className="flex items-center justify-between w-full">
+								<div className="flex items-center gap-2">
+									{isSyncing ? (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									) : (
+										<RefreshCw className="h-4 w-4" />
+									)}
+									<span className="text-sm font-medium">
+										Sync with GitHub
+									</span>
+								</div>
+								<div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted text-xs">
+									{status.commits_ahead > 0 && (
+										<>
+											<Upload className="h-3 w-3" />
+											<span>{status.commits_ahead}</span>
+										</>
+									)}
+									{status.commits_behind > 0 && (
+										<>
+											<Download className="h-3 w-3" />
+											<span>{status.commits_behind}</span>
+										</>
+									)}
+								</div>
+							</div>
+							{status.last_synced && (
+								<span className="text-xs text-muted-foreground ml-6">
+									Last synced{" "}
+									{formatDistanceToNow(
+										new Date(status.last_synced),
+										{ addSuffix: true },
+									)}
 								</span>
-							</div>
-							<div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted text-xs">
-								{status.commits_ahead > 0 && (
-									<>
-										<Upload className="h-3 w-3" />
-										<span>{status.commits_ahead}</span>
-									</>
-								)}
-								{status.commits_behind > 0 && (
-									<>
-										<Download className="h-3 w-3" />
-										<span>{status.commits_behind}</span>
-									</>
-								)}
-							</div>
-						</div>
-						{status.last_synced && (
-							<span className="text-xs text-muted-foreground ml-6">
-								Last synced{" "}
-								{formatDistanceToNow(
-									new Date(status.last_synced),
-									{ addSuffix: true },
-								)}
-							</span>
-						)}
-					</button>
-				</div>
-			)}
-
-			{/* Status info */}
-			<div className="px-4 py-3 border-b space-y-1 text-xs text-muted-foreground">
-				<div>Changes: {status.changed_files?.length ?? 0} file(s)</div>
-				<div>Commits ahead: {status.commits_ahead}</div>
-				<div>Commits behind: {status.commits_behind}</div>
-			</div>
+							)}
+						</button>
+					</div>
+				)}
 
 			{/* Commit section */}
 			{hasChanges && (

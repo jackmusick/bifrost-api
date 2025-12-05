@@ -216,7 +216,7 @@ class GitIntegrationService:
 
     async def _get_github_config(self, context: Any) -> dict | None:
         """
-        Get GitHub configuration from PostgreSQL Config table.
+        Get GitHub configuration from PostgreSQL system_configs table.
 
         Args:
             context: Organization context with org_id
@@ -232,7 +232,7 @@ class GitIntegrationService:
         try:
             from src.config import get_settings
             from src.core.database import get_session_factory
-            from src.models import Config
+            from src.models import SystemConfig
 
             settings = get_settings()
             session_factory = get_session_factory()
@@ -250,19 +250,21 @@ class GitIntegrationService:
                     pass
 
             async with session_factory() as db:
-                # Look for github_config in Config table
-                query = select(Config).where(
-                    Config.key == "github_config",
-                    Config.organization_id == org_uuid
+                # Look for github integration config in system_configs table
+                query = select(SystemConfig).where(
+                    SystemConfig.category == "github",
+                    SystemConfig.key == "integration",
+                    SystemConfig.organization_id == org_uuid
                 )
                 result = await db.execute(query)
                 config = result.scalars().first()
 
                 if not config:
-                    # Try GLOBAL fallback
-                    query = select(Config).where(
-                        Config.key == "github_config",
-                        Config.organization_id.is_(None)
+                    # Try GLOBAL fallback (organization_id = NULL)
+                    query = select(SystemConfig).where(
+                        SystemConfig.category == "github",
+                        SystemConfig.key == "integration",
+                        SystemConfig.organization_id.is_(None)
                     )
                     result = await db.execute(query)
                     config = result.scalars().first()
@@ -270,7 +272,7 @@ class GitIntegrationService:
                 if not config:
                     return None
 
-                config_value = config.value or {}
+                config_value = config.value_json or {}
                 repo_url = config_value.get("repo_url")
                 encrypted_token = config_value.get("encrypted_token")
                 branch = config_value.get("branch", "main")
@@ -293,6 +295,127 @@ class GitIntegrationService:
         except Exception as e:
             logger.error(f"Failed to get GitHub config: {e}")
             return None
+
+    async def _save_github_config(
+        self,
+        context: Any,
+        repo_url: str,
+        token: str,
+        branch: str,
+        updated_by: str
+    ) -> None:
+        """
+        Save GitHub configuration to system_configs table.
+
+        Args:
+            context: Organization context
+            repo_url: GitHub repository URL
+            token: GitHub personal access token (will be encrypted)
+            branch: Branch name
+            updated_by: Email of user making the change
+        """
+        from uuid import UUID, uuid4
+        from sqlalchemy import select
+        from cryptography.fernet import Fernet
+        import base64
+        from datetime import datetime
+
+        from src.config import get_settings
+        from src.core.database import get_session_factory
+        from src.models import SystemConfig
+
+        settings = get_settings()
+        session_factory = get_session_factory()
+
+        # Get encryption key
+        key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
+        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+
+        # Encrypt token
+        encrypted_token = fernet.encrypt(token.encode()).decode()
+
+        org_id = getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        org_uuid = None
+        if org_id and org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(org_id)
+            except ValueError:
+                pass
+
+        async with session_factory() as db:
+            # Check if config already exists
+            query = select(SystemConfig).where(
+                SystemConfig.category == "github",
+                SystemConfig.key == "integration",
+                SystemConfig.organization_id == org_uuid
+            )
+            result = await db.execute(query)
+            existing = result.scalars().first()
+
+            config_data = {
+                "repo_url": repo_url,
+                "encrypted_token": encrypted_token,
+                "branch": branch,
+                "status": "connected"
+            }
+
+            if existing:
+                # Update existing
+                existing.value_json = config_data
+                existing.updated_at = datetime.utcnow()
+                existing.updated_by = updated_by
+            else:
+                # Create new
+                new_config = SystemConfig(
+                    id=uuid4(),
+                    category="github",
+                    key="integration",
+                    value_json=config_data,
+                    value_bytes=None,
+                    organization_id=org_uuid,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                    created_by=updated_by,
+                    updated_by=updated_by
+                )
+                db.add(new_config)
+
+            await db.commit()
+            logger.info(f"Saved GitHub config for org {org_uuid or 'GLOBAL'}")
+
+    async def _delete_github_config(self, context: Any) -> None:
+        """
+        Delete GitHub configuration from system_configs table.
+
+        Args:
+            context: Organization context
+        """
+        from uuid import UUID
+        from sqlalchemy import select, delete
+
+        from src.core.database import get_session_factory
+        from src.models import SystemConfig
+
+        session_factory = get_session_factory()
+
+        org_id = getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+        org_uuid = None
+        if org_id and org_id != "GLOBAL":
+            try:
+                org_uuid = UUID(org_id)
+            except ValueError:
+                pass
+
+        async with session_factory() as db:
+            # Delete the config
+            stmt = delete(SystemConfig).where(
+                SystemConfig.category == "github",
+                SystemConfig.key == "integration",
+                SystemConfig.organization_id == org_uuid
+            )
+            await db.execute(stmt)
+            await db.commit()
+            logger.info(f"Deleted GitHub config for org {org_uuid or 'GLOBAL'}")
 
     def _clone_repo(self, auth_url: str, branch: str) -> None:
         """
@@ -563,6 +686,63 @@ class GitIntegrationService:
 
         except Exception as e:
             logger.warning(f"Failed to get current branch: {e}")
+            return None
+
+    def get_detected_repo_info(self) -> dict | None:
+        """
+        Extract repository URL and branch from existing .git folder.
+
+        Returns:
+            Dict with repo_url, repo_full_name, and branch, or None if no valid Git repo
+        """
+        if not self.is_git_repo():
+            return None
+
+        try:
+            repo = self.get_repo()
+            config = repo.get_config()
+
+            # Get remote URL
+            remote_url = config.get((b'remote', b'origin'), b'url')
+            if not remote_url:
+                logger.debug("No origin remote found in Git config")
+                return None
+
+            remote_url = remote_url.decode('utf-8')
+
+            # Clean URL (remove existing token if present)
+            if '@' in remote_url and 'github.com' in remote_url:
+                # Extract github.com part after the token
+                parts = remote_url.split('@')
+                if len(parts) == 2:
+                    remote_url = f"https://{parts[1]}"
+
+            # Check if it's a GitHub URL
+            if 'github.com' not in remote_url:
+                logger.debug(f"Remote URL is not a GitHub repository: {remote_url}")
+                return None
+
+            # Normalize to HTTPS format and extract owner/repo
+            if remote_url.startswith('git@github.com:'):
+                # Convert SSH to HTTPS
+                repo_path = remote_url.replace('git@github.com:', '').replace('.git', '')
+                remote_url = f"https://github.com/{repo_path}"
+            elif remote_url.startswith('https://github.com/'):
+                repo_path = remote_url.replace('https://github.com/', '').replace('.git', '')
+            else:
+                logger.debug(f"Unexpected GitHub URL format: {remote_url}")
+                return None
+
+            # Get current branch
+            branch = self.get_current_branch() or "main"
+
+            return {
+                "repo_url": f"https://github.com/{repo_path}",
+                "repo_full_name": repo_path,
+                "branch": branch
+            }
+        except Exception as e:
+            logger.debug(f"Could not detect existing repo: {e}")
             return None
 
     async def get_commit_history(self, limit: int = 20, offset: int = 0) -> dict:
@@ -1649,22 +1829,13 @@ class GitIntegrationService:
             # Check if Git repo is initialized
             initialized = self.is_git_repo()
 
-            # Check if GitHub is configured (has authenticated remote URL)
-            configured = False
-            if initialized:
-                try:
-                    auth_url = await self._get_authenticated_remote_url(context)
-                    configured = auth_url is not None
-                except Exception:
-                    configured = False
-
-            # If not initialized or configured, return early
-            if not initialized or not configured:
+            # If not initialized, return early
+            if not initialized:
                 return {
                     "success": True,
-                    "initialized": initialized,
-                    "configured": configured,
-                    "current_branch": self.get_current_branch() if initialized else None,
+                    "initialized": False,
+                    "configured": False,
+                    "current_branch": None,
                     "changed_files": [],
                     "conflicts": [],
                     "merging": False,
@@ -1674,6 +1845,15 @@ class GitIntegrationService:
                     "last_synced": datetime.now(timezone.utc).isoformat(),
                     "error": None
                 }
+
+            # Check if GitHub is configured (has authenticated remote URL)
+            # This is optional - local Git operations work without it
+            configured = False
+            try:
+                auth_url = await self._get_authenticated_remote_url(context)
+                configured = auth_url is not None
+            except Exception:
+                configured = False
 
             # 1. Optionally fetch from remote to update tracking refs
             # Only fetch when user explicitly requests it (fetch=True)

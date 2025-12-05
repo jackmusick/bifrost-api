@@ -528,6 +528,111 @@ class TestFullApplicationFlow:
         assert response.status_code in [200, 201, 204], \
             f"Assign form failed: {response.status_code} - {response.text}"
 
+
+    def test_44_form_file_path_is_workspace_relative(self):
+        """Test that forms return workspace-relative file paths."""
+        # Create a form
+        form_data = {
+            "name": "Test Form File Path",
+            "description": "Testing workspace-relative file paths",
+            "linked_workflow": None,
+            "form_schema": {
+                "fields": [
+                    {"name": "test_field", "type": "text", "label": "Test Field", "required": False}
+                ]
+            },
+            "access_level": "authenticated"
+        }
+
+        response = State.client.post(
+            "/api/forms",
+            json=form_data,
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 201, f"Form creation failed: {response.text}"
+
+        form = response.json()
+        form_id = form["id"]
+        file_path = form.get("file_path")
+
+        # Verify file_path field exists and is workspace-relative
+        assert file_path is not None, "file_path field should be present in form response"
+        assert file_path.startswith("forms/"), f"file_path should start with 'forms/', got: {file_path}"
+        assert file_path.endswith(".form.json"), f"file_path should end with '.form.json', got: {file_path}"
+
+        logger.info(f"✓ Form created with workspace-relative path: {file_path}")
+
+        # Store for next tests
+        State.test_file_path_form_id = form_id
+
+    def test_45_form_file_can_be_listed_in_editor(self):
+        """Test that form files appear in editor file listings."""
+        # Use the form we just created in test_200
+        if not hasattr(State, 'test_file_path_form_id'):
+            pytest.skip("test_44 did not create a form")
+
+        # List files in forms directory
+        response = State.client.get(
+            "/api/editor/files",
+            params={"path": "forms"},
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Failed to list forms directory: {response.text}"
+
+        files = response.json()
+
+        # Find our test form file
+        form_response = State.client.get(
+            f"/api/forms/{State.test_file_path_form_id}",
+            headers=State.platform_admin.headers,
+        )
+        assert form_response.status_code == 200
+        form = form_response.json()
+        expected_file_path = form["file_path"]
+
+        # Check if it appears in the listing
+        file_paths = [f["path"] for f in files]
+        assert expected_file_path in file_paths, f"Form file {expected_file_path} should appear in editor listings"
+
+        logger.info(f"✓ Form file appears in editor listing: {expected_file_path}")
+
+    def test_46_form_file_can_be_deleted_via_editor(self):
+        """Test that form files can be deleted via the editor API."""
+        # Use the form we just created in test_200
+        if not hasattr(State, 'test_file_path_form_id'):
+            pytest.skip("test_44 did not create a form")
+
+        # Get the form's file path
+        response = State.client.get(
+            f"/api/forms/{State.test_file_path_form_id}",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200
+        form = response.json()
+        file_path = form["file_path"]
+
+        # Delete the file via editor API
+        response = State.client.delete(
+            "/api/editor/files",
+            params={"path": file_path},
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Failed to delete form file: {response.text}"
+
+        # Verify file is gone
+        response = State.client.get(
+            "/api/editor/files/content",
+            params={"path": file_path},
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 404, "Form file should be deleted"
+
+        logger.info(f"✓ Form file successfully deleted via editor API: {file_path}")
+
+        # Note: The form in the database still exists but is marked inactive
+        # This is the expected dual-write behavior
+
+
     # =========================================================================
     # PHASE 6: Permission Tests - What Org Users CAN'T Do
     # =========================================================================
@@ -2375,3 +2480,7 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
                 headers=State.platform_admin.headers,
             )
             assert response.status_code in [200, 204, 404]
+
+    # =========================================================================
+    # PHASE: Form File Path Integration Tests
+    # =========================================================================

@@ -17,7 +17,7 @@ Usage with ORM models:
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, field_validator, model_validator
 
 from shared.models import FormSchema, FormField, FormFieldType
 from src.models.enums import (
@@ -64,7 +64,7 @@ class OrganizationPublic(OrganizationBase):
     updated_at: datetime
 
     @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
+    def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 
 
@@ -158,7 +158,7 @@ class RolePublic(RoleBase):
     updated_at: datetime
 
     @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
+    def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 
 
@@ -180,6 +180,17 @@ class FormCreate(BaseModel):
     form_schema: dict | FormSchema
     access_level: FormAccessLevel | None = FormAccessLevel.ROLE_BASED
 
+    @field_validator("form_schema", mode="before")
+    @classmethod
+    def validate_form_schema(cls, v):
+        """Validate and convert dict to FormSchema if needed."""
+        if v is None:
+            raise ValueError("form_schema is required")
+        if isinstance(v, dict):
+            # Validate the dict conforms to FormSchema structure
+            return FormSchema.model_validate(v)
+        return v
+
 
 class FormUpdate(BaseModel):
     """Input for updating a form."""
@@ -193,6 +204,17 @@ class FormUpdate(BaseModel):
     is_active: bool | None = None
     access_level: FormAccessLevel | None = None
 
+    @field_validator("form_schema", mode="before")
+    @classmethod
+    def validate_form_schema(cls, v):
+        """Validate and convert dict to FormSchema if needed."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            # Validate the dict conforms to FormSchema structure
+            return FormSchema.model_validate(v)
+        return v
+
 
 class FormPublic(BaseModel):
     """Form output for API responses."""
@@ -205,12 +227,92 @@ class FormPublic(BaseModel):
     launch_workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
-    form_schema: FormSchema | None = None
+    form_schema: dict | FormSchema | None = None
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = None
     is_active: bool
+    file_path: str | None = Field(None, description="Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')")
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_form_schema(cls, data):
+        """Compute form_schema from fields relationship if available."""
+        if isinstance(data, dict):
+            return data  # Already a dict, use as-is
+
+        # It's an ORM object
+        if hasattr(data, 'fields') and data.fields:
+            # Build form_schema from fields relationship
+            fields_data = []
+            for field in sorted(data.fields, key=lambda f: f.position):
+                field_dict = {
+                    "name": field.name,
+                    "type": field.type,
+                    "required": field.required,
+                }
+                # Add optional fields
+                if field.label:
+                    field_dict["label"] = field.label
+                if field.placeholder:
+                    field_dict["placeholder"] = field.placeholder
+                if field.help_text:
+                    field_dict["help_text"] = field.help_text
+                if field.default_value is not None:
+                    field_dict["default_value"] = field.default_value
+                if field.options:
+                    field_dict["options"] = field.options
+                if field.data_provider:
+                    field_dict["data_provider"] = field.data_provider
+                if field.data_provider_inputs:
+                    field_dict["data_provider_inputs"] = field.data_provider_inputs
+                if field.visibility_expression:
+                    field_dict["visibility_expression"] = field.visibility_expression
+                if field.validation:
+                    field_dict["validation"] = field.validation
+                if field.allowed_types:
+                    field_dict["allowed_types"] = field.allowed_types
+                if field.multiple is not None:
+                    field_dict["multiple"] = field.multiple
+                if field.max_size_mb:
+                    field_dict["max_size_mb"] = field.max_size_mb
+                if field.content:
+                    field_dict["content"] = field.content
+
+                fields_data.append(field_dict)
+
+            # Create a new dict with form_schema computed
+            data_dict = {
+                "id": data.id,
+                "name": data.name,
+                "description": data.description,
+                "linked_workflow": data.linked_workflow,
+                "launch_workflow_id": data.launch_workflow_id,
+                "default_launch_params": data.default_launch_params,
+                "allowed_query_params": data.allowed_query_params,
+                "form_schema": {"fields": fields_data},
+                "access_level": data.access_level,
+                "organization_id": data.organization_id,
+                "is_active": data.is_active,
+                "file_path": data.file_path,
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
+            }
+            return data_dict
+
+        return data
+
+    @field_validator("form_schema", mode="before")
+    @classmethod
+    def validate_form_schema(cls, v):
+        """Validate and convert dict to FormSchema if needed."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            # Validate the dict conforms to FormSchema structure
+            return FormSchema.model_validate(v)
+        return v
 
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -309,7 +411,7 @@ class ConfigPublic(ConfigBase):
     updated_by: str
 
     @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
+    def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 
 
@@ -344,7 +446,7 @@ class SecretPublic(SecretBase):
     updated_at: datetime
 
     @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
+    def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 
 
@@ -385,7 +487,7 @@ class OAuthProviderPublic(OAuthProviderBase):
     updated_at: datetime
 
     @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
+    def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 
 
