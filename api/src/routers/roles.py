@@ -31,6 +31,16 @@ from src.models.models import (
     AssignFormsToRoleRequest,
 )
 
+# Import cache invalidation
+try:
+    from shared.cache import invalidate_role, invalidate_role_users, invalidate_role_forms
+    CACHE_INVALIDATION_AVAILABLE = True
+except ImportError:
+    CACHE_INVALIDATION_AVAILABLE = False
+    invalidate_role = None  # type: ignore
+    invalidate_role_users = None  # type: ignore
+    invalidate_role_forms = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/roles", tags=["Roles"])
@@ -83,6 +93,12 @@ async def create_role(
     await db.refresh(role)
 
     logger.info(f"Created role {role.id}: {role.name}")
+
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role:
+        org_id = str(role.organization_id) if role.organization_id else None
+        await invalidate_role(org_id, str(role.id))
+
     return RolePublic.model_validate(role)
 
 
@@ -145,6 +161,12 @@ async def update_role(
     await db.refresh(role)
 
     logger.info(f"Updated role {role_id}")
+
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role:
+        org_id = str(role.organization_id) if role.organization_id else None
+        await invalidate_role(org_id, str(role_id))
+
     return RolePublic.model_validate(role)
 
 
@@ -192,6 +214,11 @@ async def delete_role(
 
     await db.flush()
     logger.info(f"Soft deleted role {role_id}")
+
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role:
+        org_id = str(role.organization_id) if role.organization_id else None
+        await invalidate_role(org_id, str(role_id))
 
 
 # =============================================================================
@@ -267,6 +294,13 @@ async def assign_users_to_role(
     await db.flush()
     logger.info(f"Assigned users to role {role_id}")
 
+    # Invalidate cache - need to get role's org_id
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role_users:
+        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_org_id = role_result.scalar_one_or_none()
+        org_id_str = str(role_org_id) if role_org_id else None
+        await invalidate_role_users(org_id_str, str(role_id))
+
 
 @router.delete(
     "/{role_id}/users/{user_id}",
@@ -308,6 +342,13 @@ async def remove_user_from_role(
         )
 
     logger.info(f"Removed user {user_id} from role {role_id}")
+
+    # Invalidate cache - need to get role's org_id
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role_users:
+        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_org_id = role_result.scalar_one_or_none()
+        org_id_str = str(role_org_id) if role_org_id else None
+        await invalidate_role_users(org_id_str, str(role_id))
 
 
 # =============================================================================
@@ -373,6 +414,13 @@ async def assign_forms_to_role(
     await db.flush()
     logger.info(f"Assigned forms to role {role_id}")
 
+    # Invalidate cache - need to get role's org_id
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role_forms:
+        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_org_id = role_result.scalar_one_or_none()
+        org_id_str = str(role_org_id) if role_org_id else None
+        await invalidate_role_forms(org_id_str, str(role_id))
+
 
 @router.delete(
     "/{role_id}/forms/{form_id}",
@@ -401,3 +449,10 @@ async def remove_form_from_role(
         )
 
     logger.info(f"Removed form {form_id} from role {role_id}")
+
+    # Invalidate cache - need to get role's org_id
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role_forms:
+        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_org_id = role_result.scalar_one_or_none()
+        org_id_str = str(role_org_id) if role_org_id else None
+        await invalidate_role_forms(org_id_str, str(role_id))

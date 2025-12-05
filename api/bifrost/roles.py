@@ -3,33 +3,41 @@ Roles management SDK for Bifrost.
 
 Provides Python API for role operations (CRUD + user/form assignments).
 
-All methods are synchronous and can be called directly (no await needed).
+All methods are async and must be awaited.
 """
 
 from __future__ import annotations
 
+import json as json_module
+import logging
+from datetime import datetime
 from typing import Any
-from uuid import UUID
 
-from sqlalchemy import select, or_
-
+from shared.cache import (
+    get_redis,
+    role_forms_key,
+    role_users_key,
+    roles_hash_key,
+)
 from shared.models import Role as RoleSchema
-from src.models.orm import Role, UserRole, FormRole
 
-from ._db import get_sync_session
 from ._internal import get_context, require_permission
+from ._write_buffer import get_write_buffer
+
+logger = logging.getLogger(__name__)
 
 
-def _role_to_schema(role: Role) -> RoleSchema:
-    """Convert ORM Role to Pydantic RoleSchema."""
+def _cache_to_schema(cache_data: dict[str, Any]) -> RoleSchema:
+    """Convert cached role data to Pydantic RoleSchema."""
+    now = datetime.utcnow()
     return RoleSchema(
-        id=str(role.id),
-        name=role.name,
-        description=role.description,
-        is_active=role.is_active,
-        created_by=role.created_by,
-        created_at=role.created_at,
-        updated_at=role.updated_at,
+        id=cache_data.get("id", ""),
+        name=cache_data.get("name", ""),
+        description=cache_data.get("description"),
+        is_active=cache_data.get("is_active", True),
+        created_by=cache_data.get("created_by") or "system",
+        created_at=cache_data.get("created_at") or now,
+        updated_at=cache_data.get("updated_at") or now,
     )
 
 
@@ -38,11 +46,13 @@ class roles:
     Role management operations.
 
     Provides CRUD operations for roles and user/form assignments.
-    All methods are synchronous - no await needed.
+    Reads from Redis cache, writes to buffer (flushed post-execution).
+
+    All methods are async - await is required.
     """
 
     @staticmethod
-    def create(name: str, description: str = "") -> RoleSchema:
+    async def create(name: str, description: str = "") -> RoleSchema:
         """
         Create a new role.
 
@@ -62,37 +72,47 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> role = roles.create(
+            >>> role = await roles.create(
             ...     "Customer Manager",
             ...     description="Can manage customer data"
             ... )
         """
         context = require_permission("roles.create")
 
-        org_uuid = None
+        org_id = None
         if context.org_id and context.org_id != "GLOBAL":
-            try:
-                org_uuid = UUID(context.org_id)
-            except ValueError:
-                pass
+            org_id = context.org_id
 
-        with get_sync_session() as db:
-            role = Role(
-                name=name,
-                description=description,
-                organization_id=org_uuid,
-                created_by=context.user_id,
-                is_active=True,
-            )
-            db.add(role)
-            db.flush()  # Get the ID
-            db.refresh(role)
-            return _role_to_schema(role)
+        # Write to buffer (generates role ID)
+        buffer = get_write_buffer()
+        role_id = await buffer.add_role_change(
+            operation="create",
+            role_id=None,
+            data={
+                "name": name,
+                "description": description,
+            },
+            org_id=org_id,
+        )
+
+        # Return schema with generated ID
+        now = datetime.utcnow()
+        return RoleSchema(
+            id=role_id,
+            name=name,
+            description=description,
+            is_active=True,
+            created_by=context.user_id,
+            created_at=now,
+            updated_at=now,
+        )
 
     @staticmethod
-    def get(role_id: str) -> RoleSchema:
+    async def get(role_id: str) -> RoleSchema:
         """
         Get role by ID.
+
+        Reads from Redis cache (pre-warmed).
 
         Args:
             role_id: Role ID
@@ -106,22 +126,34 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> role = roles.get("role-123")
+            >>> role = await roles.get("role-123")
             >>> print(role.name)
         """
-        get_context()  # Validates user is authenticated
-        role_uuid = UUID(role_id)
+        context = get_context()
 
-        with get_sync_session() as db:
-            role = db.get(Role, role_uuid)
-            if not role:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Read from Redis cache (pre-warmed)
+        async with get_redis() as r:
+            data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+
+            if not data:
                 raise ValueError(f"Role not found: {role_id}")
-            return _role_to_schema(role)
+
+            try:
+                cache_data = json_module.loads(data)
+                return _cache_to_schema(cache_data)
+            except json_module.JSONDecodeError:
+                raise ValueError(f"Invalid role data: {role_id}")
 
     @staticmethod
-    def list() -> list[RoleSchema]:
+    async def list() -> list[RoleSchema]:
         """
         List all roles in the current organization.
+
+        Reads from Redis cache (pre-warmed).
 
         Returns:
             list[Role]: List of role objects
@@ -131,40 +163,38 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> all_roles = roles.list()
+            >>> all_roles = await roles.list()
             >>> for role in all_roles:
             ...     print(f"{role.name}: {role.description}")
         """
         context = get_context()
 
-        org_uuid = None
+        org_id = None
         if context.org_id and context.org_id != "GLOBAL":
-            try:
-                org_uuid = UUID(context.org_id)
-            except ValueError:
-                pass
+            org_id = context.org_id
 
-        with get_sync_session() as db:
-            if org_uuid:
-                query = (
-                    select(Role)
-                    .where(Role.is_active == True)
-                    .where(or_(Role.organization_id == org_uuid, Role.organization_id.is_(None)))
-                    .order_by(Role.name)
-                )
-            else:
-                query = (
-                    select(Role)
-                    .where(Role.is_active == True)
-                    .where(Role.organization_id.is_(None))
-                    .order_by(Role.name)
-                )
+        # Read all roles from Redis hash (pre-warmed)
+        async with get_redis() as r:
+            all_data = await r.hgetall(roles_hash_key(org_id))  # type: ignore[misc]
 
-            result = db.execute(query)
-            return [_role_to_schema(r) for r in result.scalars().all()]
+            if not all_data:
+                return []
+
+            roles_list: list[RoleSchema] = []
+            for data in all_data.values():
+                try:
+                    cache_data = json_module.loads(data)
+                    roles_list.append(_cache_to_schema(cache_data))
+                except json_module.JSONDecodeError:
+                    continue
+
+            # Sort by name
+            roles_list.sort(key=lambda r: r.name or "")
+
+            return roles_list
 
     @staticmethod
-    def update(role_id: str, **updates: Any) -> RoleSchema:
+    async def update(role_id: str, **updates: Any) -> RoleSchema:
         """
         Update a role.
 
@@ -184,30 +214,53 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> role = roles.update(
+            >>> role = await roles.update(
             ...     "role-123",
             ...     description="Updated description"
             ... )
         """
-        require_permission("roles.update")
-        role_uuid = UUID(role_id)
+        context = require_permission("roles.update")
 
-        with get_sync_session() as db:
-            role = db.get(Role, role_uuid)
-            if not role:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Verify role exists in cache first
+        async with get_redis() as r:
+            data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+            if not data:
                 raise ValueError(f"Role not found: {role_id}")
 
-            if 'name' in updates:
-                role.name = updates['name']
-            if 'description' in updates:
-                role.description = updates['description']
+            existing = json_module.loads(data)
 
-            db.flush()
-            db.refresh(role)
-            return _role_to_schema(role)
+        # Apply updates
+        updated_data = {
+            "name": updates.get("name", existing.get("name")),
+            "description": updates.get("description", existing.get("description")),
+        }
+
+        # Write to buffer
+        buffer = get_write_buffer()
+        await buffer.add_role_change(
+            operation="update",
+            role_id=role_id,
+            data=updated_data,
+            org_id=org_id,
+        )
+
+        # Return updated schema
+        return RoleSchema(
+            id=role_id,
+            name=updated_data["name"],
+            description=updated_data["description"],
+            is_active=existing.get("is_active", True),
+            created_by=existing.get("created_by"),
+            created_at=existing.get("created_at"),
+            updated_at=existing.get("updated_at"),
+        )
 
     @staticmethod
-    def delete(role_id: str) -> None:
+    async def delete(role_id: str) -> None:
         """
         Delete a role (soft delete - sets is_active to false).
 
@@ -223,21 +276,35 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> roles.delete("role-123")
+            >>> await roles.delete("role-123")
         """
-        require_permission("roles.delete")
-        role_uuid = UUID(role_id)
+        context = require_permission("roles.delete")
 
-        with get_sync_session() as db:
-            role = db.get(Role, role_uuid)
-            if not role:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Verify role exists in cache first
+        async with get_redis() as r:
+            data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+            if not data:
                 raise ValueError(f"Role not found: {role_id}")
-            role.is_active = False
+
+        # Write delete to buffer
+        buffer = get_write_buffer()
+        await buffer.add_role_change(
+            operation="delete",
+            role_id=role_id,
+            data={},
+            org_id=org_id,
+        )
 
     @staticmethod
-    def list_users(role_id: str) -> list[str]:
+    async def list_users(role_id: str) -> list[str]:
         """
         List all user IDs assigned to a role.
+
+        Reads from Redis cache (pre-warmed).
 
         Args:
             role_id: Role ID
@@ -251,27 +318,33 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> user_ids = roles.list_users("role-123")
+            >>> user_ids = await roles.list_users("role-123")
             >>> for user_id in user_ids:
             ...     print(user_id)
         """
-        get_context()  # Validates user is authenticated
-        role_uuid = UUID(role_id)
+        context = get_context()
 
-        with get_sync_session() as db:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Read from Redis cache (pre-warmed)
+        async with get_redis() as r:
             # Verify role exists
-            role = db.get(Role, role_uuid)
-            if not role:
+            role_data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+            if not role_data:
                 raise ValueError(f"Role not found: {role_id}")
 
-            query = select(UserRole.user_id).where(UserRole.role_id == role_uuid)
-            result = db.execute(query)
-            return [str(row[0]) for row in result.all()]
+            # Get user IDs from set
+            user_ids = await r.smembers(role_users_key(org_id, role_id))  # type: ignore[misc]
+            return list(user_ids) if user_ids else []
 
     @staticmethod
-    def list_forms(role_id: str) -> list[str]:
+    async def list_forms(role_id: str) -> list[str]:
         """
         List all form IDs assigned to a role.
+
+        Reads from Redis cache (pre-warmed).
 
         Args:
             role_id: Role ID
@@ -285,25 +358,29 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> form_ids = roles.list_forms("role-123")
+            >>> form_ids = await roles.list_forms("role-123")
             >>> for form_id in form_ids:
             ...     print(form_id)
         """
-        get_context()  # Validates user is authenticated
-        role_uuid = UUID(role_id)
+        context = get_context()
 
-        with get_sync_session() as db:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Read from Redis cache (pre-warmed)
+        async with get_redis() as r:
             # Verify role exists
-            role = db.get(Role, role_uuid)
-            if not role:
+            role_data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+            if not role_data:
                 raise ValueError(f"Role not found: {role_id}")
 
-            query = select(FormRole.form_id).where(FormRole.role_id == role_uuid)
-            result = db.execute(query)
-            return [str(row[0]) for row in result.all()]
+            # Get form IDs from set
+            form_ids = await r.smembers(role_forms_key(org_id, role_id))  # type: ignore[misc]
+            return list(form_ids) if form_ids else []
 
     @staticmethod
-    def assign_users(role_id: str, user_ids: list[str]) -> None:
+    async def assign_users(role_id: str, user_ids: list[str]) -> None:
         """
         Assign users to a role.
 
@@ -320,37 +397,30 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> roles.assign_users("role-123", ["user-1", "user-2"])
+            >>> await roles.assign_users("role-123", ["user-1", "user-2"])
         """
         context = require_permission("roles.assign_users")
-        role_uuid = UUID(role_id)
 
-        with get_sync_session() as db:
-            # Verify role exists
-            role = db.get(Role, role_uuid)
-            if not role:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Verify role exists in cache
+        async with get_redis() as r:
+            role_data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+            if not role_data:
                 raise ValueError(f"Role not found: {role_id}")
 
-            for user_id in user_ids:
-                user_uuid = UUID(user_id)
-
-                # Check if already assigned
-                existing = db.execute(
-                    select(UserRole)
-                    .where(UserRole.user_id == user_uuid)
-                    .where(UserRole.role_id == role_uuid)
-                ).scalars().first()
-
-                if not existing:
-                    user_role = UserRole(
-                        user_id=user_uuid,
-                        role_id=role_uuid,
-                        assigned_by=context.user_id,
-                    )
-                    db.add(user_role)
+        # Write to buffer
+        buffer = get_write_buffer()
+        await buffer.add_role_users_change(
+            role_id=role_id,
+            user_ids=user_ids,
+            org_id=org_id,
+        )
 
     @staticmethod
-    def assign_forms(role_id: str, form_ids: list[str]) -> None:
+    async def assign_forms(role_id: str, form_ids: list[str]) -> None:
         """
         Assign forms to a role.
 
@@ -367,31 +437,24 @@ class roles:
 
         Example:
             >>> from bifrost import roles
-            >>> roles.assign_forms("role-123", ["form-1", "form-2"])
+            >>> await roles.assign_forms("role-123", ["form-1", "form-2"])
         """
         context = require_permission("roles.assign_forms")
-        role_uuid = UUID(role_id)
 
-        with get_sync_session() as db:
-            # Verify role exists
-            role = db.get(Role, role_uuid)
-            if not role:
+        org_id = None
+        if context.org_id and context.org_id != "GLOBAL":
+            org_id = context.org_id
+
+        # Verify role exists in cache
+        async with get_redis() as r:
+            role_data = await r.hget(roles_hash_key(org_id), role_id)  # type: ignore[misc]
+            if not role_data:
                 raise ValueError(f"Role not found: {role_id}")
 
-            for form_id in form_ids:
-                form_uuid = UUID(form_id)
-
-                # Check if already assigned
-                existing = db.execute(
-                    select(FormRole)
-                    .where(FormRole.form_id == form_uuid)
-                    .where(FormRole.role_id == role_uuid)
-                ).scalars().first()
-
-                if not existing:
-                    form_role = FormRole(
-                        form_id=form_uuid,
-                        role_id=role_uuid,
-                        assigned_by=context.user_id,
-                    )
-                    db.add(form_role)
+        # Write to buffer
+        buffer = get_write_buffer()
+        await buffer.add_role_forms_change(
+            role_id=role_id,
+            form_ids=form_ids,
+            org_id=org_id,
+        )

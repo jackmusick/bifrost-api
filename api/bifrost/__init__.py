@@ -3,7 +3,7 @@ Bifrost Platform SDK
 
 Provides Python API access to platform features from workflows.
 
-All methods are synchronous and can be called directly (no await needed).
+All SDK methods are async and must be awaited.
 
 Usage:
     from bifrost import organizations, workflows, files, forms, executions, roles
@@ -11,27 +11,27 @@ Usage:
 
 Example:
     # Create an organization
-    org = organizations.create("Acme Corp", domain="acme.com")
+    org = await organizations.create("Acme Corp", domain="acme.com")
 
     # List workflows
-    wf_list = workflows.list()
+    wf_list = await workflows.list()
 
     # Local filesystem operations
     files.write("data/temp.txt", "content", location="temp")
     data = files.read("data/customers.csv", location="workspace")
 
     # List executions
-    recent = executions.list(limit=10)
+    recent = await executions.list(limit=10)
 
     # Create a role
-    role = roles.create("Manager", permissions=["users.read", "users.write"])
+    role = await roles.create("Manager", permissions=["users.read", "users.write"])
 
     # Manage configuration
-    config.set("api_url", "https://api.example.com")
-    url = config.get("api_url")
+    await config.set("api_url", "https://api.example.com")
+    url = await config.get("api_url")
 
     # Get OAuth tokens (for secrets, use config with is_secret=True)
-    conn = oauth.get("microsoft")
+    conn = await oauth.get("microsoft")
 """
 
 from dataclasses import dataclass
@@ -96,4 +96,4 @@ __all__ = [
     'ConfigurationError',
 ]
 
-__version__ = '1.0.0'
+__version__ = '2.0.0'

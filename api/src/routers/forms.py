@@ -29,6 +29,14 @@ from src.models.orm import Form as FormORM, FormField as FormFieldORM, FormRole 
 from src.models.models import FormCreate, FormUpdate, FormPublic
 from shared.models import WorkflowExecutionResponse
 
+# Import cache invalidation
+try:
+    from shared.cache import invalidate_form
+    CACHE_INVALIDATION_AVAILABLE = True
+except ImportError:
+    CACHE_INVALIDATION_AVAILABLE = False
+    invalidate_form = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/forms", tags=["Forms"])
@@ -415,6 +423,12 @@ async def create_form(
         # Continue - database write succeeded, file write can be retried by discovery watcher
 
     logger.info(f"Created form {form.id}: {form.name} (file: {form.file_path})")
+
+    # Invalidate cache after successful create
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
+        org_id = str(form.organization_id) if form.organization_id else None
+        await invalidate_form(org_id, str(form.id))
+
     return FormPublic.model_validate(form)
 
 
@@ -578,6 +592,12 @@ async def update_form(
         # Continue - database write succeeded
 
     logger.info(f"Updated form {form_id} (file: {form.file_path})")
+
+    # Invalidate cache after successful update
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
+        org_id = str(form.organization_id) if form.organization_id else None
+        await invalidate_form(org_id, str(form_id))
+
     return FormPublic.model_validate(form)
 
 
@@ -640,6 +660,11 @@ async def delete_form(
         # Continue - database write succeeded
 
     logger.info(f"Soft deleted form {form_id}")
+
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
+        org_id = str(form.organization_id) if form.organization_id else None
+        await invalidate_form(org_id, str(form_id))
 
 
 # =============================================================================

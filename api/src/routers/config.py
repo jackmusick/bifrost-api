@@ -24,6 +24,14 @@ from src.models import Config as ConfigModel
 from src.models.enums import ConfigType as ConfigTypeEnum
 from src.repositories.org_scoped import OrgScopedRepository
 
+# Import cache invalidation
+try:
+    from shared.cache import invalidate_config
+    CACHE_INVALIDATION_AVAILABLE = True
+except ImportError:
+    CACHE_INVALIDATION_AVAILABLE = False
+    invalidate_config = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Configuration"])
@@ -206,7 +214,14 @@ async def set_config(
     repo = ConfigRepository(ctx.db, ctx.org_id)
 
     try:
-        return await repo.set_config(request, updated_by=user.email)
+        result = await repo.set_config(request, updated_by=user.email)
+
+        # Invalidate cache after successful write
+        if CACHE_INVALIDATION_AVAILABLE and invalidate_config:
+            org_id = str(ctx.org_id) if ctx.org_id else None
+            await invalidate_config(org_id, request.key)
+
+        return result
     except Exception as e:
         logger.error(f"Error setting config: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -235,6 +250,11 @@ async def delete_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Configuration not found",
         )
+
+    # Invalidate cache after successful delete
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_config:
+        org_id = str(ctx.org_id) if ctx.org_id else None
+        await invalidate_config(org_id, key)
 
 
 # =============================================================================

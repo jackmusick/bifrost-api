@@ -31,6 +31,15 @@ from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser
 from src.models import OAuthProvider, OAuthToken
 
+# Import cache invalidation
+try:
+    from shared.cache import invalidate_oauth, invalidate_oauth_token
+    CACHE_INVALIDATION_AVAILABLE = True
+except ImportError:
+    CACHE_INVALIDATION_AVAILABLE = False
+    invalidate_oauth = None  # type: ignore
+    invalidate_oauth_token = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/oauth", tags=["OAuth Connections"])
@@ -458,6 +467,11 @@ async def create_connection(
 
     logger.info(f"Created OAuth connection: {request.connection_name}")
 
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth:
+        org_id_str = str(org_id) if org_id else None
+        await invalidate_oauth(org_id_str, request.connection_name)
+
     return await repo._to_detail(provider)
 
 
@@ -487,6 +501,11 @@ async def update_connection(
 
     logger.info(f"Updated OAuth connection: {connection_name}")
 
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth:
+        org_id_str = str(org_id) if org_id else None
+        await invalidate_oauth(org_id_str, connection_name)
+
     return await repo._to_detail(provider)
 
 
@@ -514,6 +533,11 @@ async def delete_connection(
         )
 
     logger.info(f"Deleted OAuth connection: {connection_name}")
+
+    # Invalidate cache
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth:
+        org_id_str = str(org_id) if org_id else None
+        await invalidate_oauth(org_id_str, connection_name)
 
 
 @router.post(
@@ -701,6 +725,11 @@ async def refresh_token(
 
     logger.info(f"Token refreshed successfully for {connection_name}")
 
+    # Invalidate cache (token was updated)
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
+        org_id_str = str(org_id) if org_id else None
+        await invalidate_oauth_token(org_id_str, connection_name)
+
     expires_at_str = new_expires_at.isoformat() if new_expires_at else None
     return RefreshTokenResponse(
         success=True,
@@ -819,6 +848,10 @@ async def oauth_callback(
     )
 
     logger.info(f"OAuth callback completed for {connection_name}")
+
+    # Invalidate cache (token was stored)
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
+        await invalidate_oauth_token(None, connection_name)  # org_id is None in callback
 
     # Build response with optional warning
     warning_msg = None

@@ -74,7 +74,7 @@ echo "Building test runner image..."
 docker compose -f "$COMPOSE_FILE" build test-runner
 
 # Start infrastructure services
-echo "Starting PostgreSQL, RabbitMQ, and Redis..."
+echo "Starting PostgreSQL, PgBouncer, RabbitMQ, and Redis..."
 docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis
 
 # Wait for PostgreSQL to be ready
@@ -122,6 +122,26 @@ for i in {1..30}; do
         exit 1
     fi
     echo "  Waiting for Redis... (attempt $i/30)"
+    sleep 1
+done
+
+# Start PgBouncer (depends on PostgreSQL being healthy)
+echo "Starting PgBouncer..."
+docker compose -f "$COMPOSE_FILE" up -d pgbouncer
+
+# Wait for PgBouncer to be ready
+echo "Waiting for PgBouncer to be ready..."
+for i in {1..30}; do
+    if docker compose -f "$COMPOSE_FILE" exec -T pgbouncer pg_isready -h localhost -p 5432 -U bifrost > /dev/null 2>&1; then
+        echo "PgBouncer is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "ERROR: PgBouncer failed to start within 30 seconds"
+        docker compose -f "$COMPOSE_FILE" logs pgbouncer
+        exit 1
+    fi
+    echo "  Waiting for PgBouncer... (attempt $i/30)"
     sleep 1
 done
 

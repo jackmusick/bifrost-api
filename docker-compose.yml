@@ -73,6 +73,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # PgBouncer - Connection Pooler for PostgreSQL
+  # All services connect through PgBouncer for centralized connection management
+  # Transaction mode: connections returned after each transaction (optimal for short-lived queries)
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: bifrost-pgbouncer
+    environment:
+      # Database connection
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: bifrost
+      DB_USER: bifrost
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-bifrost_dev}
+      # PgBouncer settings
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      # Auth
+      AUTH_TYPE: plain
+    ports:
+      - "6432:5432"  # pgbouncer listens on 5432 internally
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "bifrost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # FastAPI Application
   api:
     build:
@@ -84,9 +116,9 @@ services:
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
       BIFROST_DEBUG: ${BIFROST_DEBUG:-false}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      # Database
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # Database (via PgBouncer for connection pooling)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
@@ -121,7 +153,7 @@ services:
     volumes:
       - ~/GitHub/gocovi-bifrost-workspace:/workspace
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -163,15 +195,15 @@ services:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      # Database
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # Database (via PgBouncer for connection pooling)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       # File Storage (read-only - only watches for changes)
       BIFROST_WORKSPACE_LOCATION: /workspace
     volumes:
       - ~/GitHub/gocovi-bifrost-workspace:/workspace:ro # Read-only for discovery
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       api:
         condition: service_healthy
@@ -191,16 +223,19 @@ services:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      # Database
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      # Message Queue
+      # Database (via PgBouncer for connection pooling)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
       # No workspace mount - scheduler only runs scheduled jobs
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       api:
         condition: service_healthy
@@ -222,9 +257,9 @@ services:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-development}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      # Database
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
+      # Database (via PgBouncer for connection pooling)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
@@ -235,7 +270,7 @@ services:
     volumes:
       - ~/GitHub/gocovi-bifrost-workspace:/workspace
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

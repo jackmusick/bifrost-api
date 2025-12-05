@@ -23,13 +23,14 @@ from src.repositories.execution_logs import get_execution_logs_repository
 
 logger = logging.getLogger(__name__)
 
-# Import sync logging for real-time log persistence from workflow threads
+# Import unified log streaming (Redis Stream + PubSub)
 try:
-    from bifrost._db import append_log_sync
-    SYNC_LOGGING_AVAILABLE = True
+    from bifrost._logging import log_and_broadcast, flush_logs_to_postgres
+    STREAM_LOGGING_AVAILABLE = True
 except ImportError:
-    SYNC_LOGGING_AVAILABLE = False
-    append_log_sync = None  # type: ignore
+    STREAM_LOGGING_AVAILABLE = False
+    log_and_broadcast = None  # type: ignore
+    flush_logs_to_postgres = None  # type: ignore
 
 # Import bifrost context management for SDK support
 project_root = Path(__file__).parent.parent
@@ -43,6 +44,27 @@ except ImportError:
     logger.warning(
         "Bifrost SDK not available - user workflows cannot use bifrost SDK")
     BIFROST_CONTEXT_AVAILABLE = False
+
+# Import write buffer for SDK writes
+try:
+    from bifrost._write_buffer import WriteBuffer, set_write_buffer, clear_write_buffer
+    WRITE_BUFFER_AVAILABLE = True
+except ImportError:
+    WRITE_BUFFER_AVAILABLE = False
+    WriteBuffer = None  # type: ignore
+    set_write_buffer = None  # type: ignore
+    clear_write_buffer = None  # type: ignore
+
+# Import cache warming and flush
+try:
+    from shared.cache import prewarm_sdk_cache, cleanup_execution_cache
+    from bifrost._sync import flush_pending_changes
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    prewarm_sdk_cache = None  # type: ignore
+    cleanup_execution_cache = None  # type: ignore
+    flush_pending_changes = None  # type: ignore
 
 
 # Simple in-memory cache for data provider results
@@ -164,6 +186,21 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         set_execution_context(context)
         logger.debug(
             f"Set bifrost execution context for execution {request.execution_id}")
+
+    # Pre-warm SDK cache (reads config, oauth, forms, roles from Postgres into Redis)
+    if CACHE_AVAILABLE and prewarm_sdk_cache:
+        try:
+            org_id = request.organization.id if request.organization else None
+            await prewarm_sdk_cache(
+                execution_id=request.execution_id,
+                org_id=org_id,
+                user_id=request.caller.user_id,
+                is_admin=request.is_platform_admin,
+            )
+            logger.debug(f"Pre-warmed SDK cache for execution {request.execution_id}")
+        except Exception as e:
+            # Log but don't fail - SDK will fall back gracefully
+            logger.warning(f"Failed to pre-warm SDK cache: {e}")
 
     # Set up stdout/stderr capture
     # Python's logging writes to stderr by default, so we'll capture it naturally
@@ -449,11 +486,41 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         )
 
     finally:
+        # Flush pending changes from write buffer to Postgres
+        if CACHE_AVAILABLE and flush_pending_changes:
+            try:
+                changes_count = await flush_pending_changes(request.execution_id)
+                if changes_count > 0:
+                    logger.info(f"Flushed {changes_count} pending changes for execution {request.execution_id}")
+            except Exception as e:
+                logger.error(f"Failed to flush pending changes: {e}", exc_info=True)
+
+        # Flush logs from Redis Stream to Postgres
+        if STREAM_LOGGING_AVAILABLE and flush_logs_to_postgres:
+            try:
+                logs_count = await flush_logs_to_postgres(request.execution_id)
+                if logs_count > 0:
+                    logger.debug(f"Flushed {logs_count} logs to Postgres for execution {request.execution_id}")
+            except Exception as e:
+                logger.warning(f"Failed to flush logs to Postgres: {e}")
+
+        # Cleanup execution cache (remove temporary Redis keys)
+        if CACHE_AVAILABLE and cleanup_execution_cache:
+            try:
+                await cleanup_execution_cache(request.execution_id)
+                logger.debug(f"Cleaned up execution cache for {request.execution_id}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup execution cache: {e}")
+
         # Clear bifrost SDK context
         if BIFROST_CONTEXT_AVAILABLE:
             clear_execution_context()
             logger.debug(
                 f"Cleared bifrost execution context for execution {request.execution_id}")
+
+        # Clear write buffer context
+        if WRITE_BUFFER_AVAILABLE and clear_write_buffer:
+            clear_write_buffer()
 
         # Close broadcaster to prevent resource leaks
         if request.broadcaster is not None:
@@ -661,45 +728,23 @@ async def _execute_workflow_with_trace(
                 }
                 log_buffer.append(log_dict)
 
-                # Persist and broadcast immediately - direct synchronous calls
-                # This ensures real-time log streaming (not buffered until end)
+                # Unified log streaming: Write to Redis Stream + publish to PubSub
+                # Redis Stream is the single source of truth for logs
+                # - PubSub delivers immediately to WebSocket clients
+                # - Background worker persists from Stream to Postgres
                 try:
-                    # Use sync logging (psycopg2) to avoid event loop issues
-                    # Workflows run in separate threads with their own event loop,
-                    # so async DB calls would fail with "attached to different loop"
-                    if SYNC_LOGGING_AVAILABLE and append_log_sync:
-                        append_log_sync(
+                    if STREAM_LOGGING_AVAILABLE and log_and_broadcast:
+                        log_and_broadcast(
                             execution_id=execution_id,
                             level=record.levelname,
                             message=record.getMessage(),
                         )
-                    # Fallback: skip real-time persistence (logs saved in batch at end)
-
-                    # Broadcast log in background thread (non-blocking)
-                    # Broadcaster is sync so we can call directly
-                    def run_broadcast():
-                        """Run sync broadcast in background thread"""
-                        try:
-                            broadcaster.broadcast_execution_update(
-                                execution_id=execution_id,
-                                status="Running",
-                                executed_by=context.user_id,
-                                scope=context.org_id or "GLOBAL",
-                                latest_logs=[log_dict],
-                                is_complete=False
-                            )
-                        except Exception:
-                            # Silently ignore errors in background thread
-                            pass
-
-                    # Start daemon thread (won't block program exit)
-                    thread = threading.Thread(target=run_broadcast, daemon=True)
-                    thread.start()
+                    # Fallback: logs are still captured in log_buffer for batch save at end
                 except Exception as e:
                     # Log errors but don't fail workflow execution
                     # Real-time updates are non-critical
                     logger.error(
-                        f"Failed to persist/broadcast log (non-fatal): {str(e)}",
+                        f"Failed to stream log (non-fatal): {str(e)}",
                         exc_info=True,
                         extra={"execution_id": execution_id}
                     )
@@ -867,6 +912,16 @@ async def _execute_workflow_with_trace(
             if BIFROST_CONTEXT_AVAILABLE:
                 set_execution_context(context)
 
+            # Initialize write buffer for SDK writes in this thread
+            if WRITE_BUFFER_AVAILABLE and WriteBuffer and set_write_buffer:
+                org_id = context.org_id if context.org_id != "GLOBAL" else None
+                buffer = WriteBuffer(
+                    execution_id=execution_id or "",
+                    org_id=org_id,
+                    user_id=context.user_id,
+                )
+                set_write_buffer(buffer)
+
             # Set up trace function in this thread (trace is per-thread)
             sys.settrace(chained_trace_func if existing_trace else trace_func)
             try:
@@ -878,6 +933,9 @@ async def _execute_workflow_with_trace(
                 # Clear context in this thread
                 if BIFROST_CONTEXT_AVAILABLE:
                     clear_execution_context()
+                # Clear write buffer in this thread
+                if WRITE_BUFFER_AVAILABLE and clear_write_buffer:
+                    clear_write_buffer()
 
         # Run user code in thread pool to handle blocking operations
         # This allows multiple workflows to run concurrently even if they use blocking calls

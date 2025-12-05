@@ -3,7 +3,7 @@ Workflows SDK for Bifrost.
 
 Provides Python API for workflow operations (list, get status).
 
-All methods are synchronous and can be called directly (no await needed).
+All methods are async and must be awaited.
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ class workflows:
 
     Allows workflows to query available workflows and execution status.
 
-    All methods are synchronous - no await needed.
+    All methods are async - await is required.
     """
 
     @staticmethod
-    def list() -> list[dict[str, Any]]:
+    async def list() -> list[dict[str, Any]]:
         """
         List all available workflows.
 
@@ -38,7 +38,7 @@ class workflows:
 
         Example:
             >>> from bifrost import workflows
-            >>> wf_list = workflows.list()
+            >>> wf_list = await workflows.list()
             >>> for wf in wf_list:
             ...     print(f"{wf['name']}: {wf['description']}")
         """
@@ -47,7 +47,7 @@ class workflows:
         return list_workflows_logic(context)
 
     @staticmethod
-    def get(execution_id: str) -> dict[str, Any]:
+    async def get(execution_id: str) -> dict[str, Any]:
         """
         Get execution details for a workflow.
 
@@ -63,8 +63,8 @@ class workflows:
 
         Example:
             >>> from bifrost import workflows
-            >>> execution = workflows.get("exec-123")
+            >>> execution = await workflows.get("exec-123")
             >>> print(execution["status"])
         """
-        # Use the sync executions SDK
-        return executions.get(execution_id)
+        # Use the async executions SDK
+        return await executions.get(execution_id)

@@ -5,6 +5,7 @@
 # - Separate volumes (bifrost_test_*)
 # - Separate ports (offset by 1000)
 # - Fresh database for each test run
+# - PgBouncer for connection pooling (matches production)
 #
 # Usage:
 #   ./test.sh                          # Run unit/integration tests
@@ -27,6 +28,34 @@ services:
       - /var/lib/postgresql/data  # Ephemeral storage - fresh each run
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bifrost -d bifrost_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # PgBouncer - Connection Pooler (Test)
+  # All services connect through PgBouncer, matching production architecture
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: bifrost-test-pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: bifrost_test
+      DB_USER: bifrost
+      DB_PASSWORD: bifrost_test
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 500
+      DEFAULT_POOL_SIZE: 10
+      MIN_POOL_SIZE: 2
+      RESERVE_POOL_SIZE: 2
+      AUTH_TYPE: plain
+    ports:
+      - "16432:5432"  # Offset port - pgbouncer listens on 5432 internally
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "bifrost"]
       interval: 2s
       timeout: 5s
       retries: 10
@@ -67,8 +96,9 @@ services:
       dockerfile: api/Dockerfile.dev
     container_name: bifrost-test-api
     environment:
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      # Database via PgBouncer (matches production architecture)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
@@ -89,7 +119,7 @@ services:
       - test-workspace:/workspace  # Writable workspace for E2E tests (hot reload)
       - test-mounts:/mounts  # File storage for uploads, branding, etc.
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -111,8 +141,9 @@ services:
       dockerfile: api/Dockerfile.dev
     container_name: bifrost-test-discovery
     environment:
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      # Database via PgBouncer (matches production architecture)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
@@ -140,8 +171,9 @@ services:
       dockerfile: api/Dockerfile.dev
     container_name: bifrost-test-worker
     environment:
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      # Database via PgBouncer (matches production architecture)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
@@ -155,7 +187,7 @@ services:
       - ./api/platform:/app/platform:ro
       - test-workspace:/workspace  # Same writable workspace as API (hot reload)
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -176,10 +208,9 @@ services:
       dockerfile: api/Dockerfile.dev
     container_name: bifrost-test-runner
     environment:
-      # Point to test infrastructure (internal docker network)
-      # Uses BIFROST_ prefix as required by src/config.py
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@postgres:5432/bifrost_test
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
+      # Database via PgBouncer (matches production architecture)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
@@ -201,7 +232,7 @@ services:
       - ./api/pyproject.toml:/app/pyproject.toml:ro
     working_dir: /app
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

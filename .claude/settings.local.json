@@ -46,7 +46,8 @@
       "Bash(pyright:*)",
       "Bash(./test.sh:*)",
       "Bash(../venv/bin/alembic revision:*)",
-      "Bash(../venv/bin/python:*)"
+      "Bash(../venv/bin/python:*)",
+      "WebFetch(domain:hub.docker.com)"
     ],
     "deny": [],
     "ask": [],

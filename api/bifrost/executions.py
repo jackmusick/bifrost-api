@@ -3,7 +3,7 @@ Execution history SDK for Bifrost.
 
 Provides Python API for execution history operations (list, get).
 
-All methods are synchronous and can be called directly (no await needed).
+All methods are async and must be awaited.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
+from src.core.database import get_session_factory
 from src.models.orm import Execution, ExecutionLog
 
-from ._db import get_sync_session
 from ._internal import get_context
 
 
@@ -60,12 +60,13 @@ class executions:
     Execution history operations.
 
     Allows workflows to query execution history.
+    Queries Postgres directly via PgBouncer (not cached).
 
-    All methods are synchronous - no await needed.
+    All methods are async - await is required.
     """
 
     @staticmethod
-    def list(
+    async def list(
         workflow_name: str | None = None,
         status: str | None = None,
         start_date: str | None = None,
@@ -93,9 +94,9 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> recent = executions.list(limit=10)
-            >>> failed = executions.list(status="Failed")
-            >>> workflow_execs = executions.list(workflow_name="create_customer")
+            >>> recent = await executions.list(limit=10)
+            >>> failed = await executions.list(status="Failed")
+            >>> workflow_execs = await executions.list(workflow_name="create_customer")
         """
         context = get_context()
 
@@ -109,7 +110,8 @@ class executions:
         # Cap limit
         limit = min(limit, 1000)
 
-        with get_sync_session() as db:
+        session_factory = get_session_factory()
+        async with session_factory() as db:
             query = (
                 select(Execution)
                 .order_by(Execution.created_at.desc())
@@ -140,11 +142,11 @@ class executions:
             if end_date:
                 query = query.where(Execution.created_at <= end_date)
 
-            result = db.execute(query)
+            result = await db.execute(query)
             return [_execution_to_dict(e) for e in result.scalars().all()]
 
     @staticmethod
-    def get(execution_id: str) -> dict[str, Any]:
+    async def get(execution_id: str) -> dict[str, Any]:
         """
         Get execution details by ID.
 
@@ -163,7 +165,7 @@ class executions:
 
         Example:
             >>> from bifrost import executions
-            >>> exec_details = executions.get("exec-123")
+            >>> exec_details = await executions.get("exec-123")
             >>> print(exec_details["status"])
             >>> print(exec_details["result"])
         """
@@ -177,13 +179,14 @@ class executions:
             except ValueError:
                 pass
 
-        with get_sync_session() as db:
+        session_factory = get_session_factory()
+        async with session_factory() as db:
             query = (
                 select(Execution)
                 .options(joinedload(Execution.logs))
                 .where(Execution.id == exec_uuid)
             )
-            result = db.execute(query)
+            result = await db.execute(query)
             execution = result.scalars().unique().first()
 
             if not execution:

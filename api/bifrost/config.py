@@ -3,7 +3,7 @@ Configuration SDK for Bifrost.
 
 Provides Python API for configuration management (get, set, list, delete).
 
-All methods are synchronous and can be called directly (no await needed).
+All methods are async and must be awaited.
 """
 
 from __future__ import annotations
@@ -11,15 +11,11 @@ from __future__ import annotations
 import json as json_module
 import logging
 from typing import Any
-from uuid import UUID
 
-from sqlalchemy import select, or_
+from shared.cache import config_hash_key, get_redis
 
-from src.models.enums import ConfigType
-from src.models.orm import Config
-
-from ._db import get_sync_session
 from ._internal import get_context
+from ._write_buffer import get_write_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +25,18 @@ class config:
     Configuration management operations.
 
     Allows workflows to read and write configuration values scoped to organizations.
+    Reads from Redis cache (populated by pre-warming), writes to buffer (flushed post-execution).
 
-    All methods are synchronous - no await needed.
+    All methods are async - await is required.
     """
 
     @staticmethod
-    def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
+    async def get(key: str, org_id: str | None = None, default: Any = None) -> Any:
         """
         Get configuration value with automatic secret decryption.
+
+        Reads from Redis cache (pre-warmed before execution). Secrets are
+        already decrypted at pre-warm time.
 
         Args:
             key: Configuration key
@@ -44,16 +44,15 @@ class config:
             default: Default value if key not found (optional)
 
         Returns:
-            Any: Configuration value (with secret decrypted if secret type),
-                 or default if not found
+            Any: Configuration value, or default if not found
 
         Raises:
-            RuntimeError: If no execution context or decryption fails
+            RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import config
-            >>> api_key = config.get("api_key")  # Decrypts SECRET type automatically
-            >>> timeout = config.get("timeout", default=30)
+            >>> api_key = await config.get("api_key")
+            >>> timeout = await config.get("timeout", default=30)
         """
         context = get_context()
 
@@ -63,71 +62,43 @@ class config:
             f"context.org_id={getattr(context, 'org_id', None)}, target_org_id={target_org_id}"
         )
 
-        org_uuid = None
-        if target_org_id and target_org_id != "GLOBAL":
-            try:
-                org_uuid = UUID(target_org_id)
-            except ValueError:
-                pass
+        # Read from Redis cache (pre-warmed)
+        async with get_redis() as r:
+            data = await r.hget(config_hash_key(target_org_id), key)  # type: ignore[misc]
 
-        with get_sync_session() as db:
-            # Try org-specific first, then GLOBAL fallback
-            if org_uuid:
-                logger.debug(f"config.get('{key}'): querying with org_uuid={org_uuid} (org-specific + global fallback)")
-                query = (
-                    select(Config)
-                    .where(Config.key == key)
-                    .where(or_(Config.organization_id == org_uuid, Config.organization_id.is_(None)))
-                    .order_by(Config.organization_id.desc().nulls_last())
-                    .limit(1)
-                )
-            else:
-                logger.debug(f"config.get('{key}'): querying GLOBAL only (org_uuid is None)")
-                query = (
-                    select(Config)
-                    .where(Config.key == key)
-                    .where(Config.organization_id.is_(None))
-                    .limit(1)
-                )
-
-            result = db.execute(query)
-            row = result.scalars().first()
-
-            if row is None:
-                logger.debug(f"config.get('{key}'): no config found, returning default={default}")
+            if data is None:
+                logger.debug(f"config.get('{key}'): not found in cache, returning default={default}")
                 return default
 
-            # Parse value based on config type
-            config_value = row.value or {}
-            raw_value = config_value.get("value", config_value) if isinstance(config_value, dict) else config_value
-            # Get the string value from the enum for comparison
-            config_type_val = row.config_type.value if row.config_type else "string"
+            try:
+                cache_entry = json_module.loads(data)
+            except json_module.JSONDecodeError:
+                return default
+
+            raw_value = cache_entry.get("value")
+            config_type = cache_entry.get("type", "string")
+
             logger.debug(
-                f"config.get('{key}'): found config with org_id={row.organization_id}, "
-                f"type={config_type_val}, value={raw_value if config_type_val != 'secret' else '[SECRET]'}"
+                f"config.get('{key}'): found in cache with "
+                f"type={config_type}, value={raw_value if config_type != 'secret' else '[SECRET]'}"
             )
 
-            # Handle secret type - decrypt the value
-            if config_type_val == "secret":
-                from src.core.security import decrypt_secret
-                try:
-                    return decrypt_secret(raw_value)
-                except Exception:
-                    return None
-
-            # Parse other types
-            if config_type_val == "json":
+            # Parse value based on type
+            if config_type == "secret":
+                # Already decrypted at pre-warm time
+                return raw_value
+            elif config_type == "json":
                 if isinstance(raw_value, str):
                     try:
                         return json_module.loads(raw_value)
                     except json_module.JSONDecodeError:
                         return raw_value
                 return raw_value
-            elif config_type_val == "bool":
+            elif config_type == "bool":
                 if isinstance(raw_value, bool):
                     return raw_value
                 return str(raw_value).lower() == "true"
-            elif config_type_val == "int":
+            elif config_type == "int":
                 try:
                     return int(raw_value)
                 except (ValueError, TypeError):
@@ -136,9 +107,11 @@ class config:
                 return raw_value
 
     @staticmethod
-    def set(key: str, value: Any, org_id: str | None = None, is_secret: bool = False) -> None:
+    async def set(key: str, value: Any, org_id: str | None = None, is_secret: bool = False) -> None:
         """
         Set configuration value.
+
+        Writes to Redis buffer (flushed to Postgres after execution completes).
 
         Args:
             key: Configuration key
@@ -152,192 +125,136 @@ class config:
 
         Example:
             >>> from bifrost import config
-            >>> config.set("api_url", "https://api.example.com")
-            >>> config.set("api_key", "secret123", is_secret=True)
+            >>> await config.set("api_url", "https://api.example.com")
+            >>> await config.set("api_key", "secret123", is_secret=True)
         """
         context = get_context()
 
         target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
-        org_uuid = None
-        if target_org_id and target_org_id != "GLOBAL":
-            try:
-                org_uuid = UUID(target_org_id)
-            except ValueError:
-                pass
 
-        # Determine config type and process value
-        config_type_enum: ConfigType
+        # Determine config type
         if is_secret:
             from src.core.security import encrypt_secret
-            config_type_enum = ConfigType.SECRET
+            config_type = "secret"
             stored_value = encrypt_secret(str(value))
         elif isinstance(value, (dict, list)):
-            config_type_enum = ConfigType.JSON
+            config_type = "json"
             stored_value = value
         elif isinstance(value, bool):
-            config_type_enum = ConfigType.BOOL
+            config_type = "bool"
             stored_value = value
         elif isinstance(value, int):
-            config_type_enum = ConfigType.INT
+            config_type = "int"
             stored_value = value
         else:
-            config_type_enum = ConfigType.STRING
+            config_type = "string"
             stored_value = value
 
-        user_id = getattr(context, 'user_id', 'system')
-
-        with get_sync_session() as db:
-            # Try to find existing config
-            if org_uuid:
-                query = (
-                    select(Config)
-                    .where(Config.key == key)
-                    .where(Config.organization_id == org_uuid)
-                )
-            else:
-                query = (
-                    select(Config)
-                    .where(Config.key == key)
-                    .where(Config.organization_id.is_(None))
-                )
-
-            result = db.execute(query)
-            existing = result.scalars().first()
-
-            if existing:
-                # Update existing config
-                existing.value = {"value": stored_value}
-                existing.config_type = config_type_enum
-                existing.updated_by = user_id
-            else:
-                # Create new config
-                new_config = Config(
-                    organization_id=org_uuid,
-                    key=key,
-                    value={"value": stored_value},
-                    config_type=config_type_enum,
-                    updated_by=user_id,
-                )
-                db.add(new_config)
+        # Write to buffer
+        buffer = get_write_buffer()
+        await buffer.add_config_change(
+            operation="set",
+            key=key,
+            value=stored_value,
+            org_id=target_org_id,
+            config_type=config_type,
+        )
 
     @staticmethod
-    def list(org_id: str | None = None) -> dict[str, Any]:
+    async def list(org_id: str | None = None) -> dict[str, Any]:
         """
         List configuration key-value pairs.
 
-        Note: Secret values are NOT decrypted in list - use get() for individual secrets.
+        Note: Secret values are shown as the decrypted value (or "[SECRET]" on error).
 
         Args:
             org_id: Organization ID (optional, defaults to current org)
 
         Returns:
-            dict[str, Any]: Configuration key-value pairs (secrets shown as "[SECRET]")
+            dict[str, Any]: Configuration key-value pairs
 
         Raises:
             RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import config
-            >>> org_config = config.list()
+            >>> org_config = await config.list()
             >>> for key, value in org_config.items():
             ...     print(f"{key}: {value}")
         """
         context = get_context()
 
         target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
-        org_uuid = None
-        if target_org_id and target_org_id != "GLOBAL":
-            try:
-                org_uuid = UUID(target_org_id)
-            except ValueError:
-                pass
 
-        with get_sync_session() as db:
-            if org_uuid:
-                query = (
-                    select(Config)
-                    .where(or_(Config.organization_id == org_uuid, Config.organization_id.is_(None)))
-                )
-            else:
-                query = select(Config).where(Config.organization_id.is_(None))
+        # Read all configs from Redis hash
+        async with get_redis() as r:
+            all_data = await r.hgetall(config_hash_key(target_org_id))  # type: ignore[misc]
 
-            result = db.execute(query)
-            rows = result.scalars().all()
+            if not all_data:
+                return {}
 
             config_dict: dict[str, Any] = {}
-            for row in rows:
-                config_value = row.value or {}
-                raw_value = config_value.get("value", config_value) if isinstance(config_value, dict) else config_value
-                # Get the string value from the enum for comparison
-                config_type_val = row.config_type.value if row.config_type else "string"
+            for config_key, data in all_data.items():
+                try:
+                    cache_entry = json_module.loads(data)
+                except json_module.JSONDecodeError:
+                    continue
 
-                # Don't expose secret values in list
-                if config_type_val == "secret":
-                    config_dict[row.key] = "[SECRET]"
-                elif config_type_val == "json" and isinstance(raw_value, str):
+                raw_value = cache_entry.get("value")
+                config_type = cache_entry.get("type", "string")
+
+                # Parse value based on type
+                if config_type == "secret":
+                    # Already decrypted at pre-warm time
+                    config_dict[config_key] = raw_value if raw_value else "[SECRET]"
+                elif config_type == "json" and isinstance(raw_value, str):
                     try:
-                        config_dict[row.key] = json_module.loads(raw_value)
+                        config_dict[config_key] = json_module.loads(raw_value)
                     except json_module.JSONDecodeError:
-                        config_dict[row.key] = raw_value
-                elif config_type_val == "bool":
-                    config_dict[row.key] = str(raw_value).lower() == "true" if isinstance(raw_value, str) else bool(raw_value)
-                elif config_type_val == "int":
+                        config_dict[config_key] = raw_value
+                elif config_type == "bool":
+                    config_dict[config_key] = str(raw_value).lower() == "true" if isinstance(raw_value, str) else bool(raw_value)
+                elif config_type == "int":
                     try:
-                        config_dict[row.key] = int(raw_value)
+                        config_dict[config_key] = int(raw_value)
                     except (ValueError, TypeError):
-                        config_dict[row.key] = raw_value
+                        config_dict[config_key] = raw_value
                 else:
-                    config_dict[row.key] = raw_value
+                    config_dict[config_key] = raw_value
 
             return config_dict
 
     @staticmethod
-    def delete(key: str, org_id: str | None = None) -> bool:
+    async def delete(key: str, org_id: str | None = None) -> bool:
         """
         Delete configuration value.
+
+        Writes to buffer (deletion applied to Postgres after execution completes).
 
         Args:
             key: Configuration key
             org_id: Organization ID (defaults to current org from context)
 
         Returns:
-            bool: True if deleted, False if not found
+            bool: True (deletion queued)
 
         Raises:
             RuntimeError: If no execution context
 
         Example:
             >>> from bifrost import config
-            >>> config.delete("old_api_url")
+            >>> await config.delete("old_api_url")
         """
         context = get_context()
 
         target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
-        org_uuid = None
-        if target_org_id and target_org_id != "GLOBAL":
-            try:
-                org_uuid = UUID(target_org_id)
-            except ValueError:
-                pass
 
-        with get_sync_session() as db:
-            if org_uuid:
-                query = (
-                    select(Config)
-                    .where(Config.key == key)
-                    .where(Config.organization_id == org_uuid)
-                )
-            else:
-                query = (
-                    select(Config)
-                    .where(Config.key == key)
-                    .where(Config.organization_id.is_(None))
-                )
+        # Write delete to buffer
+        buffer = get_write_buffer()
+        await buffer.add_config_change(
+            operation="delete",
+            key=key,
+            org_id=target_org_id,
+        )
 
-            result = db.execute(query)
-            existing = result.scalars().first()
-
-            if existing:
-                db.delete(existing)
-                return True
-            return False
+        return True
