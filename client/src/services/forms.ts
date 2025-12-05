@@ -28,7 +28,9 @@ export const formsService = {
 	/**
 	 * Get a specific form by ID
 	 */
-	async getForm(formId: string): Promise<components["schemas"]["FormPublic"]> {
+	async getForm(
+		formId: string,
+	): Promise<components["schemas"]["FormPublic"]> {
 		const { data, error } = await apiClient.GET("/api/forms/{form_id}", {
 			params: { path: { form_id: formId } },
 		});
@@ -96,5 +98,4 @@ export const formsService = {
 		}
 		return data as FormExecutionResponse;
 	},
-
 };

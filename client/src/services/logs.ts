@@ -43,11 +43,14 @@ export async function getSystemLog(
 	category: string,
 	rowKey: string,
 ): Promise<SystemLog> {
-	const { data, error } = await apiClient.GET("/api/logs/{category}/{row_key}", {
-		params: {
-			path: { category, row_key: rowKey },
+	const { data, error } = await apiClient.GET(
+		"/api/logs/{category}/{row_key}",
+		{
+			params: {
+				path: { category, row_key: rowKey },
+			},
 		},
-	});
+	);
 
 	if (error) {
 		throw new Error(getErrorMessage(error, "Failed to fetch system log"));

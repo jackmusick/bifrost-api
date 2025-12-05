@@ -243,7 +243,10 @@ export function PackagePanel() {
 			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
-			await packagesService.installPackage(pkgName, pkgVersion || undefined);
+			await packagesService.installPackage(
+				pkgName,
+				pkgVersion || undefined,
+			);
 
 			// Clear form
 			setPackageName("");
@@ -260,7 +263,8 @@ export function PackagePanel() {
 				// If not connected to WebSocket, add a queued message
 				store.appendLog(installationId, {
 					level: "INFO",
-					message: "Package installation queued (no WebSocket connection)",
+					message:
+						"Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
@@ -311,7 +315,8 @@ export function PackagePanel() {
 				// If not connected to WebSocket, add a queued message
 				store.appendLog(installationId, {
 					level: "INFO",
-					message: "Package installation queued (no WebSocket connection)",
+					message:
+						"Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");

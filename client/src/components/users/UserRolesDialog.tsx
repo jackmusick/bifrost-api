@@ -94,9 +94,8 @@ export function UserRolesDialog({ user, open, onClose }: UserRolesDialogProps) {
 									Cannot Modify Superuser Roles
 								</h3>
 								<p className="text-sm text-yellow-700">
-									Superusers have full system
-									access and cannot be assigned additional
-									roles.
+									Superusers have full system access and
+									cannot be assigned additional roles.
 								</p>
 							</div>
 						</div>

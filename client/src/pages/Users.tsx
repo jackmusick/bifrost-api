@@ -65,10 +65,7 @@ export function Users() {
 	// React Query automatically refetches when scope changes (via orgId in query key)
 
 	// Apply search filter
-	const filteredUsers = useSearch(users || [], searchTerm, [
-		"email",
-		"name",
-	]);
+	const filteredUsers = useSearch(users || [], searchTerm, ["email", "name"]);
 
 	const handleEditUser = (user: User) => {
 		setSelectedUser(user);
@@ -303,8 +300,8 @@ export function Users() {
 						<AlertDialogTitle>Delete User</AlertDialogTitle>
 						<AlertDialogDescription>
 							Are you sure you want to delete{" "}
-							{selectedUser?.name || selectedUser?.email}? This action cannot be
-							undone.
+							{selectedUser?.name || selectedUser?.email}? This
+							action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

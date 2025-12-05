@@ -385,6 +385,7 @@ class Workflow(Base):
     parameters_schema: Mapped[list] = mapped_column(JSONB, default=[])
     tags: Mapped[list] = mapped_column(JSONB, default=[])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_platform: Mapped[bool] = mapped_column(Boolean, default=False, index=True)  # True if from platform/ directory
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
 
     # Endpoint configuration
@@ -447,41 +448,20 @@ class DataProvider(Base):
 
 
 # =============================================================================
-# Workflow Keys (DEPRECATED - kept for backward compatibility)
+# Workflow Keys (REMOVED - migrated to workflows table)
 # =============================================================================
-
-
-class WorkflowKey(Base):
-    """
-    DEPRECATED: Use Workflow.api_key_* columns instead.
-
-    Workflow API keys for HTTP access without user authentication.
-    This table is kept for backward compatibility during migration.
-    New API keys should be created on the workflows table.
-
-    - workflow_name=NULL means global key (works for all workflows)
-    - workflow_name set means key only works for that specific workflow
-    """
-    __tablename__ = "workflow_keys"
-
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    workflow_name: Mapped[str | None] = mapped_column(String(255), default=None)
-    hashed_key: Mapped[str] = mapped_column(String(64))  # SHA-256 hash
-    description: Mapped[str | None] = mapped_column(Text, default=None)
-    created_by: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()")
-    )
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
-    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
-    revoked_by: Mapped[str | None] = mapped_column(String(255), default=None)
-
-    __table_args__ = (
-        Index("ix_workflow_keys_hashed", "hashed_key"),
-        Index("ix_workflow_keys_workflow", "workflow_name"),
-    )
+#
+# WorkflowKey table has been dropped. API keys are now stored directly
+# on the workflows table using the following columns:
+# - api_key_hash
+# - api_key_description
+# - api_key_enabled
+# - api_key_created_by
+# - api_key_created_at
+# - api_key_last_used_at
+# - api_key_expires_at
+#
+# See Workflow model above for the new structure.
 
 
 # =============================================================================

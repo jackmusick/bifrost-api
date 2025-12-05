@@ -666,6 +666,36 @@ class TestFullApplicationFlow:
         workflows = response.json()
         assert isinstance(workflows, list)
 
+    def test_92b_platform_workflows_properly_categorized(self):
+        """Platform workflows are correctly marked with is_platform=true."""
+        response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"List workflows failed: {response.text}"
+        workflows = response.json()
+
+        # Find platform workflows (should be from /app/platform/ directory in Docker)
+        platform_workflows = [w for w in workflows if w.get("is_platform") is True]
+        user_workflows = [w for w in workflows if w.get("is_platform") is False]
+
+        # Verify we have some platform example workflows
+        assert len(platform_workflows) > 0, "Expected at least one platform workflow"
+
+        # Check that platform workflows have proper categorization
+        for wf in platform_workflows:
+            assert wf.get("is_platform") is True, f"Workflow {wf['name']} should be marked as platform"
+            # Platform workflows should have file paths containing /platform/
+            file_path = wf.get("source_file_path", "")
+            assert "/platform/" in file_path or "\\platform\\" in file_path, \
+                f"Platform workflow {wf['name']} has unexpected file path: {file_path}"
+
+        # Check that user workflows are not marked as platform
+        for wf in user_workflows:
+            assert wf.get("is_platform") is False, f"Workflow {wf['name']} should not be marked as platform"
+
+        logger.info(f"Platform workflow categorization verified: {len(platform_workflows)} platform, {len(user_workflows)} user")
+
     def test_93_list_data_providers(self):
         """Users can list data providers."""
         response = State.client.get(

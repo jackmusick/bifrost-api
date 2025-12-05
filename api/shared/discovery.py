@@ -61,8 +61,8 @@ class WorkflowMetadata:
     disable_global_key: bool = False
     public_endpoint: bool = False
 
-    # Source tracking (home, platform, workspace)
-    source: Literal["home", "platform", "workspace"] | None = None
+    # Source tracking
+    is_platform: bool = False  # True if from platform/ directory
     source_file_path: str | None = None
 
     # Parameters and function
@@ -485,36 +485,40 @@ def scan_all_forms() -> list[FormMetadata]:
                 with open(form_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
 
-                # Parse datetime fields
+                # Parse datetime fields (support both snake_case and camelCase)
                 now = datetime.utcnow()
                 created_at = now
                 updated_at = now
-                if data.get('createdAt'):
-                    created_at = datetime.fromisoformat(data['createdAt'].replace('Z', '+00:00'))
-                if data.get('updatedAt'):
-                    updated_at = datetime.fromisoformat(data['updatedAt'].replace('Z', '+00:00'))
+                created_at_str = data.get('created_at') or data.get('createdAt')
+                if created_at_str:
+                    created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                updated_at_str = data.get('updated_at') or data.get('updatedAt')
+                if updated_at_str:
+                    updated_at = datetime.fromisoformat(updated_at_str.replace('Z', '+00:00'))
 
-                # Parse accessLevel
-                access_level = data.get('accessLevel')
+                # Parse accessLevel (support both formats)
+                access_level = data.get('access_level') or data.get('accessLevel')
 
                 # Generate ID from file path if not provided
                 form_id = data.get('id') or f"workspace-{form_file.stem}"
 
-                # orgId defaults
-                org_id = data.get('orgId', 'GLOBAL' if data.get('isGlobal', False) else '')
+                # org_id defaults (support both formats)
+                is_global = data.get('is_global', data.get('isGlobal', False))
+                org_id = data.get('org_id') or data.get('orgId', 'GLOBAL' if is_global else '')
 
                 forms.append(FormMetadata(
                     id=form_id,
                     name=data['name'],
-                    linked_workflow=data['linkedWorkflow'],
+                    # Support both snake_case (new) and camelCase (legacy) field names
+                    linked_workflow=data.get('linked_workflow') or data.get('linkedWorkflow', ''),
                     org_id=org_id,
-                    is_active=data.get('isActive', True),
-                    is_global=data.get('isGlobal', False),
+                    is_active=data.get('is_active', data.get('isActive', True)),
+                    is_global=is_global,
                     access_level=access_level,
                     file_path=str(form_file),
                     created_at=created_at,
                     updated_at=updated_at,
-                    launch_workflow_id=data.get('launchWorkflowId')
+                    launch_workflow_id=data.get('launch_workflow_id') or data.get('launchWorkflowId')
                 ))
 
             except Exception as e:
@@ -612,6 +616,14 @@ def get_forms_by_workflow(workflow_name: str) -> list[FormMetadata]:
 
 def _convert_workflow_metadata(old_metadata: Any) -> WorkflowMetadata:
     """Convert old registry WorkflowMetadata to discovery WorkflowMetadata."""
+    # Try to determine is_platform from old source field or file path
+    is_platform = False
+    if hasattr(old_metadata, 'source') and old_metadata.source == 'platform':
+        is_platform = True
+    elif hasattr(old_metadata, 'source_file_path') and old_metadata.source_file_path:
+        if '/platform/' in old_metadata.source_file_path or '\\platform\\' in old_metadata.source_file_path:
+            is_platform = True
+
     return WorkflowMetadata(
         name=old_metadata.name,
         description=old_metadata.description,
@@ -625,7 +637,7 @@ def _convert_workflow_metadata(old_metadata: Any) -> WorkflowMetadata:
         allowed_methods=getattr(old_metadata, 'allowed_methods', ['POST']),
         disable_global_key=getattr(old_metadata, 'disable_global_key', False),
         public_endpoint=getattr(old_metadata, 'public_endpoint', False),
-        source=getattr(old_metadata, 'source', None),
+        is_platform=is_platform,
         source_file_path=getattr(old_metadata, 'source_file_path', None),
         parameters=_convert_parameters(getattr(old_metadata, 'parameters', [])),
         function=getattr(old_metadata, 'function', None)

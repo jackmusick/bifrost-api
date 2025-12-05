@@ -17,6 +17,9 @@ from shared.models import (
     PushToGitHubRequest,
     PushToGitHubResponse,
     GitRefreshStatusResponse,
+    CommitHistoryResponse,
+    DiscardUnpushedCommitsResponse,
+    DiscardCommitRequest,
 )
 from shared.services.git_integration_service import GitIntegrationService
 from src.core.auth import Context, CurrentSuperuser
@@ -287,29 +290,30 @@ async def commit_changes(
 
 @router.get(
     "/commits",
+    response_model=CommitHistoryResponse,
     summary="Get commit history",
-    description="Get recent commit history (stub)",
+    description="Get commit history with pagination",
 )
 async def get_commits(
     ctx: Context,
     user: CurrentSuperuser,
     limit: int = Query(20, description="Number of commits to return"),
     offset: int = Query(0, description="Offset for pagination"),
-) -> dict:
+) -> CommitHistoryResponse:
     """
-    Get commit history.
+    Get commit history with pagination support.
 
-    This is a stub endpoint for API compatibility.
+    Returns commit history with pushed/unpushed status and pagination info.
     """
     try:
         git_service = get_git_service()
 
-        commits = await git_service.get_commit_history(limit=limit, offset=offset)
+        result = await git_service.get_commit_history(
+            limit=limit,
+            offset=offset
+        )
 
-        return {
-            "commits": commits,
-            "count": len(commits),
-        }
+        return CommitHistoryResponse(**result)
 
     except Exception as e:
         logger.error(f"Error getting commits: {str(e)}", exc_info=True)
@@ -382,4 +386,77 @@ async def abort_merge(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to abort merge",
+        )
+
+
+@router.post(
+    "/discard-unpushed",
+    response_model=DiscardUnpushedCommitsResponse,
+    summary="Discard unpushed commits",
+    description="Discard all unpushed commits and reset to remote",
+)
+async def discard_unpushed_commits(
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> DiscardUnpushedCommitsResponse:
+    """
+    Discard all unpushed commits.
+
+    Resets the local branch to match the remote tracking branch,
+    discarding any local commits that haven't been pushed.
+
+    Returns:
+        Response with list of discarded commits
+    """
+    try:
+        git_service = get_git_service()
+
+        result = await git_service.discard_unpushed_commits(ctx)
+
+        logger.info(f"Discarded {len(result.get('discarded_commits', []))} unpushed commits")
+
+        return DiscardUnpushedCommitsResponse(**result)
+
+    except Exception as e:
+        logger.error(f"Error discarding unpushed commits: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to discard unpushed commits",
+        )
+
+
+@router.post(
+    "/discard-commit",
+    response_model=DiscardUnpushedCommitsResponse,
+    summary="Discard specific commit",
+    description="Discard a specific commit and all newer commits",
+)
+async def discard_commit(
+    ctx: Context,
+    user: CurrentSuperuser,
+    request: DiscardCommitRequest,
+) -> DiscardUnpushedCommitsResponse:
+    """
+    Discard a specific commit and all newer commits.
+
+    Resets the branch to the parent of the specified commit,
+    effectively removing the commit and all commits after it.
+
+    Returns:
+        Response with list of discarded commits
+    """
+    try:
+        git_service = get_git_service()
+
+        result = await git_service.discard_commit(request.commit_sha, ctx)
+
+        logger.info(f"Discarded commit {request.commit_sha} and {len(result.get('discarded_commits', []))} commits")
+
+        return DiscardUnpushedCommitsResponse(**result)
+
+    except Exception as e:
+        logger.error(f"Error discarding commit: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to discard commit",
         )

@@ -26,8 +26,10 @@ import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 type DataProviderMetadata = components["schemas"]["DataProviderMetadata"];
-type WorkflowExecutionResponse = components["schemas"]["WorkflowExecutionResponse"];
-type WorkflowValidationResponse = components["schemas"]["WorkflowValidationResponse"];
+type WorkflowExecutionResponse =
+	components["schemas"]["WorkflowExecutionResponse"];
+type WorkflowValidationResponse =
+	components["schemas"]["WorkflowValidationResponse"];
 type ValidationIssue = components["schemas"]["ValidationIssue"];
 
 // Log entry type from execution response
@@ -243,7 +245,8 @@ export function RunPanel() {
 		// Check if it's a data provider by matching file path
 		const dataProvider = metadata.dataProviders?.find(
 			(dp: DataProviderMetadata) =>
-				dp.source_file_path && dp.source_file_path.endsWith(openFile.path),
+				dp.source_file_path &&
+				dp.source_file_path.endsWith(openFile.path),
 		);
 		if (dataProvider) {
 			setDetectedItem({ type: "data_provider", metadata: dataProvider });
@@ -284,7 +287,9 @@ export function RunPanel() {
 							const logEntry: LogEntry = {
 								level: String(log["level"] || "INFO"),
 								message: String(log["message"] || ""),
-								timestamp: log["timestamp"] ? String(log["timestamp"]) : new Date().toISOString(),
+								timestamp: log["timestamp"]
+									? String(log["timestamp"])
+									: new Date().toISOString(),
 								source: String(log["source"] || "workflow"),
 							};
 							return logEntry;
@@ -366,7 +371,9 @@ export function RunPanel() {
 							const logEntry: LogEntry = {
 								level: String(log["level"] || "INFO"),
 								message: String(log["message"] || ""),
-								timestamp: log["timestamp"] ? String(log["timestamp"]) : new Date().toISOString(),
+								timestamp: log["timestamp"]
+									? String(log["timestamp"])
+									: new Date().toISOString(),
 								source: String(log["source"] || "script"),
 							};
 							return logEntry;
@@ -386,7 +393,9 @@ export function RunPanel() {
 				// Show completion toast for sync execution
 				if (result.status === "Success") {
 					toast.success("Script executed successfully", {
-						description: result.duration_ms ? `Completed in ${result.duration_ms}ms` : undefined,
+						description: result.duration_ms
+							? `Completed in ${result.duration_ms}ms`
+							: undefined,
 					});
 				} else {
 					toast.error("Script execution failed", {

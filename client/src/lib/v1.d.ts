@@ -1697,13 +1697,13 @@ export interface paths {
         };
         /**
          * List workflow API keys
-         * @description List all API keys (Platform admin only)
+         * @description List all workflows with API keys enabled (Platform admin only)
          */
         get: operations["list_keys_api_workflow_keys_get"];
         put?: never;
         /**
          * Create a new API key
-         * @description Create a new workflow API key (Platform admin only)
+         * @description Create a new workflow API key (Platform admin only, requires workflow_name)
          */
         post: operations["create_key_api_workflow_keys_post"];
         delete?: never;
@@ -1712,7 +1712,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/workflow-keys/{key_id}": {
+    "/api/workflow-keys/{workflow_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1724,9 +1724,9 @@ export interface paths {
         post?: never;
         /**
          * Revoke an API key
-         * @description Revoke a workflow API key (Platform admin only)
+         * @description Revoke a workflow API key by workflow ID (Platform admin only)
          */
-        delete: operations["revoke_key_api_workflow_keys__key_id__delete"];
+        delete: operations["revoke_key_api_workflow_keys__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2001,7 +2001,7 @@ export interface paths {
         };
         /**
          * Get commit history
-         * @description Get recent commit history (stub)
+         * @description Get commit history with pagination
          */
         get: operations["get_commits_api_github_commits_get"];
         put?: never;
@@ -2046,6 +2046,46 @@ export interface paths {
          * @description Abort current merge operation (stub)
          */
         post: operations["abort_merge_api_github_abort_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/discard-unpushed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard unpushed commits
+         * @description Discard all unpushed commits and reset to remote
+         */
+        post: operations["discard_unpushed_commits_api_github_discard_unpushed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/discard-commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard specific commit
+         * @description Discard a specific commit and all newer commits
+         */
+        post: operations["discard_commit_api_github_discard_commit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2255,22 +2295,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2552,6 +2592,27 @@ export interface components {
             failed: number;
         };
         /**
+         * CommitHistoryResponse
+         * @description Response with commit history and pagination
+         */
+        CommitHistoryResponse: {
+            /**
+             * Commits
+             * @description List of commits (newest first)
+             */
+            commits?: components["schemas"]["CommitInfo"][];
+            /**
+             * Total Commits
+             * @description Total number of commits in the entire history
+             */
+            total_commits: number;
+            /**
+             * Has More
+             * @description Whether there are more commits to load
+             */
+            has_more: boolean;
+        };
+        /**
          * CommitInfo
          * @description Information about a single commit
          */
@@ -2712,6 +2773,25 @@ export interface components {
             recent_failures: components["schemas"]["RecentFailure"][];
         };
         /**
+         * DataProviderInputConfig
+         * @description Configuration for a single data provider input parameter (T006)
+         */
+        DataProviderInputConfig: {
+            mode: components["schemas"]["DataProviderInputMode"];
+            /** Value */
+            value?: string | null;
+            /** Field Name */
+            field_name?: string | null;
+            /** Expression */
+            expression?: string | null;
+        };
+        /**
+         * DataProviderInputMode
+         * @description Data provider input configuration modes (T005)
+         * @enum {string}
+         */
+        DataProviderInputMode: "static" | "fieldRef" | "expression";
+        /**
          * DataProviderMetadata
          * @description Data provider metadata from @data_provider decorator (T008)
          */
@@ -2742,7 +2822,7 @@ export interface components {
             source_file_path?: string | null;
             /**
              * Relative File Path
-             * @description Workspace-relative file path (e.g., 'data_providers/my_provider.py')
+             * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/data_providers/my_provider.py')
              */
             relative_file_path?: string | null;
         };
@@ -2771,6 +2851,43 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /**
+         * DiscardCommitRequest
+         * @description Request to discard a specific commit and all newer commits
+         */
+        DiscardCommitRequest: {
+            /**
+             * Commit Sha
+             * @description SHA of the commit to discard (this commit and all newer commits will be discarded)
+             */
+            commit_sha: string;
+        };
+        /**
+         * DiscardUnpushedCommitsResponse
+         * @description Response after discarding unpushed commits
+         */
+        DiscardUnpushedCommitsResponse: {
+            /**
+             * Success
+             * @description Whether discard was successful
+             */
+            success: boolean;
+            /**
+             * Discarded Commits
+             * @description List of commits that were discarded
+             */
+            discarded_commits?: components["schemas"]["CommitInfo"][];
+            /**
+             * New Head
+             * @description New HEAD commit SHA after discard
+             */
+            new_head?: string | null;
+            /**
+             * Error
+             * @description Error message if operation failed
+             */
+            error?: string | null;
         };
         /**
          * EndpointExecuteResponse
@@ -3068,10 +3185,178 @@ export interface components {
             /** Form Schema */
             form_schema: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema"];
+            } | components["schemas"]["FormSchema-Input"];
             /** @default role_based */
             access_level: components["schemas"]["FormAccessLevel"] | null;
         };
+        /**
+         * FormField
+         * @description Form field definition
+         */
+        "FormField-Input": {
+            /**
+             * Name
+             * @description Parameter name for workflow
+             */
+            name: string;
+            /**
+             * Label
+             * @description Display label (optional for markdown/html types)
+             */
+            label?: string | null;
+            type: components["schemas"]["FormFieldType"];
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Validation */
+            validation?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Data Provider
+             * @description Data provider name for dynamic options
+             */
+            data_provider?: string | null;
+            /**
+             * Data Provider Inputs
+             * @description Input configurations for data provider parameters (T007)
+             */
+            data_provider_inputs?: {
+                [key: string]: components["schemas"]["DataProviderInputConfig"];
+            } | null;
+            /** Default Value */
+            default_value?: unknown | null;
+            /** Placeholder */
+            placeholder?: string | null;
+            /** Help Text */
+            help_text?: string | null;
+            /**
+             * Visibility Expression
+             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
+             */
+            visibility_expression?: string | null;
+            /**
+             * Options
+             * @description Options for radio/select fields
+             */
+            options?: {
+                [key: string]: string;
+            }[] | null;
+            /**
+             * Allowed Types
+             * @description Allowed MIME types for file uploads
+             */
+            allowed_types?: string[] | null;
+            /**
+             * Multiple
+             * @description Allow multiple file uploads
+             */
+            multiple?: boolean | null;
+            /**
+             * Max Size Mb
+             * @description Maximum file size in MB
+             */
+            max_size_mb?: number | null;
+            /**
+             * Content
+             * @description Static content for markdown/HTML components
+             */
+            content?: string | null;
+            /**
+             * Allow As Query Param
+             * @description Whether this field's value can be populated from URL query parameters
+             */
+            allow_as_query_param?: boolean | null;
+        };
+        /**
+         * FormField
+         * @description Form field definition
+         */
+        "FormField-Output": {
+            /**
+             * Name
+             * @description Parameter name for workflow
+             */
+            name: string;
+            /**
+             * Label
+             * @description Display label (optional for markdown/html types)
+             */
+            label?: string | null;
+            type: components["schemas"]["FormFieldType"];
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Validation */
+            validation?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Data Provider
+             * @description Data provider name for dynamic options
+             */
+            data_provider?: string | null;
+            /**
+             * Data Provider Inputs
+             * @description Input configurations for data provider parameters (T007)
+             */
+            data_provider_inputs?: {
+                [key: string]: components["schemas"]["DataProviderInputConfig"];
+            } | null;
+            /** Default Value */
+            default_value?: unknown | null;
+            /** Placeholder */
+            placeholder?: string | null;
+            /** Help Text */
+            help_text?: string | null;
+            /**
+             * Visibility Expression
+             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
+             */
+            visibility_expression?: string | null;
+            /**
+             * Options
+             * @description Options for radio/select fields
+             */
+            options?: {
+                [key: string]: string;
+            }[] | null;
+            /**
+             * Allowed Types
+             * @description Allowed MIME types for file uploads
+             */
+            allowed_types?: string[] | null;
+            /**
+             * Multiple
+             * @description Allow multiple file uploads
+             */
+            multiple?: boolean | null;
+            /**
+             * Max Size Mb
+             * @description Maximum file size in MB
+             */
+            max_size_mb?: number | null;
+            /**
+             * Content
+             * @description Static content for markdown/HTML components
+             */
+            content?: string | null;
+            /**
+             * Allow As Query Param
+             * @description Whether this field's value can be populated from URL query parameters
+             */
+            allow_as_query_param?: boolean | null;
+        };
+        /**
+         * FormFieldType
+         * @description Form field types
+         * @enum {string}
+         */
+        FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "datetime" | "markdown" | "html" | "file";
         /**
          * FormPublic
          * @description Form output for API responses.
@@ -3096,10 +3381,7 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema?: {
-                [key: string]: unknown;
-            } | null;
+            form_schema?: components["schemas"]["FormSchema-Output"] | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
@@ -3112,13 +3394,25 @@ export interface components {
         };
         /**
          * FormSchema
-         * @description Form schema with field definitions.
+         * @description Form schema with field definitions
          */
-        FormSchema: {
-            /** Fields */
-            fields?: {
-                [key: string]: unknown;
-            }[];
+        "FormSchema-Input": {
+            /**
+             * Fields
+             * @description Max 50 fields per form
+             */
+            fields: components["schemas"]["FormField-Input"][];
+        };
+        /**
+         * FormSchema
+         * @description Form schema with field definitions
+         */
+        "FormSchema-Output": {
+            /**
+             * Fields
+             * @description Max 50 fields per form
+             */
+            fields: components["schemas"]["FormField-Output"][];
         };
         /**
          * FormUpdate
@@ -3142,7 +3436,7 @@ export interface components {
             /** Form Schema */
             form_schema?: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema"] | null;
+            } | components["schemas"]["FormSchema-Input"] | null;
             /** Is Active */
             is_active?: boolean | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
@@ -5104,10 +5398,11 @@ export interface components {
              */
             public_endpoint: boolean;
             /**
-             * Source
-             * @description Where the workflow is located
+             * Is Platform
+             * @description True if workflow is from platform/ directory (examples/templates)
+             * @default false
              */
-            source?: ("home" | "platform" | "workspace") | null;
+            is_platform: boolean;
             /**
              * Source File Path
              * @description Full file path to the workflow source code
@@ -5115,7 +5410,7 @@ export interface components {
             source_file_path?: string | null;
             /**
              * Relative File Path
-             * @description Workspace-relative file path (e.g., 'workflows/my_workflow.py')
+             * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')
              */
             relative_file_path?: string | null;
         };
@@ -8007,12 +8302,12 @@ export interface operations {
             };
         };
     };
-    revoke_key_api_workflow_keys__key_id__delete: {
+    revoke_key_api_workflow_keys__workflow_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                key_id: string;
+                workflow_id: string;
             };
             cookie?: never;
         };
@@ -8428,9 +8723,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CommitHistoryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8484,6 +8777,59 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    discard_unpushed_commits_api_github_discard_unpushed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
+                };
+            };
+        };
+    };
+    discard_commit_api_github_discard_commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscardCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8835,7 +9181,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -8868,7 +9214,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -8901,7 +9247,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -8934,7 +9280,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {

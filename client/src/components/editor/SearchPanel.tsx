@@ -193,9 +193,7 @@ export function SearchPanel() {
 							? "result"
 							: "results"}{" "}
 						in {searchResults.files_searched}{" "}
-						{searchResults.files_searched === 1
-							? "file"
-							: "files"}
+						{searchResults.files_searched === 1 ? "file" : "files"}
 						{searchResults.truncated && " (truncated)"}
 					</div>
 				)}
@@ -205,14 +203,16 @@ export function SearchPanel() {
 			<div className="flex-1 overflow-y-auto">
 				{searchResults && searchResults.results.length > 0 ? (
 					<div className="divide-y">
-						{searchResults.results.map((result: SearchResult, index: number) => (
-							<SearchResultItem
-								key={`${result.file_path}-${result.line}-${index}`}
-								result={result}
-								query={query}
-								onClick={() => handleResultClick(result)}
-							/>
-						))}
+						{searchResults.results.map(
+							(result: SearchResult, index: number) => (
+								<SearchResultItem
+									key={`${result.file_path}-${result.line}-${index}`}
+									result={result}
+									query={query}
+									onClick={() => handleResultClick(result)}
+								/>
+							),
+						)}
 					</div>
 				) : searchResults && searchResults.results.length === 0 ? (
 					<div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">

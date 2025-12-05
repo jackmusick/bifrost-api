@@ -24,9 +24,12 @@ export const organizationsService = {
 	 * Get a specific organization by ID
 	 */
 	async getOrganization(orgId: string): Promise<OrganizationPublic> {
-		const { data, error } = await apiClient.GET("/api/organizations/{org_id}", {
-			params: { path: { org_id: orgId } },
-		});
+		const { data, error } = await apiClient.GET(
+			"/api/organizations/{org_id}",
+			{
+				params: { path: { org_id: orgId } },
+			},
+		);
 		if (error) throw new Error(`Failed to fetch organization: ${error}`);
 		return data!;
 	},

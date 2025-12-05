@@ -15,7 +15,8 @@ import type { components } from "@/lib/v1";
 // Auto-generated types from OpenAPI spec
 export type SDKUsageIssue = components["schemas"]["SDKUsageIssue"];
 export type FormValidationIssue = components["schemas"]["FormValidationIssue"];
-export type WorkspaceScanResponse = components["schemas"]["WorkspaceScanResponse"];
+export type WorkspaceScanResponse =
+	components["schemas"]["WorkspaceScanResponse"];
 export type FileScanRequest = components["schemas"]["FileScanRequest"];
 
 const typeDescriptions: Record<string, string> = {
@@ -80,10 +81,7 @@ export const sdkScannerService = {
 			}));
 
 			// Group SDK issues by file
-			const sdkFileGroups = new Map<
-				string,
-				typeof sdkNotifications
-			>();
+			const sdkFileGroups = new Map<string, typeof sdkNotifications>();
 			for (const notif of sdkNotifications) {
 				const existing = sdkFileGroups.get(notif.sourceFile!) || [];
 				existing.push(notif);
@@ -118,10 +116,7 @@ export const sdkScannerService = {
 			});
 
 			// Group form issues by file
-			const formFileGroups = new Map<
-				string,
-				typeof formNotifications
-			>();
+			const formFileGroups = new Map<string, typeof formNotifications>();
 			for (const notif of formNotifications) {
 				const existing = formFileGroups.get(notif.sourceFile!) || [];
 				existing.push(notif);
@@ -147,7 +142,8 @@ export const sdkScannerService = {
 			}
 
 			// Log summary if there are issues
-			const totalIssues = (result.issues || []).length + formIssues.length;
+			const totalIssues =
+				(result.issues || []).length + formIssues.length;
 			if (totalIssues > 0) {
 				console.warn(
 					`Workspace scan: ${result.scanned_files} files/${(result.issues || []).length} SDK issues, ` +

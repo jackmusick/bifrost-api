@@ -99,7 +99,10 @@ class WebSocketService {
 		string,
 		Set<ExecutionUpdateCallback>
 	>();
-	private executionLogCallbacks = new Map<string, Set<ExecutionLogCallback>>();
+	private executionLogCallbacks = new Map<
+		string,
+		Set<ExecutionLogCallback>
+	>();
 	private newExecutionCallbacks = new Set<NewExecutionCallback>();
 	private historyUpdateCallbacks = new Set<HistoryUpdateCallback>();
 	private packageLogCallbacks = new Set<PackageLogCallback>();
@@ -150,7 +153,8 @@ class WebSocketService {
 	private async _connect(channels: string[]): Promise<void> {
 		try {
 			// Build WebSocket URL with channels
-			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+			const protocol =
+				window.location.protocol === "https:" ? "wss:" : "ws:";
 			const host = window.location.host;
 
 			// Add channels as query params
@@ -174,7 +178,10 @@ class WebSocketService {
 					const message = JSON.parse(event.data) as WebSocketMessage;
 					this.handleMessage(message);
 				} catch (error) {
-					console.error("[WebSocket] Failed to parse message:", error);
+					console.error(
+						"[WebSocket] Failed to parse message:",
+						error,
+					);
 				}
 			};
 
@@ -189,7 +196,10 @@ class WebSocketService {
 				// Attempt to reconnect if not a normal closure
 				if (event.code !== 1000 && this.retryCount < this.maxRetries) {
 					this.retryCount++;
-					const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
+					const delay = Math.min(
+						1000 * Math.pow(2, this.retryCount),
+						30000,
+					);
 					this.reconnectTimeout = setTimeout(() => {
 						this.connect(Array.from(this.subscribedChannels));
 					}, delay);
@@ -262,7 +272,9 @@ class WebSocketService {
 					this.userId = message.userId;
 				} else if ("executionId" in message) {
 					// Execution-specific connection
-					this.subscribedChannels.add(`execution:${message.executionId}`);
+					this.subscribedChannels.add(
+						`execution:${message.executionId}`,
+					);
 				}
 				break;
 
@@ -335,7 +347,9 @@ class WebSocketService {
 		};
 
 		// Dispatch to execution-specific callbacks
-		const callbacks = this.executionUpdateCallbacks.get(message.executionId);
+		const callbacks = this.executionUpdateCallbacks.get(
+			message.executionId,
+		);
 		callbacks?.forEach((cb) => cb(update));
 
 		// Dispatch to global callbacks (for history page)

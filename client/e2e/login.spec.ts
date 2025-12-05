@@ -24,10 +24,14 @@ test.describe("Login Flow", () => {
 		await page.goto("/login");
 
 		// Check for login form elements
-		await expect(page.getByRole("heading", { name: "Bifrost" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Bifrost" }),
+		).toBeVisible();
 		await expect(page.getByLabel("Email")).toBeVisible();
 		await expect(page.getByLabel("Password")).toBeVisible();
-		await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Sign In" }),
+		).toBeVisible();
 	});
 
 	test("should show error for invalid credentials", async ({ page }) => {
@@ -42,7 +46,9 @@ test.describe("Login Flow", () => {
 		await expect(page.getByRole("alert")).toBeVisible({ timeout: 5000 });
 	});
 
-	test("should login successfully with valid credentials", async ({ page }) => {
+	test("should login successfully with valid credentials", async ({
+		page,
+	}) => {
 		await page.goto("/login");
 
 		// Enter valid credentials
@@ -54,7 +60,9 @@ test.describe("Login Flow", () => {
 		await page.waitForURL("/", { timeout: 10000 });
 
 		// Verify we're on the dashboard (not login page)
-		await expect(page.getByRole("button", { name: "Sign In" })).not.toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Sign In" }),
+		).not.toBeVisible();
 	});
 
 	test("should redirect unauthenticated users to login", async ({ page }) => {
@@ -63,7 +71,9 @@ test.describe("Login Flow", () => {
 
 		// Should redirect to login
 		await page.waitForURL(/\/login/, { timeout: 5000 });
-		await expect(page.getByRole("heading", { name: "Bifrost" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Bifrost" }),
+		).toBeVisible();
 	});
 
 	test("should preserve redirect path after login", async ({ page }) => {

@@ -20,12 +20,13 @@ logger = logging.getLogger(__name__)
 def extract_relative_path(source_file_path: str | None) -> str | None:
     """
     Extract workspace-relative file path from absolute path.
+    Returns path with /workspace/ prefix for consistency with editor paths.
 
     Args:
         source_file_path: Absolute file path (e.g., /path/to/workspace/repo/workflows/my_workflow.py)
 
     Returns:
-        Relative path after workspace root (e.g., workflows/my_workflow.py)
+        Path with /workspace/ prefix (e.g., /workspace/workflows/my_workflow.py)
         Returns None if source_file_path is None or no marker found
     """
     if not source_file_path:
@@ -43,15 +44,21 @@ def extract_relative_path(source_file_path: str | None) -> str | None:
         # Check if source_path is relative to workspace
         try:
             relative = source_path.relative_to(workspace_path)
-            return str(relative)
+            # Return with /workspace/ prefix for consistency
+            return f"/workspace/{relative}"
         except ValueError:
             # Not relative to workspace, fall through to marker check
             pass
 
-    # Fallback: Extract everything after /home/, /platform/, or /workspace/ markers
-    for marker in ['/home/', '/platform/', '/workspace/']:
+    # Fallback: Extract everything after markers and prepend /workspace/
+    for marker in ['/home/', '/platform/']:
         if marker in source_file_path:
-            return source_file_path.split(marker, 1)[1]
+            relative = source_file_path.split(marker, 1)[1]
+            return f"/workspace/{relative}"
+
+    # If already has /workspace/ prefix, return as-is
+    if '/workspace/' in source_file_path:
+        return '/workspace/' + source_file_path.split('/workspace/', 1)[1]
 
     return None
 

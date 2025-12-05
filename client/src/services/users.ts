@@ -7,8 +7,10 @@ import type { components, paths } from "@/lib/v1";
 
 // Type aliases for cleaner code
 type UserPublic = components["schemas"]["UserPublic"];
-type UserCreate = paths["/api/users"]["post"]["requestBody"]["content"]["application/json"];
-type UserUpdate = paths["/api/users/{user_id}"]["patch"]["requestBody"]["content"]["application/json"];
+type UserCreate =
+	paths["/api/users"]["post"]["requestBody"]["content"]["application/json"];
+type UserUpdate =
+	paths["/api/users/{user_id}"]["patch"]["requestBody"]["content"]["application/json"];
 
 export const usersService = {
 	/**
@@ -37,9 +39,12 @@ export const usersService = {
 	 * Get roles for a user
 	 */
 	async getUserRoles(userId: string) {
-		const { data, error } = await apiClient.GET("/api/users/{user_id}/roles", {
-			params: { path: { user_id: userId } },
-		});
+		const { data, error } = await apiClient.GET(
+			"/api/users/{user_id}/roles",
+			{
+				params: { path: { user_id: userId } },
+			},
+		);
 		if (error) throw new Error(`Failed to fetch user roles: ${error}`);
 		return data;
 	},
@@ -48,9 +53,12 @@ export const usersService = {
 	 * Get user forms
 	 */
 	async getUserForms(userId: string) {
-		const { data, error } = await apiClient.GET("/api/users/{user_id}/forms", {
-			params: { path: { user_id: userId } },
-		});
+		const { data, error } = await apiClient.GET(
+			"/api/users/{user_id}/forms",
+			{
+				params: { path: { user_id: userId } },
+			},
+		);
 		if (error) throw new Error(`Failed to fetch user forms: ${error}`);
 		return data;
 	},
@@ -59,7 +67,7 @@ export const usersService = {
 	 * Create a new user
 	 */
 	async createUser(body: UserCreate): Promise<UserPublic> {
-		const { data, error} = await apiClient.POST("/api/users", {
+		const { data, error } = await apiClient.POST("/api/users", {
 			body,
 		});
 		if (error) throw new Error(`Failed to create user: ${error}`);
@@ -69,10 +77,7 @@ export const usersService = {
 	/**
 	 * Update a user
 	 */
-	async updateUser(
-		userId: string,
-		body: UserUpdate,
-	): Promise<UserPublic> {
+	async updateUser(userId: string, body: UserUpdate): Promise<UserPublic> {
 		const { data, error } = await apiClient.PATCH("/api/users/{user_id}", {
 			params: { path: { user_id: userId } },
 			body,

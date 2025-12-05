@@ -73,7 +73,9 @@ export function Setup() {
 				state: { message: "Account created! Please sign in." },
 			});
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Account creation failed");
+			setError(
+				err instanceof Error ? err.message : "Account creation failed",
+			);
 			setIsLoading(false);
 		}
 	};
@@ -102,7 +104,11 @@ export function Setup() {
 							transition={{ delay: 0.1, duration: 0.3 }}
 							className="flex justify-center"
 						>
-							<Logo type="square" className="h-16 w-16" alt="Bifrost" />
+							<Logo
+								type="square"
+								className="h-16 w-16"
+								alt="Bifrost"
+							/>
 						</motion.div>
 						<div className="space-y-1">
 							<CardTitle className="text-2xl font-bold tracking-tight">
@@ -130,7 +136,9 @@ export function Setup() {
 										type="text"
 										placeholder="Your name"
 										value={name}
-										onChange={(e) => setName(e.target.value)}
+										onChange={(e) =>
+											setName(e.target.value)
+										}
 										className="pl-10"
 										autoFocus
 									/>
@@ -145,7 +153,9 @@ export function Setup() {
 										type="email"
 										placeholder="admin@example.com"
 										value={email}
-										onChange={(e) => setEmail(e.target.value)}
+										onChange={(e) =>
+											setEmail(e.target.value)
+										}
 										className="pl-10"
 										required
 									/>
@@ -160,7 +170,9 @@ export function Setup() {
 										type="password"
 										placeholder="At least 8 characters"
 										value={password}
-										onChange={(e) => setPassword(e.target.value)}
+										onChange={(e) =>
+											setPassword(e.target.value)
+										}
 										className="pl-10"
 										required
 										minLength={8}
@@ -168,7 +180,9 @@ export function Setup() {
 								</div>
 							</div>
 							<div className="space-y-2">
-								<Label htmlFor="confirmPassword">Confirm Password</Label>
+								<Label htmlFor="confirmPassword">
+									Confirm Password
+								</Label>
 								<div className="relative">
 									<Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 									<Input
@@ -176,7 +190,9 @@ export function Setup() {
 										type="password"
 										placeholder="Confirm your password"
 										value={confirmPassword}
-										onChange={(e) => setConfirmPassword(e.target.value)}
+										onChange={(e) =>
+											setConfirmPassword(e.target.value)
+										}
 										className="pl-10"
 										required
 									/>
@@ -185,7 +201,12 @@ export function Setup() {
 							<Button
 								type="submit"
 								className="w-full"
-								disabled={isLoading || !email || !password || !confirmPassword}
+								disabled={
+									isLoading ||
+									!email ||
+									!password ||
+									!confirmPassword
+								}
 							>
 								{isLoading ? (
 									<Loader2 className="h-4 w-4 animate-spin mr-2" />

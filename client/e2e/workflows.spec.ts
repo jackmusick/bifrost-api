@@ -81,7 +81,9 @@ test.describe("Execution History", () => {
 		await page.goto("/history");
 
 		// Wait for history page to load
-		await expect(page.getByRole("heading", { name: /history/i })).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /history/i }),
+		).toBeVisible({
 			timeout: 10000,
 		});
 	});
@@ -90,12 +92,16 @@ test.describe("Execution History", () => {
 		await page.goto("/history");
 
 		// Wait for page to load
-		await expect(page.getByRole("heading", { name: /history/i })).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /history/i }),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
 		// Look for a clickable execution row
-		const executionRow = page.locator("table tbody tr, [data-testid='execution-row']").first();
+		const executionRow = page
+			.locator("table tbody tr, [data-testid='execution-row']")
+			.first();
 
 		// Skip if no executions
 		if (!(await executionRow.isVisible().catch(() => false))) {
@@ -128,9 +134,11 @@ test.describe("Workflow Execution with Realtime Results", () => {
 
 		// Find a simple test workflow to execute
 		// Look for example_basic_workflow or test_workflow
-		const workflowCard = page.locator(
-			'text=example_basic_workflow, text=test_workflow, [data-workflow-name]',
-		).first();
+		const workflowCard = page
+			.locator(
+				"text=example_basic_workflow, text=test_workflow, [data-workflow-name]",
+			)
+			.first();
 
 		// Skip if no suitable workflow found
 		if (!(await workflowCard.isVisible().catch(() => false))) {
@@ -156,9 +164,11 @@ test.describe("Workflow Execution with Realtime Results", () => {
 		}
 
 		// Wait for execute workflow page
-		await page.waitForURL(/\/workflows\/.*\/execute/, { timeout: 5000 }).catch(() => {
-			// May already be on execute page or need different navigation
-		});
+		await page
+			.waitForURL(/\/workflows\/.*\/execute/, { timeout: 5000 })
+			.catch(() => {
+				// May already be on execute page or need different navigation
+			});
 
 		// Look for execute/run button on the form
 		const runButton = page
@@ -173,12 +183,14 @@ test.describe("Workflow Execution with Realtime Results", () => {
 
 			// Should see execution status
 			await expect(
-				page.locator('text=Pending, text=Running, text=Completed, text=Success, text=Failed'),
+				page.locator(
+					"text=Pending, text=Running, text=Completed, text=Success, text=Failed",
+				),
 			).toBeVisible({ timeout: 30000 });
 
 			// Wait for completion (up to 30 seconds for simple workflows)
 			await expect(
-				page.locator('text=Completed, text=Success, text=Failed'),
+				page.locator("text=Completed, text=Success, text=Failed"),
 			).toBeVisible({ timeout: 30000 });
 		}
 	});

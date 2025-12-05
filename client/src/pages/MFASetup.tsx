@@ -38,7 +38,8 @@ export function MFASetup() {
 	const [error, setError] = useState<string | null>(null);
 
 	// Get MFA token from location state or sessionStorage (backup for page refreshes)
-	const locationMfaToken = (location.state as { mfaToken?: string })?.mfaToken;
+	const locationMfaToken = (location.state as { mfaToken?: string })
+		?.mfaToken;
 	const from = (location.state as { from?: string })?.from || "/";
 
 	// Use location state token if available, otherwise fall back to sessionStorage
@@ -85,7 +86,9 @@ export function MFASetup() {
 				qrCodeUri: data.qr_code_uri,
 			});
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to initialize MFA");
+			setError(
+				err instanceof Error ? err.message : "Failed to initialize MFA",
+			);
 		} finally {
 			setIsLoading(false);
 		}
@@ -137,7 +140,9 @@ export function MFASetup() {
 				setStep("recovery-codes");
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Verification failed");
+			setError(
+				err instanceof Error ? err.message : "Verification failed",
+			);
 		} finally {
 			setIsLoading(false);
 		}
@@ -190,9 +195,11 @@ Keep these codes in a secure location.
 						Two-Factor Authentication
 					</CardTitle>
 					<CardDescription>
-						{step === "setup" && "Scan the QR code with your authenticator app"}
+						{step === "setup" &&
+							"Scan the QR code with your authenticator app"}
 						{step === "verify" && "Enter the verification code"}
-						{step === "recovery-codes" && "Save your recovery codes"}
+						{step === "recovery-codes" &&
+							"Save your recovery codes"}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -204,8 +211,9 @@ Keep these codes in a secure location.
 
 					<Alert className="mb-4">
 						<AlertDescription>
-							Two-factor authentication is required for password-based login.
-							This helps protect your account from unauthorized access.
+							Two-factor authentication is required for
+							password-based login. This helps protect your
+							account from unauthorized access.
 						</AlertDescription>
 					</Alert>
 
@@ -221,7 +229,8 @@ Keep these codes in a secure location.
 
 							<div className="text-center">
 								<p className="text-sm text-muted-foreground mb-2">
-									Scan this QR code with your authenticator app
+									Scan this QR code with your authenticator
+									app
 								</p>
 								<p className="text-xs text-muted-foreground">
 									Or enter this code manually:
@@ -231,7 +240,10 @@ Keep these codes in a secure location.
 								</code>
 							</div>
 
-							<Button onClick={() => setStep("verify")} className="w-full">
+							<Button
+								onClick={() => setStep("verify")}
+								className="w-full"
+							>
 								<Shield className="h-4 w-4 mr-2" />
 								I've added the code
 							</Button>
@@ -241,7 +253,9 @@ Keep these codes in a secure location.
 					{step === "verify" && (
 						<form onSubmit={handleMfaVerify} className="space-y-4">
 							<div className="space-y-2">
-								<Label htmlFor="verifyCode">Verification Code</Label>
+								<Label htmlFor="verifyCode">
+									Verification Code
+								</Label>
 								<Input
 									id="verifyCode"
 									type="text"
@@ -283,8 +297,9 @@ Keep these codes in a secure location.
 						<div className="space-y-4">
 							<Alert>
 								<AlertDescription>
-									Save these recovery codes in a secure location. Each code can
-									only be used once to access your account if you lose your
+									Save these recovery codes in a secure
+									location. Each code can only be used once to
+									access your account if you lose your
 									authenticator.
 								</AlertDescription>
 							</Alert>
@@ -321,10 +336,15 @@ Keep these codes in a secure location.
 									type="checkbox"
 									id="savedCodes"
 									checked={recoveryCodesSaved}
-									onChange={(e) => setRecoveryCodesSaved(e.target.checked)}
+									onChange={(e) =>
+										setRecoveryCodesSaved(e.target.checked)
+									}
 									className="rounded border-gray-300"
 								/>
-								<Label htmlFor="savedCodes" className="text-sm font-normal">
+								<Label
+									htmlFor="savedCodes"
+									className="text-sm font-normal"
+								>
 									I have saved my recovery codes
 								</Label>
 							</div>

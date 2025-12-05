@@ -6,11 +6,16 @@ import { apiClient, withContext } from "@/lib/api-client";
 import type { components, paths } from "@/lib/v1";
 
 // Type aliases for cleaner code using paths for response types
-type WorkflowExecutionRequest = components["schemas"]["WorkflowExecutionRequest"];
-type WorkflowExecutionResponse = paths["/api/workflows/execute"]["post"]["responses"]["200"]["content"]["application/json"];
-type WorkflowValidationRequest = components["schemas"]["WorkflowValidationRequest"];
-type WorkflowValidationResponse = components["schemas"]["WorkflowValidationResponse"];
-type WorkflowsListResponse = paths["/api/workflows"]["get"]["responses"]["200"]["content"]["application/json"];
+type WorkflowExecutionRequest =
+	components["schemas"]["WorkflowExecutionRequest"];
+type WorkflowExecutionResponse =
+	paths["/api/workflows/execute"]["post"]["responses"]["200"]["content"]["application/json"];
+type WorkflowValidationRequest =
+	components["schemas"]["WorkflowValidationRequest"];
+type WorkflowValidationResponse =
+	components["schemas"]["WorkflowValidationResponse"];
+type WorkflowsListResponse =
+	paths["/api/workflows"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export const workflowsService = {
 	/**
@@ -69,12 +74,15 @@ export const workflowsService = {
 		path: string,
 		content?: string,
 	): Promise<WorkflowValidationResponse> {
-		const { data, error } = await apiClient.POST("/api/workflows/validate", {
-			body: {
-				path,
-				content: content ?? null,
-			} as WorkflowValidationRequest,
-		});
+		const { data, error } = await apiClient.POST(
+			"/api/workflows/validate",
+			{
+				body: {
+					path,
+					content: content ?? null,
+				} as WorkflowValidationRequest,
+			},
+		);
 
 		if (error) throw new Error(`Failed to validate workflow: ${error}`);
 		return data!;

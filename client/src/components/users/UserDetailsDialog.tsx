@@ -132,7 +132,9 @@ export function UserDetailsDialog({
 									Created
 								</span>
 								<span className="text-sm">
-									{user.created_at ? formatDateShort(user.created_at) : "N/A"}
+									{user.created_at
+										? formatDateShort(user.created_at)
+										: "N/A"}
 								</span>
 							</div>
 						</CardContent>
@@ -174,10 +176,14 @@ export function UserDetailsDialog({
 												))}
 											</div>
 										) : roles &&
-										  (roles as UserRolesResponse).roleIds &&
-										  (roles as UserRolesResponse).roleIds.length > 0 ? (
+										  (roles as UserRolesResponse)
+												.roleIds &&
+										  (roles as UserRolesResponse).roleIds
+												.length > 0 ? (
 											<div className="space-y-2">
-												{(roles as UserRolesResponse).roleIds.map(
+												{(
+													roles as UserRolesResponse
+												).roleIds.map(
 													(roleId: string) => (
 														<div
 															key={roleId}
@@ -231,10 +237,14 @@ export function UserDetailsDialog({
 												))}
 											</div>
 										) : formsAccess &&
-										  (formsAccess as UserFormsResponse).formIds ? (
-										(formsAccess as UserFormsResponse).formIds.length > 0 ? (
+										  (formsAccess as UserFormsResponse)
+												.formIds ? (
+											(formsAccess as UserFormsResponse)
+												.formIds.length > 0 ? (
 												<div className="space-y-2">
-													{(formsAccess as UserFormsResponse).formIds.map(
+													{(
+														formsAccess as UserFormsResponse
+													).formIds.map(
 														(formId: string) => (
 															<div
 																key={formId}

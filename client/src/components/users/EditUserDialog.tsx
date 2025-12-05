@@ -46,11 +46,7 @@ export function EditUserDialog({
 	const { user: currentUser } = useAuth();
 
 	// Check if editing own account
-	const isEditingSelf = !!(
-		user &&
-		currentUser &&
-		user.id === currentUser.id
-	);
+	const isEditingSelf = !!(user && currentUser && user.id === currentUser.id);
 
 	// Load user data when dialog opens
 	useEffect(() => {
@@ -116,16 +112,18 @@ export function EditUserDialog({
 				!isEditingSelf && isActive !== user.is_active ? isActive : null,
 			user_type:
 				!isEditingSelf && isRoleChanging
-					? (isPlatformUser ? "PLATFORM" : "ORG")
+					? isPlatformUser
+						? "PLATFORM"
+						: "ORG"
 					: null,
 			is_superuser:
-				!isEditingSelf && isPlatformUser && isSuperuser !== user.is_superuser
+				!isEditingSelf &&
+				isPlatformUser &&
+				isSuperuser !== user.is_superuser
 					? isSuperuser
 					: null,
 			organization_id:
-				!isEditingSelf && isDemoting
-					? orgId || null
-					: null,
+				!isEditingSelf && isDemoting ? orgId || null : null,
 		};
 
 		// If no actual changes, just close
@@ -325,9 +323,9 @@ export function EditUserDialog({
 								<AlertTriangle className="h-4 w-4" />
 								<AlertDescription>
 									You are demoting this user from Platform
-									User to Organization User. They
-									will lose access to all other organizations
-									and platform settings.
+									User to Organization User. They will lose
+									access to all other organizations and
+									platform settings.
 								</AlertDescription>
 							</Alert>
 						</>
@@ -337,9 +335,9 @@ export function EditUserDialog({
 						<Alert>
 							<Shield className="h-4 w-4" />
 							<AlertDescription>
-								You are promoting this user to Platform
-								User. They will gain access to all features
-								and organizations.
+								You are promoting this user to Platform User.
+								They will gain access to all features and
+								organizations.
 							</AlertDescription>
 						</Alert>
 					)}

@@ -2,11 +2,10 @@
 Workflow Keys Router
 
 API key management for workflow execution.
-Allows platform admins to create and revoke API keys for workflow authentication.
+Allows platform admins to create and revoke API keys for workflows.
 
-Keys can be:
-- Global (workflow_name=NULL): Works for all workflows
-- Workflow-specific: Only works for a specific workflow
+API keys are now stored directly on the workflows table (api_key_* columns).
+Each workflow can have ONE API key. No global keys - each key is workflow-specific.
 """
 
 import hashlib
@@ -20,8 +19,9 @@ from sqlalchemy import select, or_
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
-from src.models import WorkflowKey
+from src.models.orm import Workflow
 from shared.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
+from shared.workflow_keys import generate_workflow_key
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +43,10 @@ class WorkflowKeyCreatedResponse(WorkflowKeyResponse):
 # =============================================================================
 
 
-def generate_api_key() -> tuple[str, str]:
-    """
-    Generate a secure API key.
-
-    Returns:
-        Tuple of (raw_key, hashed_key)
-    """
-    raw_key = secrets.token_urlsafe(32)
-    hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
-    return raw_key, hashed_key
-
-
 def mask_key(hashed_key: str) -> str:
     """Create a masked display version of the key hash."""
+    if not hashed_key:
+        return ""
     return f"{hashed_key[:4]}...{hashed_key[-4:]}"
 
 
@@ -69,34 +59,36 @@ def mask_key(hashed_key: str) -> str:
     "",
     response_model=list[WorkflowKeyResponse],
     summary="List workflow API keys",
-    description="List all API keys (Platform admin only)",
+    description="List all workflows with API keys enabled (Platform admin only)",
 )
 async def list_keys(
     ctx: Context,
     user: CurrentSuperuser,
     db: DbSession,
 ) -> list[WorkflowKeyResponse]:
-    """List all workflow API keys."""
-    query = select(WorkflowKey).where(
-        WorkflowKey.revoked == False  # noqa: E712
-    ).order_by(WorkflowKey.created_at.desc())
+    """List all workflows with API keys enabled."""
+    query = select(Workflow).where(
+        Workflow.api_key_hash.isnot(None),  # Has an API key
+        Workflow.api_key_enabled == True  # noqa: E712
+    ).order_by(Workflow.api_key_created_at.desc())
 
     result = await db.execute(query)
-    keys = result.scalars().all()
+    workflows = result.scalars().all()
 
     return [
         WorkflowKeyResponse(
-            id=str(key.id),
-            workflow_name=key.workflow_name,
-            masked_key=mask_key(key.hashed_key),
-            description=key.description,
-            created_by=key.created_by,
-            created_at=key.created_at,
-            last_used_at=key.last_used_at,
-            expires_at=key.expires_at,
-            revoked=key.revoked,
+            id=str(wf.id),
+            workflow_name=wf.name,
+            raw_key=None,  # Never return raw key in list
+            masked_key=mask_key(wf.api_key_hash or ""),
+            description=wf.api_key_description,
+            created_by=wf.api_key_created_by or "",
+            created_at=wf.api_key_created_at or wf.created_at,
+            last_used_at=wf.api_key_last_used_at,
+            expires_at=wf.api_key_expires_at,
+            revoked=not wf.api_key_enabled,
         )
-        for key in keys
+        for wf in workflows
     ]
 
 
@@ -105,7 +97,7 @@ async def list_keys(
     response_model=WorkflowKeyCreatedResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new API key",
-    description="Create a new workflow API key (Platform admin only)",
+    description="Create a new workflow API key (Platform admin only, requires workflow_name)",
 )
 async def create_key(
     request: WorkflowKeyCreateRequest,
@@ -113,77 +105,109 @@ async def create_key(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> WorkflowKeyCreatedResponse:
-    """Create a new workflow API key."""
-    raw_key, hashed_key = generate_api_key()
+    """Create a new workflow API key. Each workflow can have one API key."""
+
+    # Workflow name is now required
+    if not request.workflow_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="workflow_name is required (global keys are no longer supported)"
+        )
+
+    # Look up the workflow
+    result = await db.execute(
+        select(Workflow).where(Workflow.name == request.workflow_name)
+    )
+    workflow = result.scalar_one_or_none()
+
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workflow '{request.workflow_name}' not found"
+        )
+
+    # Check if workflow already has a key
+    if workflow.api_key_hash and workflow.api_key_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Workflow '{request.workflow_name}' already has an active API key. Revoke it first."
+        )
+
+    # Generate new key
+    raw_key, hashed_key = generate_workflow_key()
 
     expires_at = None
     if request.expires_in_days:
         expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
 
-    workflow_key = WorkflowKey(
-        workflow_name=request.workflow_name,
-        hashed_key=hashed_key,
-        description=request.description,
-        created_by=user.email,
-        expires_at=expires_at,
-    )
-    db.add(workflow_key)
-    await db.flush()
-    await db.refresh(workflow_key)
+    # Update workflow with API key info
+    workflow.api_key_hash = hashed_key
+    workflow.api_key_description = request.description
+    workflow.api_key_enabled = True
+    workflow.api_key_created_by = user.email
+    workflow.api_key_created_at = datetime.utcnow()
+    workflow.api_key_expires_at = expires_at
 
-    key_type = f"workflow '{request.workflow_name}'" if request.workflow_name else "global"
-    logger.info(f"Created {key_type} API key by {user.email}")
+    await db.flush()
+    await db.refresh(workflow)
+
+    logger.info(f"Created API key for workflow '{request.workflow_name}' by {user.email}")
 
     return WorkflowKeyCreatedResponse(
-        id=str(workflow_key.id),
-        workflow_name=workflow_key.workflow_name,
+        id=str(workflow.id),
+        workflow_name=workflow.name,
         masked_key=mask_key(hashed_key),
         raw_key=raw_key,
-        description=workflow_key.description,
-        created_by=workflow_key.created_by,
-        created_at=workflow_key.created_at,
-        last_used_at=workflow_key.last_used_at,
-        expires_at=workflow_key.expires_at,
-        revoked=workflow_key.revoked,
+        description=workflow.api_key_description,
+        created_by=workflow.api_key_created_by or user.email,
+        created_at=workflow.api_key_created_at or workflow.created_at,
+        last_used_at=workflow.api_key_last_used_at,
+        expires_at=workflow.api_key_expires_at,
+        revoked=not workflow.api_key_enabled,
     )
 
 
 @router.delete(
-    "/{key_id}",
+    "/{workflow_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke an API key",
-    description="Revoke a workflow API key (Platform admin only)",
+    description="Revoke a workflow API key by workflow ID (Platform admin only)",
 )
 async def revoke_key(
-    key_id: UUID,
+    workflow_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
     db: DbSession,
 ) -> None:
-    """Revoke (soft delete) a workflow API key."""
+    """Revoke (disable) a workflow API key."""
     result = await db.execute(
-        select(WorkflowKey).where(WorkflowKey.id == key_id)
+        select(Workflow).where(Workflow.id == workflow_id)
     )
-    key = result.scalar_one_or_none()
+    workflow = result.scalar_one_or_none()
 
-    if not key:
+    if not workflow:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="API key not found",
+            detail="Workflow not found",
         )
 
-    if key.revoked:
+    if not workflow.api_key_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workflow does not have an API key",
+        )
+
+    if not workflow.api_key_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="API key already revoked",
         )
 
-    key.revoked = True
-    key.revoked_at = datetime.utcnow()
-    key.revoked_by = user.email
+    # Disable the API key
+    workflow.api_key_enabled = False
 
     await db.flush()
-    logger.info(f"Revoked API key {key_id} by {user.email}")
+    logger.info(f"Revoked API key for workflow '{workflow.name}' (ID: {workflow_id}) by {user.email}")
 
 
 # =============================================================================
@@ -202,44 +226,36 @@ async def validate_workflow_key(
     Args:
         db: Database session
         api_key: Raw API key to validate
-        workflow_name: Optional workflow to validate against
+        workflow_name: Workflow name to validate against (required for new system)
 
     Returns:
-        Tuple of (is_valid, key_id)
+        Tuple of (is_valid, workflow_id)
     """
     hashed_key = hashlib.sha256(api_key.encode()).hexdigest()
     now = datetime.utcnow()
 
-    # Build query for valid keys
-    query = select(WorkflowKey).where(
-        WorkflowKey.hashed_key == hashed_key,
-        WorkflowKey.revoked == False,  # noqa: E712
+    # Build query for workflow with matching API key
+    query = select(Workflow).where(
+        Workflow.api_key_hash == hashed_key,
+        Workflow.api_key_enabled == True,  # noqa: E712
         or_(
-            WorkflowKey.expires_at.is_(None),
-            WorkflowKey.expires_at > now,
+            Workflow.api_key_expires_at.is_(None),
+            Workflow.api_key_expires_at > now,
         ),
     )
 
-    # If workflow_name provided, check for workflow-specific OR global key
+    # If workflow_name provided, filter by name
     if workflow_name:
-        query = query.where(
-            or_(
-                WorkflowKey.workflow_name == workflow_name,
-                WorkflowKey.workflow_name.is_(None),
-            )
-        )
-    else:
-        # Only global keys work for unspecified workflows
-        query = query.where(WorkflowKey.workflow_name.is_(None))
+        query = query.where(Workflow.name == workflow_name)
 
     result = await db.execute(query)
-    key = result.scalar_one_or_none()
+    workflow = result.scalar_one_or_none()
 
-    if not key:
+    if not workflow:
         return (False, None)
 
     # Update last used timestamp
-    key.last_used_at = now
+    workflow.api_key_last_used_at = now
     await db.flush()
 
-    return (True, key.id)
+    return (True, workflow.id)

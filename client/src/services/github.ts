@@ -12,11 +12,15 @@ import type { components } from "@/lib/v1";
 // =============================================================================
 
 export type GitHubConnectRequest = components["schemas"]["GitHubConfigRequest"];
-export type GitStatusResponse = components["schemas"]["GitRefreshStatusResponse"];
+export type GitStatusResponse =
+	components["schemas"]["GitRefreshStatusResponse"];
 export type PullRequest = components["schemas"]["PullFromGitHubRequest"];
 export type PushRequest = components["schemas"]["PushToGitHubRequest"];
 export type FileChange = components["schemas"]["FileChange"];
 export type CommitInfo = components["schemas"]["CommitInfo"];
+export type ConflictInfo = components["schemas"]["ConflictInfo"];
+export type CommitHistoryResponse = components["schemas"]["CommitHistoryResponse"];
+export type DiscardCommitsResponse = components["schemas"]["DiscardUnpushedCommitsResponse"];
 
 export const githubService = {
 	/**
@@ -35,9 +39,7 @@ export const githubService = {
 	/**
 	 * Initialize Git repository with remote
 	 */
-	async initRepo(
-		config: GitHubConnectRequest,
-	): Promise<GitStatusResponse> {
+	async initRepo(config: GitHubConnectRequest): Promise<GitStatusResponse> {
 		const response = await authFetch("/api/github/init", {
 			method: "POST",
 			body: JSON.stringify(config),
@@ -120,21 +122,51 @@ export const githubService = {
 	},
 
 	/**
-	 * Get commit history
+	 * Get commit history with pagination
 	 */
 	async getCommits(
 		limit: number = 20,
 		offset: number = 0,
-	): Promise<{
-		isGitRepo: boolean;
-		commits: CommitInfo[];
-	}> {
+	): Promise<CommitHistoryResponse> {
 		const response = await authFetch(
 			`/api/github/commits?limit=${limit}&offset=${offset}`,
 		);
 
 		if (!response.ok) {
 			throw new Error("Failed to get commit history");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Discard all unpushed commits
+	 */
+	async discardUnpushed(): Promise<DiscardCommitsResponse> {
+		const response = await authFetch("/api/github/discard-unpushed", {
+			method: "POST",
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.message || "Failed to discard unpushed commits");
+		}
+
+		return response.json();
+	},
+
+	/**
+	 * Discard a specific commit and all newer commits
+	 */
+	async discardCommit(commitSha: string): Promise<DiscardCommitsResponse> {
+		const response = await authFetch("/api/github/discard-commit", {
+			method: "POST",
+			body: JSON.stringify({ commit_sha: commitSha }),
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.message || "Failed to discard commit");
 		}
 
 		return response.json();

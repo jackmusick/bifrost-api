@@ -67,10 +67,7 @@ export function FormBuilder() {
 		useState(false);
 	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
 		useState(false);
-	const [workflowResults] = useState<Record<
-		string,
-		unknown
-	> | null>(null);
+	const [workflowResults] = useState<Record<string, unknown> | null>(null);
 
 	// Load existing form data
 	useEffect(() => {
@@ -89,7 +86,9 @@ export function FormBuilder() {
 				existingForm.form_schema !== null &&
 				"fields" in existingForm.form_schema
 			) {
-				const schema = existingForm.form_schema as { fields: unknown[] };
+				const schema = existingForm.form_schema as {
+					fields: unknown[];
+				};
 				setFields(schema.fields as FormField[]);
 			}
 		}
@@ -232,9 +231,9 @@ export function FormBuilder() {
 		}
 
 		// Find the linked workflow's metadata
-		const workflow = (workflowsMetadata.workflows as WorkflowMetadata[]).find(
-			(w: WorkflowMetadata) => w.name === linkedWorkflow,
-		);
+		const workflow = (
+			workflowsMetadata.workflows as WorkflowMetadata[]
+		).find((w: WorkflowMetadata) => w.name === linkedWorkflow);
 		if (!workflow || !workflow.parameters) {
 			return { valid: true, missingParams: [] };
 		}
@@ -287,9 +286,9 @@ export function FormBuilder() {
 	};
 
 	// Get workflow metadata for launch workflow
-	const launchWorkflow = (workflowsMetadata?.workflows as WorkflowMetadata[] | undefined)?.find(
-		(w: WorkflowMetadata) => w.name === launchWorkflowId,
-	);
+	const launchWorkflow = (
+		workflowsMetadata?.workflows as WorkflowMetadata[] | undefined
+	)?.find((w: WorkflowMetadata) => w.name === launchWorkflowId);
 	const launchWorkflowParameters = launchWorkflow?.parameters || [];
 
 	// Build real context preview based on current user and form state

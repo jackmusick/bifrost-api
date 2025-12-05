@@ -94,7 +94,10 @@ function parseJwt(token: string): JwtPayload | null {
 		const jsonPayload = decodeURIComponent(
 			atob(base64)
 				.split("")
-				.map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+				.map(
+					(c) =>
+						"%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2),
+				)
 				.join(""),
 		);
 		return JSON.parse(jsonPayload);
@@ -210,7 +213,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (payload) {
 					const extractedUser = extractUser(payload);
 					setUser(extractedUser);
-					localStorage.setItem(USER_KEY, JSON.stringify(extractedUser));
+					localStorage.setItem(
+						USER_KEY,
+						JSON.stringify(extractedUser),
+					);
 					sessionStorage.setItem("userId", extractedUser.id);
 				}
 				return true;
@@ -271,7 +277,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (payload) {
 					const extractedUser = extractUser(payload);
 					setUser(extractedUser);
-					localStorage.setItem(USER_KEY, JSON.stringify(extractedUser));
+					localStorage.setItem(
+						USER_KEY,
+						JSON.stringify(extractedUser),
+					);
 					sessionStorage.setItem("userId", extractedUser.id);
 				}
 
@@ -314,7 +323,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (payload) {
 					const extractedUser = extractUser(payload);
 					setUser(extractedUser);
-					localStorage.setItem(USER_KEY, JSON.stringify(extractedUser));
+					localStorage.setItem(
+						USER_KEY,
+						JSON.stringify(extractedUser),
+					);
 					sessionStorage.setItem("userId", extractedUser.id);
 				}
 			}
@@ -355,7 +367,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				if (payload) {
 					const extractedUser = extractUser(payload);
 					setUser(extractedUser);
-					localStorage.setItem(USER_KEY, JSON.stringify(extractedUser));
+					localStorage.setItem(
+						USER_KEY,
+						JSON.stringify(extractedUser),
+					);
 					sessionStorage.setItem("userId", extractedUser.id);
 				}
 			}
@@ -424,7 +439,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		checkAuthStatus,
 	};
 
-	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+	return (
+		<AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+	);
 }
 
 export function useAuth() {

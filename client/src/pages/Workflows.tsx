@@ -55,10 +55,9 @@ export function Workflows() {
 	// Apply source filter
 	const sourceFilteredWorkflows = useMemo(() => {
 		if (filter === "both") return workflows;
-		if (filter === "home")
-			return workflows.filter((w) => w.source !== "platform");
+		if (filter === "home") return workflows.filter((w) => !w.is_platform);
 		if (filter === "platform")
-			return workflows.filter((w) => w.source === "platform");
+			return workflows.filter((w) => w.is_platform);
 		return workflows;
 	}, [workflows, filter]);
 

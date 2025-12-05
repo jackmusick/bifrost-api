@@ -55,9 +55,7 @@ import type { FormSchema } from "@/lib/client-types";
 type FormPublic = components["schemas"]["FormPublic"];
 
 // Type guard to check if form_schema is a FormSchema
-function isFormSchema(
-	schema: unknown,
-): schema is FormSchema {
+function isFormSchema(schema: unknown): schema is FormSchema {
 	return (
 		schema !== null &&
 		schema !== undefined &&

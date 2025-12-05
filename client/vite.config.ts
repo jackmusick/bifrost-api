@@ -2,23 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
-import { copyFileSync } from "fs";
 
 // https://vite.dev/config/
 export default defineConfig({
-	plugins: [
-		tailwindcss(),
-		react(),
-		{
-			name: "copy-staticwebapp-config",
-			closeBundle() {
-				copyFileSync(
-					"staticwebapp.config.json",
-					"dist/staticwebapp.config.json",
-				);
-			},
-		},
-	],
+	plugins: [tailwindcss(), react()],
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "./src"),

@@ -10,8 +10,10 @@ export type InstalledPackage = components["schemas"]["InstalledPackage"];
 export type PackageUpdate = components["schemas"]["PackageUpdate"];
 export type InstallPackageRequest =
 	components["schemas"]["InstallPackageRequest"];
-export type InstalledPackagesResponse = components["schemas"]["InstalledPackagesResponse"];
-export type PackageUpdatesResponse = components["schemas"]["PackageUpdatesResponse"];
+export type InstalledPackagesResponse =
+	components["schemas"]["InstalledPackagesResponse"];
+export type PackageUpdatesResponse =
+	components["schemas"]["PackageUpdatesResponse"];
 
 export const packagesService = {
 	/**

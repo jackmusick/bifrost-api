@@ -51,7 +51,6 @@ export function useLaunchWorkflow({
 		// TODO: Implement form startup endpoint when available
 		// For now, set empty results so form fields work
 		setWorkflowResults({});
-
 	}, [
 		form.id,
 		form.launch_workflow_id,

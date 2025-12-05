@@ -31,8 +31,7 @@ export function useCreateRole() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (request: RoleCreate) =>
-			rolesService.createRole(request),
+		mutationFn: (request: RoleCreate) => rolesService.createRole(request),
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["roles"] });
 			toast.success("Role created", {

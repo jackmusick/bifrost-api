@@ -8,7 +8,8 @@ import type { ExecutionFilters } from "@/lib/client-types";
 
 // Type aliases for cleaner code
 type WorkflowExecution = components["schemas"]["WorkflowExecution"];
-type ExecutionListResponse = paths["/api/executions"]["get"]["responses"]["200"]["content"]["application/json"];
+type ExecutionListResponse =
+	paths["/api/executions"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export const executionsService = {
 	/**
@@ -70,7 +71,9 @@ export const executionsService = {
 	 * Get only the logs of an execution (progressive loading, admin only)
 	 * Returns array of log entries
 	 */
-	async getExecutionLogs(executionId: string): Promise<Record<string, unknown>[]> {
+	async getExecutionLogs(
+		executionId: string,
+	): Promise<Record<string, unknown>[]> {
 		const { data, error } = await apiClient.GET(
 			"/api/executions/{execution_id}/logs",
 			{
@@ -85,7 +88,9 @@ export const executionsService = {
 	 * Get only the variables of an execution (progressive loading, admin only)
 	 * Returns variables object
 	 */
-	async getExecutionVariables(executionId: string): Promise<Record<string, unknown>> {
+	async getExecutionVariables(
+		executionId: string,
+	): Promise<Record<string, unknown>> {
 		const { data, error } = await apiClient.GET(
 			"/api/executions/{execution_id}/variables",
 			{

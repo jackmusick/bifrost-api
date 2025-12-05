@@ -132,7 +132,8 @@ function FormRendererInner({ form }: FormRendererProps) {
 						case "fieldRef":
 							if (
 								config.field_name &&
-								context.field[config.field_name] !== undefined &&
+								context.field[config.field_name] !==
+									undefined &&
 								context.field[config.field_name] !== ""
 							) {
 								inputValues[key] =
@@ -270,7 +271,12 @@ function FormRendererInner({ form }: FormRendererProps) {
 				}));
 			}
 		}
-	}, [form.id, fields, evaluateDataProviderInputs, dataProviderState.loading]);
+	}, [
+		form.id,
+		fields,
+		evaluateDataProviderInputs,
+		dataProviderState.loading,
+	]);
 
 	// Load data providers on mount and when fieldBlurTrigger changes
 	useEffect(() => {
@@ -433,7 +439,9 @@ function FormRendererInner({ form }: FormRendererProps) {
 							inputConfig.mode === "fieldRef" &&
 							inputConfig.field_name
 						) {
-							if (changedFields.includes(inputConfig.field_name)) {
+							if (
+								changedFields.includes(inputConfig.field_name)
+							) {
 								const providerName =
 									field.data_provider as string;
 								const cacheKey = `${providerName}_${field.name}`;

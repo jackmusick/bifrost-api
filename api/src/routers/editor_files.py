@@ -128,30 +128,49 @@ async def put_file_content(
     user: CurrentSuperuser = None,
 ) -> FileContentResponse:
     """
-    Write content to a file.
+    Write content to a file with optional conflict detection.
 
     Args:
-        request: File content request with path and content
+        request: File content request with path, content, and optional expected_etag
 
     Returns:
-        Updated file metadata
+        Updated file metadata with new etag
+
+    Raises:
+        409 Conflict: If expected_etag provided and doesn't match current file
     """
     try:
-        await write_file(request.path, request.content, request.encoding)
-        logger.info(f"Wrote file: {request.path} ({len(request.content)} bytes)")
-
-        return FileContentResponse(
-            path=request.path,
-            content=request.content,
-            encoding=request.encoding,
-            size=len(request.content),
-            etag="",
-            modified="",
+        # Write file with etag validation
+        result = await write_file(
+            request.path,
+            request.content,
+            request.encoding,
+            request.expected_etag
         )
+        logger.info(f"Wrote file: {request.path} ({result.size} bytes, etag: {result.etag})")
+        return result
+
     except ValueError as e:
+        error_msg = str(e)
+        # Check if this is a conflict error (format: "CONFLICT:reason:message")
+        if error_msg.startswith("CONFLICT:"):
+            parts = error_msg.split(":", 2)
+            if len(parts) == 3:
+                _, reason, message = parts
+                # Return 409 Conflict with structured response
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"reason": reason, "message": message}
+                )
+        # Regular validation error
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            detail=error_msg,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not found: {request.path}",
         )
     except Exception as e:
         logger.error(f"Error writing file {request.path}: {str(e)}", exc_info=True)

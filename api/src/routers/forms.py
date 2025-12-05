@@ -4,10 +4,18 @@ Forms Router
 CRUD operations for workflow forms.
 Support for org-specific and global forms.
 Form execution for org users with access control.
+
+Forms are persisted to BOTH database AND file system:
+- Database: Fast queries, org scoping, access control
+- File system: Source control, deployment portability
 """
 
+import json
 import logging
+import os
+import re
 from datetime import datetime
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, HTTPException, status
@@ -23,6 +31,137 @@ from shared.models import WorkflowExecutionResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/forms", tags=["Forms"])
+
+# Workspace location for form files
+WORKSPACE_LOCATION = Path(os.environ.get("BIFROST_WORKSPACE_LOCATION", "/workspace"))
+
+
+def _generate_form_filename(form_name: str, form_id: str) -> str:
+    """
+    Generate filesystem-safe filename from form name.
+
+    Format: {slugified-name}-{first-8-chars-of-uuid}.form.json
+    Example: customer-onboarding-a1b2c3d4.form.json
+
+    Args:
+        form_name: Human-readable form name
+        form_id: Form UUID
+
+    Returns:
+        Slugified filename
+    """
+    # Convert to lowercase and replace non-alphanumeric chars with hyphens
+    slug = re.sub(r'[^a-z0-9]+', '-', form_name.lower()).strip('-')
+    # Limit length and add short UUID prefix for uniqueness
+    short_id = str(form_id)[:8]
+    return f"{slug[:50]}-{short_id}.form.json"
+
+
+async def _write_form_to_file(form: FormORM) -> str:
+    """
+    Write form to file system as *.form.json.
+
+    Args:
+        form: Form ORM instance
+
+    Returns:
+        File path relative to workspace
+
+    Raises:
+        Exception: If file write fails
+    """
+    # Generate filename
+    filename = _generate_form_filename(form.name, str(form.id))
+    file_path = WORKSPACE_LOCATION / filename
+
+    # Build form JSON (using snake_case for consistency with Python conventions)
+    form_data = {
+        "id": str(form.id),
+        "name": form.name,
+        "description": form.description,
+        "linked_workflow": form.linked_workflow,
+        "form_schema": form.form_schema,
+        "is_active": form.is_active,
+        "is_global": form.organization_id is None,
+        "org_id": str(form.organization_id) if form.organization_id else "GLOBAL",
+        "access_level": form.access_level.value if form.access_level else "role_based",
+        "created_by": form.created_by,
+        "created_at": form.created_at.isoformat() + "Z",
+        "updated_at": form.updated_at.isoformat() + "Z",
+        "launch_workflow_id": form.launch_workflow_id,
+        "allowed_query_params": form.allowed_query_params,
+        "default_launch_params": form.default_launch_params,
+    }
+
+    # Write to file (atomic write via temp file)
+    temp_file = file_path.with_suffix('.tmp')
+    try:
+        temp_file.write_text(json.dumps(form_data, indent=2), encoding='utf-8')
+        temp_file.replace(file_path)
+        logger.info(f"Wrote form to file: {filename}")
+        return filename
+    except Exception as e:
+        # Clean up temp file if it exists
+        if temp_file.exists():
+            temp_file.unlink()
+        raise e
+
+
+async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
+    """
+    Update form file, handling renames if the form name changed.
+
+    Args:
+        form: Updated form ORM instance
+        old_file_path: Previous file path (if known)
+
+    Returns:
+        New file path relative to workspace
+    """
+    # Generate new filename
+    new_filename = _generate_form_filename(form.name, str(form.id))
+    new_file_path = WORKSPACE_LOCATION / new_filename
+
+    # If we have the old file path and it's different, delete the old file
+    if old_file_path:
+        old_full_path = WORKSPACE_LOCATION / old_file_path
+        if old_full_path.exists() and old_full_path != new_file_path:
+            old_full_path.unlink()
+            logger.info(f"Deleted old form file: {old_file_path}")
+
+    # Write the updated form
+    await _write_form_to_file(form)
+    return new_filename
+
+
+async def _deactivate_form_file(form_id: str) -> None:
+    """
+    Deactivate form file by setting isActive=false.
+
+    Args:
+        form_id: Form UUID
+    """
+    # Find the form file by scanning for the ID
+    for form_file in WORKSPACE_LOCATION.glob("*.form.json"):
+        try:
+            content = form_file.read_text(encoding='utf-8')
+            data = json.loads(content)
+            if data.get("id") == form_id:
+                # Update is_active to false
+                data["is_active"] = False
+                data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+
+                # Write back atomically
+                temp_file = form_file.with_suffix('.tmp')
+                temp_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
+                temp_file.replace(form_file)
+                logger.info(f"Deactivated form file: {form_file.name}")
+                return
+        except Exception as e:
+            logger.warning(f"Error processing form file {form_file}: {e}")
+            continue
+
+    logger.warning(f"Form file not found for deactivation: {form_id}")
 
 
 @router.get(
@@ -110,13 +249,20 @@ async def create_form(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> FormPublic:
-    """Create a new form."""
+    """
+    Create a new form.
+
+    Forms are persisted to BOTH database AND file system:
+    - Database write provides immediate availability
+    - File write enables version control and deployment portability
+    - Discovery watcher will sync file to DB on next scan
+    """
     now = datetime.utcnow()
 
     # Convert form_schema to dict if it's a FormSchema model
-    form_schema_data = request.form_schema
+    form_schema_data: dict = request.form_schema  # type: ignore[assignment]
     if hasattr(form_schema_data, 'model_dump'):
-        form_schema_data = form_schema_data.model_dump()
+        form_schema_data = form_schema_data.model_dump()  # type: ignore[union-attr]
 
     form = FormORM(
         name=request.name,
@@ -137,7 +283,17 @@ async def create_form(
     await db.flush()
     await db.refresh(form)
 
-    logger.info(f"Created form {form.id}: {form.name}")
+    # Write to file system (dual-write pattern)
+    try:
+        file_path = await _write_form_to_file(form)
+        # Store file path in database for tracking
+        form.file_path = file_path
+        await db.flush()
+    except Exception as e:
+        logger.error(f"Failed to write form file for {form.id}: {e}", exc_info=True)
+        # Continue - database write succeeded, file write can be retried by discovery watcher
+
+    logger.info(f"Created form {form.id}: {form.name} (file: {form.file_path})")
     return FormPublic.model_validate(form)
 
 
@@ -218,7 +374,12 @@ async def update_form(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> FormPublic:
-    """Update a form."""
+    """
+    Update a form.
+
+    Updates are written to BOTH database AND file system.
+    If the form name changes, the file is renamed to match.
+    """
     result = await db.execute(select(FormORM).where(FormORM.id == form_id))
     form = result.scalar_one_or_none()
 
@@ -227,6 +388,9 @@ async def update_form(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Form not found",
         )
+
+    # Track old file path for cleanup
+    old_file_path = form.file_path
 
     if request.name is not None:
         form.name = request.name
@@ -241,10 +405,10 @@ async def update_form(
     if request.allowed_query_params is not None:
         form.allowed_query_params = request.allowed_query_params
     if request.form_schema is not None:
-        form_schema_data = request.form_schema
+        form_schema_data: dict = request.form_schema  # type: ignore[assignment]
         if hasattr(form_schema_data, 'model_dump'):
-            form_schema_data = form_schema_data.model_dump()
-        form.form_schema = form_schema_data
+            form_schema_data = form_schema_data.model_dump()  # type: ignore[union-attr]
+        form.form_schema = form_schema_data  # type: ignore[assignment]
     if request.is_active is not None:
         form.is_active = request.is_active
     if request.access_level is not None:
@@ -255,7 +419,16 @@ async def update_form(
     await db.flush()
     await db.refresh(form)
 
-    logger.info(f"Updated form {form_id}")
+    # Update file system (dual-write pattern)
+    try:
+        new_file_path = await _update_form_file(form, old_file_path)
+        form.file_path = new_file_path
+        await db.flush()
+    except Exception as e:
+        logger.error(f"Failed to update form file for {form_id}: {e}", exc_info=True)
+        # Continue - database write succeeded
+
+    logger.info(f"Updated form {form_id} (file: {form.file_path})")
     return FormPublic.model_validate(form)
 
 
@@ -290,7 +463,12 @@ async def delete_form(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> None:
-    """Soft delete a form."""
+    """
+    Soft delete a form.
+
+    Sets isActive=false in BOTH database AND file system.
+    The form file remains for version control, but is marked inactive.
+    """
     result = await db.execute(select(FormORM).where(FormORM.id == form_id))
     form = result.scalar_one_or_none()
 
@@ -304,6 +482,14 @@ async def delete_form(
     form.updated_at = datetime.utcnow()
 
     await db.flush()
+
+    # Deactivate in file system (dual-write pattern)
+    try:
+        await _deactivate_form_file(str(form_id))
+    except Exception as e:
+        logger.error(f"Failed to deactivate form file for {form_id}: {e}", exc_info=True)
+        # Continue - database write succeeded
+
     logger.info(f"Soft deleted form {form_id}")
 
 

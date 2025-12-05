@@ -44,8 +44,7 @@ export function useCreateForm() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (request: FormCreate) =>
-			formsService.createForm(request),
+		mutationFn: (request: FormCreate) => formsService.createForm(request),
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["forms"] });
 			toast.success("Form created", {

@@ -1,0 +1,22 @@
+# Bifrost Client - Development Container Image
+# Installs dependencies only - all code comes from volume mounts
+# Prevents stale code and build cache issues
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Don't copy source code - it comes from volume mounts in docker-compose.dev.yml
+# This prevents any risk of stale built code overwriting live source
+
+# Expose Vite dev server port
+EXPOSE 3000
+
+# Start Vite dev server with HMR
+# --host 0.0.0.0 allows external connections (needed for Docker)
+# --port 3000 for consistency
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

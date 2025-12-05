@@ -103,7 +103,10 @@ export function WorkflowKeys() {
 	const workflows = useMemo(() => {
 		if (!workflowsData?.workflows) return [];
 		return workflowsData.workflows
-			.filter((w: WorkflowMetadata) => w.endpoint_enabled && !w.public_endpoint) // Only endpoint-enabled non-public workflows
+			.filter(
+				(w: WorkflowMetadata) =>
+					w.endpoint_enabled && !w.public_endpoint,
+			) // Only endpoint-enabled non-public workflows
 			.map((w: WorkflowMetadata) => w.name)
 			.filter((name): name is string => !!name)
 			.sort();
@@ -194,7 +197,9 @@ export function WorkflowKeys() {
 
 		try {
 			const result = await createMutation.mutateAsync({
-				workflow_name: formData.isGlobal ? undefined : formData.workflowId,
+				workflow_name: formData.isGlobal
+					? undefined
+					: formData.workflowId,
 				expires_in_days: formData.expiresInDays
 					? parseInt(formData.expiresInDays)
 					: undefined,
@@ -328,7 +333,9 @@ export function WorkflowKeys() {
 																className="font-mono text-xs"
 															>
 																<AlertTriangle className="mr-1 h-3 w-3" />
-																{key.workflow_name}
+																{
+																	key.workflow_name
+																}
 															</Badge>
 														) : (
 															<Badge
@@ -336,7 +343,9 @@ export function WorkflowKeys() {
 																className="font-mono text-xs"
 															>
 																<WorkflowIcon className="mr-1 h-3 w-3" />
-																{key.workflow_name}
+																{
+																	key.workflow_name
+																}
 															</Badge>
 														)}
 													</TableCell>

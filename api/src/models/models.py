@@ -19,6 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
 
+from shared.models import FormSchema, FormField, FormFieldType
 from src.models.enums import (
     ConfigType,
     ExecutionStatus,
@@ -166,10 +167,7 @@ class RolePublic(RoleBase):
 # =============================================================================
 
 
-class FormSchema(BaseModel):
-    """Form schema with field definitions."""
-    fields: list[dict] = Field(default_factory=list)
-
+# FormSchema imported from shared.models above
 
 class FormCreate(BaseModel):
     """Input for creating a form."""
@@ -207,7 +205,7 @@ class FormPublic(BaseModel):
     launch_workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
-    form_schema: dict | None = None
+    form_schema: FormSchema | None = None
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = None
     is_active: bool

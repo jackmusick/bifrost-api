@@ -274,7 +274,9 @@ export function ExecutionHistory() {
 		setLoadingStuck(true);
 
 		try {
-			const response = await apiClient.GET("/api/executions/cleanup/stuck");
+			const response = await apiClient.GET(
+				"/api/executions/cleanup/stuck",
+			);
 			if (response.data) {
 				setStuckExecutions(response.data.executions || []);
 			}

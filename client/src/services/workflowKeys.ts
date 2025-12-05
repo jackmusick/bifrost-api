@@ -9,7 +9,8 @@ import { apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
 // Auto-generated types from OpenAPI spec
-export type WorkflowKeyCreateRequest = components["schemas"]["WorkflowKeyCreateRequest"];
+export type WorkflowKeyCreateRequest =
+	components["schemas"]["WorkflowKeyCreateRequest"];
 export type WorkflowKeyResponse = components["schemas"]["WorkflowKeyResponse"];
 
 export const workflowKeysService = {
@@ -22,7 +23,8 @@ export const workflowKeysService = {
 	}): Promise<WorkflowKeyResponse[]> {
 		// Build query string manually since params aren't in OpenAPI spec
 		const queryParams = new URLSearchParams();
-		if (params?.workflowId) queryParams.set("workflow_id", params.workflowId);
+		if (params?.workflowId)
+			queryParams.set("workflow_id", params.workflowId);
 		if (params?.includeRevoked !== undefined)
 			queryParams.set("include_revoked", String(params.includeRevoked));
 
@@ -31,7 +33,9 @@ export const workflowKeysService = {
 			? `/api/workflow-keys?${queryString}`
 			: "/api/workflow-keys";
 
-		const { data, error } = await apiClient.GET(url as "/api/workflow-keys");
+		const { data, error } = await apiClient.GET(
+			url as "/api/workflow-keys",
+		);
 
 		if (error) {
 			throw new Error(`Failed to list workflow keys: ${error}`);
@@ -60,10 +64,13 @@ export const workflowKeysService = {
 	/**
 	 * Revoke a workflow API key
 	 */
-	async revokeWorkflowKey(keyId: string): Promise<void> {
-		const { error } = await apiClient.DELETE("/api/workflow-keys/{key_id}", {
-			params: { path: { key_id: keyId } },
-		});
+	async revokeWorkflowKey(workflowId: string): Promise<void> {
+		const { error } = await apiClient.DELETE(
+			"/api/workflow-keys/{workflow_id}",
+			{
+				params: { path: { workflow_id: workflowId } },
+			},
+		);
 
 		if (error) {
 			throw new Error(`Failed to revoke workflow key: ${error}`);

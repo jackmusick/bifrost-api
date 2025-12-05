@@ -29,7 +29,6 @@ from src.models.orm import (  # noqa: F401
     Config,
     Workflow,
     DataProvider,
-    WorkflowKey,
     OAuthProvider,
     OAuthToken,
     AuditLog,

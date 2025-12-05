@@ -63,6 +63,7 @@ class WorkflowMetadata:
     endpoint_enabled: bool = False
     allowed_methods: list[str] = field(default_factory=lambda: ["POST"])
     execution_mode: str = "sync"
+    is_platform: bool = False  # True if from platform/ directory
 
 
 @dataclass
@@ -497,6 +498,7 @@ async def sync_to_database() -> dict[str, int]:
                 wf.endpoint_enabled = meta.endpoint_enabled
                 wf.allowed_methods = meta.allowed_methods
                 wf.execution_mode = meta.execution_mode
+                wf.is_platform = meta.is_platform
                 wf.is_active = True
                 wf.last_seen_at = now
             else:
@@ -513,6 +515,7 @@ async def sync_to_database() -> dict[str, int]:
                     endpoint_enabled=meta.endpoint_enabled,
                     allowed_methods=meta.allowed_methods,
                     execution_mode=meta.execution_mode,
+                    is_platform=meta.is_platform,
                     is_active=True,
                     last_seen_at=now,
                 )

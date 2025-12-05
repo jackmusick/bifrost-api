@@ -27,7 +27,6 @@ from src.models.orm import (
     Config,
     Workflow,
     DataProvider,
-    WorkflowKey,  # DEPRECATED - use Workflow.api_key_* instead
     OAuthProvider,
     OAuthToken,
     AuditLog,
@@ -109,7 +108,6 @@ __all__ = [
     "Config",
     "Workflow",
     "DataProvider",
-    "WorkflowKey",  # DEPRECATED
     "OAuthProvider",
     "OAuthToken",
     "AuditLog",

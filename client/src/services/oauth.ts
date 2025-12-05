@@ -8,9 +8,12 @@ import type { OAuthAuthorizeResponse } from "@/lib/client-types";
 
 // Type aliases for cleaner code
 type OAuthConnectionDetail = components["schemas"]["OAuthConnectionDetail"];
-type OAuthConnectionListResponse = components["schemas"]["OAuthConnectionListResponse"];
-type CreateOAuthConnectionRequest = components["schemas"]["CreateOAuthConnectionRequest"];
-type UpdateOAuthConnectionRequest = components["schemas"]["UpdateOAuthConnectionRequest"];
+type OAuthConnectionListResponse =
+	components["schemas"]["OAuthConnectionListResponse"];
+type CreateOAuthConnectionRequest =
+	components["schemas"]["CreateOAuthConnectionRequest"];
+type UpdateOAuthConnectionRequest =
+	components["schemas"]["UpdateOAuthConnectionRequest"];
 
 /**
  * Extract meaningful error message from API error object
@@ -40,7 +43,9 @@ export const oauthService = {
 	/**
 	 * Get OAuth connection details by name
 	 */
-	async getConnection(connectionName: string): Promise<OAuthConnectionDetail> {
+	async getConnection(
+		connectionName: string,
+	): Promise<OAuthConnectionDetail> {
 		const { data, error } = await apiClient.GET(
 			"/api/oauth/connections/{connection_name}",
 			{

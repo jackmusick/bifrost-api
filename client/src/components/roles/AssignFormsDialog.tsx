@@ -106,7 +106,8 @@ export function AssignFormsDialog({
 														`Workflow: ${form.linked_workflow}`}
 												</p>
 												<div className="mt-1 flex gap-2">
-													{form.organization_id === null && (
+													{form.organization_id ===
+														null && (
 														<Badge
 															variant="secondary"
 															className="text-xs"

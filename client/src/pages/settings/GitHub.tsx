@@ -38,7 +38,8 @@ export function GitHub() {
 	const [branch, setBranch] = useState("main");
 
 	// Warning dialog state
-	const [showNotImplementedDialog, setShowNotImplementedDialog] = useState(false);
+	const [showNotImplementedDialog, setShowNotImplementedDialog] =
+		useState(false);
 
 	// Load current Git status
 	useEffect(() => {
@@ -90,12 +91,17 @@ export function GitHub() {
 			setBranch("main");
 		} catch (error) {
 			// Expected: 501 Not Implemented
-			if (error instanceof Error && error.message.includes("not yet implemented")) {
+			if (
+				error instanceof Error &&
+				error.message.includes("not yet implemented")
+			) {
 				setShowNotImplementedDialog(true);
 			} else {
 				toast.error("Failed to connect repository", {
 					description:
-						error instanceof Error ? error.message : "Unknown error",
+						error instanceof Error
+							? error.message
+							: "Unknown error",
 				});
 			}
 		} finally {
@@ -131,16 +137,21 @@ export function GitHub() {
 							<div className="rounded-lg border bg-muted/50 p-4">
 								<div className="space-y-1 text-sm text-muted-foreground">
 									<div>
-										<strong>Branch:</strong> {status.current_branch || "Unknown"}
+										<strong>Branch:</strong>{" "}
+										{status.current_branch || "Unknown"}
 									</div>
 									<div>
-										<strong>Changes:</strong> {status.changed_files?.length || 0} file(s)
+										<strong>Changes:</strong>{" "}
+										{status.changed_files?.length || 0}{" "}
+										file(s)
 									</div>
 									<div>
-										<strong>Commits ahead:</strong> {status.commits_ahead}
+										<strong>Commits ahead:</strong>{" "}
+										{status.commits_ahead}
 									</div>
 									<div>
-										<strong>Commits behind:</strong> {status.commits_behind}
+										<strong>Commits behind:</strong>{" "}
+										{status.commits_behind}
 									</div>
 								</div>
 							</div>
@@ -175,7 +186,9 @@ export function GitHub() {
 									autoComplete="off"
 									placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
 									value={authToken}
-									onChange={(e) => setAuthToken(e.target.value)}
+									onChange={(e) =>
+										setAuthToken(e.target.value)
+									}
 								/>
 								<p className="text-xs text-muted-foreground">
 									Create a token at{" "}
@@ -272,26 +285,19 @@ export function GitHub() {
 						</DialogTitle>
 						<DialogDescription className="space-y-3">
 							<p>
-								Git integration is not yet implemented in the Docker deployment.
-								This feature will be available in a future update.
+								Git integration is not yet implemented in the
+								Docker deployment. This feature will be
+								available in a future update.
 							</p>
 							<div className="rounded-lg bg-muted p-3 space-y-2 text-sm">
 								<p className="font-medium text-foreground">
 									Coming soon:
 								</p>
 								<ul className="list-disc list-inside space-y-1 ml-2">
-									<li>
-										Full Git repository integration
-									</li>
-									<li>
-										Commit and push from the editor
-									</li>
-									<li>
-										Pull updates from remote
-									</li>
-									<li>
-										Conflict resolution tools
-									</li>
+									<li>Full Git repository integration</li>
+									<li>Commit and push from the editor</li>
+									<li>Pull updates from remote</li>
+									<li>Conflict resolution tools</li>
 								</ul>
 							</div>
 						</DialogDescription>

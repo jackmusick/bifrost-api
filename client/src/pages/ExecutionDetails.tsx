@@ -65,7 +65,6 @@ type FileMetadata = components["schemas"]["FileMetadata"];
 type WorkflowExecutionResponse =
 	components["schemas"]["WorkflowExecutionResponse"];
 
-
 // Type for metadata response from useWorkflowsMetadata hook
 interface WorkflowsMetadataResponse {
 	workflows: WorkflowMetadata[];
@@ -545,8 +544,9 @@ export function ExecutionDetails() {
 													<Skeleton className="h-4 w-3/4" />
 													<Skeleton className="h-4 w-5/6" />
 												</motion.div>
-											) : (resultData as ExecutionResultData)
-													?.result === null ? (
+											) : (
+													resultData as ExecutionResultData
+											  )?.result === null ? (
 												<motion.div
 													key="empty"
 													initial={{ opacity: 0 }}
@@ -574,7 +574,8 @@ export function ExecutionDetails() {
 													)?.result_type === "json" &&
 														typeof (
 															resultData as ExecutionResultData
-														)?.result === "object" && (
+														)?.result ===
+															"object" && (
 															<PrettyInputDisplay
 																inputData={
 																	(
@@ -596,12 +597,14 @@ export function ExecutionDetails() {
 													)?.result_type === "html" &&
 														typeof (
 															resultData as ExecutionResultData
-														)?.result === "string" && (
+														)?.result ===
+															"string" && (
 															<SafeHTMLRenderer
 																html={
 																	(
 																		resultData as ExecutionResultData
-																	).result as string
+																	)
+																		.result as string
 																}
 																title={`${execution.workflow_name} - Execution Result`}
 															/>
@@ -611,12 +614,14 @@ export function ExecutionDetails() {
 													)?.result_type === "text" &&
 														typeof (
 															resultData as ExecutionResultData
-														)?.result === "string" && (
+														)?.result ===
+															"string" && (
 															<pre className="whitespace-pre-wrap font-mono text-sm bg-muted p-4 rounded">
 																{
 																	(
 																		resultData as ExecutionResultData
-																	).result as string
+																	)
+																		.result as string
 																}
 															</pre>
 														)}
@@ -625,9 +630,11 @@ export function ExecutionDetails() {
 													)?.result_type &&
 														typeof (
 															resultData as ExecutionResultData
-														)?.result === "object" &&
-														(resultData as ExecutionResultData)
-															?.result !== null && (
+														)?.result ===
+															"object" &&
+														(
+															resultData as ExecutionResultData
+														)?.result !== null && (
 															<PrettyInputDisplay
 																inputData={
 																	(

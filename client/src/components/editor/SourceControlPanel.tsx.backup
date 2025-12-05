@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
 	GitBranch,
+	AlertCircle,
 	Check,
 	Loader2,
 	Download,
@@ -14,23 +15,29 @@ import { toast } from "sonner";
 import {
 	githubService,
 	type FileChange,
-	type GitStatusResponse,
+	type GitRefreshStatusResponse,
+	type ConflictInfo,
 } from "@/services/github";
 import { useEditorStore } from "@/stores/editorStore";
+import { useExecutionStreamStore } from "@/stores/executionStreamStore";
 import { fileService } from "@/services/fileService";
 import { ChangesList } from "./ChangesList";
 import { CommitsList } from "./CommitsList";
+import { webPubSubService } from "@/services/webpubsub";
+import { sdkScannerService } from "@/services/sdkScannerService";
 
 /**
  * Source Control panel for Git/GitHub integration
  * Shows changed files, allows commit/push, pull from GitHub, and conflict resolution
  */
 export function SourceControlPanel() {
-	const [status, setStatus] = useState<GitStatusResponse | null>(null);
+	const [status, setStatus] = useState<GitRefreshStatusResponse | null>(null);
 	const [commitMessage, setCommitMessage] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [isCommitting, setIsCommitting] = useState(false);
-	const [isSyncing, setIsSyncing] = useState(false);
+	const [currentSyncJobId, setCurrentSyncJobId] = useState<string | null>(
+		null,
+	);
 
 	// Use ref to track loading state synchronously (prevents React 18 double-call race condition)
 	const isLoadingRef = useRef(false);
@@ -51,14 +58,37 @@ export function SourceControlPanel() {
 
 	const openFileInTab = useEditorStore((state) => state.openFileInTab);
 	const sidebarPanel = useEditorStore((state) => state.sidebarPanel);
+	const setCurrentStreamingExecutionId = useEditorStore(
+		(state) => state.setCurrentStreamingExecutionId,
+	);
 	const appendTerminalOutput = useEditorStore(
 		(state) => state.appendTerminalOutput,
 	);
+	const clearStream = useExecutionStreamStore((state) => state.clearStream);
+	const streamState = useExecutionStreamStore((state) =>
+		currentSyncJobId ? state.streams[currentSyncJobId] : undefined,
+	);
+
+	// Connect to WebPubSub for real-time sync operation logs
+	useEffect(() => {
+		const init = async () => {
+			try {
+				await webPubSubService.connect();
+			} catch (error) {
+				console.error(
+					"[SourceControl] Failed to connect to WebPubSub:",
+					error,
+				);
+			}
+		};
+
+		init();
+	}, []);
 
 	const loadCommits = async (offset: number = 0, append: boolean = false) => {
 		setIsLoadingCommits(true);
 		try {
-			const result = await githubService.getCommits(20, offset);
+			const result = await githubService.getCommitHistory(20, offset);
 			if (append) {
 				setCommits((prev) => [...prev, ...(result.commits || [])]);
 			} else {
@@ -83,17 +113,16 @@ export function SourceControlPanel() {
 		isLoadingRef.current = true;
 		setIsLoading(true);
 		try {
-			const result = await githubService.getStatus();
+			// Call refresh endpoint - returns status with commit history already included
+			const result = await githubService.refreshStatus();
 			setStatus(result);
 
-			// Load commit history if available in status response
+			// Use commit history from refresh response (no need to fetch separately)
 			if (result.commit_history) {
 				setCommits(result.commit_history);
+				// Assume there might be more commits (user can load more if needed)
 				setHasMoreCommits(result.commit_history.length === 20);
 				setTotalCommits(result.commit_history.length);
-			} else {
-				// Fallback: fetch commits separately
-				await loadCommits();
 			}
 		} catch (error) {
 			console.error("Failed to refresh Git status:", error);
@@ -142,37 +171,140 @@ export function SourceControlPanel() {
 		};
 	}, [sidebarPanel, refreshStatus]);
 
+	// Listen for git sync messages from WebPubSub (both logs and completion)
+	useEffect(() => {
+		const unsubscribe = webPubSubService.onPackageMessage((message) => {
+			if (!currentSyncJobId) return;
+
+			const store = useExecutionStreamStore.getState();
+
+			if (message.type === "log") {
+				// Append log to execution stream store
+				store.appendLog(currentSyncJobId, {
+					level: message.level?.toUpperCase() || "INFO",
+					message: message.message,
+					timestamp: new Date().toISOString(),
+				});
+			} else if (message.type === "complete") {
+				// Mark the stream as complete - the useEffect will handle cleanup
+				if (message.status === "success") {
+					store.completeExecution(
+						currentSyncJobId,
+						undefined,
+						"Success",
+					);
+				} else if (message.status === "conflict") {
+					store.completeExecution(
+						currentSyncJobId,
+						undefined,
+						"CompletedWithErrors",
+					);
+				} else {
+					store.completeExecution(
+						currentSyncJobId,
+						undefined,
+						"Failed",
+					);
+				}
+			}
+		});
+
+		return unsubscribe;
+	}, [currentSyncJobId]);
+
+	// Handle stream completion (move logs to terminal output and cleanup)
+	useEffect(() => {
+		if (!streamState?.isComplete || !currentSyncJobId) {
+			return;
+		}
+
+		// Move streaming logs to terminal output
+		// Note: Don't add a completion message - the backend already sends one
+		appendTerminalOutput({
+			loggerOutput: streamState.streamingLogs.map((log) => ({
+				...log,
+				source: "git" as const,
+			})),
+			variables: {},
+			status: streamState.status,
+			error: streamState.error,
+		});
+
+		// Cleanup
+		const executionId = currentSyncJobId;
+		setCurrentSyncJobId(null);
+		setCurrentStreamingExecutionId(null);
+
+		// Refresh status
+		refreshStatus();
+
+		// Re-scan workspace for SDK usage after git sync (files may have changed)
+		sdkScannerService.scanWorkspaceAndNotify();
+
+		// Clear the stream from the store
+		setTimeout(() => {
+			clearStream(executionId);
+		}, 100);
+	}, [
+		streamState?.isComplete,
+		streamState?.streamingLogs,
+		streamState?.status,
+		streamState?.error,
+		currentSyncJobId,
+		appendTerminalOutput,
+		clearStream,
+		setCurrentStreamingExecutionId,
+		refreshStatus,
+	]);
+
 	const handleCommit = async () => {
 		if (!commitMessage.trim()) {
 			toast.error("Please enter a commit message");
 			return;
 		}
 
+		if (status?.conflicts && status.conflicts.length > 0) {
+			toast.error("Cannot commit with unresolved conflicts");
+			return;
+		}
+
 		setIsCommitting(true);
 		try {
-			await githubService.commit(commitMessage);
+			const result = await githubService.commit(commitMessage);
 
-			appendTerminalOutput({
-				loggerOutput: [
-					{
-						level: "SUCCESS",
-						message: `Git commit: "${commitMessage}"`,
-						source: "git",
-					},
-				],
-				variables: {},
-				status: "success",
-				error: undefined,
-			});
-			toast.success("Changes committed");
-			setCommitMessage("");
-			await refreshStatus();
+			if (result.success) {
+				appendTerminalOutput({
+					loggerOutput: [
+						{
+							level: "SUCCESS",
+							message: `Git commit: Committed ${result.files_committed} file(s) - "${commitMessage}"`,
+							source: "git",
+						},
+					],
+					variables: {},
+					status: "success",
+					error: undefined,
+				});
+				setCommitMessage("");
+				await refreshStatus();
+			} else {
+				toast.error(result.error || "Failed to commit");
+				appendTerminalOutput({
+					loggerOutput: [
+						{
+							level: "ERROR",
+							message: `Git commit failed: ${result.error || "Unknown error"}`,
+							source: "git",
+						},
+					],
+					variables: {},
+					status: "error",
+					error: result.error || undefined,
+				});
+			}
 		} catch (error) {
 			console.error("Failed to commit:", error);
-			toast.error("Failed to commit", {
-				description:
-					error instanceof Error ? error.message : String(error),
-			});
+			toast.error("Failed to commit");
 			appendTerminalOutput({
 				loggerOutput: [
 					{
@@ -190,74 +322,81 @@ export function SourceControlPanel() {
 		}
 	};
 
+	// Commented out - unused function. May be needed in future.
+	// const handlePush = async () => {
+	// 	setIsPushing(true);
+	// 	try {
+	// 		const result = await githubService.push();
+	//
+	// 		if (result.success) {
+	// 			appendTerminalOutput({
+	// 				loggerOutput: [
+	// 					{
+	// 						level: "SUCCESS",
+	// 						message: `Git push: Successfully pushed commits to ${status?.current_branch || 'remote'}`,
+	// 						source: "git",
+	// 					},
+	// 				],
+	// 				variables: {},
+	// 				status: "success",
+	// 				error: undefined,
+	// 			});
+	// 			await refreshStatus();
+	// 		} else {
+	// 			appendTerminalOutput({
+	// 				loggerOutput: [
+	// 					{
+	// 						level: "ERROR",
+	// 						message: `Git push failed: ${result.error || "Unknown error"}`,
+	// 						source: "git",
+	// 					},
+	// 				],
+	// 				variables: {},
+	// 				status: "error",
+	// 				error: result.error || undefined,
+	// 			});
+	// 		}
+	// 	} catch (error) {
+	// 		console.error("Failed to push:", error);
+	// 		appendTerminalOutput({
+	// 			loggerOutput: [
+	// 				{
+	// 					level: "ERROR",
+	// 					message: `Git push error: ${error instanceof Error ? error.message : String(error)}`,
+	// 					source: "git",
+	// 				},
+	// 			],
+	// 			variables: {},
+	// 			status: "error",
+	// 			error: error instanceof Error ? error.message : String(error),
+	// 		});
+	// 	} finally {
+	// 		setIsPushing(false);
+	// 	}
+	// };
+
 	const handleSync = async () => {
-		setIsSyncing(true);
 		try {
-			// First pull changes from remote
-			appendTerminalOutput({
-				loggerOutput: [
-					{
-						level: "INFO",
-						message: "Pulling changes from GitHub...",
-						source: "git",
-					},
-				],
-				variables: {},
-				status: "running",
-				error: undefined,
-			});
+			// Get WebPubSub connection ID from service
+			const connectionId = webPubSubService.getConnectionId();
 
-			await githubService.pull();
+			// Call sync endpoint - it queues the job and returns immediately
+			const result = await githubService.sync(connectionId ?? undefined);
 
-			appendTerminalOutput({
-				loggerOutput: [
-					{
-						level: "SUCCESS",
-						message: "Successfully pulled changes from GitHub",
-						source: "git",
-					},
-				],
-				variables: {},
-				status: "success",
-				error: undefined,
-			});
+			// Create execution stream for this sync job
+			const store = useExecutionStreamStore.getState();
+			if (result.job_id) {
+				store.startStreaming(result.job_id);
+				setCurrentSyncJobId(result.job_id);
 
-			// Then push local commits if any
-			if (status && status.commits_ahead > 0) {
-				appendTerminalOutput({
-					loggerOutput: [
-						{
-							level: "INFO",
-							message: "Pushing local commits to GitHub...",
-							source: "git",
-						},
-					],
-					variables: {},
-					status: "running",
-					error: undefined,
-				});
-
-				await githubService.push();
-
-				appendTerminalOutput({
-					loggerOutput: [
-						{
-							level: "SUCCESS",
-							message: "Successfully pushed commits to GitHub",
-							source: "git",
-						},
-					],
-					variables: {},
-					status: "success",
-					error: undefined,
-				});
+				// Set this as the current streaming execution in the editor
+				setCurrentStreamingExecutionId(result.job_id);
 			}
 
-			toast.success("Synced with GitHub");
-			await refreshStatus();
+			// Note: Completion will be handled by the stream completion useEffect
+			// Progress messages will come via WebPubSub and be handled by the terminal
 		} catch (error) {
 			console.error("Failed to sync:", error);
-			toast.error("Failed to sync with GitHub");
 			appendTerminalOutput({
 				loggerOutput: [
 					{
@@ -270,8 +409,6 @@ export function SourceControlPanel() {
 				status: "error",
 				error: error instanceof Error ? error.message : String(error),
 			});
-		} finally {
-			setIsSyncing(false);
 		}
 	};
 
@@ -403,6 +540,39 @@ export function SourceControlPanel() {
 		}
 	};
 
+	const handleConflictFileClick = async (conflict: ConflictInfo) => {
+		try {
+			// Load conflicted file content
+			const fileData = await fileService.readFile(conflict.file_path);
+
+			// Construct FileMetadata from response
+			const fileName = fileData.path.split("/").pop() || "";
+			const fileMetadata = {
+				path: fileData.path,
+				name: fileName,
+				size: fileData.size,
+				type: "file" as const,
+				extension: fileName.includes(".")
+					? fileName.split(".").pop() || null
+					: null,
+				modified: fileData.modified,
+				isReadOnly: false,
+			};
+
+			// Open in editor tab with conflict data
+			openFileInTab(
+				fileMetadata,
+				fileData.content,
+				fileData.encoding as "utf-8" | "base64",
+				fileData.etag,
+				conflict, // Pass the full conflict object
+			);
+		} catch (error) {
+			console.error("Failed to open file:", error);
+			toast.error(`Failed to open ${conflict.file_path}`);
+		}
+	};
+
 	// Show loading state while fetching initial status
 	if (isLoading && !status) {
 		return (
@@ -443,7 +613,33 @@ export function SourceControlPanel() {
 		);
 	}
 
-	const hasChanges = (status.changed_files?.length || 0) > 0;
+	if (!status.configured) {
+		return (
+			<div className="flex h-full flex-col p-4">
+				<div className="flex items-center gap-2 mb-4">
+					<GitBranch className="h-5 w-5" />
+					<h3 className="text-sm font-semibold">Source Control</h3>
+				</div>
+
+				<div className="flex flex-col items-center justify-center flex-1 text-center">
+					<GitBranch className="h-12 w-12 text-muted-foreground mb-4" />
+					<p className="text-sm text-muted-foreground mb-2">
+						GitHub not configured
+					</p>
+					<p className="text-xs text-muted-foreground">
+						Go to Settings to configure GitHub integration
+					</p>
+				</div>
+			</div>
+		);
+	}
+
+	const hasChanges =
+		(status.changed_files?.length || 0) > 0 ||
+		(status.conflicts?.length || 0) > 0;
+	const hasConflicts = (status.conflicts?.length || 0) > 0;
+	const isMerging = status.merging || false;
+	const showCommitSection = hasChanges || (isMerging && !hasConflicts);
 
 	return (
 		<div className="flex h-full flex-col">
@@ -481,12 +677,12 @@ export function SourceControlPanel() {
 				<div className="border-b">
 					<button
 						onClick={handleSync}
-						disabled={isSyncing || isLoading}
+						disabled={!!currentSyncJobId || isLoading}
 						className="w-full px-4 py-3 flex flex-col items-start gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
 					>
 						<div className="flex items-center justify-between w-full">
 							<div className="flex items-center gap-2">
-								{isSyncing ? (
+								{currentSyncJobId ? (
 									<Loader2 className="h-4 w-4 animate-spin" />
 								) : (
 									<RefreshCw className="h-4 w-4" />
@@ -512,7 +708,7 @@ export function SourceControlPanel() {
 						</div>
 						{status.last_synced && (
 							<span className="text-xs text-muted-foreground ml-6">
-								Last synced{" "}
+								Last fetched{" "}
 								{formatDistanceToNow(
 									new Date(status.last_synced),
 									{ addSuffix: true },
@@ -523,19 +719,54 @@ export function SourceControlPanel() {
 				</div>
 			)}
 
-			{/* Status info */}
-			<div className="px-4 py-3 border-b space-y-1 text-xs text-muted-foreground">
-				<div>Changes: {status.changed_files?.length ?? 0} file(s)</div>
-				<div>Commits ahead: {status.commits_ahead}</div>
-				<div>Commits behind: {status.commits_behind}</div>
-			</div>
+			{/* Conflicts section */}
+			{hasConflicts && (
+				<div className="px-4 py-2 border-b">
+					<div className="flex items-center gap-2 mb-2">
+						<AlertCircle className="h-4 w-4 text-orange-500" />
+						<span className="text-sm font-medium text-orange-500">
+							{status.conflicts?.length || 0} Conflict(s)
+						</span>
+					</div>
 
-			{/* Commit section */}
-			{hasChanges && (
+					<div className="space-y-1 max-h-32 overflow-y-auto">
+						{status.conflicts?.map((conflict) => (
+							<button
+								key={conflict.file_path}
+								onClick={() =>
+									handleConflictFileClick(conflict)
+								}
+								className="flex items-center gap-2 w-full px-2 py-1 rounded text-xs hover:bg-muted/50 transition-colors"
+							>
+								<AlertCircle className="h-3 w-3 text-orange-500 flex-shrink-0" />
+								<span className="truncate text-left">
+									{conflict.file_path}
+								</span>
+							</button>
+						))}
+					</div>
+				</div>
+			)}
+
+			{/* Merge in progress banner */}
+			{isMerging && !hasConflicts && (
+				<div className="px-4 py-2 bg-blue-500/10 border-b border-blue-500/20">
+					<p className="text-xs text-blue-700 dark:text-blue-400">
+						Merge in progress - commit to complete the merge
+					</p>
+				</div>
+			)}
+
+			{/* Commit section - show when there are changes or merge in progress */}
+			{showCommitSection && (
 				<div className="px-4 py-3 border-b space-y-2">
 					<Input
 						id="commit-message"
-						placeholder={`Message (#Enter to commit on "${status.current_branch || "main"}")`}
+						placeholder={
+							isMerging && !hasConflicts
+								? "Merge commit message"
+								: `Message (#Enter to commit on "${status.current_branch || "main"}")`
+						}
 						value={commitMessage}
 						onChange={(e) => setCommitMessage(e.target.value)}
 						onKeyDown={(e) => {
@@ -544,6 +775,7 @@ export function SourceControlPanel() {
 								handleCommit();
 							}
 						}}
+						disabled={hasConflicts}
 						className="text-sm"
 					/>
 					<Button
@@ -551,7 +783,15 @@ export function SourceControlPanel() {
 						className="w-full"
 						onClick={handleCommit}
 						disabled={
-							!commitMessage.trim() || isCommitting || isLoading
+							!commitMessage.trim() ||
+							isCommitting ||
+							hasConflicts ||
+							isLoading
+						}
+						title={
+							hasConflicts
+								? "Resolve all conflicts before committing"
+								: ""
 						}
 					>
 						{isCommitting ? (
@@ -559,8 +799,17 @@ export function SourceControlPanel() {
 						) : (
 							<Check className="h-4 w-4 mr-2" />
 						)}
-						Commit
+						{hasConflicts
+							? "Resolve Conflicts First"
+							: isMerging
+								? "Complete Merge"
+								: "Commit"}
 					</Button>
+					{hasConflicts && (
+						<p className="text-xs text-orange-500">
+							Resolve all conflicts before committing
+						</p>
+					)}
 				</div>
 			)}
 
@@ -570,7 +819,7 @@ export function SourceControlPanel() {
 				<div className="flex-1 flex flex-col min-h-0 border-b">
 					<ChangesList
 						changes={status.changed_files || []}
-						hasConflicts={false}
+						hasConflicts={hasConflicts}
 						onFileClick={handleFileClick}
 						isLoading={false}
 					/>

@@ -9,8 +9,10 @@ import type { components } from "@/lib/v1";
 type RolePublic = components["schemas"]["RolePublic"];
 type RoleCreate = components["schemas"]["RoleCreate"];
 type RoleUpdate = components["schemas"]["RoleUpdate"];
-type AssignUsersToRoleRequest = components["schemas"]["AssignUsersToRoleRequest"];
-type AssignFormsToRoleRequest = components["schemas"]["AssignFormsToRoleRequest"];
+type AssignUsersToRoleRequest =
+	components["schemas"]["AssignUsersToRoleRequest"];
+type AssignFormsToRoleRequest =
+	components["schemas"]["AssignFormsToRoleRequest"];
 
 /** Helper to extract error message from API error response */
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -45,10 +47,7 @@ export const rolesService = {
 	/**
 	 * Update a role
 	 */
-	async updateRole(
-		roleId: string,
-		request: RoleUpdate,
-	): Promise<RolePublic> {
+	async updateRole(roleId: string, request: RoleUpdate): Promise<RolePublic> {
 		const { data, error } = await apiClient.PATCH("/api/roles/{role_id}", {
 			params: { path: { role_id: roleId } },
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,9 +72,12 @@ export const rolesService = {
 	 * Get users in a role
 	 */
 	async getRoleUsers(roleId: string) {
-		const { data, error } = await apiClient.GET("/api/roles/{role_id}/users", {
-			params: { path: { role_id: roleId } },
-		});
+		const { data, error } = await apiClient.GET(
+			"/api/roles/{role_id}/users",
+			{
+				params: { path: { role_id: roleId } },
+			},
+		);
 		if (error) throw new Error(`Failed to fetch role users: ${error}`);
 		return data;
 	},
@@ -113,9 +115,12 @@ export const rolesService = {
 	 * Get forms assigned to a role
 	 */
 	async getRoleForms(roleId: string) {
-		const { data, error } = await apiClient.GET("/api/roles/{role_id}/forms", {
-			params: { path: { role_id: roleId } },
-		});
+		const { data, error } = await apiClient.GET(
+			"/api/roles/{role_id}/forms",
+			{
+				params: { path: { role_id: roleId } },
+			},
+		);
 		if (error) throw new Error(`Failed to fetch role forms: ${error}`);
 		return data;
 	},

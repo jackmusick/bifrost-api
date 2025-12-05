@@ -68,7 +68,9 @@ export function ConflictDiffView({
 						<h3 className="text-lg font-semibold">
 							Resolve Conflict
 						</h3>
-						<p className="text-sm text-muted-foreground">{filePath}</p>
+						<p className="text-sm text-muted-foreground">
+							{filePath}
+						</p>
 						<p className="text-sm text-yellow-600 dark:text-yellow-500 mt-1">
 							{conflict.message}
 						</p>

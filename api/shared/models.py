@@ -1036,9 +1036,9 @@ class WorkflowMetadata(BaseModel):
     public_endpoint: bool = Field(False, description="If true, skip authentication for webhooks")
 
     # Source tracking (for UI filtering)
-    source: Literal["home", "platform", "workspace"] | None = Field(None, description="Where the workflow is located")
+    is_platform: bool = Field(False, description="True if workflow is from platform/ directory (examples/templates)")
     source_file_path: str | None = Field(None, description="Full file path to the workflow source code")
-    relative_file_path: str | None = Field(None, description="Workspace-relative file path (e.g., 'workflows/my_workflow.py')")
+    relative_file_path: str | None = Field(None, description="Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')")
 
 
 class DataProviderMetadata(BaseModel):
@@ -1049,7 +1049,7 @@ class DataProviderMetadata(BaseModel):
     cache_ttl_seconds: int = 300
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
     source_file_path: str | None = Field(None, description="Full file path to the data provider source code")
-    relative_file_path: str | None = Field(None, description="Workspace-relative file path (e.g., 'data_providers/my_provider.py')")
+    relative_file_path: str | None = Field(None, description="Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/data_providers/my_provider.py')")
 
 
 class FormDiscoveryMetadata(BaseModel):

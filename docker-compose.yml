@@ -119,12 +119,6 @@ services:
       - "5678:5678"  # debugpy port for VS Code attachment
     # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     volumes:
-      - ./api/src:/app/src:ro
-      - ./api/shared:/app/shared:ro
-      - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
-      - ./api/alembic:/app/alembic:ro
-      - ./api/alembic.ini:/app/alembic.ini:ro
       - bifrost_workspace:/workspace
     depends_on:
       postgres:
@@ -140,29 +134,20 @@ services:
       retries: 5
     command: >
       sh -c "alembic upgrade head &&
-             if [ \"$$ENABLE_DEBUG\" = \"true\" ]; then
-               echo 'Starting with debugpy - waiting for VS Code to attach on port 5678...' &&
-               python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared;
-             else
-               uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared;
-             fi"
+             uvicorn src.main:app --host 0.0.0.0 --port 8000"
 
   # Frontend (Vite)
   client:
     build:
       context: ./client
       dockerfile: Dockerfile
+      target: production
     container_name: bifrost-client
     environment:
       API_URL: http://api:8000
       WS_URL: ws://api:8000
     ports:
       - "3000:3000"
-    volumes:
-      - ./client/src:/app/src
-      - ./client/public:/app/public
-      - ./client/index.html:/app/index.html
-      - ./client/vite.config.ts:/app/vite.config.ts
     depends_on:
       api:
         condition: service_healthy
@@ -184,10 +169,6 @@ services:
       # File Storage (read-only - only watches for changes)
       BIFROST_WORKSPACE_LOCATION: /workspace
     volumes:
-      - ./api/src:/app/src:ro
-      - ./api/shared:/app/shared:ro
-      - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
       - bifrost_workspace:/workspace:ro  # Read-only for discovery
     depends_on:
       postgres:
@@ -215,11 +196,6 @@ services:
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
       # Message Queue
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
-    volumes:
-      - ./api/src:/app/src:ro
-      - ./api/shared:/app/shared:ro
-      - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
       # No workspace mount - scheduler only runs scheduled jobs
     depends_on:
       postgres:
@@ -257,10 +233,6 @@ services:
       # Concurrency
       BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-10}
     volumes:
-      - ./api/src:/app/src:ro
-      - ./api/shared:/app/shared:ro
-      - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
       - bifrost_workspace:/workspace
     depends_on:
       postgres:

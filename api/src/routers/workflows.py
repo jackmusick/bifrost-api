@@ -69,7 +69,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
         allowed_methods=workflow.allowed_methods or ["POST"],
         disable_global_key=False,
         public_endpoint=False,
-        source=None,
+        is_platform=workflow.is_platform or False,
         source_file_path=workflow.file_path,
         relative_file_path=None,
     )

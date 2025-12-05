@@ -42,7 +42,8 @@ export function AuthCallback() {
 		// Get stored state and verifier
 		const storedState = sessionStorage.getItem("oauth_state");
 		const codeVerifier = sessionStorage.getItem("oauth_code_verifier");
-		const redirectFrom = sessionStorage.getItem("oauth_redirect_from") || "/";
+		const redirectFrom =
+			sessionStorage.getItem("oauth_redirect_from") || "/";
 
 		// Clear stored OAuth data
 		sessionStorage.removeItem("oauth_state");

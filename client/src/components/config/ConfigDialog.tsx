@@ -39,10 +39,7 @@ const formSchema = z.object({
 	key: z
 		.string()
 		.min(1, "Key is required")
-		.regex(
-			/^[a-zA-Z0-9_]+$/,
-			"Key must be alphanumeric with underscores",
-		),
+		.regex(/^[a-zA-Z0-9_]+$/, "Key must be alphanumeric with underscores"),
 	value: z.string().min(1, "Value is required"),
 	type: z.enum(["string", "int", "bool", "json", "secret"]),
 	description: z.string().optional(),
@@ -78,7 +75,8 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 			form.reset({
 				key: config.key,
 				// For secrets, we don't show the actual value - user must enter new value to update
-				value: config.type === "secret" ? "" : String(config.value ?? ""),
+				value:
+					config.type === "secret" ? "" : String(config.value ?? ""),
 				type: config.type,
 				description: config.description ?? "",
 			});
@@ -229,7 +227,9 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Description (Optional)</FormLabel>
+									<FormLabel>
+										Description (Optional)
+									</FormLabel>
 									<FormControl>
 										<Input
 											placeholder="What is this config for?"

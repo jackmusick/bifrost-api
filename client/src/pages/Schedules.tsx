@@ -500,7 +500,9 @@ async def my_scheduled_workflow(context):
 												{schedule.validation_status !==
 													"error" && (
 													<p className="text-xs text-muted-foreground">
-														{schedule.human_readable}
+														{
+															schedule.human_readable
+														}
 													</p>
 												)}
 												{schedule.validation_status ===

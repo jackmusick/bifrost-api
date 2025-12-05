@@ -268,26 +268,39 @@ async def read_file(relative_path: str) -> FileContentResponse:
     )
 
 
-async def write_file(relative_path: str, content: str, encoding: str = "utf-8") -> FileContentResponse:
+async def write_file(relative_path: str, content: str, encoding: str = "utf-8", expected_etag: str | None = None) -> FileContentResponse:
     """
-    Write file content atomically.
+    Write file content atomically with optional conflict detection.
 
     Args:
         relative_path: Relative path to file
         content: File content to write (plain text or base64 encoded)
         encoding: Content encoding (utf-8 or base64)
+        expected_etag: Expected ETag for conflict detection (optional)
 
     Returns:
         FileContentResponse with updated metadata
 
     Raises:
-        ValueError: If path is invalid or encoding unsupported
+        ValueError: If path is invalid or encoding unsupported, or if etag conflict detected
         PermissionError: If file cannot be written
+        FileNotFoundError: If expected_etag provided but file doesn't exist
     """
     if encoding not in ("utf-8", "base64"):
         raise ValueError("Only UTF-8 and base64 encodings are supported")
 
     file_path = validate_and_resolve_path(relative_path)
+
+    # Conflict detection: if expected_etag provided, verify it matches current file
+    if expected_etag is not None:
+        try:
+            # Read current file to compute its etag
+            current_response = await read_file(relative_path)
+            if current_response.etag != expected_etag:
+                raise ValueError(f"CONFLICT:content_changed:File has been modified by another process (expected etag {expected_etag}, got {current_response.etag})")
+        except FileNotFoundError:
+            # File was deleted - this is a conflict too
+            raise ValueError("CONFLICT:path_not_found:File was deleted by another process")
 
     # Ensure parent directory exists (use pathlib, not aiofiles - mkdir is not I/O bound)
     try:
