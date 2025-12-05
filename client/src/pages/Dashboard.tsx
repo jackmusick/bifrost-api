@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Workflow,
@@ -20,11 +21,42 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+	useResourceMetrics,
+	useOrganizationMetrics,
+	useWorkflowMetrics,
+} from "@/hooks/useAdminMetrics";
+import {
+	ResourceTrendChart,
+	ExecutionsByOrgChart,
+	HeaviestWorkflowsTable,
+} from "@/components/charts";
 
 export function Dashboard() {
 	const navigate = useNavigate();
 	const { isPlatformAdmin, isOrgUser } = useAuth();
 	const { data: metrics, isLoading, error } = useDashboardMetrics();
+
+	// Admin-only metrics hooks
+	const [workflowSort, setWorkflowSort] = useState<
+		"executions" | "memory" | "duration" | "cpu"
+	>("memory");
+
+	const { data: resourceData, isLoading: resourceLoading } = useResourceMetrics(
+		7,
+		isPlatformAdmin,
+	);
+	const { data: orgData, isLoading: orgLoading } = useOrganizationMetrics(
+		30,
+		10,
+		isPlatformAdmin,
+	);
+	const { data: workflowData, isLoading: workflowLoading } = useWorkflowMetrics(
+		30,
+		workflowSort,
+		20,
+		isPlatformAdmin,
+	);
 
 	// Redirect OrgUsers to /forms (their only accessible page)
 	if (isOrgUser && !isPlatformAdmin) {
@@ -250,6 +282,33 @@ export function Dashboard() {
 					)}
 				</CardContent>
 			</Card>
+
+			{/* Platform Analytics - Admin Only */}
+			{isPlatformAdmin && (
+				<div className="space-y-4">
+					<h2 className="text-xl font-semibold">Platform Analytics</h2>
+
+					{/* Resource Trend Chart - Full Width */}
+					<ResourceTrendChart
+						data={resourceData?.days || []}
+						isLoading={resourceLoading}
+					/>
+
+					{/* Two-column layout for org chart and workflow table */}
+					<div className="grid gap-4 lg:grid-cols-2">
+						<ExecutionsByOrgChart
+							data={orgData?.organizations || []}
+							isLoading={orgLoading}
+						/>
+						<HeaviestWorkflowsTable
+							data={workflowData?.workflows || []}
+							isLoading={workflowLoading}
+							sortBy={workflowSort}
+							onSortChange={setWorkflowSort}
+						/>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

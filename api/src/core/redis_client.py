@@ -14,7 +14,7 @@ Pattern:
 
 import json
 import logging
-from typing import Any
+from typing import Any, Awaitable, cast
 
 import redis.asyncio as redis
 
@@ -89,9 +89,10 @@ class RedisClient:
 
         try:
             # Push result to list
-            await redis_client.rpush(key, json.dumps(payload))
+            # Cast needed: redis-py returns Union[Awaitable[int], int] but we're async
+            await cast(Awaitable[int], redis_client.rpush(key, json.dumps(payload)))
             # Set TTL for auto-cleanup
-            await redis_client.expire(key, RESULT_TTL_SECONDS)
+            await cast(Awaitable[bool], redis_client.expire(key, RESULT_TTL_SECONDS))
             logger.debug(f"Pushed result to Redis: {key}")
         except Exception as e:
             logger.error(f"Failed to push result to Redis: {e}")
@@ -119,7 +120,11 @@ class RedisClient:
 
         try:
             # BLPOP blocks until value available or timeout
-            result = await redis_client.blpop(key, timeout=timeout_seconds)
+            # Cast needed: redis-py returns Union[Awaitable[list], list] but we're async
+            result = await cast(
+                Awaitable[list[str] | None],
+                redis_client.blpop([key], timeout=timeout_seconds)
+            )
 
             if result is None:
                 logger.warning(f"Timeout waiting for result: {execution_id}")
@@ -131,6 +136,26 @@ class RedisClient:
 
         except Exception as e:
             logger.error(f"Error waiting for result: {e}")
+            raise
+
+    async def set_cancel_flag(self, execution_id: str) -> None:
+        """
+        Set the cancellation flag for an execution.
+
+        The execution pool checks this flag periodically and will terminate
+        the worker process when it's set.
+
+        Args:
+            execution_id: Execution ID to cancel
+        """
+        redis_client = await self._get_redis()
+        key = f"bifrost:exec:{execution_id}:cancel"
+        try:
+            # Set flag with 1 hour TTL (should be cleaned up much sooner)
+            await redis_client.setex(key, 3600, "1")
+            logger.debug(f"Set cancel flag: {key}")
+        except Exception as e:
+            logger.error(f"Failed to set cancel flag: {e}")
             raise
 
     async def close(self) -> None:

@@ -25,6 +25,7 @@ from shared.models import (
 
 from src.core.auth import Context, UserPrincipal
 from src.core.pubsub import publish_execution_update
+from src.core.redis_client import get_redis_client
 from src.models import Execution as ExecutionModel
 from src.models import ExecutionLog as ExecutionLogORM
 
@@ -482,6 +483,11 @@ async def cancel_execution(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected error cancelling execution",
         )
+
+    # Set Redis cancel flag so the execution pool can terminate the worker
+    redis_client = get_redis_client()
+    await redis_client.set_cancel_flag(str(execution_id))
+
     return execution
 
 

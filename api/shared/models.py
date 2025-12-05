@@ -1403,6 +1403,28 @@ class ResourceMetricsResponse(BaseModel):
     total_days: int
 
 
+class WorkflowMetricsSummary(BaseModel):
+    """Aggregated metrics for a single workflow."""
+    workflow_name: str
+    total_executions: int
+    success_count: int
+    failed_count: int
+    success_rate: float
+    avg_memory_bytes: int
+    avg_duration_ms: int
+    avg_cpu_seconds: float
+    peak_memory_bytes: int
+    max_duration_ms: int
+
+
+class WorkflowMetricsResponse(BaseModel):
+    """Response for workflow metrics aggregations."""
+    workflows: list[WorkflowMetricsSummary]
+    total_workflows: int
+    sort_by: str
+    days: int
+
+
 # ==================== LIST RESPONSE MODELS ====================
 
 # List Response Models removed - Deprecated in favor of returning bare arrays

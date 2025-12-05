@@ -79,6 +79,8 @@ class State:
     admin_config_exec_id: str | None = None
     # OAuth connection tests
     e2e_oauth_connection_name: str | None = None
+    # Cancellation test state
+    cancellation_execution_id: str | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -1268,6 +1270,171 @@ async def e2e_test_async_workflow(context, delay_seconds: int = 2):
             time.sleep(1)
 
         pytest.fail("Async execution did not complete within timeout")
+
+    # =========================================================================
+    # PHASE 15b: Workflow Cancellation
+    # =========================================================================
+
+    def test_132_create_cancellation_workflow(self):
+        """Platform admin creates a workflow for cancellation testing."""
+        workflow_content = '''"""E2E Cancellation Test Workflow"""
+import logging
+import time
+from shared.decorators import workflow, param
+
+logger = logging.getLogger(__name__)
+
+@workflow(
+    name="e2e_cancellation_test",
+    description="Workflow with sleep for cancellation testing",
+    execution_mode="async"
+)
+@param("sleep_seconds", "int", default_value=30)
+async def e2e_cancellation_test(context, sleep_seconds: int = 30):
+    logger.info(f"Starting sleep for {sleep_seconds} seconds...")
+    time.sleep(sleep_seconds)
+    logger.info("Sleep completed - this should not appear if cancelled")
+    return {"status": "completed", "slept_for": sleep_seconds}
+'''
+        response = State.client.put(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            json={
+                "path": "e2e_cancellation_workflow.py",
+                "content": workflow_content,
+                "encoding": "utf-8",
+            },
+        )
+        assert response.status_code == 200, f"Create file failed: {response.text}"
+
+        # Wait for workflow discovery
+        import time
+        for attempt in range(30):
+            response = State.client.get(
+                "/api/workflows",
+                headers=State.platform_admin.headers,
+            )
+            if response.status_code == 200:
+                workflows = response.json()
+                workflow_names = [w["name"] for w in workflows]
+                if "e2e_cancellation_test" in workflow_names:
+                    return
+            time.sleep(1)
+
+        pytest.fail("Cancellation workflow not discovered within timeout")
+
+    def test_133_execute_cancellation_workflow_async(self):
+        """Start async workflow with long sleep for cancellation testing."""
+        response = State.client.post(
+            "/api/workflows/execute",
+            headers=State.platform_admin.headers,
+            json={
+                "workflow_name": "e2e_cancellation_test",
+                "input_data": {"sleep_seconds": 30},
+            },
+        )
+        assert response.status_code in [200, 202], f"Workflow execute failed: {response.text}"
+        data = response.json()
+
+        State.cancellation_execution_id = data.get("execution_id") or data.get("executionId")
+        assert State.cancellation_execution_id, "Should return execution_id"
+
+    def test_134_wait_for_running_status(self):
+        """Wait for execution to reach Running status before cancelling."""
+        import time
+
+        if not State.cancellation_execution_id:
+            pytest.skip("No cancellation execution ID")
+
+        for _ in range(10):
+            response = State.client.get(
+                f"/api/executions/{State.cancellation_execution_id}",
+                headers=State.platform_admin.headers,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                status = data.get("status")
+                if status == "Running":
+                    return
+                if status in ["Success", "Failed", "Cancelled"]:
+                    pytest.fail(f"Execution finished before we could cancel: {status}")
+            time.sleep(0.5)
+
+        pytest.fail("Execution did not reach Running status within timeout")
+
+    def test_135_cancel_running_workflow(self):
+        """Cancel the running workflow and verify quick cancellation."""
+        import time
+
+        if not State.cancellation_execution_id:
+            pytest.skip("No cancellation execution ID")
+
+        start_time = time.time()
+
+        # Cancel the execution
+        response = State.client.post(
+            f"/api/executions/{State.cancellation_execution_id}/cancel",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Cancel failed: {response.text}"
+        data = response.json()
+        assert data.get("status") in ["Cancelling", "Cancelled"], f"Unexpected status: {data}"
+
+        # Poll until cancelled
+        for _ in range(30):
+            response = State.client.get(
+                f"/api/executions/{State.cancellation_execution_id}",
+                headers=State.platform_admin.headers,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                status = data.get("status")
+                if status == "Cancelled":
+                    elapsed = time.time() - start_time
+                    assert elapsed < 10, f"Cancellation took too long: {elapsed:.1f}s"
+                    return
+            time.sleep(0.5)
+
+        pytest.fail("Execution was not cancelled within timeout")
+
+    def test_136_verify_cancelled_execution_details(self):
+        """Verify cancelled execution has correct status and error message."""
+        if not State.cancellation_execution_id:
+            pytest.skip("No cancellation execution ID")
+
+        response = State.client.get(
+            f"/api/executions/{State.cancellation_execution_id}",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("status") == "Cancelled"
+
+    def test_137_cancel_already_cancelled_returns_400(self):
+        """Attempting to cancel an already-cancelled execution returns 400."""
+        if not State.cancellation_execution_id:
+            pytest.skip("No cancellation execution ID")
+
+        response = State.client.post(
+            f"/api/executions/{State.cancellation_execution_id}/cancel",
+            headers=State.platform_admin.headers,
+        )
+        assert response.status_code == 400, f"Expected 400, got {response.status_code}: {response.text}"
+
+    def test_138_org_user_cannot_cancel_others_execution(self):
+        """Org user cannot cancel another user's execution (403 Forbidden)."""
+        if not State.cancellation_execution_id:
+            pytest.skip("No cancellation execution ID")
+
+        # Org2 user tries to cancel platform admin's execution
+        response = State.client.post(
+            f"/api/executions/{State.cancellation_execution_id}/cancel",
+            headers=State.org2_user.headers,
+        )
+        # Should get 403 Forbidden (not their execution) or 404 (can't see it)
+        assert response.status_code in [403, 404], (
+            f"Expected 403/404 for unauthorized cancel, got {response.status_code}: {response.text}"
+        )
 
     # =========================================================================
     # PHASE 16: Data Provider Execution

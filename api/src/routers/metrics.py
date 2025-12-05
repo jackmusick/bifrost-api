@@ -15,7 +15,8 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case, desc
+from datetime import datetime
 
 from shared.models import (
     DashboardMetricsResponse,
@@ -28,6 +29,8 @@ from shared.models import (
     OrganizationMetricsResponse,
     ResourceMetricsEntry,
     ResourceMetricsResponse,
+    WorkflowMetricsSummary,
+    WorkflowMetricsResponse,
 )
 from src.core.auth import Context, CurrentActiveUser, RequirePlatformAdmin
 from src.models import Execution as ExecutionModel
@@ -405,6 +408,120 @@ async def get_resource_metrics(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get resource metrics",
+        )
+
+
+@router.get(
+    "/workflows",
+    response_model=WorkflowMetricsResponse,
+    summary="Get workflow-level metrics",
+    description="Get aggregated execution metrics grouped by workflow. Platform admin only.",
+    dependencies=[RequirePlatformAdmin],
+)
+async def get_workflow_metrics(
+    ctx: Context,
+    user: CurrentActiveUser,
+    days: int = Query(default=30, ge=1, le=365, description="Number of days to include"),
+    sort_by: str = Query(
+        default="executions",
+        description="Sort by: executions, memory, duration, cpu",
+    ),
+    limit: int = Query(default=20, ge=1, le=100, description="Max workflows to return"),
+) -> WorkflowMetricsResponse:
+    """
+    Get workflow-level execution metrics.
+
+    Platform admin only.
+
+    Args:
+        days: Number of days to aggregate (default 30)
+        sort_by: Sort field (executions, memory, duration, cpu)
+        limit: Max workflows to return (default 20)
+
+    Returns:
+        Workflow metrics sorted by the specified field (descending)
+    """
+    try:
+        start_date = datetime.utcnow() - timedelta(days=days)
+
+        # Define aggregation columns
+        total_executions = func.count(ExecutionModel.id).label("total_executions")
+        success_count = func.sum(
+            case((ExecutionModel.status == ExecutionStatus.SUCCESS.value, 1), else_=0)
+        ).label("success_count")
+        failed_count = func.sum(
+            case((ExecutionModel.status == ExecutionStatus.FAILED.value, 1), else_=0)
+        ).label("failed_count")
+        avg_memory = func.avg(ExecutionModel.peak_memory_bytes).label("avg_memory")
+        avg_duration = func.avg(ExecutionModel.duration_ms).label("avg_duration")
+        avg_cpu = func.avg(ExecutionModel.cpu_total_seconds).label("avg_cpu")
+        peak_memory = func.max(ExecutionModel.peak_memory_bytes).label("peak_memory")
+        max_duration = func.max(ExecutionModel.duration_ms).label("max_duration")
+
+        # Map sort_by to columns
+        sort_columns = {
+            "executions": total_executions,
+            "memory": avg_memory,
+            "duration": avg_duration,
+            "cpu": avg_cpu,
+        }
+        order_col = sort_columns.get(sort_by, total_executions)
+
+        query = (
+            select(
+                ExecutionModel.workflow_name,
+                total_executions,
+                success_count,
+                failed_count,
+                avg_memory,
+                avg_duration,
+                avg_cpu,
+                peak_memory,
+                max_duration,
+            )
+            .where(ExecutionModel.created_at >= start_date)
+            .where(ExecutionModel.workflow_name.isnot(None))
+            .group_by(ExecutionModel.workflow_name)
+            .order_by(desc(order_col))
+            .limit(limit)
+        )
+
+        result = await ctx.db.execute(query)
+        rows = result.all()
+
+        workflows = []
+        for row in rows:
+            total = row.total_executions or 0
+            success = row.success_count or 0
+            success_rate = (success / total * 100) if total > 0 else 0.0
+
+            workflows.append(
+                WorkflowMetricsSummary(
+                    workflow_name=row.workflow_name,
+                    total_executions=total,
+                    success_count=success,
+                    failed_count=row.failed_count or 0,
+                    success_rate=round(success_rate, 2),
+                    avg_memory_bytes=int(row.avg_memory or 0),
+                    avg_duration_ms=int(row.avg_duration or 0),
+                    avg_cpu_seconds=round(float(row.avg_cpu or 0), 3),
+                    peak_memory_bytes=int(row.peak_memory or 0),
+                    max_duration_ms=int(row.max_duration or 0),
+                )
+            )
+
+        return WorkflowMetricsResponse(
+            workflows=workflows,
+            total_workflows=len(workflows),
+            sort_by=sort_by,
+            days=days,
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting workflow metrics: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get workflow metrics",
         )
 
 
