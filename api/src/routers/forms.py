@@ -10,6 +10,8 @@ Forms are persisted to BOTH database AND file system:
 - File system: Source control, deployment portability
 """
 
+import aiofiles
+import aiofiles.os
 import json
 import logging
 import os
@@ -164,6 +166,8 @@ async def _write_form_to_file(form: FormORM) -> str:
     """
     Write form to file system as *.form.json.
 
+    Uses async file operations to avoid blocking the event loop.
+
     Args:
         form: Form ORM instance
 
@@ -177,7 +181,7 @@ async def _write_form_to_file(form: FormORM) -> str:
     filename = _generate_form_filename(form.name, str(form.id))
     # Forms are stored in the 'forms' subdirectory
     forms_dir = WORKSPACE_LOCATION / "forms"
-    forms_dir.mkdir(exist_ok=True)
+    await aiofiles.os.makedirs(forms_dir, exist_ok=True)
     file_path = forms_dir / filename
 
     # Build form JSON (using snake_case for consistency with Python conventions)
@@ -205,21 +209,24 @@ async def _write_form_to_file(form: FormORM) -> str:
     # Write to file (atomic write via temp file)
     temp_file = file_path.with_suffix('.tmp')
     try:
-        temp_file.write_text(json.dumps(form_data, indent=2), encoding='utf-8')
-        temp_file.replace(file_path)
+        async with aiofiles.open(temp_file, mode='w', encoding='utf-8') as f:
+            await f.write(json.dumps(form_data, indent=2))
+        await aiofiles.os.replace(str(temp_file), str(file_path))
         logger.info(f"Wrote form to file: forms/{filename}")
         # Return workspace-relative path
         return f"forms/{filename}"
     except Exception as e:
         # Clean up temp file if it exists
-        if temp_file.exists():
-            temp_file.unlink()
+        if await aiofiles.os.path.exists(str(temp_file)):
+            await aiofiles.os.remove(str(temp_file))
         raise e
 
 
 async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
     """
     Update form file, handling renames if the form name changed.
+
+    Uses async file operations to avoid blocking the event loop.
 
     Args:
         form: Updated form ORM instance
@@ -236,8 +243,8 @@ async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
     # If we have the old file path and it's different, delete the old file
     if old_file_path:
         old_full_path = WORKSPACE_LOCATION / old_file_path
-        if old_full_path.exists() and old_full_path != new_file_path:
-            old_full_path.unlink()
+        if await aiofiles.os.path.exists(str(old_full_path)) and old_full_path != new_file_path:
+            await aiofiles.os.remove(str(old_full_path))
             logger.info(f"Deleted old form file: {old_file_path}")
 
     # Write the updated form
@@ -248,18 +255,30 @@ async def _deactivate_form_file(form_id: str) -> None:
     """
     Deactivate form file by setting isActive=false.
 
+    Uses async file operations to avoid blocking the event loop.
+
     Args:
         form_id: Form UUID
     """
     # Find the form file by scanning for the ID in the forms directory
     forms_dir = WORKSPACE_LOCATION / "forms"
-    if not forms_dir.exists():
+    if not await aiofiles.os.path.exists(str(forms_dir)):
         logger.warning(f"Forms directory not found, cannot deactivate form: {form_id}")
         return
 
-    for form_file in forms_dir.glob("*.form.json"):
+    # List form files asynchronously
+    try:
+        all_files = await aiofiles.os.listdir(str(forms_dir))
+        form_files = [f for f in all_files if f.endswith('.form.json')]
+    except OSError as e:
+        logger.warning(f"Error listing forms directory: {e}")
+        return
+
+    for filename in form_files:
+        form_file = forms_dir / filename
         try:
-            content = form_file.read_text(encoding='utf-8')
+            async with aiofiles.open(form_file, mode='r', encoding='utf-8') as f:
+                content = await f.read()
             data = json.loads(content)
             if data.get("id") == form_id:
                 # Update is_active to false
@@ -268,9 +287,10 @@ async def _deactivate_form_file(form_id: str) -> None:
 
                 # Write back atomically
                 temp_file = form_file.with_suffix('.tmp')
-                temp_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
-                temp_file.replace(form_file)
-                logger.info(f"Deactivated form file: forms/{form_file.name}")
+                async with aiofiles.open(temp_file, mode='w', encoding='utf-8') as f:
+                    await f.write(json.dumps(data, indent=2))
+                await aiofiles.os.replace(str(temp_file), str(form_file))
+                logger.info(f"Deactivated form file: forms/{filename}")
                 return
         except Exception as e:
             logger.warning(f"Error processing form file {form_file}: {e}")

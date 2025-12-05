@@ -17,6 +17,8 @@ import asyncio
 import logging
 import signal
 import sys
+from datetime import datetime
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -89,16 +91,17 @@ class Scheduler:
             replace_existing=True,
         )
 
-        # Execution cleanup - every 5 minutes
+        # Execution cleanup - every 5 minutes (run immediately at startup)
         scheduler.add_job(
             cleanup_stuck_executions,
             CronTrigger(minute="*/5"),  # Every 5 minutes
             id="execution_cleanup",
             name="Cleanup stuck executions",
             replace_existing=True,
+            next_run_time=datetime.now(),  # Run immediately at startup
         )
 
-        # OAuth token refresh - every 15 minutes
+        # OAuth token refresh - every 15 minutes (run immediately at startup)
         try:
             from src.jobs.schedulers.oauth_token_refresh import refresh_expiring_tokens
             scheduler.add_job(
@@ -107,6 +110,7 @@ class Scheduler:
                 id="oauth_token_refresh",
                 name="Refresh expiring OAuth tokens",
                 replace_existing=True,
+                next_run_time=datetime.now(),  # Run immediately at startup
             )
             logger.info("OAuth token refresh job scheduled")
         except ImportError:

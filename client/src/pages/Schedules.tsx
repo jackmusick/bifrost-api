@@ -38,17 +38,6 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-	AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { formatDate } from "@/lib/utils";
 import { apiClient } from "@/lib/api-client";
 import { CronTester } from "@/components/schedules/CronTester";
@@ -66,7 +55,6 @@ export function Schedules() {
 	const [triggeringWorkflows, setTriggeringWorkflows] = useState<Set<string>>(
 		new Set(),
 	);
-	const [processingSchedules, setProcessingSchedules] = useState(false);
 
 	const fetchSchedules = async (isRefresh = false) => {
 		try {
@@ -116,13 +104,17 @@ export function Schedules() {
 		try {
 			setTriggeringWorkflows((prev) => new Set(prev).add(workflowName));
 
+			// Use the standard workflow execute endpoint
 			const { data, error } = await apiClient.POST(
-				"/api/schedules/{workflow_name}/trigger",
+				"/api/workflows/execute",
 				{
-					params: {
-						path: {
-							workflow_name: workflowName,
-						},
+					body: {
+						workflow_name: workflowName,
+						input_data: {},
+						form_id: null,
+						transient: false,
+						code: null,
+						scriptName: null,
 					},
 				},
 			);
@@ -139,10 +131,8 @@ export function Schedules() {
 			await fetchSchedules(true);
 
 			// Navigate to execution details if we got an execution ID
-			// Note: The trigger endpoint returns { [key: string]: unknown } so we need to type assert
-			const result = data as { execution_id?: string };
-			if (result?.execution_id) {
-				navigate(`/history/${result.execution_id}`);
+			if (data?.execution_id) {
+				navigate(`/history/${data.execution_id}`);
 			}
 		} catch {
 			toast.error("Failed to trigger schedule", {
@@ -157,51 +147,6 @@ export function Schedules() {
 		}
 	};
 
-	const handleProcessSchedules = async () => {
-		try {
-			setProcessingSchedules(true);
-
-			// Call server-side endpoint that determines which schedules are due
-			const { data, error } = await apiClient.POST(
-				"/api/schedules/process",
-				{},
-			);
-
-			if (error) {
-				throw new Error(JSON.stringify(error));
-			}
-
-			if (!data) {
-				throw new Error("No data returned from process schedules");
-			}
-
-			if (data.due === 0) {
-				toast.info("No schedules due", {
-					description:
-						"All schedules are up to date. The next run will happen automatically.",
-				});
-			} else if (data.failed === 0) {
-				toast.success("Schedules processed", {
-					description: `Successfully triggered ${
-						data.executed
-					} schedule${data.executed !== 1 ? "s" : ""}`,
-				});
-			} else {
-				toast.warning("Schedules partially processed", {
-					description: `${data.executed} succeeded, ${data.failed} failed`,
-				});
-			}
-
-			// Refresh schedules to show updated times
-			await fetchSchedules(true);
-		} catch {
-			toast.error("Failed to process schedules", {
-				description: "An error occurred",
-			});
-		} finally {
-			setProcessingSchedules(false);
-		}
-	};
 
 	if (loading) {
 		return (
@@ -345,73 +290,19 @@ async def my_scheduled_workflow(context):
 						schedules
 					</p>
 				</div>
-				<div className="flex items-center gap-0.5">
-					{processingSchedules || schedules.length === 0 ? (
-						<Button
-							variant="outline"
-							size="icon"
-							className="rounded-r-none"
-							disabled
-							title={
-								processingSchedules
-									? "Processing..."
-									: "No schedules to process"
-							}
-						>
-							<Play className="h-4 w-4" />
-						</Button>
-					) : (
-						<AlertDialog>
-							<AlertDialogTrigger asChild>
-								<Button
-									variant="outline"
-									size="icon"
-									className="rounded-r-none"
-									title="Process Due Schedules Now"
-								>
-									<Play className="h-4 w-4" />
-								</Button>
-							</AlertDialogTrigger>
-							<AlertDialogContent>
-								<AlertDialogHeader>
-									<AlertDialogTitle>
-										Process Due Schedules?
-									</AlertDialogTitle>
-									<AlertDialogDescription>
-										This will trigger all workflows that are
-										currently due to run based on their
-										schedule. Workflows are normally
-										processed automatically every 5 minutes.
-									</AlertDialogDescription>
-								</AlertDialogHeader>
-								<AlertDialogFooter>
-									<AlertDialogCancel>
-										Cancel
-									</AlertDialogCancel>
-									<AlertDialogAction
-										onClick={handleProcessSchedules}
-									>
-										Process Now
-									</AlertDialogAction>
-								</AlertDialogFooter>
-							</AlertDialogContent>
-						</AlertDialog>
-					)}
-					<Button
-						variant="outline"
-						size="icon"
-						className="rounded-l-none border-l-0"
-						onClick={() => fetchSchedules(true)}
-						disabled={refreshing}
-						title="Refresh schedules"
-					>
-						<RefreshCw
-							className={`h-4 w-4 ${
-								refreshing ? "animate-spin" : ""
-							}`}
-						/>
-					</Button>
-				</div>
+				<Button
+					variant="outline"
+					size="icon"
+					onClick={() => fetchSchedules(true)}
+					disabled={refreshing}
+					title="Refresh schedules"
+				>
+					<RefreshCw
+						className={`h-4 w-4 ${
+							refreshing ? "animate-spin" : ""
+						}`}
+					/>
+				</Button>
 			</div>
 
 			<Alert>

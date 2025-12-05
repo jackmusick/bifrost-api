@@ -5,8 +5,8 @@ Python package management for the workflow runtime.
 Allows listing, installing, and uninstalling Python packages.
 """
 
+import asyncio
 import logging
-import subprocess
 import json
 import uuid
 
@@ -37,22 +37,31 @@ async def check_package_updates() -> list[PackageUpdate]:
     """
     Check for available package updates using pip.
 
+    Uses async subprocess to avoid blocking the event loop.
+
     Returns:
         List of packages with available updates
     """
     try:
-        result = subprocess.run(
-            ["pip", "list", "--outdated", "--format=json"],
-            capture_output=True,
-            text=True,
-            timeout=60,
+        proc = await asyncio.create_subprocess_exec(
+            "pip", "list", "--outdated", "--format=json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-        if result.returncode != 0:
-            logger.error(f"pip list --outdated failed: {result.stderr}")
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.error("pip list --outdated timed out")
             return []
 
-        packages_data = json.loads(result.stdout)
+        if proc.returncode != 0:
+            logger.error(f"pip list --outdated failed: {stderr.decode()}")
+            return []
+
+        packages_data = json.loads(stdout.decode())
         return [
             PackageUpdate(
                 name=pkg["name"],
@@ -62,9 +71,6 @@ async def check_package_updates() -> list[PackageUpdate]:
             for pkg in packages_data
         ]
 
-    except subprocess.TimeoutExpired:
-        logger.error("pip list --outdated timed out")
-        return []
     except json.JSONDecodeError:
         logger.error("Failed to parse pip outdated output")
         return []
@@ -77,29 +83,33 @@ async def get_installed_packages() -> list[InstalledPackage]:
     """
     Get list of installed Python packages.
 
-    Uses pip to query installed packages.
+    Uses async subprocess to avoid blocking the event loop.
     """
     try:
-        result = subprocess.run(
-            ["pip", "list", "--format=json"],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        proc = await asyncio.create_subprocess_exec(
+            "pip", "list", "--format=json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-        if result.returncode != 0:
-            logger.error(f"pip list failed: {result.stderr}")
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.error("pip list timed out")
             return []
 
-        packages_data = json.loads(result.stdout)
+        if proc.returncode != 0:
+            logger.error(f"pip list failed: {stderr.decode()}")
+            return []
+
+        packages_data = json.loads(stdout.decode())
         return [
             InstalledPackage(name=pkg["name"], version=pkg["version"])
             for pkg in packages_data
         ]
 
-    except subprocess.TimeoutExpired:
-        logger.error("pip list timed out")
-        return []
     except json.JSONDecodeError:
         logger.error("Failed to parse pip output")
         return []
@@ -246,7 +256,7 @@ async def uninstall_package(
     Uninstall a Python package.
 
     In production, this would queue a RabbitMQ job for background uninstall.
-    For now, it attempts direct uninstallation.
+    For now, it attempts direct uninstallation using async subprocess.
 
     Args:
         package_name: Name of the package to uninstall
@@ -258,19 +268,29 @@ async def uninstall_package(
         logger.info(f"Uninstalling package: {package_name}")
 
         # In production, this would be queued as a job
-        # For now, attempt direct uninstallation
-        result = subprocess.run(
-            ["pip", "uninstall", "-y", package_name],
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minute timeout
+        # For now, attempt direct uninstallation using async subprocess
+        proc = await asyncio.create_subprocess_exec(
+            "pip", "uninstall", "-y", package_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-        if result.returncode != 0:
-            logger.error(f"pip uninstall failed: {result.stderr}")
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.error(f"Package uninstallation timed out: {package_name}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Package uninstallation timed out",
+            )
+
+        if proc.returncode != 0:
+            logger.error(f"pip uninstall failed: {stderr.decode()}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Package uninstallation failed: {result.stderr}",
+                detail=f"Package uninstallation failed: {stderr.decode()}",
             )
 
         logger.info(f"Successfully uninstalled package: {package_name}")
@@ -280,12 +300,6 @@ async def uninstall_package(
             "status": "uninstalled",
         }
 
-    except subprocess.TimeoutExpired:
-        logger.error(f"Package uninstallation timed out: {package_name}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Package uninstallation timed out",
-        )
     except HTTPException:
         raise
     except Exception as e:
