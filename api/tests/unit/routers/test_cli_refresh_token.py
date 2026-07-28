@@ -250,6 +250,8 @@ class TestRefreshTokenAuthorizationCode:
             result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
 
         assert result.access_token == "refreshed-ms-token"
+        token_query = str(mock_db.execute.call_args_list[1].args[0])
+        assert "FOR UPDATE" in token_query
         mock_instance.refresh_access_token.assert_called_once()
 
     @pytest.mark.asyncio

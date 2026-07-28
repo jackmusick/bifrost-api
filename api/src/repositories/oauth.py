@@ -344,7 +344,7 @@ class OAuthTokenRepository(OrgScopedRepository[OAuthToken]):
         super().__init__(session, org_id, user_id, is_superuser, is_external)
 
     async def get_org_level_for_provider(
-        self, provider_id: UUID
+        self, provider_id: UUID, *, for_update: bool = False
     ) -> Any:
         """Get the org-level OAuth token for a provider (``user_id IS NULL``).
 
@@ -362,19 +362,23 @@ class OAuthTokenRepository(OrgScopedRepository[OAuthToken]):
 
         Args:
             provider_id: ``OAuthProvider`` UUID.
+            for_update: Lock the selected token row until the current
+                transaction completes. OAuth refresh callers use this to
+                serialize rotating refresh tokens.
 
         Returns:
             ``OAuthToken`` or ``None`` if not found in either scope.
         """
         # Try org-specific first (if we have an org).
         if self.org_id is not None:
-            result = await self.session.execute(
-                select(OAuthToken).where(
-                    OAuthToken.provider_id == provider_id,
-                    OAuthToken.organization_id == self.org_id,
-                    OAuthToken.user_id.is_(None),
-                )
+            query = select(OAuthToken).where(
+                OAuthToken.provider_id == provider_id,
+                OAuthToken.organization_id == self.org_id,
+                OAuthToken.user_id.is_(None),
             )
+            if for_update:
+                query = query.with_for_update()
+            result = await self.session.execute(query)
             token = result.scalars().first()
             if token is not None:
                 return token
@@ -385,11 +389,12 @@ class OAuthTokenRepository(OrgScopedRepository[OAuthToken]):
             return None
 
         # Fall back to global.
-        result = await self.session.execute(
-            select(OAuthToken).where(
-                OAuthToken.provider_id == provider_id,
-                OAuthToken.organization_id.is_(None),
-                OAuthToken.user_id.is_(None),
-            )
+        query = select(OAuthToken).where(
+            OAuthToken.provider_id == provider_id,
+            OAuthToken.organization_id.is_(None),
+            OAuthToken.user_id.is_(None),
         )
+        if for_update:
+            query = query.with_for_update()
+        result = await self.session.execute(query)
         return result.scalars().first()
