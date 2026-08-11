@@ -145,6 +145,9 @@ class Deliver:
     raw_headers: dict[str, str] | None = None
     """Original request headers (for logging)."""
 
+    event_id: UUID | None = None
+    """Persisted event ID, populated by the event processor after ingestion."""
+
 
 @dataclass
 class Rejected:
