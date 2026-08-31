@@ -2391,7 +2391,11 @@ async def sdk_read_artifact(
     preview: bool = False,
 ) -> Response:
     """Read an opaque artifact after enforcing caller scope."""
-    from src.services.artifacts import ArtifactAccessError, ArtifactService
+    from src.services.artifacts import (
+        ArtifactAccessError,
+        ArtifactService,
+        is_browser_active_content_type,
+    )
 
     service = ArtifactService(db)
     try:
@@ -2425,10 +2429,13 @@ async def sdk_read_artifact(
                     "X-Content-Type-Options": "nosniff",
                 },
             )
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if is_browser_active_content_type(artifact.content_type):
+        headers["Content-Disposition"] = "attachment"
     return Response(
         content=content,
         media_type=artifact.content_type,
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers=headers,
     )
 
 

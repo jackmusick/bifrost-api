@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from pathlib import PurePosixPath
 from uuid import UUID, uuid4
 
@@ -11,6 +12,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.contracts.artifacts import ArtifactRef
 from src.models.orm import Artifact
 from src.services.file_storage.service import get_file_storage_service
+
+
+_BROWSER_ACTIVE_CONTENT_TYPES = {
+    "application/xhtml+xml",
+    "application/xml",
+    "image/svg+xml",
+    "text/html",
+    "text/xml",
+}
+
+
+def is_browser_active_content_type(content_type: str) -> bool:
+    """Return whether a media type can render active browser content."""
+    base_content_type = content_type.partition(";")[0].strip().lower()
+    return (
+        base_content_type in _BROWSER_ACTIVE_CONTENT_TYPES
+        or base_content_type.endswith("+xml")
+    )
+
+
+def artifact_requires_inert_storage(filename: str, content_type: str) -> bool:
+    """Return whether declared or filename-derived metadata is browser-active."""
+    inferred_content_type, _encoding = mimetypes.guess_type(filename)
+    return is_browser_active_content_type(content_type) or (
+        inferred_content_type is not None
+        and is_browser_active_content_type(inferred_content_type)
+    )
 
 
 class ArtifactAccessError(ValueError):
@@ -73,7 +101,17 @@ class ArtifactService:
             prefix = "_attachments" if storage_family == "upload" else "_artifacts"
             s3_key = f"{prefix}/{artifact_id}_{safe_name}"
         storage = get_file_storage_service(self.db)
-        await storage.write_raw_to_s3(s3_key, content)
+        if artifact_requires_inert_storage(filename, content_type):
+            async def content_chunks():
+                yield content
+
+            await storage.write_raw_chunks_to_s3(
+                s3_key,
+                content_chunks(),
+                content_type="application/octet-stream",
+            )
+        else:
+            await storage.write_raw_to_s3(s3_key, content)
         artifact = Artifact(
             id=artifact_id,
             organization_id=organization_id,
