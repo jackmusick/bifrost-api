@@ -7,7 +7,6 @@ Provides CRON expression validation for the event source UI.
 import logging
 from datetime import datetime, timezone
 from typing import Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter
 
@@ -16,6 +15,7 @@ from src.core.auth import Context, CurrentSuperuser
 from src.core.log_safety import log_safe
 from src.services.cron_parser import (
     cron_to_human_readable,
+    get_schedule_zone,
     is_cron_expression_valid,
 )
 
@@ -27,13 +27,6 @@ router = APIRouter(prefix="/api/schedules", tags=["Schedules"])
 MIN_INTERVAL_SECONDS = 300
 
 
-def _get_schedule_zone(timezone_name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError(f"Unknown timezone: {timezone_name}") from exc
-
-
 def _validate_cron(
     expression: str,
     timezone_name: str,
@@ -43,7 +36,7 @@ def _validate_cron(
         return "error", "Invalid CRON expression"
 
     try:
-        zone = _get_schedule_zone(timezone_name)
+        zone = get_schedule_zone(timezone_name)
     except ValueError as e:
         return "error", str(e)
 
@@ -90,7 +83,7 @@ async def validate_cron_expression(
         )
 
     try:
-        zone = _get_schedule_zone(body.timezone)
+        zone = get_schedule_zone(body.timezone)
     except ValueError as e:
         return CronValidationResponse(
             valid=False,
