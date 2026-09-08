@@ -126,10 +126,30 @@ interface DataTableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 	href?: string;
 }
 
+// A row supplements its native controls; it must not intercept their actions.
+function isRowAction(event: React.MouseEvent<HTMLTableRowElement>) {
+	if (event.defaultPrevented) return false;
+	const target = event.target;
+	if (
+		target instanceof Element &&
+		target.closest(
+			'a, button, input, select, textarea, label, [role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="combobox"], [contenteditable="true"]',
+		)
+	)
+		return false;
+	const selection = window.getSelection();
+	return !(
+		selection &&
+		!selection.isCollapsed &&
+		selection.anchorNode &&
+		event.currentTarget.contains(selection.anchorNode)
+	);
+}
+
 const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 	({ className, clickable, href, onClick, ...props }, ref) => {
 		const handleClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
-			if (e.button === 1) return;
+			if (e.button === 1 || !isRowAction(e)) return;
 			if (href && (e.metaKey || e.ctrlKey)) {
 				e.preventDefault();
 				window.open(href, "_blank");
@@ -139,7 +159,7 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 		};
 
 		const handleMouseUp = (e: React.MouseEvent<HTMLTableRowElement>) => {
-			if (href && e.button === 1) {
+			if (href && e.button === 1 && isRowAction(e)) {
 				e.preventDefault();
 				window.open(href, "_blank");
 				return;
@@ -155,9 +175,9 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 					(clickable || href) && "cursor-pointer",
 					className,
 				)}
+				{...props}
 				onClick={handleClick}
 				onMouseUp={handleMouseUp}
-				{...props}
 			/>
 		);
 	},

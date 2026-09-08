@@ -134,7 +134,7 @@ export function FleetPage() {
 	);
 
 	return (
-		<div className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-4 md:gap-5 lg:h-full">
+		<div className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-4 md:gap-5">
 			<FleetHeader
 				title={term(terminology, "agent", "plural")}
 				agentLabel={term(terminology, "agent", "singularLower")}
@@ -192,7 +192,7 @@ export function FleetPage() {
 			/>
 
 			{/* Content */}
-			<div className="min-w-0 space-y-4 lg:flex-1 lg:min-h-0 lg:overflow-auto">
+			<div className="min-w-0 space-y-4 pb-1">
 				{agentsError && (
 					<FleetReadError
 						resource={term(terminology, "agent", "pluralLower")}

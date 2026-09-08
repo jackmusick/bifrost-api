@@ -15,7 +15,12 @@ from fastapi.responses import Response
 
 from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
 
-from src.models import BrandingSettings, BrandingTerminology, BrandingUpdateRequest, GlobalBranding
+from src.models import (
+    BrandingSettings,
+    BrandingTerminology,
+    BrandingUpdateRequest,
+    GlobalBranding,
+)
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import AsyncSession, get_db
 
@@ -42,8 +47,12 @@ def _branding_response(branding: GlobalBranding | None) -> BrandingSettings:
         application_name=branding.application_name,
         primary_color=branding.primary_color,
         terminology=BrandingTerminology.model_validate(branding.terminology or {}),
-        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
-        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
+        square_logo_url="/api/branding/logo/square"
+        if branding.square_logo_data
+        else None,
+        rectangle_logo_url="/api/branding/logo/rectangle"
+        if branding.rectangle_logo_data
+        else None,
     )
 
 
@@ -68,6 +77,7 @@ async def get_branding(
     Used on login page before authentication.
     """
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(db)
     branding = await branding_repo.get_branding()
     return _branding_response(branding)
@@ -97,20 +107,26 @@ async def update_branding(
     """
 
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(ctx.db)
 
-    terminology = request.terminology.model_dump(exclude_none=True) if request.terminology else None
+    update: dict = {}
+    fields_set = request.model_fields_set
+    if "primary_color" in fields_set:
+        update["primary_color"] = request.primary_color
+    if "terminology" in fields_set:
+        update["terminology"] = (
+            request.terminology.model_dump(exclude_none=True)
+            if request.terminology
+            else None
+        )
     # application_name defaults to None in the request DTO ("leave unchanged");
     # only forward it to the repo when a value was provided. Clearing is done via
     # DELETE /application-name.
-    extra: dict = {}
-    if request.application_name is not None:
-        extra["application_name"] = request.application_name
-    branding = await branding_repo.set_branding(
-        primary_color=request.primary_color,
-        terminology=terminology,
-        **extra,
-    )
+    if "application_name" in fields_set and request.application_name is not None:
+        update["application_name"] = request.application_name
+
+    branding = await branding_repo.set_branding(**update)
 
     await ctx.db.commit()
     logger.info(f"Branding updated by {user.email}")
@@ -170,6 +186,7 @@ async def upload_logo(
 
     # Save logo binary data to database
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(ctx.db)
 
     if logo_type == "square":
@@ -207,6 +224,7 @@ async def get_logo(logo_type: str, db: AsyncSession = Depends(get_db)):
         )
 
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(db)
     branding = await branding_repo.get_branding()
 
@@ -234,7 +252,8 @@ async def get_logo(logo_type: str, db: AsyncSession = Depends(get_db)):
             )
         return Response(
             content=branding.rectangle_logo_data,
-            media_type=branding.rectangle_logo_content_type or "application/octet-stream",
+            media_type=branding.rectangle_logo_content_type
+            or "application/octet-stream",
         )
 
 
@@ -263,6 +282,7 @@ async def reset_logo(
         )
 
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(ctx.db)
 
     # Reset the specific logo by setting it to None
@@ -296,6 +316,7 @@ async def reset_color(
     """Reset primary color to default."""
 
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(ctx.db)
 
     # Reset primary color by setting it to None
@@ -319,6 +340,7 @@ async def reset_application_name(
 ) -> BrandingSettings:
     """Reset application name to default."""
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(ctx.db)
 
     # Clear application name (pass explicit None to clear, not the unchanged sentinel)
@@ -343,6 +365,7 @@ async def reset_all_branding(
     """Reset all branding to defaults."""
 
     from src.repositories.branding import BrandingRepository
+
     branding_repo = BrandingRepository(ctx.db)
 
     # Delete all branding - this will return defaults

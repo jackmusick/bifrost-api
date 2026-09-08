@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
 	AlertTriangle,
 	Bot,
@@ -130,6 +130,8 @@ export function WorkflowListSurface({
 	onOpenEmpty,
 	emptySearchActive = false,
 }: WorkflowListSurfaceProps) {
+	const navigate = useNavigate();
+
 	const renderActions = (workflow: WorkflowListItem) => (
 		<RecordActionsMenu label={`${workflow.name} actions`}>
 			<DropdownMenuItem asChild className="min-h-11">
@@ -252,7 +254,16 @@ export function WorkflowListSurface({
 					</DataTableHeader>
 					<DataTableBody>
 						{workflows.map((workflow) => (
-							<DataTableRow key={workflow.id ?? workflow.name}>
+							<DataTableRow
+								key={workflow.id ?? workflow.name}
+								clickable
+								href={`/history?workflow=${encodeURIComponent(workflow.id ?? "")}`}
+								onClick={() =>
+									navigate(
+										`/history?workflow=${encodeURIComponent(workflow.id ?? "")}`,
+									)
+								}
+							>
 								<DataTableCell className="min-w-0 whitespace-normal align-top">
 									<Link
 										to={`/history?workflow=${encodeURIComponent(workflow.id ?? "")}`}
@@ -286,7 +297,10 @@ export function WorkflowListSurface({
 											"No description"}
 									</p>
 								</DataTableCell>
-								<DataTableCell className="w-0 whitespace-nowrap text-right">
+								<DataTableCell
+									className="w-0 whitespace-nowrap text-right"
+									onClick={(event) => event.stopPropagation()}
+								>
 									<div className="flex items-center justify-end gap-1">
 										{workflow.is_solution_managed && (
 											<SolutionManagedBadge

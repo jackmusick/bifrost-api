@@ -163,8 +163,20 @@ export function FormListSurface({
 					<DataTableBody>
 						{forms.map((form) => {
 							const validation = formValidation.get(form.id);
+							const canOpenFormEditor =
+								canManageForms &&
+								!form.is_solution_managed &&
+								Boolean(onEdit);
 							return (
-								<DataTableRow key={form.id}>
+								<DataTableRow
+									key={form.id}
+									clickable={canOpenFormEditor}
+									onClick={
+										canOpenFormEditor
+											? () => onEdit?.(form)
+											: undefined
+									}
+								>
 									{isPlatformAdmin && (
 										<DataTableCell className="w-0 whitespace-nowrap">
 											{form.organization_id ? (
@@ -202,7 +214,12 @@ export function FormListSurface({
 										{canManageForms && onToggleActive ? (
 											<Tooltip>
 												<TooltipTrigger asChild>
-													<div className="w-fit">
+													<div
+														className="w-fit"
+														onClick={(event) =>
+															event.stopPropagation()
+														}
+													>
 														<Switch
 															checked={
 																form.is_active
@@ -236,7 +253,12 @@ export function FormListSurface({
 											</Badge>
 										)}
 									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-right">
+									<DataTableCell
+										className="w-0 whitespace-nowrap text-right"
+										onClick={(event) =>
+											event.stopPropagation()
+										}
+									>
 										<div className="flex gap-1 justify-end">
 											<Button
 												size="sm"

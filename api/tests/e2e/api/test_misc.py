@@ -114,6 +114,41 @@ class TestBranding:
         assert public_response.status_code == 200
         assert public_response.json()["terminology"]["form"]["plural"] == "Quests"
 
+    def test_update_terminology_does_not_rewrite_color_and_color_reset_persists(
+        self, e2e_client, platform_admin
+    ):
+        """Omitted color survives PUT updates and DELETE /color clears it."""
+        response = e2e_client.put(
+            "/api/branding",
+            headers=platform_admin.headers,
+            json={"primary_color": "#123456"},
+        )
+        assert response.status_code in [200, 201], response.text
+        assert response.json()["primary_color"] == "#123456"
+
+        terminology_only = e2e_client.put(
+            "/api/branding",
+            headers=platform_admin.headers,
+            json={
+                "terminology": {
+                    "app": {"singular": "Game", "plural": "Games"},
+                },
+            },
+        )
+        assert terminology_only.status_code in [200, 201], terminology_only.text
+        assert terminology_only.json()["primary_color"] == "#123456"
+
+        reset = e2e_client.delete(
+            "/api/branding/color",
+            headers=platform_admin.headers,
+        )
+        assert reset.status_code == 200, reset.text
+        assert reset.json()["primary_color"] is None
+
+        public_response = e2e_client.get("/api/branding")
+        assert public_response.status_code == 200
+        assert public_response.json()["primary_color"] is None
+
     def test_update_branding_org_user_denied(self, e2e_client, org1_user):
         """Org user cannot update branding (403)."""
         response = e2e_client.put(

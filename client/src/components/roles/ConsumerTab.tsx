@@ -185,6 +185,8 @@ export function ConsumerTab({
 		visibleItems.every((i) => effectiveSelected.has(i.id));
 	const someVisibleSelected =
 		!allVisibleSelected && effectiveSelected.size > 0;
+	const showEmptyPagination =
+		!!pagination && !isLoading && items.length === 0 && !readState?.isError;
 
 	const toggleOne = (id: string) =>
 		setSelected((prev) => {
@@ -392,6 +394,7 @@ export function ConsumerTab({
 					)}
 				</div>
 			)}
+			{showEmptyPagination && <ListPagination {...pagination} />}
 
 			{effectiveSelected.size > 0 && (
 				<div

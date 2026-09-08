@@ -760,7 +760,7 @@ export function Knowledge() {
 									{documents.map((doc) => (
 										<DataTableRow
 											key={doc.id}
-											className="cursor-pointer"
+											clickable
 											onClick={() => openDocument(doc)}
 										>
 											{isPlatformAdmin && (

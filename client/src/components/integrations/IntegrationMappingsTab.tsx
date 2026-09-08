@@ -7,10 +7,14 @@ import {
 	PlugZap,
 	RefreshCw,
 	Loader2,
+	Search,
+	X,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ManualEntityIdInput } from "./ManualEntityIdInput";
 import {
 	Card,
@@ -134,11 +138,37 @@ export function IntegrationMappingsTab({
 	};
 
 	const isActionPending = pendingMappingAction !== null;
+	const [mappingSearch, setMappingSearch] = useState("");
+	const entityLabelByValue = useMemo(
+		() => new Map(entities.map((entity) => [entity.value, entity.label])),
+		[entities],
+	);
+	const normalizedSearch = mappingSearch.trim().toLocaleLowerCase();
+	const filteredOrgs = useMemo(() => {
+		if (!normalizedSearch) return orgsWithMappings;
+
+		return orgsWithMappings.filter((org) => {
+			const entityId =
+				org.formData.entity_id || org.mapping?.entity_id || "";
+			const searchable = [
+				org.name,
+				org.formData.entity_name,
+				org.mapping?.entity_name,
+				entityId,
+				entityLabelByValue.get(entityId),
+			]
+				.filter(Boolean)
+				.join(" ")
+				.toLocaleLowerCase();
+
+			return searchable.includes(normalizedSearch);
+		});
+	}, [entityLabelByValue, normalizedSearch, orgsWithMappings]);
 
 	return (
 		<Card>
-			<CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 xl:flex-row">
-				<div>
+			<CardHeader className="flex flex-col gap-3 space-y-0 lg:flex-row lg:items-start lg:justify-between">
+				<div className="min-w-0">
 					<CardTitle>Organization Mappings</CardTitle>
 					<CardDescription>
 						Configure how each organization maps to external
@@ -200,68 +230,162 @@ export function IntegrationMappingsTab({
 				) : (
 					<>
 						{!hasDataProvider && (
-							<p className="text-sm text-muted-foreground mb-4">
-								No data provider configured — entity IDs must be
-								entered manually.
-							</p>
+							<div className="mb-4 rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/30 p-3 text-sm text-muted-foreground">
+								<p>
+									No data provider is configured, so
+									auto-match is unavailable for this
+									integration. Enter entity IDs manually and
+									use Configure for organization-specific
+									settings.
+								</p>
+							</div>
 						)}
-						<ul
-							className="divide-y"
-							aria-label="Organization mappings"
-						>
-							{orgsWithMappings.map((org) => {
-								// Filter out entities already mapped to other orgs
-								const usedEntityIds = orgsWithMappings
-									.filter(
-										(o) =>
-											o.id !== org.id &&
-											o.formData.entity_id,
-									)
-									.map((o) => o.formData.entity_id);
-								const availableEntities = entities.filter(
-									(e) =>
-										e.value === org.formData.entity_id ||
-										!usedEntityIds.includes(e.value),
-								);
+						<MappingListToolbar
+							value={mappingSearch}
+							totalCount={orgsWithMappings.length}
+							filteredCount={filteredOrgs.length}
+							onChange={setMappingSearch}
+							onClear={() => setMappingSearch("")}
+						/>
+						{filteredOrgs.length === 0 ? (
+							<div className="flex flex-col items-center justify-center rounded-[var(--bf-radius-control)] border border-dashed border-border/70 px-4 py-10 text-center">
+								<h3 className="text-base font-semibold">
+									No mappings match your search
+								</h3>
+								<p className="mt-2 text-sm text-muted-foreground">
+									Try another organization or external entity
+									name.
+								</p>
+								<Button
+									type="button"
+									variant="outline"
+									className="mt-4 min-h-11"
+									onClick={() => setMappingSearch("")}
+								>
+									Clear search
+								</Button>
+							</div>
+						) : (
+							<ul
+								className="divide-y"
+								aria-label="Organization mappings"
+							>
+								{filteredOrgs.map((org) => {
+									// Filter out entities already mapped to other orgs
+									const usedEntityIds = orgsWithMappings
+										.filter(
+											(o) =>
+												o.id !== org.id &&
+												o.formData.entity_id,
+										)
+										.map((o) => o.formData.entity_id);
+									const availableEntities = entities.filter(
+										(e) =>
+											e.value ===
+												org.formData.entity_id ||
+											!usedEntityIds.includes(e.value),
+									);
 
-								return (
-									<IntegrationMappingRecord
-										key={org.id}
-										org={org}
-										availableEntities={availableEntities}
-										hasNonDefaultConfig={hasNonDefaultConfig(
-											org,
-										)}
-										hasDataProvider={hasDataProvider}
-										autoMatchSuggestions={
-											autoMatchSuggestions
-										}
-										onAcceptSuggestion={onAcceptSuggestion}
-										onRejectSuggestion={onRejectSuggestion}
-										onUpdateOrgMapping={onUpdateOrgMapping}
-										isLoadingEntities={isLoadingEntities}
-										isEntitiesError={isEntitiesError}
-										hasOAuth={hasOAuth}
-										onRefreshMapping={onRefreshMapping}
-										onConnectMapping={onConnectMapping}
-										onOpenConfigDialog={onOpenConfigDialog}
-										onDisconnectMapping={
-											onDisconnectMapping
-										}
-										onDeleteMapping={onDeleteMapping}
-										isDeletePending={isDeletePending}
-										pendingMappingAction={
-											pendingMappingAction
-										}
-										isActionPending={isActionPending}
-									/>
-								);
-							})}
-						</ul>
+									return (
+										<IntegrationMappingRecord
+											key={org.id}
+											org={org}
+											availableEntities={
+												availableEntities
+											}
+											hasNonDefaultConfig={hasNonDefaultConfig(
+												org,
+											)}
+											hasDataProvider={hasDataProvider}
+											autoMatchSuggestions={
+												autoMatchSuggestions
+											}
+											onAcceptSuggestion={
+												onAcceptSuggestion
+											}
+											onRejectSuggestion={
+												onRejectSuggestion
+											}
+											onUpdateOrgMapping={
+												onUpdateOrgMapping
+											}
+											isLoadingEntities={
+												isLoadingEntities
+											}
+											isEntitiesError={isEntitiesError}
+											hasOAuth={hasOAuth}
+											onRefreshMapping={onRefreshMapping}
+											onConnectMapping={onConnectMapping}
+											onOpenConfigDialog={
+												onOpenConfigDialog
+											}
+											onDisconnectMapping={
+												onDisconnectMapping
+											}
+											onDeleteMapping={onDeleteMapping}
+											isDeletePending={isDeletePending}
+											pendingMappingAction={
+												pendingMappingAction
+											}
+											isActionPending={isActionPending}
+										/>
+									);
+								})}
+							</ul>
+						)}
 					</>
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+function MappingListToolbar({
+	value,
+	totalCount,
+	filteredCount,
+	onChange,
+	onClear,
+}: {
+	value: string;
+	totalCount: number;
+	filteredCount: number;
+	onChange: (value: string) => void;
+	onClear: () => void;
+}) {
+	const hasSearch = value.trim().length > 0;
+
+	return (
+		<div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+			<div className="relative min-w-0 sm:max-w-sm sm:flex-1">
+				<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input
+					type="search"
+					value={value}
+					onChange={(event) => onChange(event.target.value)}
+					aria-label="Search organization mappings"
+					placeholder="Search mappings..."
+					className="pl-9 pr-10"
+				/>
+				{hasSearch && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="absolute right-1 top-1/2 size-9 -translate-y-1/2"
+						aria-label="Clear mapping search"
+						onClick={onClear}
+					>
+						<X className="size-4" />
+					</Button>
+				)}
+			</div>
+			<p className="text-sm text-muted-foreground">
+				{hasSearch
+					? `${filteredCount} of ${totalCount} mappings`
+					: `${totalCount} mappings`}
+			</p>
+		</div>
 	);
 }
 
@@ -405,12 +529,14 @@ function IntegrationMappingRecord({
 	const isRowLocked = isActionPending || isDeletePending;
 
 	return (
-		<li className="grid min-w-0 gap-4 py-5 first:pt-0 last:pb-0 xl:grid-cols-2">
-			<h3 className="min-w-0 font-medium [overflow-wrap:anywhere] xl:col-span-2">
-				{org.name}
-			</h3>
-			<fieldset disabled={isRowLocked} className="min-w-0 space-y-2">
-				<h4 className="text-xs font-medium text-muted-foreground">
+		<li className="grid min-w-0 gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[minmax(8rem,0.8fr)_minmax(14rem,1.4fr)_minmax(7rem,0.55fr)_minmax(10rem,0.85fr)_auto] md:items-start">
+			<section className="min-w-0 space-y-1">
+				<h3 className="min-w-0 font-medium [overflow-wrap:anywhere]">
+					{org.name}
+				</h3>
+			</section>
+			<fieldset disabled={isRowLocked} className="min-w-0 space-y-1">
+				<h4 className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground md:sr-only">
 					External entity
 				</h4>
 				{!hasDataProvider ? (
@@ -438,8 +564,8 @@ function IntegrationMappingRecord({
 					/>
 				)}
 			</fieldset>
-			<section className="min-w-0 space-y-2">
-				<h4 className="text-xs font-medium text-muted-foreground">
+			<section className="min-w-0 space-y-1">
+				<h4 className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground md:sr-only">
 					Mapping status
 				</h4>
 				{org.mapping ? (
@@ -459,8 +585,8 @@ function IntegrationMappingRecord({
 					<Badge variant="outline">Not Mapped</Badge>
 				)}
 			</section>
-			<section className="min-w-0 space-y-2">
-				<h4 className="text-xs font-medium text-muted-foreground">
+			<section className="min-w-0 space-y-1">
+				<h4 className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground md:sr-only">
 					Connection
 				</h4>
 				{!hasOAuth ? (
@@ -539,11 +665,11 @@ function IntegrationMappingRecord({
 					</Button>
 				)}
 			</section>
-			<section className="min-w-0 space-y-2">
-				<h4 className="text-xs font-medium text-muted-foreground">
+			<section className="min-w-0 space-y-1 md:justify-self-end">
+				<h4 className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground md:sr-only">
 					Actions
 				</h4>
-				<div className="flex flex-wrap gap-2">
+				<div className="flex flex-wrap gap-2 md:justify-end">
 					<Button
 						size="sm"
 						variant="ghost"

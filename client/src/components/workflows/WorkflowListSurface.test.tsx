@@ -1,9 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen } from "@/test-utils";
 import {
 	WorkflowListSurface,
 	type WorkflowListItem,
 } from "./WorkflowListSurface";
+
+function LocationProbe() {
+	const location = useLocation();
+	return (
+		<output aria-label="location">
+			{location.pathname + location.search}
+		</output>
+	);
+}
 
 describe("workflow recovery actions", () => {
 	it.each(["grid", "table"] as const)(
@@ -51,4 +61,31 @@ describe("workflow recovery actions", () => {
 			expect(onExecute).not.toHaveBeenCalled();
 		},
 	);
+
+	it("opens the workflow history filter from the table row", async () => {
+		const workflow = {
+			id: "review-workflow",
+			name: "review_workflow",
+			type: "workflow",
+		} as WorkflowListItem;
+		const { user } = renderWithProviders(
+			<>
+				<WorkflowListSurface
+					workflows={[workflow]}
+					viewMode="table"
+					isPlatformAdmin
+					canManageWorkflows
+					getOrgName={() => "Global"}
+					onExecute={vi.fn()}
+				/>
+				<LocationProbe />
+			</>,
+		);
+
+		await user.click(screen.getByRole("row", { name: /review_workflow/i }));
+
+		expect(screen.getByLabelText("location")).toHaveTextContent(
+			"/history?workflow=review-workflow",
+		);
+	});
 });

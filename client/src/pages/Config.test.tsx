@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderWithProviders, screen, waitFor } from "@/test-utils";
+import { renderWithProviders, screen, waitFor, fireEvent } from "@/test-utils";
 
 const mockUseMediaQuery = vi.fn(() => false);
 const mockUseAuth = vi.fn(() => ({ isPlatformAdmin: false }));
@@ -83,6 +83,12 @@ async function renderPage() {
 }
 
 describe("Config — list", () => {
+	it("opens from a noninteractive desktop row cell", async () => {
+		await renderPage();
+		fireEvent.click(screen.getByRole("cell", { name: "x" }));
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+	});
+
 	it("fetches without include_orphaned (orphaned UI stripped)", async () => {
 		await renderPage();
 		// useConfigs(scope) — no include_orphaned param

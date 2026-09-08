@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, within } from "@/test-utils";
 
 const mockUseApplications = vi.fn();
@@ -74,7 +75,17 @@ beforeEach(() => {
 
 async function renderPage() {
 	const { Applications } = await import("./Applications");
-	return renderWithProviders(<Applications />);
+	return renderWithProviders(
+		<>
+			<Applications />
+			<LocationProbe />
+		</>,
+	);
+}
+
+function LocationProbe() {
+	const location = useLocation();
+	return <output aria-label="location">{location.pathname}</output>;
 }
 
 describe("Applications — app launch behavior", () => {
@@ -239,6 +250,19 @@ describe("Applications — solution-managed badge (table view)", () => {
 		expect(
 			screen.getByRole("menuitem", { name: "Delete" }),
 		).toBeInTheDocument();
+	});
+
+	it("opens the published app from the table row", async () => {
+		const user = await renderTable([makeApp()]);
+		const table = document.querySelector("table")!;
+
+		await user.click(
+			within(table).getByRole("row", { name: /Live Dash/i }),
+		);
+
+		expect(screen.getByLabelText("location")).toHaveTextContent(
+			"/apps/live-dash",
+		);
 	});
 });
 

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,10 +7,14 @@ import { NoAccess } from "@/components/NoAccess";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RouteErrorBoundary } from "@/components/PageErrorBoundary";
 import { useSidebar } from "@/hooks/useSidebar";
+import { RouteReadyReveal } from "./RouteReadyReveal";
+import { routeRevealKey as getRouteRevealKey } from "@/lib/route-reveal-key";
 
 export function PageShell({ padded = false }: { padded?: boolean }) {
 	const { isLoading, isPlatformAdmin, isOrgUser, hasRole } = useAuth();
 	const isEmbed = hasRole("EmbedUser");
+	const location = useLocation();
+	const routeRevealKey = getRouteRevealKey(location.pathname, location.state);
 	const {
 		isMobileMenuOpen,
 		setIsMobileMenuOpen,
@@ -53,7 +57,11 @@ export function PageShell({ padded = false }: { padded?: boolean }) {
 
 	// Embed users get bare content — no sidebar, header, or chrome
 	if (isEmbed) {
-		return <Outlet />;
+		return (
+			<RouteReadyReveal key={routeRevealKey}>
+				<Outlet />
+			</RouteReadyReveal>
+		);
 	}
 
 	return (
@@ -79,7 +87,9 @@ export function PageShell({ padded = false }: { padded?: boolean }) {
 					)}
 				>
 					<RouteErrorBoundary>
-						<Outlet />
+						<RouteReadyReveal key={routeRevealKey}>
+							<Outlet />
+						</RouteReadyReveal>
 					</RouteErrorBoundary>
 				</main>
 			</div>

@@ -146,20 +146,31 @@ export function IntegrationOverview({
 			{/* Configuration Defaults */}
 			<Card>
 				<CardHeader className="pb-3">
-					<div>
-						<CardTitle className="text-base">
-							Configuration Defaults
-						</CardTitle>
-						<CardDescription>
-							Default config values for new mappings
-						</CardDescription>
+					<div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+						<div className="min-w-0">
+							<CardTitle className="text-base">
+								Configuration Defaults
+							</CardTitle>
+							<CardDescription>
+								Default config values for new mappings
+							</CardDescription>
+						</div>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="min-h-11 self-start"
+							onClick={onOpenDefaultsDialog}
+							aria-label="Configure default values"
+						>
+							<Pencil className="h-4 w-4 shrink-0" /> Configure
+						</Button>
 					</div>
 				</CardHeader>
 				<CardContent>
 					{/* Default Entity ID section */}
-					<div className="mb-4">
-						<div className="flex min-w-0 flex-wrap items-start justify-between gap-3 text-sm">
-							<div className="flex min-w-0 flex-col">
+					<div className="space-y-2">
+						<div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
+							<div className="flex min-w-0 flex-col gap-0.5">
 								<span className="text-muted-foreground">
 									Default{" "}
 									{integration.entity_id_name || "Entity ID"}
@@ -168,61 +179,53 @@ export function IntegrationOverview({
 									Used when org mapping is not set
 								</span>
 							</div>
-							<div className="flex min-w-0 flex-wrap items-center gap-2">
-								<span className="max-w-full font-mono text-xs bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere]">
-									{integration.default_entity_id || "\u2014"}
-								</span>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="min-h-11"
-									onClick={onOpenDefaultsDialog}
-									aria-label="Edit default values"
-								>
-									<Pencil className="h-4 w-4 shrink-0" /> Edit
-									defaults
-								</Button>
-							</div>
+							<span className="max-w-full font-mono text-xs bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere]">
+								{integration.default_entity_id || "\u2014"}
+							</span>
 						</div>
-					</div>
 
-					{integration.config_schema &&
-					integration.config_schema.length > 0 ? (
-						<div className="space-y-2">
-							{integration.config_schema.map((field) => {
-								const defaultValue =
-									integration.config_defaults?.[field.key];
-								return (
-									<div
-										key={field.key}
-										className="flex min-w-0 flex-wrap items-start justify-between gap-3 text-sm"
-									>
-										<span className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
-											{field.key}
-											{field.required && (
-												<span className="text-destructive ml-1">
-													*
-												</span>
-											)}
-										</span>
-										<span className="max-w-full font-mono text-xs bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere]">
-											{defaultValue !== null &&
-											defaultValue !== undefined
-												? field.type === "secret"
-													? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
-													: typeof defaultValue ===
-														  "object"
-														? JSON.stringify(
-																defaultValue,
-															)
-														: String(defaultValue)
-												: "\u2014"}
-										</span>
-									</div>
-								);
-							})}
-						</div>
-					) : null}
+						{integration.config_schema &&
+						integration.config_schema.length > 0 ? (
+							<div className="space-y-1.5 border-t border-border/60 pt-2">
+								{integration.config_schema.map((field) => {
+									const defaultValue =
+										integration.config_defaults?.[
+											field.key
+										];
+									return (
+										<div
+											key={field.key}
+											className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm"
+										>
+											<span className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+												{field.key}
+												{field.required && (
+													<span className="text-destructive ml-1">
+														*
+													</span>
+												)}
+											</span>
+											<span className="max-w-full font-mono text-xs bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere]">
+												{defaultValue !== null &&
+												defaultValue !== undefined
+													? field.type === "secret"
+														? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+														: typeof defaultValue ===
+															  "object"
+															? JSON.stringify(
+																	defaultValue,
+																)
+															: String(
+																	defaultValue,
+																)
+													: "\u2014"}
+											</span>
+										</div>
+									);
+								})}
+							</div>
+						) : null}
+					</div>
 				</CardContent>
 			</Card>
 
@@ -426,15 +429,23 @@ export function IntegrationOverview({
 							</p>
 						</div>
 					) : (
-						<div className="text-center py-4">
-							<LinkIcon className="h-8 w-8 text-muted-foreground mx-auto" />
-							<p className="mt-2 text-sm text-muted-foreground">
-								No OAuth configured
-							</p>
+						<div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<div className="flex min-w-0 items-center gap-3">
+								<LinkIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+								<div className="min-w-0">
+									<p className="text-sm font-medium">
+										No OAuth configured
+									</p>
+									<p className="text-sm text-muted-foreground">
+										Add OAuth settings when this integration
+										needs default authentication.
+									</p>
+								</div>
+							</div>
 							<Button
 								variant="outline"
 								size="sm"
-								className="mt-3 min-h-11"
+								className="min-h-11 self-start sm:self-auto"
 								onClick={onCreateOAuthConfig}
 							>
 								<Plus className="h-3 w-3 mr-2" />

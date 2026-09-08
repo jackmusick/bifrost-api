@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { renderWithProviders, screen } from "@/test-utils";
+import { renderWithProviders, screen, within } from "@/test-utils";
 import { IntegrationOverview } from "./IntegrationOverview";
 
 function renderOverview(
@@ -62,17 +62,33 @@ describe("IntegrationOverview — no OAuth configured", () => {
 		const { user, onCreateOAuthConfig } = renderOverview();
 
 		expect(screen.getByText(/no oauth configured/i)).toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: /configure/i }));
+		const oauthCard = screen
+			.getByText("OAuth")
+			.closest<HTMLElement>("[data-slot=card]")!;
+		await user.click(
+			within(oauthCard).getByRole("button", { name: "Configure" }),
+		);
 		expect(onCreateOAuthConfig).toHaveBeenCalledTimes(1);
 	});
 
-	it("opens the defaults editor via the edit-defaults pencil button", async () => {
+	it("opens the defaults editor via the configure button", async () => {
 		const { user, onOpenDefaultsDialog } = renderOverview();
 
 		await user.click(
-			screen.getByRole("button", { name: /edit default values/i }),
+			screen.getByRole("button", { name: /configure default values/i }),
 		);
 		expect(onOpenDefaultsDialog).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps the unconfigured OAuth summary concise", () => {
+		renderOverview();
+
+		expect(
+			screen.getByText(/add oauth settings when this integration/i),
+		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Configure" })).toHaveClass(
+			"min-h-11",
+		);
 	});
 });
 

@@ -59,6 +59,16 @@ function canLaunchApp(app: ApplicationListItem): boolean {
 	return app.is_published;
 }
 
+function getApplicationPrimaryAction(
+	app: ApplicationListItem,
+	actions: Pick<ApplicationListSurfaceProps, "onLaunch" | "onPreview">,
+) {
+	if (canLaunchApp(app)) return () => actions.onLaunch(app);
+	if (!isV2App(app) && actions.onPreview)
+		return () => actions.onPreview?.(app);
+	return undefined;
+}
+
 function ApplicationActions({
 	app,
 	onOpenSettings,
@@ -121,11 +131,7 @@ export function ApplicationListSurface({
 }: ApplicationListSurfaceProps) {
 	const terminology = useTerminology();
 	const renderName = (app: ApplicationListItem) => {
-		const open = canLaunchApp(app)
-			? () => onLaunch(app)
-			: !isV2App(app) && onPreview
-				? () => onPreview(app)
-				: undefined;
+		const open = getApplicationPrimaryAction(app, { onLaunch, onPreview });
 		return (
 			<button
 				type="button"
@@ -201,9 +207,15 @@ export function ApplicationListSurface({
 								!isV2App(app) &&
 								!canLaunchApp(app) &&
 								Boolean(onPreview);
+							const open = getApplicationPrimaryAction(app, {
+								onLaunch,
+								onPreview,
+							});
 							return (
 								<DataTableRow
 									key={app.id}
+									clickable={Boolean(open)}
+									onClick={open}
 									onPointerEnter={() =>
 										prefetchApplicationDetail(
 											app,
@@ -295,7 +307,12 @@ export function ApplicationListSurface({
 												)}
 										</div>
 									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-right">
+									<DataTableCell
+										className="w-0 whitespace-nowrap text-right"
+										onClick={(event) =>
+											event.stopPropagation()
+										}
+									>
 										<div className="flex justify-end gap-1">
 											<Button
 												size="sm"

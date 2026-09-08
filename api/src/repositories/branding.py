@@ -16,9 +16,7 @@ from src.models import GlobalBranding
 logger = logging.getLogger(__name__)
 
 # Sentinel distinguishing "argument omitted" (leave field unchanged) from an
-# explicit None (clear the field). The legacy logo/color args use the
-# None-means-skip convention, which cannot express clearing; application_name
-# needs both update-with-value and clear-to-None, so it uses this sentinel.
+# explicit None (clear the field).
 _UNSET: Any = object()
 
 
@@ -46,24 +44,30 @@ class BrandingRepository:
 
     async def set_branding(
         self,
-        square_logo_data: bytes | None = None,
-        square_logo_content_type: str | None = None,
-        rectangle_logo_data: bytes | None = None,
-        rectangle_logo_content_type: str | None = None,
-        primary_color: str | None = None,
-        terminology: dict | None = None,
+        square_logo_data: bytes | None = _UNSET,
+        square_logo_content_type: str | None = _UNSET,
+        rectangle_logo_data: bytes | None = _UNSET,
+        rectangle_logo_content_type: str | None = _UNSET,
+        primary_color: str | None = _UNSET,
+        terminology: dict | None = _UNSET,
         application_name: str | None = _UNSET,
     ) -> GlobalBranding:
         """
         Create or update global branding configuration (upsert).
 
         Args:
-            square_logo_data: Square logo image bytes
-            square_logo_content_type: Square logo MIME type (e.g., 'image/png')
-            rectangle_logo_data: Rectangle logo image bytes
-            rectangle_logo_content_type: Rectangle logo MIME type (e.g., 'image/png')
-            primary_color: Hex color code (e.g., '#0066CC')
-            terminology: Fixed product terminology overrides
+            square_logo_data: Square logo image bytes. Omit to leave unchanged;
+                pass None to clear.
+            square_logo_content_type: Square logo MIME type (e.g., 'image/png').
+                Omit to leave unchanged; pass None to clear.
+            rectangle_logo_data: Rectangle logo image bytes. Omit to leave
+                unchanged; pass None to clear.
+            rectangle_logo_content_type: Rectangle logo MIME type (e.g., 'image/png').
+                Omit to leave unchanged; pass None to clear.
+            primary_color: Hex color code (e.g., '#0066CC'). Omit to leave
+                unchanged; pass None to clear.
+            terminology: Fixed product terminology overrides. Omit to leave
+                unchanged; pass None to clear.
             application_name: Product name. Omit to leave unchanged; pass None to
                 clear it back to the default.
 
@@ -74,17 +78,17 @@ class BrandingRepository:
 
         if existing:
             # Update existing
-            if square_logo_data is not None:
+            if square_logo_data is not _UNSET:
                 existing.square_logo_data = square_logo_data
-            if square_logo_content_type is not None:
+            if square_logo_content_type is not _UNSET:
                 existing.square_logo_content_type = square_logo_content_type
-            if rectangle_logo_data is not None:
+            if rectangle_logo_data is not _UNSET:
                 existing.rectangle_logo_data = rectangle_logo_data
-            if rectangle_logo_content_type is not None:
+            if rectangle_logo_content_type is not _UNSET:
                 existing.rectangle_logo_content_type = rectangle_logo_content_type
-            if primary_color is not None:
+            if primary_color is not _UNSET:
                 existing.primary_color = primary_color
-            if terminology is not None:
+            if terminology is not _UNSET:
                 existing.terminology = terminology
             if application_name is not _UNSET:
                 existing.application_name = application_name
@@ -96,13 +100,23 @@ class BrandingRepository:
         else:
             # Create new
             branding = GlobalBranding(
-                square_logo_data=square_logo_data,
-                square_logo_content_type=square_logo_content_type,
-                rectangle_logo_data=rectangle_logo_data,
-                rectangle_logo_content_type=rectangle_logo_content_type,
-                primary_color=primary_color,
-                terminology=terminology,
-                application_name=None if application_name is _UNSET else application_name,
+                square_logo_data=None
+                if square_logo_data is _UNSET
+                else square_logo_data,
+                square_logo_content_type=None
+                if square_logo_content_type is _UNSET
+                else square_logo_content_type,
+                rectangle_logo_data=None
+                if rectangle_logo_data is _UNSET
+                else rectangle_logo_data,
+                rectangle_logo_content_type=None
+                if rectangle_logo_content_type is _UNSET
+                else rectangle_logo_content_type,
+                primary_color=None if primary_color is _UNSET else primary_color,
+                terminology=None if terminology is _UNSET else terminology,
+                application_name=None
+                if application_name is _UNSET
+                else application_name,
             )
             self.session.add(branding)
             await self.session.flush()

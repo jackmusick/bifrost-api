@@ -468,6 +468,8 @@ export function Config() {
 							<DataTableBody>
 								{filteredConfigs.map((config) => (
 									<DataTableRow
+										clickable
+										onClick={() => handleEdit(config)}
 										key={
 											config.id ??
 											`${config.org_id}-${config.key}`

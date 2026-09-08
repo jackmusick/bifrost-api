@@ -173,6 +173,34 @@ describe("ConsumerTab", () => {
 		await user.click(screen.getByRole("link", { name: /next page/i }));
 		expect(onPageChange).toHaveBeenCalledWith(25);
 	});
+
+	it("keeps previous pagination available when the current page has no assigned users", async () => {
+		const user = userEvent.setup();
+		const onPageChange = vi.fn();
+		renderWithProviders(
+			<ConsumerTab
+				{...defaults}
+				pagination={{
+					offset: 25,
+					limit: 25,
+					total: 30,
+					onPageChange,
+				}}
+			/>,
+		);
+
+		expect(
+			screen.getByText("No users assigned to this role yet."),
+		).toBeInTheDocument();
+		const pagination = screen.getByRole("navigation", {
+			name: /pagination/i,
+		});
+		expect(pagination.closest("tfoot")).toBeNull();
+		expect(screen.getByText("26–30 of 30")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("link", { name: /previous page/i }));
+		expect(onPageChange).toHaveBeenCalledWith(0);
+	});
 });
 
 

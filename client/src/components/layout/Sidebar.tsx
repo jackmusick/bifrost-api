@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { NavLink } from "react-router-dom";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import {
 	LayoutDashboard,
 	Workflow,
@@ -241,6 +241,9 @@ export function Sidebar({
 }: SidebarProps) {
 	const { isPlatformAdmin } = useAuth();
 	const terminology = useTerminology();
+	const location = useLocation();
+	const desktopNavRef = useRef<HTMLElement | null>(null);
+	const desktopNavScrollTopRef = useRef(0);
 
 	// A mobile modal must not keep the desktop shell inert after a resize.
 	useEffect(() => {
@@ -264,6 +267,12 @@ export function Sidebar({
 			),
 		}))
 		.filter((section) => section.items.length > 0); // Remove empty sections
+
+	useLayoutEffect(() => {
+		const nav = desktopNavRef.current;
+		if (!nav) return;
+		nav.scrollTop = desktopNavScrollTopRef.current;
+	}, [location.pathname, location.search]);
 
 	return (
 		<>
@@ -292,11 +301,16 @@ export function Sidebar({
 
 				{/* Navigation */}
 				<nav
+					ref={desktopNavRef}
 					aria-label="Primary navigation"
 					className={cn(
 						"flex-1 flex flex-col gap-4 overflow-y-auto",
 						isCollapsed ? "px-2 py-4" : "p-4",
 					)}
+					onScroll={(event) => {
+						desktopNavScrollTopRef.current =
+							event.currentTarget.scrollTop;
+					}}
 				>
 					{visibleSections.map((section) => (
 						<div key={section.title} className="space-y-1">

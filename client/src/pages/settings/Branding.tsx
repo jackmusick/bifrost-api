@@ -55,19 +55,33 @@ const TERMINOLOGY_ROWS: Array<{
 	},
 ];
 
-const DEFAULT_PRIMARY_COLOR = "#0066CC";
+const DEFAULT_PREVIEW_PRIMARY_COLOR = createBrandPalette(null).light.primary;
+const primaryColorPlaceholder = DEFAULT_PREVIEW_PRIMARY_COLOR;
 
 function hydrateBrandingDrafts(
 	data: components["schemas"]["BrandingSettings"] | null,
-	setBranding: (value: components["schemas"]["BrandingSettings"] | null) => void,
+	setBranding: (
+		value: components["schemas"]["BrandingSettings"] | null,
+	) => void,
 	setPrimaryColor: (value: string) => void,
+	setHasCustomPrimaryColor: (value: boolean) => void,
 	setApplicationName: (value: string) => void,
 	setTerminology: (value: Terminology) => void,
 ) {
 	setBranding(data);
-	setPrimaryColor(data?.primary_color || DEFAULT_PRIMARY_COLOR);
+	setPrimaryColor(data?.primary_color || DEFAULT_PREVIEW_PRIMARY_COLOR);
+	setHasCustomPrimaryColor(Boolean(data?.primary_color));
 	setApplicationName(data?.application_name ?? "");
-	setTerminology(mergeTerminology(data?.terminology as BrandingTerminologyInput));
+	setTerminology(
+		mergeTerminology(data?.terminology as BrandingTerminologyInput),
+	);
+}
+
+function brandingPrimaryColorUpdate(
+	primaryColor: string,
+	hasCustomPrimaryColor: boolean,
+) {
+	return hasCustomPrimaryColor ? { primary_color: primaryColor } : {};
 }
 
 export function Branding() {
@@ -87,7 +101,10 @@ export function Branding() {
 	const [resetting, setResetting] = useState<
 		"square" | "rectangle" | "color" | "application-name" | null
 	>(null);
-	const [primaryColor, setPrimaryColor] = useState("#0066CC");
+	const [primaryColor, setPrimaryColor] = useState(
+		DEFAULT_PREVIEW_PRIMARY_COLOR,
+	);
+	const [hasCustomPrimaryColor, setHasCustomPrimaryColor] = useState(false);
 	const [applicationName, setApplicationName] = useState("");
 	const [terminology, setTerminology] =
 		useState<Terminology>(DEFAULT_TERMINOLOGY);
@@ -118,6 +135,7 @@ export function Branding() {
 						data,
 						setBranding,
 						setPrimaryColor,
+						setHasCustomPrimaryColor,
 						setApplicationName,
 						setTerminology,
 					);
@@ -157,10 +175,14 @@ export function Branding() {
 		setSaving(true);
 		try {
 			const updated = await updateBranding({
-				primary_color: primaryColor,
+				...brandingPrimaryColorUpdate(
+					primaryColor,
+					hasCustomPrimaryColor,
+				),
 				terminology: serializeTerminology(terminology),
 			});
 			setBranding(updated);
+			setHasCustomPrimaryColor(Boolean(updated.primary_color));
 			applyBrandingTheme(updated as BrandingSettings);
 			refreshBranding();
 
@@ -186,12 +208,17 @@ export function Branding() {
 		setSavingTerminology(true);
 		try {
 			const updated = await updateBranding({
-				primary_color: primaryColor,
+				...brandingPrimaryColorUpdate(
+					primaryColor,
+					hasCustomPrimaryColor,
+				),
 				terminology: serializeTerminology(terminology),
 			});
 			setBranding(updated);
 			setTerminology(
-				mergeTerminology(updated.terminology as BrandingTerminologyInput),
+				mergeTerminology(
+					updated.terminology as BrandingTerminologyInput,
+				),
 			);
 			applyBrandingTheme(updated as BrandingSettings);
 			refreshBranding();
@@ -290,11 +317,8 @@ export function Branding() {
 				},
 				[key]: {
 					singular:
-						field === "singular"
-							? value
-							: current[key].singular,
-					plural:
-						field === "plural" ? value : current[key].plural,
+						field === "singular" ? value : current[key].singular,
+					plural: field === "plural" ? value : current[key].plural,
 				},
 			}),
 		);
@@ -433,7 +457,10 @@ export function Branding() {
 		try {
 			const updated = await resetColor();
 			setBranding(updated);
-			setPrimaryColor(updated.primary_color || "#0066CC");
+			setPrimaryColor(
+				updated.primary_color || DEFAULT_PREVIEW_PRIMARY_COLOR,
+			);
+			setHasCustomPrimaryColor(Boolean(updated.primary_color));
 			applyBrandingTheme(updated as BrandingSettings);
 			refreshBranding();
 
@@ -471,7 +498,9 @@ export function Branding() {
 		);
 	}
 
-	const previewPalette = createBrandPalette(primaryColor);
+	const previewPalette = createBrandPalette(
+		hasCustomPrimaryColor ? primaryColor : null,
+	);
 	return (
 		<div className="space-y-6">
 			{readError && hasLoadedBranding ? (
@@ -506,9 +535,7 @@ export function Branding() {
 							id="applicationName"
 							type="text"
 							value={applicationName}
-							onChange={(e) =>
-								setApplicationName(e.target.value)
-							}
+							onChange={(e) => setApplicationName(e.target.value)}
 							placeholder="Bifrost"
 							maxLength={40}
 							className="max-w-sm"
@@ -573,10 +600,11 @@ export function Branding() {
 								id="primaryColor"
 								type="text"
 								value={primaryColor}
-								onChange={(e) =>
-									setPrimaryColor(e.target.value)
-								}
-								placeholder="#0066CC"
+								onChange={(e) => {
+									setPrimaryColor(e.target.value);
+									setHasCustomPrimaryColor(true);
+								}}
+								placeholder={primaryColorPlaceholder}
 								className="w-32 font-mono"
 							/>
 						</div>
@@ -588,23 +616,68 @@ export function Branding() {
 							/>
 						</div>
 					</div>
-					<div className="grid gap-3 sm:grid-cols-2" aria-label="Brand appearance preview">
+					<div
+						className="grid gap-3 sm:grid-cols-2"
+						aria-label="Brand appearance preview"
+					>
 						{(["light", "dark"] as const).map((mode) => (
-							<div key={mode} className="overflow-hidden rounded-[var(--bf-radius-surface)] border" style={{ backgroundColor: mode === "light" ? "#f7f9fa" : "#08090b", color: mode === "light" ? "#11151a" : "#f7f9fb" }}>
+							<div
+								key={mode}
+								className="overflow-hidden rounded-[var(--bf-radius-surface)] border"
+								style={{
+									backgroundColor:
+										mode === "light"
+											? "#f7f9fa"
+											: "#08090b",
+									color:
+										mode === "light"
+											? "#11151a"
+											: "#f7f9fb",
+								}}
+							>
 								<div className="flex flex-wrap items-center justify-between gap-2 p-3">
-									<span className="text-xs">{mode === "light" ? "Light theme" : "Dark theme"}</span>
-									<span className="rounded-[var(--bf-radius-control)] px-3 py-1.5 text-xs font-medium" style={{ backgroundColor: previewPalette[mode].primary, color: previewPalette[mode].primaryForeground }}>Primary action</span>
+									<span className="text-xs">
+										{mode === "light"
+											? "Light theme"
+											: "Dark theme"}
+									</span>
+									<span
+										className="rounded-[var(--bf-radius-control)] px-3 py-1.5 text-xs font-medium"
+										style={{
+											backgroundColor:
+												previewPalette[mode].primary,
+											color: previewPalette[mode]
+												.primaryForeground,
+										}}
+									>
+										Primary action
+									</span>
 								</div>
-								<div role="img" aria-label={`${mode} theme activity gradient`} className="h-1" style={{ background: previewPalette[mode].activityGradient }} />
+								<div
+									role="img"
+									aria-label={`${mode} theme activity gradient`}
+									className="h-1"
+									style={{
+										background:
+											previewPalette[mode]
+												.activityGradient,
+									}}
+								/>
 							</div>
 						))}
 					</div>
-					<p className="text-xs text-muted-foreground">Action colors and activity gradients adapt to your brand in each theme.</p>
+					<p className="text-xs text-muted-foreground">
+						Action colors and activity gradients adapt to your brand
+						in each theme.
+					</p>
 					<div className="flex flex-wrap gap-2">
 						<Button
 							onClick={handleColorUpdate}
 							disabled={
-								saving || resetting === "color" || readError || readPending
+								saving ||
+								resetting === "color" ||
+								readError ||
+								readPending
 							}
 							variant="default"
 						>
@@ -616,7 +689,10 @@ export function Branding() {
 						<Button
 							onClick={handleResetColor}
 							disabled={
-								saving || resetting === "color" || readError || readPending
+								saving ||
+								resetting === "color" ||
+								readError ||
+								readPending
 							}
 							variant="outline"
 							size="icon"
@@ -692,7 +768,9 @@ export function Branding() {
 					<div className="flex flex-wrap gap-2">
 						<Button
 							onClick={handleTerminologyUpdate}
-							disabled={savingTerminology || readError || readPending}
+							disabled={
+								savingTerminology || readError || readPending
+							}
 						>
 							{savingTerminology ? (
 								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
@@ -778,9 +856,18 @@ export function Branding() {
 										: 0
 								}
 								onKeyDown={(event) => {
-									if ((event.key === "Enter" || event.key === " ") && uploading !== "square" && resetting !== "square" && !readError && !readPending) {
+									if (
+										(event.key === "Enter" ||
+											event.key === " ") &&
+										uploading !== "square" &&
+										resetting !== "square" &&
+										!readError &&
+										!readPending
+									) {
 										event.preventDefault();
-										document.getElementById("squareLogoInput")?.click();
+										document
+											.getElementById("squareLogoInput")
+											?.click();
 									}
 								}}
 								onDragEnter={(e) => handleDrag(e, "square")}
@@ -895,9 +982,20 @@ export function Branding() {
 										: 0
 								}
 								onKeyDown={(event) => {
-									if ((event.key === "Enter" || event.key === " ") && uploading !== "rectangle" && resetting !== "rectangle" && !readError && !readPending) {
+									if (
+										(event.key === "Enter" ||
+											event.key === " ") &&
+										uploading !== "rectangle" &&
+										resetting !== "rectangle" &&
+										!readError &&
+										!readPending
+									) {
 										event.preventDefault();
-										document.getElementById("rectangleLogoInput")?.click();
+										document
+											.getElementById(
+												"rectangleLogoInput",
+											)
+											?.click();
 									}
 								}}
 								onDragEnter={(e) => handleDrag(e, "rectangle")}

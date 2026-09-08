@@ -115,6 +115,115 @@ describe("IntegrationMappingsTab — populated", () => {
 		expect(screen.getByText("Not Mapped")).toBeInTheDocument();
 	});
 
+	it("keeps the entity selector searchable inside a compact mapping row", async () => {
+		const { user, onUpdateOrgMapping } = renderTab({
+			orgsWithMappings: orgs,
+			entities: [
+				{ value: "ent-a", label: "Entity A" },
+				{ value: "ent-b", label: "Entity B" },
+			],
+		});
+
+		const betaRow = screen.getByText("Beta").closest("li")!;
+		await user.click(within(betaRow).getByRole("combobox"));
+
+		const search = screen.getByRole("combobox", {
+			name: "Search entities...",
+		});
+		await user.type(search, "Entity B");
+		await user.click(screen.getByRole("option", { name: /Entity B/i }));
+
+		expect(onUpdateOrgMapping).toHaveBeenCalledWith(
+			"org-2",
+			"ent-b",
+			"Entity B",
+		);
+	});
+
+	it("shows auto-match controls when a data provider is available", async () => {
+		const { user, onRunAutoMatch } = renderTab({
+			orgsWithMappings: orgs,
+			entities: [
+				{ value: "ent-a", label: "Entity A" },
+				{ value: "ent-b", label: "Entity B" },
+			],
+		});
+
+		await user.click(
+			screen.getByRole("button", { name: /auto-match unmapped/i }),
+		);
+		expect(onRunAutoMatch).toHaveBeenCalledWith("exact");
+	});
+
+	it("filters mappings by organization and entity labels", async () => {
+		const { user } = renderTab({
+			orgsWithMappings: orgs,
+			entities: [
+				{ value: "ent-a", label: "Entity A" },
+				{ value: "ent-b", label: "Entity B" },
+			],
+		});
+
+		await user.type(
+			screen.getByRole("searchbox", {
+				name: "Search organization mappings",
+			}),
+			"Entity A",
+		);
+
+		expect(screen.getByText("1 of 2 mappings")).toBeInTheDocument();
+		expect(screen.getByText("Acme")).toBeInTheDocument();
+		expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+	});
+
+	it("clears an empty mapping search state", async () => {
+		const { user } = renderTab({
+			orgsWithMappings: orgs,
+			entities: [{ value: "ent-a", label: "Entity A" }],
+		});
+
+		await user.type(
+			screen.getByRole("searchbox", {
+				name: "Search organization mappings",
+			}),
+			"missing",
+		);
+
+		expect(
+			screen.getByText("No mappings match your search"),
+		).toBeInTheDocument();
+		expect(screen.getByText("0 of 2 mappings")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Clear search" }));
+
+		expect(screen.getByText("2 mappings")).toBeInTheDocument();
+		expect(screen.getByText("Acme")).toBeInTheDocument();
+		expect(screen.getByText("Beta")).toBeInTheDocument();
+	});
+
+	it("does not scope auto-match to the current mapping search", async () => {
+		const { user, onRunAutoMatch } = renderTab({
+			orgsWithMappings: orgs,
+			entities: [
+				{ value: "ent-a", label: "Entity A" },
+				{ value: "ent-b", label: "Entity B" },
+			],
+		});
+
+		await user.type(
+			screen.getByRole("searchbox", {
+				name: "Search organization mappings",
+			}),
+			"Acme",
+		);
+		await user.click(
+			screen.getByRole("button", { name: /auto-match unmapped/i }),
+		);
+
+		expect(screen.getByText("1 of 2 mappings")).toBeInTheDocument();
+		expect(onRunAutoMatch).toHaveBeenCalledWith("exact");
+	});
+
 	it("fires onDeleteMapping for the org whose Unlink button is clicked", async () => {
 		const { user, onDeleteMapping } = renderTab({
 			orgsWithMappings: orgs,
@@ -158,6 +267,36 @@ describe("IntegrationMappingsTab — populated", () => {
 });
 
 describe("IntegrationMappingsTab — no data provider manual input", () => {
+	it("explains that auto-match needs a data provider while keeping Configure available", () => {
+		renderTab({
+			hasDataProvider: false,
+			configSchema: [{ key: "apiBaseUrl", type: "string" }],
+			orgsWithMappings: [
+				{
+					id: "org-1",
+					name: "Acme",
+					mapping: undefined,
+					formData: {
+						organization_id: "org-1",
+						entity_id: "",
+						entity_name: "",
+						config: {},
+					},
+				},
+			],
+		});
+
+		expect(
+			screen.queryByText(/auto-match unmapped/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByText(/auto-match is unavailable/i),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /configure/i }),
+		).toBeInTheDocument();
+	});
+
 	it("shows entity_id text input when hasDataProvider is false", () => {
 		renderTab({
 			hasDataProvider: false,

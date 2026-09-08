@@ -392,7 +392,8 @@ export function Tables() {
 										{filteredTables.map((table) => (
 											<DataTableRow
 												key={table.id}
-												className="cursor-pointer hover:bg-muted/50"
+												clickable
+												href={`/tables/${table.id}`}
 												onClick={() =>
 													handleViewDocuments(table)
 												}

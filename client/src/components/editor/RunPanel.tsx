@@ -874,10 +874,13 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 										value={selectedWorkflowId || ""}
 										onValueChange={setSelectedWorkflowId}
 									>
-										<SelectTrigger className="w-full">
+										<SelectTrigger
+											aria-label="Select workflow"
+											className="w-full"
+										>
 											<SelectValue placeholder="Select a workflow to run" />
 										</SelectTrigger>
-										<SelectContent>
+										<SelectContent className="z-[200]">
 											{detectedItem.workflows?.map(
 												(w) => (
 													<SelectItem

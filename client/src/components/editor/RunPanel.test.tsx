@@ -129,6 +129,42 @@ describe("RunPanel", () => {
 		).toBeInTheDocument();
 	});
 
+	it("layers the multi-workflow selector above editor chrome", async () => {
+		metadataOverrides = {
+			data: {
+				workflows: [
+					{
+						id: "wf-1",
+						name: "Design Review",
+						relative_file_path: "workflows/design_review.py",
+						source_file_path: "workflows/design_review.py",
+						type: "workflow",
+						parameters: [],
+					},
+					{
+						id: "wf-2",
+						name: "Design Publish",
+						relative_file_path: "workflows/design_review.py",
+						source_file_path: "workflows/design_review.py",
+						type: "workflow",
+						parameters: [],
+					},
+				],
+			},
+		};
+		const { user } = renderWithProviders(<RunPanel />);
+
+		await user.click(
+			await screen.findByRole("combobox", {
+				name: "Select workflow",
+			}),
+		);
+
+		expect(
+			document.querySelector('[data-slot="select-content"]'),
+		).toHaveClass("z-[200]");
+	});
+
 	it("keeps the form populated after a failed submit and allows retry", async () => {
 		mutateAsync
 			.mockRejectedValueOnce(new Error("Synthetic execute failure"))

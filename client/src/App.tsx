@@ -31,13 +31,11 @@ import {
 import { lazyWithReload } from "@/lib/lazy-with-reload";
 import { RunFormRoute } from "@/pages/run-form-route";
 import { RouteOpeningState } from "@/components/layout/RouteOpeningState";
-import { RouteReadyReveal } from "@/components/layout/RouteReadyReveal";
 import { RouteLoadError } from "@/components/layout/RouteLoadError";
 import {
 	agentDetailLoader,
 	applicationDetailLoader,
 } from "@/lib/detail-route-loaders";
-import { routeRevealKey as getRouteRevealKey } from "@/lib/route-reveal-key";
 
 // Lazy load all page components for code splitting
 const Dashboard = lazyWithReload(() =>
@@ -229,7 +227,7 @@ const MCPConnectionEdit = lazyWithReload(() =>
 	})),
 );
 
-function AppFrame() {
+export function AppFrame() {
 	const { brandingLoaded } = useOrgScope();
 	const applicationName = useApplicationName();
 	const location = useLocation();
@@ -266,12 +264,6 @@ function AppFrame() {
 			null ||
 			matchPath("/apps/:applicationId/*", location.pathname) !== null) &&
 		matchPath("/apps/:applicationId/edit/*", location.pathname) === null;
-	// App routes own their nested navigation. Keep their runtime mounted while
-	// the wildcard portion changes so inline_v1 does not detach its stylesheet
-	// and standalone_v2 does not tear down its React root. Other platform routes
-	// reveal when their pathname changes. Query-only navigation keeps focus and
-	// local state (tabs, filters and editors) intact.
-	const routeRevealKey = getRouteRevealKey(location.pathname, location.state);
 	useEffect(() => {
 		if (isAppRunnerRoute) return;
 		document.title = applicationName;
@@ -300,9 +292,7 @@ function AppFrame() {
 			<UnifiedDock />
 
 			<Suspense fallback={<PageLoader />}>
-				<RouteReadyReveal key={routeRevealKey}>
-					<Outlet />
-				</RouteReadyReveal>
+				<Outlet />
 			</Suspense>
 		</>
 	);

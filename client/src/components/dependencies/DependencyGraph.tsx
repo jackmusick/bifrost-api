@@ -220,11 +220,6 @@ function DependencyGraphCanvas({
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				nodeTypes={nodeTypes}
-				fitView
-				fitViewOptions={{
-					padding: 0.2,
-					maxZoom: 1.5,
-				}}
 				minZoom={0.1}
 				maxZoom={2}
 				proOptions={{ hideAttribution: true }}

@@ -333,10 +333,10 @@ export function ExecutionHistory() {
 	return (
 		<section
 			aria-labelledby="history-heading"
-			className="mx-auto flex min-h-full w-full max-w-7xl min-w-0 flex-col gap-4 pb-1 sm:gap-6"
+			className="mx-auto flex min-h-full lg:h-full lg:min-h-0 w-full max-w-7xl min-w-0 flex-col gap-4 pb-1 sm:gap-6"
 		>
 			<ListPageHeader
-				className="flex-row flex-nowrap items-start gap-4"
+				className="shrink-0 flex-row flex-nowrap items-start gap-4"
 				title={<span id="history-heading">History</span>}
 				description={
 					<span data-testid="history-summary">

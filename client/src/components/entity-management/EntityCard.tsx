@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
@@ -172,7 +173,7 @@ export function EntityCard({
 								{entity.name}
 							</p>
 						</div>
-						<div className="flex flex-wrap items-center gap-1.5">
+						<div className="flex w-full flex-wrap items-center gap-1.5">
 							<Badge
 								variant="outline"
 								className={cn(config.color)}
@@ -184,13 +185,13 @@ export function EntityCard({
 									Solution managed
 								</Badge>
 							)}
-							<RecordActionsMenu
-								label={`More actions for ${entity.name}`}
-								contentClassName="w-max max-w-[calc(100vw-2rem)]"
-							>
-								<DropdownMenuItem
-									className="whitespace-nowrap"
-									onSelect={() =>
+							<div className="ml-auto flex shrink-0 items-center gap-1">
+								<Button
+									variant="ghost"
+									size="icon"
+									aria-label={`Show dependencies for ${entity.name}`}
+									title="Show dependencies"
+									onClick={() =>
 										onShowRelationships(
 											entity.id,
 											entity.entityType,
@@ -202,27 +203,31 @@ export function EntityCard({
 										aria-hidden="true"
 										className="size-4"
 									/>
-									Show dependencies
-								</DropdownMenuItem>
+								</Button>
 								{onDelete && !managed && (
-									<DropdownMenuItem
-										variant="destructive"
-										onSelect={() =>
-											onDelete(
-												entity.id,
-												entity.name,
-												entity.entityType,
-											)
-										}
+									<RecordActionsMenu
+										label={`More actions for ${entity.name}`}
+										contentClassName="w-max max-w-[calc(100vw-2rem)]"
 									>
-										<Trash2
-											aria-hidden="true"
-											className="size-4"
-										/>
-										Delete {config.label.toLowerCase()}
-									</DropdownMenuItem>
+										<DropdownMenuItem
+											variant="destructive"
+											onSelect={() =>
+												onDelete(
+													entity.id,
+													entity.name,
+													entity.entityType,
+												)
+											}
+										>
+											<Trash2
+												aria-hidden="true"
+												className="size-4"
+											/>
+											Delete {config.label.toLowerCase()}
+										</DropdownMenuItem>
+									</RecordActionsMenu>
 								)}
-							</RecordActionsMenu>
+							</div>
 						</div>
 					</div>
 
