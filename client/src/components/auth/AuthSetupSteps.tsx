@@ -44,12 +44,12 @@ export function AuthSetupSteps({
 				<div className="space-y-3">
 					<Button
 						type="button"
-						className="w-full"
+						className="min-h-11 w-full"
 						disabled={isPending}
 						onClick={onPasskeyRegister}
 					>
 						{isPending ? (
-							<Loader2 className="h-4 w-4 animate-spin mr-2" />
+							<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 						) : (
 							<Fingerprint className="h-4 w-4 mr-2" />
 						)}
@@ -58,7 +58,7 @@ export function AuthSetupSteps({
 					<Button
 						type="button"
 						variant="outline"
-						className="w-full"
+						className="min-h-11 w-full"
 						disabled={isPending}
 						onClick={() => setShowPassword(true)}
 					>
@@ -90,7 +90,7 @@ export function AuthSetupSteps({
 								placeholder="At least 8 characters"
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
-								className="pl-10"
+								className="h-11 pl-10"
 								required
 								minLength={8}
 								autoComplete="new-password"
@@ -112,12 +112,13 @@ export function AuthSetupSteps({
 								onChange={(e) =>
 									setConfirmPassword(e.target.value)
 								}
-								className="pl-10"
+								className="h-11 pl-10"
 								required
 								minLength={8}
 								autoComplete="new-password"
 								aria-invalid={
-									confirmPassword.length > 0 && !passwordsMatch
+									confirmPassword.length > 0 &&
+									!passwordsMatch
 								}
 							/>
 						</div>
@@ -129,18 +130,18 @@ export function AuthSetupSteps({
 					</div>
 					<Button
 						type="submit"
-						className="w-full"
+						className="min-h-11 w-full"
 						disabled={isPending || !password || !passwordsMatch}
 					>
 						{isPending && (
-							<Loader2 className="h-4 w-4 animate-spin mr-2" />
+							<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 						)}
 						Create account
 					</Button>
 					<Button
 						type="button"
 						variant="ghost"
-						className="w-full"
+						className="min-h-11 w-full"
 						disabled={isPending}
 						onClick={() => setShowPassword(false)}
 					>

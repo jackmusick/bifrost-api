@@ -9,6 +9,11 @@ import { renderWithProviders, screen, within } from "@/test-utils";
 
 const mockUseApplications = vi.fn();
 const mockUseDeleteApplication = vi.fn();
+vi.mock("@/lib/detail-route-loaders", () => ({
+	prefetchApplicationDetail: vi.fn(),
+}));
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => true }));
+
 vi.mock("@/hooks/useApplications", () => ({
 	useApplications: () => mockUseApplications(),
 	useDeleteApplication: () => mockUseDeleteApplication(),
@@ -107,7 +112,7 @@ describe("Applications — app launch behavior", () => {
 		});
 		await renderPage();
 		expect(
-			screen.getByRole("button", { name: /live dash/i }),
+			screen.getByRole("button", { name: "Live Dash" }),
 		).toBeInTheDocument();
 		expect(screen.queryByText(/open published/i)).not.toBeInTheDocument();
 	});
@@ -152,7 +157,13 @@ describe("Applications — solution-managed badge (grid view)", () => {
 		await renderPage();
 		const badge = screen.getByTestId("solution-managed-badge");
 		expect(badge).toHaveAttribute("href", "/solutions/s1");
-		// Managed apps must not expose Settings/Code edit controls.
+		// Managed apps must not expose management menus.
+		expect(
+			screen.queryByRole("button", { name: "Managed App actions" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /delete application/i }),
+		).not.toBeInTheDocument();
 		expect(
 			screen.queryByRole("button", { name: /settings/i }),
 		).not.toBeInTheDocument();
@@ -167,15 +178,18 @@ describe("Applications — solution-managed badge (grid view)", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		await renderPage();
+		const { user } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: "Live Dash actions" }),
+		);
 		expect(
 			screen.queryByTestId("solution-managed-badge"),
 		).not.toBeInTheDocument();
 		expect(
-			screen.getByRole("button", { name: /settings/i }),
+			screen.getByRole("menuitem", { name: /settings/i }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("button", { name: /code editor/i }),
+			screen.getByRole("menuitem", { name: /code editor/i }),
 		).toBeInTheDocument();
 	});
 });
@@ -210,7 +224,10 @@ describe("Applications — solution-managed badge (table view)", () => {
 	});
 
 	it("shows Delete and no badge on a non-managed app row", async () => {
-		await renderTable([makeApp()]);
+		const user = await renderTable([makeApp()]);
+		await user.click(
+			screen.getByRole("button", { name: "Live Dash actions" }),
+		);
 		const table = document.querySelector("table")!;
 		expect(within(table).getByTestId("entity-logo")).toHaveAttribute(
 			"data-logo",
@@ -220,7 +237,37 @@ describe("Applications — solution-managed badge (table view)", () => {
 			within(table).queryByTestId("solution-managed-badge"),
 		).not.toBeInTheDocument();
 		expect(
-			within(table).getByRole("button", { name: /delete/i }),
+			screen.getByRole("menuitem", { name: "Delete" }),
 		).toBeInTheDocument();
 	});
+});
+
+it("distinguishes a failed initial lookup from an empty list and retries", async () => {
+	const refetch = vi.fn();
+	mockUseApplications.mockReturnValue({
+		data: undefined,
+		isLoading: false,
+		isError: true,
+		isFetching: false,
+		refetch,
+	});
+	const { user } = await renderPage();
+	expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load");
+	expect(screen.queryByText(/No .* found/i)).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry loading" }));
+	expect(refetch).toHaveBeenCalledTimes(1);
+});
+
+it("opens card deletion without launching the app", async () => {
+	mockUseApplications.mockReturnValue({
+		data: { applications: [makeApp()] },
+		isLoading: false,
+		refetch: vi.fn(),
+	});
+	const { user } = await renderPage();
+	screen.getByRole("button", { name: "Live Dash actions" }).focus();
+	await user.keyboard("{Enter}");
+	screen.getByRole("menuitem", { name: "Delete" }).focus();
+	await user.keyboard("{Enter}");
+	expect(screen.getByRole("alertdialog")).toHaveTextContent("Live Dash");
 });

@@ -3,7 +3,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen } from "@/test-utils";
+import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockUseExecution = vi.fn();
 vi.mock("@/hooks/useExecutions", () => ({
@@ -13,7 +13,8 @@ vi.mock("@/hooks/useExecutions", () => ({
 
 const mockUseWorkflowsMetadata = vi.fn();
 vi.mock("@/hooks/useWorkflows", () => ({
-	useWorkflowsMetadata: (...args: unknown[]) => mockUseWorkflowsMetadata(...args),
+	useWorkflowsMetadata: (...args: unknown[]) =>
+		mockUseWorkflowsMetadata(...args),
 	executeWorkflowWithContext: vi.fn(),
 }));
 
@@ -62,9 +63,7 @@ vi.mock("@/components/execution", () => ({
 	ExecutionMetadataBar: ({ workflowName }: { workflowName: string }) => (
 		<div>{workflowName}</div>
 	),
-	RunStatusBadge: ({ status }: { status: string }) => (
-		<span>{status}</span>
-	),
+	RunStatusBadge: ({ status }: { status: string }) => <span>{status}</span>,
 	PrettyInputDisplay: () => <div>Input</div>,
 }));
 
@@ -139,7 +138,9 @@ describe("ExecutionDetails — rerun visibility", () => {
 
 		await renderPage();
 
-		expect(screen.getByRole("button", { name: /rerun/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /rerun/i }),
+		).toBeInTheDocument();
 		expect(mockUseWorkflowsMetadata).toHaveBeenCalledWith({
 			enabled: true,
 		});
@@ -177,4 +178,140 @@ describe("ExecutionDetails — failed-run hierarchy", () => {
 			screen.queryByTestId("execution-error-banner"),
 		).not.toBeInTheDocument();
 	});
+});
+
+describe("ExecutionDetails — compact header", () => {
+	it("keeps the workflow identity and named execution actions available", async () => {
+		mockAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			hasRole: () => false,
+		});
+		mockUseWorkflowsMetadata.mockReturnValue({
+			data: {
+				workflows: [
+					{
+						name: execution.workflow_name,
+						source_file_path: "workflows/test-workflow.ts",
+					},
+				],
+				dataProviders: [],
+			},
+			isLoading: false,
+		});
+
+		await renderPage();
+
+		expect(
+			screen.getByRole("heading", { name: execution.workflow_name }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /copy execution id/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /back to history/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /editor/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /rerun/i }),
+		).toBeInTheDocument();
+		expect(screen.getByText("Success")).toBeInTheDocument();
+	});
+});
+
+describe("ExecutionDetails — cancelled outcome", () => {
+	it("does not label a cancelled run as a failure", async () => {
+		mockUseExecution.mockReturnValue({
+			data: {
+				...execution,
+				status: "Cancelled",
+				error_message: "Execution was cancelled",
+			},
+			isLoading: false,
+			error: null,
+		});
+		await renderPage();
+		await waitFor(() =>
+			expect(screen.getByText("This run was cancelled")).toBeVisible(),
+		);
+		expect(screen.queryByText("This run failed")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Copy cancellation message" }),
+		).toBeVisible();
+	});
+});
+
+describe("ExecutionDetails — embedded metrics", () => {
+	it("offers more details when the only extras are measured zero metrics", async () => {
+		mockAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			hasRole: () => false,
+		});
+		mockUseExecution.mockReturnValue({
+			data: { ...execution, peak_memory_bytes: 0, cpu_total_seconds: 0 },
+			isLoading: false,
+			error: null,
+		});
+		const { ExecutionDetails } = await import("./ExecutionDetails");
+		const { user } = renderWithProviders(
+			<ExecutionDetails executionId={execution.execution_id} embedded />,
+		);
+		const more = screen.getByRole("button", { name: "More details" });
+		await user.click(more);
+		expect(more).toHaveAttribute("aria-expanded", "true");
+	});
+});
+
+it("offers retry when initial execution loading fails", async () => {
+	const refetch = vi.fn();
+	mockUseExecution.mockReturnValue({
+		data: undefined,
+		isLoading: false,
+		error: new Error("Synthetic failure"),
+		isFetching: false,
+		refetch,
+	});
+	const { user } = await renderPage();
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Could not load execution",
+	);
+	await user.click(screen.getByRole("button", { name: "Retry execution" }));
+	expect(refetch).toHaveBeenCalledOnce();
+});
+
+it("retains cached execution content after a failed refresh", async () => {
+	mockUseExecution.mockReturnValue({
+		data: execution,
+		isLoading: false,
+		error: new Error("Synthetic failure"),
+		isFetching: true,
+		refetch: vi.fn(),
+	});
+	await renderPage();
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Could not refresh execution",
+	);
+	expect(
+		screen.getByRole("heading", { name: "test-workflow" }),
+	).toBeVisible();
+	expect(screen.getByRole("button", { name: "Retrying…" })).toBeDisabled();
+});
+
+it("keeps the embedded run identity and status visible without workspace actions", async () => {
+	mockAuth.mockReturnValue({
+		isPlatformAdmin: false,
+		hasRole: (role: string) => role === "EmbedUser",
+	});
+	await renderPage();
+	expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+		execution.workflow_name,
+	);
+	expect(screen.getByRole("status")).toHaveTextContent(execution.status);
+	expect(
+		screen.queryByRole("button", { name: "Back to history" }),
+	).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("button", { name: "Copy execution ID" }),
+	).not.toBeInTheDocument();
 });

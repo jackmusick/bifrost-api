@@ -9,7 +9,7 @@
  */
 
 import { ThumbsDown, ThumbsUp } from "lucide-react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,8 @@ export interface RunCardProps {
 	 *  Only surfaces while verdict === "down" and this callback is provided. */
 	onNote?: (runId: string, note: string) => void;
 	conversationCount?: number;
+	reviewDisabled?: boolean;
+	reviewFeedback?: ReactNode;
 }
 
 export function RunCard({
@@ -40,12 +42,14 @@ export function RunCard({
 	onVerdict,
 	onNote,
 	conversationCount = 0,
+	reviewDisabled = false,
+	reviewFeedback,
 }: RunCardProps) {
 	const canVerdict = run.status === "completed";
 
 	function handleVerdict(target: Verdict, e: MouseEvent) {
 		e.stopPropagation();
-		if (!onVerdict) return;
+		if (!onVerdict || reviewDisabled) return;
 		onVerdict(verdict === target ? null : target);
 	}
 
@@ -53,7 +57,7 @@ export function RunCard({
 	return (
 		<div
 			className={cn(
-				"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 transition-colors dark:ring-foreground/10",
+				"min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-card",
 				onOpen && "hover:bg-accent/50",
 			)}
 			data-slot="run-card"
@@ -69,7 +73,7 @@ export function RunCard({
 					}
 				}}
 				className={cn(
-					"flex items-start gap-3 p-3",
+					"flex min-w-0 items-start gap-3 p-4 rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 					onOpen && "cursor-pointer",
 				)}
 			>
@@ -78,11 +82,11 @@ export function RunCard({
 					highlight={highlight}
 					titleTrailing={
 						verdict === "up" ? (
-							<span className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+							<span className="inline-flex items-center gap-1 rounded border border-[var(--bf-success)]/30 bg-[var(--bf-success-soft)] px-1.5 py-0.5 text-xs font-medium text-[var(--bf-success)]">
 								<ThumbsUp size={11} /> Good
 							</span>
 						) : verdict === "down" ? (
-							<span className="inline-flex items-center gap-1 rounded border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-[11px] font-medium text-rose-700 dark:text-rose-300">
+							<span className="inline-flex items-center gap-1 rounded border border-[var(--bf-danger)]/30 bg-[var(--bf-danger-soft)] px-1.5 py-0.5 text-xs font-medium text-[var(--bf-danger)]">
 								<ThumbsDown size={11} /> Wrong
 								{conversationCount > 0
 									? ` · ${conversationCount} msg`
@@ -91,55 +95,58 @@ export function RunCard({
 						) : null
 					}
 				/>
-
-				<div
-					className="flex shrink-0 items-center"
-					onClick={(e) => e.stopPropagation()}
-				>
-					{canVerdict && onVerdict ? (
-						<div className="flex gap-1">
-							<button
-								type="button"
-								aria-label="Mark as good"
-								aria-pressed={verdict === "up"}
-								title="Good"
-								onClick={(e) => handleVerdict("up", e)}
-								className={cn(
-									"grid h-7 w-7 place-items-center rounded-full border transition-colors",
-									verdict === "up"
-										? "border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-										: "bg-background hover:bg-accent",
-								)}
-							>
-								<ThumbsUp size={14} />
-							</button>
-							<button
-								type="button"
-								aria-label="Mark as wrong"
-								aria-pressed={verdict === "down"}
-								title="Wrong"
-								onClick={(e) => handleVerdict("down", e)}
-								className={cn(
-									"grid h-7 w-7 place-items-center rounded-full border transition-colors",
-									verdict === "down"
-										? "border-rose-500 bg-rose-500/15 text-rose-600 dark:text-rose-400"
-										: "bg-background hover:bg-accent",
-								)}
-							>
-								<ThumbsDown size={14} />
-							</button>
-						</div>
-					) : (
-						<span className="text-[11px] text-muted-foreground">
-							n/a
-						</span>
-					)}
-				</div>
 			</div>
+			<div
+				className="flex min-w-0 items-center justify-end border-t px-4 py-3"
+				onClick={(e) => e.stopPropagation()}
+			>
+				{canVerdict && onVerdict ? (
+					<div className="flex gap-1">
+						<button
+							type="button"
+							disabled={reviewDisabled}
+							aria-label="Mark as good"
+							aria-pressed={verdict === "up"}
+							title="Good"
+							onClick={(e) => handleVerdict("up", e)}
+							className={cn(
+								"grid size-11 place-items-center rounded-[var(--bf-radius-control)] border disabled:cursor-not-allowed disabled:opacity-50 motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+								verdict === "up"
+									? "border-[var(--bf-success)] bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+									: "bg-background hover:bg-accent",
+							)}
+						>
+							<ThumbsUp size={14} />
+						</button>
+						<button
+							type="button"
+							disabled={reviewDisabled}
+							aria-label="Mark as wrong"
+							aria-pressed={verdict === "down"}
+							title="Wrong"
+							onClick={(e) => handleVerdict("down", e)}
+							className={cn(
+								"grid size-11 place-items-center rounded-[var(--bf-radius-control)] border disabled:cursor-not-allowed disabled:opacity-50 motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+								verdict === "down"
+									? "border-[var(--bf-danger)] bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
+									: "bg-background hover:bg-accent",
+							)}
+						>
+							<ThumbsDown size={14} />
+						</button>
+					</div>
+				) : (
+					<span className="text-xs text-muted-foreground">n/a</span>
+				)}
+			</div>
+			{reviewFeedback ? (
+				<div className="border-t p-4">{reviewFeedback}</div>
+			) : null}
 			{showNoteInput ? (
-				<div className="border-t px-3 py-2">
+				<div className="border-t p-4">
 					<Input
 						type="text"
+						disabled={reviewDisabled}
 						aria-label="What should it have done?"
 						placeholder="What should it have done?"
 						defaultValue={run.verdict_note ?? ""}
@@ -153,9 +160,10 @@ export function RunCard({
 						onBlur={(e) => {
 							const next = e.currentTarget.value.trim();
 							const prev = run.verdict_note ?? "";
-							if (next !== prev) onNote?.(run.id, next);
+							if (!reviewDisabled && next !== prev)
+								onNote?.(run.id, next);
 						}}
-						className="h-7 text-xs"
+						className="min-h-11 text-sm"
 						data-testid="run-card-note-input"
 					/>
 				</div>

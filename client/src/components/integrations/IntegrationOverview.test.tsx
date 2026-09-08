@@ -98,10 +98,14 @@ describe("IntegrationOverview — connected", () => {
 
 		expect(screen.getByText("Connected")).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: /reconnect default/i }));
+		await user.click(
+			screen.getByRole("button", { name: /reconnect default/i }),
+		);
 		expect(onOAuthConnect).toHaveBeenCalledTimes(1);
 
-		await user.click(screen.getByRole("button", { name: /refresh default token/i }));
+		await user.click(
+			screen.getByRole("button", { name: /refresh default token/i }),
+		);
 		expect(onOAuthRefresh).toHaveBeenCalledTimes(1);
 	});
 
@@ -119,12 +123,18 @@ describe("IntegrationOverview — connected", () => {
 				status: "connected",
 				oauth_flow_type: "authorization_code",
 			},
-			isOAuthConnected: false,
+			isOAuthConnected: true,
 			isOAuthExpired: true,
 		});
 		expect(
 			screen.getByText(/token expired - reconnect required/i),
 		).toBeInTheDocument();
+		expect(
+			screen.getByText("Expired", { exact: true }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText("Connected", { exact: true }),
+		).not.toBeInTheDocument();
 	});
 });
 
@@ -171,7 +181,9 @@ describe("IntegrationOverview — default fallback helper text", () => {
 			isOAuthConnected: true,
 		});
 		expect(
-			screen.getByText(/used when an organization isn't individually connected/i),
+			screen.getByText(
+				/used when an organization isn't individually connected/i,
+			),
 		).toBeInTheDocument();
 	});
 });

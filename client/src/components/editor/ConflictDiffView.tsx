@@ -1,19 +1,10 @@
 import { useRef, useState } from "react";
-import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
-import { useTheme } from "@/contexts/ThemeContext";
-import type * as Monaco from "monaco-editor";
+import { DiffEditor } from "@monaco-editor/react";
+import { AlertTriangle } from "lucide-react";
+import { useBifrostMonacoTheme } from "@/hooks/useBifrostMonacoTheme";
+import { useComparisonLayout } from "@/hooks/useComparisonLayout";
 import { Button } from "@/components/ui/button";
-import { Check } from "lucide-react";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { SourceOperationDialog } from "./SourceOperationDialog";
 
 interface ConflictInfo {
 	current_content: string;
@@ -21,118 +12,131 @@ interface ConflictInfo {
 	current_etag: string;
 	message: string;
 }
-
 interface ConflictDiffViewProps {
 	conflict: ConflictInfo;
 	filePath: string;
 	onResolve: (choice: "current" | "incoming") => Promise<void>;
 }
-
 export function ConflictDiffView({
 	conflict,
 	filePath,
 	onResolve,
 }: ConflictDiffViewProps) {
-	const { theme } = useTheme();
-	const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
-	const [showConfirm, setShowConfirm] = useState(false);
+	const appearance = useBifrostMonacoTheme();
+	const { containerRef, wide } = useComparisonLayout();
 	const [choice, setChoice] = useState<"current" | "incoming" | null>(null);
-
-	const handleMount: DiffOnMount = (editor) => {
-		editorRef.current = editor;
-	};
-
-	const confirmChoice = (selectedChoice: "current" | "incoming") => {
-		setChoice(selectedChoice);
-		setShowConfirm(true);
-	};
-
-	const handleConfirm = async () => {
-		if (!choice) return;
-
-		await onResolve(choice);
-		setShowConfirm(false);
-	};
-
+	const triggerRef = useRef<HTMLButtonElement | null>(null);
 	return (
-		<>
-			<div className="flex flex-col h-full bg-background rounded-lg ring-1 ring-foreground/5">
-				<div className="flex items-center justify-between p-4 border-b">
-					<div>
-						<h3 className="text-lg font-semibold">
-							Resolve Conflict
-						</h3>
-						<p className="text-sm text-muted-foreground">
-							{filePath}
-						</p>
-						<p className="text-sm text-yellow-600 dark:text-yellow-500 mt-1">
-							{conflict.message}
-						</p>
+		<section
+			aria-label="Save conflict comparison"
+			ref={containerRef}
+			className="flex h-full min-h-0 min-w-0 flex-col bg-background"
+		>
+			<header className="shrink-0 space-y-2 border-b p-3">
+				<h3 className="text-sm font-semibold">Resolve save conflict</h3>
+				<p className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+					{filePath}
+				</p>
+				<p className="flex items-start gap-2 text-sm">
+					<AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--bf-warning)]" />
+					<span className="min-w-0 [overflow-wrap:anywhere]">
+						{conflict.message}
+					</span>
+				</p>
+			</header>
+			<div className="shrink-0 border-b text-xs text-muted-foreground">
+				{wide ? (
+					<div className="grid grid-cols-2">
+						<span className="border-r px-3 py-2">
+							Server version
+						</span>
+						<span className="px-3 py-2">Your local version</span>
 					</div>
-					<div className="flex gap-2">
-						<Button
-							variant="outline"
-							onClick={() => confirmChoice("current")}
-						>
-							Keep Current (Server)
-						</Button>
-						<Button
-							variant="outline"
-							onClick={() => confirmChoice("incoming")}
-						>
-							Use Incoming (Local)
-						</Button>
-					</div>
-				</div>
-
-				<div className="flex-1 min-h-0">
-					<DiffEditor
-						height="100%"
-						language={
-							filePath.endsWith(".py")
-								? "python"
-								: filePath.endsWith(".json")
-									? "json"
-									: "plaintext"
-						}
-						theme={theme === "dark" ? "vs-dark" : "light"}
-						original={conflict.current_content}
-						modified={conflict.incoming_content}
-						onMount={handleMount}
-						options={{
-							readOnly: true,
-							minimap: { enabled: false },
-							scrollBeyondLastLine: false,
-						}}
-					/>
-				</div>
+				) : (
+					<p className="px-3 py-2">
+						Server → Local · Unified comparison
+					</p>
+				)}
 			</div>
-
-			<AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Confirm Resolution</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to{" "}
-							{choice === "current"
-								? "keep the server version"
-								: "use your local version"}
-							?
-							<br />
-							<br />
-							This will overwrite the file on the server with the
-							selected version.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirm}>
-							<Check className="mr-2 h-4 w-4" />
-							Confirm
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</>
+			<div className="min-h-0 min-w-0 flex-1">
+				<DiffEditor
+					height="100%"
+					language={
+						filePath.endsWith(".py")
+							? "python"
+							: filePath.endsWith(".json")
+								? "json"
+								: "plaintext"
+					}
+					theme={appearance.theme}
+					beforeMount={appearance.beforeMount}
+					onMount={appearance.onMount}
+					original={conflict.current_content}
+					modified={conflict.incoming_content}
+					options={{
+						...appearance.options,
+						readOnly: true,
+						minimap: { enabled: false },
+						scrollBeyondLastLine: false,
+						renderSideBySide: wide,
+						wordWrap: "on",
+						diffWordWrap: "on",
+						lineNumbersMinChars: 3,
+					}}
+				/>
+			</div>
+			<footer className="flex shrink-0 flex-wrap gap-2 border-t p-3">
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11 h-auto whitespace-normal"
+					onClick={(event) => {
+						triggerRef.current = event.currentTarget;
+						setChoice("current");
+					}}
+				>
+					Use server version
+				</Button>
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11 h-auto whitespace-normal"
+					onClick={(event) => {
+						triggerRef.current = event.currentTarget;
+						setChoice("incoming");
+					}}
+				>
+					Use local version
+				</Button>
+			</footer>
+			{choice && (
+				<SourceOperationDialog
+					title={
+						choice === "current"
+							? "Use server version?"
+							: "Use local version?"
+					}
+					description={
+						choice === "current"
+							? "Replace your local edits with the server version shown in this comparison."
+							: "Overwrite the server file with the local version shown in this comparison."
+					}
+					confirmLabel={
+						choice === "current"
+							? "Use server version"
+							: "Use local version"
+					}
+					pendingLabel="Resolving conflict…"
+					cancelLabel="Keep reviewing"
+					onConfirm={() => onResolve(choice)}
+					onClose={() => setChoice(null)}
+					onRestoreFocus={() => triggerRef.current?.focus()}
+				>
+					<p className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+						{filePath}
+					</p>
+				</SourceOperationDialog>
+			)}
+		</section>
 	);
 }

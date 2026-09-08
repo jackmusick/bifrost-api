@@ -1,3 +1,5 @@
+import { SolutionUninstallNotice } from "@/components/solutions/SolutionUninstallNotice";
+import { SolutionDeleteDialog } from "@/components/solutions/SolutionDeleteDialog";
 /**
  * Solution Detail Page
  *
@@ -8,7 +10,9 @@
  * surface — required inputs an install needs before it can run.
  */
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { Progress } from "@/components/ui/progress";
+import { GeneratedEndpointKeyDialog } from "@/components/solutions/GeneratedEndpointKeyDialog";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -38,11 +42,8 @@ import {
 	Code2,
 	Shield,
 	Users,
-	Unlink,
 	ArrowUp,
-	RefreshCw,
 	PowerOff,
-	Trash2,
 	RotateCcw,
 	Archive,
 	Download,
@@ -74,7 +75,7 @@ import {
 	type WorkflowListItem,
 } from "@/components/workflows/WorkflowListSurface";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -86,14 +87,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
+
 import {
 	Sheet,
 	SheetContent,
@@ -101,16 +95,7 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { CreateEditSolution } from "@/components/solutions/CreateEditSolution";
 import { SolutionCaptureDialog } from "@/components/solutions/SolutionCaptureDialog";
@@ -124,7 +109,6 @@ import {
 	getSolutionReadme,
 	deleteSolution,
 	uninstallSolution,
-	getSolutionDeletionSummary,
 	exportSolution,
 	createSolutionExportJob,
 	listSolutionExportJobs,
@@ -135,17 +119,18 @@ import {
 	syncSolution,
 	previewSolutionFromRepo,
 } from "@/services/solutions";
-import { UpgradeDiffView } from "@/components/solutions/CreateEditSolution";
+import { SolutionUpdateDialog } from "@/components/solutions/SolutionUpdateDialog";
 import { SolutionSetupWizard } from "@/components/solutions/SolutionSetupWizard";
 import { SolutionReadmeTab } from "@/components/solutions/SolutionReadmeTab";
 import { workflowKeysService } from "@/services/workflowKeys";
 import { useUser } from "@/hooks/useUsers";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { components } from "@/lib/v1";
 
 type EntitySummary = components["schemas"]["SolutionEntitySummary"];
 type ConfigStatus = components["schemas"]["SolutionConfigStatus"];
 type ConfigType = components["schemas"]["ConfigType"];
-type SolutionDeletionSummary = components["schemas"]["SolutionDeletionSummary"];
+
 type AccessUserSummary = {
 	id: string;
 	name?: string | null;
@@ -170,13 +155,7 @@ type TabKey = "overview" | "contents" | "access" | "configuration" | "exports";
 
 /** The entity kinds shown inside the Contents tab (the old per-entity tabs). */
 type EntityKind =
-	| "workflows"
-	| "apps"
-	| "forms"
-	| "agents"
-	| "tables"
-	| "claims"
-	| "files";
+	"workflows" | "apps" | "forms" | "agents" | "tables" | "claims" | "files";
 
 /** Contents type-chip selection: a specific kind or the combined summary. */
 type ContentsFilter = "all" | EntityKind;
@@ -302,31 +281,10 @@ const ENTITY_KIND_LABEL: Record<EntityKind, string> = {
 };
 
 const ACCESS_BADGE_CLASS: Record<string, string> = {
-	"Role based":
-		"border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-	Authenticated:
-		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-	Everyone:
-		"border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-	"Not exposed":
-		"border-muted-foreground/30 bg-muted/40 text-muted-foreground",
-};
-
-const KIND_BADGE_CLASS: Record<EntityKind, string> = {
-	workflows:
-		"border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-	apps:
-		"border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
-	forms:
-		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-	agents:
-		"border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
-	tables:
-		"border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-	claims:
-		"border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-	files:
-		"border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+	"Role based": "border-border bg-muted/40 text-foreground",
+	Authenticated: "border-border bg-muted/40 text-foreground",
+	Everyone: "border-border bg-muted/40 text-foreground",
+	"Not exposed": "border-border bg-muted/40 text-muted-foreground",
 };
 
 function readableAccessMode(entity: EntitySummary): string {
@@ -505,7 +463,7 @@ function SolutionEntityGrid({
 }) {
 	const navigate = useNavigate();
 	return (
-		<div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+		<div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
 			{items.map((entity) => {
 				const href = entityHref(kind, entity, solutionId);
 				const status = entityStatus(entity, kind);
@@ -517,7 +475,10 @@ function SolutionEntityGrid({
 							tabIndex={0}
 							onClick={() => navigate(href)}
 							onKeyDown={(event) => {
-								if (event.key === "Enter" || event.key === " ") {
+								if (
+									event.key === "Enter" ||
+									event.key === " "
+								) {
 									event.preventDefault();
 									navigate(href);
 								}
@@ -541,7 +502,10 @@ function SolutionEntityGrid({
 											{entity.name}
 										</span>
 									</div>
-									<Badge variant="outline" className="text-[10px] px-1.5 py-0">
+									<Badge
+										variant="outline"
+										className="text-[10px] px-1.5 py-0"
+									>
 										{entity.app_model ?? "app"}
 									</Badge>
 								</div>
@@ -569,7 +533,10 @@ function SolutionEntityGrid({
 										{entity.slug ?? sourceRef(entity)}
 									</span>
 								</div>
-								<Badge variant="default" className="text-[10px] px-1.5 py-0">
+								<Badge
+									variant="default"
+									className="text-[10px] px-1.5 py-0"
+								>
 									Managed
 								</Badge>
 							</div>
@@ -579,14 +546,14 @@ function SolutionEntityGrid({
 
 				if (kind === "agents") {
 					return (
-						<a
+						<Link
 							key={entity.id}
-							href={href}
-							className="group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm ring-1 ring-foreground/5 transition-all hover:-translate-y-px hover:ring-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							to={href}
+							className="group flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border border-border/70 bg-card transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
 						>
 							<div className="border-b px-4 pb-3 pt-3.5">
 								<div className="flex items-start justify-between gap-3">
-									<div className="flex min-w-0 items-center gap-2">
+									<div className="flex min-w-0 flex-wrap items-center gap-2">
 										<EntityLogo
 											entityType="agent"
 											entityId={entity.id}
@@ -597,27 +564,37 @@ function SolutionEntityGrid({
 											size={20}
 											className="h-5 w-5 rounded shrink-0 object-cover"
 										/>
-										<span className="truncate text-[14.5px] font-semibold">
+										<span className="text-sm font-semibold [overflow-wrap:anywhere]">
 											{entity.name}
 										</span>
 										{status && (
-											<Badge variant={status === "Paused" ? "secondary" : "default"} className="text-[11px]">
+											<Badge
+												variant="outline"
+												className="text-[11px]"
+											>
 												{status}
 											</Badge>
 										)}
 									</div>
 								</div>
 								{entity.description && (
-									<p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+									<p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">
 										{entity.description}
 									</p>
 								)}
 							</div>
-							<div className="flex flex-1 items-center justify-between gap-2 p-4 text-xs text-muted-foreground">
-								<span>{entity.access_level ?? "authenticated"}</span>
-								<span>{entity.type ?? "agent"}</span>
+							<div className="flex flex-1 flex-wrap items-center justify-between gap-2 p-4 text-xs text-muted-foreground">
+								<span>
+									{readableAccessMode({
+										...entity,
+										access_level:
+											entity.access_level ??
+											"authenticated",
+									})}
+								</span>
+								<span>{entity.type ?? "Agent"}</span>
 							</div>
-						</a>
+						</Link>
 					);
 				}
 
@@ -650,63 +627,94 @@ function SolutionEntityGrid({
 								</div>
 								<Button
 									variant="outline"
-									size="icon-sm"
+									size="icon-lg"
 									onClick={() => navigate(href)}
-									title={`Open ${entity.name}`}
+									aria-label={`Open ${entity.name}`}
 								>
 									<Code2 className="h-3.5 w-3.5" />
 								</Button>
 							</div>
 							<CardTitle
 								className={
-									kind === "workflows" || kind === "tables" || kind === "claims"
-										? "font-mono text-base break-all"
-										: "text-base break-all"
+									kind === "workflows" ||
+									kind === "tables" ||
+									kind === "claims"
+										? "font-mono text-base [overflow-wrap:anywhere]"
+										: "text-base [overflow-wrap:anywhere]"
 								}
 							>
 								{entity.name}
 							</CardTitle>
 							{entity.description && (
-								<CardDescription className="mt-2 text-sm break-words line-clamp-2">
+								<CardDescription className="mt-2 text-sm [overflow-wrap:anywhere]">
 									{entity.description}
 								</CardDescription>
 							)}
 						</CardHeader>
 						<CardContent className="pt-0 mt-auto space-y-3">
-							<div className="flex items-center gap-2 text-xs text-muted-foreground">
-								{entity.category && <span>{entity.category}</span>}
+							<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+								{entity.category && (
+									<span>{entity.category}</span>
+								)}
 								{entity.category && <span>·</span>}
-								{kind === "workflows" && <span>{sourceRef(entity)}</span>}
-								{kind === "forms" && accessBadge(entity.access_level)}
-								{kind === "tables" && <span>{formatDate(entity.created_at)}</span>}
+								{kind === "workflows" && (
+									<span>{sourceRef(entity)}</span>
+								)}
+								{kind === "forms" &&
+									accessBadge(entity.access_level)}
+								{kind === "tables" && (
+									<span>{formatDate(entity.created_at)}</span>
+								)}
 								{kind === "claims" && (
-									<span className="font-mono">
-										{entity.source_table ?? "-"}.{entity.select ?? "*"}
-									</span>
+									<dl className="w-full space-y-3">
+										<div>
+											<dt className="mb-1">
+												Source table
+											</dt>
+											<dd className="font-mono text-foreground [overflow-wrap:anywhere]">
+												{entity.source_table ?? "-"}
+											</dd>
+										</div>
+										<div>
+											<dt className="mb-1">Select</dt>
+											<dd className="font-mono text-foreground [overflow-wrap:anywhere]">
+												{entity.select ?? "*"}
+											</dd>
+										</div>
+									</dl>
 								)}
 							</div>
 							{status && (
 								<div className="flex flex-wrap items-center gap-1.5">
-									<Badge variant={status === "Active" ? "default" : "secondary"}>
+									<Badge
+										variant={
+											status === "Active"
+												? "default"
+												: "secondary"
+										}
+									>
 										{status}
 									</Badge>
 								</div>
 							)}
-							{kind === "workflows" && entity.type === "data_provider" && (
-								<div className="flex flex-wrap items-center gap-1.5">
-									<Badge variant="outline">
-										<Database className="mr-1 h-3 w-3" />
-										Data provider
-									</Badge>
-								</div>
-							)}
+							{kind === "workflows" &&
+								entity.type === "data_provider" && (
+									<div className="flex flex-wrap items-center gap-1.5">
+										<Badge variant="outline">
+											<Database className="mr-1 h-3 w-3" />
+											Data provider
+										</Badge>
+									</div>
+								)}
 							{kind === "tables" && entity.source_table && (
-								<div className="flex flex-wrap items-center gap-1.5">
-									<Badge variant="outline">
-										<Unlink className="mr-1 h-3 w-3" />
+								<dl className="text-xs">
+									<dt className="mb-1 text-muted-foreground">
+										Source table
+									</dt>
+									<dd className="font-mono [overflow-wrap:anywhere]">
 										{entity.source_table}
-									</Badge>
-								</div>
+									</dd>
+								</dl>
 							)}
 						</CardContent>
 					</Card>
@@ -734,37 +742,63 @@ function SolutionEntityTable({
 					<DataTableHead>Description</DataTableHead>
 					{kind === "workflows" && (
 						<>
-							<DataTableHead className="w-0 whitespace-nowrap">Type</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Category</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Source</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Type
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Category
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Source
+							</DataTableHead>
 						</>
 					)}
 					{kind === "apps" && (
 						<>
-							<DataTableHead className="w-0 whitespace-nowrap">Model</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Source</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Model
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Source
+							</DataTableHead>
 						</>
 					)}
 					{kind === "forms" && (
 						<>
-							<DataTableHead className="w-0 whitespace-nowrap">Access</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Status</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Access
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Status
+							</DataTableHead>
 						</>
 					)}
 					{kind === "agents" && (
 						<>
-							<DataTableHead className="w-0 whitespace-nowrap">Access</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Status</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Access
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Status
+							</DataTableHead>
 						</>
 					)}
 					{kind === "tables" && (
-						<DataTableHead className="w-0 whitespace-nowrap">Created</DataTableHead>
+						<DataTableHead className="w-0 whitespace-nowrap">
+							Created
+						</DataTableHead>
 					)}
 					{kind === "claims" && (
 						<>
-							<DataTableHead className="w-0 whitespace-nowrap">Type</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Source table</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">Select</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Type
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Source table
+							</DataTableHead>
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Select
+							</DataTableHead>
 						</>
 					)}
 				</DataTableRow>
@@ -776,11 +810,15 @@ function SolutionEntityTable({
 						<DataTableRow
 							key={entity.id}
 							clickable
-							onClick={() => navigate(entityHref(kind, entity, solutionId))}
+							onClick={() =>
+								navigate(entityHref(kind, entity, solutionId))
+							}
 						>
 							<DataTableCell
 								className={
-									kind === "workflows" || kind === "tables" || kind === "claims"
+									kind === "workflows" ||
+									kind === "tables" ||
+									kind === "claims"
 										? "font-mono font-medium"
 										: "font-medium"
 								}
@@ -810,10 +848,22 @@ function SolutionEntityTable({
 											className="h-[18px] w-[18px] rounded object-cover shrink-0"
 										/>
 									)}
-									{entity.name}
+									<Link
+										to={entityHref(
+											kind,
+											entity,
+											solutionId,
+										)}
+										onClick={(event) =>
+											event.stopPropagation()
+										}
+										className="inline-flex min-h-11 items-center rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									>
+										{entity.name}
+									</Link>
 								</span>
 							</DataTableCell>
-							<DataTableCell className="max-w-xs truncate text-muted-foreground">
+							<DataTableCell className="max-w-xs whitespace-normal [overflow-wrap:anywhere] text-muted-foreground">
 								{entity.description || "-"}
 							</DataTableCell>
 							{kind === "workflows" && (
@@ -832,7 +882,9 @@ function SolutionEntityTable({
 							{kind === "apps" && (
 								<>
 									<DataTableCell className="w-0 whitespace-nowrap">
-										<Badge variant="outline">{entity.app_model ?? "-"}</Badge>
+										<Badge variant="outline">
+											{entity.app_model ?? "-"}
+										</Badge>
 									</DataTableCell>
 									<DataTableCell className="w-0 max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
 										{sourceRef(entity)}
@@ -842,10 +894,18 @@ function SolutionEntityTable({
 							{kind === "forms" && (
 								<>
 									<DataTableCell className="w-0 whitespace-nowrap">
-										<Badge variant="outline">{entity.access_level ?? "-"}</Badge>
+										<Badge variant="outline">
+											{entity.access_level ?? "-"}
+										</Badge>
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap">
-										<Badge variant={status === "Inactive" ? "secondary" : "default"}>
+										<Badge
+											variant={
+												status === "Inactive"
+													? "secondary"
+													: "default"
+											}
+										>
 											{status}
 										</Badge>
 									</DataTableCell>
@@ -854,10 +914,18 @@ function SolutionEntityTable({
 							{kind === "agents" && (
 								<>
 									<DataTableCell className="w-0 whitespace-nowrap">
-										<Badge variant="outline">{entity.access_level ?? "-"}</Badge>
+										<Badge variant="outline">
+											{entity.access_level ?? "-"}
+										</Badge>
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap">
-										<Badge variant={status === "Paused" ? "secondary" : "default"}>
+										<Badge
+											variant={
+												status === "Paused"
+													? "secondary"
+													: "default"
+											}
+										>
 											{status}
 										</Badge>
 									</DataTableCell>
@@ -904,6 +972,7 @@ function EntityTabContent({
 	fileCount?: number;
 }) {
 	const navigate = useNavigate();
+	const isMobile = useMediaQuery("(max-width: 1023px)");
 	const [search, setSearch] = useState("");
 	const [shareForm, setShareForm] = useState<{
 		id: string;
@@ -928,7 +997,7 @@ function EntityTabContent({
 					e.source_table,
 					e.select,
 				].some((value) => value?.toLowerCase().includes(q)),
-				)
+			)
 		: items;
 	const managedVisible = visible.map((entity) => ({
 		...entity,
@@ -946,13 +1015,16 @@ function EntityTabContent({
 		const count = fileCount ?? 0;
 		if (count === 0) {
 			return (
-				<div className="text-sm text-muted-foreground py-8 text-center rounded-2xl border border-dashed">
+				<div className="text-sm text-muted-foreground py-8 text-center rounded-[var(--bf-radius-surface)] border border-dashed">
 					This Solution has no files.
 				</div>
 			);
 		}
 		return (
-			<div className="h-[min(72vh,48rem)] min-h-[32rem]" data-testid="solution-files-tab">
+			<div
+				className="h-[min(72dvh,48rem)] min-h-96"
+				data-testid="solution-files-tab"
+			>
 				<FilesExplorer
 					install={solutionId}
 					installName={solutionName}
@@ -964,7 +1036,7 @@ function EntityTabContent({
 
 	if (items.length === 0) {
 		return (
-			<div className="text-sm text-muted-foreground py-8 text-center rounded-2xl border border-dashed">
+			<div className="text-sm text-muted-foreground py-8 text-center rounded-[var(--bf-radius-surface)] border border-dashed">
 				This Solution deploys no {ENTITY_TAB_LABEL[kind]}.
 			</div>
 		);
@@ -978,94 +1050,99 @@ function EntityTabContent({
 					placeholder={`Search ${ENTITY_TAB_LABEL[kind]}...`}
 					className="flex-1"
 				/>
-					{canToggleView && (
-						<ToggleGroup
-							type="single"
-							value={viewMode}
-							onValueChange={(value: string) =>
-								value && setViewMode(value as "grid" | "table")
-							}
+				{canToggleView && !isMobile && (
+					<ToggleGroup
+						type="single"
+						value={viewMode}
+						onValueChange={(value: string) =>
+							value && setViewMode(value as "grid" | "table")
+						}
+					>
+						<ToggleGroupItem
+							value="grid"
+							aria-label="Grid view"
+							className="h-11 w-11"
 						>
-							<ToggleGroupItem value="grid" aria-label="Grid view" size="sm">
-								<LayoutGrid className="h-4 w-4" />
-							</ToggleGroupItem>
-							<ToggleGroupItem value="table" aria-label="Table view" size="sm">
-								<TableIcon className="h-4 w-4" />
-							</ToggleGroupItem>
-						</ToggleGroup>
-					)}
+							<LayoutGrid className="h-4 w-4" />
+						</ToggleGroupItem>
+						<ToggleGroupItem
+							value="table"
+							aria-label="Table view"
+							className="h-11 w-11"
+						>
+							<TableIcon className="h-4 w-4" />
+						</ToggleGroupItem>
+					</ToggleGroup>
+				)}
 			</div>
-				{visible.length === 0 ? (
-					<div className="text-sm text-muted-foreground py-8 text-center rounded-2xl border border-dashed">
-						No {ENTITY_TAB_LABEL[kind]} match “{search.trim()}”.
-					</div>
-				) : kind === "workflows" ? (
-					<WorkflowListSurface
-						workflows={managedVisible as WorkflowListItem[]}
-						viewMode={viewMode}
+			{visible.length === 0 ? (
+				<div className="text-sm text-muted-foreground py-8 text-center rounded-[var(--bf-radius-surface)] border border-dashed">
+					No {ENTITY_TAB_LABEL[kind]} match “{search.trim()}”.
+				</div>
+			) : kind === "workflows" ? (
+				<WorkflowListSurface
+					workflows={managedVisible as WorkflowListItem[]}
+					viewMode={isMobile ? "grid" : viewMode}
+					isPlatformAdmin={false}
+					canManageWorkflows={true}
+					getOrgName={() => "Solution"}
+					onExecute={(workflow) =>
+						navigate(
+							`/workflows/${encodeURIComponent(workflow.name ?? "")}/execute?from=solution:${solutionId}`,
+						)
+					}
+					emptySearchActive={Boolean(search.trim())}
+				/>
+			) : kind === "apps" ? (
+				<ApplicationListSurface
+					apps={managedVisible as ApplicationListItem[]}
+					viewMode={isMobile ? "grid" : viewMode}
+					isPlatformAdmin={false}
+					canManageApps={true}
+					getOrgName={() => "Solution"}
+					onLaunch={(app) =>
+						navigate(
+							`/apps/${app.slug ?? app.id}?from=solution:${solutionId}`,
+						)
+					}
+					onPreview={(app) =>
+						navigate(
+							`/apps/${app.slug ?? app.id}/preview?from=solution:${solutionId}`,
+						)
+					}
+					emptySearchActive={Boolean(search.trim())}
+				/>
+			) : kind === "forms" ? (
+				<>
+					<FormListSurface
+						forms={managedVisible as FormListItem[]}
+						viewMode={isMobile ? "grid" : viewMode}
 						isPlatformAdmin={false}
-						canManageWorkflows={true}
+						canManageForms={true}
 						getOrgName={() => "Solution"}
-						onViewHistory={(workflow) =>
-							navigate(`/history?workflow=${workflow.id ?? ""}`)
-						}
-						onExecute={(workflow) =>
+						formValidation={formValidation}
+						onLaunch={(form) =>
 							navigate(
-								`/workflows/${encodeURIComponent(workflow.name ?? "")}/execute?from=solution:${solutionId}`,
+								`/execute/${form.id}?from=solution:${solutionId}`,
 							)
+						}
+						onShare={(form) =>
+							setShareForm({ id: form.id, name: form.name })
 						}
 						emptySearchActive={Boolean(search.trim())}
 					/>
-				) : kind === "apps" ? (
-					<ApplicationListSurface
-						apps={managedVisible as ApplicationListItem[]}
-						viewMode={viewMode}
-						isPlatformAdmin={false}
-						canManageApps={true}
-						getOrgName={() => "Solution"}
-						onLaunch={(app) =>
-							navigate(`/apps/${app.slug ?? app.id}?from=solution:${solutionId}`)
-						}
-						onPreview={(app) =>
-							navigate(
-								`/apps/${app.slug ?? app.id}/preview?from=solution:${solutionId}`,
-							)
-						}
-						emptySearchActive={Boolean(search.trim())}
-					/>
-				) : kind === "forms" ? (
-					<>
-						<FormListSurface
-							forms={managedVisible as FormListItem[]}
-							viewMode={viewMode}
-							isPlatformAdmin={false}
-							canManageForms={true}
-							getOrgName={() => "Solution"}
-							formValidation={formValidation}
-							onLaunch={(form) =>
-								navigate(
-									`/execute/${form.id}?from=solution:${solutionId}`,
-								)
-							}
-							onShare={(form) =>
-								setShareForm({ id: form.id, name: form.name })
-							}
-							emptySearchActive={Boolean(search.trim())}
+					{shareForm ? (
+						<FormShareDialog
+							formId={shareForm.id}
+							formName={shareForm.name}
+							open
+							onOpenChange={(open) => !open && setShareForm(null)}
 						/>
-						{shareForm ? (
-							<FormShareDialog
-								formId={shareForm.id}
-								formName={shareForm.name}
-								open
-								onOpenChange={(open) =>
-									!open && setShareForm(null)
-								}
-							/>
-						) : null}
-					</>
-				) : viewMode === "grid" ? (
-					<SolutionEntityGrid
-						kind={kind}
+					) : null}
+				</>
+			) : isMobile || viewMode === "grid" ? (
+				<SolutionEntityGrid
+					kind={kind}
 					items={visible}
 					solutionId={solutionId}
 				/>
@@ -1089,6 +1166,8 @@ function ConfigRow({
 	orgId: string | null;
 	onSaved: () => void;
 }) {
+	const inputId = useId();
+	const savingRef = useRef(false);
 	const [value, setValue] = useState("");
 	const secret = isSecretType(config.type);
 
@@ -1105,32 +1184,41 @@ function ConfigRow({
 			setValue("");
 			onSaved();
 		},
-		onError: (err: unknown) => {
-			toast.error(
-				err instanceof Error ? err.message : "Failed to save config value",
-			);
+		onSettled: () => {
+			savingRef.current = false;
 		},
 	});
 
 	const requiredUnset = config.required && !config.value_set;
 
 	return (
-		<div
+		<form
+			onSubmit={(event) => {
+				event.preventDefault();
+				if (!value.trim() || savingRef.current) return;
+				savingRef.current = true;
+				saveMut.mutate();
+			}}
 			className={
-				"rounded-lg border p-4 " +
-				(requiredUnset ? "border-yellow-500/60 bg-yellow-500/5" : "")
+				"min-w-0 rounded-[var(--bf-radius-surface)] border p-4 " +
+				(requiredUnset
+					? "border-[var(--bf-warning)]/40 bg-[var(--bf-warning)]/5"
+					: "")
 			}
 		>
-			<div className="flex items-center justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate font-mono text-sm font-medium">
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+					<label
+						htmlFor={inputId}
+						className="w-full font-mono text-sm font-medium [overflow-wrap:anywhere]"
+					>
 						{config.key}
-					</span>
+					</label>
 					<Badge variant="outline" className="shrink-0 text-[10px]">
 						{config.type}
 					</Badge>
 					{config.required && (
-						<span className="shrink-0 text-xs text-destructive">
+						<span className="shrink-0 text-xs text-muted-foreground">
 							required
 						</span>
 					)}
@@ -1140,7 +1228,7 @@ function ConfigRow({
 					className={
 						"flex shrink-0 items-center gap-1 text-xs font-medium " +
 						(config.value_set
-							? "text-green-600 dark:text-green-500"
+							? "text-[var(--bf-success)]"
 							: "text-muted-foreground")
 					}
 				>
@@ -1153,41 +1241,83 @@ function ConfigRow({
 				</span>
 			</div>
 			{config.description && (
-				<p className="mt-1 text-xs text-muted-foreground">
+				<p
+					id={`${inputId}-description`}
+					className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]"
+				>
 					{config.description}
 				</p>
 			)}
-			<div className="mt-3 flex items-center gap-2">
+			<div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
 				<Input
+					id={inputId}
+					aria-describedby={
+						config.description
+							? `${inputId}-description`
+							: undefined
+					}
+					aria-invalid={saveMut.isError || undefined}
+					aria-errormessage={
+						saveMut.isError ? `${inputId}-error` : undefined
+					}
+					disabled={saveMut.isPending}
+					className="min-h-11"
 					data-testid={`config-value-input-${config.key}`}
 					type={secret ? "password" : "text"}
 					value={value}
 					placeholder={
-						config.value_set ? "Enter a new value…" : "Enter a value…"
+						config.value_set
+							? "Enter a new value…"
+							: "Enter a value…"
 					}
-					onChange={(e) => setValue(e.target.value)}
+					onChange={(e) => {
+						setValue(e.target.value);
+						if (saveMut.isError) saveMut.reset();
+					}}
 				/>
 				<Button
+					type="submit"
+					className="min-h-11"
 					data-testid={`save-config-${config.key}`}
 					disabled={value.trim() === "" || saveMut.isPending}
-					onClick={() => saveMut.mutate()}
 				>
 					{saveMut.isPending && (
-						<Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+						<Loader2
+							aria-hidden="true"
+							className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none"
+						/>
 					)}
-					Save
+					{saveMut.isPending
+						? "Saving…"
+						: saveMut.isError
+							? "Retry save"
+							: "Save"}
 				</Button>
 			</div>
-		</div>
+			{saveMut.isError && (
+				<p
+					id={`${inputId}-error`}
+					role="alert"
+					className="mt-3 text-sm text-destructive"
+				>
+					Couldn't save this value. Your entry is ready to retry.
+				</p>
+			)}
+			{saveMut.isPending && (
+				<p role="status" className="sr-only">
+					Saving configuration value…
+				</p>
+			)}
+		</form>
 	);
 }
 
 /** Tailwind classes for a Contents type-chip (selected vs not). */
 function chipClass(active: boolean): string {
 	return [
-		"inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors",
+		"inline-flex min-h-11 items-center gap-1.5 rounded-[var(--bf-radius-control)] border px-3 py-2 text-sm transition-colors duration-(--bf-motion-feedback) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
 		active
-			? "border-primary bg-primary text-primary-foreground"
+			? "border-primary/35 bg-primary/10 text-primary"
 			: "border-border bg-background text-muted-foreground hover:bg-muted",
 	].join(" ");
 }
@@ -1197,6 +1327,9 @@ function chipClass(active: boolean): string {
  * content is read-only in the UI; changes flow through deploy/sync. */
 function OverviewTab({
 	readme,
+	readmeLoading,
+	readmeError,
+	onRetryReadme,
 	entityCounts,
 	configsCount,
 	version,
@@ -1205,6 +1338,9 @@ function OverviewTab({
 	onPickEntity,
 }: {
 	readme: string | null;
+	readmeLoading: boolean;
+	readmeError: boolean;
+	onRetryReadme: () => void;
 	entityCounts: Record<EntityKind, number>;
 	configsCount: number;
 	version: string | null;
@@ -1214,33 +1350,38 @@ function OverviewTab({
 }) {
 	const total = Object.values(entityCounts).reduce((a, b) => a + b, 0);
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-6 overflow-auto">
+		<div className="flex min-w-0 flex-col gap-5">
 			{/* Status summary — always present, so Overview never reads as empty. */}
 			<Card>
 				<CardHeader>
 					<CardTitle className="text-base">At a glance</CardTitle>
 					<CardDescription>
 						{version ? `Version ${version} · ` : ""}
-						{orgName} · {gitConnected ? "Git-connected" : "Manual install"}
+						{orgName} ·{" "}
+						{gitConnected ? "Git-connected" : "Manual install"}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="flex flex-wrap gap-4 text-sm">
-						{ENTITY_TABS.map(({ key, label, Icon, iconClassName }) => (
-							<button
-								type="button"
-								key={key}
-								onClick={() => onPickEntity(key)}
-								className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
-							>
-								<Icon className={`h-4 w-4 ${iconClassName}`} />
-								<span className="font-medium text-foreground">
-									{entityCounts[key]}
-								</span>
-								{label}
-							</button>
-						))}
-						<span className="flex items-center gap-1.5 text-muted-foreground">
+					<div className="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap">
+						{ENTITY_TABS.map(
+							({ key, label, Icon, iconClassName }) => (
+								<button
+									type="button"
+									key={key}
+									onClick={() => onPickEntity(key)}
+									className="flex min-h-11 items-center gap-1.5 rounded-[var(--bf-radius-control)] px-2 text-muted-foreground transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+								>
+									<Icon
+										className={`h-4 w-4 ${iconClassName}`}
+									/>
+									<span className="font-medium text-foreground">
+										{entityCounts[key]}
+									</span>
+									{label}
+								</button>
+							),
+						)}
+						<span className="flex min-h-11 items-center gap-1.5 px-2 text-muted-foreground">
 							<SlidersHorizontal className="h-4 w-4" />
 							<span className="font-medium text-foreground">
 								{configsCount}
@@ -1258,11 +1399,37 @@ function OverviewTab({
 
 			{/* README — the description. Read-only render with an Edit affordance
 			    only for disconnected installs. */}
-			<div className="min-h-0 flex-1">
-				<SolutionReadmeTab
-					readme={readme}
-					canEdit={false}
-				/>
+			<div className="min-w-0">
+				{readmeLoading ? (
+					<p
+						role="status"
+						className="flex items-center gap-2 text-sm text-muted-foreground"
+					>
+						<Loader2
+							aria-hidden="true"
+							className="size-4 animate-spin motion-reduce:animate-none"
+						/>
+						Loading setup instructions…
+					</p>
+				) : readmeError ? (
+					<div
+						role="alert"
+						className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 bg-destructive/5 p-4 text-sm"
+					>
+						<p className="text-destructive">
+							Couldn't load setup instructions.
+						</p>
+						<Button
+							variant="outline"
+							className="min-h-11"
+							onClick={onRetryReadme}
+						>
+							Retry instructions
+						</Button>
+					</div>
+				) : (
+					<SolutionReadmeTab readme={readme} canEdit={false} />
+				)}
 			</div>
 		</div>
 	);
@@ -1279,7 +1446,7 @@ function ContentsSummary({
 	const total = Object.values(entityCounts).reduce((a, b) => a + b, 0);
 	if (total === 0) {
 		return (
-			<div className="rounded-2xl border border-dashed py-12 text-center text-sm text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-surface)] border border-dashed py-12 text-center text-sm text-muted-foreground">
 				This Solution deploys no entities.
 			</div>
 		);
@@ -1293,12 +1460,16 @@ function ContentsSummary({
 						key={key}
 						data-testid={`summary-${key}`}
 						onClick={() => onPick(key)}
-						className="flex items-center gap-3 rounded-xl border p-4 text-left hover:bg-muted"
+						className="flex min-h-11 min-w-0 items-center gap-3 rounded-[var(--bf-radius-surface)] border p-4 text-left transition-colors duration-[var(--bf-motion-feedback)] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
 					>
-						<Icon className={`h-5 w-5 ${iconClassName}`} />
+						<Icon className={`h-5 w-5 shrink-0 ${iconClassName}`} />
 						<div>
-							<div className="text-lg font-semibold">{entityCounts[key]}</div>
-							<div className="text-xs text-muted-foreground">{label}</div>
+							<div className="text-lg font-semibold">
+								{entityCounts[key]}
+							</div>
+							<div className="text-xs text-muted-foreground">
+								{label}
+							</div>
 						</div>
 					</button>
 				),
@@ -1311,7 +1482,10 @@ function AccessModeBadge({ mode }: { mode: string }) {
 	return (
 		<Badge
 			variant="outline"
-			className={cn("gap-1", ACCESS_BADGE_CLASS[mode])}
+			className={cn(
+				"h-auto min-h-5 gap-1 whitespace-normal [overflow-wrap:anywhere]",
+				ACCESS_BADGE_CLASS[mode],
+			)}
 		>
 			<Shield className="h-3 w-3" />
 			{mode}
@@ -1323,7 +1497,9 @@ function EntityKindBadge({ kind }: { kind: EntityKind }) {
 	return (
 		<Badge
 			variant="outline"
-			className={cn("gap-1", KIND_BADGE_CLASS[kind])}
+			className={
+				"h-auto min-h-5 gap-1 whitespace-normal [overflow-wrap:anywhere]"
+			}
 		>
 			{ENTITY_KIND_LABEL[kind]}
 		</Badge>
@@ -1335,7 +1511,7 @@ function RoleLinkBadge({ role }: { role: AccessRoleSummary }) {
 		<Badge
 			asChild
 			variant="outline"
-			className="border-indigo-500/30 bg-indigo-500/10 text-indigo-700 hover:bg-indigo-500/20 dark:text-indigo-300"
+			className="min-h-11 h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] border-border bg-muted/40 px-3 text-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 		>
 			<Link to={`/roles/${role.id}`} onClick={(e) => e.stopPropagation()}>
 				{role.name}
@@ -1355,14 +1531,16 @@ function UserDetailButton({
 		<button
 			type="button"
 			onClick={() => onOpen(user.id)}
-			className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
-			<div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+			<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
 				{userInitials(user)}
 			</div>
 			<div className="min-w-0">
-				<div className="truncate text-sm font-medium">{userLabel(user)}</div>
-				<div className="truncate text-xs text-muted-foreground">
+				<div className="[overflow-wrap:anywhere] text-sm font-medium">
+					{userLabel(user)}
+				</div>
+				<div className="[overflow-wrap:anywhere] text-xs text-muted-foreground">
 					{user.email}
 				</div>
 			</div>
@@ -1381,11 +1559,15 @@ function AccessTab({
 	onSelect: (row: AccessRow) => void;
 	onClose: () => void;
 }) {
+	const accessTriggerRef = useRef<HTMLElement | null>(null);
+	const isMobile = useMediaQuery("(max-width: 1023px)");
 	const [search, setSearch] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("table");
 	const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 	const [userSearch, setUserSearch] = useState("");
-	const selectedUserQuery = useUser(selectedUserId ?? undefined);
+	const selectedUserQuery = useUser(
+		selected ? (selectedUserId ?? undefined) : undefined,
+	);
 	const q = search.trim().toLowerCase();
 	const visibleRows = useMemo(() => {
 		if (!q) return rows;
@@ -1410,14 +1592,15 @@ function AccessTab({
 			),
 		);
 	}, [selected, userSearch]);
-	const openAccessRow = (row: AccessRow) => {
+	const openAccessRow = (row: AccessRow, trigger: HTMLElement) => {
+		accessTriggerRef.current = trigger;
 		setUserSearch("");
 		onSelect(row);
 	};
 
 	if (rows.length === 0) {
 		return (
-			<div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-surface)] border border-dashed py-10 text-center text-sm text-muted-foreground">
 				This Solution has no deployed entities with access metadata.
 			</div>
 		);
@@ -1433,65 +1616,76 @@ function AccessTab({
 						placeholder="Search access..."
 						className="flex-1"
 					/>
-					<ToggleGroup
-						type="single"
-						value={viewMode}
-						onValueChange={(value: string) =>
-							value && setViewMode(value as "grid" | "table")
-						}
-					>
-						<ToggleGroupItem value="grid" aria-label="Grid view" size="sm">
-							<LayoutGrid className="h-4 w-4" />
-						</ToggleGroupItem>
-						<ToggleGroupItem value="table" aria-label="Table view" size="sm">
-							<TableIcon className="h-4 w-4" />
-						</ToggleGroupItem>
-					</ToggleGroup>
+					{!isMobile && (
+						<ToggleGroup
+							aria-label="Access layout"
+							type="single"
+							value={viewMode}
+							onValueChange={(value: string) =>
+								value && setViewMode(value as "grid" | "table")
+							}
+						>
+							<ToggleGroupItem
+								value="grid"
+								aria-label="Grid view"
+								className="h-11 w-11"
+							>
+								<LayoutGrid className="h-4 w-4" />
+							</ToggleGroupItem>
+							<ToggleGroupItem
+								value="table"
+								aria-label="Table view"
+								className="h-11 w-11"
+							>
+								<TableIcon className="h-4 w-4" />
+							</ToggleGroupItem>
+						</ToggleGroup>
+					)}
 				</div>
 
 				{visibleRows.length === 0 ? (
-					<div className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+					<div className="rounded-[var(--bf-radius-surface)] border border-dashed py-8 text-center text-sm text-muted-foreground">
 						No access rows match “{search.trim()}”.
 					</div>
-				) : viewMode === "grid" ? (
+				) : isMobile || viewMode === "grid" ? (
 					<div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
 						{visibleRows.map((row) => (
-							<div
+							<button
+								type="button"
 								key={row.id}
-								role="button"
-								tabIndex={0}
-								onClick={() => openAccessRow(row)}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" || event.key === " ") {
-										event.preventDefault();
-										openAccessRow(row);
-									}
-								}}
-								className="flex min-h-40 flex-col rounded-2xl bg-card p-4 text-left shadow-sm ring-1 ring-foreground/5 transition-colors hover:bg-accent/40 dark:ring-foreground/10"
+								onClick={(event) =>
+									openAccessRow(row, event.currentTarget)
+								}
+								className="flex min-w-0 flex-col gap-3 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 text-left transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
 							>
-								<div className="flex items-center justify-between gap-2">
+								<span className="flex flex-wrap items-center justify-between gap-2">
 									<EntityKindBadge kind={row.kind} />
 									<AccessModeBadge mode={row.accessMode} />
-								</div>
-								<div className="mt-3 font-medium">{row.name}</div>
-								<p className="mt-1 line-clamp-3 text-sm text-muted-foreground">
+								</span>
+								<span className="font-medium [overflow-wrap:anywhere]">
+									{row.name}
+								</span>
+								<span className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
 									{row.description || "No description"}
-								</p>
-							</div>
+								</span>
+								<span className="text-xs text-muted-foreground">
+									{userSummary(row)}
+								</span>
+							</button>
 						))}
 					</div>
 				) : (
 					<DataTable className="max-h-full">
 						<DataTableHeader>
 							<DataTableRow>
-								<DataTableHead className="w-0 whitespace-nowrap">
+								<DataTableHead className="w-28 min-w-28 whitespace-nowrap">
 									Type
 								</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">
+								<DataTableHead className="w-28 min-w-28 whitespace-nowrap">
 									Entity
 								</DataTableHead>
 								<DataTableHead>Description</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">
+								<DataTableHead className="w-40 min-w-40 whitespace-nowrap">
 									Access
 								</DataTableHead>
 							</DataTableRow>
@@ -1505,21 +1699,44 @@ function AccessTab({
 										clickable
 										className={[
 											"group/row",
-											isSelected ? "bg-muted/70" : "hover:bg-muted/50",
+											isSelected
+												? "bg-muted/70"
+												: "hover:bg-muted/50",
 										].join(" ")}
-										onClick={() => openAccessRow(row)}
+										onClick={(event) =>
+											openAccessRow(
+												row,
+												event.currentTarget.querySelector(
+													"button",
+												) ?? event.currentTarget,
+											)
+										}
 									>
-										<DataTableCell className="w-0 whitespace-nowrap">
+										<DataTableCell className="w-28 min-w-28 whitespace-nowrap">
 											<EntityKindBadge kind={row.kind} />
 										</DataTableCell>
-										<DataTableCell className="w-0 whitespace-nowrap font-medium">
-											{row.name}
+										<DataTableCell className="min-w-64 max-w-sm whitespace-normal font-medium">
+											<button
+												type="button"
+												onClick={(event) => {
+													event.stopPropagation();
+													openAccessRow(
+														row,
+														event.currentTarget,
+													);
+												}}
+												className="min-h-11 text-left [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+											>
+												{row.name}
+											</button>
 										</DataTableCell>
-										<DataTableCell className="max-w-xl truncate text-muted-foreground">
+										<DataTableCell className="max-w-xl whitespace-normal [overflow-wrap:anywhere] text-muted-foreground">
 											{row.description || "-"}
 										</DataTableCell>
-										<DataTableCell className="w-0 whitespace-nowrap">
-											<AccessModeBadge mode={row.accessMode} />
+										<DataTableCell className="w-40 min-w-40 whitespace-nowrap">
+											<AccessModeBadge
+												mode={row.accessMode}
+											/>
 										</DataTableCell>
 									</DataTableRow>
 								);
@@ -1529,23 +1746,54 @@ function AccessTab({
 				)}
 			</div>
 
-			<Sheet open={!!selected} onOpenChange={(open) => !open && onClose()}>
-				<SheetContent side="right" className="w-full p-0 sm:max-w-xl">
+			<Sheet
+				open={!!selected}
+				onOpenChange={(open) => {
+					if (!open) {
+						setSelectedUserId(null);
+						onClose();
+					}
+				}}
+			>
+				<SheetContent
+					side="right"
+					className="w-full p-0 sm:max-w-xl"
+					onCloseAutoFocus={(event) => {
+						if (accessTriggerRef.current?.isConnected) {
+							event.preventDefault();
+							accessTriggerRef.current.focus({
+								preventScroll: true,
+							});
+						}
+					}}
+				>
 					{selected && (
 						<>
-							<SheetHeader className="border-b px-5 py-4">
-								<SheetTitle>{selected.name}</SheetTitle>
-								{selected.description ? (
-									<SheetDescription>{selected.description}</SheetDescription>
-								) : null}
+							<SheetHeader className="shrink-0 border-b px-5 py-4 pr-16">
+								<SheetTitle className="[overflow-wrap:anywhere]">
+									{selected.name}
+								</SheetTitle>
+								<SheetDescription className="sr-only">
+									Access details and assigned users.
+								</SheetDescription>
 							</SheetHeader>
 
-							<div className="flex min-h-0 flex-1 flex-col gap-5 overflow-hidden px-5 py-5">
+							<div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5 [&>section]:shrink-0">
+								{selected.description && (
+									<p className="shrink-0 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+										{selected.description}
+									</p>
+								)}
 								{(selected.path || selected.functionName) && (
 									<section>
-										<h3 className="mb-2 text-sm font-semibold">Runtime reference</h3>
-										<div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
-											{[selected.path, selected.functionName]
+										<h3 className="mb-2 text-sm font-semibold">
+											Runtime reference
+										</h3>
+										<div className="rounded-[var(--bf-radius-surface)] border bg-muted/30 p-3 font-mono text-xs [overflow-wrap:anywhere]">
+											{[
+												selected.path,
+												selected.functionName,
+											]
 												.filter(Boolean)
 												.join("::")}
 										</div>
@@ -1563,28 +1811,38 @@ function AccessTab({
 										<div className="mb-1.5 text-xs font-medium text-muted-foreground">
 											Access
 										</div>
-										<AccessModeBadge mode={selected.accessMode} />
+										<AccessModeBadge
+											mode={selected.accessMode}
+										/>
 									</div>
 								</section>
 
 								<section>
-									<h3 className="mb-2 text-sm font-semibold">Roles</h3>
+									<h3 className="mb-2 text-sm font-semibold">
+										Roles
+									</h3>
 									{selected.roles.length > 0 ? (
 										<div className="flex flex-wrap gap-2">
 											{selected.roles.map((role) => (
-												<RoleLinkBadge key={role.id} role={role} />
+												<RoleLinkBadge
+													key={role.id}
+													role={role}
+												/>
 											))}
 										</div>
 									) : (
 										<p className="text-sm text-muted-foreground">
-											This entity does not require a role assignment.
+											This entity does not require a role
+											assignment.
 										</p>
 									)}
 								</section>
 
 								<section className="min-h-0">
 									<div className="mb-3 flex items-center justify-between gap-3">
-										<h3 className="text-sm font-semibold">Users</h3>
+										<h3 className="text-sm font-semibold">
+											Users
+										</h3>
 										<span className="text-xs text-muted-foreground">
 											{selected.users.length}
 										</span>
@@ -1599,24 +1857,74 @@ function AccessTab({
 												className="mb-3"
 											/>
 											{visibleUsers.length > 0 ? (
-												<div className="max-h-[min(34rem,calc(100vh-31rem))] divide-y overflow-auto rounded-lg border">
-													{visibleUsers.map((user) => (
-														<UserDetailButton
-															key={user.id}
-															user={user}
-															onOpen={setSelectedUserId}
-														/>
-													))}
+												<div className="divide-y rounded-[var(--bf-radius-surface)] border">
+													{visibleUsers.map(
+														(user) => (
+															<div key={user.id}>
+																<UserDetailButton
+																	user={user}
+																	onOpen={
+																		setSelectedUserId
+																	}
+																/>
+																{selectedUserId ===
+																	user.id &&
+																	!selectedUserQuery.data && (
+																		<div className="px-3 pb-3 text-sm">
+																			{selectedUserQuery.isFetching ? (
+																				<p
+																					role="status"
+																					className="flex items-center gap-2 text-muted-foreground"
+																				>
+																					<Loader2
+																						aria-hidden="true"
+																						className="size-4 shrink-0 animate-spin motion-reduce:animate-none"
+																					/>
+																					Loading
+																					user
+																					details…
+																				</p>
+																			) : selectedUserQuery.isError ? (
+																				<div
+																					role="alert"
+																					className="space-y-2"
+																				>
+																					<p className="text-destructive">
+																						Couldn't
+																						load
+																						user
+																						details.
+																					</p>
+																					<Button
+																						variant="outline"
+																						className="min-h-11"
+																						onClick={() =>
+																							void selectedUserQuery.refetch()
+																						}
+																					>
+																						Retry
+																						user
+																						details
+																					</Button>
+																				</div>
+																			) : null}
+																		</div>
+																	)}
+															</div>
+														),
+													)}
 												</div>
 											) : (
-												<p className="rounded-lg border border-dashed px-3 py-6 text-sm text-muted-foreground">
-													No users match “{userSearch.trim()}”.
+												<p className="rounded-[var(--bf-radius-surface)] border border-dashed px-3 py-6 text-sm text-muted-foreground">
+													No users match “
+													{userSearch.trim()}”.
 												</p>
 											)}
 										</>
 									) : (
-										<p className="rounded-lg border border-dashed px-3 py-6 text-sm text-muted-foreground">
-											{selected.accessMode === "Role based"
+										<p className="rounded-[var(--bf-radius-surface)] border border-dashed px-3 py-6 text-sm text-muted-foreground">
+											{selected.accessMode ===
+											"Role based"
 												? "No users are currently assigned through this Solution's roles."
 												: userSummary(selected)}
 										</p>
@@ -1629,7 +1937,9 @@ function AccessTab({
 			</Sheet>
 			<EditUserDialog
 				user={selectedUserQuery.data}
-				open={Boolean(selectedUserId && selectedUserQuery.data)}
+				open={Boolean(
+					selected && selectedUserId && selectedUserQuery.data,
+				)}
 				onOpenChange={(open) => {
 					if (!open) setSelectedUserId(null);
 				}}
@@ -1647,6 +1957,9 @@ function ConfigurationTab({
 	setupItems,
 	setupComplete,
 	setupError,
+	setupLoading,
+	setupFetching,
+	onRetrySetup,
 	onInvalidate,
 	onSetConfig,
 	onGenerateWorkflowKey,
@@ -1657,6 +1970,9 @@ function ConfigurationTab({
 	setupItems: components["schemas"]["SolutionSetupItem"][];
 	setupComplete: boolean;
 	setupError: unknown;
+	setupLoading: boolean;
+	setupFetching: boolean;
+	onRetrySetup: () => void;
 	onInvalidate: () => void;
 	onSetConfig: (key: string, value: string) => void | Promise<void>;
 	onGenerateWorkflowKey: (workflowId: string) => void | Promise<void>;
@@ -1667,32 +1983,56 @@ function ConfigurationTab({
 	return (
 		<div className="flex flex-col gap-6">
 			{/* Setup requirements that are not plain config-value rows. */}
-			{setupError ? (
-				<div className="rounded-lg border border-destructive/40 bg-destructive/5 py-6 text-center text-sm text-destructive">
-					{setupError instanceof Error
-						? setupError.message
-						: "Couldn't load setup status"}
+			{setupLoading || (setupFetching && setupError) ? (
+				<div
+					role="status"
+					className="flex items-center gap-2 rounded-[var(--bf-radius-surface)] border p-4 text-sm text-muted-foreground"
+				>
+					<Loader2
+						aria-hidden="true"
+						className="size-4 shrink-0 animate-spin motion-reduce:animate-none"
+					/>
+					Loading setup requirements…
+				</div>
+			) : setupError ? (
+				<div
+					role="alert"
+					className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/40 bg-destructive/5 p-4 text-sm"
+				>
+					<p className="text-destructive">
+						Couldn't load setup requirements. Retry to check what
+						this solution needs.
+					</p>
+					<Button
+						variant="outline"
+						className="min-h-11"
+						onClick={onRetrySetup}
+					>
+						Retry setup status
+					</Button>
 				</div>
 			) : (
-					hasSetupRequirements && (
-						<section data-testid="config-connections">
-							<h3 className="mb-2 text-sm font-semibold">Setup</h3>
-							<SolutionSetupWizard
-								items={setupItems}
-								setupComplete={setupComplete}
-								onFinish={onFinish}
-								onSetConfig={onSetConfig}
-								onGenerateWorkflowKey={onGenerateWorkflowKey}
-							/>
-						</section>
-					)
-				)}
+				hasSetupRequirements && (
+					<section data-testid="config-connections">
+						<h3 className="mb-2 text-sm font-semibold">Setup</h3>
+						<SolutionSetupWizard
+							items={setupItems}
+							setupComplete={setupComplete}
+							onFinish={onFinish}
+							onSetConfig={onSetConfig}
+							onGenerateWorkflowKey={onGenerateWorkflowKey}
+						/>
+					</section>
+				)
+			)}
 
-				{/* Config values. */}
-				<section data-testid="config-values">
-					{hasConnections && (
-						<h3 className="mb-2 text-sm font-semibold">Config values</h3>
-					)}
+			{/* Config values. */}
+			<section data-testid="config-values">
+				{hasConnections && configs.length > 0 && (
+					<h3 className="mb-2 text-sm font-semibold">
+						Config values
+					</h3>
+				)}
 				{configs.length > 0 ? (
 					<div className="space-y-3">
 						{configs.map((cfg) => (
@@ -1704,44 +2044,59 @@ function ConfigurationTab({
 							/>
 						))}
 					</div>
-					) : (
-						!hasSetupRequirements && (
-							<div className="rounded-lg border py-12 text-center text-sm text-muted-foreground">
-								This Solution declares no configuration.
-							</div>
-						)
-					)}
+				) : (
+					!hasSetupRequirements &&
+					!setupLoading &&
+					!setupError && (
+						<div className="rounded-[var(--bf-radius-surface)] border px-4 py-12 text-center text-sm text-muted-foreground">
+							This Solution declares no configuration.
+						</div>
+					)
+				)}
 			</section>
 		</div>
 	);
 }
 
 function exportJobStatusBadge(job: SolutionExportJob) {
-	const variant =
-		job.status === "completed"
-			? "default"
-			: job.status === "failed" || job.status === "expired"
-				? "destructive"
-				: "secondary";
-	return <Badge variant={variant}>{job.status.replace("_", " ")}</Badge>;
+	return (
+		<Badge
+			variant="outline"
+			className={cn(
+				"h-auto min-h-5 whitespace-normal [overflow-wrap:anywhere]",
+				job.status === "completed" &&
+					"border-[var(--bf-success)]/30 bg-[var(--bf-success)]/10 text-[var(--bf-success)]",
+				job.status === "failed" &&
+					"border-destructive/30 bg-destructive/10 text-destructive",
+			)}
+		>
+			{job.status.replaceAll("_", " ")}
+		</Badge>
+	);
 }
 
 function ExportsTab({
 	jobs,
 	isLoading,
 	error,
+	isFetching,
+	onRetry,
 	onDownload,
-	downloadingJobId,
 }: {
 	jobs: SolutionExportJob[];
 	isLoading: boolean;
 	error?: string;
-	onDownload: (job: SolutionExportJob) => void;
-	downloadingJobId: string | null;
+	isFetching: boolean;
+	onRetry: () => void;
+	onDownload: (job: SolutionExportJob) => Promise<void>;
 }) {
 	if (isLoading) {
 		return (
-			<Card>
+			<Card
+				role="status"
+				aria-label="Loading backup exports"
+				className="py-0"
+			>
 				<CardContent className="space-y-3 py-6">
 					<Skeleton className="h-5 w-48" />
 					<Skeleton className="h-16 w-full" />
@@ -1752,15 +2107,33 @@ function ExportsTab({
 
 	if (error) {
 		return (
-			<div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-sm text-destructive">
-				{error}
+			<div
+				role="alert"
+				className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 bg-destructive/5 p-4 text-sm"
+			>
+				<p className="text-destructive [overflow-wrap:anywhere]">
+					Couldn't load backup exports.
+				</p>
+				<Button
+					variant="outline"
+					className="min-h-11"
+					disabled={isFetching}
+					onClick={onRetry}
+				>
+					{isFetching ? "Loading…" : "Retry exports"}
+				</Button>
+				{isFetching && (
+					<p role="status" className="sr-only">
+						Loading backup exports…
+					</p>
+				)}
 			</div>
 		);
 	}
 
 	if (jobs.length === 0) {
 		return (
-			<div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-surface)] border border-dashed py-10 text-center text-sm text-muted-foreground">
 				No backup exports queued yet.
 			</div>
 		);
@@ -1768,53 +2141,127 @@ function ExportsTab({
 
 	return (
 		<div className="space-y-3">
-			{jobs.map((job) => {
-				const canDownload = job.status === "completed" && !!job.download_url;
-				const isDownloading = downloadingJobId === job.id;
-				return (
-					<Card key={job.id}>
-						<CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-							<div className="min-w-0 flex-1 space-y-2">
-								<div className="flex flex-wrap items-center gap-2">
-									{exportJobStatusBadge(job)}
-									<span className="text-sm font-medium">
-										{job.progress_percent ?? 0}%
-									</span>
-									<span className="text-xs text-muted-foreground">
-										{formatBytes(job.artifact_size_bytes)}
-									</span>
-								</div>
-								<div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-									<span>Created {formatDateTime(job.created_at)}</span>
-									<span>Completed {formatDateTime(job.completed_at)}</span>
-									<span>Expires {formatDateTime(job.expires_at)}</span>
-								</div>
-								{(job.message || job.failure_message) && (
-									<p className="text-sm text-muted-foreground">
-										{job.failure_message ?? job.message}
-									</p>
-								)}
-							</div>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								disabled={!canDownload || isDownloading}
-								onClick={() => onDownload(job)}
-								className="shrink-0"
-							>
-								{isDownloading ? (
-									<Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-								) : (
-									<Download className="mr-1.5 h-4 w-4" />
-								)}
-								Download
-							</Button>
-						</CardContent>
-					</Card>
-				);
-			})}
+			{jobs.map((job) => (
+				<ExportJobRecord
+					key={job.id}
+					job={job}
+					onDownload={onDownload}
+				/>
+			))}
 		</div>
+	);
+}
+
+function ExportJobRecord({
+	job,
+	onDownload,
+}: {
+	job: SolutionExportJob;
+	onDownload: (job: SolutionExportJob) => Promise<void>;
+}) {
+	const pendingRef = useRef(false);
+	const download = useMutation({
+		mutationFn: () => onDownload(job),
+		onSettled: () => {
+			pendingRef.current = false;
+		},
+	});
+	const canDownload = job.status === "completed" && !!job.download_url;
+	const isDownloading = download.isPending;
+	const active = job.status === "pending" || job.status === "running";
+	const progress =
+		job.progress_percent == null
+			? null
+			: Math.min(100, Math.max(0, job.progress_percent));
+	return (
+		<Card data-testid={`export-job-${job.id}`} className="gap-0 py-0">
+			<CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+				<div className="min-w-0 flex-1 space-y-2">
+					<div className="flex flex-wrap items-center gap-2">
+						{exportJobStatusBadge(job)}
+						<span className="text-sm font-medium">
+							{progress === null
+								? active
+									? "Starting…"
+									: ""
+								: `${progress}%`}
+						</span>
+						{job.artifact_size_bytes != null && (
+							<span className="text-xs text-muted-foreground">
+								{formatBytes(job.artifact_size_bytes)}
+							</span>
+						)}
+					</div>
+					{active && (
+						<Progress
+							aria-label="Backup export progress"
+							value={progress}
+						/>
+					)}
+					<div className="grid gap-2 text-xs text-muted-foreground lg:grid-cols-3">
+						<span>Created {formatDateTime(job.created_at)}</span>
+						{job.completed_at && (
+							<span>
+								Completed {formatDateTime(job.completed_at)}
+							</span>
+						)}
+						{job.expires_at && (
+							<span>
+								Expires {formatDateTime(job.expires_at)}
+							</span>
+						)}
+					</div>
+					{job.status === "expired" && (
+						<p className="text-sm text-muted-foreground">
+							This archive has expired. Create a new backup export
+							to download it.
+						</p>
+					)}
+					{(job.message || job.failure_message) && (
+						<p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
+							{job.failure_message ?? job.message}
+						</p>
+					)}
+				</div>
+				<Button
+					type="button"
+					size="default"
+					variant="outline"
+					disabled={!canDownload || isDownloading}
+					onClick={() => {
+						if (!pendingRef.current) {
+							pendingRef.current = true;
+							download.mutate();
+						}
+					}}
+					className="min-h-11 shrink-0"
+				>
+					{isDownloading ? (
+						<Loader2
+							aria-hidden="true"
+							className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none"
+						/>
+					) : (
+						<Download className="mr-1.5 h-4 w-4" />
+					)}
+					{isDownloading
+						? "Downloading…"
+						: download.isError
+							? "Retry download"
+							: "Download"}
+				</Button>
+			</CardContent>
+			{download.isError && (
+				<p role="alert" className="px-4 pb-4 text-sm text-destructive">
+					Couldn't download this export. Try again.
+				</p>
+			)}
+			{isDownloading && (
+				<p role="status" className="sr-only">
+					Downloading backup export…
+				</p>
+			)}
+		</Card>
 	);
 }
 
@@ -1834,10 +2281,6 @@ export function SolutionDetail() {
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	// Hard-delete modal state.
 	const [hardDeleteOpen, setHardDeleteOpen] = useState(false);
-	const [hardDeleteConfirm, setHardDeleteConfirm] = useState("");
-	const [deletionSummary, setDeletionSummary] =
-		useState<SolutionDeletionSummary | null>(null);
-	const [deletionSummaryLoading, setDeletionSummaryLoading] = useState(false);
 	const [generatedEndpointKey, setGeneratedEndpointKey] = useState<{
 		workflowName: string;
 		rawKey: string;
@@ -1852,6 +2295,8 @@ export function SolutionDetail() {
 	const {
 		data: setupData,
 		error: setupError,
+		isPending: setupLoading,
+		isFetching: setupFetching,
 		refetch: refetchSetup,
 	} = useQuery({
 		queryKey: ["solutions", solutionId, "setup"],
@@ -1859,7 +2304,12 @@ export function SolutionDetail() {
 		enabled: !!solutionId,
 	});
 
-	const { data: readmeData, refetch: refetchReadme } = useQuery({
+	const {
+		data: readmeData,
+		isLoading: readmeLoading,
+		isError: readmeError,
+		refetch: refetchReadme,
+	} = useQuery({
 		queryKey: ["solutions", solutionId, "readme"],
 		queryFn: () => getSolutionReadme(solutionId!),
 		enabled: !!solutionId,
@@ -1871,7 +2321,9 @@ export function SolutionDetail() {
 		enabled: !!solutionId,
 		refetchInterval: (query) => {
 			const jobs = query.state.data?.jobs ?? [];
-			return jobs.some((job) => job.status === "pending" || job.status === "running")
+			return jobs.some(
+				(job) => job.status === "pending" || job.status === "running",
+			)
 				? 2500
 				: false;
 		},
@@ -1885,10 +2337,22 @@ export function SolutionDetail() {
 		void refetchReadme();
 	};
 
+	const pendingEndpointKeys = useRef(new Set<string>());
 	const generateWorkflowEndpointKey = async (workflowId: string) => {
-		const item = setupData?.items.find((i) => i.workflow_id === workflowId);
+		if (pendingEndpointKeys.current.has(workflowId)) return;
+		pendingEndpointKeys.current.add(workflowId);
 		try {
-			if (item?.is_set) {
+			const currentSetup = await getSolutionSetup(solutionId!);
+			const item = currentSetup.items.find(
+				(entry) =>
+					entry.kind === "workflow_endpoint_key" &&
+					(entry.workflow_id ?? entry.key) === workflowId,
+			);
+			if (!item)
+				throw new Error(
+					"Endpoint setup requirement is no longer available",
+				);
+			if (item.is_set) {
 				await workflowKeysService.revokeWorkflowKey(workflowId);
 			}
 			const result = await workflowKeysService.createWorkflowKey({
@@ -1898,17 +2362,21 @@ export function SolutionDetail() {
 			});
 			if (result.raw_key) {
 				setGeneratedEndpointKey({
-					workflowName: item?.workflow_name ?? result.workflow_name ?? "Workflow endpoint",
+					workflowName:
+						item?.workflow_name ??
+						result.workflow_name ??
+						"Workflow endpoint",
 					rawKey: result.raw_key,
 				});
 			}
-			toast.success("Endpoint key generated");
 			invalidate();
 			void queryClient.invalidateQueries({ queryKey: ["workflow-keys"] });
 		} catch (err: unknown) {
-			toast.error("Failed to generate endpoint key", {
-				description: err instanceof Error ? err.message : undefined,
-			});
+			invalidate();
+			void queryClient.invalidateQueries({ queryKey: ["workflow-keys"] });
+			throw err;
+		} finally {
+			pendingEndpointKeys.current.delete(workflowId);
 		}
 	};
 
@@ -1930,11 +2398,6 @@ export function SolutionDetail() {
 			downloadBlob(blob, filename);
 			setExportDialogOpen(false);
 		},
-		onError: (err: unknown) => {
-			toast.error("Failed to export", {
-				description: err instanceof Error ? err.message : "Unknown error",
-			});
-		},
 	});
 
 	const backupExportMut = useMutation({
@@ -1953,41 +2416,31 @@ export function SolutionDetail() {
 				queryKey: ["solutions", solutionId, "export-jobs"],
 			});
 		},
-		onError: (err: unknown) => {
-			toast.error("Failed to queue backup export", {
-				description: err instanceof Error ? err.message : "Unknown error",
-			});
-		},
-	});
-
-	const downloadExportJobMut = useMutation({
-		mutationFn: (jobId: string) => downloadSolutionExportJob(jobId),
-		onSuccess: ({ blob, filename }) => downloadBlob(blob, filename),
-		onError: (err: unknown) => {
-			toast.error("Failed to download backup export", {
-				description: err instanceof Error ? err.message : "Unknown error",
-			});
-		},
 	});
 
 	/** Non-destructive uninstall — flips status to inactive, data frozen. */
+	const uninstallBusy = useRef(false);
 	const uninstallMut = useMutation({
+		onSettled: () => {
+			uninstallBusy.current = false;
+		},
 		mutationFn: () => uninstallSolution(solutionId!),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["solutions"] });
 			invalidate();
 			toast.success("Solution uninstalled (inactive)");
 		},
-		onError: (err: unknown) => {
-			toast.error("Failed to uninstall", {
-				description: err instanceof Error ? err.message : "Unknown error",
-			});
-		},
 	});
+	function handleUninstall() {
+		if (uninstallBusy.current) return;
+		uninstallBusy.current = true;
+		uninstallMut.mutate();
+	}
 
 	/** Hard-delete — permanently destroys everything. Requires confirm === slug. */
 	const hardDeleteMut = useMutation({
-		mutationFn: () => deleteSolution(solutionId!, hardDeleteConfirm),
+		mutationFn: (confirmation: string) =>
+			deleteSolution(solutionId!, confirmation),
 		onSuccess: (summary) => {
 			queryClient.invalidateQueries({ queryKey: ["solutions"] });
 			toast.success("Solution permanently deleted", {
@@ -1995,27 +2448,10 @@ export function SolutionDetail() {
 			});
 			navigate("/solutions");
 		},
-		onError: (err: unknown) => {
-			toast.error("Failed to delete solution", {
-				description: err instanceof Error ? err.message : "Unknown error",
-			});
-		},
 	});
 
-	/** Open the hard-delete modal and eagerly fetch the deletion-summary. */
-	async function openHardDelete() {
-		setHardDeleteConfirm("");
-		setDeletionSummary(null);
+	function openHardDelete() {
 		setHardDeleteOpen(true);
-		setDeletionSummaryLoading(true);
-		try {
-			const summary = await getSolutionDeletionSummary(solutionId!);
-			setDeletionSummary(summary);
-		} catch {
-			// Summary is informational — allow the modal to proceed without it.
-		} finally {
-			setDeletionSummaryLoading(false);
-		}
 	}
 
 	// "Update now" for a git-connected install with an available update: pull the
@@ -2030,11 +2466,6 @@ export function SolutionDetail() {
 			void queryClient.invalidateQueries({ queryKey: ["solutions"] });
 			invalidate();
 		},
-		onError: (err: unknown) => {
-			toast.error("Failed to update", {
-				description: err instanceof Error ? err.message : "Unknown error",
-			});
-		},
 	});
 
 	// Lazily preview the connected repo when the Update-now dialog opens, so the
@@ -2042,12 +2473,19 @@ export function SolutionDetail() {
 	// entities + config) before confirming — the git update path previously gave
 	// no diff (audit CM3/M2). Reuses the from-repo preview endpoint.
 	const updateDiffQuery = useQuery({
-		queryKey: ["solution-update-diff", solutionId, sol?.git_ref, sol?.repo_subpath],
+		queryKey: [
+			"solution-update-diff",
+			solutionId,
+			sol?.git_ref,
+			sol?.repo_subpath,
+		],
 		enabled: syncConfirmOpen && !!sol?.git_connected && !!sol?.git_repo_url,
 		queryFn: () =>
 			previewSolutionFromRepo({
 				repo_url: sol!.git_repo_url!,
-				...(sol!.repo_subpath ? { repo_subpath: sol!.repo_subpath } : {}),
+				...(sol!.repo_subpath
+					? { repo_subpath: sol!.repo_subpath }
+					: {}),
 				...(sol!.git_ref ? { git_ref: sol!.git_ref } : {}),
 			}),
 		staleTime: 0,
@@ -2087,7 +2525,9 @@ export function SolutionDetail() {
 			...buildEntityAccessRows("agents", data.agents ?? []),
 		];
 	}, [data]);
-	const [selectedAccessId, setSelectedAccessId] = useState<string | null>(null);
+	const [selectedAccessId, setSelectedAccessId] = useState<string | null>(
+		null,
+	);
 	const selectedAccessRow =
 		accessRows.find((row) => row.id === selectedAccessId) ?? null;
 
@@ -2102,8 +2542,7 @@ export function SolutionDetail() {
 	// Contents tab: "All" shows a combined per-type summary; a specific chip
 	// renders that kind's full surface (with its specialized actions — workflow
 	// execute, form launch, app open — which a merged column list would lose).
-	const [contentsFilter, setContentsFilter] =
-		useState<ContentsFilter>("all");
+	const [contentsFilter, setContentsFilter] = useState<ContentsFilter>("all");
 	const activeKind: EntityKind | null =
 		contentsFilter === "all" ? null : contentsFilter;
 	function openContentKind(kind: EntityKind) {
@@ -2114,13 +2553,13 @@ export function SolutionDetail() {
 	return (
 		<div
 			data-testid="solution-detail"
-			className="h-full flex flex-col space-y-6 max-w-7xl mx-auto"
+			className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-5 overflow-y-auto"
 		>
 			{/* Breadcrumb */}
-			<div className="text-sm">
+			<div className="flex min-w-0 shrink-0 flex-wrap items-center text-sm [overflow-wrap:anywhere]">
 				<Link
 					to="/solutions"
-					className="inline-flex items-center text-muted-foreground hover:text-foreground"
+					className="inline-flex min-h-11 items-center rounded-[var(--bf-radius-control)] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<ChevronLeft className="mr-1 h-4 w-4" />
 					Solutions
@@ -2150,10 +2589,10 @@ export function SolutionDetail() {
 			) : data && sol ? (
 				<>
 					{/* Header */}
-					<div className="flex items-start justify-between gap-4">
+					<div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 						<div className="min-w-0 flex-1">
-							<div className="flex items-center gap-3">
-								<h1 className="text-3xl font-extrabold tracking-tight">
+							<div className="flex min-w-0 flex-wrap items-center gap-3">
+								<h1 className="min-w-0 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">
 									{sol.name}
 								</h1>
 								{effectiveSetupComplete === false && (
@@ -2171,7 +2610,8 @@ export function SolutionDetail() {
 								{sol.slug}
 								{sol.upgraded_from_version && (
 									<span className="ml-2 text-xs">
-										upgraded from v{sol.upgraded_from_version}
+										upgraded from v
+										{sol.upgraded_from_version}
 									</span>
 								)}
 							</p>
@@ -2187,12 +2627,11 @@ export function SolutionDetail() {
 									</Badge>
 								)}
 								{sol.version && (
-									<Badge variant="outline">v{sol.version}</Badge>
+									<Badge variant="outline">
+										v{sol.version}
+									</Badge>
 								)}
-								<Badge
-									variant={sol.organization_id ? "outline" : "default"}
-									className="gap-1"
-								>
+								<Badge variant="outline" className="gap-1">
 									{sol.organization_id ? (
 										<Building2 className="h-3 w-3" />
 									) : (
@@ -2206,7 +2645,9 @@ export function SolutionDetail() {
 									) : (
 										<HardDriveUpload className="h-3 w-3" />
 									)}
-									{sol.git_connected ? "Git-connected" : "Manual"}
+									{sol.git_connected
+										? "Git-connected"
+										: "Manual"}
 								</Badge>
 								{sol.update_available_version && (
 									<Badge
@@ -2215,7 +2656,8 @@ export function SolutionDetail() {
 										data-testid="update-available-badge"
 									>
 										<ArrowUp className="h-3 w-3" />
-										Update available · v{sol.update_available_version}
+										Update available · v
+										{sol.update_available_version}
 									</Badge>
 								)}
 							</div>
@@ -2227,43 +2669,50 @@ export function SolutionDetail() {
 									<GitBranch className="h-3 w-3 shrink-0" />
 									<span className="font-mono break-all">
 										{sol.git_repo_url}
-										{sol.repo_subpath ? ` /${sol.repo_subpath}` : ""}
+										{sol.repo_subpath
+											? ` /${sol.repo_subpath}`
+											: ""}
 										{sol.git_ref ? ` @ ${sol.git_ref}` : ""}
 									</span>
 								</p>
 							)}
 						</div>
-						<div className="flex shrink-0 items-center justify-end gap-2">
-							{effectiveSetupComplete === false && sol.status !== "inactive" && (
-								<Button
-									data-testid="continue-setup"
-									variant="outline"
-									className="whitespace-nowrap border-yellow-500/60 text-yellow-700 hover:text-yellow-700 dark:text-yellow-400"
-									onClick={() => setTab("configuration")}
-								>
-									<AlertTriangle className="mr-1.5 h-4 w-4" />
-									Continue Setup
-								</Button>
-							)}
+						<div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+							{effectiveSetupComplete === false &&
+								sol.status !== "inactive" && (
+									<Button
+										data-testid="continue-setup"
+										variant="outline"
+										className="min-h-11 whitespace-nowrap border-yellow-500/60 text-yellow-700 hover:text-yellow-700 dark:text-yellow-400"
+										onClick={() => setTab("configuration")}
+									>
+										<AlertTriangle className="mr-1.5 h-4 w-4" />
+										Continue Setup
+									</Button>
+								)}
 							{sol.status === "inactive" ? (
 								<Button
 									data-testid="reactivate-solution"
 									variant="outline"
-									className="whitespace-nowrap"
+									className="min-h-11 whitespace-nowrap"
 									onClick={() => setUpdateOpen(true)}
 								>
 									<RotateCcw className="mr-1.5 h-4 w-4" />
 									Reactivate
 								</Button>
-							) : sol.git_connected && sol.update_available_version ? (
+							) : sol.git_connected &&
+							  sol.update_available_version ? (
 								<Button
 									data-testid="update-now"
-									className="whitespace-nowrap"
+									className="min-h-11 whitespace-nowrap"
 									disabled={syncMut.isPending}
 									onClick={() => setSyncConfirmOpen(true)}
 								>
 									{syncMut.isPending ? (
-										<Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+										<Loader2
+											aria-hidden="true"
+											className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none"
+										/>
 									) : (
 										<ArrowUp className="mr-1.5 h-4 w-4" />
 									)}
@@ -2272,7 +2721,7 @@ export function SolutionDetail() {
 							) : (
 								<Button
 									data-testid="update-solution"
-									className="whitespace-nowrap"
+									className="min-h-11 whitespace-nowrap"
 									onClick={() => setUpdateOpen(true)}
 								>
 									<Upload className="mr-1.5 h-4 w-4" />
@@ -2280,16 +2729,32 @@ export function SolutionDetail() {
 								</Button>
 							)}
 							<SolutionActionsMenu
-								exporting={exportMut.isPending || backupExportMut.isPending}
+								exporting={
+									exportMut.isPending ||
+									backupExportMut.isPending
+								}
 								isInactive={sol.status === "inactive"}
 								onCapture={() => setCaptureOpen(true)}
 								onExport={() => setExportDialogOpen(true)}
 								onEdit={() => setEditOpen(true)}
-								onUninstall={() => uninstallMut.mutate()}
+								onUninstall={handleUninstall}
+								busy={uninstallMut.isPending}
 								onHardDelete={openHardDelete}
 							/>
 						</div>
 					</div>
+
+					<SolutionUninstallNotice
+						pending={uninstallMut.isPending}
+						error={
+							uninstallMut.isError
+								? uninstallMut.error instanceof Error
+									? uninstallMut.error.message
+									: "Try again."
+								: null
+						}
+						onRetry={handleUninstall}
+					/>
 
 					{/* Setup-incomplete banner (Setup is a STATE, not a tab) — deep-links
 					    to Configuration where the required values are entered. */}
@@ -2301,10 +2766,11 @@ export function SolutionDetail() {
 							<div className="flex items-center gap-2 text-sm">
 								<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
 								<span>
-									Setup incomplete — {requiredUnset.length} required config
+									Setup incomplete — {requiredUnset.length}{" "}
+									required config
 									{requiredUnset.length === 1 ? "" : "s"} need
-									{requiredUnset.length === 1 ? "s" : ""} a value
-									before this Solution can run.
+									{requiredUnset.length === 1 ? "s" : ""} a
+									value before this Solution can run.
 								</span>
 							</div>
 							<Button
@@ -2321,13 +2787,16 @@ export function SolutionDetail() {
 					<Tabs
 						value={tab}
 						onValueChange={(v) => setTab(v as TabKey)}
-						className="flex-1 min-h-0 flex flex-col"
+						className="flex min-h-0 shrink-0 flex-col"
 					>
-						<TabsList className="self-start">
+						<TabsList
+							aria-label="Solution sections"
+							className="grid w-full shrink-0 grid-cols-2 self-start group-data-horizontal/tabs:h-auto sm:flex sm:w-fit"
+						>
 							<TabsTrigger
 								value="overview"
 								data-testid="tab-overview"
-								className="gap-1.5"
+								className="min-h-11 gap-1.5 whitespace-normal"
 							>
 								<FileText className="h-4 w-4" />
 								Overview
@@ -2335,7 +2804,7 @@ export function SolutionDetail() {
 							<TabsTrigger
 								value="contents"
 								data-testid="tab-contents"
-								className="gap-1.5"
+								className="min-h-11 gap-1.5 whitespace-normal"
 							>
 								<LayoutGrid className="h-4 w-4" />
 								Contents
@@ -2346,7 +2815,7 @@ export function SolutionDetail() {
 							<TabsTrigger
 								value="access"
 								data-testid="tab-access"
-								className="gap-1.5"
+								className="min-h-11 gap-1.5 whitespace-normal"
 							>
 								<Shield className="h-4 w-4" />
 								Access
@@ -2357,7 +2826,7 @@ export function SolutionDetail() {
 							<TabsTrigger
 								value="configuration"
 								data-testid="tab-configuration"
-								className="gap-1.5"
+								className="min-h-11 gap-1.5 whitespace-normal"
 							>
 								<SlidersHorizontal className="h-4 w-4" />
 								Configuration
@@ -2377,7 +2846,7 @@ export function SolutionDetail() {
 							<TabsTrigger
 								value="exports"
 								data-testid="tab-exports"
-								className="gap-1.5"
+								className="min-h-11 gap-1.5 whitespace-normal"
 							>
 								<Archive className="h-4 w-4" />
 								Exports
@@ -2386,9 +2855,15 @@ export function SolutionDetail() {
 
 						{/* OVERVIEW — README leads (it's the description, not a section),
 						    with a status/contents summary so it's never empty. */}
-						<TabsContent value="overview" className="flex-1 min-h-0">
+						<TabsContent
+							value="overview"
+							className="flex-1 min-h-0"
+						>
 							<OverviewTab
 								readme={readmeData?.readme ?? null}
+								readmeLoading={readmeLoading}
+								readmeError={readmeError}
+								onRetryReadme={() => void refetchReadme()}
 								entityCounts={entityCounts}
 								configsCount={configsCount}
 								version={sol.version ?? null}
@@ -2399,13 +2874,47 @@ export function SolutionDetail() {
 						</TabsContent>
 
 						{/* CONTENTS — the 6 entity inventories as one tab with type chips. */}
-						<TabsContent value="contents" className="flex-1 min-h-0 flex flex-col">
-							<div className="mb-3 flex flex-wrap gap-2" data-testid="contents-chips">
+						<TabsContent
+							value="contents"
+							className="flex-1 min-h-0 flex flex-col"
+						>
+							<label className="mb-3 flex flex-col gap-2 text-sm lg:hidden">
+								Content type
+								<select
+									aria-label="Content type"
+									value={contentsFilter}
+									onChange={(event) =>
+										setContentsFilter(
+											event.target.value as
+												EntityKind | "all",
+										)
+									}
+									className="min-h-11 w-full rounded-[var(--bf-radius-control)] border bg-background px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								>
+									<option value="all">
+										All ({totalContents})
+									</option>
+									{ENTITY_TABS.map(({ key, label }) => (
+										<option key={key} value={key}>
+											{label} ({entityCounts[key]})
+										</option>
+									))}
+								</select>
+							</label>
+							<div
+								className="mb-3 hidden flex-wrap gap-2 lg:flex"
+								role="group"
+								aria-label="Content types"
+								data-testid="contents-chips"
+							>
 								<button
 									type="button"
 									data-testid="chip-all"
+									aria-pressed={contentsFilter === "all"}
 									onClick={() => setContentsFilter("all")}
-									className={chipClass(contentsFilter === "all")}
+									className={chipClass(
+										contentsFilter === "all",
+									)}
 								>
 									All
 									<span className="ml-1.5 text-xs opacity-70">
@@ -2417,8 +2926,11 @@ export function SolutionDetail() {
 										type="button"
 										key={key}
 										data-testid={`chip-${key}`}
+										aria-pressed={contentsFilter === key}
 										onClick={() => setContentsFilter(key)}
-										className={chipClass(contentsFilter === key)}
+										className={chipClass(
+											contentsFilter === key,
+										)}
 									>
 										<Icon className="h-3.5 w-3.5" />
 										{label}
@@ -2446,7 +2958,10 @@ export function SolutionDetail() {
 							</div>
 						</TabsContent>
 
-						<TabsContent value="access" className="flex-1 min-h-0 overflow-hidden">
+						<TabsContent
+							value="access"
+							className="flex-1 min-h-0 overflow-hidden"
+						>
 							<AccessTab
 								rows={accessRows}
 								selected={selectedAccessRow}
@@ -2467,39 +2982,45 @@ export function SolutionDetail() {
 								setupItems={setupData?.items ?? []}
 								setupComplete={effectiveSetupComplete}
 								setupError={setupError}
+								setupLoading={setupLoading}
+								setupFetching={setupFetching}
+								onRetrySetup={() => void refetchSetup()}
 								onInvalidate={invalidate}
-									onSetConfig={async (key, value) => {
-									try {
-										await setSolutionConfig({
-											key,
-											value,
-											type: asConfigType(
-												setupData?.items.find((i) => i.key === key)?.type ??
-													"string",
-											),
-											organizationId: sol.organization_id ?? null,
-										});
-										toast.success(`Set ${key}`);
-										invalidate();
-									} catch (err: unknown) {
-										toast.error(`Failed to set ${key}`, {
-											description:
-												err instanceof Error ? err.message : undefined,
-										});
-										}
-									}}
-									onGenerateWorkflowKey={generateWorkflowEndpointKey}
-									onFinish={() => {
-										invalidate();
-										if (effectiveSetupComplete) setTab("overview");
-									}}
-								/>
-							</TabsContent>
+								onSetConfig={async (key, value) => {
+									await setSolutionConfig({
+										key,
+										value,
+										type: asConfigType(
+											setupData?.items.find(
+												(item) => item.key === key,
+											)?.type ?? "string",
+										),
+										organizationId:
+											sol.organization_id ?? null,
+									});
+									toast.success(`Set ${key}`);
+									invalidate();
+								}}
+								onGenerateWorkflowKey={
+									generateWorkflowEndpointKey
+								}
+								onFinish={() => {
+									invalidate();
+									if (effectiveSetupComplete)
+										setTab("overview");
+								}}
+							/>
+						</TabsContent>
 
-						<TabsContent value="exports" className="flex-1 min-h-0 overflow-auto">
+						<TabsContent
+							value="exports"
+							className="flex-1 min-h-0 overflow-auto"
+						>
 							<ExportsTab
 								jobs={exportJobsQuery.data?.jobs ?? []}
 								isLoading={exportJobsQuery.isLoading}
+								isFetching={exportJobsQuery.isFetching}
+								onRetry={() => void exportJobsQuery.refetch()}
 								error={
 									exportJobsQuery.error instanceof Error
 										? exportJobsQuery.error.message
@@ -2507,12 +3028,11 @@ export function SolutionDetail() {
 											? "Failed to load backup exports"
 											: undefined
 								}
-								downloadingJobId={
-									downloadExportJobMut.isPending
-										? (downloadExportJobMut.variables ?? null)
-										: null
-								}
-								onDownload={(job) => downloadExportJobMut.mutate(job.id)}
+								onDownload={async (job) => {
+									const { blob, filename } =
+										await downloadSolutionExportJob(job.id);
+									downloadBlob(blob, filename);
+								}}
 							/>
 						</TabsContent>
 					</Tabs>
@@ -2546,61 +3066,18 @@ export function SolutionDetail() {
 					)}
 
 					{/* "Update now" confirm (git-connected pull + full-replace) */}
-					<AlertDialog
+					<SolutionUpdateDialog
 						open={syncConfirmOpen}
-						onOpenChange={(o) => !syncMut.isPending && setSyncConfirmOpen(o)}
-					>
-						<AlertDialogContent data-testid="update-now-dialog">
-							<AlertDialogHeader>
-								<AlertDialogTitle>
-									Update {sol.name}
-									{sol.update_available_version
-										? ` to v${sol.update_available_version}`
-										: ""}
-									?
-								</AlertDialogTitle>
-								<AlertDialogDescription>
-									Pull and redeploy this install from its repository. This
-									replaces the installed content with the repo's current
-									version.
-								</AlertDialogDescription>
-							</AlertDialogHeader>
-							<div className="max-h-[40vh] overflow-y-auto" data-testid="update-diff">
-								{updateDiffQuery.isLoading ? (
-									<p className="flex items-center gap-2 text-sm text-muted-foreground">
-										<Loader2 className="h-4 w-4 animate-spin" />
-										Computing what will change…
-									</p>
-								) : updateDiffQuery.isError ? (
-									<p className="text-sm text-muted-foreground">
-										Could not preview changes; the update will still apply
-										the repo's current version.
-									</p>
-								) : updateDiffQuery.data?.diff ? (
-									<UpgradeDiffView diff={updateDiffQuery.data.diff} />
-								) : null}
-							</div>
-							<AlertDialogFooter>
-								<AlertDialogCancel disabled={syncMut.isPending}>
-									Cancel
-								</AlertDialogCancel>
-								<AlertDialogAction
-									data-testid="confirm-update-now"
-									disabled={syncMut.isPending}
-									onClick={(e) => {
-										e.preventDefault();
-										syncMut.mutate();
-									}}
-								>
-									{syncMut.isPending && (
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									)}
-									<RefreshCw className="mr-1.5 h-4 w-4" />
-									Update now
-								</AlertDialogAction>
-							</AlertDialogFooter>
-						</AlertDialogContent>
-					</AlertDialog>
+						name={sol.name}
+						version={sol.update_available_version}
+						onClose={() => setSyncConfirmOpen(false)}
+						onConfirm={() => syncMut.mutateAsync()}
+						diff={updateDiffQuery.data?.diff ?? undefined}
+						loading={updateDiffQuery.isLoading}
+						previewError={updateDiffQuery.isError}
+						retrying={updateDiffQuery.isFetching}
+						onRetryPreview={() => void updateDiffQuery.refetch()}
+					/>
 
 					<SolutionCaptureDialog
 						open={captureOpen}
@@ -2610,12 +3087,12 @@ export function SolutionDetail() {
 					/>
 
 					{/* Export mode picker dialog */}
-						<ExportSolutionDialog
+					<ExportSolutionDialog
 						open={exportDialogOpen}
 						onOpenChange={setExportDialogOpen}
-						onExport={(mode, password, options) => {
+						onExport={async (mode, password, options) => {
 							if (mode === "full") {
-								backupExportMut.mutate({
+								await backupExportMut.mutateAsync({
 									password: password ?? "",
 									options: options ?? {
 										includeConfigs: true,
@@ -2626,201 +3103,36 @@ export function SolutionDetail() {
 								});
 								return;
 							}
-							exportMut.mutate({ mode, password, options });
+							await exportMut.mutateAsync({
+								mode,
+								password,
+								options,
+							});
 						}}
-						isPending={exportMut.isPending || backupExportMut.isPending}
+						isPending={
+							exportMut.isPending || backupExportMut.isPending
+						}
+					/>
+
+					{generatedEndpointKey && (
+						<GeneratedEndpointKeyDialog
+							workflowName={generatedEndpointKey.workflowName}
+							rawKey={generatedEndpointKey.rawKey}
+							onClose={() => setGeneratedEndpointKey(null)}
 						/>
+					)}
 
-						<Dialog
-							open={generatedEndpointKey !== null}
-							onOpenChange={(open) => {
-								if (!open) setGeneratedEndpointKey(null);
-							}}
-						>
-							<DialogContent>
-								<DialogHeader>
-									<DialogTitle className="flex items-center gap-2">
-										<KeyRound className="h-4 w-4" />
-										Endpoint key generated
-									</DialogTitle>
-									<DialogDescription>
-										Copy this key now. It will not be shown again.
-									</DialogDescription>
-								</DialogHeader>
-								<div className="space-y-2">
-									<Label>{generatedEndpointKey?.workflowName}</Label>
-									<Input readOnly value={generatedEndpointKey?.rawKey ?? ""} />
-								</div>
-								<DialogFooter>
-									<Button
-										variant="outline"
-										onClick={() => {
-											if (generatedEndpointKey?.rawKey) {
-												void navigator.clipboard.writeText(generatedEndpointKey.rawKey);
-												toast.success("Copied endpoint key");
-											}
-										}}
-									>
-										Copy
-									</Button>
-									<Button onClick={() => setGeneratedEndpointKey(null)}>
-										Done
-									</Button>
-								</DialogFooter>
-							</DialogContent>
-						</Dialog>
-
-						{/* Hard-delete confirmation modal (type-the-slug to confirm) */}
-					<Dialog
+					{/* Hard-delete confirmation modal (type-the-slug to confirm) */}
+					<SolutionDeleteDialog
+						id={sol.id}
+						name={sol.name}
+						slug={sol.slug}
 						open={hardDeleteOpen}
-						onOpenChange={(o) => {
-							if (!o && !hardDeleteMut.isPending) {
-								setHardDeleteOpen(false);
-								setHardDeleteConfirm("");
-							}
-						}}
-					>
-						<DialogContent data-testid="hard-delete-dialog">
-							<DialogHeader>
-								<DialogTitle className="flex items-center gap-2">
-									<Trash2 className="h-4 w-4 text-destructive" />
-									Permanently delete {sol.name}?
-								</DialogTitle>
-								<DialogDescription asChild>
-									<div className="space-y-2 text-sm text-muted-foreground">
-										<p>
-											This is{" "}
-											<span className="font-medium text-foreground">
-												irreversible
-											</span>
-											. All owned entities and files will be
-											permanently destroyed.
-										</p>
-										{deletionSummaryLoading && (
-											<p className="flex items-center gap-2">
-												<Loader2 className="h-4 w-4 animate-spin" />
-												Loading what will be deleted…
-											</p>
-										)}
-										{deletionSummary && !deletionSummaryLoading && (
-											<ul
-												className="list-disc pl-4 text-foreground"
-												data-testid="deletion-summary-list"
-											>
-												{deletionSummary.files > 0 && (
-													<li>
-														{deletionSummary.files} file
-														{deletionSummary.files !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.tables > 0 && (
-													<li>
-														{deletionSummary.tables} table
-														{deletionSummary.tables !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.workflows > 0 && (
-													<li>
-														{deletionSummary.workflows} workflow
-														{deletionSummary.workflows !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.apps > 0 && (
-													<li>
-														{deletionSummary.apps} app
-														{deletionSummary.apps !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.forms > 0 && (
-													<li>
-														{deletionSummary.forms} form
-														{deletionSummary.forms !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.agents > 0 && (
-													<li>
-														{deletionSummary.agents} agent
-														{deletionSummary.agents !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.claims > 0 && (
-													<li>
-														{deletionSummary.claims} custom claim
-														{deletionSummary.claims !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.events > 0 && (
-													<li>
-														{deletionSummary.events} event
-														{deletionSummary.events !== 1 ? "s" : ""}
-													</li>
-												)}
-												{deletionSummary.config_declarations > 0 && (
-													<li>
-														{deletionSummary.config_declarations} config
-														declaration
-														{deletionSummary.config_declarations !== 1
-															? "s"
-															: ""}
-													</li>
-												)}
-											</ul>
-										)}
-									</div>
-								</DialogDescription>
-							</DialogHeader>
-
-							<div className="space-y-2">
-								<div className="space-y-1">
-									<Label htmlFor="hard-delete-confirm">
-										Type the Solution slug to confirm
-									</Label>
-									<div
-										data-testid="hard-delete-slug"
-										className="break-all rounded-md border bg-muted px-2.5 py-2 font-mono text-xs font-semibold text-foreground"
-									>
-										{sol.slug}
-									</div>
-								</div>
-								<Input
-									id="hard-delete-confirm"
-									data-testid="hard-delete-confirm-input"
-									value={hardDeleteConfirm}
-									onChange={(e) => setHardDeleteConfirm(e.target.value)}
-									autoComplete="off"
-									placeholder={sol.slug}
-								/>
-							</div>
-
-							<DialogFooter>
-								<Button
-									variant="outline"
-									disabled={hardDeleteMut.isPending}
-									onClick={() => {
-										setHardDeleteOpen(false);
-										setHardDeleteConfirm("");
-									}}
-								>
-									Cancel
-								</Button>
-								<Button
-									variant="destructive"
-									data-testid="confirm-hard-delete"
-									disabled={
-										hardDeleteConfirm !== sol.slug ||
-										hardDeleteMut.isPending
-									}
-									onClick={() => hardDeleteMut.mutate()}
-								>
-									{hardDeleteMut.isPending && (
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									)}
-									<Trash2 className="mr-1.5 h-4 w-4" />
-									Delete permanently
-								</Button>
-							</DialogFooter>
-						</DialogContent>
-					</Dialog>
+						onClose={() => setHardDeleteOpen(false)}
+						onDelete={(confirmation) =>
+							hardDeleteMut.mutateAsync(confirmation)
+						}
+					/>
 				</>
 			) : null}
 		</div>

@@ -77,6 +77,7 @@ export function DateTimePicker({
 	ariaLabel,
 }: DateTimePickerProps): React.JSX.Element {
 	const [open, setOpen] = React.useState(false);
+	const timeInputId = React.useId();
 
 	const label = ariaLabel ?? "Pick date and time";
 	const triggerText = value
@@ -86,7 +87,7 @@ export function DateTimePicker({
 	const timeInputValue = value ? format(value, TIME_INPUT_FORMAT) : "";
 
 	const handleDaySelect = (day: Date | undefined) => {
-		if (!day) return;
+		if (!day || disabled) return;
 		// Pull the time portion from current value or a sensible default.
 		const source = value ?? roundUpToNextFiveMinutes(new Date());
 		const composed = composeDateTime(day, {
@@ -97,6 +98,7 @@ export function DateTimePicker({
 	};
 
 	const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		if (disabled) return;
 		const raw = e.target.value; // "HH:mm"
 		if (!raw) return;
 		const [hStr, mStr] = raw.split(":");
@@ -119,10 +121,18 @@ export function DateTimePicker({
 		// boundary day: the caller asked that time selection be clamped in
 		// that case so e.g. min=today 3pm rejects a 2pm entry on today.
 		let clamped = composed;
-		if (minDate && isSameDay(composed, minDate) && isBefore(composed, minDate)) {
+		if (
+			minDate &&
+			isSameDay(composed, minDate) &&
+			isBefore(composed, minDate)
+		) {
 			clamped = new Date(minDate);
 		}
-		if (maxDate && isSameDay(composed, maxDate) && isAfter(composed, maxDate)) {
+		if (
+			maxDate &&
+			isSameDay(composed, maxDate) &&
+			isAfter(composed, maxDate)
+		) {
 			clamped = new Date(maxDate);
 		}
 		onChange(clamped);
@@ -142,7 +152,7 @@ export function DateTimePicker({
 	}, [minDate, maxDate]);
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover open={open && !disabled} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button
 					type="button"
@@ -150,15 +160,20 @@ export function DateTimePicker({
 					disabled={disabled}
 					aria-label={label}
 					className={cn(
-						"w-[260px] justify-start text-left font-normal",
+						"h-auto min-h-11 w-full min-w-0 max-w-[260px] justify-start whitespace-normal text-left font-normal",
 						!value && "text-muted-foreground",
 					)}
 				>
 					<CalendarIcon className="mr-2 h-4 w-4" />
-					<span>{triggerText}</span>
+					<span className="min-w-0 [overflow-wrap:anywhere]">
+						{triggerText}
+					</span>
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-auto p-0" align="start">
+			<PopoverContent
+				className="w-auto max-w-[calc(100vw-2rem)] max-h-(--radix-popover-content-available-height) gap-0 overflow-y-auto p-0"
+				align="start"
+			>
 				<Calendar
 					mode="single"
 					selected={value ?? undefined}
@@ -168,18 +183,18 @@ export function DateTimePicker({
 				/>
 				<div className="flex items-center gap-2 border-t p-3">
 					<Label
-						htmlFor="date-time-picker-time"
+						htmlFor={timeInputId}
 						className="text-sm font-medium"
 					>
 						Time
 					</Label>
 					<Input
-						id="date-time-picker-time"
+						id={timeInputId}
 						type="time"
 						step={60}
 						value={timeInputValue}
 						onChange={handleTimeChange}
-						className="w-[130px]"
+						className="h-11 min-w-0 flex-1"
 					/>
 				</div>
 			</PopoverContent>

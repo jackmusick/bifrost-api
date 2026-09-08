@@ -23,6 +23,9 @@ export function Chat() {
 		isConfigured,
 		isPlatformAdmin,
 		isLoading: configLoading,
+		error,
+		isFetching,
+		refetch,
 	} = useChatAvailability();
 
 	// Set active conversation from URL param
@@ -35,42 +38,85 @@ export function Chat() {
 		return <PageLoader message="Loading chat..." />;
 	}
 
-	// LLM not configured - show setup prompt
-	if (isPlatformAdmin && isConfigured === false) {
+	if (error && !isConfigured) {
 		return (
-			<div className="h-full flex items-center justify-center">
-				<div className="max-w-md text-center space-y-6 p-8">
-					<div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-						<Bot className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<div className="space-y-2">
-						<h1 className="text-2xl font-semibold">
-							AI Chat Not Configured
-						</h1>
-						<p className="text-muted-foreground">
-							To enable AI chat, add a provider connection and
-							enable at least one reusable model profile for Chat.
-						</p>
-					</div>
-					<Button asChild>
-						<Link to="/settings/ai">
-							<Settings className="h-4 w-4 mr-2" />
-							Configure AI models
-						</Link>
-					</Button>
-				</div>
-			</div>
+			<ChatSetupState
+				failed
+				pending={isFetching}
+				onRetry={() => void refetch()}
+			/>
 		);
+	}
+	if (isPlatformAdmin && isConfigured === false) {
+		return <ChatSetupState />;
 	}
 
 	// Non-admin and chat might not work - they'll see errors when trying
 	// For now, we let them through and errors will be handled by the chat components
 
 	return (
-		<div className="h-full">
+		<div className="h-full min-h-0 min-w-0">
 			<ChatLayout initialConversationId={conversationId} />
 		</div>
 	);
 }
 
 export default Chat;
+
+function ChatSetupState({
+	failed = false,
+	pending = false,
+	onRetry,
+}: {
+	failed?: boolean;
+	pending?: boolean;
+	onRetry?: () => void;
+}) {
+	return (
+		<div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-4 py-8 sm:px-6">
+			<section
+				className="w-full max-w-md space-y-6 text-center [overflow-wrap:anywhere]"
+				aria-labelledby="chat-setup-heading"
+			>
+				<div className="mx-auto flex size-16 items-center justify-center rounded-[var(--bf-radius-surface)] bg-muted">
+					<Bot
+						className="size-8 text-muted-foreground"
+						aria-hidden="true"
+					/>
+				</div>
+				<div className="space-y-3">
+					<h1
+						id="chat-setup-heading"
+						className="font-display text-2xl font-semibold"
+					>
+						{failed ? "Chat could not load" : "Set up AI chat"}
+					</h1>
+					<p
+						role={failed ? "alert" : undefined}
+						className="text-sm leading-relaxed text-muted-foreground"
+					>
+						{failed
+							? "Model availability could not be checked. Try again to open chat."
+							: "Add a provider connection and enable a model profile for Chat to get started."}
+					</p>
+				</div>
+				{failed ? (
+					<Button
+						className="min-h-11 w-full sm:w-auto"
+						disabled={pending}
+						onClick={onRetry}
+					>
+						{pending ? "Retrying…" : "Retry chat"}
+					</Button>
+				) : (
+					<Button className="min-h-11 w-full sm:w-auto" asChild>
+						<Link to="/settings/ai">
+							<Settings className="size-4" />
+							Configure AI models
+						</Link>
+					</Button>
+				)}
+			</section>
+		</div>
+	);
+}

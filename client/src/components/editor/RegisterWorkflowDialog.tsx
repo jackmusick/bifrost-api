@@ -24,43 +24,67 @@ export function RegisterWorkflowDialog({
 	onConfirm,
 	onCancel,
 }: RegisterWorkflowDialogProps) {
-	const scope = useScopeStore((s) => s.scope);
-	const [selectedOrgId, setSelectedOrgId] = useState<string | null | undefined>(
-		scope.orgId ?? null,
-	);
-
 	return (
 		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
 			<DialogContent className="z-100 sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Register Workflow</DialogTitle>
+					<DialogTitle>Register workflow</DialogTitle>
 					<DialogDescription>
-						Register <code className="font-mono text-sm font-semibold">{functionName}</code> to
-						which organization?
+						Register{" "}
+						<code className="font-mono text-sm font-semibold [overflow-wrap:anywhere]">
+							{functionName}
+						</code>{" "}
+						to which organization?
 					</DialogDescription>
 				</DialogHeader>
-				<div className="py-2">
-					<OrganizationSelect
-						value={selectedOrgId}
-						onChange={(val) => setSelectedOrgId(val ?? null)}
-						showGlobal={true}
-						showAll={false}
-						contentClassName="z-[101]"
-					/>
-				</div>
-				<DialogFooter>
-					<Button variant="outline" onClick={onCancel}>
-						Cancel
-					</Button>
-					<Button
-						onClick={() => {
-							onConfirm(selectedOrgId ?? null);
-						}}
-					>
-						Register
-					</Button>
-				</DialogFooter>
+				<RegistrationFields onConfirm={onConfirm} onCancel={onCancel} />
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function RegistrationFields({
+	onConfirm,
+	onCancel,
+}: Pick<RegisterWorkflowDialogProps, "onConfirm" | "onCancel">) {
+	const scope = useScopeStore((s) => s.scope);
+	const [selectedOrgId, setSelectedOrgId] = useState<
+		string | null | undefined
+	>(scope.orgId ?? null);
+
+	return (
+		<>
+			<div className="py-2">
+				<OrganizationSelect
+					aria-label="Organization"
+					label="Organization"
+					triggerClassName="min-h-11 lg:min-h-11 h-auto"
+					value={selectedOrgId}
+					onChange={(val) => setSelectedOrgId(val ?? null)}
+					showGlobal={true}
+					showAll={false}
+					contentClassName="z-[101]"
+				/>
+			</div>
+			<DialogFooter>
+				<Button
+					type="button"
+					className="min-h-11"
+					variant="outline"
+					onClick={onCancel}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="button"
+					className="min-h-11"
+					onClick={() => {
+						onConfirm(selectedOrgId ?? null);
+					}}
+				>
+					Register
+				</Button>
+			</DialogFooter>
+		</>
 	);
 }

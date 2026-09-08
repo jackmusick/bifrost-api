@@ -243,3 +243,28 @@ class TestExecutionLogRepositoryListLogs:
         assert len(logs) == 1
         assert logs[0]["organization_name"] is None
         assert logs[0]["workflow_name"] == "test-workflow"
+
+
+@pytest.mark.asyncio
+async def test_workflow_id_filter_uses_exact_identity():
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = []
+    session.execute.return_value = result
+    workflow_id = uuid4()
+    await ExecutionLogRepository(session).list_logs(workflow_id=workflow_id)
+    query = session.execute.call_args.args[0]
+    compiled = query.compile()
+    assert "executions.workflow_id =" in str(compiled)
+    assert workflow_id in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_global_filter_excludes_organization_executions():
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = []
+    session.execute.return_value = result
+    await ExecutionLogRepository(session).list_logs(global_only=True)
+    query = session.execute.call_args.args[0]
+    assert "executions.organization_id IS NULL" in str(query.compile())

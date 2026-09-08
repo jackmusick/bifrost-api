@@ -5,7 +5,7 @@
  * Opens from the app code editor header.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Plus,
   Trash2,
@@ -47,7 +47,9 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authFetch } from "@/lib/api-client";
+import { copyToClipboard } from "@/lib/clipboard";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 // ============================================================================
 // Types
@@ -84,51 +86,62 @@ export function EmbedSettingsDialog({
   open,
   onOpenChange,
 }: Props) {
-  const [secrets, setSecrets] = useState<EmbedSecret[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
   // Create dialog state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createSecret, setCreateSecret] = useState("");
   const [createScheme, setCreateScheme] = useState<HmacScheme>("shopify");
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createInFlightRef = useRef(false);
 
   // Reveal dialog state (shown once after creation)
   const [revealedSecret, setRevealedSecret] = useState<EmbedSecretCreated | null>(null);
   const [copied, setCopied] = useState(false);
+  const copyResetTimeoutRef = useRef<number | null>(null);
+  const copyOperationRef = useRef(0);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<EmbedSecret | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteInFlightRef = useRef(false);
+  const [updatingSecretId, setUpdatingSecretId] = useState<string | null>(null);
+  const updatingSecretIdsRef = useRef(new Set<string>());
 
-  // ========================================================================
-  // Data fetching
-  // ========================================================================
-
-  const fetchSecrets = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await authFetch(
-        `/api/applications/${appId}/embed-secrets`,
-      );
-      if (res.ok) {
-        setSecrets(await res.json());
+  const {
+    data: secrets = [],
+    isLoading: isSecretsLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["applications", appId, "embed-secrets"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await authFetch(`/api/applications/${appId}/embed-secrets`);
+      if (!res.ok) {
+        throw new Error(await res.text());
       }
-    } catch {
-      toast.error("Failed to load embed secrets");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [appId]);
+      return (await res.json()) as EmbedSecret[];
+    },
+  });
 
-  // Network fetches: setState happens after `await`, so wrapping in a void
-  // IIFE keeps the synchronous part of the effect free of setState calls.
+  const clearCopyTimer = useCallback(() => {
+    if (copyResetTimeoutRef.current !== null) {
+      window.clearTimeout(copyResetTimeoutRef.current);
+      copyResetTimeoutRef.current = null;
+    }
+  }, []);
+
+  const invalidateCopyOperation = useCallback(() => {
+    copyOperationRef.current += 1;
+    clearCopyTimer();
+  }, [clearCopyTimer]);
+
   useEffect(() => {
-    if (!open) return;
-    void (async () => {
-      await fetchSecrets();
-    })();
-  }, [open, fetchSecrets]);
+    return invalidateCopyOperation;
+  }, [invalidateCopyOperation]);
 
   // ========================================================================
   // Actions
@@ -136,8 +149,10 @@ export function EmbedSettingsDialog({
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createName.trim()) return;
+    if (!createName.trim() || createInFlightRef.current) return;
 
+    createInFlightRef.current = true;
+    setCreateError(null);
     setIsCreating(true);
     try {
       const res = await authFetch(
@@ -159,16 +174,27 @@ export function EmbedSettingsDialog({
       setCreateName("");
       setCreateSecret("");
       setCreateScheme("shopify");
-      fetchSecrets();
+      void refetch();
       toast.success("Embed secret created");
     } catch {
+      setCreateError("Failed to create embed secret. Your values are preserved; try again.");
       toast.error("Failed to create embed secret");
     } finally {
       setIsCreating(false);
+      createInFlightRef.current = false;
     }
   };
 
   const handleToggleActive = async (secret: EmbedSecret) => {
+    if (
+      updatingSecretIdsRef.current.has(secret.id) ||
+      deleteInFlightRef.current ||
+      createInFlightRef.current
+    ) {
+      return;
+    }
+    updatingSecretIdsRef.current.add(secret.id);
+    setUpdatingSecretId(secret.id);
     try {
       const res = await authFetch(
         `/api/applications/${appId}/embed-secrets/${secret.id}`,
@@ -179,17 +205,25 @@ export function EmbedSettingsDialog({
         },
       );
       if (!res.ok) throw new Error(await res.text());
-      fetchSecrets();
+      void refetch();
       toast.success(
         secret.is_active ? "Secret deactivated" : "Secret activated",
       );
-    } catch {
-      toast.error("Failed to update secret");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update secret",
+      );
+    } finally {
+      updatingSecretIdsRef.current.delete(secret.id);
+      setUpdatingSecretId(null);
     }
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleteInFlightRef.current) return;
+    deleteInFlightRef.current = true;
+    setIsDeleting(true);
+    setDeleteError(null);
     try {
       const res = await authFetch(
         `/api/applications/${appId}/embed-secrets/${deleteTarget.id}`,
@@ -197,17 +231,39 @@ export function EmbedSettingsDialog({
       );
       if (!res.ok) throw new Error(await res.text());
       setDeleteTarget(null);
-      fetchSecrets();
+      setDeleteError(null);
+      void refetch();
       toast.success("Secret deleted");
-    } catch {
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete secret");
       toast.error("Failed to delete secret");
+    } finally {
+      setIsDeleting(false);
+      deleteInFlightRef.current = false;
     }
   };
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async (
+    text: string,
+    successMessage: string,
+    failureMessage: string,
+  ) => {
+    const operationId = ++copyOperationRef.current;
+    clearCopyTimer();
+    const success = await copyToClipboard(text);
+    if (operationId !== copyOperationRef.current) return;
+    if (success) {
+      setCopied(true);
+      copyResetTimeoutRef.current = window.setTimeout(() => {
+        if (operationId !== copyOperationRef.current) return;
+        setCopied(false);
+        copyResetTimeoutRef.current = null;
+      }, 2000);
+      toast.success(successMessage);
+    } else {
+      setCopied(false);
+      toast.error(failureMessage);
+    }
   };
 
   // ========================================================================
@@ -228,8 +284,17 @@ export function EmbedSettingsDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            invalidateCopyOperation();
+            setCopied(false);
+          }
+          onOpenChange(nextOpen);
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-1rem)] max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Embed Settings</DialogTitle>
             <DialogDescription>
@@ -238,33 +303,58 @@ export function EmbedSettingsDialog({
           </DialogHeader>
 
           <Tabs defaultValue="secrets" className="mt-2 min-w-0">
-            <TabsList>
-              <TabsTrigger value="secrets">Secrets</TabsTrigger>
-              <TabsTrigger value="guide">Integration Guide</TabsTrigger>
+            <TabsList className="grid min-h-14 w-full grid-cols-2">
+              <TabsTrigger className="min-h-11" value="secrets">Secrets</TabsTrigger>
+              <TabsTrigger className="min-h-11" value="guide">Integration Guide</TabsTrigger>
             </TabsList>
 
             {/* ============ Secrets Tab ============ */}
             <TabsContent value="secrets" className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
                   Shared secrets used to verify embed requests via HMAC-SHA256.
                 </p>
                 <Button
                   size="sm"
+                  className="min-h-11 shrink-0"
                   onClick={() => setIsCreateOpen(true)}
+                  disabled={isCreating || isDeleting}
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Create Secret
                 </Button>
               </div>
 
-              {isLoading ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">
-                  Loading...
-                </p>
+              {isSecretsLoading ? (
+                <div
+                  role="status"
+                  className="rounded-[var(--bf-radius-control)] border border-[color:var(--bf-info-soft)] bg-[color:var(--bf-info-soft)]/20 px-4 py-8 text-center text-sm text-muted-foreground"
+                >
+                  Loading embed secrets…
+                </div>
+              ) : isError ? (
+                <div
+                  role="alert"
+                  className="rounded-[var(--bf-radius-control)] border border-[color:var(--bf-danger-soft)] bg-[color:var(--bf-danger-soft)]/20 px-4 py-4 text-sm text-[var(--bf-danger)]"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p>
+                      Couldn’t load embed secrets.
+                      {error instanceof Error ? ` ${error.message}` : ""}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11 shrink-0"
+                      onClick={() => void refetch()}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
               ) : secrets.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Link className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <div className="rounded-[var(--bf-radius-control)] border border-dashed border-[color:var(--bf-info-soft)] px-4 py-8 text-center text-muted-foreground">
+                  <Link className="mx-auto mb-2 h-8 w-8 opacity-50" />
                   <p className="text-sm">No embed secrets configured.</p>
                   <p className="text-xs mt-1">
                     Create a secret to enable iframe embedding.
@@ -275,22 +365,19 @@ export function EmbedSettingsDialog({
                   {secrets.map((secret) => (
                     <div
                       key={secret.id}
-                      className={`flex items-center justify-between p-3 rounded-lg ring-1 ring-foreground/5 border-l-4 ${
-                        secret.is_active
-                          ? "border-l-green-500"
-                          : "border-l-gray-300 opacity-60"
-                      }`}
+                      className="flex flex-col gap-3 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <p className="text-sm font-medium">{secret.name}</p>
+                      <div className="flex min-w-0 flex-wrap items-center gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium [overflow-wrap:anywhere]">{secret.name}</p>
                           <p className="text-xs text-muted-foreground">
                             Created{" "}
                             {new Date(secret.created_at).toLocaleDateString()}
                           </p>
                         </div>
                         <Badge
-                          variant={secret.is_active ? "default" : "secondary"}
+                          variant="secondary"
+                          className={secret.is_active ? "bg-[var(--bf-success-soft)] text-[var(--bf-success)]" : undefined}
                         >
                           {secret.is_active ? "Active" : "Inactive"}
                         </Badge>
@@ -300,17 +387,25 @@ export function EmbedSettingsDialog({
                             : "Standard"}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleToggleActive(secret)}
+                          className="min-h-11"
+                          disabled={updatingSecretId === secret.id || isDeleting}
+                          onClick={() => void handleToggleActive(secret)}
                         >
-                          {secret.is_active ? "Deactivate" : "Activate"}
+                          {updatingSecretId === secret.id
+                            ? "Updating..."
+                            : secret.is_active
+                              ? "Deactivate"
+                              : "Activate"}
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="size-11"
+                          aria-label={`Delete ${secret.name}`}
                           onClick={() => setDeleteTarget(secret)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -327,7 +422,7 @@ export function EmbedSettingsDialog({
               <p className="text-sm text-muted-foreground">
                 Embed this app in an iframe using HMAC-signed URLs.
               </p>
-              <div className="relative rounded-md overflow-hidden">
+              <div className="relative overflow-hidden rounded-[var(--bf-radius-control)] border">
                 <SyntaxHighlighter
                   language="html"
                   style={oneDark}
@@ -339,10 +434,21 @@ export function EmbedSettingsDialog({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 h-6 w-6"
-                  onClick={() => handleCopy(iframeSnippet)}
+                  className="absolute right-2 top-2 size-11"
+                  aria-label="Copy embed snippet"
+                  onClick={() =>
+                    void handleCopy(
+                      iframeSnippet,
+                      "Copied embed snippet",
+                      "Failed to copy embed snippet",
+                    )
+                  }
                 >
-                  <Copy className="h-3 w-3" />
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               </div>
             </TabsContent>
@@ -351,8 +457,14 @@ export function EmbedSettingsDialog({
       </Dialog>
 
       {/* ============ Create Secret Dialog ============ */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && isCreating) return;
+          setIsCreateOpen(nextOpen);
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-1rem)] max-h-[92dvh] overflow-y-auto sm:max-w-md">
           <form onSubmit={handleCreate}>
             <DialogHeader>
               <DialogTitle>Create Embed Secret</DialogTitle>
@@ -403,15 +515,22 @@ export function EmbedSettingsDialog({
                 </p>
               </div>
             </div>
+            {createError && <p role="alert" className="mb-4 text-sm text-[var(--bf-danger)]">{createError}</p>}
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
+                className="min-h-11"
                 onClick={() => setIsCreateOpen(false)}
+                disabled={isCreating}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isCreating || !createName.trim()}>
+              <Button
+                type="submit"
+                className="min-h-11"
+                disabled={isCreating || !createName.trim()}
+              >
                 {isCreating ? "Creating..." : "Create Secret"}
               </Button>
             </DialogFooter>
@@ -423,10 +542,14 @@ export function EmbedSettingsDialog({
       <Dialog
         open={!!revealedSecret}
         onOpenChange={(open) => {
-          if (!open) setRevealedSecret(null);
+          if (!open) {
+            invalidateCopyOperation();
+            setCopied(false);
+            setRevealedSecret(null);
+          }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="w-[calc(100vw-1rem)] max-h-[92dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Check className="h-5 w-5 text-green-500" />
@@ -434,8 +557,8 @@ export function EmbedSettingsDialog({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="rounded-md bg-amber-500/10 ring-1 ring-amber-500/30 p-3 flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-[var(--bf-radius-control)] border border-[color:var(--bf-warning-soft)] bg-[color:var(--bf-warning-soft)]/15 p-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--bf-warning)]" />
               <p className="text-sm">
                 Copy this secret now — it will not be shown again.
               </p>
@@ -447,9 +570,14 @@ export function EmbedSettingsDialog({
               <Button
                 variant="outline"
                 size="icon"
-                className="shrink-0"
+                className="size-11 shrink-0"
+                aria-label="Copy raw secret"
                 onClick={() =>
-                  handleCopy(revealedSecret?.raw_secret || "")
+                  void handleCopy(
+                    revealedSecret?.raw_secret || "",
+                    "Copied raw secret",
+                    "Failed to copy raw secret",
+                  )
                 }
               >
                 {copied ? (
@@ -461,7 +589,9 @@ export function EmbedSettingsDialog({
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => setRevealedSecret(null)}>Done</Button>
+            <Button className="min-h-11" onClick={() => { invalidateCopyOperation(); setCopied(false); setRevealedSecret(null); }}>
+              Done
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -470,10 +600,15 @@ export function EmbedSettingsDialog({
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open) {
+            if (isDeleting) return;
+            setDeleteTarget(null);
+            setDeleteError(null);
+            setIsDeleting(false);
+          }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[calc(100vw-1rem)] max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete embed secret?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -481,10 +616,31 @@ export function EmbedSettingsDialog({
               Any integrations using this secret will stop working.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteError && (
+            <div
+              role="alert"
+              className="rounded-[var(--bf-radius-control)] border border-[color:var(--bf-danger-soft)] bg-[color:var(--bf-danger-soft)]/20 px-3 py-2 text-sm text-[var(--bf-danger)]"
+            >
+              {deleteError}
+            </div>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              Delete
+            <AlertDialogCancel
+              className="min-h-11"
+              onClick={() => setDeleteError(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={(e) => {
+                e.preventDefault();
+                if (!isDeleting) void handleDelete();
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : deleteError ? "Retry delete" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

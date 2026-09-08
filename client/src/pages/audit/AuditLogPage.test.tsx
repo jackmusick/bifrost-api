@@ -2,13 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockUseAuditLog = vi.fn();
+const mockUseAuth = vi.fn();
 
 vi.mock("@/hooks/useAuditLog", () => ({
 	useAuditLog: (params: unknown) => mockUseAuditLog(params),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => ({ isPlatformAdmin: true }),
+	useAuth: () => mockUseAuth(),
 }));
 
 import { AuditLogPage } from "./AuditLogPage";
@@ -16,6 +17,7 @@ import { AuditLogPage } from "./AuditLogPage";
 const filePath = "denied/quarterly-result.csv";
 
 beforeEach(() => {
+	mockUseAuth.mockReturnValue({ isPlatformAdmin: true });
 	mockUseAuditLog.mockReturnValue({
 		data: {
 			entries: [
@@ -40,6 +42,31 @@ beforeEach(() => {
 						policy_action: "subscribe",
 						location: "reports",
 						path: filePath,
+						scope: "org-1",
+						solution_id: null,
+					},
+				},
+				{
+					id: "44444444-4444-4444-4444-444444444444",
+					timestamp: "2026-08-25T12:02:00Z",
+					action: "organization.update",
+					resource_type: "organization",
+					resource_id:
+						"very-long-resource-identifier-with-multiple-segments-abcdefghijklmnopqrstuvwxyz0123456789",
+					outcome: "success",
+					source: "http",
+					actor: {
+						user_id: "66666666-6666-6666-6666-666666666666",
+						user_email: "auditor@example.com",
+						user_name: "Auditor",
+						organization_id: null,
+						organization_name: null,
+					},
+					ip_address: "192.0.2.11",
+					user_agent: "vitest",
+					details: {
+						path: "operations/audit/very-long-context-path-with-many-segments-and-values/abcdefghijklmnopqrstuvwxyz0123456789",
+						location: "settings",
 						scope: "org-1",
 						solution_id: null,
 					},
@@ -83,6 +110,16 @@ describe("AuditLogPage policy filters", () => {
 		expect(screen.getByText(`reports / ${filePath}`)).toBeInTheDocument();
 		expect(
 			screen.getByText(
+				"organization / very-long-resource-identifier-with-multiple-segments-abcdefghijklmnopqrstuvwxyz0123456789",
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				"settings / operations/audit/very-long-context-path-with-many-segments-and-values/abcdefghijklmnopqrstuvwxyz0123456789",
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
 				"restricted_customers / 44444444-4444-4444-4444-444444444444",
 			),
 		).toBeInTheDocument();
@@ -109,6 +146,23 @@ describe("AuditLogPage policy filters", () => {
 		});
 		expect(
 			screen.getByRole("button", { name: "Clear filters" }),
+		).toBeVisible();
+	});
+
+	it("shows a platform-admin-only access denied state", () => {
+		mockUseAuth.mockReturnValueOnce({
+			isPlatformAdmin: false,
+		});
+
+		renderWithProviders(<AuditLogPage />);
+
+		expect(
+			screen.getByText(
+				"You do not have permission to view the audit log. Platform administrator access is required.",
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Return to Dashboard" }),
 		).toBeVisible();
 	});
 });

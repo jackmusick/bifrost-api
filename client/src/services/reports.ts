@@ -1,3 +1,4 @@
+import type { UseQueryResult } from "@tanstack/react-query";
 /**
  * Reports API service using openapi-react-query pattern
  *
@@ -97,7 +98,10 @@ export function useROISummary(
 						: {}),
 			},
 		},
-	}) as { data: ROISummary | undefined; isLoading: boolean; error: unknown };
+	}) as Pick<
+		UseQueryResult<ROISummary, unknown>,
+		"data" | "isLoading" | "error" | "refetch" | "isFetching"
+	>;
 }
 
 /**
@@ -124,11 +128,10 @@ export function useROIByWorkflow(
 						: {}),
 			},
 		},
-	}) as {
-		data: ROIByWorkflow | undefined;
-		isLoading: boolean;
-		error: unknown;
-	};
+	}) as Pick<
+		UseQueryResult<ROIByWorkflow, unknown>,
+		"data" | "isLoading" | "error" | "refetch" | "isFetching"
+	>;
 }
 
 /**
@@ -143,11 +146,10 @@ export function useROIByOrganization(startDate: string, endDate: string) {
 				end_date: endDate,
 			},
 		},
-	}) as {
-		data: ROIByOrganization | undefined;
-		isLoading: boolean;
-		error: unknown;
-	};
+	}) as Pick<
+		UseQueryResult<ROIByOrganization, unknown>,
+		"data" | "isLoading" | "error" | "refetch" | "isFetching"
+	>;
 }
 
 /**
@@ -177,5 +179,8 @@ export function useROITrends(
 						: {}),
 			},
 		},
-	}) as { data: ROITrends | undefined; isLoading: boolean; error: unknown };
+	}) as Pick<
+		UseQueryResult<ROITrends, unknown>,
+		"data" | "isLoading" | "error" | "refetch" | "isFetching"
+	>;
 }

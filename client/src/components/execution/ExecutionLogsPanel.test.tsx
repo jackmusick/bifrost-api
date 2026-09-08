@@ -12,9 +12,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, MockInstance } from "vitest";
-import { renderWithProviders, screen, within } from "@/test-utils";
+import { renderWithProviders, screen, within, fireEvent } from "@/test-utils";
 import { ExecutionLogsPanel } from "./ExecutionLogsPanel";
 import type { LogEntry } from "./ExecutionLogsPanel";
+import * as clipboard from "@/lib/clipboard";
+import { toast } from "sonner";
 
 function log(level: string, message: string, ts = "2026-04-20T12:00:00Z"): LogEntry {
 	return { level, message, timestamp: ts } as LogEntry;
@@ -148,6 +150,26 @@ describe("ExecutionLogsPanel — copy button", () => {
 		expect(payload).toContain("ERROR");
 		expect(payload).toContain("oh no");
 	});
+
+	it("toasts an error when copying fails", async () => {
+		const copySpy = vi
+			.spyOn(clipboard, "copyToClipboard")
+			.mockResolvedValue(false);
+		const toastSpy = vi.spyOn(toast, "error").mockImplementation(() => "copy-error");
+		const { user } = renderWithProviders(
+			<ExecutionLogsPanel
+				status="Running"
+				logs={[log("INFO", "hello")]}
+			/>,
+		);
+
+		await user.click(screen.getByTitle(/copy logs/i));
+
+		expect(copySpy).toHaveBeenCalledTimes(1);
+		expect(toastSpy).toHaveBeenCalledWith("Failed to copy logs");
+		copySpy.mockRestore();
+		toastSpy.mockRestore();
+	});
 });
 
 describe("ExecutionLogsPanel — live streaming header", () => {
@@ -177,7 +199,7 @@ describe("ExecutionLogsPanel — live streaming header", () => {
 				logs={[]}
 			/>,
 		);
-		expect(screen.queryByText(/live/i)).not.toBeInTheDocument();
+		expect(screen.queryByText("Live", { exact: true })).not.toBeInTheDocument();
 	});
 });
 
@@ -233,4 +255,34 @@ describe("ExecutionLogsPanel — header affordances", () => {
 			expect.stringContaining("one"),
 		);
 	});
+});
+
+
+it("keeps the reader's position during streaming and resumes following explicitly", async () => {
+	const initial = [log("INFO", "earlier message")];
+	const {user, rerender} = renderWithProviders(<ExecutionLogsPanel logs={initial} status="Running" />);
+	const region = screen.getByRole("region", {name: "Execution log messages"});
+	Object.defineProperties(region, {scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
+	region.scrollTop = 100;
+	fireEvent.scroll(region);
+	expect(screen.getByText("Following paused")).toBeInTheDocument();
+	rerender(<ExecutionLogsPanel logs={[...initial,log("INFO", "new message")]} status="Running" />);
+	expect(region.scrollTop).toBe(100);
+	await user.click(screen.getByRole("button", {name:"Jump to latest"}));
+	expect(region.scrollTop).toBe(1000);
+	expect(screen.queryByText("Following paused")).not.toBeInTheDocument();
+});
+
+
+it("retains logs during a connection interruption and clears the notice on recovery", () => {
+	const logs = [log("INFO", "Last received message")];
+	const { rerender } = renderWithProviders(<ExecutionLogsPanel logs={logs} status="Running" isConnected={false} />);
+	expect(screen.getByRole("status")).toHaveTextContent("New log messages may be delayed");
+	expect(screen.getByText("Last received message")).toBeVisible();
+	rerender(<ExecutionLogsPanel logs={logs} status="Running" isConnected />);
+	expect(screen.queryByText(/connection unavailable/i)).not.toBeInTheDocument();
+	expect(screen.getByText("Live", { exact: true })).toBeVisible();
+	rerender(<ExecutionLogsPanel logs={logs} status="Success" isConnected={false} />);
+	expect(screen.queryByText(/connection unavailable/i)).not.toBeInTheDocument();
+	expect(screen.getByText("Last received message")).toBeVisible();
 });

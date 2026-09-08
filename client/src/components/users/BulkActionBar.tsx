@@ -46,47 +46,65 @@ export function BulkActionBar({
 			role="region"
 			aria-label="Bulk user actions"
 			className={cn(
-				"sticky bottom-4 left-0 right-0 mx-auto flex items-center gap-3 rounded-2xl bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10",
+				"sticky bottom-4 left-0 right-0 mx-auto grid grid-cols-2 items-center gap-2 rounded-[var(--bf-radius-feature)] border sm:flex sm:flex-wrap sm:gap-3 bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10",
 				"w-full max-w-3xl z-20",
 				className,
 			)}
 		>
-			<span className="text-sm font-medium">
-				{count} selected
-			</span>
-			<Separator orientation="vertical" className="h-6" />
-
-			<Button variant="ghost" size="sm" onClick={onMoveOrg}>
-				<Building2 className="h-4 w-4 mr-1.5" />
-				Move to org
-			</Button>
-			<Button variant="ghost" size="sm" onClick={onReplaceRoles}>
-				<Shield className="h-4 w-4 mr-1.5" />
-				Replace roles
-			</Button>
-			{showDisable && (
-				<Button variant="ghost" size="sm" onClick={onDisable}>
-					<PowerOff className="h-4 w-4 mr-1.5" />
-					Disable
-				</Button>
-			)}
-			{showEnable && (
-				<Button variant="ghost" size="sm" onClick={onEnable}>
-					<Power className="h-4 w-4 mr-1.5" />
-					Enable
-				</Button>
-			)}
-
-			<div className="ml-auto">
+			<span className="text-sm font-medium">{count} selected</span>
+			<div className="justify-self-end sm:order-last sm:ml-auto">
 				<Button
 					variant="ghost"
 					size="sm"
 					onClick={onClear}
 					aria-label="Clear selection"
+					className="h-11 w-11 sm:h-8 sm:w-8"
 				>
 					<X className="h-4 w-4" />
 				</Button>
 			</div>
+			<Separator orientation="vertical" className="hidden h-6 sm:block" />
+
+			<Button
+				variant="ghost"
+				size="sm"
+				className="min-h-11 sm:min-h-0"
+				onClick={onMoveOrg}
+			>
+				<Building2 className="h-4 w-4 mr-1.5" />
+				Move to org
+			</Button>
+			<Button
+				variant="ghost"
+				size="sm"
+				className="min-h-11 sm:min-h-0"
+				onClick={onReplaceRoles}
+			>
+				<Shield className="h-4 w-4 mr-1.5" />
+				Replace roles
+			</Button>
+			{showDisable && (
+				<Button
+					variant="ghost"
+					size="sm"
+					className="min-h-11 sm:min-h-0"
+					onClick={onDisable}
+				>
+					<PowerOff className="h-4 w-4 mr-1.5" />
+					Disable
+				</Button>
+			)}
+			{showEnable && (
+				<Button
+					variant="ghost"
+					size="sm"
+					className="min-h-11 sm:min-h-0"
+					onClick={onEnable}
+				>
+					<Power className="h-4 w-4 mr-1.5" />
+					Enable
+				</Button>
+			)}
 		</div>
 	);
 }

@@ -18,7 +18,6 @@ import {
 	CardContent,
 	CardDescription,
 	CardHeader,
-	CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -46,6 +45,10 @@ export function MFASetup() {
 	const location = useLocation();
 
 	const [step, setStep] = useState<SetupStep>("setup");
+	const headingRef = useRef<HTMLHeadingElement>(null);
+	useEffect(() => {
+		if (step === "recovery-codes") headingRef.current?.focus();
+	}, [step]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -74,6 +77,7 @@ export function MFASetup() {
 	const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 	const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
 	const [secretCopied, setSecretCopied] = useState(false);
+	const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
 
 	const initMfaSetup = useCallback(
 		async (forceNew: boolean = false) => {
@@ -204,7 +208,6 @@ export function MFASetup() {
 				sessionStorage.removeItem("mfa_setup_token");
 				setRecoveryCodes(data.recovery_codes);
 				setStep("recovery-codes");
-				toast.success("MFA setup complete!");
 			}
 		} catch (err) {
 			setError(
@@ -216,18 +219,26 @@ export function MFASetup() {
 	};
 
 	const copySecret = async () => {
-		if (totpSetup?.secret) {
+		if (!totpSetup?.secret) return;
+		try {
 			await navigator.clipboard.writeText(totpSetup.secret);
 			setSecretCopied(true);
-			toast.success("Secret copied to clipboard");
 			setTimeout(() => setSecretCopied(false), 2000);
+		} catch {
+			toast.error(
+				"Could not copy the setup key. Select and copy it manually.",
+			);
 		}
 	};
-
 	const copyRecoveryCodes = async () => {
-		const text = recoveryCodes.join("\n");
-		await navigator.clipboard.writeText(text);
-		toast.success("Recovery codes copied to clipboard");
+		try {
+			await navigator.clipboard.writeText(recoveryCodes.join("\n"));
+			setRecoveryFeedback("Recovery codes copied to clipboard.");
+		} catch {
+			setRecoveryFeedback(
+				"Could not copy recovery codes. Download them or copy them manually.",
+			);
+		}
 	};
 
 	const downloadRecoveryCodes = () => {
@@ -248,7 +259,7 @@ Keep these codes in a secure location.
 		a.download = "bifrost-recovery-codes.txt";
 		a.click();
 		URL.revokeObjectURL(url);
-		toast.success("Recovery codes downloaded");
+		setRecoveryFeedback("Recovery codes downloaded.");
 	};
 
 	const handleComplete = () => {
@@ -259,46 +270,66 @@ Keep these codes in a secure location.
 	if (isLoading && !totpSetup) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-background p-4">
-			<Card className="w-full max-w-md">
+		<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
+			<Card className="w-full max-w-md rounded-[var(--bf-radius-feature)]">
 				<CardHeader className="text-center">
-					<CardTitle className="text-2xl font-bold">
+					<h1
+						ref={headingRef}
+						tabIndex={-1}
+						className="font-display text-2xl font-semibold tracking-tight outline-none"
+					>
 						<Shield className="h-8 w-8 mx-auto mb-2" />
-						Two-Factor Authentication
-					</CardTitle>
+						{step === "setup"
+							? "Set up two-factor authentication"
+							: step === "verify"
+								? "Verify your authenticator"
+								: "Save your recovery codes"}
+					</h1>
 					<CardDescription>
 						{step === "setup" &&
 							"Scan the QR code with your authenticator app"}
 						{step === "verify" && "Enter the verification code"}
 						{step === "recovery-codes" &&
-							"Save your recovery codes"}
+							"Keep these somewhere safe before continuing."}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{error && (
 						<Alert variant="destructive" className="mb-4">
 							<AlertCircle className="h-4 w-4" />
-							<AlertDescription>{error}</AlertDescription>
+							<AlertDescription className="flex flex-col items-start gap-3">
+								<span>{error}</span>
+								{!totpSetup && (
+									<Button
+										type="button"
+										variant="outline"
+										className="min-h-11"
+										onClick={() => void initMfaSetup()}
+										disabled={isLoading}
+									>
+										Retry setup
+									</Button>
+								)}
+							</AlertDescription>
 						</Alert>
 					)}
 
-					<Alert className="mb-4">
-						<AlertDescription>
-							Two-factor authentication is required for
-							password-based login. This helps protect your
-							account from unauthorized access.
-						</AlertDescription>
-					</Alert>
+					{step === "setup" && (
+						<p className="mb-4 text-sm leading-6 text-muted-foreground">
+							Two-factor authentication adds a verification code
+							to password-based sign-in.
+						</p>
+					)}
 
 					{step === "setup" && totpSetup && (
 						<div className="space-y-4">
-							<div className="flex items-center justify-center p-4 bg-white rounded-lg">
+							<div className="flex items-center justify-center p-4 bg-white rounded-[var(--bf-radius-surface)]">
 								<QRCode
 									data={totpSetup.qrCodeUri}
 									size={200}
@@ -315,17 +346,22 @@ Keep these codes in a secure location.
 									Or enter this code manually:
 								</p>
 								<div className="flex items-center justify-center gap-2">
-									<code className="text-sm bg-muted px-2 py-1 rounded font-mono">
+									<code className="min-w-0 break-all text-sm bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] font-mono">
 										{totpSetup.secret}
 									</code>
 									<Button
 										variant="ghost"
 										size="sm"
 										onClick={copySecret}
-										className="h-7 px-2"
+										className="size-11 shrink-0"
+										aria-label={
+											secretCopied
+												? "Setup key copied"
+												: "Copy setup key"
+										}
 									>
 										{secretCopied ? (
-											<CheckCircle className="h-3 w-3 text-green-500" />
+											<CheckCircle className="h-3 w-3 text-[var(--bf-success)]" />
 										) : (
 											<Copy className="h-3 w-3" />
 										)}
@@ -335,7 +371,7 @@ Keep these codes in a secure location.
 
 							<Button
 								onClick={() => setStep("verify")}
-								className="w-full"
+								className="min-h-11 w-full"
 							>
 								<Shield className="h-4 w-4 mr-2" />
 								I've added the code
@@ -346,10 +382,10 @@ Keep these codes in a secure location.
 								size="sm"
 								onClick={handleGenerateNew}
 								disabled={isLoading}
-								className="w-full text-muted-foreground"
+								className="min-h-11 w-full text-muted-foreground"
 							>
 								{isLoading ? (
-									<Loader2 className="h-4 w-4 animate-spin mr-2" />
+									<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 								) : (
 									<RefreshCw className="h-4 w-4 mr-2" />
 								)}
@@ -376,22 +412,27 @@ Keep these codes in a secure location.
 											e.target.value.replace(/\D/g, ""),
 										)
 									}
-									className="text-center text-lg tracking-widest"
+									className="h-12 font-mono text-center text-lg tracking-widest"
+									autoComplete="one-time-code"
+									aria-describedby="verification-help"
 									maxLength={6}
 									autoFocus
 								/>
-								<p className="text-xs text-muted-foreground text-center">
+								<p
+									id="verification-help"
+									className="text-xs text-muted-foreground text-center"
+								>
 									Enter the code from your authenticator app
 								</p>
 							</div>
 
 							<Button
 								type="submit"
-								className="w-full"
+								className="min-h-11 w-full"
 								disabled={isLoading || mfaCode.length !== 6}
 							>
 								{isLoading ? (
-									<Loader2 className="h-4 w-4 animate-spin mr-2" />
+									<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 								) : null}
 								Verify
 							</Button>
@@ -399,7 +440,7 @@ Keep these codes in a secure location.
 							<Button
 								type="button"
 								variant="ghost"
-								className="w-full"
+								className="min-h-11 w-full"
 								onClick={() => {
 									setStep("setup");
 									setMfaCode("");
@@ -422,9 +463,12 @@ Keep these codes in a secure location.
 								</AlertDescription>
 							</Alert>
 
-							<div className="grid grid-cols-2 gap-2 p-4 bg-muted rounded-lg font-mono text-sm ring-1 ring-foreground/5">
+							<div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-2 p-4 bg-muted rounded-[var(--bf-radius-surface)] font-mono text-sm">
 								{recoveryCodes.map((code, i) => (
-									<div key={i} className="text-center py-1">
+									<div
+										key={i}
+										className="break-all text-center py-1"
+									>
 										{code}
 									</div>
 								))}
@@ -433,7 +477,7 @@ Keep these codes in a secure location.
 							<div className="flex gap-2">
 								<Button
 									variant="outline"
-									className="flex-1"
+									className="min-h-11 flex-1"
 									onClick={copyRecoveryCodes}
 								>
 									<Copy className="h-4 w-4 mr-2" />
@@ -441,13 +485,19 @@ Keep these codes in a secure location.
 								</Button>
 								<Button
 									variant="outline"
-									className="flex-1"
+									className="min-h-11 flex-1"
 									onClick={downloadRecoveryCodes}
 								>
 									<Download className="h-4 w-4 mr-2" />
 									Download
 								</Button>
 							</div>
+
+							{recoveryFeedback && (
+								<p role="status" className="text-sm leading-6 text-muted-foreground">
+									{recoveryFeedback}
+									</p>
+							)}
 
 							<div className="flex items-center space-x-2">
 								<Checkbox
@@ -459,7 +509,7 @@ Keep these codes in a secure location.
 								/>
 								<Label
 									htmlFor="savedCodes"
-									className="text-sm font-normal"
+									className="flex min-h-11 items-center text-sm font-normal leading-5"
 								>
 									I have saved my recovery codes
 								</Label>
@@ -467,7 +517,7 @@ Keep these codes in a secure location.
 
 							<Button
 								onClick={handleComplete}
-								className="w-full"
+								className="min-h-11 w-full"
 								disabled={!recoveryCodesSaved}
 							>
 								<CheckCircle className="h-4 w-4 mr-2" />

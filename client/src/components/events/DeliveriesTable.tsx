@@ -8,19 +8,14 @@ import {
 	Loader2,
 	ExternalLink,
 	AlertTriangle,
-	Workflow as WorkflowIcon,
+	Workflow,
 	Bot,
 	Send,
 	CircleDashed,
+	Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,333 +25,263 @@ import {
 	type EventDelivery,
 } from "@/services/events";
 
-// Extended status type to include "not_delivered"
-type DeliveryStatus = EventDelivery["status"] | "not_delivered";
-
 interface DeliveriesTableProps {
 	deliveries: EventDelivery[];
 	eventId?: string;
 }
 
-function getStatusIcon(status: DeliveryStatus) {
-	switch (status) {
-		case "pending":
-			return <Clock className="h-4 w-4 text-muted-foreground" />;
-		case "queued":
-			return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-		case "success":
-			return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-		case "failed":
-			return <XCircle className="h-4 w-4 text-destructive" />;
-		case "skipped":
-			return <AlertTriangle className="h-4 w-4 text-amber-500" />;
-		case "not_delivered":
-			return <CircleDashed className="h-4 w-4 text-muted-foreground" />;
-		default:
-			return <Clock className="h-4 w-4 text-muted-foreground" />;
-	}
-}
+const deliveryStates = {
+	pending: { label: "Pending", Icon: Clock, color: "text-muted-foreground" },
+	queued: { label: "Queued", Icon: Loader2, color: "text-[var(--bf-info)]" },
+	success: {
+		label: "Success",
+		Icon: CheckCircle2,
+		color: "text-[var(--bf-success)]",
+	},
+	failed: {
+		label: "Failed",
+		Icon: XCircle,
+		color: "text-[var(--bf-danger)]",
+	},
+	skipped: {
+		label: "Skipped",
+		Icon: AlertTriangle,
+		color: "text-[var(--bf-warning)]",
+	},
+	not_delivered: {
+		label: "Not Delivered",
+		Icon: CircleDashed,
+		color: "text-muted-foreground",
+	},
+};
 
-function getStatusLabel(status: DeliveryStatus) {
-	switch (status) {
-		case "pending":
-			return "Pending";
-		case "queued":
-			return "Queued";
-		case "success":
-			return "Success";
-		case "failed":
-			return "Failed";
-		case "skipped":
-			return "Skipped";
-		case "not_delivered":
-			return "Not Delivered";
-		default:
-			return "Unknown";
-	}
-}
-
-function getStatusVariant(
-	status: DeliveryStatus,
-): "default" | "secondary" | "destructive" | "outline" {
-	switch (status) {
-		case "success":
-			return "default";
-		case "failed":
-			return "destructive";
-		case "queued":
-		case "pending":
-			return "outline";
-		case "not_delivered":
-			return "secondary";
-		default:
-			return "secondary";
-	}
+function DeliveryRecord({
+	delivery,
+	eventId,
+	isAdmin,
+}: {
+	delivery: EventDelivery;
+	eventId?: string;
+	isAdmin: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const retryMutation = useRetryDelivery();
+	const createMutation = useCreateDelivery();
+	const [action, setAction] = useState<"retry" | "send" | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [copyError, setCopyError] = useState(false);
+	const isAgent = delivery.target_type === "agent";
+	const name = isAgent
+		? delivery.agent_name || delivery.agent_id || "Unknown Agent"
+		: delivery.workflow_name || delivery.workflow_id || "Unknown Workflow";
+	const link =
+		isAgent && delivery.agent_id && delivery.agent_run_id
+			? `/agents/${delivery.agent_id}/runs/${delivery.agent_run_id}`
+			: delivery.execution_id
+				? `/history/${delivery.execution_id}`
+				: null;
+	const state = deliveryStates[
+		delivery.status as keyof typeof deliveryStates
+	] ?? {
+		label: "Unknown",
+		Icon: Clock,
+		color: "text-muted-foreground",
+	};
+	const TargetIcon = isAgent ? Bot : Workflow;
+	const handleAction = async (nextAction: "retry" | "send") => {
+		if (action || !isAdmin || (nextAction === "send" && !eventId)) return;
+		setAction(nextAction);
+		setError(null);
+		try {
+			if (nextAction === "retry" && delivery.id) {
+				await retryMutation.mutateAsync({
+					params: { path: { delivery_id: delivery.id } },
+				});
+			} else if (nextAction === "send" && eventId) {
+				await createMutation.mutateAsync({
+					params: { path: { event_id: eventId } },
+					body: { subscription_id: delivery.event_subscription_id },
+				});
+			} else return;
+			toast.success(
+				nextAction === "retry"
+					? "Delivery retry queued"
+					: "Event delivery queued",
+			);
+			queryClient.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[0] === "get" &&
+					typeof query.queryKey[1] === "string" &&
+					query.queryKey[1].includes("/deliveries"),
+			});
+		} catch {
+			setError(
+				nextAction === "retry"
+					? "Could not queue the retry. Try again."
+					: "Could not send this event. Try again.",
+			);
+		} finally {
+			setAction(null);
+		}
+	};
+	const copyErrorMessage = async () => {
+		try {
+			await navigator.clipboard.writeText(delivery.error_message || "");
+			setCopyError(false);
+			toast.success("Error copied to clipboard");
+		} catch {
+			setCopyError(true);
+		}
+	};
+	return (
+		<article
+			className="min-w-0 rounded-[var(--bf-radius-surface)] border bg-card p-4 space-y-3"
+			aria-label={`${name} delivery`}
+		>
+			<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+				<span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+					<TargetIcon className="size-4 shrink-0" />
+					{isAgent ? "Agent" : "Workflow"}
+				</span>
+				<Badge
+					variant="outline"
+					className={`h-auto py-1 text-sm ${state.color}`}
+				>
+					<state.Icon
+						className={`shrink-0 ${delivery.status === "queued" ? "motion-safe:animate-spin" : ""}`}
+					/>
+					{state.label}
+				</Badge>
+			</div>
+			<h3 className="text-sm font-medium leading-6 [overflow-wrap:anywhere]">
+				{name}
+			</h3>
+			{delivery.error_message && (
+				<div className="space-y-2 border-l-2 border-[var(--bf-danger)] pl-3">
+					<p className="whitespace-pre-wrap text-sm leading-6 [overflow-wrap:anywhere]">
+						{delivery.error_message}
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						className="min-h-11"
+						onClick={copyErrorMessage}
+					>
+						<Copy className="size-4" />
+						Copy error
+					</Button>
+					{copyError && (
+						<p role="alert" className="text-sm text-destructive">
+							Could not copy the error. Select the text above to
+							copy it.
+						</p>
+					)}
+				</div>
+			)}
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm leading-6 text-muted-foreground">
+				{delivery.status === "not_delivered" ? (
+					<span>Subscription added after this event arrived</span>
+				) : (
+					<>
+						<span>
+							{delivery.attempt_count} attempt
+							{delivery.attempt_count !== 1 ? "s" : ""}
+						</span>
+						{delivery.completed_at && (
+							<span>
+								Completed{" "}
+								{format(
+									new Date(delivery.completed_at),
+									"MMM d, HH:mm:ss",
+								)}
+							</span>
+						)}
+					</>
+				)}
+			</div>
+			{(link ||
+				(isAdmin &&
+					((delivery.status === "failed" && delivery.id) ||
+						(delivery.status === "not_delivered" && eventId)))) && (
+				<div className="flex flex-wrap items-center gap-2 border-t pt-3">
+					{link && (
+						<Button variant="outline" className="min-h-11" asChild>
+							<a
+								href={link}
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<ExternalLink className="size-4" />
+								{isAgent ? "View agent run" : "View execution"}
+								<span className="sr-only">
+									{" "}
+									(opens in a new tab)
+								</span>
+							</a>
+						</Button>
+					)}
+					{isAdmin && delivery.status === "failed" && delivery.id && (
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11"
+							disabled={action !== null}
+							onClick={() => handleAction("retry")}
+						>
+							{action === "retry" ? (
+								<Loader2 className="size-4 motion-safe:animate-spin" />
+							) : (
+								<RefreshCw className="size-4" />
+							)}
+							Retry
+						</Button>
+					)}
+					{isAdmin &&
+						delivery.status === "not_delivered" &&
+						eventId && (
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11"
+								disabled={action !== null}
+								onClick={() => handleAction("send")}
+							>
+								{action === "send" ? (
+									<Loader2 className="size-4 motion-safe:animate-spin" />
+								) : (
+									<Send className="size-4" />
+								)}
+								Send
+							</Button>
+						)}
+				</div>
+			)}
+			{error && (
+				<p role="alert" className="text-sm leading-6 text-destructive">
+					{error}
+				</p>
+			)}
+		</article>
+	);
 }
 
 export function DeliveriesTable({ deliveries, eventId }: DeliveriesTableProps) {
 	const { isPlatformAdmin } = useAuth();
-	const queryClient = useQueryClient();
-	const retryMutation = useRetryDelivery();
-	const createDeliveryMutation = useCreateDelivery();
-	const [retryingId, setRetryingId] = useState<string | null>(null);
-	const [sendingId, setSendingId] = useState<string | null>(null);
-
-	const handleRetry = async (deliveryId: string) => {
-		setRetryingId(deliveryId);
-		try {
-			await retryMutation.mutateAsync({
-				params: {
-					path: { delivery_id: deliveryId },
-				},
-			});
-			toast.success("Delivery retry queued");
-			// Refresh deliveries
-			queryClient.invalidateQueries({
-				predicate: (query) =>
-					query.queryKey[0] === "get" &&
-					(query.queryKey[1] as string)?.includes("/deliveries"),
-			});
-		} catch {
-			toast.error("Failed to retry delivery");
-		} finally {
-			setRetryingId(null);
-		}
-	};
-
-	const handleSend = async (subscriptionId: string) => {
-		if (!eventId) return;
-		setSendingId(subscriptionId);
-		try {
-			await createDeliveryMutation.mutateAsync({
-				params: {
-					path: { event_id: eventId },
-				},
-				body: {
-					subscription_id: subscriptionId,
-				},
-			});
-			toast.success("Event delivery queued");
-			// Refresh deliveries
-			queryClient.invalidateQueries({
-				predicate: (query) =>
-					query.queryKey[0] === "get" &&
-					(query.queryKey[1] as string)?.includes("/deliveries"),
-			});
-		} catch {
-			toast.error("Failed to send event");
-		} finally {
-			setSendingId(null);
-		}
-	};
-
-	if (deliveries.length === 0) {
+	if (!deliveries.length)
 		return (
-			<div className="text-center py-6 text-muted-foreground">
+			<div className="py-6 text-center text-sm leading-6 text-muted-foreground">
 				No deliveries for this event (no active subscriptions).
 			</div>
 		);
-	}
-
-	const getBorderColor = (status: DeliveryStatus) => {
-		switch (status) {
-			case "success":
-				return "border-l-green-500";
-			case "failed":
-				return "border-l-destructive";
-			case "queued":
-			case "pending":
-				return "border-l-blue-500";
-			case "skipped":
-				return "border-l-amber-500";
-			case "not_delivered":
-				return "border-l-muted-foreground/50";
-			default:
-				return "border-l-primary/60";
-		}
-	};
-
 	return (
-		<div className="space-y-2">
+		<div className="min-w-0 space-y-3">
 			{deliveries.map((delivery) => (
-				<div
+				<DeliveryRecord
 					key={delivery.id || `sub-${delivery.event_subscription_id}`}
-					className={`border rounded-lg p-3 border-l-4 bg-muted/40 ${getBorderColor(delivery.status as DeliveryStatus)}`}
-				>
-					{/* Top row: Target + Status + Actions */}
-					<div className="flex items-center justify-between gap-3">
-						<div className="flex items-center gap-2 min-w-0 flex-1">
-							{(() => {
-								// Cast to access agent fields pending type regeneration
-								const d = delivery as typeof delivery & {
-									target_type?: string;
-									agent_id?: string | null;
-									agent_name?: string | null;
-									agent_run_id?: string | null;
-								};
-								const isAgent = d.target_type === "agent";
-								const resourceName = isAgent
-									? (d.agent_name || d.agent_id || "Unknown Agent")
-									: (delivery.workflow_name || delivery.workflow_id);
-								const linkUrl = isAgent && d.agent_run_id && d.agent_id
-									? `/agents/${d.agent_id}/runs/${d.agent_run_id}`
-									: delivery.execution_id
-										? `/history/${delivery.execution_id}`
-										: null;
-
-								return (
-									<>
-										<Badge
-											variant="outline"
-											className="font-mono text-xs shrink-0"
-										>
-											{isAgent ? (
-												<Bot className="mr-1 h-3 w-3" />
-											) : (
-												<WorkflowIcon className="mr-1 h-3 w-3" />
-											)}
-											{resourceName}
-										</Badge>
-										{linkUrl && (
-											<TooltipProvider>
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<Button
-															variant="ghost"
-															size="icon"
-															className="h-6 w-6 shrink-0"
-															onClick={() => {
-																window.open(linkUrl, "_blank");
-															}}
-														>
-															<ExternalLink className="h-3.5 w-3.5" />
-														</Button>
-													</TooltipTrigger>
-													<TooltipContent>
-														{isAgent ? "View agent run" : "View execution"}
-													</TooltipContent>
-												</Tooltip>
-											</TooltipProvider>
-										)}
-									</>
-								);
-							})()}
-						</div>
-						<div className="flex items-center gap-2">
-							<div className="flex items-center gap-1.5">
-								{getStatusIcon(delivery.status as DeliveryStatus)}
-								{delivery.status === "failed" &&
-								delivery.error_message ? (
-									<TooltipProvider>
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<Badge
-													variant="destructive"
-													className="cursor-pointer"
-													onClick={() => {
-														navigator.clipboard.writeText(
-															delivery.error_message!,
-														);
-														toast.success(
-															"Error copied to clipboard",
-														);
-													}}
-												>
-													Failed
-												</Badge>
-											</TooltipTrigger>
-											<TooltipContent
-												side="top"
-												className="max-w-xs"
-											>
-												<p className="text-xs">
-													{delivery.error_message}
-												</p>
-												<p className="text-xs text-muted-foreground mt-1">
-													Click to copy
-												</p>
-											</TooltipContent>
-										</Tooltip>
-									</TooltipProvider>
-								) : (
-									<Badge
-										variant={getStatusVariant(
-											delivery.status as DeliveryStatus,
-										)}
-									>
-										{getStatusLabel(delivery.status as DeliveryStatus)}
-									</Badge>
-								)}
-							</div>
-							{/* Retry button for failed deliveries */}
-							{isPlatformAdmin &&
-								delivery.status === "failed" &&
-								delivery.id && (
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => handleRetry(delivery.id!)}
-										disabled={retryingId === delivery.id}
-									>
-										{retryingId === delivery.id ? (
-											<Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-										) : (
-											<RefreshCw className="h-3.5 w-3.5 mr-1" />
-										)}
-										Retry
-									</Button>
-								)}
-							{/* Send button for not_delivered subscriptions */}
-							{isPlatformAdmin &&
-								delivery.status === "not_delivered" && (
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() =>
-											handleSend(delivery.event_subscription_id)
-										}
-										disabled={
-											sendingId === delivery.event_subscription_id
-										}
-									>
-										{sendingId ===
-										delivery.event_subscription_id ? (
-											<Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-										) : (
-											<Send className="h-3.5 w-3.5 mr-1" />
-										)}
-										Send
-									</Button>
-								)}
-						</div>
-					</div>
-
-					{/* Bottom row: Metadata */}
-					{delivery.status !== "not_delivered" && (
-						<div className="flex items-center gap-4 mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-							<span>
-								{delivery.attempt_count} attempt
-								{delivery.attempt_count !== 1 ? "s" : ""}
-							</span>
-							{delivery.completed_at && (
-								<span>
-									Completed{" "}
-									{format(
-										new Date(delivery.completed_at),
-										"MMM d, HH:mm:ss",
-									)}
-								</span>
-							)}
-						</div>
-					)}
-					{delivery.status === "not_delivered" && (
-						<div className="flex items-center gap-4 mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-							<span>
-								Subscription added after this event arrived
-							</span>
-						</div>
-					)}
-				</div>
+					delivery={delivery}
+					eventId={eventId}
+					isAdmin={isPlatformAdmin}
+				/>
 			))}
 		</div>
 	);

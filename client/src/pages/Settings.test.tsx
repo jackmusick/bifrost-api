@@ -13,7 +13,12 @@ vi.mock("@/pages/settings/OAuth", () => ({
 	OAuth: () => <h2>Authentication Panel</h2>,
 }));
 vi.mock("@/pages/settings/GitHub", () => ({
-	GitHub: () => <h2>GitHub Panel</h2>,
+	GitHub: () => (
+		<>
+			<h2>GitHub Panel</h2>
+			<input aria-label="Repository draft" defaultValue="" />
+		</>
+	),
 }));
 vi.mock("@/pages/settings/AIModelSettings", () => ({
 	AIModelSettings: () => <h2>Models Panel</h2>,
@@ -41,6 +46,60 @@ vi.mock("@/pages/settings/Maintenance", () => ({
 }));
 
 describe("Settings", () => {
+	it("retains a visited panel draft and hides inactive controls", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<Settings />, {
+			initialEntries: ["/settings/github"],
+		});
+		await user.type(
+			screen.getByRole("textbox", { name: "Repository draft" }),
+			"unsaved-repository",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Security" }),
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Authentication" }),
+		);
+		expect(
+			screen.queryByRole("textbox", { name: "Repository draft" }),
+		).not.toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "GitHub" }),
+		);
+		expect(
+			screen.getByRole("textbox", { name: "Repository draft" }),
+		).toHaveValue("unsaved-repository");
+	});
+	it("selects the canonical Models panel for an unknown subsection", () => {
+		renderWithProviders(<Settings />, {
+			initialEntries: ["/settings/unknown"],
+		});
+		expect(
+			screen.getByRole("button", { name: "Models" }),
+		).toHaveAttribute("aria-current", "page");
+		expect(
+			screen.getByRole("heading", { name: "Models Panel" }),
+		).toBeVisible();
+	});
+	it("closes mobile navigation and restores trigger focus after choosing a section", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<Settings />, {
+			initialEntries: ["/settings/sso"],
+		});
+		const trigger = screen.getByRole("button", {
+			name: /^Settings navigation:/,
+		});
+		await user.click(trigger);
+		expect(trigger).toHaveAttribute("aria-expanded", "true");
+		await user.click(screen.getByRole("button", { name: /^Connections$/ }));
+		await user.click(screen.getByRole("button", { name: /^GitHub$/ }));
+		expect(trigger).toHaveAttribute("aria-expanded", "false");
+		expect(trigger).toHaveFocus();
+		expect(
+			screen.getByRole("heading", { name: "GitHub Panel" }),
+		).toBeVisible();
+	});
 	it("shows the active route inside its expanded section", () => {
 		renderWithProviders(<Settings />, {
 			initialEntries: ["/settings/sso"],
@@ -50,7 +109,7 @@ describe("Settings", () => {
 			screen.getByRole("button", { name: /^security$/i }),
 		).toHaveAttribute("aria-expanded", "true");
 		expect(
-			screen.getByRole("button", { name: /authentication/i }),
+			screen.getByRole("button", { name: /^authentication$/i }),
 		).toHaveAttribute("aria-current", "page");
 		expect(
 			screen.getByRole("heading", { name: /authentication panel/i }),

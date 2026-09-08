@@ -22,7 +22,9 @@ describe("OptionsEditor", () => {
 			/>,
 		);
 
-		const labels = screen.getAllByPlaceholderText(/Label \(shown to user\)/i);
+		const labels = screen.getAllByPlaceholderText(
+			/Label \(shown to user\)/i,
+		);
 		const values = screen.getAllByPlaceholderText(/Value \(stored\)/i);
 
 		expect(labels).toHaveLength(2);
@@ -56,7 +58,9 @@ describe("OptionsEditor", () => {
 			/>,
 		);
 
-		const labels = screen.getAllByPlaceholderText(/Label \(shown to user\)/i);
+		const labels = screen.getAllByPlaceholderText(
+			/Label \(shown to user\)/i,
+		);
 		await user.type(labels[1]!, "X");
 
 		// The onChange receives the full array, with only the second label mutated.
@@ -79,7 +83,9 @@ describe("OptionsEditor", () => {
 		);
 
 		// Only delete buttons present; pick the first.
-		const deleteButtons = screen.getAllByRole("button", { name: "" });
+		const deleteButtons = screen.getAllByRole("button", {
+			name: /Remove option/,
+		});
 		await user.click(deleteButtons[0]!);
 
 		expect(onChange).toHaveBeenCalledWith([{ label: "B", value: "b" }]);
@@ -100,4 +106,19 @@ describe("OptionsEditor", () => {
 			screen.getByText(/provide a label and a stored value/i),
 		).toBeInTheDocument();
 	});
+});
+
+it("does not mutate parent options when a field changes", async () => {
+	const original = Object.freeze({ label: "One", value: "1" });
+	const onChange = vi.fn();
+	const { user } = renderWithProviders(
+		<OptionsEditor options={[original]} onChange={onChange} />,
+	);
+	await user.type(
+		screen.getByRole("textbox", { name: "Option 1 value" }),
+		"2",
+	);
+	expect(original).toEqual({ label: "One", value: "1" });
+	expect(onChange).toHaveBeenCalledWith([{ label: "One", value: "12" }]);
+	expect(onChange.mock.calls[0]![0][0]).not.toBe(original);
 });

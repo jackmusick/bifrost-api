@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { AlertTriangle } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -20,7 +19,8 @@ import {
 	FormLabel,
 	FormMessage,
 } from "@/components/ui/form";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getErrorMessage } from "@/lib/api-error";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,9 +68,6 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	// policies (criterion 6). Row data stays editable elsewhere (criterion 7).
 	const isSolutionManaged = table?.is_solution_managed ?? false;
 
-	// Derive original organization_id from the table prop
-	const originalOrgId = useMemo(() => table?.organization_id ?? null, [table]);
-
 	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
 		? null
@@ -89,21 +86,18 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	const [policies, setPolicies] = useState<TablePolicies | null>(
 		table?.policies ?? null,
 	);
-	// Track the entity identity we last initialized policies from so we can
-	// reset render-phase (rather than in an effect) when the dialog is
-	// reopened for a different table.
-	const [lastPolicyKey, setLastPolicyKey] = useState<string>(
-		table?.id ?? "__new__",
-	);
-	const currentPolicyKey = open ? (table?.id ?? "__new__") : lastPolicyKey;
+	// Reset policies when the dialog opens again, including a new-table draft.
+	const currentPolicyKey = `${open}:${table?.id ?? "__new__"}`;
+	const [lastPolicyKey, setLastPolicyKey] = useState(currentPolicyKey);
+
 	if (currentPolicyKey !== lastPolicyKey) {
 		setLastPolicyKey(currentPolicyKey);
 		setPolicies(table?.policies ?? null);
 	}
 
-	// Watch organization_id to detect scope changes
-	const watchedOrgId = useWatch({ control: form.control, name: "organization_id" });
-	const scopeChanged = isEditing && watchedOrgId !== originalOrgId;
+	const [policyParseError, setPolicyParseError] = useState<string | null>(
+		null,
+	);
 
 	useEffect(() => {
 		if (table) {
@@ -125,7 +119,17 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 		}
 	}, [table, form, open, defaultOrgId]);
 
+	const submitBusy = useRef(false);
+	const saveErrorRef = useRef<HTMLDivElement>(null);
 	const onSubmit = async (values: FormValues) => {
+		if (
+			submitBusy.current ||
+			isPending ||
+			isSolutionManaged ||
+			policyParseError
+		)
+			return;
+		form.clearErrors("root.save");
 		let parsedSchema: Record<string, unknown> | null = null;
 		if (values.schema && values.schema.trim()) {
 			try {
@@ -143,38 +147,73 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 		const scope =
 			values.organization_id === null ? "global" : values.organization_id;
 
-		if (isEditing) {
-			await updateTable.mutateAsync({
-				params: {
-					path: { table_id: table.id },
-				},
-				body: {
-					description: values.description || null,
-					schema: parsedSchema,
-					policies,
-				},
+		submitBusy.current = true;
+		try {
+			if (isEditing) {
+				await updateTable.mutateAsync({
+					params: {
+						path: { table_id: table.id },
+					},
+					body: {
+						description: values.description || null,
+						schema: parsedSchema,
+						policies,
+					},
+				});
+			} else {
+				await createTable.mutateAsync({
+					params: {
+						query: scope ? { scope } : undefined,
+					},
+					body: {
+						name: values.name,
+						description: values.description || null,
+						schema: parsedSchema,
+						policies,
+					},
+				});
+			}
+			onClose();
+		} catch (error) {
+			form.setError("root.save", {
+				type: "server",
+				message: getErrorMessage(
+					error,
+					"Try saving again. Your changes are preserved.",
+				),
 			});
-		} else {
-			await createTable.mutateAsync({
-				params: {
-					query: scope ? { scope } : undefined,
-				},
-				body: {
-					name: values.name,
-					description: values.description || null,
-					schema: parsedSchema,
-					policies,
-				},
-			});
+		} finally {
+			submitBusy.current = false;
 		}
-		onClose();
 	};
 
 	const isPending = createTable.isPending || updateTable.isPending;
 
+	const saveError = form.formState.errors.root?.save?.message;
+	useEffect(() => {
+		if (saveError) {
+			saveErrorRef.current?.focus();
+			saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [saveError]);
+
 	return (
-		<Dialog open={open} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!nextOpen && !isPending) onClose();
+			}}
+		>
+			<DialogContent
+				className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[760px]"
+				showCloseButton={!isPending}
+				onEscapeKeyDown={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+				onInteractOutside={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+			>
 				<DialogHeader>
 					<DialogTitle>
 						{isEditing ? "Edit Table" : "Create Table"}
@@ -186,135 +225,174 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 					</DialogDescription>
 				</DialogHeader>
 
-				{isSolutionManaged && <SolutionManagedBanner entityLabel="table" />}
+				{isSolutionManaged && (
+					<SolutionManagedBanner entityLabel="table" />
+				)}
 
 				<Form {...form}>
 					<form
-						onSubmit={form.handleSubmit(onSubmit)}
-						className="space-y-4"
+						onSubmit={(event) =>
+							void form.handleSubmit(onSubmit)(event)
+						}
+						className="flex min-h-0 min-w-0 flex-1 flex-col gap-5"
 					>
-						{/* Organization Scope - Only show for platform admins */}
-						{isPlatformAdmin && (
+						<div
+							role="region"
+							aria-label="Table settings"
+							className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto px-1 py-1"
+						>
+							{/* Organization Scope - Only show for platform admins */}
+							{isPlatformAdmin && (
+								<FormField
+									control={form.control}
+									name="organization_id"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Organization</FormLabel>
+											<FormControl>
+												<OrganizationSelect
+													value={field.value}
+													onChange={field.onChange}
+													showGlobal={true}
+													disabled={
+														isEditing || isPending
+													}
+												/>
+											</FormControl>
+											<FormDescription>
+												{isEditing
+													? "Organization scope cannot be changed after a table is created."
+													: "Global tables are available to all organizations."}
+											</FormDescription>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							)}
+
 							<FormField
 								control={form.control}
-								name="organization_id"
+								name="name"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Organization</FormLabel>
+										<FormLabel>Table Name</FormLabel>
 										<FormControl>
-											<OrganizationSelect
-												value={field.value}
-												onChange={field.onChange}
-												showGlobal={true}
+											<Input
+												placeholder="my_table_name"
+												disabled={
+													isEditing || isPending
+												}
+												className="h-11 font-mono"
+												{...field}
 											/>
 										</FormControl>
 										<FormDescription>
-											Global tables are available to all
-											organizations
+											Start with a lowercase letter. Use
+											lowercase letters, numbers,
+											underscores, or hyphens.
 										</FormDescription>
 										<FormMessage />
-										{scopeChanged && (
-											<Alert className="mt-2 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800">
-												<AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-												<AlertDescription className="text-amber-800 dark:text-amber-200">
-													Changing table scope affects
-													which users can access this
-													data. Existing records will
-													remain but may become
-													visible/hidden to different
-													users.
-												</AlertDescription>
-											</Alert>
-										)}
 									</FormItem>
 								)}
 							/>
-						)}
 
-						<FormField
-							control={form.control}
-							name="name"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Table Name</FormLabel>
-									<FormControl>
-										<Input
-											placeholder="my_table_name"
-											disabled={isEditing}
-											{...field}
-										/>
-									</FormControl>
-									<FormDescription>
-										Lowercase letters, numbers, and
-										underscores only
-									</FormDescription>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name="description"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>
-										Description (Optional)
-									</FormLabel>
-									<FormControl>
-										<Textarea
-											placeholder="Describe the purpose of this table..."
-											{...field}
-										/>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name="schema"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Schema (Optional)</FormLabel>
-									<FormControl>
-										<CodeEditor
-											mode="json"
-											text={field.value ?? ""}
-											onChange={(next) =>
-												field.onChange(next)
-											}
-											path="table-schema.json"
-											height="200px"
-											data-testid="table-schema-editor"
-										/>
-									</FormControl>
-									<FormDescription>
-										Optional JSON schema for validation
-										hints
-									</FormDescription>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<div className="border-t pt-4">
-							<PolicyEditor
-								value={policies}
-								onChange={setPolicies}
+							<FormField
+								control={form.control}
+								name="description"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>
+											Description (Optional)
+										</FormLabel>
+										<FormControl>
+											<Textarea
+												disabled={
+													isPending ||
+													isSolutionManaged
+												}
+												placeholder="Describe the purpose of this table..."
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
 							/>
-						</div>
 
-						<DialogFooter>
+							<FormField
+								control={form.control}
+								name="schema"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Schema (Optional)</FormLabel>
+										<FormControl>
+											<CodeEditor
+												readOnly={
+													isPending ||
+													isSolutionManaged
+												}
+												mode="json"
+												text={field.value ?? ""}
+												onChange={(next) =>
+													field.onChange(next)
+												}
+												path="table-schema.json"
+												height="200px"
+												data-testid="table-schema-editor"
+											/>
+										</FormControl>
+										<FormDescription>
+											Optional JSON schema for validation
+											hints
+										</FormDescription>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<div className="border-t pt-4">
+								<PolicyEditor
+									readOnly={isPending || isSolutionManaged}
+									onParseErrorChange={setPolicyParseError}
+									value={policies}
+									onChange={setPolicies}
+								/>
+							</div>
+						</div>
+						{form.formState.errors.root?.save && (
+							<Alert
+								variant="destructive"
+								ref={saveErrorRef}
+								tabIndex={-1}
+								className="max-h-36 shrink-0 overflow-y-auto outline-none"
+							>
+								<AlertTitle>
+									Table could not be saved
+								</AlertTitle>
+								<AlertDescription>
+									{form.formState.errors.root.save.message}
+								</AlertDescription>
+							</Alert>
+						)}
+						<DialogFooter className="shrink-0 border-t pt-4">
 							<Button
 								type="button"
 								variant="outline"
+								className="min-h-11"
+								disabled={isPending}
 								onClick={onClose}
 							>
 								Cancel
 							</Button>
-							<Button type="submit" disabled={isPending || isSolutionManaged}>
+							<Button
+								type="submit"
+								className="min-h-11"
+								disabled={
+									isPending ||
+									isSolutionManaged ||
+									Boolean(policyParseError)
+								}
+							>
 								{isPending
 									? "Saving..."
 									: isEditing

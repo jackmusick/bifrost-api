@@ -187,3 +187,15 @@ describe("RunCard", () => {
 		});
 	});
 });
+
+it("keyboard verdict actions do not open the run", async () => {
+	const onOpen = vi.fn();
+	const onVerdict = vi.fn();
+	const { user } = renderWithProviders(
+		<RunCard run={baseRun} onOpen={onOpen} onVerdict={onVerdict} />,
+	);
+	screen.getByRole("button", { name: "Mark as good" }).focus();
+	await user.keyboard("{Enter}");
+	expect(onVerdict).toHaveBeenCalledWith("up");
+	expect(onOpen).not.toHaveBeenCalled();
+});

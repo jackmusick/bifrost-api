@@ -11,7 +11,7 @@
  * whether to wrap in a dialog footer or a page-level Save button).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Check, Info } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -26,6 +26,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { copyToClipboard } from "@/lib/clipboard";
 import { toast } from "sonner";
 
 export type OAuthFlowType = "authorization_code" | "client_credentials";
@@ -91,22 +92,50 @@ export function OAuthProviderEditor({
 
 	const [data, setData] = useState<OAuthProviderData>(computedInitial);
 	const [copiedRedirect, setCopiedRedirect] = useState(false);
+	const [copyError, setCopyError] = useState<string | null>(null);
+	const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	// Reset internal state when initialValues changes (e.g. dialog reopened
-	// with a different connection in edit mode). Wrapped in setTimeout to
-	// avoid the react-hooks/set-state-in-effect rule (cascading renders) —
-	// matches the existing pattern in CreateOAuthConnectionDialog.tsx.
-	useEffect(() => {
-		const t = setTimeout(() => setData(computedInitial), 0);
-		return () => clearTimeout(t);
-	}, [computedInitial]);
+	const [previousInitial, setPreviousInitial] = useState(computedInitial);
+	if (previousInitial !== computedInitial) {
+		setPreviousInitial(computedInitial);
+		setData(computedInitial);
+	}
+	const [previousUri, setPreviousUri] = useState(redirectUri);
+	if (previousUri !== redirectUri) {
+		setPreviousUri(redirectUri);
+		setCopiedRedirect(false);
+		setCopyError(null);
+	}
+	const copyGeneration = useRef(0);
+	useEffect(() => () => {
+		copyGeneration.current += 1;
+		if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+	}, [redirectUri]);
 
-	const handleCopyRedirectUri = () => {
+	const handleCopyRedirectUri = async () => {
 		if (!redirectUri) return;
-		navigator.clipboard.writeText(redirectUri);
+		const generation = ++copyGeneration.current;
+		if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+		setCopiedRedirect(false);
+		setCopyError(null);
+		const copied = await copyToClipboard(redirectUri);
+		if (generation !== copyGeneration.current) return;
+		if (!copied) {
+			setCopiedRedirect(false);
+			setCopyError("Could not copy the redirect URI. Copy it manually.");
+			toast.error("Could not copy redirect URI");
+			return;
+		}
+
 		setCopiedRedirect(true);
 		toast.success("Redirect URI copied to clipboard");
-		setTimeout(() => setCopiedRedirect(false), 2000);
+		if (copyResetTimerRef.current) {
+			clearTimeout(copyResetTimerRef.current);
+		}
+		copyResetTimerRef.current = setTimeout(() => {
+			setCopiedRedirect(false);
+			copyResetTimerRef.current = null;
+		}, 2000);
 	};
 
 	const handleSubmit = (e: React.FormEvent) => {
@@ -126,26 +155,32 @@ export function OAuthProviderEditor({
 		<form
 			id={formId}
 			onSubmit={handleSubmit}
-			className="space-y-4"
+			className="space-y-5"
 			data-testid="oauth-provider-editor"
 		>
 			{redirectUri && isAuthCode && (
-				<Alert>
-					<Info className="h-4 w-4" />
+				<Alert className="border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)]/60 text-foreground">
+					<Info className="h-4 w-4 text-[var(--bf-info)]" />
 					<AlertDescription>
-						<div className="space-y-2">
-							<p className="font-semibold text-sm">
+						<div className="space-y-3">
+							<p className="text-sm font-semibold leading-6">
 								Your Redirect URI:
 							</p>
-							<div className="flex items-center gap-2">
-								<code className="flex-1 px-2 py-1 bg-muted rounded text-xs break-all">
+							<div className="flex items-start gap-2">
+								<code className="min-w-0 flex-1 rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 [overflow-wrap:anywhere]">
 									{redirectUri}
 								</code>
 								<Button
 									type="button"
 									variant="outline"
-									size="sm"
+									size="icon-lg"
 									onClick={handleCopyRedirectUri}
+									className="shrink-0"
+									aria-label={
+										copiedRedirect
+											? "Redirect URI copied"
+											: "Copy redirect URI"
+									}
 								>
 									{copiedRedirect ? (
 										<Check className="h-4 w-4" />
@@ -154,7 +189,12 @@ export function OAuthProviderEditor({
 									)}
 								</Button>
 							</div>
-							<p className="text-xs text-muted-foreground">
+							{copyError ? (
+								<Alert variant="destructive" className="py-2">
+									<AlertDescription>{copyError}</AlertDescription>
+								</Alert>
+							) : null}
+							<p className="text-xs leading-5 text-muted-foreground">
 								Copy this and add it to your OAuth app's allowed
 								redirect URIs before continuing
 							</p>
@@ -176,7 +216,7 @@ export function OAuthProviderEditor({
 						}
 						disabled={disabled}
 					>
-						<SelectTrigger>
+						<SelectTrigger className="h-11 w-full rounded-[var(--bf-radius-control)]">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
@@ -188,7 +228,7 @@ export function OAuthProviderEditor({
 							</SelectItem>
 						</SelectContent>
 					</Select>
-					<p className="text-xs text-muted-foreground">
+					<p className="text-xs leading-5 text-muted-foreground">
 						{isAuthCode
 							? "Requires user authorization. Use for delegated permissions."
 							: "No user authorization required. Use for application permissions."}
@@ -196,7 +236,7 @@ export function OAuthProviderEditor({
 				</div>
 			)}
 
-			<div className="grid grid-cols-2 gap-4">
+			<div className="grid gap-4 md:grid-cols-2">
 				<div className="space-y-2">
 					<Label htmlFor="client_id">Client ID *</Label>
 					<Input
@@ -207,7 +247,7 @@ export function OAuthProviderEditor({
 						}
 						placeholder="abc123..."
 						required
-						className="font-mono"
+						className="h-11 font-mono text-xs"
 						disabled={disabled}
 					/>
 				</div>
@@ -236,8 +276,9 @@ export function OAuthProviderEditor({
 							!isEditMode
 						}
 						disabled={disabled}
+						className="h-11"
 					/>
-					<p className="text-xs text-muted-foreground">
+					<p className="text-xs leading-5 text-muted-foreground">
 						{isEditMode
 							? "Leave empty to keep the existing secret, or enter a new one to update"
 							: data.oauth_flow_type === "client_credentials"
@@ -262,7 +303,7 @@ export function OAuthProviderEditor({
 						placeholder="https://provider.com/oauth/authorize"
 						pattern="https://.*"
 						required
-						className="font-mono text-xs"
+						className="h-11 font-mono text-xs"
 						disabled={disabled}
 					/>
 				</div>
@@ -279,7 +320,7 @@ export function OAuthProviderEditor({
 					placeholder="https://provider.com/oauth/token"
 					pattern="https://.*"
 					required
-					className="font-mono text-xs"
+					className="h-11 font-mono text-xs"
 					disabled={disabled}
 				/>
 			</div>
@@ -293,10 +334,10 @@ export function OAuthProviderEditor({
 						setData({ ...data, audience: e.target.value })
 					}
 					placeholder="https://api.example.com"
-					className="font-mono text-xs"
+					className="h-11 font-mono text-xs"
 					disabled={disabled}
 				/>
-				<p className="text-xs text-muted-foreground">
+				<p className="text-xs leading-5 text-muted-foreground">
 					Target API identifier sent with token requests. Required by
 					some providers (e.g., Pax8, Auth0).
 				</p>
@@ -315,7 +356,7 @@ export function OAuthProviderEditor({
 					className="font-mono text-xs"
 					disabled={disabled}
 				/>
-				<p className="text-xs text-muted-foreground">
+				<p className="text-xs leading-5 text-muted-foreground">
 					OAuth permissions to request. Leave empty for default scopes.
 				</p>
 			</div>

@@ -894,17 +894,17 @@ async def update_form(
 
     if request.name is not None:
         form.name = request.name
-    if request.description is not None:
+    if "description" in request.model_fields_set:
         form.description = request.description
     if request.confirmation_markdown is not None:
         form.confirmation_markdown = request.confirmation_markdown
     if request.workflow_id is not None:
         form.workflow_id = request.workflow_id
-    if request.launch_workflow_id is not None:
+    if "launch_workflow_id" in request.model_fields_set:
         form.launch_workflow_id = request.launch_workflow_id
-    if request.default_launch_params is not None:
+    if "default_launch_params" in request.model_fields_set:
         form.default_launch_params = request.default_launch_params
-    if request.allowed_query_params is not None:
+    if "allowed_query_params" in request.model_fields_set:
         form.allowed_query_params = request.allowed_query_params
     if request.form_schema is not None:
         # Delete all existing fields using bulk delete

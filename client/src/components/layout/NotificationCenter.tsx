@@ -1,4 +1,10 @@
-import { useState, useCallback, type ComponentType, type SVGProps } from "react";
+import {
+	useState,
+	useCallback,
+	type ComponentType,
+	type SVGProps,
+	type ReactNode,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Bell,
@@ -67,42 +73,36 @@ const categoryIcons: Record<NotificationCategory, IconComponent> = {
 // Status config for one-off alerts
 const alertStatusConfig: Record<
 	AlertStatus,
-	{ icon: typeof AlertCircle; color: string; bgColor: string }
+	{ icon: typeof AlertCircle; color: string }
 > = {
 	error: {
 		icon: AlertCircle,
-		color: "text-red-500",
-		bgColor: "bg-red-500/10",
+		color: "text-destructive",
 	},
 	warning: {
 		icon: AlertTriangle,
-		color: "text-yellow-500",
-		bgColor: "bg-yellow-500/10",
+		color: "text-[var(--bf-warning)]",
 	},
 	info: {
 		icon: Info,
-		color: "text-blue-500",
-		bgColor: "bg-blue-500/10",
+		color: "text-primary",
 	},
 	success: {
 		icon: CheckCircle,
-		color: "text-green-500",
-		bgColor: "bg-green-500/10",
+		color: "text-[var(--bf-success)]",
 	},
 };
 
 // Status config for progress notifications
-const notificationStatusConfig: Record<
-	NotificationStatus,
-	{ color: string; bgColor: string }
-> = {
-	pending: { color: "text-blue-500", bgColor: "bg-blue-500/10" },
-	running: { color: "text-blue-500", bgColor: "bg-blue-500/10" },
-	awaiting_action: { color: "text-amber-500", bgColor: "bg-amber-500/10" },
-	completed: { color: "text-green-500", bgColor: "bg-green-500/10" },
-	failed: { color: "text-red-500", bgColor: "bg-red-500/10" },
-	cancelled: { color: "text-muted-foreground", bgColor: "bg-muted/50" },
-};
+const notificationStatusConfig: Record<NotificationStatus, { color: string }> =
+	{
+		pending: { color: "text-primary" },
+		running: { color: "text-primary" },
+		awaiting_action: { color: "text-[var(--bf-warning)]" },
+		completed: { color: "text-[var(--bf-success)]" },
+		failed: { color: "text-destructive" },
+		cancelled: { color: "text-muted-foreground" },
+	};
 
 function downloadBlob(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob);
@@ -167,6 +167,38 @@ async function handleNotificationAction(
 	}
 }
 
+function NotificationFrame({
+	title,
+	icon,
+	action,
+	children,
+}: {
+	title: string;
+	icon: ReactNode;
+	action?: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<article
+			aria-label={title}
+			className="min-w-0 space-y-3 border-b p-[var(--bf-surface-pad)] last:border-b-0"
+		>
+			<div className="flex items-start gap-3">
+				<div aria-hidden="true" className="mt-2 shrink-0">
+					{icon}
+				</div>
+				<h4 className="min-w-0 flex-1 pt-2 text-sm font-semibold leading-5 [overflow-wrap:anywhere]">
+					{title}
+				</h4>
+				{action}
+			</div>
+			<div className="space-y-2 text-sm leading-6 [overflow-wrap:anywhere]">
+				{children}
+			</div>
+		</article>
+	);
+}
+
 function ProgressNotificationItem({
 	notification,
 	onDismiss,
@@ -211,101 +243,99 @@ function ProgressNotificationItem({
 		}
 	};
 
+	const StateIcon = isActive
+		? Loader2
+		: notification.status === "completed"
+			? CheckCircle
+			: notification.status === "failed"
+				? AlertCircle
+				: isAwaitingAction
+					? AlertTriangle
+					: Icon;
 	return (
-		<div
-			className={cn(
-				"flex items-start gap-3 p-3 rounded-lg ring-1 ring-foreground/5",
-				statusConfig.bgColor,
-			)}
-		>
-			<div className={cn("mt-0.5 flex-shrink-0", statusConfig.color)}>
-				{isActive ? (
-					<Loader2 className="h-5 w-5 animate-spin" />
-				) : notification.status === "completed" ? (
-					<CheckCircle className="h-5 w-5" />
-				) : notification.status === "failed" ? (
-					<AlertCircle className="h-5 w-5" />
-				) : isAwaitingAction ? (
-					<AlertTriangle className="h-5 w-5" />
-				) : (
-					<Icon className="h-5 w-5" />
-				)}
-			</div>
-			<div className="flex-1 min-w-0">
-				<span className="text-sm font-medium truncate block">
-					{notification.title}
-				</span>
-				{notification.description && (
-					<p className="text-xs text-muted-foreground mt-1">
-						{notification.description}
-					</p>
-				)}
-				{notification.error && (
-					<p className="text-xs text-red-500 mt-1">
-						{notification.error}
-					</p>
-				)}
-				{/* Clickable file link for file-related notifications */}
-				{hasFileLink && (
-					<button
-						onClick={() => onOpenFile(filePath, lineNumber)}
-						className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 hover:underline mt-1.5 transition-colors"
-					>
-						<FileCode className="h-3 w-3" />
-						{filePath}
-					</button>
-				)}
-				{/* Progress bar for determinate progress */}
-				{isActive && notification.percent !== null && (
-					<Progress
-						value={notification.percent}
-						className="h-1.5 mt-2"
-					/>
-				)}
-				{/* Action button for awaiting_action notifications */}
-				{hasAction && (
+		<NotificationFrame
+			title={notification.title}
+			icon={
+				<StateIcon
+					className={cn(
+						"size-5",
+						statusConfig.color,
+						isActive && "animate-spin motion-reduce:animate-none",
+					)}
+				/>
+			}
+			action={
+				!isActive ? (
 					<Button
-						size="sm"
-						className="mt-2 h-7 text-xs"
-						onClick={handleAction}
-						disabled={isActionLoading}
+						type="button"
+						variant="ghost"
+						size="icon-lg"
+						aria-label={`Dismiss ${notification.title}`}
+						onClick={onDismiss}
 					>
-						{isActionLoading ? (
-							<Loader2 className="h-3 w-3 mr-1 animate-spin" />
-						) : (
-							<Play className="h-3 w-3 mr-1" />
-						)}
-						{actionLabel}
+						<X aria-hidden="true" className="size-4" />
 					</Button>
-				)}
-				<p className="text-xs text-muted-foreground/60 mt-1">
-					{new Date(notification.updatedAt).toLocaleString()}
+				) : notification.category === "embedding_reindex" ? (
+					<Button
+						type="button"
+						variant="ghost"
+						className="min-h-11 px-2"
+						onClick={onDismiss}
+					>
+						Cancel
+					</Button>
+				) : undefined
+			}
+		>
+			{notification.description && (
+				<p className="text-muted-foreground">
+					{notification.description}
 				</p>
-			</div>
-			{/* Dismiss button - show for non-active states (completed, failed, awaiting_action).
-			    Embedding-reindex while running gets a Cancel button instead — DELETE on the
-			    notification sets the cancel flag the scheduler polls between batches. */}
-			{!isActive && (
-				<Button
-					variant="ghost"
-					size="icon"
-					className="h-6 w-6 flex-shrink-0"
-					onClick={onDismiss}
+			)}
+			{notification.error && (
+				<p className="text-destructive">{notification.error}</p>
+			)}
+			{hasFileLink && (
+				<button
+					type="button"
+					onClick={() => void onOpenFile(filePath, lineNumber)}
+					className="flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] text-left text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
-					<X className="h-3 w-3" />
+					<FileCode aria-hidden="true" className="size-4 shrink-0" />
+					<span className="min-w-0 [overflow-wrap:anywhere]">
+						{filePath}
+					</span>
+				</button>
+			)}
+			{isActive && notification.percent !== null && (
+				<Progress
+					value={notification.percent}
+					aria-label={`${notification.title} progress`}
+					className="h-1.5"
+				/>
+			)}
+			{hasAction && (
+				<Button
+					type="button"
+					className="min-h-11 h-auto w-full whitespace-normal py-2"
+					onClick={handleAction}
+					disabled={isActionLoading}
+				>
+					{isActionLoading ? (
+						<Loader2
+							aria-hidden="true"
+							className="size-4 animate-spin motion-reduce:animate-none"
+						/>
+					) : (
+						<Play aria-hidden="true" className="size-4" />
+					)}
+					{actionLabel}
 				</Button>
 			)}
-			{isActive && notification.category === "embedding_reindex" && (
-				<Button
-					variant="ghost"
-					size="sm"
-					className="h-6 px-2 text-xs flex-shrink-0"
-					onClick={onDismiss}
-				>
-					Cancel
-				</Button>
-			)}
-		</div>
+			<p className="text-xs text-muted-foreground">
+				{new Date(notification.updatedAt).toLocaleString()}
+			</p>
+		</NotificationFrame>
 	);
 }
 
@@ -320,42 +350,43 @@ function AlertNotificationItem({
 	const Icon = config.icon;
 
 	return (
-		<div
-			className={cn(
-				"flex items-start gap-3 p-3 rounded-lg ring-1 ring-foreground/5",
-				config.bgColor,
-			)}
+		<NotificationFrame
+			title={alert.title}
+			icon={<Icon className={cn("size-5", config.color)} />}
+			action={
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-lg"
+					aria-label={`Dismiss ${alert.title}`}
+					onClick={onDismiss}
+				>
+					<X aria-hidden="true" className="size-4" />
+				</Button>
+			}
 		>
-			<Icon
-				className={cn("h-5 w-5 mt-0.5 flex-shrink-0", config.color)}
-			/>
-			<div className="flex-1 min-w-0">
-				<span className="text-sm font-medium truncate block">
-					{alert.title}
-				</span>
-				<p className="text-xs text-muted-foreground mt-1">
-					{alert.body}
-				</p>
-				<p className="text-xs text-muted-foreground/60 mt-1">
-					{new Date(alert.createdAt).toLocaleString()}
-				</p>
-			</div>
-			<Button
-				variant="ghost"
-				size="icon"
-				className="h-6 w-6 flex-shrink-0"
-				onClick={onDismiss}
-			>
-				<X className="h-3 w-3" />
-			</Button>
-		</div>
+			<p className="text-muted-foreground">{alert.body}</p>
+			<p className="text-xs text-muted-foreground">
+				{new Date(alert.createdAt).toLocaleString()}
+			</p>
+		</NotificationFrame>
 	);
 }
 
-export function NotificationCenter() {
+export function NotificationCenter({
+	triggerClassName,
+}: { triggerClassName?: string } = {}) {
 	const [isOpen, setIsOpen] = useState(false);
 	const navigate = useNavigate();
-	const { notifications, dismiss, clearAll } = useNotifications();
+	const {
+		notifications,
+		dismiss,
+		clearAll,
+		isLoading,
+		error,
+		refetch,
+		isFetching,
+	} = useNotifications();
 	const alerts = useNotificationStore((state) => state.alerts);
 	const removeAlert = useNotificationStore((state) => state.removeAlert);
 	const clearAlerts = useNotificationStore((state) => state.clearAlerts);
@@ -481,9 +512,10 @@ export function NotificationCenter() {
 		<Popover open={isOpen} onOpenChange={setIsOpen}>
 			<PopoverTrigger asChild>
 				<Button
+					type="button"
 					variant="ghost"
 					size="icon"
-					className="relative"
+					className={cn("relative", triggerClassName)}
 					aria-label="Notifications"
 				>
 					<Bell className="h-4 w-4" />
@@ -497,14 +529,21 @@ export function NotificationCenter() {
 					)}
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-96 p-0" align="end" sideOffset={8}>
-				<div className="flex items-center justify-between px-4 py-3 border-b">
+			<PopoverContent
+				aria-label="Notifications"
+				className="flex w-[min(24rem,calc(100vw-2rem))] max-h-[min(36rem,var(--radix-popover-content-available-height))] flex-col gap-0 overflow-hidden p-0"
+				align="end"
+				sideOffset={8}
+				collisionPadding={16}
+			>
+				<div className="flex shrink-0 items-center justify-between gap-3 px-[var(--bf-surface-pad)] py-3 border-b">
 					<h3 className="font-semibold">Notifications</h3>
 					{hasNotifications && (
 						<Button
+							type="button"
 							variant="ghost"
 							size="sm"
-							className="h-8 text-xs"
+							className="min-h-11 text-xs"
 							onClick={handleClearAll}
 						>
 							<Trash2 className="h-3 w-3 mr-1" />
@@ -512,14 +551,38 @@ export function NotificationCenter() {
 						</Button>
 					)}
 				</div>
-				<div className="h-[400px] overflow-y-auto">
-					{!hasNotifications ? (
+				<div className="min-h-0 overflow-y-auto">
+					{error && (
+						<div
+							role="alert"
+							className="space-y-2 border-b p-[var(--bf-surface-pad)] text-sm"
+						>
+							<p>Couldn't load notifications.</p>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11"
+								disabled={isFetching}
+								onClick={() => void refetch()}
+							>
+								{isFetching ? "Retrying…" : "Retry"}
+							</Button>
+						</div>
+					)}
+					{isLoading && !hasNotifications ? (
+						<div
+							role="status"
+							className="p-[var(--bf-surface-pad)] text-sm text-muted-foreground"
+						>
+							Loading notifications…
+						</div>
+					) : !hasNotifications && !error ? (
 						<div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
 							<Bell className="h-8 w-8 mb-2 opacity-50" />
 							<p className="text-sm">No notifications</p>
 						</div>
 					) : (
-						<div className="p-2 space-y-2">
+						<div className="min-w-0">
 							{/* Progress notifications */}
 							{sortedNotifications.map((notification) => (
 								<ProgressNotificationItem
@@ -534,7 +597,7 @@ export function NotificationCenter() {
 							{/* Divider if both types present */}
 							{sortedNotifications.length > 0 &&
 								sortedAlerts.length > 0 && (
-									<div className="border-t my-2" />
+									<div className="border-t" />
 								)}
 
 							{/* One-off alerts */}

@@ -39,10 +39,10 @@ function makeToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
 describe("ToolExecutionBadge — status rendering", () => {
 	it.each<[ToolExecutionStatus, RegExp]>([
 		["pending", /text-muted-foreground/],
-		["running", /text-blue-500/],
-		["success", /text-green-500/],
-		["failed", /text-destructive/],
-		["timeout", /text-amber-500/],
+		["running", /text-\[var\(--bf-info\)\]/],
+		["success", /text-\[var\(--bf-success\)\]/],
+		["failed", /text-\[var\(--bf-danger\)\]/],
+		["timeout", /text-\[var\(--bf-warning\)\]/],
 	])("applies the correct icon class for status=%s", (status, classRe) => {
 		const { container } = renderWithProviders(
 			<ToolExecutionBadge toolCall={makeToolCall()} status={status} />,
@@ -82,7 +82,7 @@ describe("ToolExecutionBadge — status rendering", () => {
 		);
 		const label = screen.getByText("grep_code");
 		expect(label).toBeInTheDocument();
-		expect(label.closest("button")).toHaveClass("min-h-11", "sm:min-h-7");
+		expect(label.closest("button")).toHaveClass("min-h-11");
 	});
 });
 
@@ -104,7 +104,10 @@ describe("ToolExecutionBadge — inline details", () => {
 		expect(resultSection).toHaveTextContent(
 			JSON.stringify({ matched: 3 }),
 		);
-		expect(resultHeading.closest(".rounded-xl")).toHaveClass("w-full");
+		expect(resultSection.parentElement?.parentElement?.className).toMatch(
+			/rounded-\[var\(--bf-radius-surface\)\]/,
+		);
+		expect(resultSection.parentElement).toHaveClass("w-full");
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	});
 

@@ -81,13 +81,13 @@ export function SolutionReadmeTab({
 	if (!hasContent) {
 		if (!canEdit) {
 			return (
-				<div className="rounded-2xl border border-dashed py-12 text-center text-sm text-muted-foreground">
+				<div className="rounded-[var(--bf-radius-surface)] border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
 					No setup instructions provided.
 				</div>
 			);
 		}
 		return (
-			<div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed py-12 text-center">
+			<div className="flex flex-col items-center gap-3 rounded-[var(--bf-radius-surface)] border border-dashed px-4 py-12 text-center">
 				<FileText className="h-8 w-8 text-muted-foreground/60" />
 				<div className="space-y-1">
 					<p className="text-sm font-medium">Add setup instructions</p>

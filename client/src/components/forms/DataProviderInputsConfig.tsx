@@ -4,6 +4,7 @@
  * Part of Phase 3-5: User Stories 1-3 - Complete Dynamic Data Provider Inputs
  */
 
+import { useId } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ export function DataProviderInputsConfig({
 	onChange,
 	availableFields = [],
 }: DataProviderInputsConfigProps) {
+	const id = useId();
 	// No parameters means nothing to configure
 	if (!provider.parameters || provider.parameters.length === 0) {
 		return null;
@@ -97,22 +99,29 @@ export function DataProviderInputsConfig({
 	};
 
 	return (
-		<div className="space-y-3 rounded-lg bg-accent/50 p-4 ring-1 ring-primary/20">
+		<div className="min-w-0 space-y-4 rounded-[var(--bf-radius-surface)] border p-4">
 			<div>
 				<h4 className="text-sm font-semibold">Data Provider Inputs</h4>
-				<p className="text-xs text-muted-foreground mt-1">
+				<p className="text-sm leading-6 text-muted-foreground mt-1">
 					Configure input values for this data provider
 				</p>
 			</div>
-			<div className="space-y-4">
+			<div className="min-w-0 space-y-5">
 				{provider.parameters.map((param) => {
 					const currentMode = inputs[param.name]?.mode || "static";
 					const currentValue = getCurrentValue(param.name);
 
 					return (
-						<div key={param.name} className="space-y-2">
-							<div className="flex items-center justify-between">
-								<Label className="text-sm flex items-center gap-2">
+						<div key={param.name} className="min-w-0 space-y-3">
+							<div className="flex min-w-0 flex-col gap-3">
+								<Label
+									htmlFor={
+										currentMode === "expression"
+											? undefined
+											: `${id}-${param.name}`
+									}
+									className="text-sm flex min-w-0 flex-wrap items-center gap-2 [overflow-wrap:anywhere]"
+								>
 									<span className="font-mono">
 										{param.name}
 									</span>
@@ -135,23 +144,24 @@ export function DataProviderInputsConfig({
 											value as DataProviderInputMode,
 										)
 									}
-									className="gap-1"
+									aria-label={`${param.name} input mode`}
+									className="h-auto max-w-full flex-wrap gap-1"
 								>
 									<ToggleGroupItem
 										value="static"
-										className="text-xs px-2 py-1 h-7"
+										className="min-h-11 h-auto flex-1 px-3 py-2 text-sm"
 									>
 										Static
 									</ToggleGroupItem>
 									<ToggleGroupItem
 										value="fieldRef"
-										className="text-xs px-2 py-1 h-7"
+										className="min-h-11 h-auto flex-1 px-3 py-2 text-sm"
 									>
 										Field
 									</ToggleGroupItem>
 									<ToggleGroupItem
 										value="expression"
-										className="text-xs px-2 py-1 h-7"
+										className="min-h-11 h-auto flex-1 px-3 py-2 text-sm"
 									>
 										Expression
 									</ToggleGroupItem>
@@ -161,6 +171,12 @@ export function DataProviderInputsConfig({
 							{/* Static mode: text input */}
 							{currentMode === "static" && (
 								<Input
+									id={`${id}-${param.name}`}
+									aria-describedby={
+										param.description
+											? `${id}-${param.name}-help`
+											: undefined
+									}
 									value={currentValue}
 									onChange={(e) =>
 										handleValueChange(
@@ -172,7 +188,7 @@ export function DataProviderInputsConfig({
 										param.description ||
 										`Enter ${param.label || param.name}...`
 									}
-									className="text-sm font-mono"
+									className="min-h-11 text-sm font-mono"
 								/>
 							)}
 
@@ -184,7 +200,15 @@ export function DataProviderInputsConfig({
 										handleValueChange(param.name, value)
 									}
 								>
-									<SelectTrigger className="text-sm">
+									<SelectTrigger
+										id={`${id}-${param.name}`}
+										aria-describedby={
+											param.description
+												? `${id}-${param.name}-help`
+												: undefined
+										}
+										className="min-h-11 text-sm data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+									>
 										<SelectValue placeholder="Select a field to reference..." />
 									</SelectTrigger>
 									<SelectContent>
@@ -193,7 +217,7 @@ export function DataProviderInputsConfig({
 												<SelectItem
 													key={fieldName}
 													value={fieldName}
-													className="font-mono text-sm"
+													className="min-h-11 font-mono text-sm [overflow-wrap:anywhere]"
 												>
 													{fieldName}
 												</SelectItem>
@@ -213,6 +237,7 @@ export function DataProviderInputsConfig({
 							{/* Expression mode: Monaco editor with IntelliSense */}
 							{currentMode === "expression" && (
 								<ExpressionEditor
+									label="Expression"
 									value={currentValue}
 									onChange={(value) =>
 										handleValueChange(param.name, value)
@@ -223,7 +248,10 @@ export function DataProviderInputsConfig({
 							)}
 
 							{param.description && (
-								<p className="text-xs text-muted-foreground">
+								<p
+									id={`${id}-${param.name}-help`}
+									className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+								>
 									{param.description}
 								</p>
 							)}

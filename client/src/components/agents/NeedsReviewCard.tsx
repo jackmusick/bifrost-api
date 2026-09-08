@@ -38,25 +38,26 @@ export function NeedsReviewCard({
 				}
 			}}
 			className={cn(
-				"flex items-start gap-3 rounded-2xl bg-rose-500/5 shadow-sm ring-1 ring-rose-500/30 p-3 transition-colors",
-				onOpen && "cursor-pointer hover:bg-rose-500/10",
+				"flex min-h-14 items-start gap-3 rounded-[var(--bf-radius-feature)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-4 shadow-sm transition-colors motion-reduce:transition-none",
+				onOpen &&
+					"cursor-pointer hover:bg-[var(--bf-danger-soft)]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 				className,
 			)}
 			data-slot="needs-review-card"
 		>
-			<div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">
-				<ThumbsDown size={14} />
+			<div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]">
+				<ThumbsDown size={16} />
 			</div>
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex items-center gap-2">
 					<Badge
 						variant="destructive"
-						className="bg-rose-500/15 text-rose-700 dark:text-rose-300"
+						className="bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
 					>
 						Flagged
 					</Badge>
 					<div
-						className="min-w-0 flex-1 truncate text-sm font-medium"
+						className="min-w-0 flex-1 break-words text-sm font-medium leading-6"
 						title={run.asked ?? undefined}
 					>
 						{run.asked || (
@@ -66,14 +67,14 @@ export function NeedsReviewCard({
 				</div>
 				{run.verdict_note ? (
 					<div
-						className="line-clamp-2 text-xs text-muted-foreground"
+						className="break-words text-sm leading-6 text-muted-foreground"
 						title={run.verdict_note}
 					>
 						“{run.verdict_note}”
 					</div>
 				) : run.did ? (
 					<div
-						className="truncate text-xs text-muted-foreground"
+						className="break-words text-sm leading-6 text-muted-foreground"
 						title={run.did}
 					>
 						{run.did}

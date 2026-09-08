@@ -68,8 +68,10 @@ function QRCodeInner({
 	if (!dataUrl && !error) {
 		return (
 			<Skeleton
-				className={`rounded-lg ${className}`}
-				style={{ width: size, height: size }}
+				role="status"
+				aria-label="Generating QR code"
+				className={`rounded-[var(--bf-radius-control)] ${className}`}
+				style={{ width: size, maxWidth: "100%", aspectRatio: "1" }}
 			/>
 		);
 	}
@@ -77,8 +79,9 @@ function QRCodeInner({
 	if (error) {
 		return (
 			<div
-				className={`flex flex-col items-center justify-center bg-muted rounded-lg ${className}`}
-				style={{ width: size, height: size }}
+				role="alert"
+				className={`flex min-w-0 flex-col items-center justify-center bg-muted rounded-[var(--bf-radius-control)] ${className}`}
+				style={{ width: size, maxWidth: "100%", aspectRatio: "1" }}
 			>
 				<AlertCircle className="h-8 w-8 text-destructive mb-2" />
 				<span className="text-sm text-muted-foreground text-center px-4">
@@ -94,7 +97,7 @@ function QRCodeInner({
 			alt={alt}
 			width={size}
 			height={size}
-			className={`rounded-lg ${className}`}
+			className={`h-auto max-w-full rounded-[var(--bf-radius-control)] ${className}`}
 		/>
 	);
 }
@@ -115,8 +118,9 @@ export function QRCode({
 	if (dataError) {
 		return (
 			<div
-				className={`flex flex-col items-center justify-center bg-muted rounded-lg ${className}`}
-				style={{ width: size, height: size }}
+				role="alert"
+				className={`flex min-w-0 flex-col items-center justify-center bg-muted rounded-[var(--bf-radius-control)] ${className}`}
+				style={{ width: size, maxWidth: "100%", aspectRatio: "1" }}
 			>
 				<AlertCircle className="h-8 w-8 text-destructive mb-2" />
 				<span className="text-sm text-muted-foreground text-center px-4">

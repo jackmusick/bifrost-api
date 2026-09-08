@@ -1,12 +1,13 @@
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
 import { Network } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DependencyGraphSurface } from "@/components/dependencies/DependencyGraphSurface";
 import {
 	Dialog,
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { DependencyGraph } from "@/components/dependencies/DependencyGraph";
+import { DEPENDENCY_GRAPH_LEGEND } from "@/components/dependencies/DependencyGraph";
 import type { GraphNode, GraphEdge } from "@/hooks/useDependencyGraph";
 import type { EntityType } from "./types";
 
@@ -21,6 +22,9 @@ export interface DependencyGraphDialogProps {
 		root_id: string;
 	} | null;
 	isLoading: boolean;
+	isError?: boolean;
+	isFetching?: boolean;
+	onRetry?: () => void;
 }
 
 export function DependencyGraphDialog({
@@ -30,50 +34,80 @@ export function DependencyGraphDialog({
 	entityType,
 	graphData,
 	isLoading,
+	isError = false,
+	isFetching = false,
+	onRetry,
 }: DependencyGraphDialogProps) {
+	const focusProps = useDialogReturnFocus();
+	const renderLegendItems = () => (
+		<div className="grid gap-1.5">
+			{DEPENDENCY_GRAPH_LEGEND.map((item) => (
+				<div
+					key={item.entityType}
+					className="flex items-center gap-2 rounded-md px-1 py-1"
+				>
+					<span
+						className="h-3 w-3 shrink-0 rounded-full"
+						style={{
+							backgroundColor: item.color,
+							boxShadow: `0 0 0 1px ${item.softColor}`,
+						}}
+						aria-hidden="true"
+					/>
+					<span className="text-sm text-foreground">
+						{item.label}
+					</span>
+				</div>
+			))}
+		</div>
+	);
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-[90vw] h-[80vh] flex flex-col">
-				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
+			<DialogContent
+				{...focusProps}
+				className="flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col gap-4 overflow-hidden p-4 sm:max-w-none sm:h-[min(88vh,52rem)] sm:w-[min(92vw,72rem)] sm:p-6"
+			>
+				<DialogHeader className="shrink-0">
+					<DialogTitle className="flex max-w-full flex-wrap items-center gap-2 pr-8 leading-tight">
 						<Network className="h-5 w-5" />
-						Dependency Graph: {entityName}
+						<span className="min-w-0 [overflow-wrap:anywhere]">
+							Dependency Graph:
+						</span>
+						<span className="min-w-0 [overflow-wrap:anywhere]">
+							{entityName}
+						</span>
 						{entityType === "app" && (
-							<span className="text-xs font-normal text-muted-foreground ml-2">
+							<span className="text-xs font-normal text-muted-foreground">
 								(All Versions)
 							</span>
 						)}
 					</DialogTitle>
 				</DialogHeader>
-				<div className="flex-1 min-h-0 rounded-lg ring-1 ring-foreground/5 bg-background/50 overflow-hidden">
-					{isLoading ? (
-						<div className="h-full flex items-center justify-center">
-							<div className="flex flex-col items-center gap-4">
-								<Skeleton className="h-32 w-32 rounded-full" />
-								<div className="text-sm text-muted-foreground">
-									Loading dependency graph...
-								</div>
+				<div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:grid-rows-1">
+					<DependencyGraphSurface
+						graphData={graphData}
+						isLoading={isLoading}
+						isError={isError}
+						isFetching={isFetching}
+						onRetry={onRetry}
+					/>
+					<aside className="min-h-0 overflow-hidden lg:flex lg:flex-col">
+						<div className="hidden rounded-lg border border-border/60 bg-background/80 p-3 lg:block lg:max-h-full lg:overflow-y-auto">
+							<div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+								Legend
 							</div>
+							{renderLegendItems()}
 						</div>
-					) : graphData && graphData.nodes && graphData.edges ? (
-						<DependencyGraph
-							nodes={graphData.nodes}
-							edges={graphData.edges}
-							rootId={graphData.root_id}
-						/>
-					) : (
-						<div className="h-full flex items-center justify-center">
-							<div className="text-center max-w-md">
-								<Network className="h-16 w-16 text-muted-foreground/50 mx-auto mb-4" />
-								<h3 className="text-lg font-semibold text-muted-foreground mb-2">
-									No Dependencies Found
-								</h3>
-								<p className="text-sm text-muted-foreground">
-									This entity has no dependencies to visualize.
-								</p>
+						<details className="rounded-lg border border-border/60 bg-background/80 p-3 lg:hidden">
+							<summary className="-m-3 flex min-h-11 cursor-pointer list-none items-center p-3 text-xs font-medium uppercase tracking-wide text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+								Legend
+							</summary>
+							<div className="mt-3 max-h-[28vh] overflow-y-auto pr-1">
+								{renderLegendItems()}
 							</div>
-						</div>
-					)}
+						</details>
+					</aside>
 				</div>
 			</DialogContent>
 		</Dialog>

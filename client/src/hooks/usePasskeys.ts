@@ -81,6 +81,8 @@ export function usePasskeyList() {
 // =============================================================================
 
 interface RegisterPasskeyOptions {
+	/** Disable when the caller renders persistent error feedback. */
+	showErrorToast?: boolean;
 	onSuccess?: (passkey: { passkey_id: string; name: string }) => void;
 	onError?: (error: Error) => void;
 }
@@ -106,9 +108,11 @@ export function useRegisterPasskey(options: RegisterPasskeyOptions = {}) {
 			});
 		},
 		onError: (error: Error) => {
-			toast.error("Failed to register passkey", {
-				description: error.message,
-			});
+			if (options.showErrorToast !== false) {
+				toast.error("Failed to register passkey", {
+					description: error.message,
+				});
+			}
 			options.onError?.(error);
 		},
 	});
@@ -119,6 +123,8 @@ export function useRegisterPasskey(options: RegisterPasskeyOptions = {}) {
 // =============================================================================
 
 interface DeletePasskeyOptions {
+	/** Disable when the caller renders persistent error feedback. */
+	showErrorToast?: boolean;
 	onSuccess?: () => void;
 	onError?: (error: Error) => void;
 }
@@ -139,9 +145,11 @@ export function useDeletePasskey(options: DeletePasskeyOptions = {}) {
 			options.onSuccess?.();
 		},
 		onError: (error: Error) => {
-			toast.error("Failed to remove passkey", {
-				description: error.message,
-			});
+			if (options.showErrorToast !== false) {
+				toast.error("Failed to remove passkey", {
+					description: error.message,
+				});
+			}
 			options.onError?.(error);
 		},
 	});
@@ -208,6 +216,7 @@ export function usePasskeys() {
 		passkeys: listQuery.data?.passkeys ?? [],
 		passkeyCount: listQuery.data?.count ?? 0,
 		isLoading: listQuery.isLoading,
+		isFetching: listQuery.isFetching,
 		isError: listQuery.isError,
 		error: listQuery.error,
 		refetch: listQuery.refetch,

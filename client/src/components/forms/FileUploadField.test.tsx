@@ -22,7 +22,9 @@ vi.mock("sonner", () => ({
 
 import { FileUploadField } from "./FileUploadField";
 
-function renderField(overrides: Partial<Parameters<typeof FileUploadField>[0]> = {}) {
+function renderField(
+	overrides: Partial<Parameters<typeof FileUploadField>[0]> = {},
+) {
 	const props = {
 		formId: "form-1",
 		fieldName: "attachment",
@@ -40,11 +42,7 @@ function renderField(overrides: Partial<Parameters<typeof FileUploadField>[0]> =
 	return { ...utils, props };
 }
 
-function makeFile(
-	name = "report.pdf",
-	type = "application/pdf",
-	size = 1024,
-) {
+function makeFile(name = "report.pdf", type = "application/pdf", size = 1024) {
 	return new File(["x".repeat(size)], name, { type });
 }
 
@@ -164,4 +162,31 @@ describe("FileUploadField — multiple mode", () => {
 			]);
 		});
 	});
+});
+
+it("retains every file in one batch and brackets the whole batch with lifecycle callbacks", async () => {
+	mockUploadFile.mockImplementation(
+		async (file: File) => `form-1/${file.name}`,
+	);
+	const onChange = vi.fn();
+	const onUploadStart = vi.fn();
+	const onUploadEnd = vi.fn();
+	const { container } = renderField({
+		multiple: true,
+		value: ["existing.pdf"],
+		onChange,
+		onUploadStart,
+		onUploadEnd,
+	});
+	const { fireEvent } = await import("@testing-library/react");
+	fireEvent.change(container.querySelector('input[type="file"]')!, {
+		target: { files: [makeFile("a.pdf"), makeFile("b.pdf")] },
+	});
+	await waitFor(() => expect(onUploadEnd).toHaveBeenCalledTimes(1));
+	expect(onUploadStart).toHaveBeenCalledTimes(1);
+	expect(onChange).toHaveBeenLastCalledWith([
+		"existing.pdf",
+		"form-1/a.pdf",
+		"form-1/b.pdf",
+	]);
 });

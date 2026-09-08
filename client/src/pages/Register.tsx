@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { ExternalLink, KeyRound, Loader2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Logo } from "@/components/branding/Logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,7 @@ import { registerInviteWithPasskey } from "@/services/passkeys";
 import { useApplicationName } from "@/lib/applicationName";
 
 export function Register() {
+	const reducedMotion = useReducedMotion();
 	const applicationName = useApplicationName();
 	const [params] = useSearchParams();
 	const token = params.get("token") ?? "";
@@ -44,7 +45,26 @@ export function Register() {
 	if (!token) {
 		return (
 			<div className="min-h-screen flex items-center justify-center p-8">
-				<p className="text-muted-foreground">Missing invite token.</p>
+				<Card className="w-full max-w-md">
+					<CardHeader>
+						<h1 className="font-display text-2xl font-semibold">
+							Invitation needed
+						</h1>
+						<CardDescription>
+							Open the invitation link from your administrator to
+							create your account.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<Button
+							variant="outline"
+							className="min-h-11"
+							onClick={() => nav("/login")}
+						>
+							Back to sign in
+						</Button>
+					</CardContent>
+				</Card>
 			</div>
 		);
 	}
@@ -120,23 +140,23 @@ export function Register() {
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
-			<Card className="w-full max-w-md border-primary/10 shadow-xl shadow-primary/5">
+		<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
+			<Card className="w-full max-w-md rounded-[var(--bf-radius-feature)] border-border shadow-none">
 				<CardHeader className="text-center space-y-4 pb-2">
 					<motion.div
-						initial={{ scale: 0.8, opacity: 0 }}
-						animate={{ scale: 1, opacity: 1 }}
-						transition={{ delay: 0.1, duration: 0.3 }}
+						initial={reducedMotion ? false : { opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ duration: reducedMotion ? 0 : 0.22 }}
 						className="flex justify-center"
 					>
 						<Logo
-						type="square"
-						className="h-16 w-16"
-						alt={applicationName}
-					/>
+							type="square"
+							className="h-16 w-16"
+							alt={applicationName}
+						/>
 					</motion.div>
 					<div className="space-y-1">
-						<h1 className="text-2xl font-bold tracking-tight">
+						<h1 className="font-display text-2xl font-semibold tracking-tight">
 							Complete your registration
 						</h1>
 						<CardDescription>
@@ -163,10 +183,10 @@ export function Register() {
 												handleOAuthLogin(provider.name)
 											}
 											disabled={pending}
-											className="w-full"
+											className="min-h-11 w-full"
 										>
 											{pending ? (
-												<Loader2 className="h-4 w-4 animate-spin mr-2" />
+												<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 											) : (
 												<KeyRound className="h-4 w-4 mr-2" />
 											)}
@@ -181,7 +201,7 @@ export function Register() {
 										<span className="w-full border-t" />
 									</div>
 									<div className="relative flex justify-center text-xs uppercase">
-										<span className="bg-background px-2 text-muted-foreground">
+										<span className="bg-card px-2 text-muted-foreground">
 											Or
 										</span>
 									</div>

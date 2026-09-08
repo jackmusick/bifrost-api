@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
 	File,
 	Folder,
@@ -54,6 +55,8 @@ type PreflightResult = {
  * File tree component with hierarchical navigation
  */
 export function FileTree() {
+	const prefersReducedMotion = useReducedMotion();
+	const preflightButtonRef = useRef<HTMLButtonElement>(null);
 	const {
 		// File tree data
 		files,
@@ -166,13 +169,13 @@ export function FileTree() {
 	);
 
 	return (
-		<div className="flex h-full flex-col relative">
+		<div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-card shadow-sm">
 			{/* Loading overlay */}
 			{isProcessing && (
-				<div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+				<div className="absolute inset-0 z-50 flex items-center justify-center rounded-[inherit] bg-background/80 backdrop-blur-sm">
 					<div className="flex flex-col items-center gap-2">
-						<Loader2 className="h-8 w-8 animate-spin text-primary" />
-						<p className="text-sm text-muted-foreground">
+						<Loader2 className="h-8 w-8 motion-safe:animate-spin text-primary" />
+						<p className="text-sm leading-6 text-muted-foreground">
 							Processing...
 						</p>
 					</div>
@@ -180,44 +183,54 @@ export function FileTree() {
 			)}
 
 			{/* Toolbar */}
-			<div className="flex items-center gap-1 border-b p-2">
+			<div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-muted/30 px-2 py-2">
 				<Button
 					variant="ghost"
-					size="sm"
+					size="icon-lg"
 					onClick={() => handleCreateFile()}
 					title="New File"
-					className="h-7 px-2"
+					aria-label="New File"
+					className="shrink-0"
 				>
 					<FilePlus className="h-4 w-4" />
 				</Button>
 				<Button
 					variant="ghost"
-					size="sm"
+					size="icon-lg"
 					onClick={() => handleCreateFolder()}
 					title="New Folder"
-					className="h-7 px-2"
+					aria-label="New Folder"
+					className="shrink-0"
 				>
 					<FolderPlus className="h-4 w-4" />
 				</Button>
 				<Button
 					variant="ghost"
-					size="sm"
+					size="icon-lg"
 					onClick={handleRefresh}
 					title="Refresh"
-					className="h-7 px-2"
+					aria-label="Refresh"
+					className="shrink-0"
 				>
-					<RefreshCw className="h-4 w-4" />
+					<RefreshCw
+						className={cn(
+							"h-4 w-4",
+							isLoading && !prefersReducedMotion && "motion-safe:animate-spin",
+						)}
+					/>
 				</Button>
 				<Button
 					variant="ghost"
-					size="sm"
+					size="icon-lg"
+					ref={preflightButtonRef}
 					onClick={handlePreflight}
 					disabled={preflightLoading}
 					title="Preflight Check"
-					className="h-7 px-2"
+					aria-label="Preflight Check"
+					className="shrink-0"
 				>
 					{preflightLoading ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
+						<Loader2 className="h-4 w-4 motion-safe:animate-spin" />
 					) : (
 						<ShieldCheck className="h-4 w-4" />
 					)}
@@ -236,28 +249,28 @@ export function FileTree() {
 				onDrop={(e) => handleDrop(e)}
 			>
 				{isLoading && files.length === 0 && !creatingItem ? (
-					<div className="flex h-full items-center justify-center">
-						<div className="text-sm text-muted-foreground">
+					<div className="flex h-full items-center justify-center px-4 py-6">
+						<div className="text-sm leading-6 text-muted-foreground">
 							Loading files...
 						</div>
 					</div>
 				) : files.length === 0 && !creatingItem ? (
-					<div className="flex h-full items-center justify-center p-4">
-						<div className="text-center text-sm text-muted-foreground">
+					<div className="flex h-full items-center justify-center px-4 py-6">
+						<div className="max-w-sm text-center text-sm leading-6 text-muted-foreground">
 							<p>No files found</p>
-							<p className="mt-2 text-xs">
+							<p className="mt-2 text-xs leading-5">
 								Use the toolbar to create files and folders
 							</p>
 						</div>
 					</div>
 				) : (
-					<div className="space-y-1 p-2">
+					<div className="space-y-1 p-2 sm:p-3">
 						{/* Inline new item editor */}
 						{creatingItem && !creatingInFolder && (
-							<div className="flex items-center gap-2 rounded-md px-2 py-1 bg-muted/50">
+							<div className="flex items-center gap-2 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 px-2.5 py-2">
 								<div className="w-4" />
 								{isProcessing ? (
-									<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+									<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-primary" />
 								) : creatingItem === "folder" ? (
 									<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
 								) : (
@@ -348,7 +361,7 @@ export function FileTree() {
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
 							onClick={handleConfirmDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							Delete
 						</AlertDialogAction>
@@ -431,13 +444,13 @@ export function FileTree() {
 					if (!open) setPreflightResult(null);
 				}}
 			>
-				<DialogContent className="max-w-lg">
+				<DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); preflightButtonRef.current?.focus(); }} className="w-[min(36rem,calc(100vw-1rem))] max-w-none rounded-[var(--bf-radius-surface)] p-[var(--bf-surface-pad)]">
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
 							{preflightResult?.valid ? (
-								<CheckCircle2 className="h-5 w-5 text-green-500" />
+								<CheckCircle2 className="h-5 w-5 text-[var(--bf-success)]" />
 							) : (
-								<XCircle className="h-5 w-5 text-destructive" />
+								<XCircle className="h-5 w-5 text-[var(--bf-danger)]" />
 							)}
 							Preflight Results
 						</DialogTitle>
@@ -446,16 +459,16 @@ export function FileTree() {
 						{preflightResult?.issues.map((issue, idx) => (
 							<div
 								key={`issue-${idx}`}
-								className="flex items-start gap-2 rounded-md bg-destructive/5 ring-1 ring-destructive/30 p-2 text-sm"
+								className="flex items-start gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-3 text-sm leading-6"
 							>
-								<XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
+								<XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--bf-danger)]" />
 								<div className="flex-1 min-w-0">
 									{issue.path && (
-										<div className="font-mono text-xs text-muted-foreground truncate">
+										<div className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
 											{issue.path}
 										</div>
 									)}
-									<div>{issue.detail}</div>
+									<div className="[overflow-wrap:anywhere]">{issue.detail}</div>
 								</div>
 							</div>
 						))}
@@ -471,22 +484,22 @@ export function FileTree() {
 							return (
 								<div
 									key={`warn-${idx}`}
-									className="flex items-start gap-2 rounded-md bg-amber-500/5 ring-1 ring-amber-500/30 p-2 text-sm"
+									className="flex flex-wrap items-start gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60 p-3 text-sm leading-6"
 								>
-									<AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />
+									<AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--bf-warning)]" />
 									<div className="flex-1 min-w-0">
 										{warning.path && (
-											<div className="font-mono text-xs text-muted-foreground truncate">
+											<div className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
 												{warning.path}
 											</div>
 										)}
-										<div>{warning.detail}</div>
+										<div className="[overflow-wrap:anywhere]">{warning.detail}</div>
 									</div>
 									{fnName && warning.path && (
 										<Button
 											variant="outline"
 											size="sm"
-											className="h-7 text-xs flex-shrink-0"
+											className="min-h-11 text-xs flex-shrink-0"
 											disabled={
 												preflightRegistering ===
 												fnName
@@ -500,7 +513,7 @@ export function FileTree() {
 										>
 											{preflightRegistering ===
 											fnName ? (
-												<Loader2 className="h-3 w-3 animate-spin mr-1" />
+												<Loader2 className="mr-1 h-3 w-3 motion-safe:animate-spin" />
 											) : null}
 											Register
 										</Button>
@@ -510,11 +523,11 @@ export function FileTree() {
 						})}
 						{preflightResult?.issues.length === 0 &&
 							preflightResult?.warnings.length === 0 && (
-								<div className="text-center text-sm text-muted-foreground py-4">
+								<div className="py-4 text-center text-sm leading-6 text-muted-foreground">
 									All checks passed
 								</div>
 							)}
-					</div>
+				</div>
 				</DialogContent>
 			</Dialog>
 		</div>

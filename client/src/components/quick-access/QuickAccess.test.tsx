@@ -42,6 +42,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => ({ isPlatformAdmin: true }),
 }));
 
+vi.mock("framer-motion", () => ({
+	useReducedMotion: () => true,
+}));
+
 const formsRef: { data: Array<Record<string, unknown>> } = { data: [] };
 vi.mock("@/hooks/useForms", () => ({
 	useForms: () => ({ data: formsRef.data }),
@@ -158,6 +162,36 @@ describe("QuickAccess — searching", () => {
 		await screen.findByText("No results found", undefined, {
 			timeout: 3000,
 		});
+	});
+
+	it("surfaces a script-search error and retries the query", async () => {
+		searchFilesMock
+			.mockRejectedValueOnce(new Error("offline"))
+			.mockResolvedValueOnce({
+				results: [
+					{
+						file_path: "workflows/onboard.py",
+						line: 12,
+						match_text: "def onboard():",
+					},
+				],
+			});
+
+		renderWithProviders(<QuickAccess isOpen onClose={vi.fn()} />);
+		await typeQuery("onboard");
+
+		expect(
+			await screen.findByText(/file search is temporarily unavailable/i),
+		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /retry/i })).toHaveClass(
+			"min-h-11",
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+		await waitFor(() =>
+			expect(screen.getByText("onboard.py")).toBeInTheDocument(),
+		);
 	});
 });
 

@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import {
 	Dialog,
@@ -26,7 +28,17 @@ interface PolicyEditorModalProps {
 	onSaved?: () => void;
 }
 
-export function PolicyEditorModal({
+export function PolicyEditorModal(props: PolicyEditorModalProps) {
+	if (!props.open) return null;
+	return (
+		<PolicyEditorSession
+			key={JSON.stringify([props.location, props.scope, props.path])}
+			{...props}
+		/>
+	);
+}
+
+function PolicyEditorSession({
 	open,
 	onOpenChange,
 	location,
@@ -34,64 +46,67 @@ export function PolicyEditorModal({
 	path,
 	onSaved,
 }: PolicyEditorModalProps) {
-	const [draft, setDraft] = useState<FilePolicy | null>(null);
 	const [showRulesManager, setShowRulesManager] = useState(false);
-
-	useEffect(() => {
-		let cancelled = false;
-		if (!open) return;
-		listFilePolicies({ location, scope: scope ?? undefined })
-			.then((result) => {
-				if (cancelled) return;
-				const best = bestPolicyForPath(result.policies ?? [], path, location);
-				setDraft(best ?? makeDefaultPolicy(path, location, scope));
-			})
-			.catch(() => {
-				if (!cancelled) setDraft(makeDefaultPolicy(path, location, scope));
+	const [busy, setBusy] = useState(false);
+	const policyQuery = useQuery({
+		queryKey: ["file-policy-editor", location, scope, path],
+		queryFn: async () => {
+			const result = await listFilePolicies({
+				location,
+				scope: scope ?? undefined,
 			});
-		return () => {
-			cancelled = true;
-		};
-	}, [open, location, scope, path]);
+			return (
+				bestPolicyForPath(result.policies ?? [], path, location) ??
+				makeDefaultPolicy(path, location, scope)
+			);
+		},
+		retry: false,
+		staleTime: Infinity,
+		gcTime: 0,
+	});
+	const draft = policyQuery.data;
 
 	async function handleSave(policy: FilePolicy) {
-		try {
-			await saveFilePolicy(policy);
-			toast.success("File policy saved");
-			onSaved?.();
-			onOpenChange(false);
-		} catch (err) {
-			toast.error("Failed to save file policy", {
-				description: err instanceof Error ? err.message : String(err),
-			});
-		}
+		await saveFilePolicy(policy);
+		toast.success("File policy saved");
+		onSaved?.();
+		onOpenChange(false);
 	}
 
 	async function handleDelete(policy: FilePolicy) {
-		try {
-			await deleteFilePolicy(policy);
-			toast.success("File policy deleted");
-			onSaved?.();
-			onOpenChange(false);
-		} catch (err) {
-			toast.error("Failed to delete file policy", {
-				description: err instanceof Error ? err.message : String(err),
-			});
-		}
+		await deleteFilePolicy(policy);
+		toast.success("File policy deleted");
+		onSaved?.();
+		onOpenChange(false);
 	}
 
 	return (
 		<>
-			<Dialog open={open} onOpenChange={onOpenChange}>
-				<DialogContent className="max-h-[90vh] gap-4 overflow-auto sm:max-w-2xl">
+			<Dialog
+				open={open}
+				onOpenChange={(next) => {
+					if (!busy) onOpenChange(next);
+				}}
+			>
+				<DialogContent
+					className="flex max-h-[90dvh] flex-col gap-4 overflow-hidden sm:max-w-2xl"
+					showCloseButton={!busy}
+					onEscapeKeyDown={(event) => {
+						if (busy) event.preventDefault();
+					}}
+					onInteractOutside={(event) => {
+						if (busy) event.preventDefault();
+					}}
+				>
 					<DialogHeader>
-						<div className="flex items-center justify-between">
+						<div className="flex flex-wrap items-center justify-between gap-2">
 							<DialogTitle>Manage policy</DialogTitle>
 							<Button
 								type="button"
 								size="sm"
 								variant="ghost"
-								className="text-xs"
+								className="min-h-11 text-xs"
+								disabled={busy}
 								onClick={() => setShowRulesManager(true)}
 								data-testid="manage-rules-btn"
 							>
@@ -99,6 +114,33 @@ export function PolicyEditorModal({
 							</Button>
 						</div>
 					</DialogHeader>
+					{policyQuery.isPending && (
+						<p
+							role="status"
+							className="py-4 text-sm text-muted-foreground"
+						>
+							Loading file policy…
+						</p>
+					)}
+					{policyQuery.isError && (
+						<Alert variant="destructive">
+							<AlertTitle>
+								File policy could not be loaded
+							</AlertTitle>
+							<AlertDescription>
+								<p>
+									Try again before editing this path’s policy.
+								</p>
+								<Button
+									className="mt-3 min-h-11"
+									variant="outline"
+									onClick={() => void policyQuery.refetch()}
+								>
+									Retry file policy
+								</Button>
+							</AlertDescription>
+						</Alert>
+					)}
 					{draft && (
 						<FilePolicyEditor
 							key={`${draft.id ?? "draft"}:${draft.location}:${draft.organizationId ?? "global"}:${draft.path}`}
@@ -106,13 +148,14 @@ export function PolicyEditorModal({
 							value={draft}
 							onSave={handleSave}
 							onDelete={handleDelete}
+							onBusyChange={setBusy}
 						/>
 					)}
 				</DialogContent>
 			</Dialog>
 
 			<Dialog open={showRulesManager} onOpenChange={setShowRulesManager}>
-				<DialogContent className="max-h-[90vh] overflow-auto sm:max-w-2xl">
+				<DialogContent className="max-h-[90dvh] overflow-auto sm:max-w-2xl">
 					<DialogHeader>
 						<DialogTitle>File policy rules</DialogTitle>
 					</DialogHeader>

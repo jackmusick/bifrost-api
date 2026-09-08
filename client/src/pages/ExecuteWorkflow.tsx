@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { parseSolutionFrom } from "@/lib/solution-back-nav";
 import { ArrowLeft, Loader2, Play, XCircle } from "lucide-react";
@@ -31,17 +31,22 @@ export function ExecuteWorkflow() {
 	const { search } = useLocation();
 	const fromSolution = parseSolutionFrom(search);
 	const backTo = fromSolution ? `/solutions/${fromSolution}` : "/workflows";
-	const { data, isLoading } = useWorkflowsMetadata();
+	const { data, isLoading, error: metadataError, refetch } = useWorkflowsMetadata();
 	const executeWorkflow = useExecuteWorkflow();
 
 	// Track navigation state to keep button disabled through redirect
 	const [isNavigating, setIsNavigating] = useState(false);
+	const [submitError, setSubmitError] = useState<string | null>(null);
+	const submitErrorRef = useRef<HTMLDivElement>(null);
 	// User-edited overrides for the parameter inputs. Defaults are merged in
 	// on render so we don't need an effect to seed state.
 	const [overrides, setOverrides] = useState<Record<string, unknown>>({});
 	const [schedule, setSchedule] = useState<Schedule | null>(null);
 
 	const workflow = data?.workflows?.find((w) => w.name === workflowName);
+	const isScheduled = schedule !== null;
+	const submitLabel = isScheduled ? "Schedule workflow" : "Execute Workflow";
+	const submittingLabel = isScheduled ? "Scheduling..." : "Executing...";
 
 	// Compute defaults from the workflow's parameter schema, matching the
 	// uncontrolled-mode defaults WorkflowParametersForm would have computed
@@ -63,6 +68,7 @@ export function ExecuteWorkflow() {
 		if (!workflow) return;
 
 		setIsNavigating(true);
+		setSubmitError(null);
 		try {
 			const body: WorkflowExecutionRequest = {
 				workflow_id: workflow.id,
@@ -99,29 +105,34 @@ export function ExecuteWorkflow() {
 			// Don't reset isNavigating - component will unmount on navigation
 		} catch (error) {
 			setIsNavigating(false); // Only re-enable button on error
-			toast.error("Failed to execute workflow", {
-				description: getErrorMessage(error, "Unknown error occurred"),
-			});
+			setSubmitError(getErrorMessage(error, "Unknown error occurred"));
 		}
 	};
 
+	useEffect(() => {
+		if (!submitError) return;
+		submitErrorRef.current?.focus();
+		submitErrorRef.current?.scrollIntoView({ block: "center" });
+	}, [submitError]);
+
 	if (isLoading) {
 		return (
-			<div className="space-y-6">
-				<Skeleton className="h-12 w-64" />
+			<div className="mx-auto min-w-0 max-w-2xl space-y-6">
+				<Skeleton className="h-10 w-64 max-w-full" />
 				<Skeleton className="h-96 w-full" />
 			</div>
 		);
 	}
 
-	if (!workflow) {
+	if (metadataError || !workflow) {
 		return (
-			<div className="space-y-6">
+			<div className="mx-auto min-w-0 max-w-2xl space-y-6">
 				<Alert variant="destructive">
 					<XCircle className="h-4 w-4" />
-					<AlertTitle>Error</AlertTitle>
-					<AlertDescription>Workflow not found</AlertDescription>
+					<AlertTitle>{metadataError ? "Unable to load workflow" : "Workflow not found"}</AlertTitle>
+					<AlertDescription>{metadataError ? "Workflow information could not be loaded. Try again." : "This workflow may have been removed or may not be available to you."}</AlertDescription>
 				</Alert>
+				{metadataError && <Button variant="outline" onClick={() => void refetch()}>Try again</Button>}
 				<Button onClick={() => navigate(backTo)}>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					{fromSolution ? "Back to Solution" : "Back to Workflows"}
@@ -131,13 +142,14 @@ export function ExecuteWorkflow() {
 	}
 
 	return (
-		<div className="space-y-6">
+		<div className="mx-auto min-w-0 max-w-2xl space-y-6">
 			<div className="flex justify-center">
 				<div className="w-full max-w-2xl">
-					<div className="flex items-center gap-4">
+					<div className="flex items-start gap-3">
 						<Button
 							variant="ghost"
 							size="icon"
+							className="size-11 shrink-0"
 							onClick={() => navigate(backTo)}
 							aria-label={
 								fromSolution
@@ -147,13 +159,13 @@ export function ExecuteWorkflow() {
 						>
 							<ArrowLeft className="h-4 w-4" />
 						</Button>
-						<div>
-							<h1 className="text-4xl font-extrabold tracking-tight">
+						<div className="min-w-0">
+							<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
 								Execute Workflow
 							</h1>
-							<p className="mt-2 text-muted-foreground">
+							<p className="mt-2 text-sm leading-6 text-muted-foreground">
 								Workflow:{" "}
-								<span className="font-mono">
+								<span className="font-mono [overflow-wrap:anywhere]">
 									{workflow.name}
 								</span>
 							</p>
@@ -166,9 +178,9 @@ export function ExecuteWorkflow() {
 				<div className="w-full max-w-2xl">
 					<Card>
 						<CardHeader>
-							<CardTitle>{workflow.name}</CardTitle>
+							<CardTitle>Parameters</CardTitle>
 							{workflow.description && (
-								<CardDescription>
+								<CardDescription className="[overflow-wrap:anywhere]">
 									{workflow.description}
 								</CardDescription>
 							)}
@@ -201,25 +213,47 @@ export function ExecuteWorkflow() {
 										}
 									/>
 								</div>
-								<Button
-									type="submit"
-									className="w-full mt-6"
-									disabled={
-										executeWorkflow.isPending || isNavigating
-									}
-								>
-									{executeWorkflow.isPending ||
-									isNavigating ? (
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									) : (
-										<Play className="mr-2 h-4 w-4" />
-									)}
-									{executeWorkflow.isPending || isNavigating
-										? "Executing..."
-										: "Execute Workflow"}
-								</Button>
-							</form>
-						</CardContent>
+								{submitError && (
+									<div
+										ref={submitErrorRef}
+										tabIndex={-1}
+										className="mt-6 outline-none"
+									>
+										<Alert
+											variant="destructive"
+											aria-live="assertive"
+										>
+											<XCircle className="h-4 w-4" />
+											<AlertTitle>
+												Failed to{" "}
+												{isScheduled ? "schedule" : "execute"}{" "}
+												workflow
+											</AlertTitle>
+											<AlertDescription>
+												{submitError}
+											</AlertDescription>
+										</Alert>
+									</div>
+								)}
+							<Button
+								type="submit"
+								className="mt-6 min-h-11 w-full"
+								disabled={
+									executeWorkflow.isPending || isNavigating
+								}
+							>
+								{executeWorkflow.isPending ||
+								isNavigating ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+								) : (
+									<Play className="mr-2 h-4 w-4" />
+								)}
+								{executeWorkflow.isPending || isNavigating
+									? submittingLabel
+									: submitLabel}
+							</Button>
+						</form>
+					</CardContent>
 					</Card>
 				</div>
 			</div>

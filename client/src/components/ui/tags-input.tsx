@@ -11,6 +11,8 @@ export interface TagsInputProps {
 	className?: string;
 	validate?: (tag: string) => boolean;
 	errorMessage?: string;
+	"aria-label"?: string;
+	id?: string;
 }
 
 /**
@@ -25,7 +27,10 @@ export function TagsInput({
 	className,
 	validate,
 	errorMessage = "Invalid input",
+	"aria-label": ariaLabel = "Add a tag",
+	id,
 }: TagsInputProps) {
+	const errorId = React.useId();
 	const [inputValue, setInputValue] = React.useState("");
 	const [error, setError] = React.useState<string | null>(null);
 	const inputRef = React.useRef<HTMLInputElement>(null);
@@ -53,16 +58,17 @@ export function TagsInput({
 
 	const removeTag = (index: number) => {
 		onChange(value.filter((_, i) => i !== index));
+		inputRef.current?.focus();
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-		// Add tag on Space, Tab, Enter, or comma
-		if (
-			e.key === " " ||
-			e.key === "Tab" ||
-			e.key === "Enter" ||
-			e.key === ","
-		) {
+		if (e.nativeEvent.isComposing) return;
+		if (e.key === "Tab") {
+			if (!e.shiftKey && inputValue.trim()) addTag(inputValue);
+			return;
+		}
+		// Add tag on Space, Enter, or comma
+		if (e.key === " " || e.key === "Enter" || e.key === ",") {
 			e.preventDefault();
 			addTag(inputValue);
 		}
@@ -91,7 +97,7 @@ export function TagsInput({
 		<div className="space-y-2">
 			<div
 				className={cn(
-					"flex min-h-10 w-full flex-wrap gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background cursor-text",
+					"flex min-h-11 min-w-0 w-full flex-wrap gap-2 rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-3 py-2 text-sm ring-offset-background cursor-text",
 					"focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
 					error && "border-destructive",
 					className,
@@ -102,16 +108,19 @@ export function TagsInput({
 					<Badge
 						key={index}
 						variant="secondary"
-						className="gap-1 pr-1 font-mono text-xs"
+						className="h-auto min-h-11 min-w-0 max-w-full leading-normal gap-1 pr-1 font-mono text-sm whitespace-normal"
 					>
-						{tag}
+						<span className="min-w-0 [overflow-wrap:anywhere]">
+							{tag}
+						</span>
 						<button
 							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
 								removeTag(index);
 							}}
-							className="ml-1 rounded-sm hover:bg-secondary-foreground/20"
+							aria-label={`Remove ${tag}`}
+							className="ml-1 inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] hover:bg-secondary-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							<X className="h-3 w-3" />
 						</button>
@@ -119,15 +128,27 @@ export function TagsInput({
 				))}
 				<Input
 					ref={inputRef}
+					id={id}
+					aria-label={ariaLabel}
+					aria-invalid={!!error}
+					aria-describedby={error ? errorId : undefined}
 					type="text"
 					value={inputValue}
 					onChange={handleInputChange}
 					onKeyDown={handleKeyDown}
 					placeholder={value.length === 0 ? placeholder : ""}
-					className="flex-1 border-0 p-0 h-6 min-w-[120px] focus-visible:ring-0 focus-visible:ring-offset-0"
+					className="flex-1 border-0 p-0 h-11 min-w-[min(120px,100%)] focus-visible:ring-0 focus-visible:ring-offset-0"
 				/>
 			</div>
-			{error && <p className="text-xs text-destructive">{error}</p>}
+			{error && (
+				<p
+					id={errorId}
+					role="alert"
+					className="text-sm text-destructive"
+				>
+					{error}
+				</p>
+			)}
 		</div>
 	);
 }

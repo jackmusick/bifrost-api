@@ -203,6 +203,77 @@ describe("FilePolicyEditor", () => {
 	});
 });
 
+describe("FilePolicyEditor", () => {
+	it("surfaces generic save failures inline and allows retry", async () => {
+		mockListRules.mockResolvedValue([]);
+		const onSave = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("backend exploded"))
+			.mockResolvedValueOnce(undefined);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={onSave}
+				onDelete={vi.fn()}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
+		await waitFor(() =>
+			expect(screen.getByRole("alert")).toHaveTextContent(/backend exploded/i),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /retry save/i }));
+		await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+	});
+
+	it("surfaces generic delete failures inline and allows retry", async () => {
+		mockListRules.mockResolvedValue([]);
+		const onDelete = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("delete failed"))
+			.mockResolvedValueOnce(undefined);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={vi.fn()}
+				onDelete={onDelete}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /delete/i }));
+		await waitFor(() =>
+			expect(screen.getByRole("alert")).toHaveTextContent(/delete failed/i),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /retry delete/i }));
+		await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(2));
+	});
+
+	it("notifies busy state while a save is in flight", async () => {
+		mockListRules.mockResolvedValue([]);
+		let resolveSave!: () => void;
+		const onBusyChange = vi.fn();
+		const onSave = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					resolveSave = resolve;
+				}),
+		);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={onSave}
+				onDelete={vi.fn()}
+				onBusyChange={onBusyChange}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
+		expect(onBusyChange).toHaveBeenCalledWith(true);
+		resolveSave();
+		await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+	});
+});
+
 describe("FilePolicyEditor — reference mode", () => {
 	it("does not render Insert reference when no rules are available", () => {
 		mockListRules.mockResolvedValue([]);
@@ -228,6 +299,31 @@ describe("FilePolicyEditor — reference mode", () => {
 				onSave={vi.fn()}
 				onDelete={vi.fn()}
 			/>,
+		);
+		await waitFor(() =>
+			expect(screen.getByLabelText(/insert reference/i)).toBeInTheDocument(),
+		);
+	});
+
+	it("offers a retry when rule loading fails", async () => {
+		mockListRules
+			.mockRejectedValueOnce(new Error("network down"))
+			.mockResolvedValueOnce([RULE]);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+			/>,
+		);
+		await waitFor(() =>
+			expect(
+				screen.getByText(/unable to load file policy rules/i),
+			).toBeInTheDocument(),
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: /retry loading rules/i }),
 		);
 		await waitFor(() =>
 			expect(screen.getByLabelText(/insert reference/i)).toBeInTheDocument(),

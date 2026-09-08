@@ -35,22 +35,42 @@ describe("RunStatusBadge — labels", () => {
 describe("RunStatusBadge — visual hierarchy", () => {
 	it("renders Success quietly: no solid green fill, muted text", () => {
 		renderWithProviders(<RunStatusBadge status="Success" />);
-		const badge = screen.getByText(/^completed$/i);
+		const badge = screen
+			.getByText(/^completed$/i)
+			.closest('[data-slot="badge"]');
+		expect(badge).toBeTruthy();
+		if (!badge) return;
+		expect(badge.className).toContain("text-[color:var(--bf-success)]");
 		expect(badge.className).not.toMatch(/bg-green/);
-		expect(badge.className).toMatch(/text-muted-foreground/);
 	});
 
-	it("renders Failed loudly with the destructive variant", () => {
+	it("renders Failed with semantic danger styling", () => {
 		renderWithProviders(<RunStatusBadge status="Failed" />);
-		const badge = screen.getByText(/^failed$/i);
-		expect(badge.className).toMatch(/destructive/);
+		const badge = screen.getByText(/^failed$/i).closest('[data-slot="badge"]');
+		expect(badge).toBeTruthy();
+		if (!badge) return;
+		expect(badge.getAttribute("style")).toContain("color: var(--bf-danger)");
 	});
 
-	it("renders Timeout with the destructive variant", () => {
+	it("renders Timeout with semantic danger styling", () => {
 		renderWithProviders(<RunStatusBadge status="Timeout" />);
-		const badge = screen.getByText(/timed out/i);
-		expect(badge.className).toMatch(/destructive/);
+		const badge = screen.getByText(/timed out/i).closest('[data-slot="badge"]');
+		expect(badge).toBeTruthy();
+		if (!badge) return;
+		expect(badge.getAttribute("style")).toContain("color: var(--bf-danger)");
 	});
+});
+
+describe("RunStatusBadge — active indicator", () => {
+	it.each(["Running", "Pending", "Cancelling"] as const)(
+		"shows the live gradient indicator for %s",
+		(status) => {
+			renderWithProviders(<RunStatusBadge status={status} />);
+			expect(
+				screen.getByTestId("run-status-activity-indicator"),
+			).toBeInTheDocument();
+		},
+	);
 });
 
 describe("RunStatusBadge — scheduled tooltip", () => {

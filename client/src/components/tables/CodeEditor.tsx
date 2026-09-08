@@ -17,7 +17,7 @@
 
 import Editor from "@monaco-editor/react";
 
-import { useTheme } from "@/contexts/ThemeContext";
+import { useBifrostMonacoTheme } from "@/hooks/useBifrostMonacoTheme";
 
 export interface CodeEditorProps {
 	mode: "json" | "yaml";
@@ -45,8 +45,7 @@ export function CodeEditor({
 	readOnly = false,
 	"data-testid": testId,
 }: CodeEditorProps) {
-	const { theme } = useTheme();
-	const monacoTheme = theme === "dark" ? "vs-dark" : "light";
+	const monacoAppearance = useBifrostMonacoTheme();
 
 	return (
 		<div
@@ -59,14 +58,14 @@ export function CodeEditor({
 				language={mode}
 				value={text}
 				onChange={(next) => onChange(next ?? "")}
-				theme={monacoTheme}
+				{...monacoAppearance}
 				path={path}
 				options={{
 					minimap: { enabled: false },
 					scrollBeyondLastLine: false,
-					fontSize: 12,
-					fontFamily:
-						"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+					...monacoAppearance.options,
+					ariaLabel: path || "Structured document",
+
 					wordWrap: "on",
 					automaticLayout: true,
 					tabSize: 2,

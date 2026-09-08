@@ -4,7 +4,7 @@
  * Reads/writes to GET/PUT /api/applications/{appId}/dependencies.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -15,6 +15,8 @@ interface UseAppDependenciesResult {
 	isLoading: boolean;
 	/** Whether a save is in progress */
 	isSaving: boolean;
+	loadError: string | null;
+	reload: () => void;
 	/** Add a package */
 	addDependency: (name: string, version: string) => Promise<void>;
 	/** Remove a package */
@@ -24,9 +26,18 @@ interface UseAppDependenciesResult {
 }
 
 export function useAppDependencies(appId: string): UseAppDependenciesResult {
-	const [dependencies, setDependencies] = useState<Record<string, string>>({});
+	const [dependencies, setDependencies] = useState<Record<string, string>>(
+		{},
+	);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [reloadVersion, setReloadVersion] = useState(0);
+	const reload = useCallback(
+		() => setReloadVersion((value) => value + 1),
+		[],
+	);
+	const savingRef = useRef(false);
 
 	// Fetch dependencies on mount
 	useEffect(() => {
@@ -34,15 +45,20 @@ export function useAppDependencies(appId: string): UseAppDependenciesResult {
 
 		async function load() {
 			setIsLoading(true);
+			setLoadError(null);
 			try {
 				const response = await authFetch(
 					`/api/applications/${appId}/dependencies`,
 				);
-				if (!response.ok) throw new Error("Failed to load dependencies");
+				if (!response.ok)
+					throw new Error("Failed to load dependencies");
 				const data = await response.json();
 				if (!cancelled) setDependencies(data);
 			} catch (err) {
 				if (!cancelled) {
+					setLoadError(
+						"Could not load installed packages. Retry before changing dependencies.",
+					);
 					console.error("Failed to load dependencies:", err);
 				}
 			} finally {
@@ -54,11 +70,14 @@ export function useAppDependencies(appId: string): UseAppDependenciesResult {
 		return () => {
 			cancelled = true;
 		};
-	}, [appId]);
+	}, [appId, reloadVersion]);
 
 	// Save dependencies to API
 	const saveDeps = useCallback(
 		async (newDeps: Record<string, string>) => {
+			if (savingRef.current)
+				throw new Error("Package changes are already being saved");
+			savingRef.current = true;
 			setIsSaving(true);
 			try {
 				const response = await authFetch(
@@ -69,16 +88,12 @@ export function useAppDependencies(appId: string): UseAppDependenciesResult {
 						body: JSON.stringify(newDeps),
 					},
 				);
-				if (!response.ok) throw new Error("Failed to save dependencies");
+				if (!response.ok)
+					throw new Error("Failed to save dependencies");
 				const validated = await response.json();
 				setDependencies(validated);
-			} catch (err) {
-				toast.error("Failed to save dependencies", {
-					description:
-						err instanceof Error ? err.message : "Unknown error",
-				});
-				throw err;
 			} finally {
+				savingRef.current = false;
 				setIsSaving(false);
 			}
 		},
@@ -116,6 +131,8 @@ export function useAppDependencies(appId: string): UseAppDependenciesResult {
 		dependencies,
 		isLoading,
 		isSaving,
+		loadError,
+		reload,
 		addDependency,
 		removeDependency,
 		updateVersion,

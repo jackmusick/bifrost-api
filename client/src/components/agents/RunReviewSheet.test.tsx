@@ -90,8 +90,8 @@ const activityRun: AgentRunDetail = {
 };
 
 describe("RunReviewSheet", () => {
-	it("renders nothing when run is null", () => {
-		const { container } = renderWithProviders(
+	it("shows a loading sheet while run details are unavailable", () => {
+		renderWithProviders(
 			<RunReviewSheet
 				open={true}
 				onOpenChange={() => {}}
@@ -104,7 +104,12 @@ describe("RunReviewSheet", () => {
 				onSendChat={() => {}}
 			/>,
 		);
-		expect(container.firstChild).toBeNull();
+		expect(
+			screen.getByRole("dialog", { name: "Run review" }),
+		).toBeVisible();
+		expect(screen.getByRole("status")).toHaveTextContent(
+			"Loading run details",
+		);
 	});
 
 	it("renders sheet content with run title when open", () => {
@@ -127,6 +132,15 @@ describe("RunReviewSheet", () => {
 			screen.getByRole("tab", { name: /^review$/i }),
 		).toBeInTheDocument();
 		expect(screen.getByRole("tab", { name: /tune/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /close run review/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: /open full run/i }),
+		).toHaveClass("h-11");
+		expect(screen.getByRole("tab", { name: /^review$/i })).toHaveClass(
+			"min-h-11",
+		);
 	});
 
 	it("renders the Review tab content by default", () => {
@@ -192,9 +206,7 @@ describe("RunReviewSheet", () => {
 
 		await user.hover(reference);
 		expect(activity).toHaveAttribute("data-highlighted", "true");
-		await user.hover(
-			screen.getByRole("heading", { name: "Activity" }),
-		);
+		await user.hover(screen.getByRole("heading", { name: "Activity" }));
 		expect(activity).toHaveAttribute("data-highlighted", "false");
 
 		await user.click(reference);
@@ -202,9 +214,7 @@ describe("RunReviewSheet", () => {
 			behavior: "smooth",
 			block: "center",
 		});
-		await user.hover(
-			screen.getByRole("heading", { name: "Activity" }),
-		);
+		await user.hover(screen.getByRole("heading", { name: "Activity" }));
 		expect(activity).toHaveFocus();
 		expect(activity).toHaveAttribute("data-highlighted", "false");
 	});
@@ -265,7 +275,9 @@ describe("RunReviewSheet", () => {
 				onSendChat={() => {}}
 			/>,
 		);
-		await user.click(screen.getByRole("button", { name: /close/i }));
+		await user.click(
+			screen.getByRole("button", { name: /close run review/i }),
+		);
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 
@@ -288,6 +300,28 @@ describe("RunReviewSheet", () => {
 			"href",
 			`/agents/${baseRun.agent_id}/runs/${baseRun.id}`,
 		);
+		expect(link).toHaveClass("h-11");
+	});
+
+	it("keeps the sheet container full-height and motion-reduce aware", () => {
+		renderWithProviders(
+			<RunReviewSheet
+				open={true}
+				onOpenChange={() => {}}
+				run={baseRun}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+				conversation={baseConversation}
+				onSendChat={() => {}}
+			/>,
+		);
+		const sheetContent = document.querySelector(
+			'[data-slot="sheet-content"]',
+		);
+		expect(sheetContent).toHaveClass("h-full");
+		expect(sheetContent).toHaveClass("motion-reduce:transition-none");
 	});
 
 	it("returns full-run navigation to the runs view that opened the sheet", async () => {
@@ -321,9 +355,7 @@ describe("RunReviewSheet", () => {
 			},
 		);
 
-		await user.click(
-			screen.getByRole("link", { name: /open full run/i }),
-		);
+		await user.click(screen.getByRole("link", { name: /open full run/i }));
 		expect(screen.getByTestId("navigation-state")).toHaveTextContent(
 			JSON.stringify({
 				agentRunOrigin: {

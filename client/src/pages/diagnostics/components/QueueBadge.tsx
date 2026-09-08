@@ -1,108 +1,129 @@
-import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Inbox } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useId } from "react";
+import { Inbox } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
-	HoverCard,
-	HoverCardContent,
-	HoverCardTrigger,
-} from "@/components/ui/hover-card";
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import type { QueueItem } from "@/services/workers";
 
 interface QueueBadgeProps {
 	items: QueueItem[];
+	total?: number;
 	isLoading?: boolean;
+	error?: string;
+	onRetry?: () => void;
+	isRetrying?: boolean;
 }
 
-/**
- * Format relative time from ISO date string
- */
-function formatRelativeTime(dateStr: string | null | undefined): string {
-	if (!dateStr) return "Unknown";
-	const date = new Date(dateStr);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffSec = Math.floor(diffMs / 1000);
-
-	if (diffSec < 60) return `${diffSec}s ago`;
-	const minutes = Math.floor(diffSec / 60);
-	if (minutes < 60) return `${minutes}m ago`;
-	const hours = Math.floor(minutes / 60);
-	return `${hours}h ago`;
+function formatRelativeTime(dateStr: string | null): string {
+	if (!dateStr) return "Time unavailable";
+	const timestamp = new Date(dateStr).getTime();
+	if (!Number.isFinite(timestamp)) return "Time unavailable";
+	const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+	if (seconds < 60) return `${seconds}s ago`;
+	if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+	return `${Math.floor(seconds / 3600)}h ago`;
 }
 
-/**
- * Compact queue indicator badge with hover popover showing queue details.
- * Shows queue count at a glance, full list on hover.
- */
-export function QueueBadge({ items, isLoading }: QueueBadgeProps) {
-	const count = items.length;
-
+/** Queue snapshot with touch and keyboard access to full execution identifiers. */
+export function QueueBadge({
+	items,
+	total = items.length,
+	isLoading,
+	error,
+	onRetry,
+	isRetrying,
+}: QueueBadgeProps) {
+	const titleId = useId();
 	return (
-		<HoverCard openDelay={200} closeDelay={100}>
-			<HoverCardTrigger asChild>
-				<Badge
-					variant={count > 0 ? "default" : "secondary"}
-					className={`cursor-default ${
-						count > 0
-							? "bg-amber-500 hover:bg-amber-600 text-white"
-							: ""
-					} ${isLoading ? "animate-pulse" : ""}`}
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="min-h-11"
 				>
-					<Inbox className="h-3 w-3 mr-1" />
-					{count} queued
-				</Badge>
-			</HoverCardTrigger>
-			<HoverCardContent align="end" className="w-80">
-				<div className="space-y-2">
-					<div className="flex items-center justify-between">
-						<h4 className="text-sm font-semibold">Execution Queue</h4>
-						<span className="text-xs text-muted-foreground">
-							{count} pending
-						</span>
+					<Inbox className="size-4" aria-hidden="true" />
+					{isLoading
+						? "Loading queue…"
+						: error
+							? "Queue unavailable"
+							: `${total} queued`}
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				aria-labelledby={titleId}
+				className="w-96 max-w-[calc(100vw-2rem)]"
+			>
+				<h3 id={titleId} className="font-semibold">
+					Execution queue
+				</h3>
+				{isLoading ? (
+					<p role="status" className="text-muted-foreground">
+						Loading queued executions…
+					</p>
+				) : error ? (
+					<div className="space-y-3">
+						<p
+							role="alert"
+							className="text-destructive [overflow-wrap:anywhere]"
+						>
+							{error}
+						</p>
+						{onRetry && (
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11"
+								disabled={isRetrying}
+								onClick={onRetry}
+							>
+								{isRetrying ? "Retrying…" : "Retry queue"}
+							</Button>
+						)}
 					</div>
-
-					{count === 0 ? (
-						<div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
-							<Inbox className="h-6 w-6 mb-1" />
-							<p className="text-xs">No jobs queued</p>
-						</div>
-					) : (
-						<div className="divide-y max-h-64 overflow-y-auto">
-							<AnimatePresence mode="popLayout">
-								{items.slice(0, 10).map((item, index) => (
-									<motion.div
-										key={item.execution_id}
-										initial={{ opacity: 0, y: -5 }}
-										animate={{ opacity: 1, y: 0 }}
-										exit={{ opacity: 0, x: 10 }}
-										transition={{ duration: 0.15, delay: index * 0.03 }}
-										layout
-										className="flex items-center justify-between py-2 first:pt-0 last:pb-0"
-									>
-										<div className="flex items-center gap-2">
-											<span className="text-muted-foreground font-mono text-xs w-5">
-												#{item.position}
-											</span>
-											<span className="font-medium text-sm font-mono">
-												{item.execution_id.substring(0, 8)}
-											</span>
-										</div>
-										<div className="flex items-center gap-1 text-xs text-muted-foreground">
-											<Clock className="h-3 w-3" />
-											<span>{formatRelativeTime(item.queued_at)}</span>
-										</div>
-									</motion.div>
-								))}
-							</AnimatePresence>
-							{items.length > 10 && (
-								<div className="pt-2 text-center text-xs text-muted-foreground">
-									+{items.length - 10} more
-								</div>
-							)}
-						</div>
-					)}
-				</div>
-			</HoverCardContent>
-		</HoverCard>
+				) : items.length === 0 ? (
+					<p className="text-muted-foreground">
+						{total === 0
+							? "No jobs queued"
+							: "Queue details are unavailable."}
+					</p>
+				) : (
+					<>
+						<p className="text-xs text-muted-foreground">
+							{total} pending
+							{total > items.length
+								? ` · Showing the first ${items.length}`
+								: ""}
+						</p>
+						<ol
+							aria-label="Queued executions"
+							className="max-h-72 overflow-y-auto divide-y"
+						>
+							{items.map((item) => (
+								<li
+									key={item.execution_id}
+									className="space-y-2 py-3 first:pt-0 last:pb-0"
+								>
+									<div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+										<span>Position {item.position}</span>
+										<span>
+											{formatRelativeTime(item.queued_at)}
+										</span>
+									</div>
+									<p className="font-mono text-xs [overflow-wrap:anywhere]">
+										{item.execution_id}
+									</p>
+								</li>
+							))}
+						</ol>
+					</>
+				)}
+			</PopoverContent>
+		</Popover>
 	);
 }

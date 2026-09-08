@@ -8,6 +8,7 @@
  * honest top-level-array framing, and the JSON fallback for deep/mixed data.
  */
 
+import { within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, MockInstance } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import { PrettyInputDisplay } from "./PrettyInputDisplay";
@@ -178,8 +179,8 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 		expect(
 			screen.getByRole("columnheader", { name: "Value" }),
 		).toBeInTheDocument();
-		expect(screen.getByText("Microsoft 365 E3")).toBeInTheDocument();
-		expect(screen.getByText("defender_p2")).toBeInTheDocument();
+		expect(within(screen.getByRole("table")).getByText("Microsoft 365 E3")).toBeInTheDocument();
+		expect(within(screen.getByRole("table")).getByText("defender_p2")).toBeInTheDocument();
 	});
 
 	it("renders missing cells in mostly-uniform arrays as an em dash", () => {
@@ -196,7 +197,7 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 				}}
 			/>,
 		);
-		expect(screen.getByText("—")).toBeInTheDocument();
+		expect(within(screen.getByRole("table")).getByText("—")).toBeInTheDocument();
 	});
 
 	it("falls back to JSON when array items are not table-shaped", () => {
@@ -223,7 +224,7 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 		expect(
 			screen.getByText("Showing first 50 of 5,395 rows"),
 		).toBeInTheDocument();
-		expect(screen.getByText("row-49")).toBeInTheDocument();
+		expect(within(screen.getByRole("table")).getByText("row-49")).toBeInTheDocument();
 		expect(screen.queryByText("row-50")).not.toBeInTheDocument();
 	});
 });
@@ -265,7 +266,7 @@ describe("PrettyInputDisplay — top-level arrays", () => {
 	it("renders a table-shaped top-level array directly as a table", () => {
 		renderWithProviders(<PrettyInputDisplay inputData={licenses} />);
 		expect(screen.getByRole("table")).toBeInTheDocument();
-		expect(screen.getByText("Huntress Managed EDR")).toBeInTheDocument();
+		expect(within(screen.getByRole("table")).getByText("Huntress Managed EDR")).toBeInTheDocument();
 	});
 
 	it("renders a top-level scalar array as a comma list", () => {
@@ -345,5 +346,18 @@ describe("PrettyInputDisplay — view toggle", () => {
 			/>,
 		);
 		expect(screen.getByText(/viewing 2 parameters/i)).toBeInTheDocument();
+	});
+});
+
+
+describe("PrettyInputDisplay — narrow panel records", () => {
+	it("provides labelled records with the same missing-value and preview contract", () => {
+		const rows = Array.from({ length: 51 }, (_, index) => ({ name: `record-${index}`, value: index ? "kept" : null }));
+		renderWithProviders(<PrettyInputDisplay inputData={rows} />);
+		const list = screen.getByRole("list", { name: "Input records" });
+		expect(within(list).getAllByRole("listitem")).toHaveLength(50);
+		expect(within(list).getByText("record-49")).toBeInTheDocument();
+		expect(within(list).queryByText("record-50")).not.toBeInTheDocument();
+		expect(within(list).getByText("—")).toBeInTheDocument();
 	});
 });

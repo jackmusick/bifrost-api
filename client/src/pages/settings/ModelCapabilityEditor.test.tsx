@@ -1,32 +1,64 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
-import { renderWithProviders, screen, waitFor } from "@/test-utils";
+import {
+	act,
+	fireEvent,
+	renderWithProviders,
+	screen,
+	waitFor,
+} from "@/test-utils";
 
 const authFetch = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api-client", () => ({ authFetch }));
 
 import { ModelCapabilityEditor } from "./ModelCapabilityEditor";
 
-describe("ModelCapabilityEditor", () => {
-	beforeEach(() => {
-		authFetch.mockReset();
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
 	});
+	return { promise, resolve, reject };
+}
 
+function capabilitiesResponse(overrides: Record<string, unknown> = {}) {
+	return new Response(
+		JSON.stringify({
+			capabilities: {
+				image_input: false,
+				pdf_input: false,
+				tool_calling: false,
+				source: "verified",
+				fingerprint: "verified-target",
+				...overrides,
+			},
+			message: "Provider conformance check completed.",
+		}),
+		{ status: 200 },
+	);
+}
+
+beforeEach(() => {
+	authFetch.mockReset();
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe("ModelCapabilityEditor", () => {
 	it("runs provider verification for an unknown model and returns the result", async () => {
-		authFetch.mockResolvedValue(
-			new Response(
-				JSON.stringify({
-					capabilities: {
-						image_input: true,
-						pdf_input: true,
-						tool_calling: true,
-						source: "verified",
-						fingerprint: "verified-target",
-					},
-					message: "Provider conformance check completed.",
-				}),
-				{ status: 200 },
-			),
+		authFetch.mockResolvedValueOnce(
+			capabilitiesResponse({
+				image_input: true,
+				pdf_input: true,
+				tool_calling: true,
+				fingerprint: "verified-target",
+			}),
 		);
 		const onChange = vi.fn();
 		const { user } = renderWithProviders(
@@ -54,6 +86,32 @@ describe("ModelCapabilityEditor", () => {
 		);
 	});
 
+	it("succeeds inside React.StrictMode", async () => {
+		authFetch.mockResolvedValueOnce(capabilitiesResponse());
+		const onChange = vi.fn();
+		const { user } = renderWithProviders(
+			<StrictMode>
+				<ModelCapabilityEditor
+					provider="openai"
+					model="private-model"
+					endpoint="https://models.example.test/v1"
+					apiKey="new-key"
+					value={null}
+					onChange={onChange}
+				/>
+			</StrictMode>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /verify with provider/i }),
+		);
+
+		await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+		expect(onChange).toHaveBeenCalledWith(
+			expect.objectContaining({ source: "verified" }),
+		);
+	});
+
 	it("records an administrator override as manual", async () => {
 		const onChange = vi.fn();
 		const { user } = renderWithProviders(
@@ -76,7 +134,7 @@ describe("ModelCapabilityEditor", () => {
 		);
 	});
 
-	it("shows supported and unsupported capabilities as compact icon controls", async () => {
+	it("shows supported and unsupported capabilities as labeled touch controls", async () => {
 		const capabilities = {
 			image_input: false,
 			pdf_input: false,
@@ -98,24 +156,24 @@ describe("ModelCapabilityEditor", () => {
 			screen.getByRole("button", {
 				name: "Image Input: Not Supported",
 			}),
-		).toHaveClass("text-red-600");
+		).toHaveClass("text-[var(--bf-danger)]");
 		expect(
 			screen.getByRole("button", {
 				name: "Tool Calling: Supported",
 			}),
-		).toHaveClass("text-green-600");
+		).toHaveClass("text-[var(--bf-success)]");
 		expect(
 			screen.getByRole("button", {
 				name: "Tool Calling: Supported",
 			}),
-		).toHaveClass("h-6", "w-6");
+		).toHaveClass("min-h-11");
 		expect(
 			screen
 				.getByRole("button", {
 					name: "Tool Calling: Supported",
 				})
 				.querySelector("svg"),
-		).toHaveClass("h-3.5", "w-3.5");
+		).toHaveClass("size-4");
 		expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 		expect(screen.queryByText("Capabilities")).not.toBeInTheDocument();
 		expect(screen.getByText("OpenRouter")).toBeInTheDocument();
@@ -168,7 +226,9 @@ describe("ModelCapabilityEditor", () => {
 		});
 
 		await user.click(refresh);
-		expect(refresh.querySelector(".animate-spin")).toBeInTheDocument();
+		expect(
+			refresh.querySelector('[class*="motion-safe:animate-spin"]'),
+		).toBeInTheDocument();
 		expect(refresh).toHaveTextContent("OpenRouter");
 
 		resolveLookup?.(
@@ -182,6 +242,177 @@ describe("ModelCapabilityEditor", () => {
 		);
 		await waitFor(() =>
 			expect(onChange).toHaveBeenCalledWith(capabilities),
+		);
+	});
+
+	it("ignores a stale detection result after the model changes and a manual override lands", async () => {
+		const first = deferred<Response>();
+		authFetch.mockImplementation(() => first.promise);
+		const onChange = vi.fn();
+		const user = userEvent.setup();
+		const { rerender } = renderWithProviders(
+			<ModelCapabilityEditor
+				provider="openai"
+				model="private-model-a"
+				endpoint="https://models.example.test/v1"
+				apiKey="key-a"
+				value={null}
+				onChange={onChange}
+			/>,
+		);
+
+		rerender(
+			<ModelCapabilityEditor
+				provider="openai"
+				model="private-model-b"
+				endpoint="https://models.example.test/v1"
+				apiKey="key-a"
+				value={null}
+				onChange={onChange}
+			/>,
+		);
+		await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(1));
+
+		await user.click(
+			screen.getByRole("button", {
+				name: "Tool Calling: Not Verified",
+			}),
+		);
+		expect(onChange).toHaveBeenCalledWith(
+			expect.objectContaining({ tool_calling: true, source: "manual" }),
+		);
+
+		await act(async () => {
+			first.resolve(capabilitiesResponse({ tool_calling: true }));
+			await Promise.resolve();
+		});
+
+		expect(onChange).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores a pending verification result after the endpoint changes", async () => {
+		const pending = deferred<Response>();
+		authFetch.mockImplementation(() => pending.promise);
+		const onChange = vi.fn();
+		const user = userEvent.setup();
+		const { rerender } = renderWithProviders(
+			<ModelCapabilityEditor
+				provider="openai"
+				model="private-model"
+				endpoint="https://models.example.test/v1"
+				apiKey="key-a"
+				value={null}
+				onChange={onChange}
+			/>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /verify with provider/i }),
+		);
+		expect(authFetch).toHaveBeenCalledTimes(1);
+
+		rerender(
+			<ModelCapabilityEditor
+				provider="openai"
+				model="private-model"
+				endpoint="https://models.example.test/v2"
+				apiKey="key-a"
+				value={null}
+				onChange={onChange}
+			/>,
+		);
+
+		await act(async () => {
+			pending.resolve(capabilitiesResponse());
+			await Promise.resolve();
+		});
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it("ignores a pending verification result after unmount", async () => {
+		const pending = deferred<Response>();
+		authFetch.mockImplementation(() => pending.promise);
+		const onChange = vi.fn();
+		const user = userEvent.setup();
+		const { unmount } = renderWithProviders(
+			<ModelCapabilityEditor
+				provider="openai"
+				model="private-model"
+				endpoint="https://models.example.test/v1"
+				apiKey="key-a"
+				value={null}
+				onChange={onChange}
+			/>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /verify with provider/i }),
+		);
+		expect(authFetch).toHaveBeenCalledTimes(1);
+		unmount();
+
+		await act(async () => {
+			pending.resolve(capabilitiesResponse());
+			await Promise.resolve();
+		});
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it("blocks duplicate current verification requests", async () => {
+		const pending = deferred<Response>();
+		authFetch.mockImplementation(() => pending.promise);
+		const onChange = vi.fn();
+		const user = userEvent.setup();
+		renderWithProviders(
+			<ModelCapabilityEditor
+				provider="openai"
+				model="private-model"
+				endpoint="https://models.example.test/v1"
+				apiKey="key-a"
+				value={null}
+				onChange={onChange}
+			/>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /verify with provider/i }),
+		);
+		await user.click(
+			screen.getByRole("button", { name: /verify with provider/i }),
+		);
+
+		expect(authFetch).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			pending.resolve(capabilitiesResponse());
+			await Promise.resolve();
+		});
+		expect(onChange).toHaveBeenCalledTimes(1);
+	});
+	it("keeps a manual edit made before automatic detection starts", async () => {
+		vi.useFakeTimers();
+
+		const onChange = vi.fn();
+		const props = {
+			provider: "openai" as const,
+			endpoint: "",
+			value: null,
+			onChange,
+		};
+		const { rerender } = renderWithProviders(
+			<ModelCapabilityEditor {...props} model="first" />,
+		);
+		rerender(<ModelCapabilityEditor {...props} model="second" />);
+		fireEvent.click(
+			screen.getByRole("button", { name: "Tool Calling: Not Verified" }),
+		);
+		await act(async () => {
+			vi.advanceTimersByTime(450);
+		});
+		expect(authFetch).not.toHaveBeenCalled();
+		expect(onChange).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ tool_calling: true, source: "manual" }),
 		);
 	});
 });

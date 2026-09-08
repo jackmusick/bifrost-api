@@ -2,16 +2,28 @@
  * Shared formatting utilities for usage report components.
  */
 
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 /**
  * Format the primitive date labels supplied by chart data.
  */
-export function formatChartDateLabel(label: unknown): string {
+function formatReportDate(label: unknown, pattern: string): string {
 	if (typeof label !== "string" && typeof label !== "number") {
 		throw new TypeError("Chart date label must be a string or number");
 	}
-	return format(new Date(label), "PPP");
+	const date =
+		typeof label === "string" && /^\d{4}-\d{2}-\d{2}$/.test(label)
+			? parseISO(label)
+			: new Date(label);
+	return format(date, pattern);
+}
+
+export function formatChartDateLabel(label: unknown): string {
+	return formatReportDate(label, "PPP");
+}
+
+export function formatChartDateTick(label: unknown): string {
+	return formatReportDate(label, "MMM dd");
 }
 
 /**

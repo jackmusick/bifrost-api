@@ -27,7 +27,9 @@ const { compile } = require("@tailwindcss/node");
 
 const BASELINE_IMPORTS =
   "@import 'tailwindcss/theme' layer(theme);\n" +
-  "@import 'tailwindcss/utilities';\n";
+  // App utilities supplement the host design system; authored CSS remains
+  // unlayered so explicit app overrides and @apply retain their precedence.
+  "@import 'tailwindcss/utilities' layer(bifrost-app-utilities);\n";
 
 let input = "";
 process.stdin.setEncoding("utf8");

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface Props {
+	label?: string;
 	status: string;
 	isActive: boolean;
 	isSelf: boolean;
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function UserActionsMenu({
+	label = "User actions",
 	status,
 	isActive,
 	isSelf,
@@ -46,7 +48,12 @@ export function UserActionsMenu({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" aria-label="User actions">
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label={label}
+					className="h-11 w-11 shrink-0 lg:h-9 lg:w-9"
+				>
 					<MoreVertical className="h-4 w-4" />
 				</Button>
 			</DropdownMenuTrigger>
@@ -57,40 +64,55 @@ export function UserActionsMenu({
 			>
 				{showInviteActions && (
 					<>
-						<DropdownMenuItem onClick={onResend}>
-							<Mail className="mr-2 h-4 w-4" />
+						<DropdownMenuItem
+							className="min-h-11 lg:min-h-9"
+							onClick={onResend}
+						>
+							<Mail className="h-4 w-4" />
 							{hasActiveInvite ? "Resend invite" : "Send invite"}
 						</DropdownMenuItem>
-						<DropdownMenuItem onClick={onRegenerate}>
-							<RefreshCw className="mr-2 h-4 w-4" />
+						<DropdownMenuItem
+							className="min-h-11 lg:min-h-9"
+							onClick={onRegenerate}
+						>
+							<RefreshCw className="h-4 w-4" />
 							Generate registration link
 						</DropdownMenuItem>
-						<DropdownMenuItem onClick={onCopyLink}>
-							<LinkIcon className="mr-2 h-4 w-4" />
+						<DropdownMenuItem
+							className="min-h-11 lg:min-h-9"
+							onClick={onCopyLink}
+						>
+							<LinkIcon className="h-4 w-4" />
 							Copy registration link
 						</DropdownMenuItem>
 						{hasActiveInvite && (
 							<DropdownMenuItem
+								variant="destructive"
 								onClick={onRevoke}
-								className="text-destructive"
+								className="min-h-11 lg:min-h-9"
 							>
-								<Ban className="mr-2 h-4 w-4" />
+								<Ban className="h-4 w-4" />
 								Revoke invite
 							</DropdownMenuItem>
 						)}
 						<DropdownMenuSeparator />
 					</>
 				)}
-				<DropdownMenuItem onClick={onToggleActive} disabled={isSelf}>
-					<Power className="mr-2 h-4 w-4" />
+				<DropdownMenuItem
+					className="min-h-11 lg:min-h-9"
+					onClick={onToggleActive}
+					disabled={isSelf}
+				>
+					<Power className="h-4 w-4" />
 					{isActive ? "Disable" : "Enable"}
 				</DropdownMenuItem>
 				<DropdownMenuItem
+					variant="destructive"
 					onClick={onDelete}
 					disabled={isSelf}
-					className="text-destructive"
+					className="min-h-11 lg:min-h-9"
 				>
-					<Trash2 className="mr-2 h-4 w-4" />
+					<Trash2 className="h-4 w-4" />
 					Delete
 				</DropdownMenuItem>
 			</DropdownMenuContent>

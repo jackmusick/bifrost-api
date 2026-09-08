@@ -29,7 +29,12 @@ function OrgConfigDialogContent({
 	currentConfig,
 	onSave,
 	onOpenChange,
-}: Omit<OrgConfigDialogProps, "open" | "orgId">) {
+	isSaving,
+	setIsSaving,
+}: Omit<OrgConfigDialogProps, "open" | "orgId"> & {
+	isSaving: boolean;
+	setIsSaving: (saving: boolean) => void;
+}) {
 	// Track which keys have overrides (start with what's in currentConfig)
 	// We use a separate Set to track this because we need to distinguish
 	// between "value is undefined because no override" vs "value is explicitly set to empty"
@@ -41,7 +46,7 @@ function OrgConfigDialogContent({
 	const [formValues, setFormValues] = useState<Record<string, unknown>>(
 		() => ({ ...currentConfig }),
 	);
-	const [isSaving, setIsSaving] = useState(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
 
 	const handleFieldChange = (key: string, value: unknown) => {
 		setFormValues((prev) => ({ ...prev, [key]: value }));
@@ -67,6 +72,8 @@ function OrgConfigDialogContent({
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (isSaving) return;
+		setSaveError(null);
 		setIsSaving(true);
 		try {
 			// Build config to save:
@@ -97,6 +104,10 @@ function OrgConfigDialogContent({
 
 			await onSave(configToSave);
 			onOpenChange(false);
+		} catch {
+			setSaveError(
+				"Unable to save organization configuration. Your values are retained; try saving again.",
+			);
 		} finally {
 			setIsSaving(false);
 		}
@@ -107,38 +118,50 @@ function OrgConfigDialogContent({
 	};
 
 	return (
-		<form onSubmit={handleSubmit}>
-			<DialogHeader>
-				<DialogTitle>Configure {orgName}</DialogTitle>
+		<form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+			<DialogHeader className="shrink-0">
+				<DialogTitle className="[overflow-wrap:anywhere]">
+					Configure {orgName}
+				</DialogTitle>
 				<DialogDescription>
 					Set organization-specific configuration overrides. Empty
 					fields use the integration default.
 				</DialogDescription>
 			</DialogHeader>
 
-			<div className="space-y-4 py-4">
-				{configSchema.length > 0 ? (
-					configSchema.map((field) => (
-						<ConfigFieldInput
-							key={field.key}
-							field={field}
-							value={formValues[field.key]}
-							onChange={(value) =>
-								handleFieldChange(field.key, value)
-							}
-							onReset={() => handleReset(field.key)}
-							hasOverride={overrideKeys.has(field.key)}
-						/>
-					))
-				) : (
-					<p className="text-sm text-muted-foreground text-center py-4">
-						No configuration fields defined
-					</p>
-				)}
+			<div className="min-h-0 flex-1 overflow-y-auto py-4">
+				<fieldset disabled={isSaving} className="min-w-0 space-y-4">
+					{configSchema.length > 0 ? (
+						configSchema.map((field) => (
+							<ConfigFieldInput
+								key={field.key}
+								field={field}
+								value={formValues[field.key]}
+								onChange={(value) =>
+									handleFieldChange(field.key, value)
+								}
+								onReset={() => handleReset(field.key)}
+								hasOverride={overrideKeys.has(field.key)}
+							/>
+						))
+					) : (
+						<p className="text-center py-4 text-sm text-muted-foreground">
+							No configuration fields defined
+						</p>
+					)}
+				</fieldset>
 			</div>
-
-			<DialogFooter>
+			{saveError && (
+				<p
+					role="alert"
+					className="my-3 shrink-0 text-sm text-destructive [overflow-wrap:anywhere]"
+				>
+					{saveError}
+				</p>
+			)}
+			<DialogFooter className="shrink-0 border-t pt-4">
 				<Button
+					className="min-h-11"
 					variant="outline"
 					onClick={handleCancel}
 					type="button"
@@ -146,10 +169,10 @@ function OrgConfigDialogContent({
 				>
 					Cancel
 				</Button>
-				<Button type="submit" disabled={isSaving}>
+				<Button className="min-h-11" type="submit" disabled={isSaving}>
 					{isSaving ? (
 						<>
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							Saving...
 						</>
 					) : (
@@ -170,12 +193,20 @@ export function OrgConfigDialog({
 	currentConfig,
 	onSave,
 }: OrgConfigDialogProps) {
+	const [isSaving, setIsSaving] = useState(false);
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!isSaving) onOpenChange(next);
+			}}
+		>
+			<DialogContent className="flex max-w-2xl max-h-[90dvh] flex-col overflow-hidden">
 				{/* Key resets form state when switching between orgs */}
 				<OrgConfigDialogContent
 					key={orgId}
+					isSaving={isSaving}
+					setIsSaving={setIsSaving}
 					orgName={orgName}
 					configSchema={configSchema}
 					currentConfig={currentConfig}

@@ -1,21 +1,16 @@
-import { useState, useMemo, useCallback } from "react";
-import {
-	RefreshCw,
-	Filter,
-	X,
-	ArrowUp,
-	ArrowDown,
-	Loader2,
-	Network,
-	Trash2,
-	Building2,
-	Shield,
-} from "lucide-react";
+import { EntityAssignmentSheet } from "@/components/entity-management/EntityAssignmentSheet";
+import { isEntityManaged } from "@/components/entity-management/types";
+import { deleteEntities } from "@/components/entity-management/deleteEntities";
+import { EntityCollectionStatus } from "@/components/entity-management/EntityCollectionStatus";
+import { EntityListToolbar } from "@/components/entity-management/EntityListToolbar";
+import { useAssignEntityRole } from "@/hooks/useAssignEntityRole";
+import { EntityAssignmentPanel } from "@/components/entity-management/EntityAssignmentPanel";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { RefreshCw, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { useWorkflows, useUpdateWorkflow } from "@/hooks/useWorkflows";
 import { useForms, useUpdateForm } from "@/hooks/useForms";
 import { useAgents, useUpdateAgent } from "@/hooks/useAgents";
@@ -29,15 +24,13 @@ import {
 import { WorkflowDeactivationDialog } from "@/components/editor/WorkflowDeactivationDialog";
 import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 import {
 	EntityCard,
-	OrgDropTarget,
-	RoleDropTarget,
 	FilterPopover,
 	DependencyGraphDialog,
+	RelationshipFilterBanner,
 	DeleteConfirmDialog,
 	normalizeEntities,
 	type EntityType,
@@ -59,7 +52,8 @@ export function EntityManagement() {
 	const [updatingMessage, setUpdatingMessage] = useState("Updating...");
 
 	// Relationship filter state
-	const [relationshipFilter, setRelationshipFilter] = useState<RelationshipFilter | null>(null);
+	const [relationshipFilter, setRelationshipFilter] =
+		useState<RelationshipFilter | null>(null);
 	const [isGraphDialogOpen, setIsGraphDialogOpen] = useState(false);
 
 	// Confirm delete state (for non-workflow entities: forms, agents, apps)
@@ -68,10 +62,16 @@ export function EntityManagement() {
 		{ id: string; name: string; entityType: EntityType; slug?: string }[]
 	>([]);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const deleteBusy = useRef(false);
+	const [deleteFailures, setDeleteFailures] = useState<
+		{ entity: { id: string; name: string }; message: string }[]
+	>([]);
 
 	// Workflow delete state
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-	const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
+	const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(
+		null,
+	);
 	const [pendingDeactivations, setPendingDeactivations] = useState<
 		components["schemas"]["PendingDeactivation"][]
 	>([]);
@@ -79,53 +79,141 @@ export function EntityManagement() {
 		components["schemas"]["AvailableReplacement"][]
 	>([]);
 	// Track workflow IDs that returned 409 during bulk delete (for Phase 2)
-	const [conflictWorkflowIds, setConflictWorkflowIds] = useState<string[]>([]);
+	const [conflictWorkflowIds, setConflictWorkflowIds] = useState<string[]>(
+		[],
+	);
 
 	// Fetch all entity types
 	const {
 		data: workflows,
 		isLoading: loadingWorkflows,
+		isError: errorWorkflows,
+		isFetching: fetchingWorkflows,
 		refetch: refetchWorkflows,
 	} = useWorkflows();
 	const {
 		data: forms,
 		isLoading: loadingForms,
+		isError: errorForms,
+		isFetching: fetchingForms,
 		refetch: refetchForms,
 	} = useForms();
 	const {
 		data: agents,
 		isLoading: loadingAgents,
+		isError: errorAgents,
+		isFetching: fetchingAgents,
 		refetch: refetchAgents,
 	} = useAgents();
 	const {
 		data: appsResponse,
 		isLoading: loadingApps,
+		isError: errorApps,
+		isFetching: fetchingApps,
 		refetch: refetchApps,
 	} = useApplications();
-	const { data: organizations } = useOrganizations();
-	const { data: roles } = useRoles();
+	const {
+		data: organizations,
+		isLoading: loadingOrganizations,
+		isError: errorOrganizations,
+		isFetching: fetchingOrganizations,
+		refetch: refetchOrganizations,
+	} = useOrganizations();
+	const {
+		data: roles,
+		isLoading: loadingRoles,
+		isError: errorRoles,
+		isFetching: fetchingRoles,
+		refetch: refetchRoles,
+	} = useRoles();
 
 	// Fetch dependency graph when relationship filter is active
 	const {
 		data: graphData,
 		isLoading: loadingGraph,
+		isError: graphError,
+		isFetching: fetchingGraph,
+		refetch: refetchGraph,
 	} = useDependencyGraph(
-		relationshipFilter ? relationshipFilter.entityType as DependencyEntityType : undefined,
+		relationshipFilter
+			? (relationshipFilter.entityType as DependencyEntityType)
+			: undefined,
 		relationshipFilter?.entityId,
 		3, // Fixed depth of 3 for relationship filtering
 	);
 
 	// Update mutations
+	const assignEntityRole = useAssignEntityRole();
 	const updateWorkflow = useUpdateWorkflow();
 	const updateForm = useUpdateForm();
 	const updateAgent = useUpdateAgent();
 	const updateApplication = useUpdateApplication();
 
-	const isLoading = loadingWorkflows || loadingForms || loadingAgents || loadingApps;
+	const isLoading =
+		loadingWorkflows || loadingForms || loadingAgents || loadingApps;
+
+	const collections = [
+		{
+			name: "Workflows",
+			isLoading: loadingWorkflows,
+			isError: errorWorkflows,
+			isFetching: fetchingWorkflows,
+			hasData: workflows !== undefined,
+			onRetry: () => void refetchWorkflows(),
+		},
+		{
+			name: "Forms",
+			isLoading: loadingForms,
+			isError: errorForms,
+			isFetching: fetchingForms,
+			hasData: forms !== undefined,
+			onRetry: () => void refetchForms(),
+		},
+		{
+			name: "Agents",
+			isLoading: loadingAgents,
+			isError: errorAgents,
+			isFetching: fetchingAgents,
+			hasData: agents !== undefined,
+			onRetry: () => void refetchAgents(),
+		},
+		{
+			name: "Apps",
+			isLoading: loadingApps,
+			isError: errorApps,
+			isFetching: fetchingApps,
+			hasData: appsResponse !== undefined,
+			onRetry: () => void refetchApps(),
+		},
+		{
+			name: "Organizations",
+			isLoading: loadingOrganizations,
+			isError: errorOrganizations,
+			isFetching: fetchingOrganizations,
+			hasData: organizations !== undefined,
+			onRetry: () => void refetchOrganizations(),
+		},
+		{
+			name: "Roles",
+			isLoading: loadingRoles,
+			isError: errorRoles,
+			isFetching: fetchingRoles,
+			hasData: roles !== undefined,
+			onRetry: () => void refetchRoles(),
+		},
+	];
+	const incompleteEntityData =
+		errorWorkflows || errorForms || errorAgents || errorApps;
 
 	// Normalize and combine all entities
 	const allEntities = useMemo(
-		() => normalizeEntities(workflows ?? [], forms ?? [], agents ?? [], appsResponse?.applications ?? []),
+		() =>
+			normalizeEntities(
+				workflows ?? [],
+				forms ?? [],
+				agents ?? [],
+				appsResponse?.applications ?? [],
+			),
 		[workflows, forms, agents, appsResponse],
 	);
 
@@ -149,9 +237,11 @@ export function EntityManagement() {
 	const filteredEntities = useMemo(() => {
 		let result = allEntities;
 
-		if (relationshipFilter && relatedEntityIds) {
+		if (relationshipFilter) {
 			// Relationship mode: only filter by related IDs + search
-			result = result.filter((e) => relatedEntityIds.has(e.id));
+			result = relatedEntityIds
+				? result.filter((e) => relatedEntityIds.has(e.id))
+				: [];
 		} else {
 			// Normal mode: apply all standard filters
 			if (typeFilter !== "all") {
@@ -162,7 +252,9 @@ export function EntityManagement() {
 				if (orgFilter === "global") {
 					result = result.filter((e) => !e.organizationId);
 				} else {
-					result = result.filter((e) => e.organizationId === orgFilter);
+					result = result.filter(
+						(e) => e.organizationId === orgFilter,
+					);
 				}
 			}
 
@@ -230,6 +322,9 @@ export function EntityManagement() {
 	};
 
 	const handleRefresh = () => {
+		void refetchOrganizations();
+		void refetchRoles();
+		if (relationshipFilter) void refetchGraph();
 		refetchWorkflows();
 		refetchForms();
 		refetchAgents();
@@ -250,19 +345,28 @@ export function EntityManagement() {
 
 	const handleSelectAll = (selected: boolean) => {
 		if (selected) {
-			setSelectedIds(new Set(filteredEntities.map((e) => e.id)));
+			setSelectedIds(
+				new Set(
+					filteredEntities
+						.filter((e) => !isEntityManaged(e))
+						.map((e) => e.id),
+				),
+			);
 		} else {
 			setSelectedIds(new Set());
 		}
 	};
 
-	const handleShowRelationships = useCallback((entityId: string, entityType: EntityType, entityName: string) => {
-		setRelationshipFilter({
-			entityId,
-			entityType,
-			entityName,
-		});
-	}, []);
+	const handleShowRelationships = useCallback(
+		(entityId: string, entityType: EntityType, entityName: string) => {
+			setRelationshipFilter({
+				entityId,
+				entityType,
+				entityName,
+			});
+		},
+		[],
+	);
 
 	const handleClearRelationshipFilter = useCallback(() => {
 		setRelationshipFilter(null);
@@ -274,16 +378,23 @@ export function EntityManagement() {
 			setDeletingWorkflowId(workflowId);
 
 			try {
-				const response = await authFetch(`/api/workflows/${workflowId}`, {
-					method: "DELETE",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({}),
-				});
+				const response = await authFetch(
+					`/api/workflows/${workflowId}`,
+					{
+						method: "DELETE",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({}),
+					},
+				);
 
 				if (response.status === 409) {
 					const conflict = await response.json();
-					setPendingDeactivations(conflict.pending_deactivations ?? []);
-					setAvailableReplacements(conflict.available_replacements ?? []);
+					setPendingDeactivations(
+						conflict.pending_deactivations ?? [],
+					);
+					setAvailableReplacements(
+						conflict.available_replacements ?? [],
+					);
 					setDeleteDialogOpen(true);
 				} else if (response.ok) {
 					toast.success("Workflow deleted");
@@ -302,111 +413,57 @@ export function EntityManagement() {
 		[refetchWorkflows],
 	);
 
-	const handleForceDeactivate = useCallback(async () => {
-		const idsToProcess = conflictWorkflowIds.length > 0
-			? conflictWorkflowIds
-			: deletingWorkflowId ? [deletingWorkflowId] : [];
-
-		if (idsToProcess.length === 0) return;
-
-		setDeleteDialogOpen(false);
-		setUpdatingMessage(`Deleting ${idsToProcess.length} workflow${idsToProcess.length > 1 ? "s" : ""}...`);
-		setIsUpdating(true);
-
-		let successCount = 0;
-		const deletedIds: string[] = [];
-
-		try {
-			for (const id of idsToProcess) {
+	const handleResolveDeletion = useCallback(
+		async (body: {
+			replacements?: Record<string, string>;
+			force_deactivation?: boolean;
+		}) => {
+			const ids = conflictWorkflowIds.length
+				? conflictWorkflowIds
+				: deletingWorkflowId
+					? [deletingWorkflowId]
+					: [];
+			const deleted: string[] = [];
+			const failed: string[] = [];
+			for (const id of ids) {
 				try {
 					const response = await authFetch(`/api/workflows/${id}`, {
 						method: "DELETE",
 						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({ force_deactivation: true }),
+						body: JSON.stringify(body),
 					});
-					if (response.ok) {
-						successCount++;
-						deletedIds.push(id);
-					} else {
-						const error = await response.json();
-						toast.error(error.detail || "Failed to delete workflow");
-					}
+					if (!response.ok) throw new Error("Deletion failed");
+					deleted.push(id);
 				} catch {
-					toast.error("Failed to delete workflow");
+					failed.push(id);
 				}
 			}
-
-			if (successCount > 0) {
-				toast.success(`Deleted ${successCount} workflow${successCount > 1 ? "s" : ""}`);
-				refetchWorkflows();
-				setSelectedIds((prev) => {
-					const s = new Set(prev);
-					for (const id of deletedIds) s.delete(id);
-					return s;
-				});
+			if (deleted.length) {
+				void refetchWorkflows();
+				setSelectedIds(
+					(previous) =>
+						new Set(
+							[...previous].filter((id) => !deleted.includes(id)),
+						),
+				);
+				toast.success(
+					`Deleted ${deleted.length} workflow${deleted.length === 1 ? "" : "s"}`,
+				);
 			}
-		} finally {
+			if (failed.length) {
+				setConflictWorkflowIds(failed);
+				setPendingDeactivations((previous) =>
+					previous.filter((item) => !deleted.includes(item.id)),
+				);
+				throw new Error(
+					`${failed.length} workflow${failed.length === 1 ? " could" : "s could"} not be deleted. Your choices are preserved. Retry will only process the remaining workflows.`,
+				);
+			}
+			setDeleteDialogOpen(false);
 			setDeletingWorkflowId(null);
 			setConflictWorkflowIds([]);
 			setPendingDeactivations([]);
 			setAvailableReplacements([]);
-			setIsUpdating(false);
-		}
-	}, [conflictWorkflowIds, deletingWorkflowId, refetchWorkflows]);
-
-	const handleApplyReplacements = useCallback(
-		async (replacements: Record<string, string>) => {
-			const idsToProcess = conflictWorkflowIds.length > 0
-				? conflictWorkflowIds
-				: deletingWorkflowId ? [deletingWorkflowId] : [];
-
-			if (idsToProcess.length === 0) return;
-
-			setDeleteDialogOpen(false);
-			setUpdatingMessage(`Deleting ${idsToProcess.length} workflow${idsToProcess.length > 1 ? "s" : ""}...`);
-			setIsUpdating(true);
-
-			let successCount = 0;
-			const deletedIds: string[] = [];
-
-			try {
-				for (const id of idsToProcess) {
-					try {
-						const response = await authFetch(`/api/workflows/${id}`, {
-							method: "DELETE",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ replacements }),
-						});
-						if (response.ok) {
-							successCount++;
-							deletedIds.push(id);
-						} else {
-							const error = await response.json();
-							toast.error(error.detail || "Failed to delete workflow");
-						}
-					} catch {
-						toast.error("Failed to delete workflow");
-					}
-				}
-
-				if (successCount > 0) {
-					toast.success(
-						`Deleted ${successCount} workflow${successCount > 1 ? "s" : ""} with replacements applied`,
-					);
-					refetchWorkflows();
-					setSelectedIds((prev) => {
-						const s = new Set(prev);
-						for (const id of deletedIds) s.delete(id);
-						return s;
-					});
-				}
-			} finally {
-				setDeletingWorkflowId(null);
-				setConflictWorkflowIds([]);
-				setPendingDeactivations([]);
-				setAvailableReplacements([]);
-				setIsUpdating(false);
-			}
 		},
 		[conflictWorkflowIds, deletingWorkflowId, refetchWorkflows],
 	);
@@ -422,6 +479,13 @@ export function EntityManagement() {
 	// Unified delete handler that dispatches by entity type
 	const handleDeleteEntity = useCallback(
 		(entityId: string, entityName: string, entityType: EntityType) => {
+			if (
+				allEntities.some(
+					(entity) =>
+						entity.id === entityId && isEntityManaged(entity),
+				)
+			)
+				return;
 			if (entityType === "workflow") {
 				handleDeleteWorkflow(entityId);
 				return;
@@ -431,7 +495,10 @@ export function EntityManagement() {
 				entityType === "app" && entity
 					? (entity.original as ApplicationPublic).slug
 					: undefined;
-			setConfirmDeleteEntities([{ id: entityId, name: entityName, entityType, slug }]);
+			setConfirmDeleteEntities([
+				{ id: entityId, name: entityName, entityType, slug },
+			]);
+			setDeleteFailures([]);
 			setConfirmDeleteOpen(true);
 		},
 		[handleDeleteWorkflow, allEntities],
@@ -439,149 +506,93 @@ export function EntityManagement() {
 
 	// Bulk delete handler
 	const handleBulkDelete = useCallback(() => {
-		const selectedEntities = allEntities.filter((e) => selectedIds.has(e.id));
+		const selectedEntities = allEntities.filter(
+			(e) => selectedIds.has(e.id) && !isEntityManaged(e),
+		);
 
 		const entitiesToDelete = selectedEntities.map((e) => ({
 			id: e.id,
 			name: e.name,
 			entityType: e.entityType,
-			slug: e.entityType === "app" ? (e.original as ApplicationPublic).slug : undefined,
+			slug:
+				e.entityType === "app"
+					? (e.original as ApplicationPublic).slug
+					: undefined,
 		}));
 
 		setConfirmDeleteEntities(entitiesToDelete);
+		setDeleteFailures([]);
 		setConfirmDeleteOpen(true);
 	}, [allEntities, selectedIds]);
 
 	// Execute confirmed deletes
 	const handleConfirmDelete = useCallback(async () => {
+		if (deleteBusy.current || !confirmDeleteEntities.length) return;
+		deleteBusy.current = true;
 		setIsDeleting(true);
-		const totalCount = confirmDeleteEntities.length;
-		const nonWorkflows = confirmDeleteEntities.filter((e) => e.entityType !== "workflow");
-		const workflowsToDelete = confirmDeleteEntities.filter((e) => e.entityType === "workflow");
-
-		setConfirmDeleteOpen(false);
-		setConfirmDeleteEntities([]);
-		setIsDeleting(false);
-		setUpdatingMessage(`Deleting ${totalCount} ${totalCount === 1 ? "entity" : "entities"}...`);
-		setIsUpdating(true);
-
-		let successCount = 0;
-		let failCount = 0;
-		const deletedIds: string[] = [];
-
+		setDeleteFailures([]);
 		try {
-			if (nonWorkflows.length > 0) {
-				const results = await Promise.allSettled(
-					nonWorkflows.map(async (entity) => {
-						let url: string;
-						if (entity.entityType === "form") {
-							url = `/api/forms/${entity.id}`;
-						} else if (entity.entityType === "agent") {
-							url = `/api/agents/${entity.id}`;
-						} else if (entity.entityType === "app") {
-							url = `/api/applications/${entity.id}`;
-						} else {
-							return;
-						}
-						const response = await authFetch(url, { method: "DELETE" });
-						if (!response.ok) {
-							throw new Error(`Failed to delete ${entity.name}`);
-						}
-						deletedIds.push(entity.id);
-					}),
-				);
-
-				for (const result of results) {
-					if (result.status === "fulfilled") successCount++;
-					else failCount++;
-				}
+			const result = await deleteEntities(confirmDeleteEntities);
+			if (result.conflictIds.length) {
+				setConflictWorkflowIds(result.conflictIds);
+				setPendingDeactivations(result.pendingDeactivations);
+				setAvailableReplacements(result.availableReplacements);
+				setDeleteDialogOpen(true);
 			}
-
-			if (workflowsToDelete.length > 0) {
-				const allConflictDeactivations: components["schemas"]["PendingDeactivation"][] = [];
-				const allConflictReplacements: components["schemas"]["AvailableReplacement"][] = [];
-				const conflictIds: string[] = [];
-
-				for (const wf of workflowsToDelete) {
-					try {
-						const response = await authFetch(`/api/workflows/${wf.id}`, {
-							method: "DELETE",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({}),
-						});
-
-						if (response.status === 409) {
-							const conflict = await response.json();
-							conflictIds.push(wf.id);
-							allConflictDeactivations.push(
-								...(conflict.pending_deactivations ?? []),
-							);
-							allConflictReplacements.push(
-								...(conflict.available_replacements ?? []),
-							);
-						} else if (response.ok) {
-							successCount++;
-							deletedIds.push(wf.id);
-						} else {
-							failCount++;
-						}
-					} catch {
-						failCount++;
-					}
-				}
-
-				if (conflictIds.length > 0) {
-					setConflictWorkflowIds(conflictIds);
-					setPendingDeactivations(allConflictDeactivations);
-					setAvailableReplacements(allConflictReplacements);
-					setDeleteDialogOpen(true);
-				}
-			}
-
-			if (successCount > 0) {
+			if (result.deletedIds.length) {
 				toast.success(
-					`Deleted ${successCount} of ${totalCount} ${totalCount === 1 ? "entity" : "entities"}`,
+					`Deleted ${result.deletedIds.length} of ${confirmDeleteEntities.length} entities`,
 				);
-				refetchForms();
-				refetchAgents();
-				refetchApps();
-				refetchWorkflows();
-				setSelectedIds((prev) => {
-					const next = new Set(prev);
-					for (const id of deletedIds) {
-						next.delete(id);
-					}
-					return next;
-				});
+				void refetchForms();
+				void refetchAgents();
+				void refetchApps();
+				void refetchWorkflows();
+				setSelectedIds(
+					(previous) =>
+						new Set(
+							[...previous].filter(
+								(id) => !result.deletedIds.includes(id),
+							),
+						),
+				);
 			}
-			if (failCount > 0) {
-				toast.error(`Failed to delete ${failCount} ${failCount === 1 ? "entity" : "entities"}`);
-			}
+			setConfirmDeleteEntities(
+				result.failures.map((failure) => failure.entity),
+			);
+			setDeleteFailures(result.failures);
+			if (!result.failures.length) setConfirmDeleteOpen(false);
 		} finally {
-			setIsUpdating(false);
+			deleteBusy.current = false;
+			setIsDeleting(false);
 		}
-	}, [confirmDeleteEntities, refetchForms, refetchAgents, refetchApps, refetchWorkflows]);
+	}, [
+		confirmDeleteEntities,
+		refetchForms,
+		refetchAgents,
+		refetchApps,
+		refetchWorkflows,
+	]);
 
 	const allSelected =
-		filteredEntities.length > 0 &&
-		filteredEntities.every((e) => selectedIds.has(e.id));
+		filteredEntities.some((e) => !isEntityManaged(e)) &&
+		filteredEntities
+			.filter((e) => !isEntityManaged(e))
+			.every((e) => selectedIds.has(e.id));
 	const someSelected =
 		filteredEntities.some((e) => selectedIds.has(e.id)) && !allSelected;
 
-	const cycleSortBy = () => {
-		const options: SortOption[] = ["name", "date", "type"];
-		const currentIndex = options.indexOf(sortBy);
-		setSortBy(options[(currentIndex + 1) % options.length]);
-	};
-
 	const handleOrgDrop = useCallback(
 		async (entityIds: string[], orgId: string | null) => {
-			setUpdatingMessage("Updating...");
+			const failedNames: string[] = [];
+			setUpdatingMessage("Applying changes...");
 			setIsUpdating(true);
 			try {
 				for (const entityId of entityIds) {
 					const entity = allEntities.find((e) => e.id === entityId);
-					if (!entity) continue;
+					if (!entity || isEntityManaged(entity)) {
+						failedNames.push(entity?.name ?? entityId);
+						continue;
+					}
 
 					try {
 						if (entity.entityType === "workflow") {
@@ -591,12 +602,18 @@ export function EntityManagement() {
 						} else if (entity.entityType === "form") {
 							await updateForm.mutateAsync({
 								params: { path: { form_id: entityId } },
-								body: { organization_id: orgId, clear_roles: false },
+								body: {
+									organization_id: orgId,
+									clear_roles: false,
+								},
 							});
 						} else if (entity.entityType === "agent") {
 							await updateAgent.mutateAsync({
 								params: { path: { agent_id: entityId } },
-								body: { organization_id: orgId, clear_roles: false },
+								body: {
+									organization_id: orgId,
+									clear_roles: false,
+								},
 							});
 						} else if (entity.entityType === "app") {
 							const app = entity.original as ApplicationPublic;
@@ -605,23 +622,34 @@ export function EntityManagement() {
 								body: { scope: orgId ?? "global" },
 							});
 						}
-					} catch (error) {
-						toast.error(`Failed to update ${entity.entityType}`, {
-							description:
-								error instanceof Error ? error.message : "Unknown error",
-						});
+					} catch {
+						failedNames.push(entity.name);
 					}
 				}
+				if (failedNames.length)
+					throw new Error(
+						`Could not update: ${failedNames.join(", ")}. Other changes may have been applied. Retry to apply the requested setting again.`,
+					);
+				toast.success(
+					`Updated ${entityIds.length} ${entityIds.length === 1 ? "entity" : "entities"}`,
+				);
 			} finally {
 				setIsUpdating(false);
 			}
 		},
-		[allEntities, updateWorkflow, updateForm, updateAgent, updateApplication],
+		[
+			allEntities,
+			updateWorkflow,
+			updateForm,
+			updateAgent,
+			updateApplication,
+		],
 	);
 
 	const handleRoleDrop = useCallback(
 		async (entityIds: string[], roleIdOrAccessLevel: string) => {
-			setUpdatingMessage("Updating...");
+			const failedNames: string[] = [];
+			setUpdatingMessage("Applying changes...");
 			setIsUpdating(true);
 			const isAccessLevel = roleIdOrAccessLevel === "authenticated";
 			const isClearRoles = roleIdOrAccessLevel === "clear-roles";
@@ -629,9 +657,18 @@ export function EntityManagement() {
 			try {
 				for (const entityId of entityIds) {
 					const entity = allEntities.find((e) => e.id === entityId);
-					if (!entity) continue;
+					if (!entity || isEntityManaged(entity)) {
+						failedNames.push(entity?.name ?? entityId);
+						continue;
+					}
 
 					try {
+						if (!isAccessLevel && !isClearRoles)
+							await assignEntityRole(
+								entity.entityType,
+								entityId,
+								roleIdOrAccessLevel,
+							);
 						if (entity.entityType === "workflow") {
 							if (isClearRoles) {
 								await updateWorkflow.mutateAsync(entityId, {
@@ -640,7 +677,9 @@ export function EntityManagement() {
 								});
 							} else {
 								await updateWorkflow.mutateAsync(entityId, {
-									access_level: isAccessLevel ? "authenticated" : "role_based",
+									access_level: isAccessLevel
+										? "authenticated"
+										: "role_based",
 								});
 							}
 						} else if (entity.entityType === "form") {
@@ -656,7 +695,9 @@ export function EntityManagement() {
 								await updateForm.mutateAsync({
 									params: { path: { form_id: entityId } },
 									body: {
-										access_level: isAccessLevel ? "authenticated" : "role_based",
+										access_level: isAccessLevel
+											? "authenticated"
+											: "role_based",
 										clear_roles: false,
 									},
 								});
@@ -674,7 +715,9 @@ export function EntityManagement() {
 								await updateAgent.mutateAsync({
 									params: { path: { agent_id: entityId } },
 									body: {
-										access_level: isAccessLevel ? "authenticated" : "role_based",
+										access_level: isAccessLevel
+											? "authenticated"
+											: "role_based",
 										clear_roles: false,
 									},
 								});
@@ -693,128 +736,110 @@ export function EntityManagement() {
 								await updateApplication.mutateAsync({
 									params: { path: { app_id: app.id } },
 									body: {
-										access_level: isAccessLevel ? "authenticated" : "role_based",
-										role_ids: isAccessLevel ? [] : undefined,
+										access_level: isAccessLevel
+											? "authenticated"
+											: "role_based",
+										role_ids: isAccessLevel
+											? []
+											: undefined,
 									},
 								});
 							}
 						}
-					} catch (error) {
-						toast.error(`Failed to update ${entity.entityType}`, {
-							description:
-								error instanceof Error ? error.message : "Unknown error",
-						});
+					} catch {
+						failedNames.push(entity.name);
 					}
 				}
+				if (failedNames.length)
+					throw new Error(
+						`Could not update: ${failedNames.join(", ")}. Other changes may have been applied. Retry to apply the requested setting again.`,
+					);
+				toast.success(
+					`Updated ${entityIds.length} ${entityIds.length === 1 ? "entity" : "entities"}`,
+				);
 			} finally {
 				setIsUpdating(false);
 			}
 		},
-		[allEntities, updateWorkflow, updateForm, updateAgent, updateApplication],
+		[
+			allEntities,
+			assignEntityRole,
+			updateWorkflow,
+			updateForm,
+			updateAgent,
+			updateApplication,
+		],
 	);
 
 	return (
-		<div className="h-full flex flex-col space-y-6">
-			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-4xl font-extrabold tracking-tight">
-						Entity Management
-					</h1>
-					<p className="mt-2 text-muted-foreground">
-						Manage organization and access settings for workflows, forms,
-						agents, and apps
-					</p>
-				</div>
-				<Button
-					variant="outline"
-					size="icon"
-					onClick={handleRefresh}
-					title="Refresh"
-				>
-					<RefreshCw className="h-4 w-4" />
-				</Button>
-			</div>
+		<div className="flex min-h-full flex-col space-y-6 lg:h-full">
+			<ListPageHeader
+				title="Entity Management"
+				description="Manage organization and access settings for workflows, forms, agents, and apps"
+				actions={
+					<Button variant="outline" onClick={handleRefresh}>
+						<RefreshCw className="size-4" />
+						Refresh
+					</Button>
+				}
+			/>
+
+			<EntityCollectionStatus collections={collections} />
 
 			{/* Main Content - Two Column Layout */}
-			<div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-6">
+			<div className="grid grid-cols-1 gap-6 lg:min-h-80 lg:flex-1 lg:grid-cols-5">
 				{/* Left Column: Entities List */}
 				<div className="lg:col-span-2 flex flex-col min-h-0">
 					{/* Relationship Filter Banner */}
 					{relationshipFilter && (
-						<div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-accent/50 ring-1 ring-foreground/5">
-							<Network className="h-4 w-4 text-primary" />
-							<span className="text-sm">
-								Related to: <strong>{relationshipFilter.entityName}</strong>
-							</span>
-							<div className="flex items-center gap-1 ml-auto">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setIsGraphDialogOpen(true)}
-								>
-									<Network className="h-4 w-4 mr-1" />
-									View Graph
-								</Button>
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={handleClearRelationshipFilter}
-								>
-									<X className="h-4 w-4 mr-1" />
-									Clear
-								</Button>
-							</div>
-						</div>
+						<RelationshipFilterBanner
+							entityName={relationshipFilter.entityName}
+							isError={graphError}
+							isFetching={fetchingGraph}
+							hasData={!!graphData}
+							onRetry={() => void refetchGraph()}
+							onViewGraph={() => setIsGraphDialogOpen(true)}
+							onClear={handleClearRelationshipFilter}
+						/>
 					)}
 
-					{/* Toolbar: Select All + Search + Filters + Sort */}
-					<div className="flex items-center gap-2 mb-4">
-						<Checkbox
-							checked={allSelected}
-							onCheckedChange={handleSelectAll}
-							aria-label="Select all"
-							title={
-								allSelected
-									? "Deselect all"
-									: someSelected
-										? "Select all"
-										: "Select all"
-							}
-							className={cn(
-								"h-5 w-5",
-								someSelected && "data-[state=checked]:bg-muted",
-							)}
-							ref={(el) => {
-								if (el) {
-									(el as HTMLButtonElement).dataset.state = someSelected
-										? "indeterminate"
-										: allSelected
-											? "checked"
-											: "unchecked";
-								}
-							}}
-						/>
-						<div className="relative flex-1">
-							<Input
-								placeholder="Search entities..."
-								value={searchTerm}
-								onChange={(e) => setSearchTerm(e.target.value)}
-								className="pr-8"
+					<EntityListToolbar
+						search={searchTerm}
+						onSearch={setSearchTerm}
+						allSelected={allSelected}
+						someSelected={someSelected}
+						onSelectAll={handleSelectAll}
+						visibleCount={filteredEntities.length}
+						selectedCount={selectedIds.size}
+						hiddenSelectedCount={
+							[...selectedIds].filter(
+								(id) =>
+									!filteredEntities.some(
+										(entity) => entity.id === id,
+									),
+							).length
+						}
+						onClearSelection={() => setSelectedIds(new Set())}
+						onDelete={handleBulkDelete}
+						assignmentAction={
+							<EntityAssignmentSheet
+								entities={allEntities}
+								selectedIds={selectedIds}
+								organizations={organizations ?? []}
+								roles={roles ?? []}
+								disabled={isUpdating}
+								onOrganization={handleOrgDrop}
+								onAccess={handleRoleDrop}
 							/>
-							{searchTerm && (
-								<Button
-									variant="ghost"
-									size="icon"
-									className="absolute right-0 top-0 h-full w-8 hover:bg-transparent"
-									onClick={() => setSearchTerm("")}
-								>
-									<X className="h-4 w-4" />
-								</Button>
-							)}
-						</div>
-						{!relationshipFilter && (
-							<>
+						}
+						busy={isUpdating}
+						busyMessage={updatingMessage}
+						sortBy={sortBy}
+						onSortBy={setSortBy}
+						ascending={sortAsc}
+						onToggleDirection={() => setSortAsc((value) => !value)}
+						filters={
+							!relationshipFilter && (
 								<FilterPopover
 									typeFilter={typeFilter}
 									setTypeFilter={setTypeFilter}
@@ -828,85 +853,22 @@ export function EntityManagement() {
 									activeFilterCount={activeFilterCount}
 									onClearFilters={handleClearFilters}
 								/>
-								<Button
-									variant="outline"
-									size="sm"
-									className="h-9"
-									onClick={cycleSortBy}
-									title={`Sort by: ${sortBy}`}
-								>
-									{sortAsc ? (
-										<ArrowUp className="h-4 w-4 mr-2" />
-									) : (
-										<ArrowDown className="h-4 w-4 mr-2" />
-									)}
-									{sortBy === "name"
-										? "Name"
-										: sortBy === "date"
-											? "Date"
-											: "Type"}
-								</Button>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="h-9 w-9"
-									onClick={() => setSortAsc((prev) => !prev)}
-									title={sortAsc ? "Ascending" : "Descending"}
-								>
-									{sortAsc ? (
-										<ArrowUp className="h-4 w-4" />
-									) : (
-										<ArrowDown className="h-4 w-4" />
-									)}
-								</Button>
-							</>
-						)}
-					</div>
-
-					{/* Selection info */}
-					{(selectedIds.size > 0 || isUpdating) && (
-						<div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
-							{isUpdating && (
-								<Loader2 className="h-4 w-4 animate-spin text-primary" />
-							)}
-							<span>
-								{isUpdating
-									? updatingMessage
-									: `${selectedIds.size} selected`}
-							</span>
-							{selectedIds.size > 0 && !isUpdating && (
-								<>
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-6 px-2 text-xs"
-										onClick={() => setSelectedIds(new Set())}
-									>
-										Clear
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-										onClick={handleBulkDelete}
-									>
-										<Trash2 className="h-3 w-3 mr-1" />
-										Delete
-									</Button>
-								</>
-							)}
-						</div>
-					)}
+							)
+						}
+					/>
 
 					{/* Entity List */}
-					<div className="flex-1 min-h-0 overflow-y-auto">
-						{isLoading || (relationshipFilter && loadingGraph) ? (
+					<div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+						{(isLoading && allEntities.length === 0) ||
+						(relationshipFilter && loadingGraph) ? (
 							<div className="space-y-2">
 								{[...Array(5)].map((_, i) => (
 									<Skeleton key={i} className="h-16 w-full" />
 								))}
 							</div>
-						) : filteredEntities.length > 0 ? (
+						) : relationshipFilter &&
+						  graphError &&
+						  !graphData ? null : filteredEntities.length > 0 ? (
 							<div className="space-y-2 pr-2">
 								{filteredEntities.map((entity) => (
 									<EntityCard
@@ -914,9 +876,14 @@ export function EntityManagement() {
 										entity={entity}
 										selected={selectedIds.has(entity.id)}
 										onSelect={(selected) =>
-											handleSelectEntity(entity.id, selected)
+											handleSelectEntity(
+												entity.id,
+												selected,
+											)
 										}
-										onShowRelationships={handleShowRelationships}
+										onShowRelationships={
+											handleShowRelationships
+										}
 										onDelete={handleDeleteEntity}
 										organizations={organizations ?? []}
 										selectedIds={selectedIds}
@@ -924,21 +891,25 @@ export function EntityManagement() {
 									/>
 								))}
 							</div>
-						) : (
+						) : incompleteEntityData || isLoading ? null : (
 							<Card>
 								<CardContent className="flex flex-col items-center justify-center py-12 text-center">
 									<Filter className="h-12 w-12 text-muted-foreground" />
 									<h3 className="mt-4 text-lg font-semibold">
 										{relationshipFilter
 											? "No related entities found"
-											: searchTerm || activeFilterCount > 0
+											: searchTerm ||
+												  activeFilterCount > 0
 												? "No entities match your filters"
 												: "No entities found"}
 									</h3>
 									<p className="mt-2 text-sm text-muted-foreground">
 										{relationshipFilter
-											? "This entity has no dependencies"
-											: searchTerm || activeFilterCount > 0
+											? searchTerm
+												? "No related entities match your search"
+												: "No related entities are available in this list"
+											: searchTerm ||
+												  activeFilterCount > 0
 												? "Try adjusting your filters"
 												: "Create workflows, forms, or agents to manage them here"}
 									</p>
@@ -948,44 +919,16 @@ export function EntityManagement() {
 					</div>
 				</div>
 
-				{/* Right Column: Drop Targets */}
-				<div className="lg:col-span-3 flex flex-col gap-4 min-h-0">
-					{/* Organizations Section */}
-					<div className="flex-1 min-h-0 flex flex-col">
-						<div className="flex items-center gap-2 mb-3">
-							<Building2 className="h-5 w-5 text-muted-foreground" />
-							<h3 className="text-lg font-semibold">Organizations</h3>
-						</div>
-						<div className="space-y-1.5 overflow-y-auto">
-							<OrgDropTarget organization={null} onDrop={handleOrgDrop} />
-							{organizations?.map((org) => (
-								<OrgDropTarget
-									key={org.id}
-									organization={org}
-									onDrop={handleOrgDrop}
-								/>
-							))}
-						</div>
-					</div>
-
-					{/* Access Levels Section */}
-					<div className="flex-1 min-h-0 flex flex-col">
-						<div className="flex items-center gap-2 mb-3">
-							<Shield className="h-5 w-5 text-muted-foreground" />
-							<h3 className="text-lg font-semibold">Access Levels</h3>
-						</div>
-						<div className="space-y-1.5 overflow-y-auto">
-							<RoleDropTarget role="authenticated" onDrop={handleRoleDrop} />
-							<RoleDropTarget role="clear-roles" onDrop={handleRoleDrop} />
-							{roles?.map((role) => (
-								<RoleDropTarget
-									key={role.id}
-									role={role}
-									onDrop={handleRoleDrop}
-								/>
-							))}
-						</div>
-					</div>
+				<div className="hidden min-w-0 flex-col lg:col-span-3 lg:flex lg:min-h-0">
+					<EntityAssignmentPanel
+						entities={allEntities}
+						selectedIds={selectedIds}
+						organizations={organizations ?? []}
+						roles={roles ?? []}
+						disabled={isUpdating}
+						onOrganization={handleOrgDrop}
+						onAccess={handleRoleDrop}
+					/>
 				</div>
 			</div>
 
@@ -997,21 +940,28 @@ export function EntityManagement() {
 				entityType={relationshipFilter?.entityType ?? null}
 				graphData={graphData ?? null}
 				isLoading={loadingGraph}
+				isError={graphError}
+				isFetching={fetchingGraph}
+				onRetry={() => void refetchGraph()}
 			/>
 
 			{/* Workflow Deactivation Dialog (for delete confirmation) */}
 			<WorkflowDeactivationDialog
 				pendingDeactivations={pendingDeactivations}
 				availableReplacements={availableReplacements}
-				open={deleteDialogOpen}
+				open={deleteDialogOpen && !confirmDeleteOpen}
 				onResolve={(replacements, workflowsToDeactivate) => {
-					const hasReplacements = Object.keys(replacements).length > 0;
+					const hasReplacements =
+						Object.keys(replacements).length > 0;
 					const hasDeactivations = workflowsToDeactivate.length > 0;
 					if (hasReplacements) {
-						handleApplyReplacements(replacements);
+						return handleResolveDeletion({ replacements });
 					} else if (hasDeactivations) {
-						handleForceDeactivate();
+						return handleResolveDeletion({
+							force_deactivation: true,
+						});
 					}
+					return Promise.resolve();
 				}}
 				onCancel={handleCancelDelete}
 			/>
@@ -1020,15 +970,17 @@ export function EntityManagement() {
 			<DeleteConfirmDialog
 				open={confirmDeleteOpen}
 				onOpenChange={(open) => {
-					if (!open && !isDeleting) {
+					if (!open && !deleteBusy.current) {
 						setConfirmDeleteOpen(false);
 						setConfirmDeleteEntities([]);
 					}
 				}}
 				entities={confirmDeleteEntities}
 				isDeleting={isDeleting}
+				failures={deleteFailures}
 				onConfirm={handleConfirmDelete}
 				onCancel={() => {
+					if (deleteBusy.current) return;
 					setConfirmDeleteOpen(false);
 					setConfirmDeleteEntities([]);
 				}}

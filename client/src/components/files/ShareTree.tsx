@@ -1,31 +1,34 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
 	ChevronDown,
 	ChevronRight,
 	Folder,
 	HardDrive,
 	Lock,
+	MoreHorizontal,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	ContextMenu,
-	ContextMenuContent,
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
-	listShares,
-	listStructure,
-	type ShareEntry,
-	type StructureEntry,
-} from "@/services/fileStructure";
-import { EntryMenuItem } from "./fileContextMenu";
+	DropdownMenu,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { listShares, listStructure } from "@/services/fileStructure";
+import {
+	ENTRY_ACTION_META,
+	EntryMenuItem,
+	FileContextMenuContent,
+	FileDropdownMenuContent,
+} from "./fileContextMenu";
 import { InlineLoader } from "./InlineLoader";
 
 export type ShareTreeAction =
-	| "effective"
-	| "test"
-	| "newFolder"
-	| "upload"
-	| "newPolicy";
+	"effective" | "test" | "newFolder" | "upload" | "newPolicy";
 
 interface ShareTreeProps {
 	scope: string | null;
@@ -40,258 +43,254 @@ interface ShareTreeProps {
 	) => void;
 }
 
-interface FolderNodeProps {
+interface NodeProps extends ShareTreeProps {
 	location: string;
 	prefix: string;
 	name: string;
 	depth: number;
-	scope: string | null;
-	readOnly: boolean;
-	selectedLocation: string | null;
-	selectedPrefix: string;
-	onSelect: ShareTreeProps["onSelect"];
-	onContextAction: ShareTreeProps["onContextAction"];
 }
 
-function FolderNode({
-	location,
-	prefix,
-	name,
-	depth,
-	scope,
-	readOnly,
-	selectedLocation,
-	selectedPrefix,
-	onSelect,
-	onContextAction,
-}: FolderNodeProps) {
-	const [expanded, setExpanded] = useState(false);
-	const [children, setChildren] = useState<StructureEntry[] | null>(null);
-	const selected =
-		selectedLocation === location && selectedPrefix === prefix;
+function LoadError({
+	label,
+	retry,
+	pending,
+}: {
+	label: string;
+	retry: () => void;
+	pending: boolean;
+}) {
+	return (
+		<div role="alert" className="space-y-1 px-2 py-2 text-sm">
+			<p className="text-destructive">{label} could not be loaded.</p>
+			<Button
+				variant="outline"
+				className="min-h-11"
+				disabled={pending}
+				onClick={retry}
+			>
+				Retry {label.toLowerCase()}
+			</Button>
+		</div>
+	);
+}
 
-	useEffect(() => {
-		let cancelled = false;
-		if (!expanded || children !== null) return;
-		listStructure(location, prefix, scope)
-			.then((entries) => {
-				if (!cancelled)
-					setChildren(entries.filter((e) => e.kind === "folder"));
-			})
-			.catch(() => {
-				if (!cancelled) setChildren([]);
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [expanded, children, location, prefix, scope]);
+function BrowseNode(props: NodeProps) {
+	const {
+		location,
+		prefix,
+		name,
+		depth,
+		scope,
+		readOnly,
+		selectedLocation,
+		selectedPrefix,
+		onSelect,
+		onContextAction,
+	} = props;
+	const active = selectedLocation === location;
+	const [expanded, setExpanded] = useState(
+		active && (prefix === "" || selectedPrefix.startsWith(`${prefix}/`)),
+	);
+	const selected = active && selectedPrefix === prefix;
+	const children = useQuery({
+		queryKey: ["file-structure", scope, location, prefix],
+		queryFn: () => listStructure(location, prefix, scope),
+		enabled: expanded,
+		retry: false,
+	});
+	const folders =
+		children.data?.filter((entry) => entry.kind === "folder") ?? [];
+	const actions: ShareTreeAction[] = readOnly
+		? ["effective", "test"]
+		: ["effective", "test", "upload", "newPolicy"];
+	const Icon = prefix === "" ? HardDrive : Folder;
 
 	return (
-		<div>
+		<li className="min-w-0">
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<div
-						role="treeitem"
-						aria-selected={selected}
-						className={
-							"flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-sm hover:bg-muted " +
-							(selected ? "bg-muted font-medium" : "")
-						}
-						style={{ paddingLeft: `${depth * 12 + 4}px` }}
-						onClick={() => {
-							onSelect(location, prefix);
-							setExpanded((value) => !value);
-						}}
+						className={`flex min-w-0 items-start rounded-[var(--bf-radius-control)] ${selected ? "bg-muted" : ""}`}
 					>
-						{expanded ? (
-							<ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-						) : (
-							<ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-						)}
-						<Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-						<span className="truncate" title={name}>
-							{name}
-						</span>
+						<Button
+							variant="ghost"
+							size="icon-lg"
+							className="shrink-0"
+							aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`}
+							aria-expanded={expanded}
+							onClick={() => setExpanded((value) => !value)}
+						>
+							{expanded ? (
+								<ChevronDown aria-hidden="true" />
+							) : (
+								<ChevronRight aria-hidden="true" />
+							)}
+						</Button>
+						<button
+							type="button"
+							aria-current={selected ? "location" : undefined}
+							onClick={() => onSelect(location, prefix)}
+							className="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-[var(--bf-radius-control)] px-1 py-3 text-left text-sm transition-colors duration-(--bf-motion-feedback) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+						>
+							<Icon
+								aria-hidden="true"
+								className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+							/>
+							<span
+								className={`min-w-0 [overflow-wrap:anywhere] ${selected ? "font-medium" : ""}`}
+							>
+								{name}
+								{prefix === "" && readOnly && (
+									<span className="mt-1 flex items-center gap-1 text-xs font-normal text-muted-foreground">
+										<Lock
+											aria-hidden="true"
+											className="size-3"
+										/>
+										Read-only
+									</span>
+								)}
+							</span>
+						</button>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon-lg"
+									className="shrink-0"
+									aria-label={`Actions for ${name}`}
+								>
+									<MoreHorizontal aria-hidden="true" />
+								</Button>
+							</DropdownMenuTrigger>
+							<FileDropdownMenuContent align="end">
+								{actions.map((action) => {
+									const meta = ENTRY_ACTION_META[action];
+									const ActionIcon = meta.icon;
+									return (
+										<DropdownMenuItem
+											key={action}
+											className="min-h-11"
+											onSelect={() =>
+												onContextAction(
+													action,
+													location,
+													prefix,
+												)
+											}
+										>
+											<ActionIcon aria-hidden="true" />
+											{meta.label}
+										</DropdownMenuItem>
+									);
+								})}
+							</FileDropdownMenuContent>
+						</DropdownMenu>
 					</div>
 				</ContextMenuTrigger>
-				<ContextMenuContent>
-					<EntryMenuItem action="effective" onSelect={() => onContextAction("effective", location, prefix)} />
-					<EntryMenuItem action="test" onSelect={() => onContextAction("test", location, prefix)} />
-					{!readOnly && (
-						<>
-							<EntryMenuItem action="upload" onSelect={() => onContextAction("upload", location, prefix)} />
-							<EntryMenuItem action="newPolicy" onSelect={() => onContextAction("newPolicy", location, prefix)} />
-						</>
-					)}
-				</ContextMenuContent>
+				<FileContextMenuContent>
+					{actions.map((action) => (
+						<EntryMenuItem
+							key={action}
+							action={action}
+							onSelect={() =>
+								onContextAction(action, location, prefix)
+							}
+						/>
+					))}
+				</FileContextMenuContent>
 			</ContextMenu>
-			{expanded &&
-				(children ?? []).map((child) => (
-					<FolderNode
-						key={child.path}
-						location={location}
-						prefix={child.path}
-						name={child.name}
-						depth={depth + 1}
-						scope={scope}
-						readOnly={readOnly}
-						selectedLocation={selectedLocation}
-						selectedPrefix={selectedPrefix}
-						onSelect={onSelect}
-						onContextAction={onContextAction}
-					/>
-				))}
-		</div>
+			{expanded && (
+				<div
+					className={
+						depth < 4
+							? "ml-3 border-l border-border pl-1"
+							: "border-l border-border pl-1"
+					}
+				>
+					{children.isPending && (
+						<InlineLoader
+							className="px-2 py-3"
+							label={`Loading folders in ${name}…`}
+						/>
+					)}
+					{children.isError && (
+						<LoadError
+							label="Folders"
+							retry={() => void children.refetch()}
+							pending={children.isFetching}
+						/>
+					)}
+					{children.isSuccess && folders.length === 0 && (
+						<p className="px-2 py-3 text-xs text-muted-foreground">
+							No subfolders
+						</p>
+					)}
+					{folders.length > 0 && (
+						<ul aria-label={`Folders in ${name}`}>
+							{folders.map((folder) => (
+								<BrowseNode
+									{...props}
+									key={folder.path}
+									prefix={folder.path}
+									name={folder.name}
+									depth={depth + 1}
+								/>
+							))}
+						</ul>
+					)}
+				</div>
+			)}
+		</li>
 	);
 }
 
-export function ShareTree({
-	scope,
-	selectedLocation,
-	selectedPrefix,
-	readOnly = false,
-	onSelect,
-	onContextAction,
-}: ShareTreeProps) {
-	const [shares, setShares] = useState<ShareEntry[]>([]);
-	const [loading, setLoading] = useState(false);
-
-	useEffect(() => {
-		let cancelled = false;
-		void (async () => {
-			setLoading(true);
-			try {
-				const result = await listShares(scope);
-				if (!cancelled) setShares(result);
-			} catch {
-				if (!cancelled) setShares([]);
-			} finally {
-				if (!cancelled) setLoading(false);
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [scope]);
-
+function ShareNavigation(props: ShareTreeProps) {
+	const shares = useQuery({
+		queryKey: ["file-shares", props.scope],
+		queryFn: () => listShares(props.scope),
+		retry: false,
+	});
 	return (
-		<div role="tree" className="min-h-0 flex-1 overflow-auto p-2">
-			{loading && shares.length === 0 && (
-				<InlineLoader className="px-2 py-1" label="Loading shares…" />
+		<nav
+			aria-label="File shares"
+			className="min-h-0 min-w-0 flex-1 overflow-auto p-2"
+		>
+			{shares.isPending && (
+				<InlineLoader className="px-2 py-3" label="Loading shares…" />
 			)}
-			{!loading && shares.length === 0 && (
-				<p className="px-2 py-1 text-xs text-muted-foreground">
-					No shares in this scope. Create one with “New share”.
+			{shares.isError && (
+				<LoadError
+					label="Shares"
+					retry={() => void shares.refetch()}
+					pending={shares.isFetching}
+				/>
+			)}
+			{shares.isSuccess && shares.data.length === 0 && (
+				<p className="px-2 py-3 text-sm text-muted-foreground">
+					{props.readOnly
+						? "No shares in this scope."
+						: "No shares in this scope. Create one with “New share”."}
 				</p>
 			)}
-			{shares.map((share) => {
-				const locationActive = selectedLocation === share.location;
-				const selected = locationActive && selectedPrefix === "";
-				const effectiveReadOnly = readOnly || share.readOnly;
-				return (
-					<div key={share.location}>
-						<ContextMenu>
-							<ContextMenuTrigger asChild>
-								<div
-									role="treeitem"
-									aria-selected={selected}
-									className={
-										"flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-sm hover:bg-muted " +
-										(selected ? "bg-muted font-medium" : "")
-									}
-									onClick={() => onSelect(share.location, "")}
-								>
-									<HardDrive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-									<span className="truncate" title={share.location}>
-										{share.location}
-									</span>
-									{effectiveReadOnly && (
-										<span className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground">
-											<Lock className="h-3 w-3" /> read-only
-										</span>
-									)}
-								</div>
-							</ContextMenuTrigger>
-							<ContextMenuContent>
-								<EntryMenuItem action="effective" onSelect={() => onContextAction("effective", share.location, "")} />
-								<EntryMenuItem action="test" onSelect={() => onContextAction("test", share.location, "")} />
-								{!effectiveReadOnly && (
-									<>
-										<EntryMenuItem action="upload" onSelect={() => onContextAction("upload", share.location, "")} />
-										<EntryMenuItem action="newPolicy" onSelect={() => onContextAction("newPolicy", share.location, "")} />
-									</>
-								)}
-							</ContextMenuContent>
-						</ContextMenu>
-						{locationActive && (
-							<ShareChildren
-								location={share.location}
-								scope={scope}
-								readOnly={effectiveReadOnly}
-								selectedLocation={selectedLocation}
-								selectedPrefix={selectedPrefix}
-								onSelect={onSelect}
-								onContextAction={onContextAction}
-							/>
-						)}
-					</div>
-				);
-			})}
-		</div>
+			{!!shares.data?.length && (
+				<ul>
+					{shares.data.map((share) => (
+						<BrowseNode
+							{...props}
+							key={share.location}
+							location={share.location}
+							prefix=""
+							name={share.location}
+							depth={0}
+							readOnly={props.readOnly || share.readOnly}
+						/>
+					))}
+				</ul>
+			)}
+		</nav>
 	);
 }
 
-function ShareChildren({
-	location,
-	scope,
-	readOnly,
-	selectedLocation,
-	selectedPrefix,
-	onSelect,
-	onContextAction,
-}: {
-	location: string;
-	scope: string | null;
-	readOnly: boolean;
-	selectedLocation: string | null;
-	selectedPrefix: string;
-	onSelect: ShareTreeProps["onSelect"];
-	onContextAction: ShareTreeProps["onContextAction"];
-}) {
-	const [folders, setFolders] = useState<StructureEntry[]>([]);
-
-	useEffect(() => {
-		let cancelled = false;
-		listStructure(location, "", scope)
-			.then((entries) => {
-				if (!cancelled)
-					setFolders(entries.filter((e) => e.kind === "folder"));
-			})
-			.catch(() => {
-				if (!cancelled) setFolders([]);
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [location, scope]);
-
-	return (
-		<>
-			{folders.map((folder) => (
-				<FolderNode
-					key={folder.path}
-					location={location}
-					prefix={folder.path}
-					name={folder.name}
-					depth={1}
-					scope={scope}
-					readOnly={readOnly}
-					selectedLocation={selectedLocation}
-					selectedPrefix={selectedPrefix}
-					onSelect={onSelect}
-					onContextAction={onContextAction}
-				/>
-			))}
-		</>
-	);
+export function ShareTree(props: ShareTreeProps) {
+	return <ShareNavigation key={props.scope ?? "global"} {...props} />;
 }

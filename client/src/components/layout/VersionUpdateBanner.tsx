@@ -20,25 +20,33 @@ export function VersionUpdateBanner() {
 	if (!updateAvailable) return null;
 
 	return (
-		<div role="status" aria-live="polite">
+		<div>
+			<span role="status" className="sr-only">
+				A new version of Bifrost is available.
+			</span>
 			<TooltipProvider delayDuration={150}>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							type="button"
 							aria-label="Update available — click to refresh"
 							variant="ghost"
 							size="icon"
 							onClick={() => window.location.reload()}
-							className="relative text-primary hover:text-primary"
+							className="relative size-11 text-primary hover:text-primary"
 						>
 							<RefreshCw className="h-4 w-4" />
 							<span
 								aria-hidden="true"
-								className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background"
+								className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background"
 							/>
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent side="bottom">
+					<TooltipContent
+						side="bottom"
+						collisionPadding={16}
+						className="max-w-[min(20rem,calc(100vw-2rem))]"
+					>
 						A new version of Bifrost is available. Click to refresh.
 					</TooltipContent>
 				</Tooltip>

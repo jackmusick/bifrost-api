@@ -16,7 +16,13 @@ import {
  * without it the text forces the cell wider and triggers horizontal scroll on
  * long emails (the Van Rooy seed row hit this).
  */
-export function UserEmailCell({ email }: { email: string }) {
+export function UserEmailCell({
+	email,
+	wrap = false,
+}: {
+	email: string;
+	wrap?: boolean;
+}) {
 	const [copied, setCopied] = useState(false);
 
 	const handleCopy = async (e: React.MouseEvent) => {
@@ -35,14 +41,18 @@ export function UserEmailCell({ email }: { email: string }) {
 		<div className="flex items-center gap-1 min-w-0 group/email">
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<span className="block truncate min-w-0 flex-1">{email}</span>
+					<span
+						className={`block min-w-0 flex-1 ${wrap ? "[overflow-wrap:anywhere]" : "truncate"}`}
+					>
+						{email}
+					</span>
 				</TooltipTrigger>
 				<TooltipContent>{email}</TooltipContent>
 			</Tooltip>
 			<Button
 				variant="ghost"
 				size="icon"
-				className="h-6 w-6 shrink-0 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity"
+				className="h-11 w-11 shrink-0 lg:h-6 lg:w-6 lg:opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity duration-[var(--bf-motion-feedback)] motion-reduce:transition-none"
 				onClick={handleCopy}
 				aria-label={`Copy ${email}`}
 				title="Copy email"

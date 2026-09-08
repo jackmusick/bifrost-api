@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { components } from "@/lib/v1";
@@ -34,6 +35,7 @@ export function InputMappingForm({
 	values,
 	onChange,
 }: InputMappingFormProps) {
+	const formId = useId();
 	const handleChange = (paramName: string, value: string) => {
 		onChange({
 			...values,
@@ -42,17 +44,17 @@ export function InputMappingForm({
 	};
 
 	return (
-		<div className="space-y-3">
+		<div className="min-w-0 space-y-4">
 			{parameters.map((param) => {
 				const displayName = param.label || param.name;
 				const hint =
 					TYPE_HINTS[param.type ?? "str"] ?? TYPE_HINTS["str"];
 
 				return (
-					<div key={param.name} className="space-y-1.5">
+					<div key={param.name} className="min-w-0 space-y-1.5">
 						<Label
-							htmlFor={`mapping-${param.name}`}
-							className="text-sm"
+							htmlFor={`${formId}-mapping-${param.name}`}
+							className="flex-wrap text-sm [overflow-wrap:anywhere]"
 						>
 							{displayName}
 							<span className="text-muted-foreground font-normal ml-1.5">
@@ -60,25 +62,31 @@ export function InputMappingForm({
 							</span>
 						</Label>
 						<Input
-							id={`mapping-${param.name}`}
+							id={`${formId}-mapping-${param.name}`}
 							type="text"
-							value={
-								((values[param.name ?? ""] as string) ?? "")
-							}
+							className="min-h-11 min-w-0"
+							aria-describedby={`${formId}-hint-${param.name}`}
+							value={(values[param.name ?? ""] as string) ?? ""}
 							onChange={(e) =>
 								handleChange(param.name ?? "", e.target.value)
 							}
 							placeholder={hint}
 						/>
-						{param.description && (
-							<p className="text-xs text-muted-foreground">
-								{param.description}
-							</p>
-						)}
+						<div
+							id={`${formId}-hint-${param.name}`}
+							className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+						>
+							<p>{hint}</p>
+							{param.description && (
+								<p className="text-sm text-muted-foreground">
+									{param.description}
+								</p>
+							)}
+						</div>
 					</div>
 				);
 			})}
-			<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs text-muted-foreground space-y-1">
+			<div className="min-w-0 rounded-[var(--bf-radius-surface)] border bg-muted/50 px-3 py-3 text-sm leading-6 text-muted-foreground space-y-1 [overflow-wrap:anywhere]">
 				<p className="font-medium">Template variables:</p>
 				<ul className="list-disc list-inside space-y-0.5">
 					<li>
@@ -110,13 +118,11 @@ export function InputMappingForm({
 						— cron expression
 					</li>
 				</ul>
-				<p className="font-medium mt-2">
-					Auto-injected context:
-				</p>
+				<p className="font-medium mt-2">Auto-injected context:</p>
 				<p>
 					Your workflow also receives{" "}
 					<code className="bg-muted px-1 rounded">
-						{"context.parameters[\"_event\"]"}
+						{'context.parameters["_event"]'}
 					</code>{" "}
 					automatically with event metadata:{" "}
 					<code className="bg-muted px-1 rounded">id</code>,{" "}

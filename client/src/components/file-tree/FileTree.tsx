@@ -24,10 +24,19 @@ import {
 	Loader2,
 	Building2,
 	Lock,
+	MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import {
+	DropdownMenu,
+	DropdownMenuTrigger,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -46,6 +55,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+import { FileTreeReadError } from "./FileTreeReadError";
 import { useFileTree } from "./useFileTree";
 import { defaultIconResolver } from "./icons";
 import type {
@@ -108,6 +118,7 @@ export function FileTree({
 
 	const {
 		files,
+		failedPaths,
 		isLoading,
 		isFolderLoading,
 		loadFiles,
@@ -119,7 +130,9 @@ export function FileTree({
 
 	const [creatingItem, setCreatingItem] = useState<CreatingItemType>(null);
 	const [newItemName, setNewItemName] = useState("");
-	const [creatingInFolder, setCreatingInFolder] = useState<string | null>(null);
+	const [creatingInFolder, setCreatingInFolder] = useState<string | null>(
+		null,
+	);
 	const [renamingFile, setRenamingFile] = useState<FileNode | null>(null);
 	const [renameValue, setRenameValue] = useState("");
 	const [fileToDelete, setFileToDelete] = useState<FileNode | null>(null);
@@ -187,7 +200,8 @@ export function FileTree({
 					editor.onFileOpen(file, content);
 				} catch (err) {
 					toast.error("Failed to open file", {
-						description: err instanceof Error ? err.message : String(err),
+						description:
+							err instanceof Error ? err.message : String(err),
 					});
 				}
 			}
@@ -261,10 +275,15 @@ export function FileTree({
 			// If creating at root level and first item is an org container,
 			// reload that container instead (org-scoped file tree)
 			// Use filesRef.current for stable access without triggering callback recreation
-			if (!creatingInFolder && filesRef.current.length > 0 && filesRef.current[0].path.startsWith("org:")) {
+			if (
+				!creatingInFolder &&
+				filesRef.current.length > 0 &&
+				filesRef.current[0].path.startsWith("org:")
+			) {
 				// Find the first expanded org container, or default to first one
 				const expandedOrg = filesRef.current.find(
-					(f) => f.path.startsWith("org:") && isFolderExpanded(f.path)
+					(f) =>
+						f.path.startsWith("org:") && isFolderExpanded(f.path),
 				);
 				parentPath = expandedOrg?.path || filesRef.current[0].path;
 			}
@@ -281,7 +300,15 @@ export function FileTree({
 		} finally {
 			setIsProcessing(false);
 		}
-	}, [newItemName, creatingItem, creatingInFolder, loadFiles, operations, config, isFolderExpanded]);
+	}, [
+		newItemName,
+		creatingItem,
+		creatingInFolder,
+		loadFiles,
+		operations,
+		config,
+		isFolderExpanded,
+	]);
 
 	// Focus input when creating new item
 	useEffect(() => {
@@ -295,7 +322,10 @@ export function FileTree({
 		if (!creatingItem) return;
 
 		const handleClickOutside = (event: MouseEvent) => {
-			if (inputRef.current && !inputRef.current.contains(event.target as Node)) {
+			if (
+				inputRef.current &&
+				!inputRef.current.contains(event.target as Node)
+			) {
 				if (!newItemName.trim()) {
 					handleCancelNewItem();
 				}
@@ -339,15 +369,14 @@ export function FileTree({
 		try {
 			setIsProcessing(true);
 
-			// Notify editor of deletion (for closing tabs)
-			editor?.onFileDeleted?.(deletePath, isFolder);
-
 			// Optimistically remove from tree
 			removeFromTree(deletePath, isFolder);
 			setFileToDelete(null);
 
 			// Delete from server
 			await operations.delete(deletePath);
+			// Keep open tabs intact until the server confirms deletion.
+			editor?.onFileDeleted?.(deletePath, isFolder);
 
 			toast.success(`Deleted ${deleteName}`);
 		} catch (err) {
@@ -375,7 +404,11 @@ export function FileTree({
 	}, []);
 
 	const handleSaveRename = useCallback(async () => {
-		if (!renamingFile || !renameValue.trim() || renameValue === renamingFile.name) {
+		if (
+			!renamingFile ||
+			!renameValue.trim() ||
+			renameValue === renamingFile.name
+		) {
 			handleCancelRename();
 			return;
 		}
@@ -399,13 +432,14 @@ export function FileTree({
 			setIsProcessing(true);
 
 			const parentFolder = renamingFile.path.includes("/")
-				? renamingFile.path.substring(0, renamingFile.path.lastIndexOf("/"))
+				? renamingFile.path.substring(
+						0,
+						renamingFile.path.lastIndexOf("/"),
+					)
 				: "";
 
-			// Notify editor of rename
-			editor?.onFileRenamed?.(renamingFile.path, newPath);
-
 			await operations.rename(renamingFile.path, newPath);
+			editor?.onFileRenamed?.(renamingFile.path, newPath);
 			await loadFiles(parentFolder);
 			toast.success(`Renamed to ${renameValue}`);
 
@@ -417,7 +451,15 @@ export function FileTree({
 		} finally {
 			setIsProcessing(false);
 		}
-	}, [renamingFile, renameValue, loadFiles, handleCancelRename, editor, operations, config]);
+	}, [
+		renamingFile,
+		renameValue,
+		loadFiles,
+		handleCancelRename,
+		editor,
+		operations,
+		config,
+	]);
 
 	// Focus rename input when renaming starts
 	useEffect(() => {
@@ -477,11 +519,14 @@ export function FileTree({
 		e.stopPropagation();
 	}, []);
 
-	const handleDragStart = useCallback((e: React.DragEvent, file: FileNode) => {
-		e.dataTransfer.effectAllowed = "move";
-		e.dataTransfer.setData("text/plain", file.path);
-		e.dataTransfer.setData("application/json", JSON.stringify(file));
-	}, []);
+	const handleDragStart = useCallback(
+		(e: React.DragEvent, file: FileNode) => {
+			e.dataTransfer.effectAllowed = "move";
+			e.dataTransfer.setData("text/plain", file.path);
+			e.dataTransfer.setData("application/json", JSON.stringify(file));
+		},
+		[],
+	);
 
 	const handleDragOver = useCallback(
 		(e: React.DragEvent, targetFolder?: string) => {
@@ -512,11 +557,14 @@ export function FileTree({
 				if (draggedPath === targetFolder) return;
 
 				// Don't allow dropping a folder into its own child
-				if (targetFolder && targetFolder.startsWith(draggedPath + "/")) return;
+				if (targetFolder && targetFolder.startsWith(draggedPath + "/"))
+					return;
 
 				// Calculate new path
 				const fileName = draggedPath.split("/").pop()!;
-				const newPath = targetFolder ? `${targetFolder}/${fileName}` : fileName;
+				const newPath = targetFolder
+					? `${targetFolder}/${fileName}`
+					: fileName;
 
 				// Don't do anything if the path hasn't changed
 				if (draggedPath === newPath) return;
@@ -539,10 +587,8 @@ export function FileTree({
 					: "";
 				const targetFolderPath = targetFolder || "";
 
-				// Notify editor of move (same as rename)
-				editor?.onFileRenamed?.(draggedPath, newPath);
-
 				await operations.rename(draggedPath, newPath);
+				editor?.onFileRenamed?.(draggedPath, newPath);
 
 				// Reload affected folders
 				await loadFiles(sourceFolder);
@@ -553,7 +599,8 @@ export function FileTree({
 				toast.success(`Moved ${fileName}`);
 			} catch (err) {
 				toast.error("Failed to move", {
-					description: err instanceof Error ? err.message : String(err),
+					description:
+						err instanceof Error ? err.message : String(err),
 				});
 			} finally {
 				setIsProcessing(false);
@@ -563,7 +610,7 @@ export function FileTree({
 	);
 
 	return (
-		<div className={cn("flex h-full flex-col", className)}>
+		<div className={cn("flex h-full min-h-0 min-w-0 flex-col", className)}>
 			{/* Toolbar */}
 			<div className="flex items-center gap-1 border-b p-2">
 				{config.enableCreate && (
@@ -572,8 +619,10 @@ export function FileTree({
 							variant="ghost"
 							size="sm"
 							onClick={() => handleCreateFile()}
+							aria-label="New File"
+							type="button"
 							title="New File"
-							className="h-7 px-2"
+							className="h-11 min-w-11 px-2"
 							disabled={isProcessing}
 						>
 							<FilePlus className="h-4 w-4" />
@@ -582,8 +631,10 @@ export function FileTree({
 							variant="ghost"
 							size="sm"
 							onClick={() => handleCreateFolder()}
+							aria-label="New Folder"
+							type="button"
 							title="New Folder"
-							className="h-7 px-2"
+							className="h-11 min-w-11 px-2"
 							disabled={isProcessing}
 						>
 							<FolderPlus className="h-4 w-4" />
@@ -594,18 +645,25 @@ export function FileTree({
 					variant="ghost"
 					size="sm"
 					onClick={handleRefresh}
+					aria-label="Refresh"
+					type="button"
 					title="Refresh"
-					className="h-7 px-2"
+					className="h-11 min-w-11 px-2"
 					disabled={isProcessing}
 				>
-					<RefreshCw className={cn("h-4 w-4", isProcessing && "animate-spin")} />
+					<RefreshCw
+						className={cn(
+							"h-4 w-4",
+							isProcessing && "motion-safe:animate-spin",
+						)}
+					/>
 				</Button>
 			</div>
 
 			{/* File list */}
 			<div
 				className={cn(
-					"flex-1 overflow-auto",
+					"min-h-0 min-w-0 flex-1 overflow-auto",
 					dragOverFolder === "" &&
 						"bg-primary/10 outline outline-2 outline-primary outline-dashed",
 				)}
@@ -613,13 +671,26 @@ export function FileTree({
 				onDragLeave={handleDragLeave}
 				onDrop={(e) => handleDrop(e)}
 			>
+				{failedPaths.length > 0 && (
+					<div className="p-2">
+						<FileTreeReadError
+							paths={failedPaths}
+							loading={isLoading}
+							onRetry={() => {
+								void Promise.all(failedPaths.map(loadFiles));
+							}}
+						/>
+					</div>
+				)}
 				{isLoading && files.length === 0 && !creatingItem ? (
 					<div className="flex h-full items-center justify-center">
 						<div className="text-sm text-muted-foreground">
 							{config.loadingMessage}
 						</div>
 					</div>
-				) : files.length === 0 && !creatingItem ? (
+				) : files.length === 0 &&
+				  !creatingItem &&
+				  failedPaths.length === 0 ? (
 					<div className="flex h-full items-center justify-center p-4">
 						<div className="text-center text-sm text-muted-foreground">
 							<p>{config.emptyMessage}</p>
@@ -634,27 +705,36 @@ export function FileTree({
 					<div className="space-y-1 p-2">
 						{/* Inline new item editor at root */}
 						{creatingItem && !creatingInFolder && (
-							<div className="flex items-center gap-2 rounded-lg px-2 py-1 bg-muted/50">
-								<div className="w-4" />
+							<div className="flex items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 bg-muted/50">
+								<div className="w-4 shrink-0" />
 								{isProcessing ? (
-									<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+									<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-primary" />
 								) : creatingItem === "folder" ? (
 									<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
 								) : (
 									<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 								)}
-								<input
+								<Input
+									aria-label={
+										creatingItem === "folder"
+											? "Folder name"
+											: "File name"
+									}
 									ref={inputRef}
 									type="text"
 									value={newItemName}
-									onChange={(e) => setNewItemName(e.target.value)}
+									onChange={(e) =>
+										setNewItemName(e.target.value)
+									}
 									onKeyDown={handleNewItemKeyDown}
 									onMouseDown={handleInputMouseDown}
 									placeholder={
-										creatingItem === "folder" ? "Folder name" : "File name"
+										creatingItem === "folder"
+											? "Folder name"
+											: "File name"
 									}
 									disabled={isProcessing}
-									className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+									className="min-w-0 min-h-11 flex-1 text-base sm:text-sm"
 								/>
 							</div>
 						)}
@@ -693,7 +773,9 @@ export function FileTree({
 								setRenameValue={setRenameValue}
 								renameInputRef={renameInputRef}
 								handleRenameKeyDown={handleRenameKeyDown}
-								handleRenameInputMouseDown={handleRenameInputMouseDown}
+								handleRenameInputMouseDown={
+									handleRenameInputMouseDown
+								}
 								isProcessing={isProcessing}
 							/>
 						))}
@@ -709,7 +791,10 @@ export function FileTree({
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
-							Delete {fileToDelete?.type === "folder" ? "Folder" : "File"}
+							Delete{" "}
+							{fileToDelete?.type === "folder"
+								? "Folder"
+								: "File"}
 						</AlertDialogTitle>
 						<AlertDialogDescription>
 							Are you sure you want to delete{" "}
@@ -730,7 +815,6 @@ export function FileTree({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-
 		</div>
 	);
 }
@@ -808,7 +892,8 @@ const FileTreeItem = memo(function FileTreeItem({
 	const level = file.level;
 	const isRenaming = renamingFile?.path === file.path;
 	const isSelected = editor?.isFileSelected?.(file.path) ?? false;
-	const organizationName = file.metadata?.organizationName as string | undefined;
+	const organizationName = file.metadata?.organizationName as
+		string | undefined;
 
 	// Can drag any file/folder
 	const canDrag = config.enableDragMove;
@@ -821,27 +906,38 @@ const FileTreeItem = memo(function FileTreeItem({
 			{isRenaming ? (
 				// Inline rename editor
 				<div
-					className="flex items-center gap-2 rounded-lg px-2 py-1 bg-muted/50"
-					style={{ paddingLeft: `${level * 12 + 8}px` }}
+					className="flex items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 bg-muted/50"
+					style={{ paddingLeft: `min(${level * 12 + 8}px, 25%)` }}
 				>
 					{isFolder ? (
 						<>
 							{isLoadingContents ? (
-								<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+								<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-muted-foreground" />
 							) : isExpanded ? (
 								<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 							) : (
 								<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 							)}
-							<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
+							<FileIcon
+								className={cn(
+									"h-4 w-4 flex-shrink-0",
+									iconClassName,
+								)}
+							/>
 						</>
 					) : (
 						<>
-							<div className="w-4" />
-							<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
+							<div className="w-4 shrink-0" />
+							<FileIcon
+								className={cn(
+									"h-4 w-4 flex-shrink-0",
+									iconClassName,
+								)}
+							/>
 						</>
 					)}
-					<input
+					<Input
+						aria-label={`Rename ${file.name}`}
 						ref={renameInputRef}
 						type="text"
 						value={renameValue}
@@ -849,151 +945,193 @@ const FileTreeItem = memo(function FileTreeItem({
 						onKeyDown={handleRenameKeyDown}
 						onMouseDown={handleRenameInputMouseDown}
 						disabled={isProcessing}
-						className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+						className="min-w-0 min-h-11 flex-1 text-base sm:text-sm"
 					/>
 				</div>
 			) : (
-				<ContextMenu>
-					<ContextMenuTrigger asChild>
-						<button
-							draggable={canDrag}
-							onClick={() => {
-								if (isFolder) {
-									onFolderToggle(file);
-								} else {
-									onFileClick(file);
+				<div className="flex min-w-0 items-start gap-1">
+					<ContextMenu>
+						<ContextMenuTrigger asChild>
+							<button
+								type="button"
+								aria-expanded={
+									isFolder ? isExpanded : undefined
 								}
-							}}
-							onDragStart={canDrag ? (e) => onDragStart(e, file) : undefined}
-							onDragOver={(e) => {
-								if (isFolder) {
-									e.stopPropagation();
-									onDragOver(e, file.path);
+								aria-pressed={
+									!isFolder ? isSelected : undefined
 								}
-							}}
-							onDragLeave={onDragLeave}
-							onDrop={(e) => {
-								if (isFolder) {
-									e.stopPropagation();
-									onDrop(e, file.path);
+								draggable={canDrag}
+								onClick={() => {
+									if (isFolder) {
+										onFolderToggle(file);
+									} else {
+										onFileClick(file);
+									}
+								}}
+								onDragStart={
+									canDrag
+										? (e) => onDragStart(e, file)
+										: undefined
 								}
-							}}
-							className={cn(
-								"flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-sm transition-colors outline-none",
-								isSelected && !isDragOver ? "bg-accent text-accent-foreground" : "",
-								!isDragOver && !isSelected ? "hover:bg-muted" : "",
-								isDragOver && isFolder && "bg-primary/30 border-2 border-primary",
-							)}
-							style={{ paddingLeft: `${level * 12 + 8}px` }}
-						>
-							{isFolder ? (
-								<>
-									{isLoadingContents ? (
-										<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
-									) : isExpanded ? (
-										<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-									) : (
-										<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-									)}
-									<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
-								</>
-							) : (
-								<>
-									<div className="w-4" />
-									<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
-								</>
-							)}
-							<div className="flex-1 min-w-0">
-								<span className="block truncate">{file.name}</span>
-								{/* Scope indicator for org-scoped files */}
-								{organizationName && !isFolder && (
-									<span className="flex items-center gap-1 text-xs text-muted-foreground italic truncate">
-										{organizationName}
-										{!file.entityType && (
-											<span title="Scope cannot be changed for this file"><Lock className="h-3 w-3 flex-shrink-0 opacity-50" /></span>
+								onDragOver={(e) => {
+									if (isFolder) {
+										e.stopPropagation();
+										onDragOver(e, file.path);
+									}
+								}}
+								onDragLeave={onDragLeave}
+								onDrop={(e) => {
+									if (isFolder) {
+										e.stopPropagation();
+										onDrop(e, file.path);
+									}
+								}}
+								className={cn(
+									"flex min-h-11 min-w-0 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 text-left text-sm transition-colors motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+									isSelected && !isDragOver
+										? "bg-accent text-accent-foreground"
+										: "",
+									!isDragOver && !isSelected
+										? "hover:bg-muted"
+										: "",
+									isDragOver &&
+										isFolder &&
+										"bg-primary/10 ring-2 ring-inset ring-primary",
+								)}
+								style={{
+									paddingLeft: `min(${level * 12 + 8}px, 25%)`,
+								}}
+							>
+								{isFolder ? (
+									<>
+										{isLoadingContents ? (
+											<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-muted-foreground" />
+										) : isExpanded ? (
+											<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+										) : (
+											<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 										)}
-									</span>
-								)}
-							</div>
-						</button>
-					</ContextMenuTrigger>
-					<ContextMenuContent className="z-[101]">
-						{isFolder && config.enableCreate && (
-							<>
-								<ContextMenuItem onClick={() => onCreateFile(file.path)}>
-									<FilePlus className="mr-2 h-4 w-4" />
-									New File
-								</ContextMenuItem>
-								<ContextMenuItem onClick={() => onCreateFolder(file.path)}>
-									<FolderPlus className="mr-2 h-4 w-4" />
-									New Folder
-								</ContextMenuItem>
-								<ContextMenuSeparator />
-							</>
-						)}
-						{config.enableRename && (
-							<ContextMenuItem onClick={() => onRename(file)}>
-								<Edit2 className="mr-2 h-4 w-4" />
-								Rename
-							</ContextMenuItem>
-						)}
-						{config.enableDelete && (
-							<>
-								{config.enableRename && <ContextMenuSeparator />}
-								<ContextMenuItem
-									onClick={() => onDelete(file)}
-									className="text-destructive focus:text-destructive"
-								>
-									<Trash2 className="mr-2 h-4 w-4" />
-									Delete
-								</ContextMenuItem>
-							</>
-						)}
-						{/* Change Scope option for entity files */}
-						{onChangeScope && (
-							<>
-								<ContextMenuSeparator />
-								{file.entityType ? (
-									<ContextMenuItem onClick={() => onChangeScope(file)}>
-										<Building2 className="mr-2 h-4 w-4" />
-										Change Scope...
-									</ContextMenuItem>
+										<FileIcon
+											className={cn(
+												"h-4 w-4 flex-shrink-0",
+												iconClassName,
+											)}
+										/>
+									</>
 								) : (
-									<ContextMenuItem disabled>
-										<Lock className="mr-2 h-4 w-4" />
-										Scope cannot be changed
-									</ContextMenuItem>
+									<>
+										<div className="w-4 shrink-0" />
+										<FileIcon
+											className={cn(
+												"h-4 w-4 flex-shrink-0",
+												iconClassName,
+											)}
+										/>
+									</>
 								)}
-							</>
-						)}
-					</ContextMenuContent>
-				</ContextMenu>
+								<div className="flex-1 min-w-0">
+									<span className="block [overflow-wrap:anywhere]">
+										{file.name}
+									</span>
+									{/* Scope indicator for org-scoped files */}
+									{organizationName && !isFolder && (
+										<span className="flex items-center gap-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+											{organizationName}
+											{!file.entityType && (
+												<span title="Scope cannot be changed for this file">
+													<Lock className="h-3 w-3 flex-shrink-0 opacity-50" />
+												</span>
+											)}
+										</span>
+									)}
+								</div>
+							</button>
+						</ContextMenuTrigger>
+						<ContextMenuContent className="z-[101]">
+							<FileTreeActionItems
+								mode="context"
+								file={file}
+								config={config}
+								onCreateFile={onCreateFile}
+								onCreateFolder={onCreateFolder}
+								onRename={onRename}
+								onDelete={onDelete}
+								onChangeScope={onChangeScope}
+							/>
+						</ContextMenuContent>
+					</ContextMenu>
+					{(config.enableRename ||
+						config.enableDelete ||
+						(isFolder && config.enableCreate) ||
+						onChangeScope) && (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									className="size-11 shrink-0"
+									aria-label={`Actions for ${file.name}`}
+									disabled={isProcessing}
+								>
+									<MoreHorizontal className="size-4" />
+								</Button>
+							</DropdownMenuTrigger>
+								<DropdownMenuContent
+									align="end"
+									className="z-[101] w-56 max-w-[calc(100vw-2rem)]"
+								>
+									<FileTreeActionItems
+									mode="dropdown"
+									file={file}
+									config={config}
+									onCreateFile={onCreateFile}
+									onCreateFolder={onCreateFolder}
+									onRename={onRename}
+									onDelete={onDelete}
+									onChangeScope={onChangeScope}
+								/>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
+				</div>
 			)}
 
 			{/* Inline new item editor (shown when creating in this folder) */}
 			{creatingItem && creatingInFolder === file.path && (
 				<div
-					className="flex items-center gap-2 rounded-lg px-2 py-1 bg-muted/50 mt-1"
-					style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
+					className="flex items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 bg-muted/50 mt-1"
+					style={{
+						paddingLeft: `min(${(level + 1) * 12 + 8}px, 25%)`,
+					}}
 				>
-					<div className="w-4" />
+					<div className="w-4 shrink-0" />
 					{isProcessing ? (
-						<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+						<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-primary" />
 					) : creatingItem === "folder" ? (
 						<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
 					) : (
 						<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 					)}
-					<input
+					<Input
+						aria-label={
+							creatingItem === "folder"
+								? "Folder name"
+								: "File name"
+						}
 						ref={inputRef}
 						type="text"
 						value={newItemName}
 						onChange={(e) => setNewItemName(e.target.value)}
 						onKeyDown={handleNewItemKeyDown}
 						onMouseDown={handleInputMouseDown}
-						placeholder={creatingItem === "folder" ? "Folder name" : "File name"}
+						placeholder={
+							creatingItem === "folder"
+								? "Folder name"
+								: "File name"
+						}
 						disabled={isProcessing}
-						className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+						className="min-w-0 min-h-11 flex-1 text-base sm:text-sm"
 					/>
 				</div>
 			)}
@@ -1002,4 +1140,106 @@ const FileTreeItem = memo(function FileTreeItem({
 });
 
 // Re-export types for convenience
-export type { FileNode, FileTreeNode, FileOperations, EditorCallbacks, FileTreeConfig };
+export type {
+	FileNode,
+	FileTreeNode,
+	FileOperations,
+	EditorCallbacks,
+	FileTreeConfig,
+};
+
+/** Shared action definitions for the row button and desktop context menu. */
+function FileTreeActionItems({
+	mode,
+	file,
+	config,
+	onCreateFile,
+	onCreateFolder,
+	onRename,
+	onDelete,
+	onChangeScope,
+}: Pick<
+	FileTreeItemProps,
+	| "file"
+	| "config"
+	| "onCreateFile"
+	| "onCreateFolder"
+	| "onRename"
+	| "onDelete"
+	| "onChangeScope"
+> & { mode: "context" | "dropdown" }) {
+	const isFolder = file.type === "folder";
+	const Item = mode === "context" ? ContextMenuItem : DropdownMenuItem;
+	const Separator =
+		mode === "context" ? ContextMenuSeparator : DropdownMenuSeparator;
+	const itemClassName =
+		mode === "context" ? undefined : "min-h-11 sm:min-h-7";
+
+	return (
+		<>
+			{isFolder && config.enableCreate && (
+				<>
+					<Item onSelect={() => onCreateFile(file.path)}>
+						<FilePlus className="h-4 w-4" />
+						New File
+					</Item>
+					<Item onSelect={() => onCreateFolder(file.path)}>
+						<FolderPlus className="h-4 w-4" />
+						New Folder
+					</Item>
+					<Separator />
+				</>
+			)}
+			{config.enableRename && (
+				<Item
+					onSelect={() => onRename(file)}
+					className={cn(
+						itemClassName,
+						mode === "dropdown" && "text-foreground",
+					)}
+				>
+					<Edit2 className="h-4 w-4" />
+					Rename
+				</Item>
+			)}
+			{config.enableDelete && (
+				<>
+					{config.enableRename && <Separator />}
+					<Item
+						onSelect={() => onDelete(file)}
+						className={cn(
+							itemClassName,
+							"text-destructive focus:text-destructive",
+						)}
+					>
+						<Trash2 className="h-4 w-4" />
+						Delete
+					</Item>
+				</>
+			)}
+			{/* Change Scope option for entity files */}
+			{onChangeScope && (
+				<>
+					<Separator />
+					{file.entityType ? (
+						<Item
+							onSelect={() => onChangeScope(file)}
+							className={cn(
+								itemClassName,
+								mode === "dropdown" && "text-foreground",
+							)}
+						>
+							<Building2 className="h-4 w-4" />
+							Change Scope...
+						</Item>
+					) : (
+						<Item disabled className={itemClassName}>
+							<Lock className="h-4 w-4" />
+							Scope cannot be changed
+						</Item>
+					)}
+				</>
+			)}
+		</>
+	);
+}

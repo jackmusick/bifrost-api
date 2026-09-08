@@ -1,5 +1,4 @@
-import { Loader2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { Logo } from "@/components/branding/Logo";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,14 +14,15 @@ import { useApplicationName } from "@/lib/applicationName";
  */
 export function AuthTransition({ message }: { message: string }) {
 	const applicationName = useApplicationName();
+	const reducedMotion = useReducedMotion();
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
-			<Card className="w-full max-w-md border-primary/10 shadow-xl shadow-primary/5">
+		<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
+			<Card className="w-full max-w-md rounded-[var(--bf-radius-feature)] border-border shadow-none">
 				<CardContent className="flex flex-col items-center gap-4 py-12 text-center">
 					<motion.div
-						initial={{ scale: 0.8, opacity: 0 }}
-						animate={{ scale: 1, opacity: 1 }}
-						transition={{ duration: 0.3 }}
+						initial={reducedMotion ? false : { opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ duration: reducedMotion ? 0 : 0.22 }}
 						className="flex justify-center"
 					>
 						<Logo
@@ -31,8 +31,18 @@ export function AuthTransition({ message }: { message: string }) {
 							alt={applicationName}
 						/>
 					</motion.div>
-					<Loader2 className="h-6 w-6 animate-spin text-primary" />
-					<p className="text-sm text-muted-foreground">{message}</p>
+					<div
+						aria-hidden="true"
+						className="route-transition-progress-track h-1 w-40 overflow-hidden rounded-full"
+					>
+						<div
+							className="route-transition-progress-fill h-full w-full"
+							data-state="loading"
+						/>
+					</div>
+					<p role="status" className="text-sm text-muted-foreground">
+						{message}
+					</p>
 				</CardContent>
 			</Card>
 		</div>

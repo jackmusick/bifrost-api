@@ -13,6 +13,12 @@ const mockCreate = vi.fn();
 const mockAuthFetch = vi.fn();
 const mockDynamicConfigForm = vi.fn();
 let mockIsPlatformAdmin = false;
+let mockAdapterQuery: {
+	data?: undefined;
+	isError?: boolean;
+	isFetching?: boolean;
+	refetch?: () => void;
+} = {};
 
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => ({ isPlatformAdmin: mockIsPlatformAdmin }),
@@ -116,6 +122,7 @@ vi.mock("@/services/events", async () => {
 					},
 				],
 			},
+			...mockAdapterQuery,
 		}),
 		useDynamicValues: () => ({
 			data: { items: [] },
@@ -179,6 +186,7 @@ import { CreateEventSourceDialog } from "./CreateEventSourceDialog";
 
 beforeEach(() => {
 	mockIsPlatformAdmin = false;
+	mockAdapterQuery = {};
 	mockDynamicConfigForm.mockClear();
 	mockCreate.mockReset();
 	mockCreate.mockResolvedValue({});
@@ -480,5 +488,90 @@ describe("CreateEventSourceDialog — topic branch", () => {
 		const alert = await screen.findByRole("alert");
 		expect(alert).toHaveTextContent(/dot/i);
 		expect(mockCreate).not.toHaveBeenCalled();
+	});
+});
+
+describe("CreateEventSourceDialog — source switching and recovery", () => {
+	it("does not apply hidden webhook requirements to a schedule and retains settings after failure", async () => {
+		mockIsPlatformAdmin = true;
+		mockCreate.mockRejectedValueOnce(new Error("offline"));
+		const onOpenChange = vi.fn();
+		const { user } = renderWithProviders(
+			<CreateEventSourceDialog open onOpenChange={onOpenChange} />,
+		);
+		fireEvent.change(screen.getByLabelText(/^name$/i), {
+			target: { value: "Daily job" },
+		});
+		await user.click(
+			screen.getByRole("combobox", { name: /webhook adapter/i }),
+		);
+		await user.click(
+			screen.getByRole("option", { name: /microsoft graph/i }),
+		);
+		await user.click(
+			screen.getByRole("combobox", { name: /source type/i }),
+		);
+		await user.click(screen.getByRole("option", { name: "Schedule" }));
+		await user.click(screen.getByRole("button", { name: "Daily 9 AM" }));
+		await user.click(
+			screen.getByRole("button", { name: /create event source/i }),
+		);
+		expect(
+			await screen.findByText(/Could not create this source/),
+		).toBeInTheDocument();
+		expect(screen.getByLabelText(/^name$/i)).toHaveValue("Daily job");
+		expect(screen.getByLabelText(/cron expression/i)).toHaveValue(
+			"0 9 * * *",
+		);
+		expect(onOpenChange).not.toHaveBeenCalled();
+		await user.click(
+			screen.getByRole("button", { name: /create event source/i }),
+		);
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+		expect(mockCreate).toHaveBeenCalledTimes(2);
+		expect(mockCreate.mock.calls[1]![0].body).toEqual(
+			expect.objectContaining({
+				source_type: "schedule",
+				webhook: undefined,
+				schedule: expect.objectContaining({
+					cron_expression: "0 9 * * *",
+				}),
+			}),
+		);
+	});
+});
+
+describe("CreateEventSourceDialog metadata recovery", () => {
+	it("retains the draft while retrying an unavailable adapter list", async () => {
+		const retry = vi.fn();
+		mockAdapterQuery = { data: undefined, isError: true, refetch: retry };
+		const props = { open: true, onOpenChange: vi.fn() };
+		const { user, rerender } = renderWithProviders(
+			<CreateEventSourceDialog {...props} />,
+		);
+		await user.type(screen.getByLabelText("Name"), "Customer event source");
+		expect(screen.getByLabelText("Webhook Adapter")).toBeDisabled();
+		await user.click(
+			screen.getByRole("button", { name: "Retry webhook adapters" }),
+		);
+		expect(retry).toHaveBeenCalledOnce();
+		mockAdapterQuery = {};
+		rerender(<CreateEventSourceDialog {...props} />);
+		expect(screen.getByLabelText("Name")).toHaveValue(
+			"Customer event source",
+		);
+		expect(screen.getByLabelText("Webhook Adapter")).toBeEnabled();
+		expect(
+			screen.queryByRole("button", { name: "Retry webhook adapters" }),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByLabelText("Webhook Adapter"));
+		await user.click(
+			screen.getByRole("option", {
+				name: "Generic Webhook",
+			}),
+		);
+		expect(screen.getByLabelText("Webhook Adapter")).toHaveTextContent(
+			"Generic Webhook",
+		);
 	});
 });

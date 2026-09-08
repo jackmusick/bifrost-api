@@ -67,3 +67,44 @@ describe("form provider services", () => {
 		});
 	});
 });
+
+describe("integration provider failures", () => {
+	it.each([
+		{ error: { detail: "Unavailable" } },
+		{ data: { status: "Failed", result: [] } },
+		{ data: { status: "Success", result: {} } },
+	])(
+		"rejects failed or invalid responses instead of returning an empty list",
+		async (response) => {
+			post.mockResolvedValue(response);
+			await expect(
+				getDataProviderOptions("provider-1"),
+			).rejects.toThrow();
+		},
+	);
+	it("preserves a successful empty list", async () => {
+		post.mockResolvedValue({ data: { status: "Success", result: [] } });
+		await expect(getDataProviderOptions("provider-1")).resolves.toEqual([]);
+	});
+	it("propagates transport failures to the query", async () => {
+		post.mockRejectedValue(new Error("Network unavailable"));
+		await expect(getDataProviderOptions("provider-1")).rejects.toThrow(
+			"Network unavailable",
+		);
+	});
+});
+
+it("distinguishes failed option requests from a successful empty list", async () => {
+	post.mockResolvedValueOnce({
+		error: { detail: "Choice service unavailable" },
+	});
+	await expect(getFormFieldOptions("form-1", "owner")).rejects.toThrow(
+		"Choice service unavailable",
+	);
+	post.mockRejectedValueOnce(new Error("Network unavailable"));
+	await expect(getFormFieldOptions("form-1", "owner")).rejects.toThrow(
+		"Network unavailable",
+	);
+	post.mockResolvedValueOnce({ data: { options: [] } });
+	await expect(getFormFieldOptions("form-1", "owner")).resolves.toEqual([]);
+});

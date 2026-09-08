@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ export function GenerationModelSettings({
 	onImageModelChange,
 	onVideoModelChange,
 }: GenerationModelSettingsProps) {
+	const fieldPrefix = useId();
 	const hasCapabilityCatalog = models.some(
 		(model) => model.output_modalities != null,
 	);
@@ -38,7 +40,7 @@ export function GenerationModelSettings({
 
 	const fields = [
 		{
-			id: "image-generation-model",
+			id: `${fieldPrefix}-image-generation-model`,
 			label: "Image Generation Model",
 			placeholder: "Optional image model",
 			value: imageModel,
@@ -47,7 +49,7 @@ export function GenerationModelSettings({
 			emptyText: "No image generation models reported.",
 		},
 		{
-			id: "video-generation-model",
+			id: `${fieldPrefix}-video-generation-model`,
 			label: "Video Generation Model",
 			placeholder: "Optional video model",
 			value: videoModel,
@@ -58,22 +60,23 @@ export function GenerationModelSettings({
 	];
 
 	return (
-		<div className="space-y-3 rounded-lg border p-4">
+		<div className="min-w-0 space-y-5 rounded-[var(--bf-radius-surface)] border p-4">
 			<div>
 				<h5 className="text-sm font-medium">Generation Models</h5>
-				<p className="mt-1 text-xs text-muted-foreground">
+				<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
 					Reserve dedicated provider models for image and video
 					generation. Leave either blank when that generator is
 					unavailable.
 				</p>
 			</div>
-			<div className="grid gap-3 sm:grid-cols-2">
+			<div className="grid min-w-0 gap-5 sm:grid-cols-2">
 				{fields.map((field) => {
 					return (
-						<div key={field.id} className="space-y-1">
+						<div key={field.id} className="min-w-0 space-y-2">
 							<Label htmlFor={field.id}>{field.label}</Label>
 							{hasCapabilityCatalog ? (
 								<Combobox
+									className="min-h-11"
 									id={field.id}
 									value={field.value}
 									onValueChange={field.onChange}
@@ -84,6 +87,7 @@ export function GenerationModelSettings({
 								/>
 							) : (
 								<Input
+									className="h-11"
 									id={field.id}
 									value={field.value}
 									onChange={(event) =>

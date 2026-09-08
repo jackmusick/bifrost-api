@@ -117,4 +117,19 @@ describe("AIEmbeddingSettings", () => {
 			screen.getByRole("button", { name: "Save embeddings" }),
 		).toBeDisabled();
 	});
+	it("keeps reindex confirmation open on failure and retries the same selection", async () => {
+		embeddingData = { connection_id: "connection-1", model: "text-embedding-3-small" };
+		mutateAsync.mockResolvedValueOnce({ needs_reindex_confirmation: true }).mockRejectedValueOnce(new Error("Synthetic failure")).mockResolvedValueOnce({ saved: true });
+		const user = userEvent.setup();
+		render(<AIEmbeddingSettings />);
+		await user.click(screen.getByRole("button", { name: "Save embeddings" }));
+		expect(await screen.findByRole("alertdialog")).toBeVisible();
+		await user.click(screen.getByRole("button", { name: "Save and reindex" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent("Could not save and reindex");
+		expect(screen.getByRole("alertdialog")).toBeVisible();
+		await user.click(screen.getByRole("button", { name: "Save and reindex" }));
+		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+		expect(mutateAsync).toHaveBeenLastCalledWith({ body: { connection_id: "connection-1", model: "text-embedding-3-small", confirm_reindex: true } });
+	});
+
 });

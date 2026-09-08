@@ -1,3 +1,6 @@
+import { resolveEditorConflict } from "@/lib/resolve-editor-conflict";
+import { registerMonacoTheme, watchMonacoTheme } from "@/lib/monaco-theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useEffect, useRef, useCallback, useState } from "react";
 import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import { useEditorStore } from "@/stores/editorStore";
@@ -46,6 +49,7 @@ export function CodeEditor() {
 	const { theme } = useTheme();
 	const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 	const monacoRef = useRef<typeof Monaco | null>(null);
+	const themeCleanupRef = useRef<(() => void) | null>(null);
 	const conflictDisposableRef = useRef<Monaco.IDisposable | null>(null);
 
 	// Indexing state for blocking overlay during ID injection
@@ -118,7 +122,11 @@ export function CodeEditor() {
 			const { filePath, functionName } = registerDialog;
 			setRegisterDialog({ open: false, filePath: "", functionName: "" });
 			try {
-				const result = await registerWorkflow(filePath, functionName, orgId);
+				const result = await registerWorkflow(
+					filePath,
+					functionName,
+					orgId,
+				);
 				const orgLabel = result.organization_id ? "" : " (Global)";
 				toast.success(`Registered ${functionName}${orgLabel}`);
 				// Refresh workflow store so CodeLens updates
@@ -253,7 +261,19 @@ export function CodeEditor() {
 	}, []);
 
 	// Determine Monaco theme based on app theme
-	const monacoTheme = theme === "light" ? "vs" : "vs-dark";
+	const monacoTheme = `bifrost-${theme}`;
+	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+	const compactViewport = useMediaQuery("(max-width: 767px)");
+	useEffect(() => {
+		if (monacoRef.current) {
+			themeCleanupRef.current?.();
+			themeCleanupRef.current = watchMonacoTheme(
+				monacoRef.current,
+				theme,
+			);
+		}
+		return () => themeCleanupRef.current?.();
+	}, [theme]);
 
 	// Detect language from file extension
 	const getLanguage = (filename: string): string => {
@@ -281,12 +301,19 @@ export function CodeEditor() {
 
 	// Configure Monaco BEFORE it mounts - this is critical for comment support
 	const handleEditorWillMount: BeforeMount = async (monaco) => {
+		registerMonacoTheme(monaco, theme);
 		await initializeMonaco(monaco);
 	};
 
 	const handleEditorMount: OnMount = async (editor, monaco) => {
 		editorRef.current = editor;
 		monacoRef.current = monaco;
+		themeCleanupRef.current?.();
+		themeCleanupRef.current = watchMonacoTheme(monaco, theme);
+		editor.onDidDispose(() => {
+			themeCleanupRef.current?.();
+			themeCleanupRef.current = null;
+		});
 
 		// Check for pending line reveal and execute it
 		// This handles the case when opening a new file with a line number
@@ -447,6 +474,12 @@ export function CodeEditor() {
 		return () => clearTimeout(timeoutId);
 	}, [pendingLineReveal, isLoadingFile, openFile, clearPendingLineReveal]);
 
+	// Show diff preview when active (for sync UI) - must check BEFORE !openFile
+	// since sync diffs are viewed without opening a file
+	if (diffPreview) {
+		return <SyncDiffView preview={diffPreview} />;
+	}
+
 	if (isLoadingFile) {
 		return (
 			<div className="flex h-full items-center justify-center">
@@ -458,12 +491,6 @@ export function CodeEditor() {
 				</div>
 			</div>
 		);
-	}
-
-	// Show diff preview when active (for sync UI) - must check BEFORE !openFile
-	// since sync diffs are viewed without opening a file
-	if (diffPreview) {
-		return <SyncDiffView preview={diffPreview} />;
 	}
 
 	if (!openFile) {
@@ -539,31 +566,11 @@ export function CodeEditor() {
 	const isLargeFile = fileSize > 5_000_000; // 5MB
 
 	const handleConflictResolve = async (choice: "current" | "incoming") => {
-		if (!openFile || !gitConflict) return;
+		if (!openFile || !gitConflict)
+			throw new Error("This conflict is no longer available.");
 
 		try {
-			// Choose the appropriate content based on user selection
-			const resolvedContent =
-				choice === "current"
-					? gitConflict.current_content
-					: gitConflict.incoming_content;
-
-			// Save resolved content
-			await fileService.writeFile(openFile.path, resolvedContent);
-
-			// Update editor state
-			setFileContent(resolvedContent);
-
-			// Clear conflicts from the current tab
-			const state = useEditorStore.getState();
-			const newTabs = [...state.tabs];
-			const currentTab = newTabs[state.activeTabIndex];
-			if (currentTab) {
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				const { gitConflict, ...rest } = currentTab;
-				newTabs[state.activeTabIndex] = rest;
-			}
-			useEditorStore.setState({ tabs: newTabs });
+			await resolveEditorConflict(openFile.path, gitConflict, choice);
 
 			toast.success("Conflict resolved");
 
@@ -574,6 +581,7 @@ export function CodeEditor() {
 				description:
 					error instanceof Error ? error.message : String(error),
 			});
+			throw error;
 		}
 	};
 
@@ -601,14 +609,18 @@ export function CodeEditor() {
 					theme={monacoTheme}
 					options={{
 						// Display
-						minimap: { enabled: !isLargeFile },
+						minimap: { enabled: !isLargeFile && !compactViewport },
 						scrollBeyondLastLine: false,
 						fontSize: 14,
+						fontFamily:
+							'"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
+						lineHeight: 22,
+						padding: { top: 16, bottom: 16 },
 						wordWrap: "on",
 						automaticLayout: true,
 						renderWhitespace: "selection",
-						cursorBlinking: "smooth",
-						smoothScrolling: true,
+						cursorBlinking: reducedMotion ? "solid" : "blink",
+						smoothScrolling: !reducedMotion,
 
 						// Indentation
 						tabSize: 4,
@@ -715,7 +727,11 @@ export function CodeEditor() {
 					functionName={registerDialog.functionName}
 					onConfirm={handleRegisterConfirm}
 					onCancel={() =>
-						setRegisterDialog({ open: false, filePath: "", functionName: "" })
+						setRegisterDialog({
+							open: false,
+							filePath: "",
+							functionName: "",
+						})
 					}
 				/>
 
@@ -731,10 +747,18 @@ export function CodeEditor() {
 					onResolve={async (replacements, workflowsToDeactivate) => {
 						const response = await resolveDeactivationConflict(
 							"apply",
-							Object.keys(replacements).length > 0 ? replacements : undefined,
-							workflowsToDeactivate.length > 0 ? workflowsToDeactivate : undefined,
+							Object.keys(replacements).length > 0
+								? replacements
+								: undefined,
+							workflowsToDeactivate.length > 0
+								? workflowsToDeactivate
+								: undefined,
 						);
-						if (response && pendingDeactivationConflict) {
+						if (!response)
+							throw new Error(
+								"Workflow changes could not be applied. Your choices are preserved; try again.",
+							);
+						if (pendingDeactivationConflict) {
 							if (response.content_modified && response.content) {
 								updateTabContent(
 									pendingDeactivationConflict.tabIndex,
@@ -751,9 +775,13 @@ export function CodeEditor() {
 							const mapped = Object.keys(replacements).length;
 							const deactivated = workflowsToDeactivate.length;
 							if (mapped > 0 && deactivated > 0) {
-								toast.success(`${mapped} transferred, ${deactivated} deactivated`);
+								toast.success(
+									`${mapped} transferred, ${deactivated} deactivated`,
+								);
 							} else if (mapped > 0) {
-								toast.success("Workflow identities transferred");
+								toast.success(
+									"Workflow identities transferred",
+								);
 							} else {
 								toast.info("Workflows deactivated");
 							}

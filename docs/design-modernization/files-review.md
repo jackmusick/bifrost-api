@@ -1,0 +1,65 @@
+# Files review
+
+Status: UI Verified for /files. Coverage41 Verified/23 In progress. Global release gates remain open.
+
+Prior evidence is preserved in PROGRESS.md under folder browsing, share navigation, preview/access, uploads/new shares, access testing, deletion and breadcrumb/solution-file checkpoints. Those tests and captures cover the feature behavior; this acceptance pass reconciles the current parent composition and any remaining gaps.
+
+## Current composition and actions (2026-09-07)
+
+Previous goal turn made progress by accepting Tables. Current Files source still used the old page heading and enabled a three-column explorer at1024 with18rem/24rem fixed side panes. Browser96695 passed320 then failed ordinary pointer interaction at1024: the grid intercepted a folder click. Changed Files to shared ListPageHeader (Prompt), and moved explorer side panes into existing Shares/Preview/Access drawers below1440. At1440 and above the panes are16rem/20rem, leaving more room for filenames. Header wrapping uses the same breakpoint.
+
+FolderListing desktop previously exposed Preview/Download/Delete icon buttons and no visible folder actions, whereas mobile had an overflow. New reusable FileEntryActions serves both card and table records through RecordActionsMenu, preserving writable/read-only choices, pending download state, callback paths and desktop context menus. Folder actions are now visibly discoverable on desktop. Test download interaction updated to the menu; read-only menu regression now runs in both layouts.
+
+Initial34 tests24832 and lint/full TypeScript79559 pass for heading/panes. Final35 tests72405 and scoped lint/full TypeScript29244 pass after shared action extraction. Browser55744 first failed a bad width assertion against the naturally-sized notes.txt button; corrected to measure the name cell/container. Layout97197 passes8 custom-purple light/dark320/1024/1280/1440 deep-path, keyboard navigation, useful filename width, Prompt font and responsive inverse cases. Parent inspected dark1024 and identified remaining toolbar crowding; adjusted its breakpoint. Final layout92584 is running at this entry.
+
+Action/read-only browser5883 passes12 light/dark320/1024/1440 share selection, initial read failure/retry, card/table inverse, long paths, folder/file overflow choices, download500/retry with actual download filename and keyboard folder navigation. All file structures/downloads synthetic intercepted. No actual file or policy mutation.
+
+Remaining: final screenshot review after toolbar wrapping; consolidate current preview/access/policy/share/upload/delete fixtures against changed menu affordances, scope/solution/non-admin modes, and complete route acceptance. Core code editor is a separate shell and remains under its own acceptance document. No blocker; goal active.
+
+Final layout92584 passes all8 cases after toolbar breakpoint change. Parent inspected dark1024 and light1440: unobstructed listing, distinct toolbar rows and useful central column. All parent handles terminal. Route remains In progress; no additional route accepted from this composition-only pass.
+
+## Files preview/access and mutation recovery (2026-09-07)
+
+Previous turn was progress: layout and reusable file actions improved. Current files-access-current.cjs plus files-delete-current.cjs76427 pass14 browser cases. Preview/access covers light/dark320/1024/1440, real Files route with synthetic file/policy data: preview500 retry,6000-character truncation, download500/retry/filename, keyboard Preview/Access tabs below1440, separate desktop panes, populated long rules and error retry. Delete covers file/policy light/dark320x480/1440 with current overflow menus: cancel/no mutation, pending/Escape protection, identical retry payload, removal and explorer return focus. Parent inspected dark1024 Access drawer.
+
+NewShareDialog now focuses and scrolls its inline error. files-share-current.cjs10400 passes four light/dark320x480/1440 validation/reserved-name/pending/focused-error/retry/draft-reset cases. Parent inspected dark320 short dialog; actions remain visible.
+
+Full Files suite98586 exposed a stale lg:flex-1 class assertion after the prior toolbar breakpoint change. Updated assertion; final40346 passes all93 tests across14 files. Scoped lint passes; full TypeScript21864 running at this entry. No real file/share/policy mutations. Current auth contexts closed serially.
+
+Important evidence reconciliation: old file-preview-check.cjs now tests Chat artifacts, and file-upload-check.cjs now tests form uploads; filenames were reused. Do not treat those scripts as current Files proof. Files preview is covered by files-access-current.cjs; reconstruct the Files upload transport fixture from useFileUpload and SDK before acceptance. Remaining route gaps: upload exact retry sequence, current policy editor/rules, scope/solution/non-admin matrix and consolidation. Coverage40 Verified/24 In progress. Goal active, no blocker.
+
+TypeScript21864 exposed unsupported testing-library exact:true in the prior FolderListing test edit. First correction used the wrong working-directory prefix and made no edit;45973 began before the corrected file and returned the same diagnostic. Source locator is now corrected; final54575 running. Files upload transport fixture rebuilt as files-upload-current.cjs, intercepting structure, signed URL, PUT and complete-upload. Initial80312 passed header then failed an obsolete folder control label. Corrected fixture41300 running across header/folder light/dark320/1440, asserting exact a,b,b,c retry sequence and global/gallery destination. No actual uploads.
+
+Final full TypeScript54575 passes. Rebuilt Files upload41300 passes all8 cases; parent inspected dark320 folder error with retained first file and visible retry. All parent handles terminal. Files remains In progress for policy/rules and scope/solution/non-admin acceptance; overall40/64 verified.
+
+## File policy/scope acceptance checks (2026-09-07)
+
+Previous goal turn made progress. FilePolicyEditor now uses synchronous mutation protection across save/delete plus focused/scrolled server/structured validation errors. Sixteen FilePolicyEditor/PolicyEditorModal tests82456 and scoped lint/full TypeScript15969 pass. First browser88825 passes4 policy load/save-retry cases and6 solution-scoped navigation/read-only cases320/1024/1440 light/dark. Updated policy/reference68682 passes8 light/dark320/1440 cases including focused error and reachable Save, real Monaco, identical payload retry, reference JSON toggle, overflow and keyboard focus restoration. Parent inspected dark320 policy error. Permission22172 passes4 fresh synthetic non-admin route-denial cases with no file data reads. Scope90573 passes4 current global/organization explorer cases: late Alpha folder response cannot replace selected Beta file list. No real file/policy mutations.
+
+Nested PolicyRulesManager source audit found remaining shared-family inconsistencies: mobile cards use separate Edit/Delete buttons, desktop uses icon pair; needs shared overflow action component. Loading/saving/deleting spinners omit motion-reduce. Form pending state currently does not disable all editable fields. No route accepted from this partial check. Files remains In progress;40 Verified/24 In progress. This shared rules manager is also consumed by Tables, so its completion belongs in the independent component-family ledger and must be reconciled before whole migration acceptance.
+
+Next: render nested rules manager from actual Files Manage rules entry, align action menus and pending/recovery behavior, check its create/edit/delete and overlay stack; then consolidate Files route evidence. All parent handles terminal; diff check passes. Goal active, no blocker.
+
+## Shared policy-rules modernization (2026-09-07)
+
+Previous goal turn made progress. New PolicyRuleActions is reused by PolicyRuleSurface and desktop PolicyRulesManager rows, using RecordActionsMenu and preserving built-in read-only behavior. Pending save disables every field and dismissal, uses synchronous duplicate protection, validates JSON object shape and focuses/scolls retained save errors with room for Save. All manager loading/save/delete spinners respect reduced motion. Delete now uses a controlled Button rather than automatic-closing AlertDialogAction, guards pending Escape/Cancel/duplicates, and retains a focused inline error for retry. Existing409 in-use flow remains.
+
+Updated tests use overflow menus instead of obsolete direct edit/delete buttons. Initial15 tests60379 and scoped lint/full TypeScript87035 pass after edit/menu changes; final15 tests82873 pass after delete recovery. Lint11619 found unused AlertDialogAction after replacement; removed. Final lint/full TypeScript71199 running.
+
+Actual Files nested-manager browser41053 passes4 light/dark320/1440 edit cases: built-in menu absent, current overflow, locked fields/pending Escape, focused error, Save in viewport, identical payload retry returns to manager. Delete92378 passes4 same-size/theme cases: current menu, pending cancel/Escape, focused server error and retry returning to manager. Parent inspected dark320 edit and delete failure screenshots. All requests synthetic intercepted; no real rules changed. Browser delete log inherits edit wording but checks DELETE requests.
+
+Inventory134 page modules/362 feature components/53 primitives. Overall40 Verified/24 In progress. Remaining nested-rule acceptance: create/JSON validation,409 usage conflict, return-focus and late usage-read response isolation. Files stays In progress until these shared-manager states are reconciled. No blocker, goal active.
+
+Final lint/full TypeScript71199 passes. Parent dark320 delete screenshot exposed legacy destructive color overrides reducing label contrast. Removed those classes in favor of the canonical destructive Button variant and44px height. Final delete browser28030 running; no logic change.
+
+Final delete browser28030 passes all4 cases. Parent inspected corrected dark320 screenshot with readable destructive label. All parent handles terminal; diff check passes.
+
+## Files final interaction checks (2026-09-07)
+
+Previous turn was progress. PolicyRulesManager now restores focus to New rule after form/delete/in-use overlays, bounds the in-use dialog90dvh with long-path wrapping, and ignores usage responses from earlier edit sessions via revision. Initial15 tests63143 and scoped lint/full TypeScript65164 pass. Added meaningful late-response regression; final16 tests74675 pass. Final lint/full TypeScript55379 running.
+
+Browser87197 passes8 nested create/in-use light/dark320/1440 cases through actual Files: invalid/non-object JSON makes no requests, held POST pending protection, retained server-error draft/retry and return focus; DELETE409 exposes usage paths, preserves record and restores focus after Close. Parent inspected dark320 creation error and in-use screenshots. All mutations intercepted. These complete the remaining Files nested-manager interaction matrix together with the preceding edit/delete/read/reference/permission/scope/solution/upload checks. Final route acceptance awaits authoritative TypeScript55379 result. No blocker; goal active.
+
+Next page family: Knowledge. Existing Knowledge.tsx has canonical header/menu/mobile layout and prior HTTP delete recovery. Existing knowledge-flow/mobile/drawer/recovery-check.cjs and config-knowledge-verify.cjs; inspect script contents before reuse because earlier generic filenames were overwritten. Route still In progress. Preserve drawer/edit/scope/filter/pagination behavior and review rendered composition before accepting.
+
+Final full TypeScript55379 passes. Files route UI acceptance consolidated from the complete evidence above: /files now Verified. Coverage41 Verified/23 In progress. All parent handles terminal; no blocker. Next Knowledge.

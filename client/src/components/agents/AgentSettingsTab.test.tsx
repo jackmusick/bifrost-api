@@ -8,6 +8,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
+vi.mock("@/lib/api-client", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/lib/api-client")>(
+			"@/lib/api-client",
+		);
+	return {
+		...actual,
+		$api: {
+			...actual.$api,
+			useQuery: (_method: string, path: string) => {
+				if (
+					path === "/api/mcp-connections" ||
+					path === "/api/mcp-servers"
+				)
+					return { data: [], isLoading: false };
+				throw new Error(`Missing settings query fixture: ${path}`);
+			},
+		},
+	};
+});
+
 const mockAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => mockAuth(),
@@ -16,9 +37,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 const mockCreateMutation = vi.fn();
 const mockUpdateMutation = vi.fn();
 vi.mock("@/hooks/useAgents", async () => {
-	const actual = await vi.importActual<typeof import("@/hooks/useAgents")>(
-		"@/hooks/useAgents",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/hooks/useAgents")>(
+			"@/hooks/useAgents",
+		);
 	return {
 		...actual,
 		useCreateAgent: () => ({
@@ -36,6 +58,10 @@ vi.mock("@/hooks/useAgents", async () => {
 const mockToolsGrouped = vi.fn();
 vi.mock("@/hooks/useTools", () => ({
 	useToolsGrouped: () => mockToolsGrouped(),
+}));
+
+vi.mock("@/hooks/useOrganizations", () => ({
+	useOrganizations: () => ({ data: [], isLoading: false }),
 }));
 
 vi.mock("@/hooks/useRoles", () => ({
@@ -132,9 +158,7 @@ describe("AgentSettingsTab — edit mode", () => {
 			mode: "edit",
 			agent: existingAgent,
 		});
-		await user.click(
-			screen.getByRole("button", { name: /save changes/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
 		await waitFor(() => {
 			expect(mockUpdateMutation).toHaveBeenCalledTimes(1);
 		});
@@ -145,7 +169,8 @@ describe("AgentSettingsTab — edit mode", () => {
 		expect(mockCreateMutation).not.toHaveBeenCalled();
 	});
 
-	it("submits the selected reusable model profile", async () => {
+	it("submits the selected reusable model profile for platform admins", async () => {
+		mockAuth.mockReturnValue({ isPlatformAdmin: true });
 		const { user } = await renderTab({
 			mode: "edit",
 			agent: existingAgent,
@@ -154,12 +179,28 @@ describe("AgentSettingsTab — edit mode", () => {
 			screen.getByLabelText(/model profile/i),
 			"profile-support",
 		);
-		await user.click(
-			screen.getByRole("button", { name: /save changes/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
 		await waitFor(() => {
 			expect(mockUpdateMutation).toHaveBeenCalledTimes(1);
 		});
+		expect(mockUpdateMutation.mock.calls[0][0].body.llm_profile_id).toBe(
+			"profile-support",
+		);
+	});
+
+	it("preserves the assigned profile without admin controls for organization users", async () => {
+		const { user } = await renderTab({
+			mode: "edit",
+			agent: { ...existingAgent, llm_profile_id: "profile-support" },
+		});
+		expect(
+			screen.queryByLabelText(/model profile/i),
+		).not.toBeInTheDocument();
+		expect(screen.getByText("Assigned model profile")).toBeVisible();
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
+		await waitFor(() =>
+			expect(mockUpdateMutation).toHaveBeenCalledTimes(1),
+		);
 		expect(mockUpdateMutation.mock.calls[0][0].body.llm_profile_id).toBe(
 			"profile-support",
 		);
@@ -194,14 +235,10 @@ describe("AgentSettingsTab — create mode", () => {
 
 	it("blocks submission when name + system prompt are empty", async () => {
 		const { user } = await renderTab({ mode: "create", agent: null });
-		await user.click(
-			screen.getByRole("button", { name: /create agent/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /create agent/i }));
 		// Validation prevents the create mutation from firing.
 		await waitFor(() => {
-			expect(
-				screen.getAllByText(/required/i).length,
-			).toBeGreaterThan(0);
+			expect(screen.getAllByText(/required/i).length).toBeGreaterThan(0);
 		});
 		expect(mockCreateMutation).not.toHaveBeenCalled();
 	});
@@ -221,16 +258,14 @@ describe("AgentSettingsTab — create mode", () => {
 			screen.getByRole("textbox", { name: /system prompt/i }),
 			"Be helpful.",
 		);
-		await user.click(
-			screen.getByRole("button", { name: /create agent/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /create agent/i }));
 		await waitFor(() => {
 			expect(mockCreateMutation).toHaveBeenCalledTimes(1);
 		});
-		expect(mockCreateMutation.mock.calls[0][0].body.name).toBe(
-			"Sales Bot",
-		);
-		expect(mockCreateMutation.mock.calls[0][0].body.llm_profile_id).toBeNull();
+		expect(mockCreateMutation.mock.calls[0][0].body.name).toBe("Sales Bot");
+		expect(
+			mockCreateMutation.mock.calls[0][0].body.llm_profile_id,
+		).toBeNull();
 		expect(onCreated).toHaveBeenCalledWith("new-agent-id");
 	});
 });
@@ -356,4 +391,37 @@ describe("AgentSettingsTab — tool audience validation", () => {
 		).not.toBeInTheDocument();
 		expect(screen.getByTestId("save-agent-button")).not.toBeDisabled();
 	});
+});
+
+it("retains edited values after a failed save and retries the same draft", async () => {
+	mockUpdateMutation
+		.mockRejectedValueOnce(new Error("offline"))
+		.mockResolvedValueOnce(existingAgent);
+	const { user } = await renderTab({ mode: "edit", agent: existingAgent });
+	const name = screen.getByLabelText("Name");
+	await user.clear(name);
+	await user.type(name, "Updated triage");
+	await user.click(screen.getByTestId("save-agent-button"));
+	expect(await screen.findByRole("alert")).toHaveTextContent(
+		"Your changes are still here",
+	);
+	expect(name).toHaveValue("Updated triage");
+	expect(screen.getByRole("alert")).toHaveFocus();
+	await user.click(screen.getByRole("button", { name: "Retry save" }));
+	await waitFor(() => expect(mockUpdateMutation).toHaveBeenCalledTimes(2));
+	expect(mockUpdateMutation.mock.calls[1][0].body.name).toBe(
+		"Updated triage",
+	);
+});
+
+it("renders solution-managed settings as read-only", async () => {
+	await renderTab({
+		mode: "edit",
+		agent: { ...existingAgent, is_solution_managed: true },
+	});
+	expect(screen.getByLabelText("Name")).toBeDisabled();
+	expect(screen.getByLabelText("System prompt")).toBeDisabled();
+	expect(screen.getByRole("combobox", { name: "Tools" })).toBeDisabled();
+	expect(screen.getByTestId("save-agent-button")).toBeDisabled();
+	expect(screen.getByTestId("solution-managed-banner")).toBeVisible();
 });

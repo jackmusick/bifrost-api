@@ -1,7 +1,9 @@
+import { EventSourceOptionsStatus } from "./EventSourceOptionsStatus";
 import {
 	useState,
+	useRef,
 	useEffect,
-	useCallback,
+	useId,
 	useMemo,
 	type ReactNode,
 } from "react";
@@ -49,14 +51,8 @@ import { DynamicConfigForm, type ConfigSchema } from "./DynamicConfigForm";
 import { EventTopicReferencePanel } from "./EventTopicReferencePanel";
 import { authFetch } from "@/lib/api-client";
 
-interface CronValidationResult {
-	valid: boolean;
-	human_readable: string;
-	next_runs?: string[];
-	interval_seconds?: number;
-	warning?: string;
-	error?: string;
-}
+import type { components } from "@/lib/v1";
+type CronValidationResult = components["schemas"]["CronValidationResponse"];
 
 const TOPIC_REGEX = /^[a-z0-9_.]+$/;
 const TOPIC_MAX_LEN = 100;
@@ -114,11 +110,11 @@ function FormSection({
 	children: ReactNode;
 }) {
 	return (
-		<section className="space-y-3 rounded-lg border bg-muted/20 p-4">
+		<section className="min-w-0 space-y-4 border-t pt-5 first:border-0 first:pt-0">
 			<div className="space-y-1">
 				<h3 className="text-sm font-semibold">{title}</h3>
 				{description && (
-					<p className="text-xs text-muted-foreground">
+					<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
 						{description}
 					</p>
 				)}
@@ -137,9 +133,12 @@ interface CreateEventSourceDialogProps {
 function CreateEventSourceDialogContent({
 	onOpenChange,
 	onSuccess,
-}: Omit<CreateEventSourceDialogProps, "open">) {
+	createMutation,
+}: Omit<CreateEventSourceDialogProps, "open"> & {
+	createMutation: ReturnType<typeof useCreateEventSource>;
+}) {
 	const { isPlatformAdmin } = useAuth();
-	const createMutation = useCreateEventSource();
+	const formId = useId();
 
 	// Form state
 	const [name, setName] = useState("");
@@ -148,6 +147,10 @@ function CreateEventSourceDialogContent({
 	const [adapterName, setAdapterName] = useState<string>("");
 	const [integrationId, setIntegrationId] = useState<string>("");
 	const [errors, setErrors] = useState<string[]>([]);
+	const errorSummaryRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (errors.length) errorSummaryRef.current?.focus();
+	}, [errors]);
 
 	// Topic state
 	const [topicPickerValue, setTopicPickerValue] = useState<string>("");
@@ -155,7 +158,12 @@ function CreateEventSourceDialogContent({
 	const [topicError, setTopicError] = useState<string | null>(null);
 
 	// Topic registry
-	const { data: topicsData } = useTopics();
+	const {
+		data: topicsData,
+		isError: topicsError,
+		isFetching: topicsFetching,
+		refetch: refetchTopics,
+	} = useTopics();
 	const curatedTopics = topicsData?.curated ?? [];
 	const inUseTopics = topicsData?.in_use ?? [];
 	const allKnownTopics = [
@@ -187,15 +195,28 @@ function CreateEventSourceDialogContent({
 	const [overlapPolicy, setOverlapPolicy] = useState<
 		"skip" | "queue" | "replace"
 	>("skip");
-	const [cronValidation, setCronValidation] =
-		useState<CronValidationResult | null>(null);
+	const [cronValidation, setCronValidation] = useState<{
+		expression: string;
+		timezone: string;
+		result: CronValidationResult;
+	} | null>(null);
 
 	// Fetch available adapters
-	const { data: adaptersData } = useWebhookAdapters();
+	const {
+		data: adaptersData,
+		isError: adaptersError,
+		isFetching: adaptersFetching,
+		refetch: refetchAdapters,
+	} = useWebhookAdapters();
 	const adapters = adaptersData?.adapters || [];
 
 	// Fetch integrations for OAuth-based adapters
-	const { data: integrationsData } = useIntegrations();
+	const {
+		data: integrationsData,
+		isError: integrationsError,
+		isFetching: integrationsFetching,
+		refetch: refetchIntegrations,
+	} = useIntegrations();
 	const integrations = integrationsData?.items || [];
 
 	// Get selected adapter info
@@ -227,44 +248,48 @@ function CreateEventSourceDialogContent({
 		setIntegrationId("");
 	};
 
-	// Debounced cron validation
-	const validateCronExpression = useCallback(
-		async (expr: string) => {
-			if (!expr.trim()) return;
-
+	// Ignore and cancel validation for a previous expression or timezone.
+	useEffect(() => {
+		const expression = cronExpression.trim();
+		if (sourceType !== "schedule" || !expression) return;
+		let active = true;
+		const controller = new AbortController();
+		const timer = setTimeout(async () => {
 			try {
 				const response = await authFetch("/api/schedules/validate", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ expression: expr, timezone }),
+					body: JSON.stringify({ expression, timezone }),
+					signal: controller.signal,
 				});
-				const data = await response.json();
-				setCronValidation(data);
+				if (!response.ok) throw new Error("Validation request failed");
+				const result: CronValidationResult = await response.json();
+				if (active) setCronValidation({ expression, timezone, result });
 			} catch {
-				setCronValidation({
-					valid: false,
-					human_readable: "Failed to validate",
-					error: "Unable to connect to validation service",
-				});
+				if (active)
+					setCronValidation({
+						expression,
+						timezone,
+						result: {
+							valid: false,
+							human_readable: "Could not validate schedule",
+							error: "Unable to connect to the validation service",
+						},
+					});
 			}
-		},
-		[timezone],
-	);
-
-	useEffect(() => {
-		if (!cronExpression) {
-			return;
-		}
-
-		const timer = setTimeout(() => {
-			validateCronExpression(cronExpression);
 		}, 500);
+		return () => {
+			active = false;
+			clearTimeout(timer);
+			controller.abort();
+		};
+	}, [cronExpression, timezone, sourceType]);
 
-		return () => clearTimeout(timer);
-	}, [cronExpression, validateCronExpression]);
-
-	// Computed display result - null when expression is empty
-	const displayCronValidation = cronExpression ? cronValidation : null;
+	const displayCronValidation =
+		cronValidation?.expression === cronExpression.trim() &&
+		cronValidation.timezone === timezone
+			? cronValidation.result
+			: null;
 
 	const isLoading = createMutation.isPending;
 
@@ -288,13 +313,18 @@ function CreateEventSourceDialogContent({
 			newErrors.push("Please select a webhook adapter");
 		}
 
-		if (selectedAdapter?.requires_integration && !integrationId) {
+		if (
+			sourceType === "webhook" &&
+			selectedAdapter?.requires_integration &&
+			!integrationId
+		) {
 			newErrors.push(
 				`This adapter requires a ${selectedAdapter.requires_integration} integration`,
 			);
 		}
 
 		if (
+			sourceType === "webhook" &&
 			selectedAdapterRequiresOrganization &&
 			isPlatformAdmin &&
 			!organizationId
@@ -307,10 +337,11 @@ function CreateEventSourceDialogContent({
 				newErrors.push(
 					"Cron expression is required for schedule sources",
 				);
-			} else if (cronValidation && !cronValidation.valid) {
+			} else if (displayCronValidation && !displayCronValidation.valid) {
 				newErrors.push(
 					"Cron expression is invalid: " +
-						(cronValidation.error || cronValidation.human_readable),
+						(displayCronValidation.error ||
+							displayCronValidation.human_readable),
 				);
 			}
 		}
@@ -321,7 +352,7 @@ function CreateEventSourceDialogContent({
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!validateForm()) return;
+		if (isLoading || !validateForm()) return;
 
 		try {
 			const resolvedName =
@@ -365,15 +396,22 @@ function CreateEventSourceDialogContent({
 			onSuccess?.();
 		} catch (error) {
 			console.error("Failed to create event source:", error);
-			toast.error("Failed to create event source");
+			setErrors([
+				"Could not create this source. Your settings are still here. Try again.",
+			]);
 		}
 	};
 
 	return (
-		<form onSubmit={handleSubmit}>
-			<DialogHeader>
-				<div className="flex items-center gap-2">
-					<DialogTitle>Create Event Source</DialogTitle>
+		<form
+			onSubmit={handleSubmit}
+			className="flex max-h-[calc(90dvh-3rem)] min-h-0 min-w-0 flex-col"
+		>
+			<DialogHeader className="shrink-0 border-b pb-4">
+				<div className="flex min-w-0 items-center gap-2">
+					<DialogTitle className="min-w-0 flex-1">
+						Create Event Source
+					</DialogTitle>
 					<EventTopicReferencePanel topics={curatedTopics} />
 				</div>
 				<DialogDescription>
@@ -382,539 +420,642 @@ function CreateEventSourceDialogContent({
 				</DialogDescription>
 			</DialogHeader>
 
-			<div className="space-y-4 py-4">
-				{errors.length > 0 && (
-					<Alert
-						variant="destructive"
-						role="alert"
-						aria-live="polite"
-					>
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>
-							<ul className="list-disc list-inside">
-								{errors.map((error, i) => (
-									<li key={i}>{error}</li>
-								))}
-							</ul>
-						</AlertDescription>
-					</Alert>
-				)}
-
-				<FormSection
-					title="Scope"
-					description="Choose where this event source is available."
+			<div className="-mx-1 min-h-0 min-w-0 overflow-y-auto px-1">
+				<fieldset
+					disabled={isLoading}
+					className="min-w-0 space-y-5 py-5"
 				>
-					{isPlatformAdmin && (
-						<div className="space-y-2">
-							<Label htmlFor="organization">Organization</Label>
-							<OrganizationSelect
-								value={organizationId}
-								onChange={(value) =>
-									setOrganizationId(value ?? null)
-								}
-								showGlobal
-							/>
-							<p className="text-xs text-muted-foreground">
-								Leave as Global to make this source available to
-								all organizations.
-							</p>
-						</div>
+					{errors.length > 0 && (
+						<Alert
+							ref={errorSummaryRef}
+							tabIndex={-1}
+							className="focus:outline-none"
+							variant="destructive"
+							role="alert"
+							aria-live="polite"
+						>
+							<AlertCircle className="h-4 w-4" />
+							<AlertDescription>
+								<ul className="list-disc list-inside">
+									{errors.map((error, i) => (
+										<li key={i}>{error}</li>
+									))}
+								</ul>
+							</AlertDescription>
+						</Alert>
 					)}
 
-					<div className="space-y-2">
-						<Label htmlFor="name">Name</Label>
-						<Input
-							id="name"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder={
-								sourceType === "schedule"
-									? "e.g., Daily Sync Schedule"
-									: "e.g., GitHub Webhooks"
-							}
-						/>
-					</div>
-				</FormSection>
-
-				<FormSection
-					title="Trigger"
-					description="Pick how Bifrost receives or creates events."
-				>
-					<div className="space-y-2">
-						<Label htmlFor="source-type">Source Type</Label>
-						<Select
-							value={sourceType}
-							onValueChange={(value) => {
-								setSourceType(value as EventSourceType);
-								setTopicPickerValue("");
-								setCustomTopic("");
-								setTopicError(null);
-							}}
-						>
-							<SelectTrigger id="source-type" className="w-full">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="webhook">Webhook</SelectItem>
-								<SelectItem value="schedule">
-									Schedule
-								</SelectItem>
-								<SelectItem value="topic">Topic</SelectItem>
-							</SelectContent>
-						</Select>
-					</div>
-				</FormSection>
-
-				{/* Topic Configuration */}
-				{sourceType === "topic" && (
-					<FormSection title="Topic Configuration">
-						<div className="space-y-2">
-							<Label htmlFor="topic-picker">Topic</Label>
-							<Select
-								value={topicPickerValue}
-								onValueChange={(value) => {
-									setTopicPickerValue(value);
-									setTopicError(null);
-									if (
-										value !== CUSTOM_TOPIC_VALUE &&
-										!name.trim()
-									) {
-										setName(topicToName(value));
+					<FormSection
+						title="Scope"
+						description="Choose where this event source is available."
+					>
+						{isPlatformAdmin && (
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-organization`}>
+									Organization
+								</Label>
+								<OrganizationSelect
+									id={`${formId}-organization`}
+									disabled={isLoading}
+									triggerClassName="min-h-11 lg:min-h-11"
+									value={organizationId}
+									onChange={(value) =>
+										setOrganizationId(value ?? null)
 									}
+									showGlobal
+								/>
+								<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+									Leave as Global to make this source
+									available to all organizations.
+								</p>
+							</div>
+						)}
+
+						<div className="min-w-0 space-y-2">
+							<Label htmlFor={`${formId}-name`}>Name</Label>
+							<Input
+								className="min-h-11"
+								id={`${formId}-name`}
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder={
+									sourceType === "schedule"
+										? "e.g., Daily Sync Schedule"
+										: "e.g., GitHub Webhooks"
+								}
+							/>
+						</div>
+					</FormSection>
+
+					<FormSection
+						title="Trigger"
+						description="Pick how Bifrost receives or creates events."
+					>
+						<div className="min-w-0 space-y-2">
+							<Label htmlFor={`${formId}-source-type`}>
+								Source Type
+							</Label>
+							<Select
+								disabled={isLoading}
+								value={sourceType}
+								onValueChange={(value) => {
+									setSourceType(value as EventSourceType);
+									setTopicPickerValue("");
+									setCustomTopic("");
+									setTopicError(null);
 								}}
 							>
 								<SelectTrigger
-									id="topic-picker"
-									className="w-full"
+									id={`${formId}-source-type`}
+									className="w-full min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
 								>
-									<SelectValue placeholder="Select or enter a topic..." />
+									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{allKnownTopics.length > 0 && (
-										<>
-											<SelectGroup>
-												<SelectLabel>
-													Known Topics
-												</SelectLabel>
-												{allKnownTopics.map((topic) => (
-													<SelectItem
-														key={topic}
-														value={topic}
-													>
-														{topic}
-													</SelectItem>
-												))}
-											</SelectGroup>
-											<SelectSeparator />
-										</>
-									)}
-									<SelectItem value={CUSTOM_TOPIC_VALUE}>
-										Custom topic...
+									<SelectItem value="webhook">
+										Webhook
 									</SelectItem>
+									<SelectItem value="schedule">
+										Schedule
+									</SelectItem>
+									<SelectItem value="topic">Topic</SelectItem>
 								</SelectContent>
 							</Select>
-							{topicPickerValue === CUSTOM_TOPIC_VALUE && (
-								<Input
-									id="custom-topic"
-									value={customTopic}
-									onChange={(e) => {
-										setCustomTopic(e.target.value);
-										setTopicError(
-											validateTopicClient(e.target.value),
-										);
-									}}
-									placeholder="e.g. acme.deal_won"
-									className="font-mono"
-									aria-label="Custom topic"
-								/>
-							)}
-							{topicError && (
-								<p className="text-xs text-destructive">
-									{topicError}
-								</p>
-							)}
-							<p className="text-xs text-muted-foreground">
-								Lowercase, dot-separated (e.g.{" "}
-								<code>user.invited</code>). Must contain at
-								least one dot.
-							</p>
 						</div>
 					</FormSection>
-				)}
 
-				{/* Webhook Adapter */}
-				{sourceType === "webhook" && (
-					<FormSection
-						title={
-							selectedAdapter?.name === "microsoft_graph"
-								? "Microsoft Graph Subscription"
-								: "Webhook Subscription"
-						}
-						description={
-							selectedAdapter?.name === "microsoft_graph"
-								? "Connect the Microsoft tenant, then choose the Graph resource to subscribe to."
-								: "Choose the adapter and connection details for incoming events."
-						}
-					>
-						<div className="space-y-2">
-							<Label htmlFor="adapter">Webhook Adapter</Label>
-							<Select
-								value={adapterName}
-								onValueChange={handleAdapterChange}
-							>
-								<SelectTrigger id="adapter" className="w-full">
-									<SelectValue placeholder="Select an adapter..." />
-								</SelectTrigger>
-								<SelectContent>
-									{adapters.map((adapter) => (
-										<SelectItem
-											key={adapter.name}
-											value={adapter.name}
-										>
-											{adapter.display_name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							{selectedAdapter?.description && (
-								<p className="text-xs text-muted-foreground">
-									{selectedAdapter.description}
-								</p>
-							)}
-						</div>
-
-						{selectedAdapter?.requires_integration && (
-							<div className="space-y-2">
-								<Label htmlFor="integration">Integration</Label>
+					{/* Topic Configuration */}
+					{sourceType === "topic" && (
+						<FormSection title="Topic Configuration">
+							<EventSourceOptionsStatus
+								label="topic suggestions"
+								error={topicsError}
+								pending={topicsFetching}
+								hasData={!!topicsData}
+								disabled={isLoading}
+								onRetry={() => void refetchTopics()}
+								hint="Enter a custom topic or retry. Your entries have been kept."
+							/>
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-topic-picker`}>
+									Topic
+								</Label>
 								<Select
-									value={integrationId}
-									onValueChange={setIntegrationId}
+									disabled={isLoading}
+									value={topicPickerValue}
+									onValueChange={(value) => {
+										setTopicPickerValue(value);
+										setTopicError(null);
+										if (
+											value !== CUSTOM_TOPIC_VALUE &&
+											!name.trim()
+										) {
+											setName(topicToName(value));
+										}
+									}}
 								>
 									<SelectTrigger
-										id="integration"
-										className="w-full"
+										id={`${formId}-topic-picker`}
+										className="w-full min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
 									>
-										<SelectValue placeholder="Select an integration..." />
+										<SelectValue placeholder="Select or enter a topic..." />
 									</SelectTrigger>
 									<SelectContent>
-										{filteredIntegrations.map(
-											(integration) => (
-												<SelectItem
-													key={integration.id}
-													value={integration.id}
-												>
-													{integration.name}
-												</SelectItem>
-											),
+										{allKnownTopics.length > 0 && (
+											<>
+												<SelectGroup>
+													<SelectLabel>
+														Known Topics
+													</SelectLabel>
+													{allKnownTopics.map(
+														(topic) => (
+															<SelectItem
+																key={topic}
+																value={topic}
+															>
+																{topic}
+															</SelectItem>
+														),
+													)}
+												</SelectGroup>
+												<SelectSeparator />
+											</>
 										)}
+										<SelectItem value={CUSTOM_TOPIC_VALUE}>
+											Custom topic...
+										</SelectItem>
 									</SelectContent>
 								</Select>
-								<p className="text-xs text-muted-foreground">
-									This adapter requires a{" "}
-									{selectedAdapter.requires_integration}{" "}
-									integration for authentication.
-								</p>
-							</div>
-						)}
+								{topicPickerValue === CUSTOM_TOPIC_VALUE && (
+									<Input
+										className="min-h-11 font-mono"
+										id={`${formId}-custom-topic`}
+										value={customTopic}
+										onChange={(e) => {
+											setCustomTopic(e.target.value);
+											setTopicError(
+												validateTopicClient(
+													e.target.value,
+												),
+											);
+										}}
+										placeholder="e.g. acme.deal_won"
 
-						{hasDynamicConfig && selectedAdapter && (
-							<DynamicConfigForm
-								adapterName={selectedAdapter.name}
-								integrationId={integrationId || undefined}
-								requiresIntegration={Boolean(
-									selectedAdapter.requires_integration,
+										aria-label="Custom topic"
+									/>
 								)}
-								organizationId={organizationId}
-								configSchema={
-									selectedAdapter.config_schema as unknown as ConfigSchema
+								{topicError && (
+									<p className="text-sm leading-6 [overflow-wrap:anywhere] text-destructive">
+										{topicError}
+									</p>
+								)}
+								<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+									Lowercase, dot-separated (e.g.{" "}
+									<code>user.invited</code>). Must contain at
+									least one dot.
+								</p>
+							</div>
+						</FormSection>
+					)}
+
+					{/* Webhook Adapter */}
+					{sourceType === "webhook" && (
+						<FormSection
+							title={
+								selectedAdapter?.name === "microsoft_graph"
+									? "Microsoft Graph Subscription"
+									: "Webhook Subscription"
+							}
+							description={
+								selectedAdapter?.name === "microsoft_graph"
+									? "Connect the Microsoft tenant, then choose the Graph resource to subscribe to."
+									: "Choose the adapter and connection details for incoming events."
+							}
+						>
+							<EventSourceOptionsStatus
+								label="webhook adapters"
+								error={adaptersError}
+								pending={adaptersFetching}
+								hasData={!!adaptersData}
+								disabled={isLoading}
+								onRetry={() => void refetchAdapters()}
+								emptyMessage={
+									!adapters.length
+										? "No webhook adapters are available."
+										: undefined
 								}
-								config={webhookConfig}
-								onChange={setWebhookConfig}
 							/>
-						)}
-					</FormSection>
-				)}
-
-				{/* Rate Limiting */}
-				{sourceType === "webhook" && (
-					<Collapsible
-						open={advancedOpen}
-						onOpenChange={setAdvancedOpen}
-						className="rounded-lg border"
-					>
-						<CollapsibleTrigger asChild>
-							<Button
-								type="button"
-								variant="ghost"
-								className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium [&[data-state=open]>svg]:rotate-180"
-							>
-								Advanced
-								<ChevronDown className="h-4 w-4 transition-transform" />
-							</Button>
-						</CollapsibleTrigger>
-						<CollapsibleContent className="space-y-4 px-4 pb-4">
-							<div className="space-y-1">
-								<h3 className="text-sm font-semibold">
-									Rate limiting
-								</h3>
-								<p className="text-xs text-muted-foreground">
-									Control how many events this source accepts
-									before throttling.
-								</p>
-							</div>
-
-							<div className="space-y-2">
-								<Label htmlFor="rate-limit-per-minute">
-									Max events
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-adapter`}>
+									Webhook Adapter
 								</Label>
-								<Input
-									id="rate-limit-per-minute"
-									type="number"
-									min={1}
-									value={rateLimitPerMinute ?? ""}
-									onChange={(e) => {
-										const val = e.target.value;
-										setRateLimitPerMinute(
-											val === "" ? null : Number(val),
-										);
-									}}
-									placeholder="60 (leave empty to disable)"
-								/>
-								<p className="text-xs text-muted-foreground">
-									Maximum events accepted within the window
-									below. Leave empty to disable the limit.
-								</p>
+								<Select
+									disabled={isLoading || !adapters.length}
+									value={adapterName}
+									onValueChange={handleAdapterChange}
+								>
+									<SelectTrigger
+										id={`${formId}-adapter`}
+										className="w-full min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+									>
+										<SelectValue placeholder="Select an adapter..." />
+									</SelectTrigger>
+									<SelectContent>
+										{adapters.map((adapter) => (
+											<SelectItem
+												key={adapter.name}
+												value={adapter.name}
+											>
+												{adapter.display_name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								{selectedAdapter?.description && (
+									<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+										{selectedAdapter.description}
+									</p>
+								)}
 							</div>
 
-							<div className="space-y-2">
-								<Label htmlFor="rate-limit-window">
-									Per (seconds)
-								</Label>
-								<Input
-									id="rate-limit-window"
-									type="number"
-									min={1}
-									value={rateLimitWindowSeconds}
-									onChange={(e) =>
-										setRateLimitWindowSeconds(
-											Number(e.target.value),
-										)
-									}
-								/>
-								<p className="text-xs text-muted-foreground">
-									Window duration. Default 60 means the limit
-									above applies per minute.
-								</p>
-							</div>
-
-							<div className="flex items-center justify-between gap-4">
-								<div className="space-y-0.5">
-									<Label htmlFor="rate-limit-enabled">
-										Enabled
+							{selectedAdapter?.requires_integration && (
+								<div className="min-w-0 space-y-2">
+									<EventSourceOptionsStatus
+										label="integrations"
+										error={integrationsError}
+										pending={integrationsFetching}
+										hasData={!!integrationsData}
+										disabled={isLoading}
+										onRetry={() =>
+											void refetchIntegrations()
+										}
+										emptyMessage={
+											!filteredIntegrations.length
+												? `No ${selectedAdapter.requires_integration} integration is available. Create one in Integrations, then refresh this list.`
+												: undefined
+										}
+									/>
+									<Label htmlFor={`${formId}-integration`}>
+										Integration
 									</Label>
-									<p className="text-xs text-muted-foreground">
-										Disable to bypass rate limiting for this
-										source.
+									<Select
+										disabled={
+											isLoading ||
+											!filteredIntegrations.length
+										}
+										value={integrationId}
+										onValueChange={setIntegrationId}
+									>
+										<SelectTrigger
+											id={`${formId}-integration`}
+											className="w-full min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+										>
+											<SelectValue placeholder="Select an integration..." />
+										</SelectTrigger>
+										<SelectContent>
+											{filteredIntegrations.map(
+												(integration) => (
+													<SelectItem
+														key={integration.id}
+														value={integration.id}
+													>
+														{integration.name}
+													</SelectItem>
+												),
+											)}
+										</SelectContent>
+									</Select>
+									<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+										This adapter requires a{" "}
+										{selectedAdapter.requires_integration}{" "}
+										integration for authentication.
 									</p>
 								</div>
-								<Switch
-									id="rate-limit-enabled"
-									checked={rateLimitEnabled}
-									onCheckedChange={setRateLimitEnabled}
-								/>
-							</div>
-						</CollapsibleContent>
-					</Collapsible>
-				)}
+							)}
 
-				{/* Schedule Configuration */}
-				{sourceType === "schedule" && (
-					<FormSection title="Schedule Configuration">
-						{/* Cron Expression */}
-						<div className="space-y-2">
-							<Label htmlFor="cron-expression">
-								Cron Expression
-							</Label>
-							<Input
-								id="cron-expression"
-								value={cronExpression}
-								onChange={(e) =>
-									setCronExpression(e.target.value)
-								}
-								placeholder="0 9 * * *"
-								className="font-mono"
-							/>
-							<p className="text-xs text-muted-foreground">
-								Standard 5-field cron: minute hour day month
-								weekday
-							</p>
-						</div>
-
-						{/* Quick Presets */}
-						<div className="flex flex-wrap gap-2">
-							{CRON_PRESETS.map((preset) => (
-								<Button
-									key={preset.expression}
-									type="button"
-									variant="outline"
-									size="sm"
-									onClick={() =>
-										setCronExpression(preset.expression)
-									}
-									className="text-xs"
-								>
-									{preset.label}
-								</Button>
-							))}
-						</div>
-
-						{/* Validation Result */}
-						{displayCronValidation && (
-							<div className="space-y-2">
-								{displayCronValidation.valid ? (
-									<Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-										<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-										<AlertDescription className="text-green-800 dark:text-green-200">
-											{
-												displayCronValidation.human_readable
-											}
-										</AlertDescription>
-									</Alert>
-								) : (
-									<Alert variant="destructive">
-										<AlertCircle className="h-4 w-4" />
-										<AlertDescription>
-											{displayCronValidation.error ||
-												displayCronValidation.human_readable}
-										</AlertDescription>
-									</Alert>
-								)}
-
-								{displayCronValidation.warning && (
-									<Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-										<AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-										<AlertDescription className="text-yellow-800 dark:text-yellow-200">
-											{displayCronValidation.warning}
-										</AlertDescription>
-									</Alert>
-								)}
-
-								{displayCronValidation.next_runs &&
-									displayCronValidation.next_runs.length >
-										0 && (
-										<div>
-											<h4 className="text-sm font-semibold mb-1">
-												Next runs:
-											</h4>
-											<div className="space-y-0.5">
-												{displayCronValidation.next_runs.map(
-													(run, i) => {
-														const date = new Date(
-															run,
-														);
-														return (
-															<div
-																key={i}
-																className="text-xs flex items-center gap-2"
-															>
-																<span className="text-muted-foreground">
-																	-
-																</span>
-																<span>
-																	{date.toLocaleString()}
-																</span>
-																<span className="text-muted-foreground">
-																	(
-																	{formatDistanceToNow(
-																		date,
-																		{
-																			addSuffix: true,
-																		},
-																	)}
-																	)
-																</span>
-															</div>
-														);
-													},
-												)}
-											</div>
-										</div>
+							{hasDynamicConfig && selectedAdapter && (
+								<DynamicConfigForm
+									adapterName={selectedAdapter.name}
+									integrationId={integrationId || undefined}
+									requiresIntegration={Boolean(
+										selectedAdapter.requires_integration,
 									)}
-							</div>
-						)}
+									organizationId={organizationId}
+									configSchema={
+										selectedAdapter.config_schema as unknown as ConfigSchema
+									}
+									config={webhookConfig}
+									onChange={setWebhookConfig}
+								/>
+							)}
+						</FormSection>
+					)}
 
-						{/* Timezone */}
-						<div className="space-y-2">
-							<Label htmlFor="timezone">Timezone</Label>
-							<Select
-								value={timezone}
-								onValueChange={setTimezone}
-							>
-								<SelectTrigger id="timezone" className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{COMMON_TIMEZONES.map((tz) => (
-										<SelectItem key={tz} value={tz}>
-											{tz.replace(/_/g, " ")}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<p className="text-xs text-muted-foreground">
-								The timezone used to evaluate the cron
-								expression.
-							</p>
-						</div>
-
-						{/* Overlap Policy */}
-						<div className="space-y-2">
-							<Label htmlFor="overlap-policy">
-								Overlap policy
-							</Label>
-							<Select
-								value={overlapPolicy}
-								onValueChange={(v) =>
-									setOverlapPolicy(
-										v as "skip" | "queue" | "replace",
-									)
-								}
-							>
-								<SelectTrigger
-									id="overlap-policy"
-									className="w-full"
+					{/* Rate Limiting */}
+					{sourceType === "webhook" && (
+						<Collapsible
+							open={advancedOpen}
+							onOpenChange={setAdvancedOpen}
+							className="rounded-lg border"
+						>
+							<CollapsibleTrigger asChild>
+								<Button
+									type="button"
+									variant="ghost"
+									className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-sm font-medium [&[data-state=open]>svg]:rotate-180"
 								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="skip">Skip</SelectItem>
-									<SelectItem value="queue">Queue</SelectItem>
-									<SelectItem value="replace">
-										Replace
-									</SelectItem>
-								</SelectContent>
-							</Select>
-							<p className="text-xs text-muted-foreground">
-								Skip (default) drops the new run if a previous
-								run is still active. Queue and replace are
-								reserved for future use.
-							</p>
-						</div>
-					</FormSection>
-				)}
+									Advanced
+									<ChevronDown className="h-4 w-4 motion-safe:transition-transform" />
+								</Button>
+							</CollapsibleTrigger>
+							<CollapsibleContent className="space-y-4 px-4 pb-4">
+								<div className="space-y-1">
+									<h3 className="text-sm font-semibold">
+										Rate limiting
+									</h3>
+									<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+										Control how many events this source
+										accepts before throttling.
+									</p>
+								</div>
+
+								<div className="min-w-0 space-y-2">
+									<Label
+										htmlFor={`${formId}-rate-limit-per-minute`}
+									>
+										Max events
+									</Label>
+									<Input
+										className="min-h-11"
+										id={`${formId}-rate-limit-per-minute`}
+										type="number"
+										min={1}
+										value={rateLimitPerMinute ?? ""}
+										onChange={(e) => {
+											const val = e.target.value;
+											setRateLimitPerMinute(
+												val === "" ? null : Number(val),
+											);
+										}}
+										placeholder="60 (leave empty to disable)"
+									/>
+									<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+										Maximum events accepted within the
+										window below. Leave empty to disable the
+										limit.
+									</p>
+								</div>
+
+								<div className="min-w-0 space-y-2">
+									<Label
+										htmlFor={`${formId}-rate-limit-window`}
+									>
+										Per (seconds)
+									</Label>
+									<Input
+										className="min-h-11"
+										id={`${formId}-rate-limit-window`}
+										type="number"
+										min={1}
+										value={rateLimitWindowSeconds}
+										onChange={(e) =>
+											setRateLimitWindowSeconds(
+												Number(e.target.value),
+											)
+										}
+									/>
+									<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+										Window duration. Default 60 means the
+										limit above applies per minute.
+									</p>
+								</div>
+
+								<div className="flex items-center justify-between gap-4">
+									<div className="space-y-0.5">
+										<Label
+											className="min-h-11 flex items-center cursor-pointer"
+											htmlFor={`${formId}-rate-limit-enabled`}
+										>
+											Enabled
+										</Label>
+										<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+											Disable to bypass rate limiting for
+											this source.
+										</p>
+									</div>
+									<Switch
+										disabled={isLoading}
+										className="shrink-0"
+										id={`${formId}-rate-limit-enabled`}
+										checked={rateLimitEnabled}
+										onCheckedChange={setRateLimitEnabled}
+									/>
+								</div>
+							</CollapsibleContent>
+						</Collapsible>
+					)}
+
+					{/* Schedule Configuration */}
+					{sourceType === "schedule" && (
+						<FormSection title="Schedule Configuration">
+							{/* Cron Expression */}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-cron-expression`}>
+									Cron Expression
+								</Label>
+								<Input
+									className="min-h-11 font-mono"
+									id={`${formId}-cron-expression`}
+									value={cronExpression}
+									onChange={(e) =>
+										setCronExpression(e.target.value)
+									}
+									placeholder="0 9 * * *"
+								/>
+								<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+									Standard 5-field cron: minute hour day month
+									weekday
+								</p>
+							</div>
+
+							{/* Quick Presets */}
+							<div className="flex flex-wrap gap-2">
+								{CRON_PRESETS.map((preset) => (
+									<Button
+										key={preset.expression}
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() =>
+											setCronExpression(preset.expression)
+										}
+										className="min-h-11 text-sm"
+									>
+										{preset.label}
+									</Button>
+								))}
+							</div>
+
+							{/* Validation Result */}
+							{displayCronValidation && (
+								<div className="min-w-0 space-y-2">
+									{displayCronValidation.valid ? (
+										<Alert className="bg-[var(--bf-success-soft)] border-transparent">
+											<CheckCircle2 className="h-4 w-4 text-[var(--bf-success)]" />
+											<AlertDescription className="text-[var(--bf-success)]">
+												{
+													displayCronValidation.human_readable
+												}
+											</AlertDescription>
+										</Alert>
+									) : (
+										<Alert variant="destructive">
+											<AlertCircle className="h-4 w-4" />
+											<AlertDescription>
+												{displayCronValidation.error ||
+													displayCronValidation.human_readable}
+											</AlertDescription>
+										</Alert>
+									)}
+
+									{displayCronValidation.warning && (
+										<Alert className="bg-[var(--bf-warning-soft)] border-transparent">
+											<AlertCircle className="h-4 w-4 text-[var(--bf-warning)]" />
+											<AlertDescription className="text-[var(--bf-warning)]">
+												{displayCronValidation.warning}
+											</AlertDescription>
+										</Alert>
+									)}
+
+									{displayCronValidation.next_runs &&
+										displayCronValidation.next_runs.length >
+											0 && (
+											<div>
+												<h4 className="text-sm font-semibold mb-1">
+													Next runs:
+												</h4>
+												<div className="space-y-0.5">
+													{displayCronValidation.next_runs.map(
+														(run, i) => {
+															const date =
+																new Date(run);
+															return (
+																<div
+																	key={i}
+																	className="text-sm leading-6 [overflow-wrap:anywhere] flex flex-wrap items-center gap-2"
+																>
+																	<span className="text-muted-foreground">
+																		-
+																	</span>
+																	<span>
+																		{date.toLocaleString()}
+																	</span>
+																	<span className="text-muted-foreground">
+																		(
+																		{formatDistanceToNow(
+																			date,
+																			{
+																				addSuffix: true,
+																			},
+																		)}
+																		)
+																	</span>
+																</div>
+															);
+														},
+													)}
+												</div>
+											</div>
+										)}
+								</div>
+							)}
+
+							{/* Timezone */}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-timezone`}>
+									Timezone
+								</Label>
+								<Select
+									disabled={isLoading}
+									value={timezone}
+									onValueChange={setTimezone}
+								>
+									<SelectTrigger
+										id={`${formId}-timezone`}
+										className="w-full min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{COMMON_TIMEZONES.map((tz) => (
+											<SelectItem key={tz} value={tz}>
+												{tz.replace(/_/g, " ")}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+									The timezone used to evaluate the cron
+									expression.
+								</p>
+							</div>
+
+							{/* Overlap Policy */}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-overlap-policy`}>
+									Overlap policy
+								</Label>
+								<Select
+									disabled={isLoading}
+									value={overlapPolicy}
+									onValueChange={(v) =>
+										setOverlapPolicy(
+											v as "skip" | "queue" | "replace",
+										)
+									}
+								>
+									<SelectTrigger
+										id={`${formId}-overlap-policy`}
+										className="w-full min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="skip">
+											Skip
+										</SelectItem>
+										<SelectItem value="queue">
+											Queue
+										</SelectItem>
+										<SelectItem value="replace">
+											Replace
+										</SelectItem>
+									</SelectContent>
+								</Select>
+								<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+									Skip (default) drops the new run if a
+									previous run is still active. Queue and
+									replace are reserved for future use.
+								</p>
+							</div>
+						</FormSection>
+					)}
+				</fieldset>
 			</div>
 
-			<DialogFooter>
+			<DialogFooter className="shrink-0 border-t pt-4">
 				<Button
 					type="button"
 					variant="outline"
+					disabled={isLoading}
+					className="min-h-11"
 					onClick={() => onOpenChange(false)}
 				>
 					Cancel
 				</Button>
-				<Button type="submit" disabled={isLoading}>
+				<Button type="submit" className="min-h-11" disabled={isLoading}>
 					{isLoading && (
-						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 					)}
 					Create Event Source
 				</Button>
@@ -928,11 +1069,18 @@ export function CreateEventSourceDialog({
 	onOpenChange,
 	onSuccess,
 }: CreateEventSourceDialogProps) {
+	const createMutation = useCreateEventSource();
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-[500px]">
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!createMutation.isPending) onOpenChange(next);
+			}}
+		>
+			<DialogContent className="overflow-hidden sm:max-w-[500px]">
 				{open && (
 					<CreateEventSourceDialogContent
+						createMutation={createMutation}
 						onOpenChange={onOpenChange}
 						onSuccess={onSuccess}
 					/>

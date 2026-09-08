@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useExecutionResult } from "@/hooks/useExecutions";
-import { Loader2, FileText, ExternalLink } from "lucide-react";
+import { FileText, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TerminalResultModal } from "./TerminalResultModal";
 import { useNavigate } from "react-router-dom";
@@ -10,153 +10,35 @@ interface TerminalExecutionResultProps {
 	status: string;
 }
 
-// Type for the execution result from the API
-interface ExecutionResultData {
-	result: unknown;
-	resultType?: "html" | "json" | "text";
-}
-
-/**
- * Component to display execution results in the terminal
- * Shows a preview or link to view results based on result type
- */
-export function TerminalExecutionResult({
-	executionId,
-	status,
-}: TerminalExecutionResultProps) {
+export function TerminalExecutionResult({ executionId, status }: TerminalExecutionResultProps) {
 	const [showHtmlModal, setShowHtmlModal] = useState(false);
 	const navigate = useNavigate();
-
-	// Only fetch result if execution is complete (not running or pending)
-	const isComplete =
-		status === "Success" ||
-		status === "Failed" ||
-		status === "CompletedWithErrors" ||
-		status === "Timeout" ||
-		status === "Cancelled";
-
-	const { data: resultData, isLoading } = useExecutionResult(
-		executionId,
-		isComplete,
-	);
-
-	// Cast to expected type
-	const typedResultData = resultData as ExecutionResultData | undefined;
-
-	// Don't render anything if not complete or no result
-	if (!isComplete || (!isLoading && !typedResultData?.result)) {
-		return null;
+	const htmlTrigger = useRef<HTMLButtonElement>(null);
+	const isComplete = ["Success", "Failed", "CompletedWithErrors", "Timeout", "Cancelled"].includes(status);
+	const { data, isLoading, isError, isFetching, refetch } = useExecutionResult(executionId, isComplete);
+	if (!isComplete) return null;
+	if (isLoading) return <p role="status" className="mt-2 text-sm text-muted-foreground">Loading result…</p>;
+	// The result endpoint exposes an untyped object in the generated schema.
+	const resultData = data as { result?: unknown; result_type?: string | null } | undefined;
+	const result = resultData?.result;
+	const notice = isError ? <div role="alert" className="space-y-2 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm">
+		<p>Could not load the latest result.</p>
+		<Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Retrying…" : "Retry result"}</Button>
+	</div> : null;
+	if (result === null || result === undefined) return notice;
+	if (resultData?.result_type === "html" && typeof result === "string") {
+		return <div className="mt-2 min-w-0 space-y-2">
+			{notice}
+			<Button ref={htmlTrigger} variant="outline" className="min-h-11 whitespace-normal" onClick={() => setShowHtmlModal(true)}><FileText aria-hidden="true" className="size-4" />View HTML result</Button>
+			<TerminalResultModal returnFocusRef={htmlTrigger} open={showHtmlModal} onOpenChange={setShowHtmlModal} html={result} executionId={executionId} />
+		</div>;
 	}
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center gap-2 text-muted-foreground text-xs mt-1 ml-4">
-				<Loader2 className="h-3 w-3 animate-spin" />
-				<span>Loading result...</span>
-			</div>
-		);
-	}
-
-	const handleViewDetails = () => {
-		navigate(`/history/${executionId}`);
-	};
-
-	// HTML result - show button to view in modal
-	if (
-		typedResultData?.resultType === "html" &&
-		typeof typedResultData?.result === "string"
-	) {
-		return (
-			<>
-				<div className="ml-4 mt-1">
-					<Button
-						variant="link"
-						size="sm"
-						onClick={() => setShowHtmlModal(true)}
-						className="h-auto p-0 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-					>
-						<FileText className="h-3 w-3 mr-1" />
-						Click to view HTML result
-					</Button>
-				</div>
-				<TerminalResultModal
-					open={showHtmlModal}
-					onOpenChange={setShowHtmlModal}
-					html={typedResultData.result}
-					executionId={executionId}
-				/>
-			</>
-		);
-	}
-
-	// JSON/Object result - show formatted preview with max height
-	if (
-		(typedResultData?.resultType === "json" &&
-			typeof typedResultData?.result === "object") ||
-		(!typedResultData?.resultType &&
-			typeof typedResultData?.result === "object" &&
-			typedResultData?.result !== null)
-	) {
-		const jsonString = JSON.stringify(typedResultData.result, null, 2);
-		const lines = jsonString.split("\n");
-		const preview = lines.slice(0, 10).join("\n");
-		const hasMore = lines.length > 10;
-
-		return (
-			<div className="ml-4 mt-1 text-xs">
-				<div className="bg-muted/50 p-2 rounded-md ring-1 ring-foreground/5 max-h-[200px] overflow-auto">
-					<pre className="text-foreground/80 whitespace-pre-wrap font-mono">
-						{preview}
-						{hasMore && "\n..."}
-					</pre>
-				</div>
-				{hasMore && (
-					<Button
-						variant="link"
-						size="sm"
-						onClick={handleViewDetails}
-						className="h-auto p-0 mt-1 text-xs"
-					>
-						<ExternalLink className="h-3 w-3 mr-1" />
-						View full result in Execution Details
-					</Button>
-				)}
-			</div>
-		);
-	}
-
-	// Text result - show inline with max height
-	if (
-		typedResultData?.resultType === "text" &&
-		typeof typedResultData?.result === "string"
-	) {
-		const lines = typedResultData.result.split("\n");
-		const preview = lines.slice(0, 10).join("\n");
-		const hasMore = lines.length > 10;
-
-		return (
-			<div className="ml-4 mt-1 text-xs">
-				<div className="bg-muted/50 p-2 rounded-md ring-1 ring-foreground/5 max-h-[200px] overflow-auto">
-					<pre className="text-foreground/80 whitespace-pre-wrap font-mono">
-						{preview}
-						{hasMore && "\n..."}
-					</pre>
-				</div>
-				{hasMore && (
-					<Button
-						variant="link"
-						size="sm"
-						onClick={handleViewDetails}
-						className="h-auto p-0 mt-1 text-xs"
-					>
-						<ExternalLink className="h-3 w-3 mr-1" />
-						View full result in Execution Details
-					</Button>
-				)}
-			</div>
-		);
-	}
-
-	// No result to display
-	return null;
+	const text = typeof result === "object" ? JSON.stringify(result, null, 2) : String(result);
+	const lines = text.split("\n");
+	const hasMore = lines.length > 10;
+	return <div className="mt-2 min-w-0 space-y-2">
+		{notice}
+		<pre role="region" aria-label="Execution result preview" tabIndex={0} className="max-h-[200px] min-w-0 overflow-auto whitespace-pre-wrap rounded-[var(--bf-radius-control)] border bg-muted/50 p-3 font-mono text-sm leading-relaxed [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">{lines.slice(0, 10).join("\n")}{hasMore && "\n…"}</pre>
+		{hasMore && <Button variant="outline" className="min-h-11 whitespace-normal" onClick={() => navigate(`/history/${executionId}`)}><ExternalLink aria-hidden="true" className="size-4" />View full result</Button>}
+	</div>;
 }

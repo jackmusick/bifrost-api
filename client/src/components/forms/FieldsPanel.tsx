@@ -1,11 +1,5 @@
-import {
-	Plus,
-	Pencil,
-	Trash2,
-	GripVertical,
-	ArrowUp,
-	ArrowDown,
-} from "lucide-react";
+import { useState } from "react";
+import { Plus, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import {
 	Card,
 	CardContent,
@@ -34,6 +28,92 @@ interface FieldsPanelProps {
 	setFields: (fields: FormField[]) => void;
 }
 
+function FieldRow({
+	field,
+	index,
+	count,
+	onMove,
+	onEdit,
+	onRemove,
+}: {
+	field: FormField;
+	index: number;
+	count: number;
+	onMove: (direction: "up" | "down") => void;
+	onEdit: () => void;
+	onRemove: () => void;
+}) {
+	return (
+		<li className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-background p-4">
+			<div className="min-w-0 space-y-2">
+				<p className="font-medium [overflow-wrap:anywhere]">
+					{field.label}
+				</p>
+				<p className="font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">
+					{field.name}
+				</p>
+				<div className="flex flex-wrap items-center gap-2">
+					<Badge variant="secondary">{field.type}</Badge>
+					{field.required && (
+						<Badge variant="outline">Required</Badge>
+					)}
+					<span className="text-sm text-muted-foreground">
+						{index + 1} of {count}
+					</span>
+				</div>
+			</div>
+			<div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+				<div className="flex gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="size-11"
+						aria-label={`Move ${field.label} up`}
+						onClick={() => onMove("up")}
+						disabled={index === 0}
+					>
+						<ArrowUp className="size-4" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="size-11"
+						aria-label={`Move ${field.label} down`}
+						onClick={() => onMove("down")}
+						disabled={index === count - 1}
+					>
+						<ArrowDown className="size-4" />
+					</Button>
+				</div>
+				<div className="flex gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="size-11"
+						aria-label={`Edit ${field.label}`}
+						onClick={onEdit}
+					>
+						<Pencil className="size-4" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="size-11"
+						aria-label={`Remove ${field.label}`}
+						onClick={onRemove}
+					>
+						<Trash2 className="size-4" />
+					</Button>
+				</div>
+			</div>
+		</li>
+	);
+}
+
 export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 	const {
 		selectedField,
@@ -51,30 +131,24 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 		moveDown,
 	} = useFieldManager({ fields, setFields });
 
-	const getFieldTypeBadge = (type: string) => {
-		const colors: Record<string, "default" | "secondary" | "outline"> = {
-			text: "default",
-			email: "secondary",
-			number: "secondary",
-			select: "outline",
-			checkbox: "outline",
-			textarea: "default",
-		};
-		return <Badge variant={colors[type] || "default"}>{type}</Badge>;
-	};
+	const [announcement, setAnnouncement] = useState("");
 
 	return (
 		<>
 			<Card>
 				<CardHeader>
-					<div className="flex items-center justify-between">
+					<div className="flex flex-wrap items-start justify-between gap-4">
 						<div>
 							<CardTitle>Form Fields</CardTitle>
 							<CardDescription>
 								Add and configure fields for your form
 							</CardDescription>
 						</div>
-						<Button onClick={openAddDialog}>
+						<Button
+							type="button"
+							className="min-h-11"
+							onClick={openAddDialog}
+						>
 							<Plus className="mr-2 h-4 w-4" />
 							Add Field
 						</Button>
@@ -82,83 +156,25 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 				</CardHeader>
 				<CardContent>
 					{fields.length > 0 ? (
-						<div className="space-y-2">
+						<ol aria-label="Form fields" className="space-y-3">
 							{fields.map((field, index) => (
-								<div
-									key={index}
-									className="flex items-center gap-3 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
-								>
-									<div className="flex items-center gap-2">
-										<GripVertical className="h-4 w-4 text-muted-foreground" />
-										<div className="flex flex-col gap-1">
-											<Button
-												variant="ghost"
-												size="icon"
-												className="h-6 w-6"
-												onClick={() => moveUp(index)}
-												disabled={index === 0}
-											>
-												<ArrowUp className="h-3 w-3" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="icon"
-												className="h-6 w-6"
-												onClick={() => moveDown(index)}
-												disabled={
-													index === fields.length - 1
-												}
-											>
-												<ArrowDown className="h-3 w-3" />
-											</Button>
-										</div>
-									</div>
-
-									<div className="flex-1">
-										<div className="flex items-center gap-2">
-											<p className="font-medium">
-												{field.label}
-											</p>
-											{field.required && (
-												<Badge
-													variant="destructive"
-													className="text-xs"
-												>
-													Required
-												</Badge>
-											)}
-										</div>
-										<div className="mt-1 flex items-center gap-2">
-											<p className="font-mono text-xs text-muted-foreground">
-												{field.name}
-											</p>
-											{getFieldTypeBadge(field.type)}
-										</div>
-									</div>
-
-									<div className="flex gap-2">
-										<Button
-											variant="ghost"
-											size="icon"
-											onClick={() =>
-												openEditDialog(index)
-											}
-										>
-											<Pencil className="h-4 w-4" />
-										</Button>
-										<Button
-											variant="ghost"
-											size="icon"
-											onClick={() =>
-												openDeleteDialog(index)
-											}
-										>
-											<Trash2 className="h-4 w-4" />
-										</Button>
-									</div>
-								</div>
+								<FieldRow
+									key={field.name}
+									field={field}
+									index={index}
+									count={fields.length}
+									onEdit={() => openEditDialog(index)}
+									onRemove={() => openDeleteDialog(index)}
+									onMove={(direction) => {
+										if (direction === "up") moveUp(index);
+										else moveDown(index);
+										setAnnouncement(
+											`${field.label} moved to position ${index + (direction === "up" ? 0 : 2)} of ${fields.length}.`,
+										);
+									}}
+								/>
 							))}
-						</div>
+						</ol>
 					) : (
 						<div className="flex flex-col items-center justify-center py-12 text-center">
 							<p className="text-sm text-muted-foreground">
@@ -169,6 +185,10 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 					)}
 				</CardContent>
 			</Card>
+
+			<p role="status" className="sr-only">
+				{announcement}
+			</p>
 
 			<FieldConfigDialog
 				field={selectedField}
@@ -185,17 +205,19 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Remove Field</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
 							Are you sure you want to remove the field "
 							{deletingFieldLabel ?? ""}"? This action cannot be
 							undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogCancel className="min-h-11">
+							Cancel
+						</AlertDialogCancel>
 						<AlertDialogAction
 							onClick={confirmDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							Remove Field
 						</AlertDialogAction>

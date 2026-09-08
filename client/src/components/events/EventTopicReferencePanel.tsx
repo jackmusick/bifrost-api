@@ -1,7 +1,23 @@
 import { HelpSlideout } from "@/components/shared/HelpSlideout";
 import type { TopicRegistryEntry } from "@/services/events";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+
+const exampleTheme = {
+	'code[class*="language-"]': {
+		color: "var(--foreground)",
+		background: "transparent",
+		fontFamily: "var(--font-mono)",
+	},
+	'pre[class*="language-"]': {
+		color: "var(--foreground)",
+		background: "var(--muted)",
+	},
+	comment: { color: "var(--muted-foreground)" },
+	keyword: { color: "var(--primary)", fontWeight: "600" },
+	string: { color: "var(--bf-success)" },
+	number: { color: "var(--bf-info)" },
+	boolean: { color: "var(--bf-info)" },
+};
 
 type EventTopicReferenceTopic = TopicRegistryEntry & {
 	category?: string;
@@ -52,20 +68,33 @@ function ExampleBlock({
 	children: string;
 }) {
 	return (
-		<div className="space-y-2">
-			<div className="text-xs font-medium text-muted-foreground">
+		<div className="min-w-0 space-y-2">
+			<h4 className="text-sm font-medium [overflow-wrap:anywhere]">
 				{label}
-			</div>
+			</h4>
 			<SyntaxHighlighter
 				language={language}
-				style={oneDark}
+				style={exampleTheme}
+				tabIndex={0}
+				aria-label={`${label} code example`}
+				wrapLongLines
+				className="border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				customStyle={{
 					margin: 0,
-					borderRadius: "0.375rem",
-					fontSize: "0.75rem",
+					borderRadius: "var(--bf-radius-surface)",
+					padding: "1rem",
+					overflowWrap: "anywhere",
+					whiteSpace: "pre-wrap",
+					fontSize: "0.875rem",
 					lineHeight: "1.5",
 				}}
-				codeTagProps={{ style: { fontFamily: "inherit" } }}
+				codeTagProps={{
+					style: {
+						fontFamily: "var(--font-mono)",
+						whiteSpace: "pre-wrap",
+						overflowWrap: "anywhere",
+					},
+				}}
 			>
 				{children}
 			</SyntaxHighlighter>
@@ -75,20 +104,20 @@ function ExampleBlock({
 
 function TopicExample({ topic }: { topic: EventTopicReferenceTopic }) {
 	return (
-		<section className="space-y-3">
+		<section className="min-w-0 space-y-3">
 			<div className="space-y-1">
-				<div className="flex items-center gap-2">
-					<code className="rounded border bg-muted px-1.5 py-0.5 text-xs">
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					<code className="min-w-0 rounded-[var(--bf-radius-control)] border bg-muted px-2 py-1 text-sm [overflow-wrap:anywhere]">
 						{topic.topic}
 					</code>
-					<span className="text-xs text-muted-foreground">
+					<span className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 						{topic.category ?? "Built-in"}
 					</span>
 				</div>
-				<p className="text-sm text-muted-foreground">
+				<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 					{topic.description}
 				</p>
-				<p className="text-xs text-muted-foreground">
+				<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 					Emitted by {topic.emitted_by ?? "Bifrost"}
 				</p>
 			</div>
@@ -104,8 +133,8 @@ export function EventTopicReferencePanel({
 }: EventTopicReferencePanelProps) {
 	return (
 		<HelpSlideout title="Event source reference">
-			<section className="space-y-3">
-				<p className="text-sm text-muted-foreground">
+			<section className="min-w-0 space-y-3">
+				<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 					Event-triggered workflows can read a typed envelope from{" "}
 					<code>context.event</code>. The same raw payload is
 					available at{" "}
@@ -120,10 +149,10 @@ export function EventTopicReferencePanel({
 				</ExampleBlock>
 			</section>
 
-			<section className="space-y-3">
+			<section className="min-w-0 space-y-3">
 				<div className="space-y-1">
 					<h3 className="text-sm font-medium">Webhook envelope</h3>
-					<p className="text-sm text-muted-foreground">
+					<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 						Webhooks expose adapter output as the event body, plus
 						raw request metadata where available.
 					</p>
@@ -150,7 +179,7 @@ export function EventTopicReferencePanel({
 					<h3 className="text-sm font-medium">
 						Built-in event bodies
 					</h3>
-					<p className="text-sm text-muted-foreground">
+					<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 						Built-in bodies use the same common keys:{" "}
 						<code>schema_version</code>, <code>occurred_at</code>,{" "}
 						<code>organization</code>, and <code>actor</code>.

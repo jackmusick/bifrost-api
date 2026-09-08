@@ -30,6 +30,12 @@ import {
 	type BundleMessage,
 } from "@/services/websocket";
 import { useAppBuilderStore } from "@/stores/app-builder.store";
+import {
+	AutoMigrateNotice,
+	BuildErrorBanner,
+	BundleLoadFailure,
+	BundleNoticeStack,
+} from "./BundleFeedback";
 import { AppLoadingSkeleton } from "./AppLoadingSkeleton";
 import {
 	StandaloneV2App,
@@ -413,6 +419,9 @@ export function BundledAppShell({
 	// intact so every context provider is reachable from inside the bundle.
 	useEffect(() => {
 		const controller = new AbortController();
+		// Track successful mounts in this subscription lifetime, not the render
+		// captured when a cold app still had no loaded component.
+		let hasLiveBundle = BundledApp !== null;
 
 		async function loadBundle(
 			entryOverride?: string,
@@ -440,6 +449,7 @@ export function BundledAppShell({
 
 						setCssHref(prepared.cssHref);
 						setBundledApp(() => prepared.component);
+						hasLiveBundle = true;
 						setLoadedEntry(prepared.entry);
 						setAppModel("inline_v1");
 						return "inline_v1";
@@ -568,6 +578,7 @@ export function BundledAppShell({
 
 				setCssHref(nextCssHref);
 				setBundledApp(() => module.default as BundledAppComponent);
+				hasLiveBundle = true;
 				setLoadedEntry(entry);
 				// Reset the render model on the inline path so navigating from a
 				// standalone_v2 app to an inline_v1 app in the same shell instance
@@ -583,7 +594,7 @@ export function BundledAppShell({
 				// LOAD error vs BUILD error: if we've never loaded a bundle,
 				// show a full-screen error; otherwise it's a failed hot-reload
 				// and we surface it via the banner while keeping last-good live.
-				if (!BundledApp) {
+				if (!hasLiveBundle) {
 					setLoadError(
 						err instanceof Error ? err.message : String(err),
 					);
@@ -656,20 +667,13 @@ export function BundledAppShell({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [appId, appSlug, isPreview]);
 
-	if (loadError) {
+	if (loadError)
 		return (
-			<div className="flex items-center justify-center h-full min-h-[200px] p-4">
-				<div className="p-6 rounded-lg bg-red-50 ring-1 ring-red-200 dark:bg-red-950/20 dark:ring-red-800 max-w-lg">
-					<h2 className="text-lg font-semibold text-red-700 dark:text-red-400">
-						Bundle Load Error
-					</h2>
-					<pre className="mt-3 p-3 bg-red-100 dark:bg-red-900/30 rounded-md text-sm text-red-800 dark:text-red-200 overflow-auto whitespace-pre-wrap">
-						{loadError}
-					</pre>
-				</div>
-			</div>
+			<BundleLoadFailure
+				error={loadError}
+				onRetry={() => window.location.reload()}
+			/>
 		);
-	}
 
 	const showBanner =
 		buildErrors && buildErrors.length > 0 && !buildErrorDismissed;
@@ -704,23 +708,30 @@ export function BundledAppShell({
 			) : (
 				<AppLoadingSkeleton message="Loading application..." />
 			)}
-			{showBanner && buildErrors && (
-				<BuildErrorBanner
-					errors={buildErrors}
-					onDismiss={() => setBuildErrorDismissed(true)}
-				/>
-			)}
-			{showMigrateNotice && (
-				<AutoMigrateNotice
-					onDismiss={() => {
-						setMigrateNoticeDismissed(true);
-						try {
-							localStorage.setItem(migrateDismissKey, "1");
-						} catch {
-							/* ignore */
-						}
-					}}
-				/>
+			{(showBanner || showMigrateNotice) && (
+				<BundleNoticeStack>
+					{showBanner && buildErrors && (
+						<BuildErrorBanner
+							errors={buildErrors}
+							onDismiss={() => setBuildErrorDismissed(true)}
+						/>
+					)}
+					{showMigrateNotice && (
+						<AutoMigrateNotice
+							onDismiss={() => {
+								setMigrateNoticeDismissed(true);
+								try {
+									localStorage.setItem(
+										migrateDismissKey,
+										"1",
+									);
+								} catch {
+									/* ignore */
+								}
+							}}
+						/>
+					)}
+				</BundleNoticeStack>
 			)}
 		</div>
 	);
@@ -804,98 +815,4 @@ function BundleStyles({ href }: { href: string }) {
 		};
 	}, [href]);
 	return null;
-}
-
-/**
- * Dismissible info banner shown once per app after server-side auto-migration.
- * Blue/gray info styling — this is not an error. Same structural shape as
- * BuildErrorBanner so the two stack predictably in the top-right.
- */
-function AutoMigrateNotice({ onDismiss }: { onDismiss: () => void }) {
-	return (
-		<div className="absolute top-3 right-3 left-3 z-50 rounded-2xl bg-blue-50 shadow-lg ring-1 ring-blue-300 dark:bg-blue-950/90 dark:ring-blue-700">
-			<div className="flex items-start gap-3 p-3">
-				<div className="flex-1">
-					<div className="mb-1 flex items-center justify-between">
-						<h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-							App updated for new runtime
-						</h3>
-						<button
-							type="button"
-							onClick={onDismiss}
-							className="text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100"
-							aria-label="Dismiss"
-						>
-							×
-						</button>
-					</div>
-					<p className="text-sm text-blue-800 dark:text-blue-200">
-						Your app was automatically updated to the new runtime.
-						Review the changes in your workspace on your next{" "}
-						<code className="rounded bg-blue-100 px-1 dark:bg-blue-900/60">
-							bifrost pull
-						</code>
-						.
-					</p>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-/**
- * Dismissible banner shown over the last-good bundle when a rebuild fails.
- * The underlying bundle keeps rendering so the user can navigate around and
- * see what they just broke without losing state.
- */
-function BuildErrorBanner({
-	errors,
-	onDismiss,
-}: {
-	errors: BundleMessage[];
-	onDismiss: () => void;
-}) {
-	return (
-		<div className="absolute top-3 right-3 left-3 z-50 rounded-2xl bg-red-50 shadow-lg ring-1 ring-red-300 dark:bg-red-950/90 dark:ring-red-700">
-			<div className="flex items-start gap-3 p-3">
-				<div className="flex-1">
-					<div className="mb-1 flex items-center justify-between">
-						<h3 className="text-sm font-semibold text-red-700 dark:text-red-300">
-							Build failed — showing last good bundle
-						</h3>
-						<button
-							type="button"
-							onClick={onDismiss}
-							className="text-red-600 hover:text-red-800 dark:text-red-300 dark:hover:text-red-100"
-							aria-label="Dismiss"
-						>
-							×
-						</button>
-					</div>
-					<ul className="space-y-1 text-sm text-red-800 dark:text-red-200">
-						{errors.slice(0, 5).map((e, i) => (
-							<li key={i} className="font-mono">
-								{e.file && (
-									<span className="font-semibold">
-										{e.file}
-										{e.line !== null ? `:${e.line}` : ""}
-										{e.column !== null
-											? `:${e.column}`
-											: ""}
-										{" — "}
-									</span>
-								)}
-								<span>{e.text}</span>
-							</li>
-						))}
-						{errors.length > 5 && (
-							<li className="italic">
-								… and {errors.length - 5} more
-							</li>
-						)}
-					</ul>
-				</div>
-			</div>
-		</div>
-	);
 }

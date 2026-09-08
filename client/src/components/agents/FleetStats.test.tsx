@@ -60,11 +60,34 @@ describe("FleetStats", () => {
 		).not.toBeInTheDocument();
 	});
 
+	it("renders an accessible sparkline when daily data is available", () => {
+		renderWithProviders(
+			<FleetStats stats={baseStats} runsByDay={[1, 2, 3, 4, 5]} />,
+		);
+		expect(
+			screen.getByRole("img", {
+				name: /runs trend over the last 7 days/i,
+			}),
+		).toBeInTheDocument();
+	});
+
 	it("renders sparkline when runsByDay has multiple values", () => {
 		const { container } = renderWithProviders(
 			<FleetStats stats={baseStats} runsByDay={[1, 2, 3, 4, 5]} />,
 		);
 		// SVG sparkline rendered for the runs card
 		expect(container.querySelector("svg")).not.toBeNull();
+	});
+
+	it("shows a compact empty trend note when the data is flat", () => {
+		renderWithProviders(
+			<FleetStats stats={baseStats} runsByDay={[0, 0, 0]} />,
+		);
+		expect(screen.getByText(/no activity yet/i)).toBeInTheDocument();
+		expect(
+			screen.queryByRole("img", {
+				name: /runs trend over the last 7 days/i,
+			}),
+		).not.toBeInTheDocument();
 	});
 });

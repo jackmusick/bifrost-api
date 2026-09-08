@@ -151,23 +151,27 @@ export function NeedsReauthCard({
 
 	return (
 		<div
-			className="my-2 rounded-2xl bg-amber-50 shadow-sm ring-1 ring-amber-300 p-3 text-sm dark:bg-amber-950/30"
+			className="my-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60 p-3 text-sm text-foreground shadow-sm"
 			data-testid="needs-reauth-card"
 		>
-			<div className="flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-200">
-				<Plug className="h-4 w-4" />
+			<div className="flex items-start gap-2 font-semibold text-[var(--bf-warning)]">
+				<Plug className="mt-0.5 h-4 w-4 shrink-0" />
 				Connect {serviceName} to continue
 			</div>
-			<p className="mt-1 text-amber-800/90 dark:text-amber-200/90">
-				This tool needs your personal access to return results filtered by
-				the documents you can see.
+			<p className="mt-1 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+				Connect your account to let this tool access the service.
 			</p>
-			<div className="mt-2 flex items-center gap-2">
-				<Button size="sm" onClick={handleConnect} disabled={starting}>
+			<div className="mt-3 flex flex-wrap items-center gap-2">
+				<Button
+					size="lg"
+					className="min-h-11"
+					onClick={handleConnect}
+					disabled={starting}
+				>
 					{starting ? "Starting…" : `Connect ${serviceName}`}
 				</Button>
-				<span className="text-xs text-muted-foreground">
-					One-time consent · refreshes silently for 90 days
+				<span className="text-xs leading-5 text-muted-foreground">
+					After connecting, retry your message.
 				</span>
 			</div>
 		</div>

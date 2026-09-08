@@ -1,4 +1,5 @@
-import { format } from "date-fns";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useReducedMotion } from "framer-motion";
 import {
 	LineChart,
 	Line,
@@ -20,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { UsageTrend } from "@/services/usage";
 import {
 	formatChartDateLabel,
+	formatChartDateTick,
 	formatCurrency,
 	formatNumber,
 } from "./formatters";
@@ -30,6 +32,8 @@ export interface UsageChartsProps {
 }
 
 export function UsageCharts({ trends, isLoading }: UsageChartsProps) {
+	const reducedMotion = useReducedMotion();
+	const wideChart = useMediaQuery("(min-width: 640px)");
 	return (
 		<Card>
 			<CardHeader>
@@ -49,34 +53,52 @@ export function UsageCharts({ trends, isLoading }: UsageChartsProps) {
 								className="stroke-muted"
 							/>
 							<XAxis
+								minTickGap={24}
 								dataKey="date"
 								className="text-xs"
-								tick={{ fontSize: 12 }}
-								tickFormatter={(value) =>
-									format(new Date(value), "MMM dd")
-								}
+								tick={{
+									fontSize: 12,
+									fill: "var(--muted-foreground)",
+								}}
+								tickLine={false}
+								axisLine={{ stroke: "var(--border)" }}
+								tickFormatter={formatChartDateTick}
 							/>
 							<YAxis
+								width={wideChart ? 64 : 42}
 								className="text-xs"
-								tick={{ fontSize: 12 }}
-								tickFormatter={(value) => `$${value}`}
-								label={{
-									value: "Cost (USD)",
-									angle: -90,
-									position: "insideLeft",
+								tick={{
 									fontSize: 12,
+									fill: "var(--muted-foreground)",
 								}}
+								tickLine={false}
+								axisLine={{ stroke: "var(--border)" }}
+								tickFormatter={(value) => `$${value}`}
+								label={
+									wideChart
+										? {
+												value: "Cost (USD)",
+												angle: -90,
+												position: "insideLeft",
+												fontSize: 12,
+												fill: "var(--muted-foreground)",
+											}
+										: undefined
+								}
 							/>
 							<Tooltip
 								contentStyle={{
-									backgroundColor: "hsl(var(--card))",
-									border: "1px solid hsl(var(--border))",
-									borderRadius: "6px",
+									backgroundColor: "var(--popover)",
+									border: "1px solid var(--border)",
+									borderRadius: "var(--bf-radius-surface)",
+									color: "var(--popover-foreground)",
 								}}
 								formatter={(value, name) => {
 									if (name === "ai_cost")
 										return [
-											formatCurrency(value as string | number),
+											formatCurrency(
+												value as string | number,
+											),
 											"AI Cost",
 										];
 									return [
@@ -97,11 +119,13 @@ export function UsageCharts({ trends, isLoading }: UsageChartsProps) {
 								}}
 							/>
 							<Line
+								isAnimationActive={!reducedMotion}
+								animationDuration={220}
 								type="monotone"
 								dataKey="ai_cost"
-								stroke="hsl(var(--chart-1, 220 70% 50%))"
+								stroke="var(--primary)"
 								strokeWidth={2}
-								dot={{ r: 3 }}
+								dot={false}
 								activeDot={{ r: 5 }}
 							/>
 						</LineChart>

@@ -23,13 +23,13 @@ describe("ToolOutputDisplay — line classification", () => {
 	it("colors diff added lines green", () => {
 		renderWithProviders(<ToolOutputDisplay text={"+added line"} />);
 		const line = screen.getByText(/\+added line/);
-		expect(line.className).toMatch(/text-green/);
+		expect(line.className).toMatch(/text-\[var\(--bf-success\)\]/);
 	});
 
 	it("colors diff removed lines red", () => {
 		renderWithProviders(<ToolOutputDisplay text={"-removed line"} />);
 		const line = screen.getByText(/-removed line/);
-		expect(line.className).toMatch(/text-red/);
+		expect(line.className).toMatch(/text-\[var\(--bf-danger\)\]/);
 	});
 
 	it("colors grep-format file:line matches cyan", () => {
@@ -37,13 +37,13 @@ describe("ToolOutputDisplay — line classification", () => {
 			<ToolOutputDisplay text={"src/foo.ts:42: match here"} />,
 		);
 		const line = screen.getByText(/src\/foo\.ts:42: match here/);
-		expect(line.className).toMatch(/text-cyan/);
+		expect(line.className).toMatch(/text-\[var\(--bf-info\)\]/);
 	});
 
 	it("colors status messages like 'Updated ...' blue", () => {
 		renderWithProviders(<ToolOutputDisplay text={"Updated config.yaml"} />);
 		const line = screen.getByText(/Updated config\.yaml/);
-		expect(line.className).toMatch(/text-blue/);
+		expect(line.className).toMatch(/text-\[var\(--bf-info\)\]/);
 	});
 
 	it("colors Error: prefixed lines red", () => {
@@ -51,19 +51,19 @@ describe("ToolOutputDisplay — line classification", () => {
 			<ToolOutputDisplay text={"Error: something went wrong"} />,
 		);
 		const line = screen.getByText(/Error: something went wrong/);
-		expect(line.className).toMatch(/text-red/);
+		expect(line.className).toMatch(/text-\[var\(--bf-danger\)\]/);
 	});
 
 	it("colors check-mark (✓) success lines green", () => {
 		renderWithProviders(<ToolOutputDisplay text={"✓ passed"} />);
 		const line = screen.getByText(/✓ passed/);
-		expect(line.className).toMatch(/text-green/);
+		expect(line.className).toMatch(/text-\[var\(--bf-success\)\]/);
 	});
 
 	it("leaves plain text lines without a color class", () => {
 		renderWithProviders(<ToolOutputDisplay text={"just a normal line"} />);
 		const line = screen.getByText(/just a normal line/);
-		// No green/red/cyan/blue color applied.
-		expect(line.className).not.toMatch(/text-(green|red|cyan|blue)/);
+		// No semantic emphasis token applied.
+		expect(line.className).not.toMatch(/text-\[var\(--bf-(success|danger|info)\)\]/);
 	});
 });

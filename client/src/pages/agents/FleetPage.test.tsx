@@ -8,11 +8,23 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, renderWithProviders, screen, within } from "@/test-utils";
+import {
+	fireEvent,
+	renderWithProviders,
+	screen,
+	within,
+	waitFor,
+} from "@/test-utils";
 
 // -----------------------------------------------------------------------------
 // Mocks
 // -----------------------------------------------------------------------------
+
+vi.mock("@/lib/detail-route-loaders", () => ({ prefetchAgentDetail: vi.fn() }));
+
+vi.mock("@/hooks/useOrganizations", () => ({
+	useOrganizations: () => ({ data: [], isLoading: false }),
+}));
 
 const mockUseAgents = vi.fn();
 vi.mock("@/hooks/useAgents", () => ({
@@ -121,20 +133,14 @@ describe("FleetPage — header + fleet stats", () => {
 		expect(screen.getByText("92%")).toBeInTheDocument();
 	});
 
-	it("uses compact fleet metrics on mobile while reserving full stat cards for larger screens", async () => {
-		mockUseAgents.mockReturnValue({
-			data: [makeAgent()],
-			isLoading: false,
-		});
-		await renderPage();
-		expect(screen.getByTestId("mobile-fleet-metrics")).toHaveClass(
-			"md:hidden",
-		);
-		expect(screen.getByTestId("desktop-fleet-stats")).toHaveClass(
-			"hidden",
-			"md:grid",
-		);
-	});
+	it("keeps all five fleet measurements in the responsive summary", async () => {
+ mockUseAgents.mockReturnValue({ data: [makeAgent()], isLoading: false });
+ await renderPage();
+ const summary = within(screen.getByRole("region", { name: "Fleet statistics" }));
+ for (const label of ["Runs (7d)", "Success rate", "Spend (7d)", "Active agents", "Needs review"]) {
+  expect(summary.getByText(label)).toBeInTheDocument();
+ }
+});
 
 	it("shows total/active subtitle from agents list", async () => {
 		mockUseAgents.mockReturnValue({
@@ -307,7 +313,11 @@ describe("FleetPage — agent MCP URL copy badge", () => {
 		expect(writeText).toHaveBeenCalledWith(
 			`${window.location.origin}/mcp/agent-xyz`,
 		);
-		expect(mockToastSuccess).toHaveBeenCalledWith("Agent MCP URL copied");
+		await waitFor(() =>
+			expect(mockToastSuccess).toHaveBeenCalledWith(
+				"Agent MCP URL copied",
+			),
+		);
 	});
 
 	it("badge click prevents the default action so the card link doesn't navigate", async () => {

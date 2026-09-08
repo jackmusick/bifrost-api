@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
@@ -15,15 +16,21 @@ import type { ChartWindow, OutcomeSummary } from "@/lib/execution-buckets";
 import { $api } from "@/lib/api-client";
 
 export function Dashboard() {
-	const navigate = useNavigate();
 	const { isPlatformAdmin, isOrgUser } = useAuth();
-	const { data: metrics, isLoading, error, refetch: refetchDashboard, isFetching } = useDashboardMetrics();
+	const {
+		data: metrics,
+		isLoading,
+		error,
+		refetch: refetchDashboard,
+		isFetching,
+	} = useDashboardMetrics();
 
 	const [chartWindow, setChartWindow] = useState<ChartWindow>("7d");
 	const {
 		data: executionTimeSeries,
 		isLoading: executionsLoading,
 		isError: executionsError,
+		isFetching: executionsFetching,
 		refetch: refetchExecutions,
 	} = useExecutionTimeSeries(chartWindow);
 
@@ -40,14 +47,20 @@ export function Dashboard() {
 	const {
 		data: agentsData,
 		isLoading: agentsLoading,
+		isError: agentsError,
+		isFetching: agentsFetching,
 		refetch: refetchAgents,
 	} = $api.useQuery("get", "/api/agents", {}, { staleTime: 60000 });
 	const {
 		data: appsData,
 		isLoading: appsLoading,
+		isError: appsError,
+		isFetching: appsFetching,
 		refetch: refetchApps,
 	} = $api.useQuery("get", "/api/applications", {}, { staleTime: 60000 });
 
+	const refreshing =
+		isFetching || executionsFetching || agentsFetching || appsFetching;
 	const handleRefresh = () => {
 		refetchDashboard();
 		refetchExecutions();
@@ -57,56 +70,38 @@ export function Dashboard() {
 
 	// Redirect OrgUsers to /forms (their only accessible page)
 	if (isOrgUser && !isPlatformAdmin) {
-		navigate("/forms", { replace: true });
-		return null;
-	}
-
-	if (error) {
-		return (
-			<div className="space-y-6">
-				<div>
-					<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-						Dashboard
-					</h1>
-					<p className="leading-7 mt-2 text-muted-foreground">
-						Platform overview and metrics
-					</p>
-				</div>
-
-				<Alert variant="destructive">
-					<AlertCircle className="h-4 w-4" />
-					<AlertDescription>
-						Failed to load dashboard metrics. Please try again
-						later.
-					</AlertDescription>
-				</Alert>
-			</div>
-		);
+		return <Navigate to="/forms" replace />;
 	}
 
 	return (
-		<div className="space-y-4">
-			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-						Dashboard
-					</h1>
-					<p className="leading-7 mt-2 text-muted-foreground">
-						Platform overview and metrics
-					</p>
-				</div>
-				<Button
-					variant="outline"
-					size="icon"
-					onClick={handleRefresh}
-					disabled={isFetching}
-				>
-					<RefreshCw
-						className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
-					/>
-				</Button>
-			</div>
+		<div className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-6">
+			<ListPageHeader
+				title="Dashboard"
+				description="Platform overview and metrics"
+				actions={
+					<Button
+						type="button"
+						variant="outline"
+						size="icon"
+						onClick={handleRefresh}
+						disabled={refreshing}
+						aria-label="Refresh dashboard"
+						className="size-11 sm:size-9"
+					>
+						<RefreshCw
+							className={`h-4 w-4 ${refreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
+						/>
+					</Button>
+				}
+			/>
+			{(error || agentsError || appsError) && (
+				<Alert variant="destructive">
+					<AlertCircle className="h-4 w-4" />
+					<AlertDescription>
+						Couldn't load {[error && "platform metrics", agentsError && "agent inventory", appsError && "app inventory"].filter(Boolean).join(", ")}. Refresh to try again.
+					</AlertDescription>
+				</Alert>
+			)}
 
 			{/* Headline numbers paired with the chart, inventory, and value */}
 			<DashboardStatCards
@@ -121,6 +116,7 @@ export function Dashboard() {
 					apps: appsData?.total ?? 0,
 				}}
 				inventoryLoading={isLoading || agentsLoading || appsLoading}
+				inventoryError={Boolean(error) || agentsError || appsError}
 				roi={
 					metrics?.roi_24h
 						? {
@@ -132,6 +128,7 @@ export function Dashboard() {
 						: undefined
 				}
 				roiLoading={isLoading}
+				roiError={Boolean(error)}
 			/>
 
 			{/* Executions over time — successes and failures overlaid */}

@@ -64,8 +64,8 @@ export function DidNarrative({
 	return (
 		<div
 			className={cn(
-				"whitespace-pre-wrap break-words leading-relaxed",
-				compact ? "text-xs" : "text-sm",
+				"whitespace-pre-wrap break-words leading-6",
+				compact ? "text-[13px] sm:text-xs" : "text-sm",
 			)}
 		>
 			{parts.map((part, index) => {
@@ -83,7 +83,10 @@ export function DidNarrative({
 						<span
 							key={index}
 							data-slot="activity-reference-label"
-							className="font-medium text-foreground/80"
+							className={cn(
+								"inline-flex items-center rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/60 px-2 py-1 font-medium text-foreground/80",
+								delegated && "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
+							)}
 						>
 							{label}
 						</span>
@@ -110,10 +113,10 @@ export function DidNarrative({
 							onReferenceActivate(reference.activityId);
 						}}
 						className={cn(
-							"mx-0.5 inline-flex cursor-pointer rounded-md px-1.5 py-0.5 align-baseline text-[0.9em] font-medium outline-none transition-[background-color,box-shadow] duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+							"mx-0.5 inline-flex min-h-11 cursor-pointer items-center rounded-[var(--bf-radius-control)] px-2 py-1.5 align-baseline text-[0.92em] font-medium outline-none ring-1 transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 							delegated
-								? "bg-violet-500/12 text-violet-700 ring-1 ring-violet-500/20 hover:bg-violet-500/20 dark:text-violet-300"
-								: "bg-blue-500/10 text-blue-700 ring-1 ring-blue-500/15 hover:bg-blue-500/20 dark:text-blue-300",
+								? "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)] ring-[var(--bf-info)]/20 hover:bg-[var(--bf-info-soft)]"
+								: "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)] ring-[var(--bf-info)]/20 hover:bg-[var(--bf-info-soft)]/80",
 						)}
 					>
 						{label}

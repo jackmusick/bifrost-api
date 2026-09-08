@@ -1,14 +1,7 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-	Inbox,
-	Clock,
-	CheckCircle2,
-	XCircle,
-	Loader2,
-	Radio,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Link, useNavigate } from "react-router-dom";
+import { Inbox, Radio, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	DataTable,
@@ -18,7 +11,6 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { format, subHours, subDays } from "date-fns";
 import {
 	useEvents,
@@ -27,6 +19,7 @@ import {
 	type EventStatus,
 } from "@/services/events";
 import { EventDetailDialog } from "./EventDetailDialog";
+import { EventStatusBadge } from "./EventStatusBadge";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { useEventStream } from "@/hooks/useEventStream";
@@ -37,12 +30,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { getGraphEventType } from "@/lib/graph-source";
 
 interface EventsTableProps {
@@ -50,49 +37,10 @@ interface EventsTableProps {
 	source?: EventSource;
 	initialEventId?: string;
 }
-
-type StatusFilter = "all" | "received" | "processing" | "completed" | "failed";
+type StatusFilter = "all" | EventStatus;
 type DateRangeFilter = "1h" | "24h" | "7d" | "30d" | "all";
-
-function getStatusIcon(status: EventStatus) {
-	switch (status) {
-		case "received":
-			return <Clock className="h-4 w-4 text-muted-foreground" />;
-		case "processing":
-			return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-		case "completed":
-			return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-		case "failed":
-			return <XCircle className="h-4 w-4 text-destructive" />;
-	}
-}
-
-function getStatusLabel(status: EventStatus) {
-	switch (status) {
-		case "received":
-			return "Received";
-		case "processing":
-			return "Processing";
-		case "completed":
-			return "Completed";
-		case "failed":
-			return "Failed";
-	}
-}
-
-function getStatusVariant(
-	status: EventStatus,
-): "default" | "secondary" | "destructive" | "outline" {
-	switch (status) {
-		case "completed":
-			return "default";
-		case "failed":
-			return "destructive";
-		case "processing":
-			return "outline";
-		default:
-			return "secondary";
-	}
+interface EventWithMeta extends Event {
+	_isNew?: boolean;
 }
 
 function getDateRangeFilter(range: DateRangeFilter): string | undefined {
@@ -111,94 +59,125 @@ function getDateRangeFilter(range: DateRangeFilter): string | undefined {
 	}
 }
 
-// Extended Event type with animation flag
-interface EventWithMeta extends Event {
-	_isNew?: boolean;
+function EventDeliveryCounts({ event }: { event: Event }) {
+	return (
+		<span className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+			<span>{event.delivery_count} total</span>
+			{event.success_count > 0 && (
+				<span className="text-[var(--bf-success)]">
+					{event.success_count} ok
+				</span>
+			)}
+			{event.failed_count > 0 && (
+				<span className="text-[var(--bf-danger)]">
+					{event.failed_count} failed
+				</span>
+			)}
+		</span>
+	);
 }
 
-export function EventsTable({ sourceId, source, initialEventId }: EventsTableProps) {
+function EventRecord({ event, href }: { event: EventWithMeta; href: string }) {
+	return (
+		<li
+			className={`min-w-0 space-y-3 rounded-[var(--bf-radius-surface)] border bg-card p-4 ${event._isNew ? "motion-safe:animate-[highlight_2s_ease-out]" : ""}`}
+		>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<EventStatusBadge status={event.status} />
+				<span className="text-sm text-muted-foreground">
+					{format(new Date(event.received_at), "MMM d, HH:mm:ss")}
+				</span>
+			</div>
+			<Link
+				to={href}
+				className="flex min-h-11 items-center rounded-[var(--bf-radius-control)] font-medium leading-6 [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			>
+				{event.event_type || "View event"}
+			</Link>
+			<dl className="space-y-3 text-sm leading-6">
+				<div>
+					<dt className="text-muted-foreground">Source IP</dt>
+					<dd className="font-mono [overflow-wrap:anywhere]">
+						{event.source_ip || "—"}
+					</dd>
+				</div>
+				<div>
+					<dt className="text-muted-foreground">Deliveries</dt>
+					<dd>
+						<EventDeliveryCounts event={event} />
+					</dd>
+				</div>
+			</dl>
+		</li>
+	);
+}
+
+export function EventsTable({
+	sourceId,
+	source,
+	initialEventId,
+}: EventsTableProps) {
 	const navigate = useNavigate();
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 	const [dateRange, setDateRange] = useState<DateRangeFilter>("24h");
 	const [searchTerm, setSearchTerm] = useState("");
-
-	// Build filter params
-	const filterParams = useMemo(() => {
-		const params: {
-			status?: EventStatus;
-			since?: string;
-		} = {};
-
-		if (statusFilter !== "all") {
-			params.status = statusFilter;
-		}
-
-		const sinceDate = getDateRangeFilter(dateRange);
-		if (sinceDate) {
-			params.since = sinceDate;
-		}
-
-		return params;
-	}, [statusFilter, dateRange]);
-
-	const { data, isLoading } = useEvents(sourceId, filterParams);
-	const events = useMemo(() => {
-		return ((data?.items || []) as EventWithMeta[]).map((event) => ({
-			...event,
-			event_type: getGraphEventType(source, event),
-		}));
-	}, [data?.items, source]);
-
-	// Connect to WebSocket for real-time updates
+	const filterParams = useMemo(
+		() => ({
+			...(statusFilter === "all" ? {} : { status: statusFilter }),
+			since: getDateRangeFilter(dateRange),
+		}),
+		[statusFilter, dateRange],
+	);
+	const { data, isLoading, isError, isFetching, refetch } = useEvents(
+		sourceId,
+		filterParams,
+	);
+	const events = useMemo(
+		() =>
+			((data?.items || []) as EventWithMeta[]).map((event) => ({
+				...event,
+				event_type: getGraphEventType(source, event),
+			})),
+		[data?.items, source],
+	);
 	const { isConnected } = useEventStream(sourceId);
-
-	// Track events that should animate (new events from WebSocket)
-	// Using CSS animations which auto-remove after completion
-	const animatingIds = useMemo(() => {
-		return new Set(events.filter((e) => e._isNew).map((e) => e.id));
-	}, [events]);
-
-	// Apply local search filter (for event type)
 	const filteredEvents = useSearch(events, searchTerm, [
 		"event_type",
 		"source_ip",
 	]);
-
-	// Derive selected event from URL param (no useState needed)
-	const selectedEvent = useMemo(() => {
-		if (!initialEventId) return null;
-		return events.find((e) => e.id === initialEventId) || null;
-	}, [initialEventId, events]);
-
-	const handleEventClick = (event: Event) => {
-		// Navigate to URL-based route for the event
-		navigate(`/event-sources/${sourceId}/events/${event.id}`);
-	};
-
-	const handleCloseDetail = () => {
-		// Navigate back to the source detail (without event)
-		navigate(`/event-sources/${sourceId}`);
-	};
-
+	const selectedEvent = useMemo(
+		() =>
+			initialEventId
+				? events.find((event) => event.id === initialEventId) || null
+				: null,
+		[initialEventId, events],
+	);
+	const hasFilters = Boolean(
+		searchTerm || statusFilter !== "all" || dateRange !== "all",
+	);
+	const eventHref = (event: Event) =>
+		`/event-sources/${sourceId}/events/${event.id}`;
 	return (
-		<div className="flex-1 flex flex-col min-h-0">
-			{/* Compact filter row - everything on one line */}
-			<div className="flex items-center gap-3 mb-3 flex-wrap">
-				{/* Search by event type */}
+		<div className="@container/events flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+			<div className="flex min-w-0 flex-wrap items-center gap-3">
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
 					placeholder="Search events..."
-					className="w-48"
+					aria-label="Search events"
+					className="min-w-0 basis-full @[40rem]/events:basis-64 @[40rem]/events:flex-1 [&_input]:min-h-11"
 				/>
-
-				{/* Date range filter */}
 				<Select
 					value={dateRange}
-					onValueChange={(v) => setDateRange(v as DateRangeFilter)}
+					onValueChange={(value) =>
+						setDateRange(value as DateRangeFilter)
+					}
 				>
-					<SelectTrigger className="w-32">
-						<SelectValue placeholder="Date range" />
+					<SelectTrigger
+						aria-label="Date range"
+						className="min-h-11 min-w-0 flex-1 @[40rem]/events:w-40 @[40rem]/events:flex-none"
+					>
+						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="1h">Last hour</SelectItem>
@@ -208,156 +187,188 @@ export function EventsTable({ sourceId, source, initialEventId }: EventsTablePro
 						<SelectItem value="all">All time</SelectItem>
 					</SelectContent>
 				</Select>
-
-				{/* Status filter as compact ToggleGroup */}
-				<ToggleGroup
-					type="single"
+				<Select
 					value={statusFilter}
-					onValueChange={(v) =>
-						v && setStatusFilter(v as StatusFilter)
+					onValueChange={(value) =>
+						setStatusFilter(value as StatusFilter)
 					}
 				>
-					<ToggleGroupItem value="all" size="sm">
-						All
-					</ToggleGroupItem>
-					<ToggleGroupItem value="completed" size="sm">
-						Completed
-					</ToggleGroupItem>
-					<ToggleGroupItem value="processing" size="sm">
-						Processing
-					</ToggleGroupItem>
-					<ToggleGroupItem value="failed" size="sm">
-						Failed
-					</ToggleGroupItem>
-				</ToggleGroup>
-
-				{/* Spacer */}
-				<div className="flex-1" />
-
-				{/* Live indicator */}
-				{isConnected && (
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<div className="flex items-center gap-1 text-xs text-green-600">
-								<Radio className="h-3 w-3 animate-pulse" />
-								<span>Live</span>
-							</div>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>Connected to real-time updates</p>
-						</TooltipContent>
-					</Tooltip>
-				)}
+					<SelectTrigger
+						aria-label="Event status"
+						className="min-h-11 min-w-0 flex-1 @[40rem]/events:w-40 @[40rem]/events:flex-none"
+					>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">All statuses</SelectItem>
+						<SelectItem value="received">Received</SelectItem>
+						<SelectItem value="processing">Processing</SelectItem>
+						<SelectItem value="completed">Completed</SelectItem>
+						<SelectItem value="failed">Failed</SelectItem>
+					</SelectContent>
+				</Select>
+				<span
+					role="status"
+					className={`inline-flex basis-full items-center gap-1.5 text-sm @[40rem]/events:basis-auto ${isConnected ? "text-[var(--bf-success)]" : "text-muted-foreground"}`}
+					title={
+						isConnected
+							? "Connected to real-time updates"
+							: "Previously loaded events remain visible while updates reconnect"
+					}
+				>
+					<Radio
+						aria-hidden="true"
+						className={`size-4 ${isConnected ? "motion-safe:animate-pulse" : ""}`}
+					/>
+					{isConnected ? "Live" : "Connecting to live updates…"}
+				</span>
 			</div>
-
-			{/* Table content - takes remaining space */}
-			<div className="flex-1 min-h-0">
-				{isLoading ? (
+			{isError && (
+				<div
+					role="alert"
+					className="space-y-3 rounded-[var(--bf-radius-surface)] border p-4 text-sm leading-6"
+				>
+					<p>
+						Could not load events.{" "}
+						{data
+							? "Previously loaded events remain visible."
+							: "Try again."}
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						className="min-h-11"
+						disabled={isFetching}
+						onClick={() => void refetch()}
+					>
+						{isFetching && (
+							<Loader2 className="size-4 motion-safe:animate-spin" />
+						)}
+						Retry events
+					</Button>
+				</div>
+			)}
+			<div className="min-h-0 min-w-0 flex-1">
+				{isLoading && !data ? (
 					<div className="space-y-2">
-						{[...Array(5)].map((_, i) => (
+						{Array.from({ length: 5 }, (_, i) => (
 							<Skeleton key={i} className="h-12 w-full" />
 						))}
 					</div>
-				) : filteredEvents.length === 0 ? (
-					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<Inbox className="h-12 w-12 text-muted-foreground" />
+				) : isError && !data ? null : !filteredEvents.length ? (
+					<div className="flex flex-col items-center py-12 text-center">
+						<Inbox
+							aria-hidden="true"
+							className="size-10 text-muted-foreground"
+						/>
 						<h3 className="mt-4 text-lg font-semibold">
-							{searchTerm || statusFilter !== "all"
+							{hasFilters
 								? "No events match your filters"
 								: "No Events Yet"}
 						</h3>
 						<p className="mt-2 text-sm text-muted-foreground">
-							{searchTerm || statusFilter !== "all"
-								? "Try adjusting your search or filters"
-								: "Events will appear here when webhooks are received."}
+							{hasFilters
+								? "Try adjusting your search, date range or status."
+								: "Events will appear here when received."}
 						</p>
+						{hasFilters && (
+							<Button
+								type="button"
+								variant="outline"
+								className="mt-4 min-h-11"
+								onClick={() => {
+									setSearchTerm("");
+									setStatusFilter("all");
+									setDateRange("all");
+								}}
+							>
+								Clear filters
+							</Button>
+						)}
 					</div>
 				) : (
-					<DataTable className="max-h-full">
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead>Event Type</DataTableHead>
-								<DataTableHead>Status</DataTableHead>
-								<DataTableHead>Source IP</DataTableHead>
-								<DataTableHead className="text-right">
-									Deliveries
-								</DataTableHead>
-								<DataTableHead>Received</DataTableHead>
-							</DataTableRow>
-						</DataTableHeader>
-						<DataTableBody>
+					<>
+						<ul className="space-y-3 @[60rem]/events:hidden">
 							{filteredEvents.map((event) => (
-								<DataTableRow
+								<EventRecord
 									key={event.id}
-									clickable
-									onClick={() => handleEventClick(event)}
-									className={cn(
-										animatingIds.has(event.id) &&
-											"animate-highlight",
-									)}
-								>
-									<DataTableCell className="font-medium">
-										{event.event_type ? (
-											<Badge variant="outline">
-												{event.event_type}
-											</Badge>
-										) : (
-											<span className="text-muted-foreground">
-												—
-											</span>
-										)}
-									</DataTableCell>
-									<DataTableCell>
-										<div className="flex items-center gap-1.5">
-											{getStatusIcon(event.status)}
-											<Badge
-												variant={getStatusVariant(
-													event.status,
-												)}
-											>
-												{getStatusLabel(event.status)}
-											</Badge>
-										</div>
-									</DataTableCell>
-									<DataTableCell className="font-mono text-sm">
-										{event.source_ip || "—"}
-									</DataTableCell>
-									<DataTableCell className="text-right">
-										<div className="flex items-center justify-end gap-2">
-											{event.success_count > 0 && (
-												<span className="text-green-600">
-													{event.success_count} ok
-												</span>
-											)}
-											{event.failed_count > 0 && (
-												<span className="text-destructive">
-													{event.failed_count} failed
-												</span>
-											)}
-											{event.delivery_count === 0 && (
-												<span className="text-muted-foreground">
-													—
-												</span>
-											)}
-										</div>
-									</DataTableCell>
-									<DataTableCell className="text-muted-foreground">
-										{format(
-											new Date(event.received_at),
-											"MMM d, HH:mm:ss",
-										)}
-									</DataTableCell>
-								</DataTableRow>
+									event={event}
+									href={eventHref(event)}
+								/>
 							))}
-						</DataTableBody>
-					</DataTable>
+						</ul>
+						<div className="hidden @[60rem]/events:block">
+							<DataTable>
+								<DataTableHeader>
+									<DataTableRow>
+										<DataTableHead>
+											Event Type
+										</DataTableHead>
+										<DataTableHead>Status</DataTableHead>
+										<DataTableHead>Source IP</DataTableHead>
+										<DataTableHead>
+											Deliveries
+										</DataTableHead>
+										<DataTableHead>Received</DataTableHead>
+									</DataTableRow>
+								</DataTableHeader>
+								<DataTableBody>
+									{filteredEvents.map((event) => (
+										<DataTableRow
+											key={event.id}
+											clickable
+											onClick={() =>
+												navigate(eventHref(event))
+											}
+											className={
+												event._isNew
+													? "motion-safe:animate-[highlight_2s_ease-out]"
+													: undefined
+											}
+										>
+											<DataTableCell>
+												<Link
+													to={eventHref(event)}
+													onClick={(e) =>
+														e.stopPropagation()
+													}
+													className="flex min-h-11 items-center rounded-[var(--bf-radius-control)] font-medium [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												>
+													{event.event_type ||
+														"View event"}
+												</Link>
+											</DataTableCell>
+											<DataTableCell>
+												<EventStatusBadge
+													status={event.status}
+												/>
+											</DataTableCell>
+											<DataTableCell className="font-mono text-sm [overflow-wrap:anywhere]">
+												{event.source_ip || "—"}
+											</DataTableCell>
+											<DataTableCell>
+												<EventDeliveryCounts
+													event={event}
+												/>
+											</DataTableCell>
+											<DataTableCell className="text-sm text-muted-foreground">
+												{format(
+													new Date(event.received_at),
+													"MMM d, HH:mm:ss",
+												)}
+											</DataTableCell>
+										</DataTableRow>
+									))}
+								</DataTableBody>
+							</DataTable>
+						</div>
+					</>
 				)}
 			</div>
-
-			{/* Event Detail Dialog */}
 			<EventDetailDialog
 				event={selectedEvent}
-				onClose={handleCloseDetail}
+				eventId={initialEventId}
+				onClose={() => navigate(`/event-sources/${sourceId}`)}
 			/>
 		</div>
 	);

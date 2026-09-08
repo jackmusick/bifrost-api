@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -45,6 +46,9 @@ export function RoleDialog({ role, open, onClose }: RoleDialogProps) {
 	const createRole = useCreateRole();
 	const updateRole = useUpdateRole();
 	const isEditing = !!role;
+	const returnFocus = useDialogReturnFocus();
+	const wasOpen = useRef(false);
+	const [saveError, setSaveError] = useState(false);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
@@ -56,11 +60,20 @@ export function RoleDialog({ role, open, onClose }: RoleDialogProps) {
 	});
 
 	useEffect(() => {
+		if (!open) {
+			wasOpen.current = false;
+			return;
+		}
+		if (wasOpen.current && form.formState.isDirty) return;
+		wasOpen.current = true;
+		setSaveError(false);
 		if (role) {
 			form.reset({
 				name: role.name,
 				description: role.description || "",
-				can_promote_agent: (role.permissions as Record<string, boolean>)?.can_promote_agent ?? false,
+				can_promote_agent:
+					(role.permissions as Record<string, boolean>)
+						?.can_promote_agent ?? false,
 			});
 		} else {
 			form.reset({
@@ -69,35 +82,60 @@ export function RoleDialog({ role, open, onClose }: RoleDialogProps) {
 				can_promote_agent: false,
 			});
 		}
-	}, [role, form]);
+	}, [role, form, open, form.formState.isDirty]);
 
 	const onSubmit = async (values: FormValues) => {
-		if (isEditing) {
-			await updateRole.mutateAsync({
-				params: { path: { role_id: role.id } },
-				body: {
-					name: values.name,
-					description: values.description || null,
-					permissions: { can_promote_agent: values.can_promote_agent },
-				},
-			});
-		} else {
-			await createRole.mutateAsync({
-				body: {
-					name: values.name,
-					description: values.description || null,
-					permissions: { can_promote_agent: values.can_promote_agent },
-				},
-			});
+		if (createRole.isPending || updateRole.isPending) return;
+		setSaveError(false);
+		try {
+			if (isEditing) {
+				await updateRole.mutateAsync({
+					params: { path: { role_id: role.id } },
+					body: {
+						name: values.name,
+						description: values.description || null,
+						permissions: {
+							...role?.permissions,
+							can_promote_agent: values.can_promote_agent,
+						},
+					},
+				});
+			} else {
+				await createRole.mutateAsync({
+					body: {
+						name: values.name,
+						description: values.description || null,
+						permissions: {
+							can_promote_agent: values.can_promote_agent,
+						},
+					},
+				});
+			}
+			onClose();
+		} catch {
+			setSaveError(true);
 		}
-		onClose();
 	};
 
 	const isPending = createRole.isPending || updateRole.isPending;
 
 	return (
-		<Dialog open={open} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-[500px]">
+		<Dialog
+			open={open}
+			onOpenChange={(value) => {
+				if (!value && !isPending) onClose();
+			}}
+		>
+			<DialogContent
+				{...returnFocus}
+				onEscapeKeyDown={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+				onInteractOutside={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+				className="sm:max-w-[500px]"
+			>
 				<DialogHeader>
 					<DialogTitle>
 						{isEditing ? "Edit Role" : "Create Role"}
@@ -112,83 +150,108 @@ export function RoleDialog({ role, open, onClose }: RoleDialogProps) {
 				<Form {...form}>
 					<form
 						onSubmit={form.handleSubmit(onSubmit)}
-						className="space-y-4"
+						className="space-y-4 [&_input]:min-h-11"
 					>
-						<FormField
-							control={form.control}
-							name="name"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Role Name</FormLabel>
-									<FormControl>
-										<Input
-											placeholder="Admin, Viewer, Editor..."
-											{...field}
-										/>
-									</FormControl>
-									<FormDescription>
-										A descriptive name for this role
-									</FormDescription>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name="description"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>
-										Description (Optional)
-									</FormLabel>
-									<FormControl>
-										<Textarea
-											placeholder="What permissions does this role have?"
-											{...field}
-										/>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						{/* Permissions Section */}
-						<div className="pt-4 border-t">
-							<h4 className="text-sm font-medium mb-3">Permissions</h4>
+						<fieldset
+							disabled={isPending}
+							className="min-w-0 space-y-4"
+						>
 							<FormField
 								control={form.control}
-								name="can_promote_agent"
+								name="name"
 								render={({ field }) => (
-									<FormItem className="flex items-center justify-between rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
-										<div className="space-y-0.5">
-											<FormLabel className="text-sm">
-												Promote Agents
-											</FormLabel>
-											<FormDescription className="text-xs">
-												Allow users to promote private agents to the organization
-											</FormDescription>
-										</div>
+									<FormItem>
+										<FormLabel>Role Name</FormLabel>
 										<FormControl>
-											<Switch
-												checked={field.value}
-												onCheckedChange={field.onChange}
+											<Input
+												placeholder="Admin, Viewer, Editor..."
+												{...field}
 											/>
 										</FormControl>
+										<FormDescription>
+											A descriptive name for this role
+										</FormDescription>
+										<FormMessage />
 									</FormItem>
 								)}
 							/>
-						</div>
 
+							<FormField
+								control={form.control}
+								name="description"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>
+											Description (Optional)
+										</FormLabel>
+										<FormControl>
+											<Textarea
+												placeholder="What permissions does this role have?"
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							{/* Permissions Section */}
+							<div className="pt-4 border-t">
+								<h4 className="text-sm font-medium mb-3">
+									Permissions
+								</h4>
+								<FormField
+									control={form.control}
+									name="can_promote_agent"
+									render={({ field }) => (
+										<FormItem className="flex min-w-0 items-center justify-between gap-3 rounded-[var(--bf-radius-control)] border bg-muted/50 p-4">
+											<div className="space-y-0.5">
+												<FormLabel className="flex min-h-11 items-center text-sm">
+													Promote Agents
+												</FormLabel>
+												<FormDescription className="text-xs">
+													Allow users to promote
+													private agents to the
+													organization
+												</FormDescription>
+											</div>
+											<FormControl>
+												<Switch
+													checked={field.value}
+													onCheckedChange={
+														field.onChange
+													}
+												/>
+											</FormControl>
+										</FormItem>
+									)}
+								/>
+							</div>
+						</fieldset>
+						{saveError && (
+							<p
+								role="alert"
+								className="rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
+							>
+								Could not save the role. Your changes are
+								preserved. Try again.
+							</p>
+						)}
 						<DialogFooter>
 							<Button
 								type="button"
 								variant="outline"
 								onClick={onClose}
+								disabled={isPending}
+								className="min-h-11"
 							>
 								Cancel
 							</Button>
-							<Button type="submit" disabled={isPending}>
+							<Button
+								type="submit"
+								disabled={isPending}
+								className="min-h-11"
+							>
 								{isPending
 									? "Saving..."
 									: isEditing

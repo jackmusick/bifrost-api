@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
-import { effectiveAccess, type FilePolicy } from "@/services/filePolicies";
+import { effectiveAccess } from "@/services/filePolicies";
 import { InlineLoader } from "./InlineLoader";
 
 interface EffectiveAccessPanelProps {
@@ -27,55 +27,50 @@ export function EffectiveAccessPanel({
 	onOpenTest,
 	onManagePolicy,
 }: EffectiveAccessPanelProps) {
-	const [policies, setPolicies] = useState<FilePolicy[]>([]);
-	const [error, setError] = useState<string | null>(null);
-	const [loading, setLoading] = useState(false);
-
-	useEffect(() => {
-		let cancelled = false;
-		void (async () => {
-			if (path === null) {
-				setPolicies([]);
-				return;
-			}
-			setLoading(true);
-			try {
-				const result = await effectiveAccess(location, path, scope);
-				if (!cancelled) {
-					setPolicies(result);
-					setError(null);
-				}
-			} catch (err) {
-				if (!cancelled)
-					setError(err instanceof Error ? err.message : String(err));
-			} finally {
-				if (!cancelled) setLoading(false);
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [location, scope, path]);
+	const accessQuery = useQuery({
+		queryKey: ["effective-access", location, scope, path],
+		queryFn: () => effectiveAccess(location, path ?? "", scope),
+		enabled: path !== null,
+		retry: false,
+	});
+	const policies = accessQuery.data ?? [];
+	const error = accessQuery.isError;
+	const loading = accessQuery.isLoading || accessQuery.isFetching;
 
 	return (
-		<section className="flex h-full min-h-0 flex-col">
-			<div className="flex items-center justify-between border-b px-3 py-2">
-				<div className="flex items-center gap-2">
+		<section
+			aria-label="Effective access"
+			className="flex h-full min-h-0 min-w-0 flex-col"
+		>
+			<div className="flex shrink-0 flex-col gap-3 border-b p-3">
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					<ShieldCheck className="h-4 w-4 text-muted-foreground" />
-					<h2 className="text-sm font-semibold">Effective Access</h2>
+					<h2 className="min-w-0 text-sm font-semibold leading-5">
+						Effective Access
+					</h2>
 					{managedBySolution && (
-						<SolutionManagedBadge solutionId={solutionId ?? undefined} />
+						<SolutionManagedBadge
+							solutionId={solutionId ?? undefined}
+						/>
 					)}
 				</div>
-				<div className="flex gap-1">
+				<div className="flex flex-wrap gap-2">
 					{!readOnly && (
-						<Button type="button" variant="outline" size="xs" onClick={onManagePolicy}>
+						<Button
+							type="button"
+							variant="outline"
+							size="default"
+							className="min-h-11"
+							disabled={path === null}
+							onClick={onManagePolicy}
+						>
 							Manage policy
 						</Button>
 					)}
 					<Button
 						type="button"
-						size="xs"
+						size="default"
+						className="min-h-11"
 						onClick={onOpenTest}
 						disabled={path === null}
 					>
@@ -83,47 +78,78 @@ export function EffectiveAccessPanel({
 					</Button>
 				</div>
 			</div>
-			<div className="min-h-0 flex-1 overflow-auto p-3 text-xs">
+			<div className="min-h-0 min-w-0 flex-1 overflow-auto p-3 text-sm">
 				{path === null && (
-					<p className="text-muted-foreground">
+					<p className="[overflow-wrap:anywhere] text-muted-foreground">
 						Select an item to see what governs it.
 					</p>
 				)}
 				{loading && <InlineLoader label="Resolving…" />}
-				{error && <p className="text-destructive">{error}</p>}
-				{path !== null && !loading && !error && policies.length === 0 && (
-					<p className="text-muted-foreground">
-						No policy governs this path (default deny).
-					</p>
+				{error && (
+					<div role="alert" className="space-y-2">
+						<p className="[overflow-wrap:anywhere] text-destructive">
+							Couldn’t resolve access for this item.
+						</p>
+						<Button
+							type="button"
+							variant="outline"
+							size="default"
+							className="min-h-11"
+							disabled={accessQuery.isFetching}
+							onClick={() => void accessQuery.refetch()}
+						>
+							Retry access
+						</Button>
+					</div>
 				)}
+				{path !== null &&
+					!loading &&
+					!error &&
+					policies.length === 0 && (
+						<p className="[overflow-wrap:anywhere] text-muted-foreground">
+							No policy governs this path (default deny).
+						</p>
+					)}
 				<ul className="space-y-2">
 					{policies.map((policy, index) => (
 						<li
-							key={policy.id ?? `${policy.location}:${policy.path}`}
-							className="rounded-md border bg-muted/30 p-2"
+							key={
+								policy.id ?? `${policy.location}:${policy.path}`
+							}
+							className="rounded-[var(--bf-radius-surface)] border p-3"
 						>
-							<div className="flex items-center justify-between">
-								<span className="font-mono text-[11px]">
+							<div className="flex flex-wrap items-start justify-between gap-2">
+								<span className="min-w-0 [overflow-wrap:anywhere] font-mono text-xs">
 									{policy.path || "(root)"}
 								</span>
-								{index === 0 && <Badge variant="secondary">winning</Badge>}
+								{index === 0 && (
+									<Badge variant="secondary">winning</Badge>
+								)}
 							</div>
 							<ul className="mt-1 space-y-0.5">
 								{policy.policies.policies.map((rule, i) =>
 									"$ref" in rule ? (
-										<li key={rule.$ref} className="text-muted-foreground">
-											<span className="font-medium text-foreground font-mono">
+										<li
+											key={rule.$ref}
+											className="[overflow-wrap:anywhere] text-muted-foreground"
+										>
+											<span className="[overflow-wrap:anywhere] font-mono font-medium text-foreground">
 												ref: {rule.$ref}
 											</span>
 										</li>
 									) : (
-										<li key={rule.name ?? i} className="text-muted-foreground">
-											<span className="font-medium text-foreground">
+										<li
+											key={rule.name ?? i}
+											className="[overflow-wrap:anywhere] text-muted-foreground"
+										>
+											<span className="[overflow-wrap:anywhere] font-medium text-foreground">
 												{rule.name}
 											</span>{" "}
-											→ {rule.actions.join(", ")}
+											<span className="[overflow-wrap:anywhere]">
+												→ {rule.actions.join(", ")}
+											</span>
 										</li>
-									)
+									),
 								)}
 							</ul>
 						</li>

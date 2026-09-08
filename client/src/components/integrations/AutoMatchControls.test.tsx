@@ -13,7 +13,9 @@ import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import { AutoMatchControls } from "./AutoMatchControls";
 
-function renderControls(overrides: Partial<Parameters<typeof AutoMatchControls>[0]> = {}) {
+function renderControls(
+	overrides: Partial<Parameters<typeof AutoMatchControls>[0]> = {},
+) {
 	const onRunAutoMatch = vi.fn();
 	const onAcceptAll = vi.fn();
 	const onClear = vi.fn();
@@ -77,15 +79,15 @@ describe("AutoMatchControls — has suggestions", () => {
 			},
 		});
 
-		const acceptBtn = screen.getByRole("button", { name: /accept all \(3\)/i });
+		const acceptBtn = screen.getByRole("button", {
+			name: /accept all \(3\)/i,
+		});
 		await user.click(acceptBtn);
 		expect(onAcceptAll).toHaveBeenCalledTimes(1);
 
-		// Clear button is icon-only — it's the other button in the group.
-		const allButtons = screen.getAllByRole("button");
-		const clearBtn = allButtons.find((b) => b !== acceptBtn);
-		expect(clearBtn).toBeDefined();
-		await user.click(clearBtn!);
+		await user.click(
+			screen.getByRole("button", { name: "Clear suggestions" }),
+		);
 		expect(onClear).toHaveBeenCalledTimes(1);
 	});
 

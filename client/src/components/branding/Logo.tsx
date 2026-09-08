@@ -44,7 +44,7 @@ export function Logo({ type, className = "", alt = "Logo" }: LogoProps) {
 	if (!brandingLoaded || !logoLoaded) {
 		if (type === "rectangle") {
 			return (
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 items-center gap-3">
 					<Skeleton className="h-8 w-8 rounded" />
 					<Skeleton className="hidden sm:block h-5 w-32 rounded" />
 				</div>
@@ -73,9 +73,9 @@ export function Logo({ type, className = "", alt = "Logo" }: LogoProps) {
 	// Default branding - show icon + text for rectangle, icon only for square
 	if (type === "rectangle") {
 		return (
-			<div className="flex items-center gap-2">
+			<div className="flex min-w-0 items-center gap-3">
 				<img src={defaultLogo} alt={alt} className="h-8 w-8" />
-				<span className="hidden sm:inline-block font-semibold">
+				<span className="min-w-0 truncate font-display text-xl font-semibold tracking-tight">
 					{productName}
 				</span>
 			</div>

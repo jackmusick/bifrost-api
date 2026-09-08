@@ -14,6 +14,9 @@ import { renderWithProviders, screen, waitFor, within } from "@/test-utils";
 // Mocks
 // -----------------------------------------------------------------------------
 
+const mockIsDesktop = vi.fn(() => true);
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => mockIsDesktop() }));
+
 const mockUseExecutions = vi.fn();
 const mockCancelExecution = vi.fn();
 vi.mock("@/hooks/useExecutions", () => ({
@@ -146,6 +149,7 @@ const mockRefetch = vi.fn();
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockIsDesktop.mockReturnValue(true);
 	mockAuth.mockReturnValue({
 		isPlatformAdmin: false,
 		user: { id: "user-1", email: "u@example.com" },
@@ -442,8 +446,7 @@ describe("ExecutionHistory — feed rendering", () => {
 			screen.getByRole("region", { name: "History" }),
 		).toHaveClass(
 			"mx-auto",
-			"h-full",
-			"min-h-0",
+			"min-h-full",
 			"w-full",
 			"max-w-7xl",
 			"pb-1",
@@ -590,4 +593,44 @@ describe("ExecutionHistory — list states", () => {
 
 		expect(screen.getByTestId("history-loading")).toBeInTheDocument();
 	});
+});
+
+
+describe("mobile execution records", () => {
+	it("shows full metadata and retains scheduled cancellation without a table", async () => {
+		mockIsDesktop.mockReturnValue(false);
+		mockUseExecutions.mockReturnValue({data: {executions: [makeRow({status: "Scheduled", started_at: null, completed_at: null, scheduled_at: "2026-09-08T10:00:00Z"})], continuation_token: "next"}, isFetching: false, isError: false, refetch: mockRefetch});
+		const { user } = await renderPage();
+		expect(screen.queryByRole("table")).not.toBeInTheDocument();
+		const record = screen.getByTestId("execution-record");
+		expect(within(record).getByText("Run by")).toBeInTheDocument();
+		expect(within(record).getByText("Test User")).toBeInTheDocument();
+		expect(within(record).getByRole("link", {name: "test-workflow"})).toHaveAttribute("href", "/history/11111111-1111-1111-1111-111111111111");
+		expect(screen.getByRole("button", {name: "Previous"})).toBeDisabled();
+		expect(screen.getByRole("button", {name: "Next"})).toBeEnabled();
+		await user.click(within(record).getByRole("button", {name: "Cancel scheduled execution"}));
+		expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+		expect(mockCancelExecution).not.toHaveBeenCalled();
+	});
+});
+
+
+it("keeps mobile filters discoverable and exposes every status without a scrolling tab strip", async () => {
+	mockIsDesktop.mockReturnValue(false);
+	const {user} = await renderPage();
+	const toggle = screen.getByRole("button", {name: "Show filters"});
+	expect(toggle).toHaveAttribute("aria-expanded", "false");
+	await user.click(toggle);
+	expect(screen.getByRole("button", {name: "Hide filters"})).toHaveAttribute("aria-expanded", "true");
+	await user.click(screen.getByRole("combobox", {name: "Run status"}));
+	await user.click(screen.getByRole("option", {name: "Scheduled"}));
+	expect(screen.getByTestId("location-probe")).toHaveTextContent("status=Scheduled");
+	expect(screen.queryByRole("tab", {name: "Scheduled"})).not.toBeInTheDocument();
+});
+
+it("keeps platform cleanup unavailable to organization users", async () => {
+ mockAuth.mockReturnValue({isPlatformAdmin: false, user: {id: "org-user"}});
+ await renderPage();
+ expect(screen.queryByRole("button", {name: "Cleanup stuck executions"})).not.toBeInTheDocument();
+ expect(mockApiGet).not.toHaveBeenCalledWith("/api/executions/cleanup/stuck");
 });

@@ -16,6 +16,7 @@
  * VariablesTreeView) so the assertions target the sidebar's own structure.
  */
 
+import { waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { renderWithProviders, screen } from "@/test-utils";
@@ -195,7 +196,7 @@ describe("ExecutionSidebar — Usage card", () => {
 		});
 		expect(screen.getByText(/ai usage/i)).toBeInTheDocument();
 		// Pluralised call-count badge.
-		expect(screen.getByText(/2 calls/i)).toBeInTheDocument();
+		expect(screen.getByText(/^2 calls$/i)).toBeInTheDocument();
 		// The grouped-by-model row shows combined tokens (100+200 in column).
 		expect(screen.getByText("claude-3")).toBeInTheDocument();
 	});
@@ -221,7 +222,7 @@ describe("ExecutionSidebar — Usage card", () => {
 				total_cost: "0.0001",
 			},
 		});
-		expect(screen.getByText(/1 call$/i)).toBeInTheDocument();
+		expect(screen.getByText(/^1 call$/i)).toBeInTheDocument();
 	});
 
 	it("hides the Usage card when there's no data to show", async () => {
@@ -231,5 +232,15 @@ describe("ExecutionSidebar — Usage card", () => {
 			aiUsage: [],
 		});
 		expect(screen.queryByText(/^usage$/i)).not.toBeInTheDocument();
+	});
+});
+
+
+describe("ExecutionSidebar — compute zero values", () => {
+	it("shows measured zero values instead of treating them as missing", async () => {
+		await render({ isPlatformAdmin: true, peakMemoryBytes: 0, cpuTotalSeconds: 0 });
+		await waitFor(() => expect(screen.getByText("Memory")).toBeVisible());
+		expect(screen.getByText("CPU Time")).toBeVisible();
+		expect(screen.getByText("0.000s")).toBeVisible();
 	});
 });

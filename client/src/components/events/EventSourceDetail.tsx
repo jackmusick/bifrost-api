@@ -1,11 +1,11 @@
-import { useState, useCallback } from "react";
+import { EventSourceActions } from "./EventSourceActions";
+import { useState, useCallback, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowLeft,
 	Copy,
 	Check,
-	Trash2,
 	Webhook,
 	Calendar,
 	Zap,
@@ -13,7 +13,6 @@ import {
 	Building2,
 	AlertTriangle,
 	RefreshCw,
-	Pencil,
 	CircleCheck,
 	Clock3,
 	UserRound,
@@ -86,6 +85,41 @@ function getSourceTypeLabel(type: EventSourceType) {
 	}
 }
 
+function SourceWebhookAddress({
+	url,
+	copied,
+	onCopy,
+}: {
+	url: string;
+	copied: boolean;
+	onCopy: () => void;
+}) {
+	return (
+		<div className="flex w-full min-w-0 flex-wrap items-start gap-2 rounded-[var(--bf-radius-surface)] border p-3">
+			<code className="min-w-0 basis-full text-sm leading-6 [overflow-wrap:anywhere] sm:basis-0 sm:flex-1">
+				{url}
+			</code>
+			<Button
+				type="button"
+				variant="outline"
+				className="min-h-11 shrink-0"
+				onClick={onCopy}
+				aria-label="Copy webhook URL"
+			>
+				{copied ? (
+					<Check className="h-4 w-4" />
+				) : (
+					<Copy className="h-4 w-4" />
+				)}
+				{copied ? "Copied" : "Copy"}
+			</Button>
+			<span role="status" className="sr-only">
+				{copied ? "Webhook URL copied" : ""}
+			</span>
+		</div>
+	);
+}
+
 export function EventSourceDetail({
 	sourceId,
 	onClose,
@@ -94,17 +128,34 @@ export function EventSourceDetail({
 	const { eventId } = useParams<{ eventId?: string }>();
 	const queryClient = useQueryClient();
 	const [copied, setCopied] = useState(false);
+	const [actionError, setActionError] = useState<string | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
+	const [resubscribeError, setResubscribeError] = useState<string | null>(
+		null,
+	);
+	useEffect(() => {
+		if (!copied) return;
+		const timer = setTimeout(() => setCopied(false), 2000);
+		return () => clearTimeout(timer);
+	}, [copied]);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [resubscribeDialogOpen, setResubscribeDialogOpen] = useState(false);
 
-	const { data: source, isLoading, refetch } = useEventSource(sourceId);
+	const {
+		data: source,
+		isLoading,
+		isError,
+		isFetching,
+		refetch,
+	} = useEventSource(sourceId);
 	const updateMutation = useUpdateEventSource();
 	const resubscribeMutation = useResubscribeEventSource();
 
 	// Toggle active status
 	const handleToggleActive = async () => {
-		if (!source) return;
+		if (!source || updateMutation.isPending) return;
+		setActionError(null);
 		try {
 			await updateMutation.mutateAsync({
 				params: { path: { source_id: sourceId } },
@@ -116,7 +167,7 @@ export function EventSourceDetail({
 					: "Event source activated",
 			);
 		} catch {
-			toast.error("Failed to update event source");
+			setActionError("Could not update this source. Try again.");
 		}
 	};
 
@@ -142,27 +193,34 @@ export function EventSourceDetail({
 			await navigator.clipboard.writeText(webhookUrl);
 			setCopied(true);
 			toast.success("Webhook URL copied to clipboard");
-			setTimeout(() => setCopied(false), 2000);
+			setActionError(null);
 		} catch {
-			toast.error("Failed to copy URL");
+			setActionError(
+				"Could not copy the URL. Select and copy the address, or try again.",
+			);
 		}
 	};
 
 	const handleDelete = async () => {
+		if (deleteMutation.isPending) return;
+		setDeleteError(null);
 		try {
 			await deleteMutation.mutateAsync({
 				params: { path: { source_id: sourceId } },
 			});
+			setDeleteDialogOpen(false);
 			toast.success("Event source deleted");
 			onClose();
 		} catch (error) {
-			toast.error(
+			setDeleteError(
 				getErrorMessage(error, "Failed to delete event source"),
 			);
 		}
 	};
 
 	const handleResubscribe = async () => {
+		if (resubscribeMutation.isPending) return;
+		setResubscribeError(null);
 		try {
 			await resubscribeMutation.mutateAsync({
 				params: { path: { source_id: sourceId } },
@@ -170,7 +228,7 @@ export function EventSourceDetail({
 			setResubscribeDialogOpen(false);
 			toast.success("Microsoft Graph subscription recreated");
 		} catch (error) {
-			toast.error(
+			setResubscribeError(
 				getErrorMessage(error, "Failed to recreate Graph subscription"),
 			);
 		}
@@ -178,7 +236,7 @@ export function EventSourceDetail({
 
 	if (isLoading) {
 		return (
-			<div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
+			<div className="min-w-0 flex flex-col gap-5">
 				<div className="flex items-center gap-4">
 					<Skeleton className="h-10 w-10" />
 					<div className="space-y-2">
@@ -192,6 +250,23 @@ export function EventSourceDetail({
 		);
 	}
 
+	if (isError && !source)
+		return (
+			<div className="min-w-0 space-y-4 py-8">
+				<p role="alert">Could not load this event source.</p>
+				<Button
+					variant="outline"
+					className="min-h-11"
+					disabled={isFetching}
+					onClick={() => void refetch()}
+				>
+					Retry
+				</Button>
+				<Button variant="ghost" className="min-h-11" onClick={onClose}>
+					Back to Event Sources
+				</Button>
+			</div>
+		);
 	if (!source) {
 		return (
 			<div className="flex flex-col items-center justify-center py-12">
@@ -217,7 +292,7 @@ export function EventSourceDetail({
 			? {
 					label: "Connected",
 					icon: CircleCheck,
-					className: "text-emerald-700 dark:text-emerald-300",
+					className: "text-[var(--bf-success)]",
 				}
 			: graphSummary?.health === "expired"
 				? {
@@ -228,30 +303,36 @@ export function EventSourceDetail({
 				: {
 						label: "Needs attention",
 						icon: AlertTriangle,
-						className: "text-amber-700 dark:text-amber-300",
+						className: "text-[var(--bf-warning)]",
 					};
 	const GraphStatusIcon = graphStatus.icon;
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
+		<div className="min-w-0 flex flex-col gap-5">
 			{/* Header row */}
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<Button variant="ghost" size="icon" onClick={onClose}>
+			<div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+				<div className="flex min-w-0 items-start gap-3">
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Back to Event Sources"
+						className="h-11 w-11 shrink-0"
+						onClick={onClose}
+					>
 						<ArrowLeft className="h-4 w-4" />
 					</Button>
-					<div className="flex items-center gap-3 text-muted-foreground">
+					<div className="hidden shrink-0 items-center gap-3 pt-2 text-muted-foreground sm:flex">
 						{isGraph ? (
 							<MicrosoftGraphIcon className="h-5 w-5 text-[#1686d9]" />
 						) : (
 							getSourceTypeIcon(source.source_type)
 						)}
 					</div>
-					<div>
-						<h1 className="text-2xl font-bold tracking-tight">
+					<div className="min-w-0">
+						<h1 className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
 							{source.name}
 						</h1>
-						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">
 							<span>
 								{isGraph
 									? "Microsoft Graph"
@@ -272,12 +353,13 @@ export function EventSourceDetail({
 						</div>
 					</div>
 				</div>
-				<div className="flex items-center gap-3">
+				<div className="flex shrink-0 flex-wrap items-center gap-3">
 					{isPlatformAdmin && (
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<div className="flex items-center gap-2">
 									<Switch
+										aria-label="Source active"
 										checked={source.is_active}
 										onCheckedChange={handleToggleActive}
 										disabled={updateMutation.isPending}
@@ -299,62 +381,92 @@ export function EventSourceDetail({
 					<Button
 						variant="outline"
 						size="icon"
+						className="h-11 w-11 shrink-0"
+						disabled={isFetching}
 						onClick={handleRefresh}
+						aria-label="Refresh"
 						title="Refresh"
 					>
 						<RefreshCw className="h-4 w-4" />
 					</Button>
 					{isPlatformAdmin && (
-						<>
-							<Button
-								variant="outline"
-								size="icon"
-								onClick={() => setEditDialogOpen(true)}
-								title="Edit"
-							>
-								<Pencil className="h-4 w-4" />
-							</Button>
-							<Button
-								variant="outline"
-								size="icon"
-								onClick={() => setDeleteDialogOpen(true)}
-								title="Delete"
-							>
-								<Trash2 className="h-4 w-4" />
-							</Button>
-						</>
+						<EventSourceActions
+							source={source}
+							onEdit={() => setEditDialogOpen(true)}
+							onDelete={() => setDeleteDialogOpen(true)}
+						/>
 					)}
 				</div>
 			</div>
 
+			{isError && (
+				<div
+					role="alert"
+					className="flex flex-wrap items-center gap-3 text-sm text-destructive"
+				>
+					Could not refresh this source. Showing the last loaded
+					details.
+					<Button
+						className="min-h-11"
+						variant="outline"
+						disabled={isFetching}
+						onClick={() => void refetch()}
+					>
+						Retry
+					</Button>
+				</div>
+			)}
+			{actionError && (
+				<p role="alert" className="text-sm text-destructive">
+					{actionError}
+				</p>
+			)}
 			{/* Metadata badges row */}
 			<div className="flex items-center gap-2 flex-wrap">
 				{source.source_type === "topic" && source.event_type && (
-					<Badge variant="outline" className="font-mono">
+					<Badge
+						variant="outline"
+						className="max-w-full whitespace-normal [overflow-wrap:anywhere] font-mono"
+					>
 						{source.event_type}
 					</Badge>
 				)}
 				{source.webhook?.adapter_name && (
-					<Badge variant="outline">
+					<Badge
+						variant="outline"
+						className="max-w-full whitespace-normal [overflow-wrap:anywhere]"
+					>
 						{isGraph
 							? "Microsoft Graph"
 							: source.webhook.adapter_name}
 					</Badge>
 				)}
-				<Badge variant="outline">
+				<Badge
+					variant="outline"
+					className="max-w-full whitespace-normal [overflow-wrap:anywhere]"
+				>
 					{source.subscription_count || 0} subscription
 					{(source.subscription_count || 0) !== 1 ? "s" : ""}
 				</Badge>
-				<Badge variant="outline">
+				<Badge
+					variant="outline"
+					className="max-w-full whitespace-normal [overflow-wrap:anywhere]"
+				>
 					{source.event_count_24h || 0} event
 					{(source.event_count_24h || 0) !== 1 ? "s" : ""} (24h)
 				</Badge>
 				{source.schedule && (
 					<>
-						<Badge variant="outline" className="font-mono">
+						<Badge
+							variant="outline"
+							className="max-w-full whitespace-normal [overflow-wrap:anywhere] font-mono"
+						>
 							{source.schedule.cron_expression}
 						</Badge>
-						<Badge variant="outline">
+						<Badge
+							variant="outline"
+							className="max-w-full whitespace-normal [overflow-wrap:anywhere]"
+						>
 							{source.schedule.timezone}
 						</Badge>
 						<Badge
@@ -365,8 +477,8 @@ export function EventSourceDetail({
 							}
 							className={
 								source.schedule.enabled
-									? "bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-200"
-									: "bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900 dark:text-red-200"
+									? "bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+									: "bg-muted text-muted-foreground"
 							}
 						>
 							{source.schedule.enabled ? "Enabled" : "Disabled"}
@@ -374,30 +486,11 @@ export function EventSourceDetail({
 					</>
 				)}
 				{webhookUrl && (
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Badge
-								variant="outline"
-								className="cursor-pointer hover:bg-accent min-w-0"
-								onClick={handleCopyUrl}
-							>
-								{copied ? (
-									<Check className="h-3 w-3 mr-1 flex-shrink-0 text-green-500" />
-								) : (
-									<Copy className="h-3 w-3 mr-1 flex-shrink-0" />
-								)}
-								<span className="truncate font-mono text-xs">
-									{webhookUrl}
-								</span>
-							</Badge>
-						</TooltipTrigger>
-						<TooltipContent side="bottom" className="max-w-lg">
-							<p className="text-xs mb-1">Click to copy</p>
-							<code className="text-xs break-all">
-								{webhookUrl}
-							</code>
-						</TooltipContent>
-					</Tooltip>
+					<SourceWebhookAddress
+						url={webhookUrl}
+						copied={copied}
+						onCopy={handleCopyUrl}
+					/>
 				)}
 			</div>
 
@@ -430,12 +523,12 @@ export function EventSourceDetail({
 
 							<dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
 								<div className="min-w-0">
-									<dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+									<dt className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
 										<UserRound className="h-3.5 w-3.5" />{" "}
 										User
 									</dt>
 									<dd
-										className="mt-1 truncate text-sm font-medium"
+										className="mt-1 [overflow-wrap:anywhere] text-sm font-medium"
 										title={
 											graphSummary.userSecondary ??
 											graphSummary.userLabel
@@ -444,13 +537,13 @@ export function EventSourceDetail({
 										{graphSummary.userLabel}
 									</dd>
 									{graphSummary.userSecondary && (
-										<div className="truncate text-xs text-muted-foreground">
+										<div className="[overflow-wrap:anywhere] text-sm text-muted-foreground">
 											{graphSummary.userSecondary}
 										</div>
 									)}
 								</div>
 								<div className="min-w-0">
-									<dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+									<dt className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
 										<Radio className="h-3.5 w-3.5" />{" "}
 										Resource
 									</dt>
@@ -459,7 +552,7 @@ export function EventSourceDetail({
 									</dd>
 									{graphSummary.resourcePath && (
 										<div
-											className="truncate font-mono text-xs text-muted-foreground"
+											className="[overflow-wrap:anywhere] font-mono text-sm text-muted-foreground"
 											title={graphSummary.resourcePath}
 										>
 											{graphSummary.resourcePath}
@@ -467,7 +560,7 @@ export function EventSourceDetail({
 									)}
 								</div>
 								<div>
-									<dt className="text-xs font-medium text-muted-foreground">
+									<dt className="text-sm font-medium text-muted-foreground">
 										Changes
 									</dt>
 									<dd className="mt-1 text-sm font-medium capitalize">
@@ -475,7 +568,7 @@ export function EventSourceDetail({
 									</dd>
 								</div>
 								<div>
-									<dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+									<dt className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
 										<Clock3 className="h-3.5 w-3.5" />{" "}
 										Provider expiry
 									</dt>
@@ -499,10 +592,10 @@ export function EventSourceDetail({
 								variant="outline"
 								onClick={() => setResubscribeDialogOpen(true)}
 								disabled={resubscribeMutation.isPending}
-								className="shrink-0"
+								className="min-h-11 shrink-0"
 							>
 								<RefreshCw
-									className={`mr-2 h-4 w-4 ${resubscribeMutation.isPending ? "animate-spin" : ""}`}
+									className={`mr-2 h-4 w-4 ${resubscribeMutation.isPending ? "motion-safe:animate-spin" : ""}`}
 								/>
 								Resubscribe
 							</Button>
@@ -526,11 +619,13 @@ export function EventSourceDetail({
 				defaultValue="events"
 				className="flex-1 flex flex-col min-h-0"
 			>
-				<TabsList className="w-fit">
-					<TabsTrigger value="subscriptions">
+				<TabsList className="h-auto w-fit max-w-full">
+					<TabsTrigger className="min-h-11" value="subscriptions">
 						Subscriptions
 					</TabsTrigger>
-					<TabsTrigger value="events">Events</TabsTrigger>
+					<TabsTrigger className="min-h-11" value="events">
+						Events
+					</TabsTrigger>
 				</TabsList>
 
 				<TabsContent value="subscriptions" className="mt-4 flex-1">
@@ -559,7 +654,12 @@ export function EventSourceDetail({
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
 				open={deleteDialogOpen}
-				onOpenChange={setDeleteDialogOpen}
+				onOpenChange={(next) => {
+					if (!deleteMutation.isPending) {
+						setDeleteDialogOpen(next);
+						if (!next) setDeleteError(null);
+					}
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
@@ -573,11 +673,28 @@ export function EventSourceDetail({
 							cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{deleteError && (
+						<p
+							role="alert"
+							className="text-sm text-destructive [overflow-wrap:anywhere]"
+						>
+							{deleteError}
+						</p>
+					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogCancel
+							className="min-h-11"
+							disabled={deleteMutation.isPending}
+						>
+							Cancel
+						</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={handleDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							onClick={(event) => {
+								event.preventDefault();
+								void handleDelete();
+							}}
+							disabled={deleteMutation.isPending}
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							Delete
 						</AlertDialogAction>
@@ -587,7 +704,12 @@ export function EventSourceDetail({
 
 			<AlertDialog
 				open={resubscribeDialogOpen}
-				onOpenChange={setResubscribeDialogOpen}
+				onOpenChange={(next) => {
+					if (!resubscribeMutation.isPending) {
+						setResubscribeDialogOpen(next);
+						if (!next) setResubscribeError(null);
+					}
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
@@ -602,10 +724,27 @@ export function EventSourceDetail({
 							subscription has expired.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{resubscribeError && (
+						<p
+							role="alert"
+							className="text-sm text-destructive [overflow-wrap:anywhere]"
+						>
+							{resubscribeError}
+						</p>
+					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogCancel
+							className="min-h-11"
+							disabled={resubscribeMutation.isPending}
+						>
+							Cancel
+						</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={handleResubscribe}
+							className="min-h-11"
+							onClick={(event) => {
+								event.preventDefault();
+								void handleResubscribe();
+							}}
 							disabled={resubscribeMutation.isPending}
 						>
 							{resubscribeMutation.isPending

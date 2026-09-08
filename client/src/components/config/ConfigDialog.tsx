@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { getErrorMessage } from "@/lib/api-error";
 import { Loader2 } from "lucide-react";
 import {
 	Dialog,
@@ -71,10 +73,12 @@ interface ConfigDialogProps {
 }
 
 export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
-	const setConfig = useSetConfig();
-	const updateConfig = useUpdateConfig();
+	const setConfig = useSetConfig({ showErrorToast: false });
+	const updateConfig = useUpdateConfig({ showErrorToast: false });
 	const { isPlatformAdmin, user } = useAuth();
 	const isEditing = !!config;
+	const submitBusy = useRef(false);
+	const saveErrorRef = useRef<HTMLDivElement>(null);
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
@@ -101,7 +105,12 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 				key: config.key,
 				// For secrets, we don't show the actual value - user must enter new value to update
 				value:
-					config.type === "secret" ? "" : String(config.value ?? ""),
+					config.type === "secret"
+						? ""
+						: typeof config.value === "object" &&
+							  config.value !== null
+							? JSON.stringify(config.value, null, 2)
+							: String(config.value ?? ""),
 				type: config.type,
 				description: config.description ?? "",
 				organization_id: config.org_id ?? null,
@@ -118,41 +127,77 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 	}, [config, form, open, defaultOrgId]);
 
 	const onSubmit = async (values: FormValues) => {
-		if (isEditing && config.id) {
-			// For updates, send null for empty secret values to keep existing
-			const updateBody = {
-				key: values.key,
-				value:
-					values.type === "secret" && !values.value
-						? null
-						: values.value,
-				type: values.type,
-				description: values.description ?? null,
-				organization_id: values.organization_id,
-			};
-			await updateConfig.mutateAsync({
-				params: { path: { config_id: config.id } },
-				body: updateBody as typeof updateBody & { value: string },
-			});
-		} else {
-			await setConfig.mutateAsync({
-				body: {
+		if (submitBusy.current || isSaving) return;
+		submitBusy.current = true;
+		form.clearErrors("root.save");
+		try {
+			if (isEditing && config.id) {
+				// Omit an unchanged secret so the existing encrypted value is preserved.
+				const updateBody = {
 					key: values.key,
-					value: values.value,
+					...(values.type === "secret" && !values.value
+						? {}
+						: { value: values.value }),
 					type: values.type,
 					description: values.description ?? null,
 					organization_id: values.organization_id,
-				},
+				};
+				await updateConfig.mutateAsync({
+					params: { path: { config_id: config.id } },
+					body: updateBody,
+				});
+			} else {
+				await setConfig.mutateAsync({
+					body: {
+						key: values.key,
+						value: values.value,
+						type: values.type,
+						description: values.description ?? null,
+						organization_id: values.organization_id,
+					},
+				});
+			}
+			onClose();
+		} catch (error) {
+			form.setError("root.save", {
+				type: "server",
+				message: getErrorMessage(
+					error,
+					"Try saving again. Your changes are preserved.",
+				),
 			});
+		} finally {
+			submitBusy.current = false;
 		}
-		onClose();
 	};
 
 	const isSaving = setConfig.isPending || updateConfig.isPending;
 
+	const saveError = form.formState.errors.root?.save?.message;
+	useEffect(() => {
+		if (saveError) {
+			saveErrorRef.current?.focus();
+			saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [saveError]);
+
 	return (
-		<Dialog open={open} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-[600px]">
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!nextOpen && !isSaving) onClose();
+			}}
+		>
+			<DialogContent
+				className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[600px]"
+				showCloseButton={!isSaving}
+				onEscapeKeyDown={(event) => {
+					if (isSaving) event.preventDefault();
+				}}
+				onInteractOutside={(event) => {
+					if (isSaving) event.preventDefault();
+				}}
+			>
 				<DialogHeader>
 					<DialogTitle>
 						{isEditing ? "Edit Configuration" : "Add Configuration"}
@@ -166,173 +211,206 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 
 				<Form {...form}>
 					<form
-						onSubmit={form.handleSubmit(onSubmit)}
-						className="space-y-4"
+						onSubmit={(event) =>
+							void form.handleSubmit(onSubmit)(event)
+						}
+						className="flex min-h-0 flex-col gap-4"
 					>
-						{/* Organization Scope - Only show for platform admins */}
-						{isPlatformAdmin && (
-							<FormField
-								control={form.control}
-								name="organization_id"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Organization</FormLabel>
-										<FormControl>
-											<OrganizationSelect
-												value={field.value}
-												onChange={field.onChange}
-												showGlobal={true}
-											/>
-										</FormControl>
-										<FormDescription>
-											Global config is available to all
-											organizations
-										</FormDescription>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						)}
-
-						<FormField
-							control={form.control}
-							name="key"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Key</FormLabel>
-									<FormControl>
-										<Input
-											placeholder="CONFIG_KEY_NAME"
-											{...field}
-											disabled={isEditing}
-											className="font-mono"
-										/>
-									</FormControl>
-									<FormDescription>
-										Alphanumeric characters and underscores
-										only
-									</FormDescription>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name="type"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Type</FormLabel>
-									<Select
-										onValueChange={field.onChange}
-										defaultValue={field.value}
-									>
-										<FormControl>
-											<SelectTrigger>
-												<SelectValue placeholder="Select type" />
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											<SelectItem value="string">
-												String
-											</SelectItem>
-											<SelectItem value="int">
-												Integer
-											</SelectItem>
-											<SelectItem value="bool">
-												Boolean
-											</SelectItem>
-											<SelectItem value="json">
-												JSON
-											</SelectItem>
-											<SelectItem value="secret">
-												Secret
-											</SelectItem>
-										</SelectContent>
-									</Select>
-									<FormDescription>
-										{selectedType === "secret" &&
-											"Secret values are encrypted at rest"}
-									</FormDescription>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name="value"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Value</FormLabel>
-									<FormControl>
-										{selectedType === "secret" ? (
-											<Input
-												type="password"
-												placeholder={
-													isEditing
-														? "Leave empty to keep existing..."
-														: "Enter secret value"
-												}
-												className="font-mono"
-												{...field}
-											/>
-										) : (
-											<Textarea
-												placeholder="Configuration value"
-												className="font-mono"
-												{...field}
-											/>
+						<div
+							role="region"
+							aria-label="Configuration settings"
+							className="min-h-0 overflow-y-auto pr-1"
+						>
+							<fieldset
+								disabled={isSaving}
+								className="min-w-0 space-y-4"
+							>
+								{/* Organization Scope - Only show for platform admins */}
+								{isPlatformAdmin && (
+									<FormField
+										control={form.control}
+										name="organization_id"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel>
+													Organization
+												</FormLabel>
+												<FormControl>
+													<OrganizationSelect
+														value={field.value}
+														onChange={
+															field.onChange
+														}
+														showGlobal={true}
+													/>
+												</FormControl>
+												<FormDescription>
+													Global config is available
+													to all organizations
+												</FormDescription>
+												<FormMessage />
+											</FormItem>
 										)}
-									</FormControl>
-									<FormDescription>
-										{selectedType === "secret"
-											? isEditing
-												? "Leave empty to keep the existing secret, or enter a new value to update"
-												: "Secret will be encrypted and stored securely"
-											: "Enter the configuration value"}
-									</FormDescription>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
+									/>
+								)}
 
-						<FormField
-							control={form.control}
-							name="description"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>
-										Description (Optional)
-									</FormLabel>
-									<FormControl>
-										<Input
-											placeholder="What is this config for?"
-											{...field}
-										/>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
+								<FormField
+									control={form.control}
+									name="key"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Key</FormLabel>
+											<FormControl>
+												<Input
+													placeholder="CONFIG_KEY_NAME"
+													{...field}
+													disabled={isEditing}
+													className="min-h-11 font-mono lg:min-h-0"
+												/>
+											</FormControl>
+											<FormDescription>
+												Alphanumeric characters and
+												underscores only
+											</FormDescription>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
 
-						<DialogFooter>
+								<FormField
+									control={form.control}
+									name="type"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Type</FormLabel>
+											<Select
+												onValueChange={field.onChange}
+												value={field.value}
+												disabled={isSaving}
+											>
+												<FormControl>
+													<SelectTrigger className="min-h-11 lg:min-h-0">
+														<SelectValue placeholder="Select type" />
+													</SelectTrigger>
+												</FormControl>
+												<SelectContent>
+													<SelectItem value="string">
+														String
+													</SelectItem>
+													<SelectItem value="int">
+														Integer
+													</SelectItem>
+													<SelectItem value="bool">
+														Boolean
+													</SelectItem>
+													<SelectItem value="json">
+														JSON
+													</SelectItem>
+													<SelectItem value="secret">
+														Secret
+													</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormDescription>
+												{selectedType === "secret" &&
+													"Secret values are encrypted at rest"}
+											</FormDescription>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+
+								<FormField
+									control={form.control}
+									name="value"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Value</FormLabel>
+											<FormControl>
+												{selectedType === "secret" ? (
+													<Input
+														type="password"
+														placeholder={
+															isEditing
+																? "Leave empty to keep existing..."
+																: "Enter secret value"
+														}
+														className="min-h-11 font-mono lg:min-h-0"
+														{...field}
+													/>
+												) : (
+													<Textarea
+														placeholder="Configuration value"
+														className="min-h-11 font-mono lg:min-h-0"
+														{...field}
+													/>
+												)}
+											</FormControl>
+											<FormDescription>
+												{selectedType === "secret"
+													? isEditing
+														? "Leave empty to keep the existing secret, or enter a new value to update"
+														: "Secret will be encrypted and stored securely"
+													: "Enter the configuration value"}
+											</FormDescription>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+
+								<FormField
+									control={form.control}
+									name="description"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>
+												Description (Optional)
+											</FormLabel>
+											<FormControl>
+												<Input
+													placeholder="What is this config for?"
+													className="min-h-11 lg:min-h-0"
+													{...field}
+												/>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</fieldset>
+						</div>
+						{form.formState.errors.root?.save && (
+							<Alert
+								variant="destructive"
+								ref={saveErrorRef}
+								tabIndex={-1}
+								className="max-h-32 shrink-0 overflow-y-auto outline-none"
+							>
+								<AlertTitle>
+									Configuration could not be saved
+								</AlertTitle>
+								<AlertDescription>
+									{form.formState.errors.root.save.message}
+								</AlertDescription>
+							</Alert>
+						)}
+						<DialogFooter className="shrink-0">
 							<Button
 								type="button"
 								variant="outline"
 								onClick={onClose}
+								disabled={isSaving}
+								className="min-h-11 lg:min-h-0"
 							>
 								Cancel
 							</Button>
 							<Button
 								type="submit"
-								disabled={
-									isSaving ||
-									!form.formState.isValid
-								}
+								className="min-h-11 lg:min-h-0"
+								disabled={isSaving}
 							>
 								{isSaving && (
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 								)}
 								{isSaving
 									? "Saving..."

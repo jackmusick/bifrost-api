@@ -33,15 +33,21 @@ export function EntitySelector({
 }: EntitySelectorProps) {
 	// Show loading skeleton
 	if (isLoading) {
-		return <Skeleton className="h-8 w-full" />;
+		return (
+			<Skeleton
+				role="status"
+				aria-label="Loading entities"
+				className="min-h-11 w-full"
+			/>
+		);
 	}
 
 	// Show error state
 	if (isError) {
 		return (
-			<div className="flex items-center gap-2">
+			<div className="flex flex-wrap items-center gap-2">
 				<div className="flex items-center gap-1 text-sm text-destructive flex-1">
-					<AlertCircle className="h-4 w-4" />
+					<AlertCircle className="h-4 w-4 shrink-0" />
 					<span>Error loading entities</span>
 				</div>
 				{onRetry && (
@@ -49,7 +55,7 @@ export function EntitySelector({
 						variant="outline"
 						size="sm"
 						onClick={onRetry}
-						className="h-8"
+						className="min-h-11"
 					>
 						<RotateCw className="h-3 w-3 mr-1" />
 						Retry
@@ -66,12 +72,14 @@ export function EntitySelector({
 			<Combobox
 				options={[]}
 				value={value}
-				onValueChange={(selectedValue) => onChange(selectedValue, selectedValue)}
+				onValueChange={(selectedValue) =>
+					onChange(selectedValue, selectedValue)
+				}
 				placeholder="All entities assigned"
 				searchPlaceholder="Search entities..."
 				emptyText="All entities are assigned to other organizations."
 				disabled={disabled}
-				className="h-8 text-sm"
+				className="min-h-11 text-sm"
 			/>
 		);
 	}
@@ -101,7 +109,7 @@ export function EntitySelector({
 			searchPlaceholder="Search entities..."
 			emptyText="No entities found."
 			disabled={disabled}
-			className="h-8 text-sm"
+			className="min-h-11 text-sm"
 		/>
 	);
 }

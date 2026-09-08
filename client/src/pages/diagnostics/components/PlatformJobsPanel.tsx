@@ -1,3 +1,4 @@
+import { PlatformJobRecord } from "./PlatformJobRecord";
 import { useDeferredValue, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceStrict } from "date-fns";
@@ -29,19 +30,12 @@ import {
 	DataTable,
 	DataTableBody,
 	DataTableCell,
-	DataTableFooter,
 	DataTableHead,
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
-import {
-	Pagination,
-	PaginationContent,
-	PaginationItem,
-	PaginationNext,
-	PaginationPrevious,
-} from "@/components/ui/pagination";
+
 import { Progress } from "@/components/ui/progress";
 import {
 	Select,
@@ -100,13 +94,13 @@ function displayStatus(status: string) {
 
 function statusClassName(status: string) {
 	if (status === "succeeded") {
-		return "border-green-500/30 bg-green-500/15 text-green-700 dark:text-green-400";
+		return "border-[var(--bf-success)]/30 bg-[var(--bf-success)]/10 text-[var(--bf-success)]";
 	}
 	if (status === "running" || status === "waiting") {
-		return "border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-400";
+		return "border-primary/30 bg-primary/10 text-primary";
 	}
 	if (status === "queued" || status === "cancel_requested") {
-		return "border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-400";
+		return "border-[var(--bf-warning)]/30 bg-[var(--bf-warning)]/10 text-[var(--bf-warning)]";
 	}
 	if (status === "failed" || status === "cancelled") {
 		return "border-destructive/30 bg-destructive/10 text-destructive";
@@ -120,7 +114,9 @@ function StatusIcon({ status }: { status: string }) {
 		return <AlertCircle className="h-3.5 w-3.5" />;
 	}
 	if (ACTIVE_STATUSES.has(status))
-		return <Loader2 className="h-3.5 w-3.5 animate-spin" />;
+		return (
+			<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+		);
 	return <Clock3 className="h-3.5 w-3.5" />;
 }
 
@@ -149,7 +145,7 @@ function MemorySummary({
 		job.progress.phase?.toLowerCase().includes("scheduler memory");
 	if (waitingForMemory && required != null) {
 		return (
-			<div className="text-amber-700 dark:text-amber-400">
+			<div className="text-[var(--bf-warning)]">
 				<p className="font-medium">
 					{formatBytes(availableMemoryBytes)} available
 				</p>
@@ -282,7 +278,7 @@ export function PlatformJobsPanel({
 				aria-labelledby="platform-jobs-heading"
 				className="space-y-3"
 			>
-				<div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+				<div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
 					<div>
 						<div className="flex flex-wrap items-center gap-2">
 							<h3
@@ -301,7 +297,7 @@ export function PlatformJobsPanel({
 							On-demand and scheduled durable work, updated live.
 						</p>
 					</div>
-					<div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+					<div className="flex min-w-0 w-full flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto">
 						<label
 							className="sr-only"
 							htmlFor="platform-job-search"
@@ -310,7 +306,7 @@ export function PlatformJobsPanel({
 						</label>
 						<Input
 							id="platform-job-search"
-							className="sm:w-64"
+							className="min-h-11 min-w-0 sm:flex-1 lg:w-64"
 							placeholder="Search jobs"
 							value={search}
 							onChange={(event) =>
@@ -322,7 +318,7 @@ export function PlatformJobsPanel({
 							onValueChange={handleStatusChange}
 						>
 							<SelectTrigger
-								className="w-full sm:w-44"
+								className="min-h-11 w-full sm:w-44"
 								aria-label="Filter Platform Jobs by state"
 							>
 								<SelectValue />
@@ -348,20 +344,40 @@ export function PlatformJobsPanel({
 					</div>
 				</div>
 
-				{query.isLoading ? (
-					<div className="flex justify-center py-10">
-						<Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
-					</div>
-				) : query.error ? (
+				{query.error && (
 					<Alert variant="destructive">
 						<AlertDescription>
-							Platform jobs could not be loaded. Use Refresh above
-							to try again.
+							{query.data
+								? "Platform jobs could not refresh. Showing the last available snapshot."
+								: "Platform jobs could not be loaded."}
 						</AlertDescription>
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11 mt-3 w-fit"
+							disabled={query.isFetching}
+							onClick={() => {
+								void query.refetch();
+							}}
+						>
+							{query.isFetching ? "Retrying…" : "Retry jobs"}
+						</Button>
 					</Alert>
-				) : jobs.length === 0 ? (
-					<div className="rounded-2xl border border-dashed px-5 py-10 text-center">
-						<CheckCircle2 className="mx-auto h-6 w-6 text-green-600" />
+				)}
+				{query.isLoading ? (
+					<div
+						role="status"
+						className="flex items-center justify-center gap-3 py-10 text-sm text-muted-foreground"
+					>
+						<Loader2
+							aria-hidden="true"
+							className="h-5 w-5 animate-spin motion-reduce:animate-none"
+						/>
+						Loading platform jobs…
+					</div>
+				) : query.error && !query.data ? null : jobs.length === 0 ? (
+					<div className="rounded-[var(--bf-radius-surface)] border border-dashed px-5 py-10 text-center">
+						<CheckCircle2 className="mx-auto h-6 w-6 text-[var(--bf-success)]" />
 						<p className="mt-3 font-medium">
 							{hasFilters
 								? "No Platform Jobs Match"
@@ -374,189 +390,210 @@ export function PlatformJobsPanel({
 						</p>
 					</div>
 				) : (
-					<DataTable className="max-h-[min(56vh,620px)]">
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead>Name</DataTableHead>
-								<DataTableHead>State</DataTableHead>
-								<DataTableHead>Elapsed</DataTableHead>
-								<DataTableHead>Memory</DataTableHead>
-							</DataTableRow>
-						</DataTableHeader>
-						<DataTableBody>
+					<div className="@container space-y-4">
+						<ul
+							aria-label="Platform jobs"
+							className="space-y-3 @4xl:hidden"
+						>
 							{jobs.map((job) => (
-								<DataTableRow
+								<PlatformJobRecord
 									key={job.id}
-									clickable
-									tabIndex={0}
-									className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-									aria-label={`View ${job.title} platform job`}
-									onClick={() => setSelectedJob(job)}
-									onKeyDown={(event) => {
-										if (
-											event.key === "Enter" ||
-											event.key === " "
-										) {
-											event.preventDefault();
-											setSelectedJob(job);
-										}
-									}}
-								>
-									<DataTableCell>
-										<p
-											className="max-w-[240px] truncate font-medium"
-											title={job.title}
-										>
-											{job.title}
-										</p>
-										<p className="font-mono text-xs text-muted-foreground">
-											{job.job_type}
-										</p>
-										<p
-											className="max-w-[240px] truncate text-xs text-muted-foreground"
-											title={job.requested_by_name}
-										>
-											{job.requested_by_name}
-										</p>
-									</DataTableCell>
-									<DataTableCell>
+									job={job}
+									onSelect={() => setSelectedJob(job)}
+									status={
 										<Badge
 											variant="outline"
-											className={`gap-1 ${statusClassName(job.status)}`}
+											className={statusClassName(
+												job.status,
+											)}
 										>
 											<StatusIcon status={job.status} />
 											{displayStatus(job.status)}
 										</Badge>
-										<p
-											className="mt-1 max-w-[260px] truncate text-xs text-muted-foreground"
-											title={
-												job.progress.phase ?? undefined
-											}
-										>
-											{job.progress.phase ??
-												"No phase reported"}
-										</p>
-										{job.progress.percent != null &&
-										ACTIVE_STATUSES.has(job.status) ? (
-											<div className="mt-1.5 flex items-center gap-2">
-												<Progress
-													className="h-1.5 w-24"
-													value={job.progress.percent}
-												/>
-												<span className="text-xs text-muted-foreground">
-													{job.progress.percent.toFixed(
-														0,
-													)}
-													%
-												</span>
-											</div>
-										) : null}
-										{job.error ? (
-											<p
-												className="mt-1 max-w-[260px] truncate text-xs text-destructive"
-												title={job.error.message}
-											>
-												{job.error.message}
-											</p>
-										) : null}
-									</DataTableCell>
-									<DataTableCell>
-										<p>{elapsed(job)}</p>
-										<p className="text-xs text-muted-foreground">
-											{ACTIVE_STATUSES.has(job.status)
-												? "in progress"
-												: relativeFinished(job)}
-										</p>
-									</DataTableCell>
-									<DataTableCell>
+									}
+									memory={
 										<MemorySummary
 											job={job}
 											availableMemoryBytes={
 												availableMemoryBytes
 											}
 										/>
-									</DataTableCell>
-								</DataTableRow>
+									}
+									elapsed={
+										<>
+											{elapsed(job)}
+											<p className="text-xs text-muted-foreground">
+												{ACTIVE_STATUSES.has(job.status)
+													? "in progress"
+													: relativeFinished(job)}
+											</p>
+										</>
+									}
+								/>
 							))}
-						</DataTableBody>
-						<DataTableFooter>
-							<DataTableRow>
-								<DataTableCell
-									colSpan={2}
-									className="text-muted-foreground"
-								>
-									{(query.data?.offset ?? 0) + 1}–
-									{Math.min(
-										(query.data?.offset ?? 0) + jobs.length,
-										total,
-									)}{" "}
-									of {total}
-								</DataTableCell>
-								<DataTableCell colSpan={2}>
-									<Pagination className="justify-end">
-										<PaginationContent>
-											<PaginationItem>
-												<PaginationPrevious
-													onClick={(event) => {
-														event.preventDefault();
-														setPage((current) =>
-															Math.max(
-																0,
-																current - 1,
-															),
-														);
-													}}
-													className={
-														page === 0 ||
-														query.isFetching
-															? "pointer-events-none opacity-50"
-															: "cursor-pointer"
-													}
-													aria-disabled={
-														page === 0 ||
-														query.isFetching
-													}
-												/>
-											</PaginationItem>
-											<li
-												className="flex min-w-24 items-center justify-center gap-1.5 px-2 text-sm tabular-nums text-muted-foreground"
-												aria-live="polite"
+						</ul>
+						<DataTable className="hidden @4xl:flex max-h-[min(56vh,620px)]">
+							<DataTableHeader>
+								<DataTableRow>
+									<DataTableHead>Name</DataTableHead>
+									<DataTableHead>State</DataTableHead>
+									<DataTableHead>Elapsed</DataTableHead>
+									<DataTableHead>Memory</DataTableHead>
+								</DataTableRow>
+							</DataTableHeader>
+							<DataTableBody>
+								{jobs.map((job) => (
+									<DataTableRow
+										key={job.id}
+										clickable
+										tabIndex={0}
+										className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+										aria-label={`View ${job.title} platform job`}
+										onClick={() => setSelectedJob(job)}
+										onKeyDown={(event) => {
+											if (
+												event.key === "Enter" ||
+												event.key === " "
+											) {
+												event.preventDefault();
+												setSelectedJob(job);
+											}
+										}}
+									>
+										<DataTableCell>
+											<p
+												className="max-w-[240px] truncate font-medium"
+												title={job.title}
 											>
-												{query.isPlaceholderData ? (
-													<Loader2 className="h-3.5 w-3.5 animate-spin" />
-												) : null}
-												Page {displayedPage + 1} of{" "}
-												{totalPages}
-											</li>
-											<PaginationItem>
-												<PaginationNext
-													onClick={(event) => {
-														event.preventDefault();
-														setPage(
-															(current) =>
-																current + 1,
-														);
-													}}
-													className={
-														page + 1 >=
-															totalPages ||
-														query.isFetching
-															? "pointer-events-none opacity-50"
-															: "cursor-pointer"
-													}
-													aria-disabled={
-														page + 1 >=
-															totalPages ||
-														query.isFetching
-													}
+												{job.title}
+											</p>
+											<p className="font-mono text-xs text-muted-foreground">
+												{job.job_type}
+											</p>
+											<p
+												className="max-w-[240px] truncate text-xs text-muted-foreground"
+												title={job.requested_by_name}
+											>
+												{job.requested_by_name}
+											</p>
+										</DataTableCell>
+										<DataTableCell>
+											<Badge
+												variant="outline"
+												className={`gap-1 ${statusClassName(job.status)}`}
+											>
+												<StatusIcon
+													status={job.status}
 												/>
-											</PaginationItem>
-										</PaginationContent>
-									</Pagination>
-								</DataTableCell>
-							</DataTableRow>
-						</DataTableFooter>
-					</DataTable>
+												{displayStatus(job.status)}
+											</Badge>
+											<p
+												className="mt-1 max-w-[260px] truncate text-xs text-muted-foreground"
+												title={
+													job.progress.phase ??
+													undefined
+												}
+											>
+												{job.progress.phase ??
+													"No phase reported"}
+											</p>
+											{job.progress.percent != null &&
+											ACTIVE_STATUSES.has(job.status) ? (
+												<div className="mt-1.5 flex items-center gap-2">
+													<Progress
+														className="h-1.5 w-24"
+														value={
+															job.progress.percent
+														}
+													/>
+													<span className="text-xs text-muted-foreground">
+														{job.progress.percent.toFixed(
+															0,
+														)}
+														%
+													</span>
+												</div>
+											) : null}
+											{job.error ? (
+												<p
+													className="mt-1 max-w-[260px] truncate text-xs text-destructive"
+													title={job.error.message}
+												>
+													{job.error.message}
+												</p>
+											) : null}
+										</DataTableCell>
+										<DataTableCell>
+											<p>{elapsed(job)}</p>
+											<p className="text-xs text-muted-foreground">
+												{ACTIVE_STATUSES.has(job.status)
+													? "in progress"
+													: relativeFinished(job)}
+											</p>
+										</DataTableCell>
+										<DataTableCell>
+											<MemorySummary
+												job={job}
+												availableMemoryBytes={
+													availableMemoryBytes
+												}
+											/>
+										</DataTableCell>
+									</DataTableRow>
+								))}
+							</DataTableBody>
+						</DataTable>
+						<div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+							<p className="text-muted-foreground">
+								{(query.data?.offset ?? 0) + 1}–
+								{Math.min(
+									(query.data?.offset ?? 0) + jobs.length,
+									total,
+								)}{" "}
+								of {total}
+							</p>
+							<nav
+								aria-label="Platform job pages"
+								className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto"
+							>
+								<Button
+									type="button"
+									variant="outline"
+									className="min-h-11"
+									aria-label="Go to previous page"
+									disabled={page === 0 || query.isFetching}
+									onClick={() =>
+										setPage((current) =>
+											Math.max(0, current - 1),
+										)
+									}
+								>
+									Previous
+								</Button>
+								<span
+									aria-live="polite"
+									className="text-xs text-muted-foreground"
+								>
+									Page {displayedPage + 1} of {totalPages}
+								</span>
+								<Button
+									type="button"
+									variant="outline"
+									className="min-h-11"
+									aria-label="Go to next page"
+									disabled={
+										page + 1 >= totalPages ||
+										query.isFetching
+									}
+									onClick={() =>
+										setPage((current) => current + 1)
+									}
+								>
+									Next
+								</Button>
+							</nav>
+						</div>
+					</div>
 				)}
 			</section>
 
@@ -568,8 +605,8 @@ export function PlatformJobsPanel({
 					side="right"
 					className="w-full overflow-hidden p-0 sm:max-w-xl"
 				>
-					<SheetHeader className="border-b px-5 py-4 pr-14">
-						<SheetTitle>
+					<SheetHeader className="shrink-0 border-b p-[var(--bf-surface-pad)] pr-14">
+						<SheetTitle className="[overflow-wrap:anywhere]">
 							{selectedJob?.title ?? "Platform Job"}
 						</SheetTitle>
 						<SheetDescription>
@@ -578,7 +615,7 @@ export function PlatformJobsPanel({
 						</SheetDescription>
 					</SheetHeader>
 					{selectedJob ? (
-						<div className="min-h-0 flex-1 overflow-auto p-5">
+						<div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-[var(--bf-surface-pad)]">
 							<div className="flex flex-wrap items-center gap-2">
 								<Badge
 									variant="outline"
@@ -589,13 +626,13 @@ export function PlatformJobsPanel({
 								</Badge>
 								<Badge
 									variant="outline"
-									className="font-mono font-normal"
+									className="h-auto max-w-full whitespace-normal font-mono font-normal [overflow-wrap:anywhere]"
 								>
 									{selectedJob.job_type}
 								</Badge>
 							</div>
 
-							<div className="mt-5 rounded-lg border bg-muted/20 px-3 py-2">
+							<div className="mt-5 rounded-[var(--bf-radius-surface)] border bg-muted/20 px-3 py-2">
 								<p className="text-xs font-medium text-muted-foreground">
 									Job ID
 								</p>
@@ -607,6 +644,7 @@ export function PlatformJobsPanel({
 										type="button"
 										variant="ghost"
 										size="icon-sm"
+										className="min-h-11 min-w-11"
 										onClick={handleCopyJobId}
 										aria-label="Copy job ID"
 										title="Copy job ID"
@@ -620,7 +658,7 @@ export function PlatformJobsPanel({
 								<h3 className="text-sm font-semibold">
 									Current Phase
 								</h3>
-								<p className="mt-2 text-sm">
+								<p className="mt-2 text-sm [overflow-wrap:anywhere]">
 									{selectedJob.progress.phase ??
 										"No phase reported"}
 								</p>
@@ -642,7 +680,9 @@ export function PlatformJobsPanel({
 							{selectedJob.error ? (
 								<Alert variant="destructive" className="mt-5">
 									<AlertDescription>
-										<p>{selectedJob.error.message}</p>
+										<p className="[overflow-wrap:anywhere]">
+											{selectedJob.error.message}
+										</p>
 										<p className="mt-1 font-mono text-xs">
 											{selectedJob.error.code}
 										</p>
@@ -717,7 +757,11 @@ export function PlatformJobsPanel({
 
 							<div className="mt-6 flex flex-wrap gap-2">
 								{selectedJob.action_url ? (
-									<Button asChild variant="outline">
+									<Button
+										asChild
+										variant="outline"
+										className="min-h-11"
+									>
 										<Link to={selectedJob.action_url}>
 											Open resource{" "}
 											<ArrowUpRight className="ml-2 h-4 w-4" />
@@ -727,9 +771,12 @@ export function PlatformJobsPanel({
 								{selectedJob.can_cancel ? (
 									<Button
 										variant="destructive"
-										onClick={() =>
-											setCancelJobId(selectedJob.id)
-										}
+										type="button"
+										className="min-h-11"
+										onClick={() => {
+											cancelMutation.reset();
+											setCancelJobId(selectedJob.id);
+										}}
 									>
 										<Ban className="mr-2 h-4 w-4" /> Cancel
 										job
@@ -743,7 +790,10 @@ export function PlatformJobsPanel({
 
 			<AlertDialog
 				open={cancelJobId != null}
-				onOpenChange={(open) => !open && setCancelJobId(null)}
+				onOpenChange={(open) => {
+					if (!open && !cancelMutation.isPending)
+						setCancelJobId(null);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
@@ -756,22 +806,38 @@ export function PlatformJobsPanel({
 							safely.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{cancelMutation.isError && (
+						<p role="alert" className="text-sm text-destructive">
+							Cancellation failed. The job is still selected; try
+							again.
+						</p>
+					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel disabled={cancelMutation.isPending}>
+						<AlertDialogCancel
+							className="min-h-11 lg:min-h-11"
+							disabled={cancelMutation.isPending}
+						>
 							Keep job
 						</AlertDialogCancel>
 						<AlertDialogAction
+							type="button"
+							className="min-h-11"
 							variant="destructive"
 							disabled={cancelMutation.isPending}
-							onClick={() =>
-								cancelJobId &&
-								cancelMutation.mutate(cancelJobId)
-							}
+							onClick={(event) => {
+								event.preventDefault();
+								if (cancelJobId && !cancelMutation.isPending)
+									cancelMutation.mutate(cancelJobId);
+							}}
 						>
 							{cancelMutation.isPending ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : null}
-							Cancel job
+							{cancelMutation.isPending
+								? "Cancelling…"
+								: cancelMutation.isError
+									? "Retry cancellation"
+									: "Cancel job"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -793,7 +859,7 @@ function Detail({
 		<div className="min-w-0">
 			<dt className="text-xs text-muted-foreground">{label}</dt>
 			<dd
-				className={`mt-1 break-words font-medium ${mono ? "font-mono text-xs" : ""}`}
+				className={`mt-1 [overflow-wrap:anywhere] font-medium ${mono ? "font-mono text-xs" : ""}`}
 			>
 				{value}
 			</dd>

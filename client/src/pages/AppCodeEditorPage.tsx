@@ -5,14 +5,17 @@
  * Uses the file-based routing pattern with code-first development.
  */
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { parseSolutionFrom } from "@/lib/solution-back-nav";
 import { ArrowLeft, Upload, Settings, Loader2, Link } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { getErrorMessage } from "@/lib/api-error";
+import { ListLoadError } from "@/components/layout/ListLoadError";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Dialog,
@@ -50,18 +53,30 @@ export function AppCodeEditorPage() {
 		: (user?.organizationId ?? null);
 
 	// Fetch existing application metadata
-	const { data: existingApp, isLoading: isLoadingApp } = useApplication(
-		isEditing ? slugParam : undefined,
-	);
+	const {
+		data: existingApp,
+		isLoading: isLoadingApp,
+		isFetching: isFetchingApp,
+		refetch: refetchApp,
+	} = useApplication(isEditing ? slugParam : undefined);
 
 	// Mutations
-	const createApplication = useCreateApplication();
-	const publishApplication = usePublishApplication();
+	const createApplication = useCreateApplication({ errorToast: false });
+	const publishApplication = usePublishApplication({ errorToast: false });
 
 	// Form state for new apps (only used when !isEditing)
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [slug, setSlug] = useState("");
+	const [slugEdited, setSlugEdited] = useState(false);
+	const [createError, setCreateError] = useState<string | null>(null);
+	const createErrorRef = useRef<HTMLParagraphElement>(null);
+	useEffect(() => {
+		if (createError) {
+			createErrorRef.current?.focus();
+			createErrorRef.current?.scrollIntoView({ block: "center" });
+		}
+	}, [createError]);
 	const [organizationId, setOrganizationId] = useState<string | null>(
 		defaultOrgId,
 	);
@@ -69,6 +84,7 @@ export function AppCodeEditorPage() {
 	// Dialog state
 	const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
 	const [publishMessage, setPublishMessage] = useState("");
+	const [publishError, setPublishError] = useState<string | null>(null);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isEmbedOpen, setIsEmbedOpen] = useState(false);
 
@@ -85,7 +101,7 @@ export function AppCodeEditorPage() {
 	const handleNameChange = (newName: string) => {
 		setName(newName);
 		// Auto-generate slug if it hasn't been manually edited
-		if (!isEditing && !slug) {
+		if (!isEditing && !slugEdited) {
 			const generated = newName
 				.toLowerCase()
 				.replace(/[^a-z0-9]+/g, "-")
@@ -96,6 +112,8 @@ export function AppCodeEditorPage() {
 
 	// Create a new code-based application
 	const handleCreate = async () => {
+		if (isEditing || createApplication.isPending) return;
+		setCreateError(null);
 		if (!name.trim()) {
 			toast.error("Please enter an application name");
 			return;
@@ -107,24 +125,24 @@ export function AppCodeEditorPage() {
 					name,
 					description: description || null,
 					slug,
-					// Engine property will be typed after types are regenerated
-					engine: "jsx",
-				} as Parameters<typeof createApplication.mutateAsync>[0]["body"] & { engine?: string },
+					organization_id: organizationId,
+					access_level: "authenticated",
+					app_model: "standalone_v2",
+				},
 			});
 
-			toast.success("Application created");
 			// Navigate to edit the new app
 			navigate(`/apps/${result.slug}/edit`, { replace: true });
 		} catch (error) {
-			console.error("[AppCodeEditorPage] Create error:", error);
-			toast.error(
-				error instanceof Error ? error.message : "Failed to create",
+			setCreateError(
+				getErrorMessage(error, "Failed to create application"),
 			);
 		}
 	};
 
 	const handlePublish = async () => {
-		if (!existingApp?.id) return;
+		if (!existingApp?.id || publishApplication.isPending) return;
+		setPublishError(null);
 
 		try {
 			await publishApplication.mutateAsync({
@@ -134,9 +152,13 @@ export function AppCodeEditorPage() {
 			setIsPublishDialogOpen(false);
 			setPublishMessage("");
 			publishApplication.reset();
-		} catch {
-			// The hook presents enqueue failures in a toast. Once accepted,
-			// progress and terminal errors arrive through notifications.
+		} catch (error) {
+			setPublishError(
+				getErrorMessage(
+					error,
+					"Could not start publishing. Try again.",
+				),
+			);
 		}
 	};
 
@@ -144,7 +166,7 @@ export function AppCodeEditorPage() {
 	if (isEditing && isLoadingApp) {
 		return (
 			<div className="space-y-6">
-				<div className="flex items-center gap-4">
+				<div className="flex min-w-0 flex-1 items-center gap-2">
 					<Skeleton className="h-10 w-10" />
 					<Skeleton className="h-8 w-64" />
 				</div>
@@ -153,17 +175,51 @@ export function AppCodeEditorPage() {
 		);
 	}
 
+	if (isEditing && !existingApp) {
+		return (
+			<div className="space-y-6">
+				<div className="flex items-center gap-3">
+					<Button
+						variant="ghost"
+						size="icon-lg"
+						aria-label={
+							fromSolution ? "Back to Solution" : "Back to Apps"
+						}
+						onClick={() => navigate(backTo)}
+					>
+						<ArrowLeft className="h-5 w-5" />
+					</Button>
+					<h1 className="font-display text-2xl font-semibold">
+						Application unavailable
+					</h1>
+				</div>
+				<ListLoadError
+					resource="this application"
+					hasCachedData={false}
+					isRetrying={isFetchingApp}
+					onRetry={() => void refetchApp()}
+				/>
+			</div>
+		);
+	}
+
 	// Show creation form for new apps
 	if (!appCreated) {
 		return (
-			<div className="h-full flex flex-col">
+			<div className="flex h-full min-h-0 flex-col">
 				{/* Header */}
 				<div className="flex items-center justify-between pb-4">
-					<div className="flex items-center gap-4">
+					<div className="flex min-w-0 flex-1 items-center gap-2">
 						<Button
 							variant="ghost"
-							size="icon"
+							size="icon-lg"
 							onClick={() => navigate("/apps")}
+							className="shrink-0"
+							aria-label={
+								fromSolution
+									? "Back to Solution"
+									: "Back to Apps"
+							}
 						>
 							<ArrowLeft className="h-5 w-5" />
 						</Button>
@@ -174,7 +230,7 @@ export function AppCodeEditorPage() {
 				</div>
 
 				{/* Creation Form */}
-				<div className="max-w-xl mx-auto py-8 space-y-6">
+				<div className="mx-auto flex w-full max-w-xl flex-1 min-h-0 flex-col gap-6 overflow-auto px-3 py-6 sm:px-4">
 					<div className="space-y-2">
 						<Label htmlFor="name">Name</Label>
 						<Input
@@ -202,10 +258,13 @@ export function AppCodeEditorPage() {
 						<Input
 							id="slug"
 							value={slug}
-							onChange={(e) => setSlug(e.target.value)}
+							onChange={(e) => {
+								setSlugEdited(true);
+								setSlug(e.target.value);
+							}}
 							placeholder="my-code-application"
 						/>
-						<p className="text-xs text-muted-foreground">
+						<p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
 							Your app will be accessible at /apps/{slug || "..."}
 						</p>
 					</div>
@@ -215,28 +274,46 @@ export function AppCodeEditorPage() {
 							<Label>Organization Scope</Label>
 							<OrganizationSelect
 								value={organizationId}
-								onChange={(val) => setOrganizationId(val ?? null)}
+								onChange={(val) =>
+									setOrganizationId(val ?? null)
+								}
 								showGlobal={true}
 							/>
 						</div>
 					)}
 
-					<div className="flex gap-3 pt-4">
+					{createError && (
+						<p
+							role="alert"
+							ref={createErrorRef}
+							tabIndex={-1}
+							className="rounded-[var(--bf-radius-surface)] border border-destructive/30 p-3 text-sm text-destructive [overflow-wrap:anywhere]"
+						>
+							{createError}
+						</p>
+					)}
+					<div className="flex flex-wrap gap-3 pt-4">
 						<Button
 							variant="outline"
 							onClick={() => navigate("/apps")}
+							size="lg"
 						>
 							Cancel
 						</Button>
 						<Button
 							onClick={handleCreate}
-							disabled={createApplication.isPending || !name.trim()}
+							disabled={
+								createApplication.isPending || !name.trim()
+							}
+							size="lg"
 						>
 							{createApplication.isPending ? (
 								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 									Creating...
 								</>
+							) : createError ? (
+								"Retry create"
 							) : (
 								"Create Application"
 							)}
@@ -252,36 +329,38 @@ export function AppCodeEditorPage() {
 	const hasDraft = existingApp?.has_unpublished_changes;
 
 	return (
-		<div className="h-full flex flex-col -mx-6 lg:-mx-8 -mb-6 lg:-mb-8">
+		<div className="h-full flex flex-col -mx-4 sm:-mx-6 lg:-mx-8 -mb-4 sm:-mb-6 lg:-mb-8">
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 py-2 border-b bg-background">
-				<div className="flex items-center gap-4">
+			<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2 border-b bg-background sm:px-4">
+				<div className="flex min-w-0 basis-full items-center gap-2 sm:basis-auto sm:flex-1">
 					<Button
 						variant="ghost"
-						size="icon"
+						size="icon-lg"
 						onClick={() => navigate(backTo)}
+						className="shrink-0"
 						aria-label={
 							fromSolution ? "Back to Solution" : "Back to Apps"
 						}
 					>
 						<ArrowLeft className="h-5 w-5" />
 					</Button>
-					<div className="flex items-center gap-3">
-						<h1 className="text-lg font-semibold">
+					<div className="flex min-w-0 items-center gap-3">
+						<h1 className="truncate font-display text-lg font-semibold">
 							{existingApp?.name || "Edit Application"}
 						</h1>
 					</div>
 				</div>
 
-				<div className="flex items-center gap-2">
+				<div className="ml-auto flex items-center gap-2">
 					{/* Embed — hidden for managed apps (embed secrets are mutations) */}
 					{isEditing && existingApp && !isManaged && (
 						<>
 							<Button
 								variant="ghost"
-								size="icon"
+								size="icon-lg"
 								onClick={() => setIsEmbedOpen(true)}
 								title="Embed settings"
+								aria-label="Embed settings"
 							>
 								<Link className="h-4 w-4" />
 							</Button>
@@ -300,7 +379,7 @@ export function AppCodeEditorPage() {
 						<>
 							<Button
 								variant="ghost"
-								size="icon"
+								size="icon-lg"
 								onClick={() => setIsSettingsOpen(true)}
 								title="Settings"
 								aria-label="Settings"
@@ -319,7 +398,7 @@ export function AppCodeEditorPage() {
 					    only writer; the API rejects publish regardless). */}
 					{hasDraft && !isManaged && (
 						<Button
-							size="sm"
+							size="lg"
 							onClick={() => setIsPublishDialogOpen(true)}
 							disabled={isPublishing}
 						>
@@ -341,6 +420,7 @@ export function AppCodeEditorPage() {
 			<div className="flex-1 min-h-0">
 				{existingApp?.id && (
 					<AppCodeEditorLayout
+						key={existingApp.id}
 						appId={existingApp.id}
 						appName={existingApp.name}
 						appSlug={existingApp.slug}
@@ -355,7 +435,10 @@ export function AppCodeEditorPage() {
 				onOpenChange={(open) => {
 					if (!isPublishing) {
 						setIsPublishDialogOpen(open);
-						if (!open) publishApplication.reset();
+						if (!open) {
+							publishApplication.reset();
+							setPublishError(null);
+						}
 					}
 				}}
 			>
@@ -363,8 +446,9 @@ export function AppCodeEditorPage() {
 					<DialogHeader>
 						<DialogTitle>Publish Application</DialogTitle>
 						<DialogDescription>
-							This will make the current draft live. Users will
-							see the new version immediately.
+							Publish the current draft. The new version will go
+							live when publishing finishes. Follow its progress
+							in notifications.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4">
@@ -375,28 +459,43 @@ export function AppCodeEditorPage() {
 							<Textarea
 								id="publish-message"
 								value={publishMessage}
-								onChange={(e) => setPublishMessage(e.target.value)}
+								onChange={(e) =>
+									setPublishMessage(e.target.value)
+								}
 								placeholder="What changed in this version?"
 								rows={3}
 								disabled={isPublishing}
 							/>
 						</div>
 					</div>
+					{publishError && (
+						<Alert variant="destructive">
+							<AlertDescription className="[overflow-wrap:anywhere]">
+								{publishError}
+							</AlertDescription>
+						</Alert>
+					)}
 					<DialogFooter>
 						<Button
 							variant="outline"
+							className="min-h-11"
 							onClick={() => {
 								setIsPublishDialogOpen(false);
+								setPublishError(null);
 								publishApplication.reset();
 							}}
 							disabled={isPublishing}
 						>
 							Cancel
 						</Button>
-						<Button onClick={handlePublish} disabled={isPublishing}>
+						<Button
+							className="min-h-11"
+							onClick={handlePublish}
+							disabled={isPublishing}
+						>
 							{isPublishing ? (
 								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 									Publishing...
 								</>
 							) : (

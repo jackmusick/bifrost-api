@@ -21,21 +21,19 @@ export function FormContextPanel({ className }: FormContextPanelProps) {
 	const hasField = Object.keys(context.field).length > 0;
 
 	return (
-		<div className={cn("flex flex-col h-full", className)}>
+		<div className={cn("flex min-w-0 flex-col h-full", className)}>
 			{/* Header */}
 			<div className="flex items-center justify-between pb-3 shrink-0">
 				<h3 className="text-sm font-medium flex items-center gap-2">
 					Form Context
 					{isLoadingLaunchWorkflow && (
-						<Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+						<Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none! text-muted-foreground" />
 					)}
 				</h3>
 			</div>
 
 			{/* Scrollable content */}
-			<div
-				className="overflow-y-auto space-y-4 pr-1"
-			>
+			<div className="min-w-0 overflow-y-auto space-y-4 pr-1">
 				{/* Workflow Results */}
 				<ContextSection
 					title="context.workflow"
@@ -99,7 +97,7 @@ function ContextSection({
 			<div className="pl-2 border-l-2 border-muted">
 				{isLoading ? (
 					<div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-						<Loader2 className="h-3 w-3 animate-spin" />
+						<Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none!" />
 						Loading...
 					</div>
 				) : hasData ? (

@@ -24,6 +24,8 @@ export interface ComboboxOption {
 }
 
 interface ComboboxProps {
+	"aria-describedby"?: string;
+	"aria-invalid"?: React.AriaAttributes["aria-invalid"];
 	options: ComboboxOption[];
 	value?: string;
 	onValueChange?: (value: string) => void;
@@ -47,6 +49,8 @@ export function Combobox({
 	isLoading = false,
 	className,
 	id,
+	"aria-describedby": describedBy,
+	"aria-invalid": invalid,
 }: ComboboxProps) {
 	const [open, setOpen] = React.useState(false);
 	const filter = React.useCallback(
@@ -70,15 +74,20 @@ export function Combobox({
 					variant="outline"
 					role="combobox"
 					aria-expanded={open}
+					aria-describedby={describedBy}
+					aria-invalid={invalid}
 					className={cn(
-						"w-full justify-between font-normal",
+						"h-auto min-h-11 w-full min-w-0 justify-between py-2 font-normal sm:min-h-10",
 						className,
 					)}
 					disabled={disabled || isLoading}
 				>
 					{isLoading ? (
 						<>
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							<Loader2
+								aria-hidden="true"
+								className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
+							/>
 							<span className="text-muted-foreground">
 								Loading...
 							</span>
@@ -87,13 +96,11 @@ export function Combobox({
 						<>
 							<span
 								className={cn(
-									"truncate",
-									!selectedOption && "text-muted-foreground",
+									"min-w-0 whitespace-normal text-left [overflow-wrap:anywhere]",
+									!value && "text-muted-foreground",
 								)}
 							>
-								{selectedOption
-									? selectedOption.label
-									: placeholder}
+								{selectedOption?.label ?? (value || placeholder)}
 							</span>
 							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</>
@@ -101,18 +108,26 @@ export function Combobox({
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-[var(--radix-popover-trigger-width)] p-0"
+				className="max-h-[var(--radix-popover-content-available-height)] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] overflow-hidden p-0"
 				align="start"
 			>
-				<Command filter={filter}>
-					<CommandInput placeholder={searchPlaceholder} />
-					<CommandList className="max-h-60 overflow-y-auto">
+				<Command
+					filter={filter}
+					label={searchPlaceholder}
+					className="min-h-0"
+				>
+					<CommandInput
+						aria-label={searchPlaceholder}
+						placeholder={searchPlaceholder}
+					/>
+					<CommandList className="min-h-0 max-h-60 overflow-y-auto">
 						<CommandEmpty>{emptyText}</CommandEmpty>
 						<CommandGroup>
 							{options.map((option) => (
 								<CommandItem
 									key={option.value}
 									value={option.value}
+									className="min-h-11"
 									keywords={[option.label]}
 									data-checked={value === option.value}
 									onSelect={() => {
@@ -124,7 +139,7 @@ export function Combobox({
 										setOpen(false);
 									}}
 								>
-									<div className="flex flex-col flex-1">
+									<div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
 										<span className="font-medium">
 											{option.label}
 										</span>

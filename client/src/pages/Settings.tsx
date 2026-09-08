@@ -7,6 +7,8 @@ import {
 	useState,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { Button } from "@/components/ui/button";
 import { WorkflowKeys } from "@/pages/settings/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { OAuth } from "@/pages/settings/OAuth";
@@ -153,27 +155,39 @@ function findActiveSectionId(currentTab: string) {
 	);
 }
 
-function findActiveContent(currentTab: string) {
-	return (
-		settingsSections
-			.flatMap((section) => section.items)
-			.find((item) => item.value === currentTab)?.content ??
-		AIModelSettings
-	);
-}
-
 export function Settings() {
 	const navigate = useNavigate();
 	const location = useLocation();
 
 	// Parse the current tab from the URL path
-	const currentTab = location.pathname.split("/settings/")[1] || "ai";
+	const requestedTab = location.pathname.split("/settings/")[1];
+	const currentTab = settingsSections.some((section) =>
+		section.items.some((item) => item.value === requestedTab),
+	)
+		? requestedTab
+		: "ai";
 	const activeSectionId = findActiveSectionId(currentTab);
-	const ActiveContent = findActiveContent(currentTab);
 	const [expandedSections, setExpandedSections] = useState<string[]>(() => [
 		activeSectionId,
 	]);
+	const [visitedTabs, setVisitedTabs] = useState(() => new Set([currentTab]));
+	const [previousTab, setPreviousTab] = useState(currentTab);
+	if (previousTab !== currentTab) {
+		setPreviousTab(currentTab);
+		setVisitedTabs((tabs) => new Set([...tabs, currentTab]));
+		setExpandedSections((sections) =>
+			sections.includes(activeSectionId)
+				? sections
+				: [...sections, activeSectionId],
+		);
+	}
 	const contentRef = useRef<HTMLElement>(null);
+	const mobileNavigationRef = useRef<HTMLButtonElement>(null);
+	const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+	const activeLabel =
+		settingsSections
+			.flatMap((section) => section.items)
+			.find((item) => item.value === currentTab)?.label ?? "Models";
 
 	const sectionState = useMemo(
 		() => new Set(expandedSections),
@@ -187,6 +201,8 @@ export function Settings() {
 				? sections
 				: [...sections, destinationSection],
 		);
+		if (mobileNavigationOpen) mobileNavigationRef.current?.focus();
+		setMobileNavigationOpen(false);
 		navigate(`/settings/${value}`);
 	};
 
@@ -200,30 +216,52 @@ export function Settings() {
 
 	// Redirect /settings to /settings/ai (first tab)
 	useEffect(() => {
-		if (location.pathname === "/settings") {
-			navigate("/settings/ai", { replace: true });
+		if (requestedTab !== currentTab) {
+			navigate(`/settings/${currentTab}`, { replace: true });
 		}
-	}, [location.pathname, navigate]);
+	}, [requestedTab, currentTab, navigate]);
 
 	useEffect(() => {
 		if (contentRef.current) contentRef.current.scrollTop = 0;
 	}, [currentTab]);
 
 	return (
-		<div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col space-y-6 px-4 sm:px-6 lg:px-8">
-			<div className="max-w-3xl">
-				<h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-					Settings
-				</h1>
-				<p className="mt-2 text-muted-foreground">
-					Manage platform settings and configuration
-				</p>
-			</div>
+		<div className="mx-auto flex min-w-0 w-full max-w-7xl flex-col gap-6 lg:h-full lg:min-h-0">
+			<ListPageHeader
+				title="Settings"
+				description="Manage platform settings and configuration"
+			/>
+			<Button
+				variant="outline"
+				className="h-auto min-h-11 w-full justify-between gap-3 whitespace-normal px-4 py-3 text-left lg:hidden"
+				aria-label={`Settings navigation: ${activeLabel}`}
+				aria-expanded={mobileNavigationOpen}
+				ref={mobileNavigationRef}
+				aria-controls="settings-navigation"
+				onClick={() => setMobileNavigationOpen((open) => !open)}
+			>
+				<span className="min-w-0 space-y-1 [overflow-wrap:anywhere]">
+					<span className="block text-xs font-normal text-muted-foreground">
+						Settings navigation
+					</span>
+					<span className="block">{activeLabel}</span>
+				</span>
+				<ChevronDown
+					className={cn(
+						"size-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
+						mobileNavigationOpen && "rotate-180",
+					)}
+				/>
+			</Button>
 
-			<div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+			<div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
 				<nav
+					id="settings-navigation"
 					aria-label="Settings sections"
-					className="min-h-0 rounded-lg border bg-card p-2 lg:max-h-[calc(100vh-13rem)] lg:overflow-auto"
+					className={cn(
+						"min-h-0 rounded-[var(--bf-radius-surface)] border bg-card p-2 lg:block lg:overflow-auto",
+						!mobileNavigationOpen && "hidden",
+					)}
 				>
 					{settingsSections.map((section) => {
 						const SectionIcon = section.icon;
@@ -238,7 +276,7 @@ export function Settings() {
 									aria-controls={`settings-section-${section.id}`}
 									onClick={() => toggleSection(section.id)}
 									className={cn(
-										"flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+										"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm font-medium transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 										containsActive && "text-foreground",
 										!containsActive &&
 											"text-muted-foreground",
@@ -250,7 +288,7 @@ export function Settings() {
 									</span>
 									<ChevronDown
 										className={cn(
-											"h-4 w-4 shrink-0 transition-transform",
+											"h-4 w-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
 											!isExpanded && "-rotate-90",
 										)}
 										aria-hidden="true"
@@ -282,9 +320,9 @@ export function Settings() {
 														)
 													}
 													className={cn(
-														"flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+														"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 														isActive
-															? "bg-accent font-medium text-accent-foreground"
+															? "bg-primary/10 font-medium text-primary"
 															: "text-muted-foreground",
 													)}
 												>
@@ -302,9 +340,19 @@ export function Settings() {
 
 				<section
 					ref={contentRef}
-					className="min-h-0 overflow-auto px-1 pb-6 pr-3 sm:px-2 sm:pr-4"
+					className="min-w-0 pb-6 lg:min-h-0 lg:overflow-auto lg:px-1 lg:pr-3"
 				>
-					{createElement(ActiveContent)}
+					{settingsSections
+						.flatMap((section) => section.items)
+						.filter((item) => visitedTabs.has(item.value))
+						.map((item) => (
+							<div
+								key={item.value}
+								hidden={item.value !== currentTab}
+							>
+								{createElement(item.content)}
+							</div>
+						))}
 				</section>
 			</div>
 		</div>

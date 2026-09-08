@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ function formatDuration(seconds: number): string {
 		return `${Math.floor(seconds)}s`;
 	}
 	const minutes = Math.floor(seconds / 60);
-	const remainingSeconds = seconds % 60;
+	const remainingSeconds = Math.floor(seconds % 60);
 	if (minutes < 60) {
 		return `${minutes}m ${remainingSeconds}s`;
 	}
@@ -33,44 +33,55 @@ function formatDuration(seconds: number): string {
 }
 
 const statusStyles: Record<string, string> = {
-	RUNNING: "bg-blue-500",
-	STUCK: "bg-red-500 animate-pulse",
-	COMPLETING: "bg-yellow-500",
+	RUNNING: "bg-[var(--bf-info)]",
+	STUCK: "bg-[var(--bf-danger)] motion-safe:animate-pulse",
+	COMPLETING: "bg-[var(--bf-warning)]",
 };
 
 export function ExecutionRow({ execution }: ExecutionRowProps) {
+	const reduceMotion = useReducedMotion();
 	return (
 		<motion.div
-			initial={{ opacity: 0, x: -20 }}
+			initial={reduceMotion ? false : { opacity: 0, x: -20 }}
 			animate={{ opacity: 1, x: 0 }}
-			exit={{ opacity: 0, x: 20 }}
-			transition={{ duration: 0.2 }}
+			exit={reduceMotion ? undefined : { opacity: 0, x: 20 }}
+			transition={{ duration: reduceMotion ? 0 : 0.2 }}
 			className={cn(
-				"flex items-center justify-between py-2 px-3 rounded-lg",
-				execution.status === "STUCK" && "bg-red-50 dark:bg-red-950/30"
+				"flex min-w-0 flex-col gap-2 py-3 px-3 rounded-[var(--bf-radius-control)] sm:flex-row sm:items-center sm:justify-between",
+				execution.status === "STUCK" && "bg-[var(--bf-danger-soft)]",
 			)}
 		>
-			<div className="flex items-center gap-2">
+			<div className="flex min-w-0 items-center gap-2">
 				<div
 					className={cn(
-						"w-2 h-2 rounded-full",
-						statusStyles[execution.status] || "bg-gray-400"
+						"w-2 h-2 shrink-0 rounded-full",
+						statusStyles[execution.status] || "bg-gray-400",
 					)}
 				/>
 				{execution.status === "STUCK" && (
-					<AlertTriangle className="w-4 h-4 text-red-500" />
+					<AlertTriangle className="w-4 h-4 shrink-0 text-[var(--bf-danger)]" />
 				)}
-				<span className="font-medium">{execution.workflow_name}</span>
+				<span className="min-w-0 font-medium [overflow-wrap:anywhere]">
+					{execution.workflow_name}
+				</span>
 			</div>
-			<div className="flex items-center gap-4">
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:shrink-0">
 				<span className="text-sm text-muted-foreground">
 					{execution.status}
 				</span>
 				<span className="text-sm tabular-nums w-16 text-right">
 					{formatDuration(execution.elapsed_seconds)}
 				</span>
-				<Button variant="ghost" size="sm" asChild>
-					<Link to={`/history/${execution.execution_id}`}>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="min-h-11 ml-auto"
+					asChild
+				>
+					<Link
+						to={`/history/${execution.execution_id}`}
+						aria-label={`View execution of ${execution.workflow_name}`}
+					>
 						<ExternalLink className="w-4 h-4 mr-1" />
 						View
 					</Link>

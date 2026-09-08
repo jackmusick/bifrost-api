@@ -46,12 +46,12 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 	const [pools, setPools] = useState<PoolDetail[]>([]);
 	const [queue] = useState<QueueItem[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
-	const [scalingStates, setScalingStates] = useState<Map<string, ScalingState>>(
-		new Map()
-	);
-	const [progressStates, setProgressStates] = useState<Map<string, ProgressState>>(
-		new Map()
-	);
+	const [scalingStates, setScalingStates] = useState<
+		Map<string, ScalingState>
+	>(new Map());
+	const [progressStates, setProgressStates] = useState<
+		Map<string, ProgressState>
+	>(new Map());
 
 	const handleMessage = useCallback((message: PoolMessage) => {
 		switch (message.type) {
@@ -59,11 +59,13 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 				// Update or add pool
 				setPools((prev) => {
 					const idx = prev.findIndex(
-						(p) => p.worker_id === message.worker_id
+						(p) => p.worker_id === message.worker_id,
 					);
 
 					// Convert heartbeat processes to ProcessInfo format
-					const processes: ProcessInfo[] = (message.processes || []).map((p) => ({
+					const processes: ProcessInfo[] = (
+						message.processes || []
+					).map((p) => ({
 						process_id: p.process_id,
 						pid: p.pid,
 						state: p.state,
@@ -83,9 +85,11 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						started_at: message.started_at || null,
 						last_heartbeat: message.timestamp || null,
 						processes,
-						requirements_installed: message.requirements_installed ?? null,
+						requirements_installed:
+							message.requirements_installed ?? null,
 						requirements_total: message.requirements_total ?? null,
-						memory_current_bytes: message.memory_current_bytes ?? -1,
+						memory_current_bytes:
+							message.memory_current_bytes ?? -1,
 						memory_max_bytes: message.memory_max_bytes ?? -1,
 					};
 
@@ -126,7 +130,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 			case "worker_offline": {
 				// Remove pool
 				setPools((prev) =>
-					prev.filter((p) => p.worker_id !== message.worker_id)
+					prev.filter((p) => p.worker_id !== message.worker_id),
 				);
 				break;
 			}
@@ -135,7 +139,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 				// Update process state within pool
 				setPools((prev) => {
 					const idx = prev.findIndex(
-						(p) => p.worker_id === message.worker_id
+						(p) => p.worker_id === message.worker_id,
 					);
 					if (idx < 0) return prev;
 
@@ -144,7 +148,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 					pool.processes = pool.processes.map((proc) =>
 						proc.process_id === message.process_id
 							? { ...proc, state: message.new_state }
-							: proc
+							: proc,
 					);
 					updated[idx] = pool;
 					return updated;
@@ -202,7 +206,11 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 					setProgressStates((prev) => {
 						const current = prev.get(message.worker_id);
 						// Only clear if this is still the same progress message
-						if (current && current.current === message.current && current.total === message.total) {
+						if (
+							current &&
+							current.current === message.current &&
+							current.total === message.total
+						) {
 							const next = new Map(prev);
 							next.delete(message.worker_id);
 							return next;
@@ -217,6 +225,11 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 	useEffect(() => {
 		let mounted = true;
+		const unsubscribeConnection = webSocketService.onConnectionStatusChange(
+			(connected) => {
+				if (mounted) setIsConnected(connected);
+			},
+		);
 		let unsubscribePoolMessages: (() => void) | null = null;
 
 		const connect = async () => {
@@ -231,7 +244,8 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 				}
 
 				// Register callback for pool messages
-				unsubscribePoolMessages = webSocketService.onPoolMessage(handleMessage);
+				unsubscribePoolMessages =
+					webSocketService.onPoolMessage(handleMessage);
 			} catch (error) {
 				console.error("[useWorkerWebSocket] Failed to connect:", error);
 				if (mounted) {
@@ -244,6 +258,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 		return () => {
 			mounted = false;
+			unsubscribeConnection();
 			if (unsubscribePoolMessages) {
 				unsubscribePoolMessages();
 			}

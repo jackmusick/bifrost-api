@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import {
 	pbkdf2 as altchaPbkdf2,
@@ -50,7 +50,12 @@ export const deriveFormCaptchaKey: DeriveKeyFunction = async (
 	};
 };
 
-export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
+export function FormCaptcha(props: FormCaptchaProps) {
+	return <CaptchaVerification key={props.formId} {...props} />;
+}
+
+function CaptchaVerification({ formId, onPayloadChange }: FormCaptchaProps) {
+	const verificationId = useId();
 	const solveControllerRef = useRef<AbortController | null>(null);
 	const [attempt, setAttempt] = useState(0);
 	const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -68,6 +73,7 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 
 	useEffect(() => {
 		const requestController = new AbortController();
+		solveControllerRef.current?.abort();
 		onPayloadChange(null);
 
 		void (async () => {
@@ -77,17 +83,25 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 					{ method: "POST", signal: requestController.signal },
 				);
 				if (!response.ok) throw new Error("Challenge request failed");
-				setChallenge((await response.json()) as Challenge);
+				const nextChallenge = (await response.json()) as Challenge;
+				if (requestController.signal.aborted) return;
+				setChallenge(nextChallenge);
 				setState("ready");
 			} catch (requestError) {
-				if ((requestError as Error).name !== "AbortError") {
+				if (
+					!requestController.signal.aborted &&
+					(requestError as Error).name !== "AbortError"
+				) {
 					setState("error");
 					setError("Verification could not be loaded.");
 				}
 			}
 		})();
 
-		return () => requestController.abort();
+		return () => {
+			requestController.abort();
+			solveControllerRef.current?.abort();
+		};
 	}, [attempt, formId, onPayloadChange]);
 
 	useEffect(
@@ -111,6 +125,7 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 				deriveKey: deriveFormCaptchaKey,
 				timeout: 90_000,
 			});
+			if (controller.signal.aborted) return;
 			if (!solution) throw new Error("Verification timed out");
 			const payload = globalThis.btoa(
 				JSON.stringify({ challenge, solution }),
@@ -118,7 +133,10 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 			setState("verified");
 			onPayloadChange(payload);
 		} catch (verificationError) {
-			if ((verificationError as Error).name !== "AbortError") {
+			if (
+				!controller.signal.aborted &&
+				(verificationError as Error).name !== "AbortError"
+			) {
 				setState("error");
 				setError("Verification failed. Try again.");
 			}
@@ -127,17 +145,18 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 
 	return (
 		<div
-			className="rounded-xl border bg-muted/20 p-3"
+			className="rounded-[var(--bf-radius-surface)] border border-border bg-muted/20 p-4"
 			aria-busy={state === "loading" || state === "verifying"}
 		>
-			<div className="flex min-h-7 items-center gap-3">
+			<div className="flex min-h-11 items-center gap-3">
 				{state === "loading" || state === "verifying" ? (
-					<Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
+					<Loader2 className="mt-3 h-5 w-5 shrink-0 self-start motion-safe:animate-spin text-muted-foreground" />
 				) : state === "verified" ? (
-					<CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+					<CheckCircle2 className="mt-3 h-5 w-5 shrink-0 self-start text-[var(--bf-success)]" />
 				) : (
 					<Checkbox
-						id={`form-verification-${formId}`}
+						className="mt-3.5 shrink-0 self-start"
+						id={verificationId}
 						checked={false}
 						disabled={state !== "ready"}
 						onCheckedChange={(checked) => {
@@ -147,9 +166,22 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 					/>
 				)}
 				<div className="min-w-0 flex-1">
+					<span role="status" className="sr-only">
+						{state === "loading"
+							? "Loading verification"
+							: state === "verifying"
+								? "Verifying"
+								: state === "verified"
+									? "Verified"
+									: ""}
+					</span>
 					<Label
-						htmlFor={`form-verification-${formId}`}
-						className="font-medium"
+						htmlFor={
+							state === "ready" || state === "error"
+								? verificationId
+								: undefined
+						}
+						className="min-h-11 font-medium"
 					>
 						{state === "loading"
 							? "Loading verification…"
@@ -159,21 +191,21 @@ export function FormCaptcha({ formId, onPayloadChange }: FormCaptchaProps) {
 									? "Verified"
 									: "I'm not a robot"}
 					</Label>
-					<p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-						<ShieldCheck className="h-3 w-3" /> Private, self-hosted
-						spam protection
+					<p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
+						<ShieldCheck className="h-4 w-4 shrink-0" /> Private,
+						self-hosted spam protection
 					</p>
 				</div>
 			</div>
 			{error ? (
-				<div className="mt-2 flex items-center justify-between gap-3 border-t pt-2">
+				<div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
 					<p className="text-sm text-destructive" role="alert">
 						{error}
 					</p>
 					<Button
 						type="button"
 						variant="outline"
-						size="sm"
+						className="min-h-11"
 						onClick={retry}
 					>
 						Try again

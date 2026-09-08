@@ -25,16 +25,28 @@ interface RefreshJobStatusProps {
 }
 
 export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
-	const { data: jobStatus, isLoading } = useOAuthRefreshJobStatus();
+	const { data: jobStatus, isLoading, isError: isReadError, isFetching, refetch } = useOAuthRefreshJobStatus();
+
+	if (isReadError && !jobStatus) {
+		return <Card className={cn("rounded-[var(--bf-radius-surface)]", className)}>
+			<CardHeader><CardTitle>Token Refresh Job</CardTitle></CardHeader>
+			<CardContent className="space-y-3">
+				<p role="alert" className="text-sm text-[var(--bf-danger)]">Unable to load token refresh status.</p>
+				<Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Retrying..." : "Retry"}</Button>
+			</CardContent>
+		</Card>;
+	}
 
 	if (isLoading) {
 		return (
-			<Card className={className}>
+			<Card className={cn("overflow-hidden rounded-[var(--bf-radius-surface)] border-border/70 bg-card shadow-sm", className)}>
 				<CardHeader className="pb-3">
-					<CardTitle className="text-sm font-medium">
+					<CardTitle className="text-sm font-medium leading-6">
 						Token Refresh Job
 					</CardTitle>
-					<CardDescription>Loading status...</CardDescription>
+					<CardDescription className="text-sm leading-6 text-muted-foreground">
+						Loading status...
+					</CardDescription>
 				</CardHeader>
 			</Card>
 		);
@@ -42,21 +54,28 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 
 	if (!jobStatus) {
 		return (
-			<Card className={className}>
+			<Card className={cn("overflow-hidden rounded-[var(--bf-radius-surface)] border-border/70 bg-card shadow-sm", className)}>
 				<CardHeader className="pb-3">
-					<CardTitle className="text-sm font-medium">
+					<CardTitle className="text-sm font-medium leading-6">
 						Token Refresh Job
 					</CardTitle>
-					<CardDescription>No job runs yet</CardDescription>
+					<CardDescription className="text-sm leading-6 text-muted-foreground">
+						No job runs yet
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<p className="text-xs text-muted-foreground">
+					<p className="text-xs leading-5 text-muted-foreground">
 						The automatic token refresh job runs every 15 minutes.
 					</p>
 				</CardContent>
 			</Card>
 		);
 	}
+
+	const timestamp = jobStatus.updated_at;
+	const parsedTime = timestamp ? new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp) ? timestamp : `${timestamp}Z`) : null;
+	const runTime = parsedTime && !Number.isNaN(parsedTime.getTime()) ? parsedTime : null;
+	const relativeTime = runTime ? formatDistanceToNow(runTime, { addSuffix: true }) : "Unknown time";
 
 	// Check if this is an error result (job itself failed, not individual connection failures)
 	const isError = jobStatus.error != null;
@@ -65,31 +84,26 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 
 	if (isError) {
 		return (
-			<Card className={className}>
+			<Card className={cn("overflow-hidden rounded-[var(--bf-radius-surface)] border-border/70 bg-card shadow-sm", className)}>
 				<CardHeader className="pb-3">
-					<div className="flex items-center justify-between">
-						<CardTitle className="text-sm font-medium">
+					<div className="flex items-start justify-between gap-3">
+						<CardTitle className="text-sm font-medium leading-6">
 							Token Refresh Job
 						</CardTitle>
-						<Badge variant="destructive" className="text-xs">
+						<Badge variant="destructive" className="rounded-[var(--bf-radius-control)] text-xs">
 							Error
 						</Badge>
 					</div>
-					<CardDescription>
-						{jobStatus.updated_at
-							? formatDistanceToNow(
-									new Date(jobStatus.updated_at),
-									{
-										addSuffix: true,
-									},
-								)
-							: "Unknown time"}
+					<CardDescription className="text-sm leading-6 text-muted-foreground">
+						{relativeTime}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="flex items-start gap-2 text-sm text-destructive">
-						<XCircle className="h-4 w-4 mt-0.5 shrink-0" />
-						<span className="text-xs">{jobStatus.error}</span>
+					<div className="flex items-start gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-3 text-sm leading-6 text-[var(--bf-danger)]">
+						<XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+						<span className="text-xs leading-5 [overflow-wrap:anywhere]">
+							{jobStatus.error}
+						</span>
 					</div>
 				</CardContent>
 			</Card>
@@ -97,42 +111,41 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 	}
 
 	return (
-		<Card className={className}>
-			<CardHeader className="pb-2">
-				<div className="flex items-center justify-between">
-					<CardTitle className="text-sm font-medium">
+		<Card className={cn("overflow-hidden rounded-[var(--bf-radius-surface)] border-border/70 bg-card shadow-sm", className)}>
+			<CardHeader className="pb-3">
+				<div className="flex items-start justify-between gap-3">
+					<CardTitle className="text-sm font-medium leading-6">
 						Token Refresh Job
 					</CardTitle>
 					<Badge
 						variant={hasFailures ? "destructive" : "outline"}
 						className={cn(
-							"text-xs",
+							"rounded-[var(--bf-radius-control)] text-xs",
 							isSuccess &&
-								"border-green-600 text-green-600 bg-green-600/10",
+								"border-[var(--bf-success)]/20 bg-[var(--bf-success-soft)]/60 text-[var(--bf-success)]",
 						)}
 					>
 						{isSuccess ? (
 							<>
-								<CheckCircle2 className="h-3 w-3 mr-1" />
+								<CheckCircle2 className="mr-1 h-3.5 w-3.5" />
 								OK
 							</>
 						) : (
 							<>
-								<AlertCircle className="h-3 w-3 mr-1" />
+								<AlertCircle className="mr-1 h-3.5 w-3.5" />
 								{jobStatus.refresh_failed} Failed
 							</>
 						)}
 					</Badge>
 				</div>
-				<CardDescription>
-					{formatDistanceToNow(new Date(jobStatus.updated_at + "Z"), {
-						addSuffix: true,
-					})}
+				<CardDescription className="text-sm leading-6 text-muted-foreground">
+					{relativeTime}
 				</CardDescription>
 			</CardHeader>
-			<CardContent className="space-y-3">
+			<CardContent className="space-y-4">
+				{isReadError && <div role="alert" className="space-y-2 text-sm"><p>Could not update status. Showing the last available run.</p><Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Retrying..." : "Retry"}</Button></div>}
 				{/* Summary Stats */}
-				<div className="flex items-center gap-4 text-sm">
+				<div className="flex flex-wrap items-center gap-3 text-sm">
 					<div>
 						<span className="text-muted-foreground">Total: </span>
 						<span className="font-medium">
@@ -144,7 +157,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 							<span className="text-muted-foreground">
 								Refreshed:{" "}
 							</span>
-							<span className="font-medium text-green-600">
+							<span className="font-medium text-[var(--bf-success)]">
 								{jobStatus.refreshed_successfully}
 							</span>
 						</div>
@@ -156,43 +169,45 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 					<DialogTrigger asChild>
 						<Button
 							variant="ghost"
-							size="sm"
-							className="w-full h-8 text-xs"
+							className="min-h-11 w-full text-xs"
 						>
-							<FileText className="mr-2 h-3 w-3" />
+							<FileText className="mr-2 h-4 w-4" />
 							View Logs
 						</Button>
 					</DialogTrigger>
-					<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-						<DialogHeader>
-							<DialogTitle>Token Refresh Job Logs</DialogTitle>
-							<DialogDescription>
-								Last run:{" "}
-								{new Date(
-									jobStatus.updated_at + "Z",
-								).toLocaleString()}
-							</DialogDescription>
-						</DialogHeader>
+					<DialogContent className="w-[min(52rem,calc(100vw-1rem))] max-w-none rounded-[var(--bf-radius-surface)] p-0">
+						<div className="max-h-[calc(100dvh-1rem)] overflow-y-auto px-4 py-4 sm:px-6">
+							<DialogHeader>
+								<DialogTitle className="text-base font-semibold sm:text-lg">
+									Token Refresh Job Logs
+								</DialogTitle>
+								<DialogDescription className="text-sm leading-6 text-muted-foreground">
+									Last run:{" "}
+									{runTime ? runTime.toLocaleString() : "Unknown time"}
+								</DialogDescription>
+							</DialogHeader>
 
-						<div className="space-y-4 mt-4">
+							<div className="mt-4 space-y-4">
 							{/* Summary */}
 							<div>
-								<h4 className="font-semibold mb-2">Summary</h4>
-								<p className="text-sm text-muted-foreground">
+								<h4 className="mb-2 font-semibold leading-6">
+									Summary
+								</h4>
+								<p className="text-sm leading-6 text-muted-foreground">
 									Found {jobStatus.total_connections}{" "}
 									connection
 									{jobStatus.total_connections !== 1
 										? "s"
 										: ""}
 									.
-									{jobStatus.needs_refresh > 0 ? (
-										<>
-											{" "}
-											{jobStatus.needs_refresh} needed
-											refresh.
-											{jobStatus.refreshed_successfully >
+											{jobStatus.needs_refresh > 0 ? (
+												<>
+													{" "}
+													{jobStatus.needs_refresh} needed
+													refresh.
+													{jobStatus.refreshed_successfully >
 												0 && (
-												<span className="text-green-600">
+												<span className="text-[var(--bf-success)]">
 													{" "}
 													Refreshed{" "}
 													{
@@ -202,7 +217,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 												</span>
 											)}
 											{jobStatus.refresh_failed > 0 && (
-												<span className="text-destructive">
+												<span className="text-[var(--bf-danger)]">
 													{" "}
 													Failed to refresh{" "}
 													{jobStatus.refresh_failed}.
@@ -220,8 +235,8 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 								jobStatus.errors &&
 								jobStatus.errors.length > 0 && (
 									<div>
-										<h4 className="font-semibold mb-2 flex items-center gap-2">
-											<XCircle className="h-4 w-4 text-destructive" />
+										<h4 className="mb-2 flex items-center gap-2 font-semibold leading-6">
+											<XCircle className="h-4 w-4 text-[var(--bf-danger)]" />
 											Errors ({jobStatus.errors.length})
 										</h4>
 										<div className="space-y-3">
@@ -229,11 +244,11 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 												(error, index) => (
 													<div
 														key={index}
-														className="rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/20"
+														className="rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-3"
 													>
 														<div className="flex items-start gap-2">
 															<div className="flex-1">
-																<p className="text-sm text-muted-foreground">
+																<p className="text-sm leading-6 text-[var(--bf-danger)] [overflow-wrap:anywhere]">
 																	{typeof error === "string"
 																		? error
 																		: JSON.stringify(error)}
@@ -245,19 +260,20 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 											)}
 										</div>
 									</div>
-								)}
+									)}
 
 							{/* Success Message */}
 							{!hasFailures && jobStatus.needs_refresh > 0 && (
-								<div className="rounded-lg bg-green-50 p-4 ring-1 ring-green-200 dark:bg-green-950/30 dark:ring-green-900">
+								<div className="rounded-[var(--bf-radius-surface)] border border-[var(--bf-success)]/20 bg-[var(--bf-success-soft)]/60 p-4">
 									<div className="flex items-center gap-2">
-										<CheckCircle2 className="h-5 w-5 text-green-600" />
-										<p className="text-sm font-medium text-green-900 dark:text-green-100">
+										<CheckCircle2 className="h-5 w-5 text-[var(--bf-success)]" />
+										<p className="text-sm font-medium leading-6 text-[var(--bf-success)]">
 											All tokens refreshed successfully!
 										</p>
 									</div>
 								</div>
 							)}
+						</div>
 						</div>
 					</DialogContent>
 				</Dialog>

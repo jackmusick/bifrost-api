@@ -20,6 +20,7 @@ import {
 	PopoverContent,
 	PopoverAnchor,
 } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { term, useTerminology } from "@/lib/terminology";
 import { useAgents } from "@/hooks/useAgents";
@@ -32,6 +33,7 @@ interface MentionPickerProps {
 	onOpenChange: (open: boolean) => void;
 	onSelect: (agent: AgentSummary) => void;
 	searchTerm: string;
+	onSearchChange?: (value: string) => void;
 	position?: { x: number; y: number };
 }
 
@@ -40,10 +42,11 @@ export function MentionPicker({
 	onOpenChange,
 	onSelect,
 	searchTerm,
+	onSearchChange,
 	position,
 }: MentionPickerProps) {
 	const terminology = useTerminology();
-	const { data: agents } = useAgents(undefined, { discoveryOnly: true });
+	const { data: agents, isLoading, isError, isFetching, refetch } = useAgents(undefined, { discoveryOnly: true });
 	const selectionKey = `${open ? "open" : "closed"}:${searchTerm}`;
 	const [selection, setSelection] = useState({ key: selectionKey, index: 0 });
 	const listRef = useRef<HTMLDivElement>(null);
@@ -86,6 +89,8 @@ export function MentionPicker({
 		if (!open) return;
 
 		const handleKeyDown = (e: KeyboardEvent) => {
+			// The focused command input owns its navigation; do not select twice.
+			if (e.target instanceof Element && e.target.closest("[cmdk-root], button")) return;
 			if (e.key === "ArrowDown") {
 				e.preventDefault();
 				setSelection({
@@ -136,7 +141,7 @@ export function MentionPicker({
 				}}
 			/>
 			<PopoverContent
-				className="w-[300px] p-0"
+				className="w-[300px] max-w-[calc(100vw-2rem)] p-0"
 				align="start"
 				side="top"
 				sideOffset={8}
@@ -157,13 +162,22 @@ export function MentionPicker({
 					<CommandInput
 						placeholder={`Search ${term(terminology, "agent", "pluralLower")}...`}
 						value={searchTerm}
-						className="h-9"
+						onValueChange={onSearchChange}
+						aria-label={`Search ${term(terminology, "agent", "pluralLower")}`}
+						className="h-11"
 					/>
+					{isLoading && <p role="status" className="p-4 text-sm text-muted-foreground">Loading {term(terminology, "agent", "pluralLower")}…</p>}
+					{isError && (
+						<div role="alert" className="space-y-2 border-b bg-[var(--bf-warning-soft)] p-4 text-sm">
+							<p>{agents?.length ? "Could not refresh" : "Could not load"} {term(terminology, "agent", "pluralLower")}.</p>
+							<Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Retrying…" : "Retry"}</Button>
+						</div>
+					)}
 					<CommandList ref={listRef}>
-						<CommandEmpty>
+						{!isLoading && !isError && <CommandEmpty>
 							No {term(terminology, "agent", "pluralLower")}{" "}
 							found.
-						</CommandEmpty>
+						</CommandEmpty>}
 						<CommandGroup
 							heading={term(terminology, "agent", "plural")}
 						>
@@ -174,15 +188,15 @@ export function MentionPicker({
 									data-checked={index === clampedIndex}
 									onSelect={() => onSelect(agent)}
 									className={cn(
-										"cursor-pointer",
+										"min-h-11 cursor-pointer items-start",
 										index === clampedIndex && "bg-muted",
 									)}
 								>
 									<Bot className="mr-2 h-4 w-4 text-muted-foreground" />
-									<div className="flex flex-col">
+									<div className="min-w-0 flex flex-col [overflow-wrap:anywhere]">
 										<span>{agent.name}</span>
 										{agent.description && (
-											<span className="text-xs text-muted-foreground truncate max-w-[220px]">
+											<span className="text-xs text-muted-foreground line-clamp-2">
 												{agent.description}
 											</span>
 										)}

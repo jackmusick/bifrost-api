@@ -583,3 +583,24 @@ describe("RunReviewPanel", () => {
 		expect(btn).toBeDisabled();
 	});
 });
+
+it.each(["queued", "running"])(
+	"does not label a %s run as failed",
+	(status) => {
+		renderWithProviders(
+			<RunReviewPanel
+				run={{ ...baseRun, status }}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		expect(
+			screen.queryByText("Run failed", { exact: true }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByText("Run status", { exact: true }),
+		).toBeInTheDocument();
+	},
+);

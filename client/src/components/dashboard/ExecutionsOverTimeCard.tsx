@@ -1,3 +1,4 @@
+import { useReducedMotion } from "framer-motion";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -16,6 +17,7 @@ import {
 	ChartTooltipContent,
 	type ChartConfig,
 } from "@/components/ui/chart";
+import { ExecutionChartData } from "./ExecutionChartData";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -38,7 +40,7 @@ interface ExecutionsOverTimeCardProps {
 const chartConfig = {
 	success: {
 		label: "Success",
-		color: "var(--chart-2)",
+		color: "var(--bf-success)",
 	},
 	failed: {
 		label: "Failed",
@@ -60,6 +62,7 @@ export function ExecutionsOverTimeCard({
 	isLoading,
 	isError,
 }: ExecutionsOverTimeCardProps) {
+	const reducedMotion = useReducedMotion();
 	const buckets = useMemo(
 		() => formatExecutionBuckets(aggregateBuckets ?? [], window),
 		[aggregateBuckets, window],
@@ -67,57 +70,61 @@ export function ExecutionsOverTimeCard({
 
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>Executions</CardTitle>
-				<CardDescription>
-					{isLoading ? (
-						WINDOW_LABELS[window]
-					) : (
-						<>
-							{`${WINDOW_LABELS[window]} · ${outcomes.total.toLocaleString()} ${
-								outcomes.total === 1 ? "run" : "runs"
-							}`}
-							{outcomes.failed > 0 && (
-								<>
-									{" · "}
-									<Link
-										to="/history?status=Failed"
-										className="text-destructive transition-colors hover:underline"
-									>
-										{outcomes.failed.toLocaleString()} failed
-									</Link>
-								</>
-							)}
-						</>
-					)}
-				</CardDescription>
+			<CardHeader className="flex flex-wrap items-start justify-between gap-3">
+				<div className="min-w-0">
+					<CardTitle>Executions</CardTitle>
+					<CardDescription>
+						{isLoading || isError ? (
+							WINDOW_LABELS[window]
+						) : (
+							<>
+								{`${WINDOW_LABELS[window]} · ${outcomes.total.toLocaleString()} ${
+									outcomes.total === 1 ? "run" : "runs"
+								}`}
+								{outcomes.failed > 0 && (
+									<>
+										{" · "}
+										<Link
+											to="/history?status=Failed"
+											className="text-destructive transition-colors hover:underline"
+										>
+											{outcomes.failed.toLocaleString()}{" "}
+											failed
+										</Link>
+									</>
+								)}
+							</>
+						)}
+					</CardDescription>
+				</div>
 				<CardAction>
 					<ToggleGroup
+						aria-label="Execution time window"
 						type="single"
 						value={window}
 						onValueChange={(value) => {
 							if (value) onWindowChange(value as ChartWindow);
 						}}
-						className="rounded-md bg-muted/50 p-0.5 ring-1 ring-foreground/5"
+						className="rounded-[var(--bf-radius-control)] bg-muted/50 p-0.5"
 					>
 						<ToggleGroupItem
 							value="24h"
 							aria-label="Last 24 hours"
-							className="h-6 rounded-[5px] px-2 text-xs"
+							className="h-11 rounded-[var(--bf-radius-control)] px-3 text-xs sm:h-8"
 						>
 							24h
 						</ToggleGroupItem>
 						<ToggleGroupItem
 							value="7d"
 							aria-label="Last 7 days"
-							className="h-6 rounded-[5px] px-2 text-xs"
+							className="h-11 rounded-[var(--bf-radius-control)] px-3 text-xs sm:h-8"
 						>
 							7d
 						</ToggleGroupItem>
 						<ToggleGroupItem
 							value="30d"
 							aria-label="Last 30 days"
-							className="h-6 rounded-[5px] px-2 text-xs"
+							className="h-11 rounded-[var(--bf-radius-control)] px-3 text-xs sm:h-8"
 						>
 							30d
 						</ToggleGroupItem>
@@ -150,86 +157,100 @@ export function ExecutionsOverTimeCard({
 						</p>
 					</div>
 				) : (
-					<ChartContainer
-						config={chartConfig}
-						className="aspect-auto h-[220px] w-full"
-					>
-						<AreaChart
-							data={buckets}
-							margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+					<>
+						<ChartContainer
+							config={chartConfig}
+							className="aspect-auto h-[220px] w-full"
 						>
-							<defs>
-								<linearGradient
-									id="fillSuccess"
-									x1="0"
-									y1="0"
-									x2="0"
-									y2="1"
-								>
-									<stop
-										offset="5%"
-										stopColor="var(--color-success)"
-										stopOpacity={0.5}
-									/>
-									<stop
-										offset="95%"
-										stopColor="var(--color-success)"
-										stopOpacity={0.05}
-									/>
-								</linearGradient>
-								<linearGradient
-									id="fillFailed"
-									x1="0"
-									y1="0"
-									x2="0"
-									y2="1"
-								>
-									<stop
-										offset="5%"
-										stopColor="var(--color-failed)"
-										stopOpacity={0.5}
-									/>
-									<stop
-										offset="95%"
-										stopColor="var(--color-failed)"
-										stopOpacity={0.05}
-									/>
-								</linearGradient>
-							</defs>
-							<CartesianGrid vertical={false} />
-							<XAxis
-								dataKey="label"
-								tickLine={false}
-								axisLine={false}
-								tickMargin={8}
-								minTickGap={24}
-							/>
-							<YAxis
-								allowDecimals={false}
-								width={32}
-								tickLine={false}
-								axisLine={false}
-							/>
-							<ChartTooltip
-								cursor={false}
-								content={<ChartTooltipContent indicator="line" />}
-							/>
-							<Area
-								dataKey="success"
-								type="monotone"
-								stroke="var(--color-success)"
-								strokeWidth={2}
-								fill="url(#fillSuccess)"
-							/>
-							<Area
-								dataKey="failed"
-								type="monotone"
-								stroke="var(--color-failed)"
-								strokeWidth={2}
-								fill="url(#fillFailed)"
-							/>
-						</AreaChart>
-					</ChartContainer>
+							<AreaChart
+								data={buckets}
+								margin={{
+									top: 8,
+									right: 8,
+									bottom: 0,
+									left: 0,
+								}}
+							>
+								<defs>
+									<linearGradient
+										id="fillSuccess"
+										x1="0"
+										y1="0"
+										x2="0"
+										y2="1"
+									>
+										<stop
+											offset="5%"
+											stopColor="var(--color-success)"
+											stopOpacity={0.5}
+										/>
+										<stop
+											offset="95%"
+											stopColor="var(--color-success)"
+											stopOpacity={0.05}
+										/>
+									</linearGradient>
+									<linearGradient
+										id="fillFailed"
+										x1="0"
+										y1="0"
+										x2="0"
+										y2="1"
+									>
+										<stop
+											offset="5%"
+											stopColor="var(--color-failed)"
+											stopOpacity={0.5}
+										/>
+										<stop
+											offset="95%"
+											stopColor="var(--color-failed)"
+											stopOpacity={0.05}
+										/>
+									</linearGradient>
+								</defs>
+								<CartesianGrid vertical={false} />
+								<XAxis
+									dataKey="label"
+									tickLine={false}
+									axisLine={false}
+									tickMargin={8}
+									minTickGap={24}
+								/>
+								<YAxis
+									allowDecimals={false}
+									width={32}
+									tickLine={false}
+									axisLine={false}
+								/>
+								<ChartTooltip
+									cursor={false}
+									content={
+										<ChartTooltipContent indicator="line" />
+									}
+								/>
+								<Area
+									isAnimationActive={!reducedMotion}
+									animationDuration={220}
+									dataKey="success"
+									type="monotone"
+									stroke="var(--color-success)"
+									strokeWidth={2}
+									fill="url(#fillSuccess)"
+								/>
+								<Area
+									isAnimationActive={!reducedMotion}
+									animationDuration={220}
+									dataKey="failed"
+									type="monotone"
+									stroke="var(--color-failed)"
+									strokeWidth={2}
+									fill="url(#fillFailed)"
+								/>
+							</AreaChart>
+						</ChartContainer>
+						<ExecutionChartData buckets={buckets} />
+					</>
 				)}
 			</CardContent>
 		</Card>

@@ -11,6 +11,8 @@ export type LogListEntry = components["schemas"]["LogListEntry"];
 export type LogsListResponse = components["schemas"]["LogsListResponse"];
 
 export interface LogFilters {
+ workflow_id?: string;
+ global_only?: boolean;
 	organization_id?: string;
 	workflow_name?: string;
 	levels?: string; // Comma-separated: "ERROR,WARNING"
@@ -31,7 +33,9 @@ export function useLogs(
 	continuationToken?: string,
 	enabled: boolean = true,
 ) {
-	const queryParams: Record<string, string | number> = {};
+	const queryParams: Record<string, string | number | boolean> = {};
+ if (filters?.global_only) queryParams.global_only = true;
+ if (filters?.workflow_id) queryParams.workflow_id = filters.workflow_id;
 
 	if (filters?.organization_id) {
 		queryParams["organization_id"] = filters.organization_id;

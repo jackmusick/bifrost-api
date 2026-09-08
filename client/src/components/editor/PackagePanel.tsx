@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Package, RefreshCw, Download, ArrowUp, Loader2 } from "lucide-react";
+import { Package, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { PackageInstallForm } from "./PackageInstallForm";
+import { InstalledPackageList } from "./InstalledPackageList";
 import { toast } from "sonner";
 import {
 	checkUpdates,
@@ -30,7 +30,10 @@ export function PackagePanel() {
 	const [packageName, setPackageName] = useState("");
 	const [version, setVersion] = useState("");
 	const [isInstalling, setIsInstalling] = useState(false);
-	const [isLoadingPackages, setIsLoadingPackages] = useState(false);
+	const [isLoadingPackages, setIsLoadingPackages] = useState(true);
+	const [packageLoadError, setPackageLoadError] = useState<string | null>(
+		null,
+	);
 	const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 	const [isConnected, setIsConnected] = useState(false);
 	const [currentInstallationId, setCurrentInstallationId] = useState<
@@ -79,12 +82,13 @@ export function PackagePanel() {
 
 	const loadPackages = useCallback(async () => {
 		setIsLoadingPackages(true);
+		setPackageLoadError(null);
 		try {
 			const data = await listPackages();
 			setPackages(data?.packages || []);
 		} catch (error) {
 			console.error("Failed to load packages:", error);
-			toast.error("Failed to load packages");
+			setPackageLoadError("Couldn’t load installed packages. Try again.");
 		} finally {
 			setIsLoadingPackages(false);
 		}
@@ -151,7 +155,10 @@ export function PackagePanel() {
 							message: "Installation complete",
 							level: "SUCCESS" as const,
 						}
-					: { message: "Installation failed", level: "ERROR" as const };
+					: {
+							message: "Installation failed",
+							level: "ERROR" as const,
+						};
 
 			appendTerminalOutput({
 				loggerOutput: [
@@ -245,7 +252,8 @@ export function PackagePanel() {
 			if (!isConnected) {
 				store.appendLog(installationId, {
 					level: "INFO",
-					message: "Package installation queued (no WebSocket connection)",
+					message:
+						"Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
@@ -288,7 +296,8 @@ export function PackagePanel() {
 			if (!isConnected) {
 				store.appendLog(installationId, {
 					level: "INFO",
-					message: "Package installation queued (no WebSocket connection)",
+					message:
+						"Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
@@ -312,153 +321,46 @@ export function PackagePanel() {
 		}
 	}
 
-	function getUpdateForPackage(
-		pkg: InstalledPackage,
-	): PackageUpdate | undefined {
-		return updates.find((u) => u.name === pkg.name);
-	}
-
 	return (
-		<div className="flex h-full flex-col">
-			{/* Header with underline */}
-			<div className="flex items-center justify-between border-b p-2">
-				<h2 className="text-sm font-semibold flex items-center gap-2">
-					<Package className="h-4 w-4" />
+		<div className="flex h-full min-h-0 min-w-0 flex-col">
+			<div className="flex shrink-0 items-center justify-between gap-2 border-b p-2">
+				<h2 className="flex items-center gap-2 text-sm font-semibold">
+					<Package className="size-4" />
 					Packages
 				</h2>
 				<Button
 					variant="ghost"
-					size="sm"
+					size="icon"
+					aria-label="Check for package updates"
+					title="Check for package updates"
 					onClick={handleCheckForUpdates}
 					disabled={isCheckingUpdates || isLoadingPackages}
-					className="h-7 px-2"
+					className="size-11 shrink-0"
 				>
 					{isCheckingUpdates ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
+						<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
 					) : (
-						<RefreshCw className="h-4 w-4" />
+						<RefreshCw className="size-4" />
 					)}
 				</Button>
 			</div>
-
-			{/* Install Package Form */}
-			<div className="p-3 space-y-2 border-b">
-				<div>
-					<Label htmlFor="package-name" className="text-xs">
-						Package Name
-					</Label>
-					<Input
-						id="package-name"
-						placeholder="e.g., requests"
-						value={packageName}
-						onChange={(e) => setPackageName(e.target.value)}
-						disabled={isInstalling}
-						className="h-8 text-sm"
-						onKeyDown={(e) => {
-							if (e.key === "Enter") {
-								handleInstallPackage();
-							}
-						}}
-					/>
-				</div>
-				<div>
-					<Label htmlFor="package-version" className="text-xs">
-						Version (optional)
-					</Label>
-					<Input
-						id="package-version"
-						placeholder="e.g., 2.31.0"
-						value={version}
-						onChange={(e) => setVersion(e.target.value)}
-						disabled={isInstalling}
-						className="h-8 text-sm"
-						onKeyDown={(e) => {
-							if (e.key === "Enter") {
-								handleInstallPackage();
-							}
-						}}
-					/>
-				</div>
-				<Button
-					onClick={handleInstallPackage}
-					disabled={isInstalling || !packageName.trim()}
-					size="sm"
-					className="w-full h-8"
-				>
-					{isInstalling ? (
-						<>
-							<Loader2 className="mr-2 h-3 w-3 animate-spin" />
-							Installing...
-						</>
-					) : (
-						<>
-							<Download className="mr-2 h-3 w-3" />
-							Install
-						</>
-					)}
-				</Button>
-				<Button
-					onClick={handleInstallFromRequirements}
-					disabled={isInstalling}
-					variant="outline"
-					size="sm"
-					className="w-full h-8"
-				>
-					{isInstalling ? (
-						<>
-							<Loader2 className="mr-2 h-3 w-3 animate-spin" />
-							Installing...
-						</>
-					) : (
-						<>
-							<Download className="mr-2 h-3 w-3" />
-							requirements.txt
-						</>
-					)}
-				</Button>
-			</div>
-
-			{/* Installed Packages List */}
-			<div className="flex-1 overflow-auto">
-				<div className="px-2 py-1 text-xs font-medium text-muted-foreground border-b bg-muted/30">
-					Installed ({packages.length})
-				</div>
-				{isLoadingPackages ? (
-					<div className="flex items-center justify-center py-8">
-						<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-					</div>
-				) : packages.length === 0 ? (
-					<div className="text-xs text-muted-foreground text-center py-8">
-						No packages installed
-					</div>
-				) : (
-					<div>
-						{packages.map((pkg) => {
-							const update = getUpdateForPackage(pkg);
-							return (
-								<div
-									key={pkg.name}
-									className="flex items-center justify-between px-3 py-2 border-b hover:bg-muted/50"
-								>
-									<div>
-										<div className="font-medium text-xs">
-											{pkg.name}
-										</div>
-										<div className="text-[10px] text-muted-foreground">
-											v{pkg.version}
-										</div>
-									</div>
-									{update && (
-										<div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400">
-											<ArrowUp className="h-3 w-3" />
-											{update.latest_version}
-										</div>
-									)}
-								</div>
-							);
-						})}
-					</div>
-				)}
+			<div className="min-h-0 flex-1 overflow-y-auto">
+				<PackageInstallForm
+					packageName={packageName}
+					version={version}
+					isInstalling={isInstalling}
+					onPackageNameChange={setPackageName}
+					onVersionChange={setVersion}
+					onInstall={handleInstallPackage}
+					onInstallRequirements={handleInstallFromRequirements}
+				/>
+				<InstalledPackageList
+					packages={packages}
+					updates={updates}
+					isLoading={isLoadingPackages}
+					error={packageLoadError}
+					onRetry={loadPackages}
+				/>
 			</div>
 		</div>
 	);

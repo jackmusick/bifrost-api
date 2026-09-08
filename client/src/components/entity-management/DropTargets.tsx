@@ -1,158 +1,64 @@
 import { useState, useEffect, useRef } from "react";
-import {
-	Globe,
-	Building2,
-	Shield,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import {
-	dropTargetForElements,
-} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { Globe, Building2, Shield, type LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { cn } from "@/lib/utils";
 import type { Organization, Role } from "./types";
 
-// Organization Drop Target Component
-export interface OrgDropTargetProps {
+interface AssignmentTargetProps {
+	name: string;
+	icon: LucideIcon;
+	selectedIds: string[];
+	disabled?: boolean;
+	onChoose: (ids: string[]) => void;
+}
+
+/** Dragging and native button activation enter the same review flow. */
+function AssignmentTarget({ name, icon: Icon, selectedIds, disabled, onChoose }: AssignmentTargetProps) {
+	const ref = useRef<HTMLDivElement>(null);
+	const [dragCount, setDragCount] = useState(0);
+	useEffect(() => {
+		if (!ref.current) return;
+		return dropTargetForElements({
+			element: ref.current,
+			canDrop: ({ source }) => !disabled && source.data["type"] === "entity",
+			onDragEnter: ({ source }) => setDragCount(Number(source.data["entityCount"]) || 1),
+			onDragLeave: () => setDragCount(0),
+			onDrop: ({ source }) => {
+				setDragCount(0);
+				if (!disabled) onChoose(source.data["entityIds"] as string[]);
+			},
+		});
+	}, [disabled, onChoose]);
+	return (
+		<div ref={ref} className={cn("flex flex-wrap items-center gap-2 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)] transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none", dragCount ? "border-primary bg-accent" : "bg-card")}>
+			<Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+			<span className="min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere]">{name}</span>
+			<Button type="button" variant="outline" className="min-h-11" disabled={disabled || selectedIds.length === 0} onClick={() => onChoose([...selectedIds])} aria-label={`Apply ${name} to ${selectedIds.length} selected entities`}>
+				Apply{selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}
+			</Button>
+			{dragCount > 0 && <p role="status" className="basis-full text-sm text-muted-foreground">Drop to review changes to {dragCount} {dragCount === 1 ? "entity" : "entities"}.</p>}
+		</div>
+	);
+}
+
+interface TargetSelectionProps {
+	selectedIds: string[];
+	disabled?: boolean;
+}
+export interface OrgDropTargetProps extends TargetSelectionProps {
 	organization: Organization | null;
 	onDrop: (entityIds: string[], orgId: string | null) => void;
 }
-
-export function OrgDropTarget({ organization, onDrop }: OrgDropTargetProps) {
-	const ref = useRef<HTMLDivElement>(null);
-	const [isDraggedOver, setIsDraggedOver] = useState(false);
-	const [dragCount, setDragCount] = useState(0);
-
-	const isGlobal = organization === null;
-	const name = isGlobal ? "Global" : organization.name;
-
-	useEffect(() => {
-		const el = ref.current;
-		if (!el) return;
-
-		return dropTargetForElements({
-			element: el,
-			getData: () => ({
-				type: "org-target",
-				orgId: isGlobal ? null : organization.id,
-			}),
-			canDrop: ({ source }) => source.data["type"] === "entity",
-			onDragEnter: ({ source }) => {
-				setIsDraggedOver(true);
-				setDragCount((source.data["entityCount"] as number) || 1);
-			},
-			onDragLeave: () => {
-				setIsDraggedOver(false);
-				setDragCount(0);
-			},
-			onDrop: ({ source }) => {
-				setIsDraggedOver(false);
-				setDragCount(0);
-				const entityIds = source.data["entityIds"] as string[];
-				onDrop(entityIds, isGlobal ? null : organization.id);
-			},
-		});
-	}, [organization, isGlobal, onDrop]);
-
-	return (
-		<div
-			ref={ref}
-			className={cn(
-				"flex items-center gap-2 px-4 py-4 rounded-2xl border-2 border-dashed transition-all",
-				isDraggedOver
-					? "border-primary bg-primary/10"
-					: "border-muted-foreground/25 hover:border-muted-foreground/50",
-			)}
-		>
-			{isGlobal ? (
-				<Globe className="h-4 w-4 text-muted-foreground" />
-			) : (
-				<Building2 className="h-4 w-4 text-muted-foreground" />
-			)}
-			<span className="text-sm font-medium">{name}</span>
-			{isDraggedOver && dragCount > 1 && (
-				<Badge variant="secondary" className="ml-auto">
-					{dragCount}
-				</Badge>
-			)}
-		</div>
-	);
+export function OrgDropTarget({ organization, onDrop, ...selection }: OrgDropTargetProps) {
+	return <AssignmentTarget {...selection} name={organization?.name ?? "Global"} icon={organization ? Building2 : Globe} onChoose={(ids) => onDrop(ids, organization?.id ?? null)} />;
 }
-
-// Role Drop Target Component
-export interface RoleDropTargetProps {
+export interface RoleDropTargetProps extends TargetSelectionProps {
 	role: Role | "authenticated" | "clear-roles";
 	onDrop: (entityIds: string[], roleOrAccessLevel: string) => void;
 }
-
-export function RoleDropTarget({ role, onDrop }: RoleDropTargetProps) {
-	const ref = useRef<HTMLDivElement>(null);
-	const [isDraggedOver, setIsDraggedOver] = useState(false);
-	const [dragCount, setDragCount] = useState(0);
-
-	const isAuthenticated = role === "authenticated";
-	const isClearRoles = role === "clear-roles";
-	const name = isAuthenticated
-		? "Everyone except external users"
-		: isClearRoles
-			? "Clear Roles"
-			: role.name;
-	const id = isAuthenticated
-		? "authenticated"
-		: isClearRoles
-			? "clear-roles"
-			: role.id;
-
-	useEffect(() => {
-		const el = ref.current;
-		if (!el) return;
-
-		return dropTargetForElements({
-			element: el,
-			getData: () => ({
-				type: "role-target",
-				roleId: id,
-				isAccessLevel: isAuthenticated,
-				isClearRoles: isClearRoles,
-			}),
-			canDrop: ({ source }) => source.data["type"] === "entity",
-			onDragEnter: ({ source }) => {
-				setIsDraggedOver(true);
-				setDragCount((source.data["entityCount"] as number) || 1);
-			},
-			onDragLeave: () => {
-				setIsDraggedOver(false);
-				setDragCount(0);
-			},
-			onDrop: ({ source }) => {
-				setIsDraggedOver(false);
-				setDragCount(0);
-				const entityIds = source.data["entityIds"] as string[];
-				onDrop(entityIds, id);
-			},
-		});
-	}, [id, isAuthenticated, isClearRoles, onDrop]);
-
-	return (
-		<div
-			ref={ref}
-			className={cn(
-				"flex items-center gap-2 px-4 py-4 rounded-2xl border-2 border-dashed transition-all",
-				isDraggedOver
-					? "border-primary bg-primary/10"
-					: isClearRoles
-						? "border-destructive/25 hover:border-destructive/50"
-						: "border-muted-foreground/25 hover:border-muted-foreground/50",
-			)}
-		>
-			<Shield className="h-4 w-4 text-muted-foreground" />
-			<span className={cn("text-sm font-medium", isClearRoles && "text-destructive")}>
-				{name}
-			</span>
-			{isDraggedOver && dragCount > 1 && (
-				<Badge variant="secondary" className="ml-auto">
-					{dragCount}
-				</Badge>
-			)}
-		</div>
-	);
+export function RoleDropTarget({ role, onDrop, ...selection }: RoleDropTargetProps) {
+	const name = role === "authenticated" ? "Everyone except external users" : role === "clear-roles" ? "Clear roles" : role.name;
+	const id = typeof role === "string" ? role : role.id;
+	return <AssignmentTarget {...selection} name={name} icon={Shield} onChoose={(ids) => onDrop(ids, id)} />;
 }

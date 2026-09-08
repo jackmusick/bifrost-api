@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
 	Card,
 	CardContent,
@@ -19,6 +19,7 @@ import {
 	resetApplicationName,
 	getBranding,
 } from "@/hooks/useBranding";
+import { createBrandPalette } from "@/lib/brand-palette";
 import { applyBrandingTheme, type BrandingSettings } from "@/lib/branding";
 import {
 	DEFAULT_TERMINOLOGY,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/terminology";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import type { components } from "@/lib/v1";
+import { SettingsReadError } from "./SettingsReadError";
 
 const TERMINOLOGY_ROWS: Array<{
 	key: ProductTermKey;
@@ -53,12 +55,29 @@ const TERMINOLOGY_ROWS: Array<{
 	},
 ];
 
+const DEFAULT_PRIMARY_COLOR = "#0066CC";
+
+function hydrateBrandingDrafts(
+	data: components["schemas"]["BrandingSettings"] | null,
+	setBranding: (value: components["schemas"]["BrandingSettings"] | null) => void,
+	setPrimaryColor: (value: string) => void,
+	setApplicationName: (value: string) => void,
+	setTerminology: (value: Terminology) => void,
+) {
+	setBranding(data);
+	setPrimaryColor(data?.primary_color || DEFAULT_PRIMARY_COLOR);
+	setApplicationName(data?.application_name ?? "");
+	setTerminology(mergeTerminology(data?.terminology as BrandingTerminologyInput));
+}
+
 export function Branding() {
 	const { refreshBranding } = useOrgScope();
 	const [branding, setBranding] = useState<
 		components["schemas"]["BrandingSettings"] | null
 	>(null);
-	const [loading, setLoading] = useState(true);
+	const [readPending, setReadPending] = useState(true);
+	const [readError, setReadError] = useState(false);
+	const [hasLoadedBranding, setHasLoadedBranding] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [savingTerminology, setSavingTerminology] = useState(false);
 	const [savingApplicationName, setSavingApplicationName] = useState(false);
@@ -72,6 +91,51 @@ export function Branding() {
 	const [applicationName, setApplicationName] = useState("");
 	const [terminology, setTerminology] =
 		useState<Terminology>(DEFAULT_TERMINOLOGY);
+	const refreshBrandingRef = useRef(refreshBranding);
+	const readInFlightRef = useRef(false);
+
+	useEffect(() => {
+		refreshBrandingRef.current = refreshBranding;
+	}, [refreshBranding]);
+
+	const loadBranding = useCallback(
+		async ({
+			background = false,
+			hydrateDrafts = true,
+		}: { background?: boolean; hydrateDrafts?: boolean } = {}) => {
+			if (readInFlightRef.current) {
+				return;
+			}
+			readInFlightRef.current = true;
+			setReadPending(true);
+
+			try {
+				const data = await getBranding();
+				setReadError(false);
+				setBranding(data);
+				if (hydrateDrafts) {
+					hydrateBrandingDrafts(
+						data,
+						setBranding,
+						setPrimaryColor,
+						setApplicationName,
+						setTerminology,
+					);
+				}
+				if (background && data) {
+					applyBrandingTheme(data as BrandingSettings);
+					refreshBrandingRef.current();
+				}
+				setHasLoadedBranding(true);
+			} catch {
+				setReadError(true);
+			} finally {
+				readInFlightRef.current = false;
+				setReadPending(false);
+			}
+		},
+		[],
+	);
 
 	// Drag states
 	const [dragActiveSquare, setDragActiveSquare] = useState(false);
@@ -79,33 +143,17 @@ export function Branding() {
 
 	// Load current branding
 	useEffect(() => {
-		async function loadBranding() {
-			try {
-				const data = await getBranding();
-				if (data) {
-					setBranding(data);
-					if (data.primary_color) {
-						setPrimaryColor(data.primary_color);
-					}
-					setApplicationName(data.application_name ?? "");
-					setTerminology(
-						mergeTerminology(
-							data.terminology as BrandingTerminologyInput,
-						),
-					);
-				}
-			} catch {
-				toast.error("Failed to load branding settings");
-			} finally {
-				setLoading(false);
-			}
-		}
-
-		loadBranding();
-	}, []);
+		const timer = window.setTimeout(() => {
+			void loadBranding({ hydrateDrafts: true });
+		}, 0);
+		return () => window.clearTimeout(timer);
+	}, [loadBranding]);
 
 	// Update primary color
 	const handleColorUpdate = async () => {
+		if (readError || readPending) {
+			return;
+		}
 		setSaving(true);
 		try {
 			const updated = await updateBranding({
@@ -132,6 +180,9 @@ export function Branding() {
 	};
 
 	const handleTerminologyUpdate = async () => {
+		if (readError || readPending) {
+			return;
+		}
 		setSavingTerminology(true);
 		try {
 			const updated = await updateBranding({
@@ -161,6 +212,9 @@ export function Branding() {
 	};
 
 	const handleApplicationNameUpdate = async () => {
+		if (readError || readPending) {
+			return;
+		}
 		const trimmed = applicationName.trim();
 		setSavingApplicationName(true);
 		try {
@@ -190,6 +244,9 @@ export function Branding() {
 	};
 
 	const handleResetApplicationName = async () => {
+		if (readError || readPending) {
+			return;
+		}
 		setResetting("application-name");
 		try {
 			const updated = await resetApplicationName();
@@ -246,6 +303,9 @@ export function Branding() {
 	// Handle file upload
 	const handleLogoUpload = useCallback(
 		async (type: "square" | "rectangle", file: File) => {
+			if (readError || readPending) {
+				return;
+			}
 			// Validate file type
 			if (!file.type.startsWith("image/")) {
 				toast.error("Invalid file type", {
@@ -266,14 +326,10 @@ export function Branding() {
 			setUploading(type);
 			try {
 				await uploadLogo(type, file);
-
-				// Reload branding to get updated logo URL
-				const updated = await getBranding();
-				if (updated) {
-					setBranding(updated);
-					applyBrandingTheme(updated as BrandingSettings);
-					refreshBranding();
-				}
+				await loadBranding({
+					background: true,
+					hydrateDrafts: false,
+				});
 
 				toast.success("Logo uploaded", {
 					description: `${
@@ -291,7 +347,7 @@ export function Branding() {
 				setUploading(null);
 			}
 		},
-		[refreshBranding],
+		[loadBranding, readError, readPending],
 	);
 
 	// Drag and drop handlers
@@ -340,6 +396,9 @@ export function Branding() {
 	// Reset handlers
 	const handleResetLogo = useCallback(
 		async (type: "square" | "rectangle") => {
+			if (readError || readPending) {
+				return;
+			}
 			setResetting(type);
 			try {
 				const updated = await resetLogo(type);
@@ -363,10 +422,13 @@ export function Branding() {
 				setResetting(null);
 			}
 		},
-		[refreshBranding],
+		[readError, readPending, refreshBranding],
 	);
 
 	const handleResetColor = useCallback(async () => {
+		if (readError || readPending) {
+			return;
+		}
 		setResetting("color");
 		try {
 			const updated = await resetColor();
@@ -388,18 +450,43 @@ export function Branding() {
 		} finally {
 			setResetting(null);
 		}
-	}, [refreshBranding]);
+	}, [readError, readPending, refreshBranding]);
 
-	if (loading) {
+	if (readPending && !hasLoadedBranding) {
 		return (
 			<div className="flex items-center justify-center h-64">
-				<Loader2 className="h-8 w-8 animate-spin" />
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
 			</div>
 		);
 	}
 
+	if (readError && !hasLoadedBranding) {
+		return (
+			<SettingsReadError
+				resource="branding settings"
+				cached={false}
+				pending={readPending}
+				onRetry={() => void loadBranding()}
+			/>
+		);
+	}
+
+	const previewPalette = createBrandPalette(primaryColor);
 	return (
 		<div className="space-y-6">
+			{readError && hasLoadedBranding ? (
+				<SettingsReadError
+					resource="branding settings"
+					cached
+					pending={readPending}
+					onRetry={() =>
+						void loadBranding({
+							background: true,
+							hydrateDrafts: false,
+						})
+					}
+				/>
+			) : null}
 			{/* Application Name */}
 			<Card>
 				<CardHeader>
@@ -427,17 +514,19 @@ export function Branding() {
 							className="max-w-sm"
 						/>
 					</div>
-					<div className="flex gap-2">
+					<div className="flex flex-wrap gap-2">
 						<Button
 							onClick={handleApplicationNameUpdate}
 							disabled={
 								savingApplicationName ||
-								resetting === "application-name"
+								resetting === "application-name" ||
+								readError ||
+								readPending
 							}
 							variant="default"
 						>
 							{savingApplicationName ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : null}
 							Update Name
 						</Button>
@@ -445,14 +534,18 @@ export function Branding() {
 							onClick={handleResetApplicationName}
 							disabled={
 								savingApplicationName ||
-								resetting === "application-name"
+								resetting === "application-name" ||
+								readError ||
+								readPending
 							}
 							variant="outline"
 							size="icon"
 							title="Reset to default name"
+							aria-label="Reset to default name"
+							className="size-11 sm:size-9"
 						>
 							{resetting === "application-name" ? (
-								<Loader2 className="h-4 w-4 animate-spin" />
+								<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : (
 								<RotateCcw className="h-4 w-4" />
 							)}
@@ -473,7 +566,7 @@ export function Branding() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="flex items-center gap-4">
+					<div className="flex flex-wrap items-center gap-4">
 						<div className="space-y-2">
 							<Label htmlFor="primaryColor">Color (Hex)</Label>
 							<Input
@@ -490,31 +583,49 @@ export function Branding() {
 						<div className="space-y-2">
 							<Label>Preview</Label>
 							<div
-								className="h-10 w-20 rounded-md ring-1 ring-foreground/10"
+								className="h-10 w-20 rounded-[var(--bf-radius-control)] ring-1 ring-border"
 								style={{ backgroundColor: primaryColor }}
 							/>
 						</div>
 					</div>
-					<div className="flex gap-2">
+					<div className="grid gap-3 sm:grid-cols-2" aria-label="Brand appearance preview">
+						{(["light", "dark"] as const).map((mode) => (
+							<div key={mode} className="overflow-hidden rounded-[var(--bf-radius-surface)] border" style={{ backgroundColor: mode === "light" ? "#f7f9fa" : "#08090b", color: mode === "light" ? "#11151a" : "#f7f9fb" }}>
+								<div className="flex flex-wrap items-center justify-between gap-2 p-3">
+									<span className="text-xs">{mode === "light" ? "Light theme" : "Dark theme"}</span>
+									<span className="rounded-[var(--bf-radius-control)] px-3 py-1.5 text-xs font-medium" style={{ backgroundColor: previewPalette[mode].primary, color: previewPalette[mode].primaryForeground }}>Primary action</span>
+								</div>
+								<div role="img" aria-label={`${mode} theme activity gradient`} className="h-1" style={{ background: previewPalette[mode].activityGradient }} />
+							</div>
+						))}
+					</div>
+					<p className="text-xs text-muted-foreground">Action colors and activity gradients adapt to your brand in each theme.</p>
+					<div className="flex flex-wrap gap-2">
 						<Button
 							onClick={handleColorUpdate}
-							disabled={saving || resetting === "color"}
+							disabled={
+								saving || resetting === "color" || readError || readPending
+							}
 							variant="default"
 						>
 							{saving ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : null}
 							Update Color
 						</Button>
 						<Button
 							onClick={handleResetColor}
-							disabled={saving || resetting === "color"}
+							disabled={
+								saving || resetting === "color" || readError || readPending
+							}
 							variant="outline"
 							size="icon"
 							title="Reset to default color"
+							aria-label="Reset to default color"
+							className="size-11 sm:size-9"
 						>
 							{resetting === "color" ? (
-								<Loader2 className="h-4 w-4 animate-spin" />
+								<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : (
 								<RotateCcw className="h-4 w-4" />
 							)}
@@ -578,13 +689,13 @@ export function Branding() {
 							</div>
 						))}
 					</div>
-					<div className="flex gap-2">
+					<div className="flex flex-wrap gap-2">
 						<Button
 							onClick={handleTerminologyUpdate}
-							disabled={savingTerminology}
+							disabled={savingTerminology || readError || readPending}
 						>
 							{savingTerminology ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : null}
 							Update Terminology
 						</Button>
@@ -618,13 +729,16 @@ export function Branding() {
 											e.stopPropagation();
 											handleResetLogo("square");
 										}}
+										aria-label="Reset square logo"
 										disabled={
 											uploading === "square" ||
-											resetting === "square"
+											resetting === "square" ||
+											readError ||
+											readPending
 										}
 									>
 										{resetting === "square" ? (
-											<Loader2 className="h-4 w-4 animate-spin" />
+											<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 										) : (
 											<RotateCcw className="h-4 w-4" />
 										)}
@@ -635,7 +749,7 @@ export function Branding() {
 								Recommended: 512×512 px
 							</p>
 							<div
-								className={`relative border-2 border-dashed rounded-lg p-6 transition-colors h-48 flex items-center justify-center ${
+								className={`relative border-2 border-dashed rounded-[var(--bf-radius-surface)] p-6 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring h-48 flex items-center justify-center ${
 									dragActiveSquare
 										? "border-primary bg-primary/5"
 										: "border-border"
@@ -643,13 +757,39 @@ export function Branding() {
 									uploading === "square" ||
 									resetting === "square"
 										? "opacity-50 pointer-events-none"
-										: "cursor-pointer hover:border-primary/50"
+										: readError || readPending
+											? "opacity-50 pointer-events-none"
+											: "cursor-pointer hover:border-primary/50"
 								}`}
+								role="button"
+								aria-label="Upload square logo"
+								aria-disabled={
+									uploading === "square" ||
+									resetting === "square" ||
+									readError ||
+									readPending
+								}
+								tabIndex={
+									uploading === "square" ||
+									resetting === "square" ||
+									readError ||
+									readPending
+										? -1
+										: 0
+								}
+								onKeyDown={(event) => {
+									if ((event.key === "Enter" || event.key === " ") && uploading !== "square" && resetting !== "square" && !readError && !readPending) {
+										event.preventDefault();
+										document.getElementById("squareLogoInput")?.click();
+									}
+								}}
 								onDragEnter={(e) => handleDrag(e, "square")}
 								onDragLeave={(e) => handleDrag(e, "square")}
 								onDragOver={(e) => handleDrag(e, "square")}
 								onDrop={(e) => handleDrop(e, "square")}
 								onClick={() =>
+									!readError &&
+									!readPending &&
 									document
 										.getElementById("squareLogoInput")
 										?.click()
@@ -688,7 +828,7 @@ export function Branding() {
 								)}
 								{uploading === "square" && (
 									<div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg">
-										<Loader2 className="h-8 w-8 animate-spin" />
+										<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
 									</div>
 								)}
 							</div>
@@ -706,13 +846,16 @@ export function Branding() {
 											e.stopPropagation();
 											handleResetLogo("rectangle");
 										}}
+										aria-label="Reset rectangle logo"
 										disabled={
 											uploading === "rectangle" ||
-											resetting === "rectangle"
+											resetting === "rectangle" ||
+											readError ||
+											readPending
 										}
 									>
 										{resetting === "rectangle" ? (
-											<Loader2 className="h-4 w-4 animate-spin" />
+											<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 										) : (
 											<RotateCcw className="h-4 w-4" />
 										)}
@@ -723,7 +866,7 @@ export function Branding() {
 								Recommended: 800×200 px
 							</p>
 							<div
-								className={`relative border-2 border-dashed rounded-lg p-6 transition-colors h-48 flex items-center justify-center ${
+								className={`relative border-2 border-dashed rounded-[var(--bf-radius-surface)] p-6 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring h-48 flex items-center justify-center ${
 									dragActiveRectangle
 										? "border-primary bg-primary/5"
 										: "border-border"
@@ -731,13 +874,39 @@ export function Branding() {
 									uploading === "rectangle" ||
 									resetting === "rectangle"
 										? "opacity-50 pointer-events-none"
-										: "cursor-pointer hover:border-primary/50"
+										: readError || readPending
+											? "opacity-50 pointer-events-none"
+											: "cursor-pointer hover:border-primary/50"
 								}`}
+								role="button"
+								aria-label="Upload rectangle logo"
+								aria-disabled={
+									uploading === "rectangle" ||
+									resetting === "rectangle" ||
+									readError ||
+									readPending
+								}
+								tabIndex={
+									uploading === "rectangle" ||
+									resetting === "rectangle" ||
+									readError ||
+									readPending
+										? -1
+										: 0
+								}
+								onKeyDown={(event) => {
+									if ((event.key === "Enter" || event.key === " ") && uploading !== "rectangle" && resetting !== "rectangle" && !readError && !readPending) {
+										event.preventDefault();
+										document.getElementById("rectangleLogoInput")?.click();
+									}
+								}}
 								onDragEnter={(e) => handleDrag(e, "rectangle")}
 								onDragLeave={(e) => handleDrag(e, "rectangle")}
 								onDragOver={(e) => handleDrag(e, "rectangle")}
 								onDrop={(e) => handleDrop(e, "rectangle")}
 								onClick={() =>
+									!readError &&
+									!readPending &&
 									document
 										.getElementById("rectangleLogoInput")
 										?.click()
@@ -776,7 +945,7 @@ export function Branding() {
 								)}
 								{uploading === "rectangle" && (
 									<div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg">
-										<Loader2 className="h-8 w-8 animate-spin" />
+										<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
 									</div>
 								)}
 							</div>

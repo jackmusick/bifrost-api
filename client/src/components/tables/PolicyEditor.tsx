@@ -55,6 +55,8 @@ type TablePolicies = components["schemas"]["TablePolicies"];
 const VALIDATE_DEBOUNCE_MS = 300;
 
 export interface PolicyEditorProps {
+	readOnly?: boolean;
+	onParseErrorChange?: (error: string | null) => void;
 	value: TablePolicies | null;
 	onChange: (next: TablePolicies | null) => void;
 }
@@ -67,8 +69,14 @@ const POLICY_SEED: TablePolicies = { policies: [] };
  *  document root. No single-Policy fallback. Throws on shape mismatch
  *  so JsonYamlEditor surfaces it as a parse error. */
 function asTablePolicies(parsed: unknown): TablePolicies {
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new Error("Document root must be an object with a `policies` key.");
+	if (
+		parsed === null ||
+		typeof parsed !== "object" ||
+		Array.isArray(parsed)
+	) {
+		throw new Error(
+			"Document root must be an object with a `policies` key.",
+		);
 	}
 	const obj = parsed as Record<string, unknown>;
 	if (!Array.isArray(obj.policies)) {
@@ -77,7 +85,12 @@ function asTablePolicies(parsed: unknown): TablePolicies {
 	return parsed as TablePolicies;
 }
 
-export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
+export function PolicyEditor({
+	value,
+	onChange,
+	readOnly = false,
+	onParseErrorChange,
+}: PolicyEditorProps) {
 	const [templateKey, setTemplateKey] = useState<string>("");
 	const [refKey, setRefKey] = useState<string>("");
 	const [rules, setRules] = useState<PolicyRule[]>([]);
@@ -142,7 +155,7 @@ export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
 					if (controller.signal.aborted) return;
 					lastValidatedJsonRef.current = canonical;
 					setValidationErrors(
-						response.ok ? [] : response.errors ?? [],
+						response.ok ? [] : (response.errors ?? []),
 					);
 				})
 				.catch((err) => {
@@ -189,6 +202,7 @@ export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
 
 	function handleParseErrorChange(error: string | null) {
 		setActiveParseError(error);
+		onParseErrorChange?.(error);
 		// Buffer is now invalid. Wipe any prior validation errors so the
 		// stale-AST result doesn't keep rendering next to the new syntax
 		// error. The next successful parse will re-trigger validation.
@@ -205,129 +219,131 @@ export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
 	// While a code tab has an unresolved parse error, AST-driven mutations
 	// would silently clobber the user's broken buffer. Disable the toolbar
 	// mutations until they fix or abandon the buffer by switching tabs.
-	const mutationsDisabled = activeParseError !== null;
-	const mutationsDisabledTitle = mutationsDisabled
-		? "Resolve the parse error in the JSON/YAML tab to use this action"
-		: undefined;
+	const mutationsDisabled = readOnly || activeParseError !== null;
+	const mutationsDisabledTitle = readOnly
+		? "Editing is unavailable"
+		: mutationsDisabled
+			? "Resolve the parse error in the JSON/YAML tab to use this action"
+			: undefined;
 
 	return (
 		<>
-		<div className="space-y-3">
-			<div className="flex justify-between items-center">
-				<h3 className="text-sm font-medium">Policies</h3>
-				<div className="flex gap-2">
-					<Select
-						value={templateKey}
-						onValueChange={handleTemplate}
-						disabled={mutationsDisabled}
-					>
-						<SelectTrigger
-							className="w-[200px]"
-							aria-label="Insert template"
-							disabled={mutationsDisabled}
-							title={mutationsDisabledTitle}
-						>
-							<SelectValue placeholder="Insert template..." />
-						</SelectTrigger>
-						<SelectContent>
-							{Object.keys(POLICY_TEMPLATES).map((k) => (
-								<SelectItem key={k} value={k}>
-									{k}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					{rules.length > 0 && (
+			<div className="space-y-3">
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+					<h3 className="text-sm font-medium">Policies</h3>
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
 						<Select
-							value={refKey}
-							onValueChange={handleRef}
+							value={templateKey}
+							onValueChange={handleTemplate}
 							disabled={mutationsDisabled}
 						>
 							<SelectTrigger
-								className="w-[200px]"
-								aria-label="Insert reference"
+								className="min-h-11 w-full min-w-0 sm:w-[200px]"
+								aria-label="Insert template"
 								disabled={mutationsDisabled}
 								title={mutationsDisabledTitle}
 							>
-								<SelectValue placeholder="Insert reference..." />
+								<SelectValue placeholder="Insert template..." />
 							</SelectTrigger>
 							<SelectContent>
-								{rules.map((r) => (
-									<SelectItem key={r.name} value={r.name}>
-										{r.name}
+								{Object.keys(POLICY_TEMPLATES).map((k) => (
+									<SelectItem key={k} value={k}>
+										{k}
 									</SelectItem>
 								))}
 							</SelectContent>
 						</Select>
-					)}
-					<Button
-						type="button"
-						size="sm"
-						variant="ghost"
-						className="text-xs"
-						onClick={() => setShowRulesManager(true)}
-						data-testid="manage-rules-btn"
-					>
-						Manage rules…
-					</Button>
-					<PolicyReferencePanel />
-				</div>
-			</div>
-
-			<JsonYamlEditor<TablePolicies>
-				value={value}
-				onChange={emit}
-				schema={{}}
-				seed={POLICY_SEED}
-				paths={paths}
-				validateParsed={asTablePolicies}
-				onParseErrorChange={handleParseErrorChange}
-				hideParseError
-			/>
-
-			{activeParseError && (
-				<p
-					className="text-xs text-destructive"
-					role="alert"
-					data-testid="policy-editor-parse-error"
-				>
-					Parse error: {activeParseError}
-				</p>
-			)}
-
-			{!activeParseError &&
-				validationErrors !== null &&
-				validationErrors.length > 0 && (
-					<div
-						className="text-xs text-destructive space-y-0.5"
-						role="alert"
-						data-testid="policy-editor-validation-errors"
-					>
-						<p className="font-medium">Validation errors:</p>
-						{validationErrors.map((err, i) => (
-							<p
-								// path+message is unique enough for the
-								// editor's surface area; collisions would
-								// only happen on duplicate identical errors.
-								key={`${err.path}:${err.message}:${i}`}
-								data-testid="policy-editor-validation-error"
+						{rules.length > 0 && (
+							<Select
+								value={refKey}
+								onValueChange={handleRef}
+								disabled={mutationsDisabled}
 							>
-								{err.path}: {err.message}
-							</p>
-						))}
+								<SelectTrigger
+									className="min-h-11 w-full min-w-0 sm:w-[200px]"
+									aria-label="Insert reference"
+									disabled={mutationsDisabled}
+									title={mutationsDisabledTitle}
+								>
+									<SelectValue placeholder="Insert reference..." />
+								</SelectTrigger>
+								<SelectContent>
+									{rules.map((r) => (
+										<SelectItem key={r.name} value={r.name}>
+											{r.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						)}
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="min-h-11 text-sm"
+							onClick={() => setShowRulesManager(true)}
+							data-testid="manage-rules-btn"
+						>
+							Manage rules…
+						</Button>
+						<PolicyReferencePanel />
 					</div>
+				</div>
+
+				<JsonYamlEditor<TablePolicies>
+					value={value}
+					onChange={emit}
+					schema={{}}
+					seed={POLICY_SEED}
+					paths={paths}
+					validateParsed={asTablePolicies}
+					readOnly={readOnly}
+					onParseErrorChange={handleParseErrorChange}
+					hideParseError
+				/>
+
+				{activeParseError && (
+					<p
+						className="text-xs text-destructive"
+						role="alert"
+						data-testid="policy-editor-parse-error"
+					>
+						Parse error: {activeParseError}
+					</p>
 				)}
 
-		</div>
+				{!activeParseError &&
+					validationErrors !== null &&
+					validationErrors.length > 0 && (
+						<div
+							className="text-xs text-destructive space-y-0.5"
+							role="alert"
+							data-testid="policy-editor-validation-errors"
+						>
+							<p className="font-medium">Validation errors:</p>
+							{validationErrors.map((err, i) => (
+								<p
+									// path+message is unique enough for the
+									// editor's surface area; collisions would
+									// only happen on duplicate identical errors.
+									key={`${err.path}:${err.message}:${i}`}
+									data-testid="policy-editor-validation-error"
+								>
+									{err.path}: {err.message}
+								</p>
+							))}
+						</div>
+					)}
+			</div>
 
-		<Dialog open={showRulesManager} onOpenChange={setShowRulesManager}>
-			<DialogContent className="max-h-[90vh] overflow-auto sm:max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>Table policy rules</DialogTitle>
-				</DialogHeader>
-				<PolicyRulesManager domain="table" />
-			</DialogContent>
-		</Dialog>
+			<Dialog open={showRulesManager} onOpenChange={setShowRulesManager}>
+				<DialogContent className="max-h-[90vh] overflow-auto sm:max-w-2xl">
+					<DialogHeader>
+						<DialogTitle>Table policy rules</DialogTitle>
+					</DialogHeader>
+					<PolicyRulesManager domain="table" />
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 }

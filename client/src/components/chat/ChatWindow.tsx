@@ -8,6 +8,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bot, MessageSquare } from "lucide-react";
+import { MessageHistoryError } from "./MessageHistoryError";
 import { ChatMessage } from "./ChatMessage";
 import { ChatAttachmentList } from "./ChatAttachmentList";
 import { ChatInput } from "./ChatInput";
@@ -35,7 +36,6 @@ import {
 	type AttachmentPublic,
 } from "@/services/chatAttachments";
 import type { ChatModelProfileId } from "@/services/chatModels";
-import { toast } from "sonner";
 
 type MessagePublic = components["schemas"]["MessagePublic"];
 
@@ -207,7 +207,12 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 	}, [checkIfAtBottom]);
 
 	// Get messages from API and local cache
-	const { isLoading: isLoadingMessages } = useMessages(conversationId);
+	const {
+		isLoading: isLoadingMessages,
+		isError: messagesError,
+		isFetching: fetchingMessages,
+		refetch: refetchMessages,
+	} = useMessages(conversationId);
 	const localMessages = useChatStore(
 		(state) =>
 			(conversationId && state.messagesByConversation[conversationId]) ||
@@ -241,7 +246,14 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 			null);
 
 	// Use WebSocket streaming
-	const { sendMessage, isStreaming, stopStreaming } = useChatStream({
+	const {
+		sendMessage,
+		isStreaming,
+		stopStreaming,
+		isRestoring,
+		restoreError,
+		retryRestore,
+	} = useChatStream({
 		conversationId,
 		onError: (error) => {
 			console.error("[ChatWindow] Stream error:", error);
@@ -404,7 +416,9 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 				);
 				setActiveConversation(targetConversationId);
 				setActiveAgent(null);
-				navigate(`/chat/${targetConversationId}`);
+				navigate(`/chat/${targetConversationId}`, {
+					state: { preserveChatDraft: true },
+				});
 				await submission;
 				return;
 			} else if (!targetConversationId) {
@@ -428,7 +442,9 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 			if (createdConversation) {
 				setActiveConversation(createdConversation.id);
 				setActiveAgent(createdConversation.agent_id ?? null);
-				navigate(`/chat/${createdConversation.id}`);
+				navigate(`/chat/${createdConversation.id}`, {
+					state: { preserveChatDraft: true },
+				});
 			}
 			await submission;
 		} catch (error) {
@@ -443,11 +459,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					),
 				);
 			}
-			const description =
-				error instanceof Error
-					? error.message
-					: "Could not send this message.";
-			toast.error("Message not sent", { description });
+
 			throw error;
 		}
 	};
@@ -468,6 +480,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					</p>
 				</div>
 				<ChatInput
+					key="composer"
 					onSend={handleSendMessage}
 					disabled={createConversation.isPending}
 					placeholder="Send a message..."
@@ -479,12 +492,52 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 		);
 	}
 
+	const historyError =
+		messagesError || restoreError ? (
+			<MessageHistoryError
+				cached={localMessages.length > 0 || isStreaming}
+				pending={fetchingMessages || isRestoring}
+				onRetry={() => {
+					void refetchMessages();
+					retryRestore();
+				}}
+			/>
+		) : null;
+	if (
+		(messagesError || restoreError) &&
+		localMessages.length === 0 &&
+		!isStreaming &&
+		systemEvents.length === 0
+	) {
+		return (
+			<div className="flex min-h-0 flex-1 flex-col">
+				<div className="flex-1 overflow-y-auto">{historyError}</div>
+				<ChatInput
+					key="composer"
+					onSend={handleSendMessage}
+					disabled
+					modelProfiles={modelProfiles}
+					modelProfileId={effectiveModelProfileId}
+					onModelProfileChange={setSelectedModelProfileId}
+				/>
+			</div>
+		);
+	}
+
 	// Loading state. If the durable runtime already has optimistic or streamed
 	// state, render it immediately instead of flashing skeletons over the turn.
-	if (isLoadingMessages && localMessages.length === 0 && !isStreaming) {
+	if (
+		(isLoadingMessages || isRestoring) &&
+		localMessages.length === 0 &&
+		!isStreaming
+	) {
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
-				<div className="flex-1 p-4 space-y-4">
+				<div
+					role="status"
+					aria-label="Loading messages"
+					className="flex-1 p-4 space-y-4"
+				>
 					{[1, 2, 3].map((i) => (
 						<div key={i} className="flex gap-3">
 							<Skeleton className="h-8 w-8 rounded-full" />
@@ -496,6 +549,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					))}
 				</div>
 				<ChatInput
+					key="composer"
 					onSend={handleSendMessage}
 					disabled
 					modelProfiles={modelProfiles}
@@ -525,6 +579,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					</p>
 				</div>
 				<ChatInput
+					key="composer"
 					onSend={handleSendMessage}
 					placeholder="Send a message..."
 					modelProfiles={modelProfiles}
@@ -619,6 +674,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden">
+			{historyError}
 			{/* Messages Area */}
 			<div
 				ref={containerRef}
@@ -773,6 +829,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 
 			{/* Input Area */}
 			<ChatInput
+				key="composer"
 				onSend={handleSendMessage}
 				isLoading={isStreaming}
 				onStop={stopStreaming}

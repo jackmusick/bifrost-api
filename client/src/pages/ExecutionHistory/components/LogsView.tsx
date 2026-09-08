@@ -9,10 +9,12 @@ import { useState, useMemo, useCallback } from "react";
 import type { DateRange } from "react-day-picker";
 
 import { useLogs, type LogFilters, type LogListEntry } from "@/hooks/useLogs";
+import { Button } from "@/components/ui/button";
 import { LogsTable } from "./LogsTable";
 import { ExecutionDrawer } from "./ExecutionDrawer";
 
 interface LogsViewProps {
+    workflowId?: string;
     /** Organization ID filter from parent */
     filterOrgId?: string | null;
     /** Date range filter from parent */
@@ -29,6 +31,7 @@ interface LogsViewProps {
  */
 function LogsViewInner({
     filterOrgId,
+    workflowId,
     dateRange,
     searchTerm,
     logLevel,
@@ -44,6 +47,8 @@ function LogsViewInner({
     // Build filters object from props
     const filters: LogFilters = useMemo(() => {
         const result: LogFilters = {};
+        if (workflowId) result.workflow_id = workflowId;
+        if (filterOrgId === null) result.global_only = true;
 
         if (filterOrgId !== undefined && filterOrgId !== null) {
             result.organization_id = filterOrgId;
@@ -68,10 +73,10 @@ function LogsViewInner({
         }
 
         return result;
-    }, [filterOrgId, searchTerm, dateRange, logLevel]);
+    }, [filterOrgId, workflowId, searchTerm, dateRange, logLevel]);
 
     // Fetch logs
-    const { data, isLoading } = useLogs(filters, currentToken);
+    const { data, isLoading, isFetching, isError, refetch } = useLogs(filters, currentToken);
 
     const logs = data?.logs ?? [];
     const continuationToken = data?.continuation_token;
@@ -102,10 +107,17 @@ function LogsViewInner({
     return (
         <>
             {/* Table */}
-            <div className="flex-1 min-h-0 overflow-auto mt-4">
+            <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+                {isError && <div role="alert" className="space-y-3 rounded-[var(--bf-radius-surface)] border border-border bg-card p-4">
+                    <p>Couldn't load logs.{data ? " Previously loaded logs are shown below." : ""}</p>
+                    <Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Retrying…" : "Retry loading logs"}</Button>
+                    {pageStack.length > 0 && !data && <Button variant="outline" className="min-h-11" disabled={isFetching} onClick={handlePrevPage}>Back to previous page</Button>}
+                </div>}
+                {(!isError || data) && (
                 <LogsTable
                     logs={logs}
                     isLoading={isLoading}
+                    isFetching={isFetching}
                     continuationToken={continuationToken}
                     onNextPage={handleNextPage}
                     onPrevPage={handlePrevPage}
@@ -113,6 +125,7 @@ function LogsViewInner({
                     currentPage={pageStack.length + 1}
                     onLogClick={handleLogClick}
                 />
+                )}
             </div>
 
             {/* Execution Drawer */}
@@ -130,11 +143,11 @@ function LogsViewInner({
  * This is the React-idiomatic pattern for resetting child state on prop changes.
  */
 export function LogsView(props: LogsViewProps) {
-    const { filterOrgId, dateRange, searchTerm, logLevel } = props;
+    const { filterOrgId, workflowId, dateRange, searchTerm, logLevel } = props;
 
     // Generate a key from filter values - when this changes, the inner component remounts
     // and all its internal state (pagination) resets to initial values
-    const filterKey = `${filterOrgId ?? "all"}-${searchTerm ?? ""}-${dateRange?.from?.toISOString() ?? "none"}-${logLevel ?? "all"}`;
+    const filterKey = `${workflowId ?? "all"}-${filterOrgId === null ? "global" : filterOrgId ?? "all"}-${searchTerm ?? ""}-${dateRange?.from?.toISOString() ?? "none"}-${dateRange?.to?.toISOString() ?? "none"}-${logLevel ?? "all"}`;
 
     return <LogsViewInner key={filterKey} {...props} />;
 }

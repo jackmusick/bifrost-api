@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen, waitFor } from "@/test-utils";
+import { act, renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockAuthFetch = vi.fn();
 const mockSolveChallenge = vi.fn();
@@ -118,7 +118,7 @@ describe("FormCaptcha", () => {
 			expect(mockSolveChallenge).toHaveBeenCalledTimes(1),
 		);
 		await waitFor(() =>
-			expect(screen.getByText("Verified")).toBeInTheDocument(),
+			expect(screen.getByRole("status")).toHaveTextContent("Verified"),
 		);
 		const payload = onPayloadChange.mock.calls.at(-1)?.[0] as string;
 		expect(JSON.parse(globalThis.atob(payload))).toEqual({
@@ -140,4 +140,39 @@ describe("FormCaptcha", () => {
 			screen.getByRole("button", { name: "Try again" }),
 		).toBeInTheDocument();
 	});
+});
+
+it("discards a completed proof after switching forms", async () => {
+	const challenge = {
+		parameters: { algorithm: "PBKDF2/SHA-256" },
+		signature: "first",
+	};
+	mockAuthFetch
+		.mockResolvedValueOnce(jsonResponse(challenge))
+		.mockImplementationOnce(() => new Promise(() => {}));
+	let finish!: (value: { counter: number; derivedKey: string }) => void;
+	mockSolveChallenge.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	);
+	const onPayloadChange = vi.fn();
+	const { user, rerender } = renderWithProviders(
+		<FormCaptcha formId="first" onPayloadChange={onPayloadChange} />,
+	);
+	await user.click(
+		await screen.findByRole("checkbox", { name: "I'm not a robot" }),
+	);
+	rerender(<FormCaptcha formId="second" onPayloadChange={onPayloadChange} />);
+	await act(async () => finish({ counter: 1, derivedKey: "old" }));
+	expect(mockSolveChallenge.mock.calls[0][0].controller.signal.aborted).toBe(
+		true,
+	);
+	expect(
+		onPayloadChange.mock.calls.every(([payload]) => payload === null),
+	).toBe(true);
+	expect(screen.getByRole("status")).toHaveTextContent(
+		"Loading verification",
+	);
 });

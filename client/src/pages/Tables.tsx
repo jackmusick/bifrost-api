@@ -1,12 +1,10 @@
-import { useState } from "react";
+import { TableActionsMenu } from "./tables/TableActionsMenu";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Database,
-	Pencil,
 	Plus,
-	Trash2,
 	RefreshCw,
-	FileJson2,
 	Globe,
 	Building2,
 	Download,
@@ -22,16 +20,8 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { TableDeleteDialog } from "./tables/TableDeleteDialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,6 +29,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchBox } from "@/components/search/SearchBox";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { ListToolbar } from "@/components/layout/ListToolbar";
+import { TableRecordList } from "@/components/tables/TableRecordList";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSearch } from "@/hooks/useSearch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -51,7 +45,10 @@ import { toast } from "sonner";
 import type { TablePublic } from "@/services/tables";
 
 export function Tables() {
+	const createButtonRef = useRef<HTMLButtonElement>(null);
+	const compactLayout = useMediaQuery("(max-width: 1023px)");
 	const navigate = useNavigate();
+	const [activeTab, setActiveTab] = useState("tables");
 	const { isPlatformAdmin } = useAuth();
 	const [selectedTable, setSelectedTable] = useState<
 		TablePublic | undefined
@@ -77,7 +74,7 @@ export function Tables() {
 				? "global"
 				: filterOrgId;
 
-	const { data, isLoading, refetch } = useTables(apiScope);
+	const { data, isLoading, isFetching, error, refetch } = useTables(apiScope);
 	const deleteTable = useDeleteTable();
 
 	// Fetch organizations for the org name lookup (platform admins only)
@@ -156,12 +153,21 @@ export function Tables() {
 		});
 	};
 
+	const allVisibleSelected =
+		filteredTables.length > 0 &&
+		filteredTables.every((table) => selectedIds.has(table.id));
+	const someVisibleSelected = filteredTables.some((table) =>
+		selectedIds.has(table.id),
+	);
 	const toggleSelectAll = () => {
-		if (selectedIds.size === filteredTables.length) {
-			setSelectedIds(new Set());
-		} else {
-			setSelectedIds(new Set(filteredTables.map((t) => t.id)));
-		}
+		setSelectedIds((previous) => {
+			const next = new Set(previous);
+			for (const table of filteredTables) {
+				if (allVisibleSelected) next.delete(table.id);
+				else next.add(table.id);
+			}
+			return next;
+		});
 	};
 
 	const handleExport = async () => {
@@ -186,57 +192,75 @@ export function Tables() {
 		});
 	};
 
+	const renderTableActions = (table: TablePublic) => (
+		<TableActionsMenu
+			table={table}
+			onEdit={() => handleEdit(table)}
+			onDelete={() => handleDelete(table)}
+		/>
+	);
+
 	return (
 		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
-			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-4xl font-extrabold tracking-tight">
-						Data Tables
-					</h1>
-					<p className="mt-2 text-muted-foreground">
-						Manage document tables for your applications
-					</p>
-				</div>
-				<div className="flex gap-2">
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={() => refetch()}
-						title="Refresh"
-						aria-label="Refresh"
-					>
-						<RefreshCw className="h-4 w-4" />
-					</Button>
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={handleAdd}
-						title="Create Table"
-						aria-label="Create table"
-					>
-						<Plus className="h-4 w-4" />
-					</Button>
-				</div>
-			</div>
+			<ListPageHeader
+				title="Data Tables"
+				description="Manage document tables for your applications"
+				actions={
+					activeTab === "tables" ? (
+						<>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={() => refetch()}
+								title="Refresh"
+								aria-label="Refresh"
+								disabled={isFetching}
+								className="h-11 w-11 lg:h-10 lg:w-10"
+							>
+								<RefreshCw
+									className={`h-4 w-4 ${isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+								/>
+							</Button>
+							<Button
+								variant="default"
+								ref={createButtonRef}
+								onClick={handleAdd}
+								title="Create table"
+								aria-label="Create table"
+								className="min-h-11 min-w-0 lg:min-h-10"
+							>
+								<Plus className="h-4 w-4" />
+								New table
+							</Button>
+						</>
+					) : undefined
+				}
+			/>
 
-			<Tabs defaultValue="tables" className="flex flex-1 min-h-0 flex-col">
+			<Tabs
+				value={activeTab}
+				onValueChange={setActiveTab}
+				className="flex flex-1 min-h-0 flex-col"
+			>
 				<TabsList className="w-fit">
 					<TabsTrigger value="tables">Tables</TabsTrigger>
 					<TabsTrigger value="claims">Custom Claims</TabsTrigger>
 				</TabsList>
 
-				<TabsContent value="tables" className="flex flex-1 min-h-0 flex-col space-y-6">
-					{/* Search and Filters */}
-					<div className="flex items-center gap-4">
+				<TabsContent
+					value="tables"
+					className="flex flex-1 min-h-0 flex-col space-y-6"
+				>
+					<ListToolbar>
 						<SearchBox
 							value={searchTerm}
 							onChange={setSearchTerm}
+							aria-label="Search tables"
 							placeholder="Search tables by name or description..."
-							className="flex-1"
+							className="w-full sm:flex-1"
 						/>
 						{isPlatformAdmin && (
-							<div className="w-64">
+							<div className="w-full sm:w-64">
 								<OrganizationSelect
 									value={filterOrgId}
 									onChange={setFilterOrgId}
@@ -247,7 +271,7 @@ export function Tables() {
 							</div>
 						)}
 						{isPlatformAdmin && (
-							<div className="flex items-center gap-2 ml-auto">
+							<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
 								{selectedIds.size > 0 && (
 									<span className="text-sm text-muted-foreground">
 										{selectedIds.size} selected
@@ -256,6 +280,7 @@ export function Tables() {
 								<Button
 									variant="outline"
 									size="sm"
+									className="min-h-11 lg:min-h-9"
 									onClick={handleExport}
 									disabled={isExporting}
 								>
@@ -267,6 +292,7 @@ export function Tables() {
 								<Button
 									variant="outline"
 									size="sm"
+									className="min-h-11 lg:min-h-9"
 									onClick={() => setIsImportOpen(true)}
 								>
 									<Upload className="h-4 w-4 mr-1" />
@@ -274,175 +300,176 @@ export function Tables() {
 								</Button>
 							</div>
 						)}
-					</div>
+					</ListToolbar>
 
+					{error && (
+						<Alert variant="destructive">
+							<AlertTitle>Tables could not be loaded</AlertTitle>
+							<AlertDescription className="space-y-3">
+								<p>
+									{data
+										? "Showing the last loaded tables. Refresh to get the latest changes."
+										: "Try again to load your tables. Your filters are preserved."}
+								</p>
+								<Button
+									variant="outline"
+									className="min-h-11"
+									disabled={isFetching}
+									onClick={() => refetch()}
+								>
+									{isFetching ? "Retrying…" : "Retry tables"}
+								</Button>
+							</AlertDescription>
+						</Alert>
+					)}
 					{/* Content */}
 					{isLoading ? (
-						<div className="space-y-2">
+						<div
+							role="status"
+							aria-label="Loading tables"
+							className="space-y-2"
+						>
+							<span className="sr-only">Loading tables…</span>
 							{[...Array(5)].map((_, i) => (
 								<Skeleton key={i} className="h-12 w-full" />
 							))}
 						</div>
-					) : filteredTables && filteredTables.length > 0 ? (
-						<div className="flex-1 min-h-0">
-							<DataTable className="max-h-full">
-								<DataTableHeader>
-									<DataTableRow>
-										{isPlatformAdmin && (
-											<DataTableHead className="w-10">
-												<Checkbox
-													checked={
-														filteredTables.length >
-															0 &&
-														selectedIds.size ===
-															filteredTables.length
-													}
-													onCheckedChange={
-														toggleSelectAll
-													}
-												/>
-											</DataTableHead>
-										)}
-										<DataTableHead className="w-0 whitespace-nowrap">
-											Scope
-										</DataTableHead>
-										<DataTableHead>Name</DataTableHead>
-										<DataTableHead>
-											Description
-										</DataTableHead>
-										<DataTableHead className="w-0 whitespace-nowrap">
-											Created
-										</DataTableHead>
-										<DataTableHead className="w-0 whitespace-nowrap text-right" />
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{filteredTables.map((table) => (
-										<DataTableRow
-											key={table.id}
-											className="cursor-pointer hover:bg-muted/50"
-											onClick={() =>
-												handleViewDocuments(table)
-											}
-										>
+					) : error && !data ? null : filteredTables &&
+					  filteredTables.length > 0 ? (
+						<div
+							className="flex-1 min-h-0"
+							role="region"
+							aria-label="Data tables"
+						>
+							{compactLayout ? (
+								<TableRecordList
+									tables={filteredTables}
+									isPlatformAdmin={isPlatformAdmin}
+									selectedIds={selectedIds}
+									allVisibleSelected={allVisibleSelected}
+									someVisibleSelected={someVisibleSelected}
+									onToggleAll={toggleSelectAll}
+									onToggle={toggleSelect}
+									scopeName={getOrgName}
+									formatDate={formatDate}
+									renderActions={renderTableActions}
+								/>
+							) : (
+								<DataTable className="max-h-full">
+									<DataTableHeader>
+										<DataTableRow>
 											{isPlatformAdmin && (
-												<DataTableCell>
+												<DataTableHead className="w-10">
 													<Checkbox
-														checked={selectedIds.has(
-															table.id,
-														)}
-														onCheckedChange={() =>
-															toggleSelect(
-																table.id,
-															)
+														aria-label="Select visible tables"
+														checked={
+															allVisibleSelected
+																? true
+																: someVisibleSelected
+																	? "indeterminate"
+																	: false
 														}
-														onClick={(e: React.MouseEvent) =>
-															e.stopPropagation()
+														onCheckedChange={
+															toggleSelectAll
 														}
 													/>
-												</DataTableCell>
+												</DataTableHead>
 											)}
-											<DataTableCell className="w-0 whitespace-nowrap">
-												{table.organization_id ? (
-													<Badge
-														variant="outline"
-														className="gap-1"
-													>
-														<Building2 className="h-3 w-3" />
-														{isPlatformAdmin
-															? getOrgName(
-																	table.organization_id,
-																)
-															: "Organization"}
-													</Badge>
-												) : (
-													<Badge
-														variant="secondary"
-														className="gap-1"
-													>
-														<Globe className="h-3 w-3" />
-														Global
-													</Badge>
-												)}
-											</DataTableCell>
-											<DataTableCell className="font-medium font-mono">
-												<span className="flex items-center gap-2">
-													{table.name}
-													{table.is_solution_managed && (
-														<SolutionManagedBadge
-															solutionId={table.solution_id}
-														/>
-													)}
-												</span>
-											</DataTableCell>
-											<DataTableCell className="max-w-xs truncate text-muted-foreground">
-												{table.description || "-"}
-											</DataTableCell>
-											<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
-												{formatDate(table.created_at)}
-											</DataTableCell>
-											<DataTableCell className="w-0 whitespace-nowrap text-right">
-												<div
-													className="flex justify-end gap-2"
-													onClick={(e: React.MouseEvent) =>
-														e.stopPropagation()
-													}
-												>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleViewDocuments(
-																table,
-															)
-														}
-														title="View documents"
-														aria-label="View documents"
-													>
-														<FileJson2 className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleEdit(table)
-														}
-														disabled={
-															table.is_solution_managed
-														}
-														title={
-															table.is_solution_managed
-																? "Managed by a Solution — edit via deployment"
-																: "Edit table"
-														}
-														aria-label="Edit table"
-													>
-														<Pencil className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleDelete(table)
-														}
-														disabled={
-															table.is_solution_managed
-														}
-														title={
-															table.is_solution_managed
-																? "Managed by a Solution — delete via deployment"
-																: "Delete table"
-														}
-														aria-label="Delete table"
-													>
-														<Trash2 className="h-4 w-4" />
-													</Button>
-												</div>
-											</DataTableCell>
+											<DataTableHead className="w-0 whitespace-nowrap">
+												Scope
+											</DataTableHead>
+											<DataTableHead>Name</DataTableHead>
+											<DataTableHead>
+												Description
+											</DataTableHead>
+											<DataTableHead className="w-0 whitespace-nowrap">
+												Created
+											</DataTableHead>
+											<DataTableHead className="w-0 whitespace-nowrap text-right" />
 										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
+									</DataTableHeader>
+									<DataTableBody>
+										{filteredTables.map((table) => (
+											<DataTableRow
+												key={table.id}
+												className="cursor-pointer hover:bg-muted/50"
+												onClick={() =>
+													handleViewDocuments(table)
+												}
+											>
+												{isPlatformAdmin && (
+													<DataTableCell>
+														<Checkbox
+															aria-label={`Select ${table.name}`}
+															checked={selectedIds.has(
+																table.id,
+															)}
+															onCheckedChange={() =>
+																toggleSelect(
+																	table.id,
+																)
+															}
+															onClick={(
+																e: React.MouseEvent,
+															) =>
+																e.stopPropagation()
+															}
+														/>
+													</DataTableCell>
+												)}
+												<DataTableCell className="w-0 whitespace-nowrap">
+													{table.organization_id ? (
+														<Badge
+															variant="outline"
+															className="gap-1"
+														>
+															<Building2 className="h-3 w-3" />
+															{isPlatformAdmin
+																? getOrgName(
+																		table.organization_id,
+																	)
+																: "Organization"}
+														</Badge>
+													) : (
+														<Badge
+															variant="secondary"
+															className="gap-1"
+														>
+															<Globe className="h-3 w-3" />
+															Global
+														</Badge>
+													)}
+												</DataTableCell>
+												<DataTableCell className="min-w-0 font-medium font-mono">
+													<span className="flex min-w-0 items-center gap-2">
+														<span className="truncate">
+															{table.name}
+														</span>
+														{table.is_solution_managed && (
+															<SolutionManagedBadge
+																solutionId={
+																	table.solution_id
+																}
+															/>
+														)}
+													</span>
+												</DataTableCell>
+												<DataTableCell className="max-w-xs truncate text-muted-foreground">
+													{table.description || "-"}
+												</DataTableCell>
+												<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
+													{formatDate(
+														table.created_at,
+													)}
+												</DataTableCell>
+												<DataTableCell className="w-0 whitespace-nowrap text-right">
+													{renderTableActions(table)}
+												</DataTableCell>
+											</DataTableRow>
+										))}
+									</DataTableBody>
+								</DataTable>
+							)}
 						</div>
 					) : (
 						// Empty State
@@ -492,34 +519,14 @@ export function Tables() {
 				onImportComplete={() => refetch()}
 			/>
 
-			{/* Delete Confirmation Dialog */}
-			<AlertDialog
-				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Table</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to delete the table "
-							{tableToDelete?.name}"? This will permanently delete
-							all documents in this table. This action cannot be
-							undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleConfirmDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							{deleteTable.isPending
-								? "Deleting..."
-								: "Delete Table"}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			{isDeleteDialogOpen && tableToDelete && (
+				<TableDeleteDialog
+					name={tableToDelete.name}
+					onConfirm={handleConfirmDelete}
+					onOpenChange={setIsDeleteDialogOpen}
+					returnFocusRef={createButtonRef}
+				/>
+			)}
 		</div>
 	);
 }

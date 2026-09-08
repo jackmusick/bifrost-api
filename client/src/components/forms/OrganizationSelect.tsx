@@ -6,7 +6,7 @@
  * Org users should have this component hidden with their org pre-selected.
  */
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { Building2, ChevronsUpDown, Globe, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,16 @@ import type { components } from "@/lib/v1";
 
 type Organization = components["schemas"]["OrganizationPublic"];
 
-export interface OrganizationSelectProps {
+export interface OrganizationSelectProps extends Pick<
+	ComponentProps<typeof Button>,
+	| "id"
+	| "ref"
+	| "onBlur"
+	| "aria-label"
+	| "aria-labelledby"
+	| "aria-describedby"
+	| "aria-invalid"
+> {
 	/** Selected organization ID, null for global scope, or undefined for all */
 	value: string | null | undefined;
 	/** Callback when selection changes */
@@ -57,13 +66,21 @@ export function OrganizationSelect({
 	value,
 	onChange,
 	disabled = false,
+	label,
 	showGlobal = true,
 	showAll = false,
 	placeholder = "Select organization...",
 	triggerClassName,
 	contentClassName,
+	...triggerProps
 }: OrganizationSelectProps) {
-	const { data: organizations, isLoading } = useOrganizations();
+	const {
+		data: organizations,
+		isLoading,
+		isFetching,
+		error,
+		refetch,
+	} = useOrganizations();
 	const [open, setOpen] = useState(false);
 
 	const selectedOrg = organizations?.find(
@@ -90,7 +107,7 @@ export function OrganizationSelect({
 		}
 		if (value === null) {
 			return (
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 items-center gap-2">
 					<Globe className="h-4 w-4 text-muted-foreground" />
 					<span>Global</span>
 				</div>
@@ -98,21 +115,26 @@ export function OrganizationSelect({
 		}
 		if (selectedOrg) {
 			return (
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 items-center gap-2">
 					{selectedOrg.is_provider ? (
-						<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+						<Star className="h-4 w-4 text-muted-foreground" />
 					) : (
 						<Building2 className="h-4 w-4 text-muted-foreground" />
 					)}
-					<span>{selectedOrg.name}</span>
+					<span className="min-w-0 whitespace-normal text-left [overflow-wrap:anywhere]">
+						{selectedOrg.name}
+					</span>
 				</div>
 			);
 		}
 		if (value) {
 			return (
-				<div className="flex items-center gap-2">
-					<Building2 className="h-4 w-4 text-muted-foreground animate-pulse" />
-					<span className="text-muted-foreground">Loading...</span>
+				<div className="flex min-w-0 items-center gap-2">
+					<Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+					<span className="min-w-0 whitespace-normal text-left text-muted-foreground [overflow-wrap:anywhere]">
+						Organization unavailable
+						<span className="block font-mono text-xs">{value}</span>
+					</span>
 				</div>
 			);
 		}
@@ -123,11 +145,13 @@ export function OrganizationSelect({
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button
+					{...triggerProps}
+					aria-label={triggerProps["aria-label"] ?? label}
 					variant="outline"
 					role="combobox"
 					aria-expanded={open}
 					className={cn(
-						"w-full justify-between font-normal",
+						"h-auto min-h-11 w-full min-w-0 justify-between py-2 font-normal lg:min-h-10",
 						triggerClassName,
 					)}
 					disabled={disabled || isLoading}
@@ -144,9 +168,32 @@ export function OrganizationSelect({
 				align="start"
 			>
 				<Command>
-					<CommandInput placeholder="Search organizations..." />
+					<CommandInput
+						placeholder="Search organizations..."
+						aria-label="Search organizations"
+					/>
+					{error && (
+						<div
+							role="alert"
+							className="space-y-2 border-b p-3 text-sm"
+						>
+							<p>Organizations could not be loaded.</p>
+							<Button
+								variant="outline"
+								className="min-h-11"
+								disabled={isFetching}
+								onClick={() => refetch()}
+							>
+								{isFetching
+									? "Retrying…"
+									: "Retry organizations"}
+							</Button>
+						</div>
+					)}
 					<CommandList className="max-h-60 overflow-y-auto">
-						<CommandEmpty>No organizations found.</CommandEmpty>
+						{!error && (
+							<CommandEmpty>No organizations found.</CommandEmpty>
+						)}
 
 						{showAll && (
 							<>
@@ -157,8 +204,10 @@ export function OrganizationSelect({
 										data-checked={value === undefined}
 										onSelect={() => handleSelect(ALL_VALUE)}
 									>
-										<div className="flex flex-col flex-1">
-											<span className="font-medium">All</span>
+										<div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
+											<span className="font-medium">
+												All
+											</span>
 											<span className="text-xs text-muted-foreground">
 												Show all organizations
 											</span>
@@ -174,13 +223,20 @@ export function OrganizationSelect({
 								<CommandGroup>
 									<CommandItem
 										value={GLOBAL_VALUE}
-										keywords={["global", "all organizations"]}
+										keywords={[
+											"global",
+											"all organizations",
+										]}
 										data-checked={value === null}
-										onSelect={() => handleSelect(GLOBAL_VALUE)}
+										onSelect={() =>
+											handleSelect(GLOBAL_VALUE)
+										}
 									>
 										<Globe className="mr-2 h-4 w-4 text-muted-foreground" />
-										<div className="flex flex-col flex-1">
-											<span className="font-medium">Global</span>
+										<div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
+											<span className="font-medium">
+												Global
+											</span>
 											<span className="text-xs text-muted-foreground">
 												Available to all organizations
 											</span>
@@ -196,25 +252,28 @@ export function OrganizationSelect({
 								organizations.map((org: Organization) => {
 									const keywords = [org.name];
 									if (org.domain) keywords.push(org.domain);
-									if (org.is_provider) keywords.push("provider");
+									if (org.is_provider)
+										keywords.push("provider");
 									return (
 										<CommandItem
 											key={org.id}
 											value={org.id}
 											keywords={keywords}
 											data-checked={value === org.id}
-											onSelect={() => handleSelect(org.id)}
+											onSelect={() =>
+												handleSelect(org.id)
+											}
 										>
 											{org.is_provider ? (
-												<Star className="mr-2 h-4 w-4 text-amber-500 fill-amber-500" />
+												<Star className="mr-2 h-4 w-4 text-muted-foreground" />
 											) : (
 												<Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
 											)}
-											<div className="flex flex-col flex-1">
-												<span className="flex items-center gap-2">
+											<div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
+												<span className="flex min-w-0 flex-wrap items-center gap-2">
 													{org.name}
 													{org.is_provider && (
-														<span className="text-xs text-amber-600 font-medium">
+														<span className="text-xs font-medium text-muted-foreground">
 															Provider
 														</span>
 													)}
@@ -228,11 +287,11 @@ export function OrganizationSelect({
 										</CommandItem>
 									);
 								})
-							) : (
+							) : !error ? (
 								<CommandItem disabled value="__none__">
 									No organizations available
 								</CommandItem>
-							)}
+							) : null}
 						</CommandGroup>
 					</CommandList>
 				</Command>

@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Save, X } from "lucide-react";
 
 import { HelpSlideout } from "@/components/shared/HelpSlideout";
@@ -27,7 +29,7 @@ const CLAIM_QUERY_SEED: ClaimQuery = { table: "", select: "" };
 export interface CustomClaimEditorProps {
 	value: CustomClaim;
 	onChange: (next: CustomClaim) => void;
-	onSave: (value: CustomClaim) => void;
+	onSave: (value: CustomClaim) => void | Promise<void>;
 	onCancel: () => void;
 	nameDisabled?: boolean;
 }
@@ -59,15 +61,46 @@ export function CustomClaimEditor({
 	onCancel,
 	nameDisabled = false,
 }: CustomClaimEditorProps) {
-	const queryValid = isClaimQuery(value.query);
+	const busy = useRef(false);
+	const saveErrorRef = useRef<HTMLDivElement>(null);
+	const [parseError, setParseError] = useState<string | null>(null);
+	const [queryEmpty, setQueryEmpty] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
+	const [saveError, setSaveError] = useState(false);
+	useEffect(() => {
+		if (saveError) {
+			saveErrorRef.current?.focus();
+			saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [saveError]);
+	const queryValid = isClaimQuery(value.query) && !parseError && !queryEmpty;
+	async function save() {
+		if (busy.current || !queryValid || !value.name.trim()) return;
+		busy.current = true;
+		setIsSaving(true);
+		setSaveError(false);
+		try {
+			await onSave(value);
+		} catch {
+			setSaveError(true);
+		} finally {
+			busy.current = false;
+			setIsSaving(false);
+		}
+	}
 
 	return (
-		<div className="space-y-4">
+		<div className="min-w-0 space-y-6" aria-busy={isSaving}>
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h3 className="text-sm font-medium">Custom Claim</h3>
-					<p className="text-xs text-muted-foreground">
-						Resolved once per request and available to table policies.
+					<h2 className="font-heading text-xl font-semibold">
+						{nameDisabled
+							? "Edit custom claim"
+							: "New custom claim"}
+					</h2>
+					<p className="mt-1 text-sm leading-6 text-muted-foreground">
+						Resolved once per request and available to table
+						policies.
 					</p>
 				</div>
 				<HelpSlideout title="Custom Claims reference">
@@ -80,7 +113,8 @@ export function CustomClaimEditor({
 				<Input
 					id="claim-name"
 					value={value.name}
-					disabled={nameDisabled}
+					disabled={nameDisabled || isSaving}
+					className="h-11 font-mono"
 					onChange={(event) =>
 						onChange({ ...value, name: event.target.value })
 					}
@@ -91,6 +125,8 @@ export function CustomClaimEditor({
 				<Label htmlFor="claim-description">Description</Label>
 				<Input
 					id="claim-description"
+					disabled={isSaving}
+					className="h-11"
 					value={value.description ?? ""}
 					onChange={(event) =>
 						onChange({
@@ -105,6 +141,7 @@ export function CustomClaimEditor({
 				<Label htmlFor="claim-type">Type</Label>
 				<select
 					id="claim-type"
+					disabled={isSaving}
 					value={value.type}
 					onChange={(event) =>
 						onChange({
@@ -112,7 +149,7 @@ export function CustomClaimEditor({
 							type: event.target.value as CustomClaim["type"],
 						})
 					}
-					className="h-8 w-full rounded-2xl border border-transparent bg-input/50 px-2.5 text-sm transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
+					className="h-11 w-full rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-3 text-sm transition-colors duration-[var(--bf-motion-feedback)] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
 				>
 					<option value="list">list</option>
 					<option value="scalar">scalar</option>
@@ -122,11 +159,18 @@ export function CustomClaimEditor({
 			<div className="grid gap-2">
 				<Label>Query</Label>
 				<JsonYamlEditor<ClaimQuery>
-					value={isClaimQuery(value.query) ? value.query : null}
+					value={
+						!queryEmpty && isClaimQuery(value.query)
+							? value.query
+							: null
+					}
 					onChange={(query) => {
+						setQueryEmpty(!query);
 						if (!query) return;
 						onChange({ ...value, query });
 					}}
+					readOnly={isSaving}
+					onParseErrorChange={setParseError}
 					schema={CLAIM_QUERY_SCHEMA}
 					seed={CLAIM_QUERY_SEED}
 					validateParsed={asClaimQuery}
@@ -137,18 +181,39 @@ export function CustomClaimEditor({
 				/>
 			</div>
 
-			<div className="flex justify-end gap-2">
-				<Button type="button" variant="ghost" onClick={onCancel}>
+			{saveError && (
+				<Alert
+					variant="destructive"
+					ref={saveErrorRef}
+					tabIndex={-1}
+					className="scroll-mb-24 outline-none"
+				>
+					<AlertTitle>Claim could not be saved</AlertTitle>
+					<AlertDescription>
+						Your changes are preserved. Try saving again.
+					</AlertDescription>
+				</Alert>
+			)}
+			<div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11"
+					disabled={isSaving}
+					onClick={onCancel}
+				>
 					<X className="h-4 w-4" />
 					Cancel
 				</Button>
 				<Button
 					type="button"
-					disabled={!queryValid}
-					onClick={() => onSave(value)}
+					className="min-h-11"
+					disabled={isSaving || !queryValid || !value.name.trim()}
+					aria-label={isSaving ? "Saving…" : "Save"}
+					onClick={save}
 				>
 					<Save className="h-4 w-4" />
-					Save
+					{isSaving ? <span role="status">Saving…</span> : "Save"}
 				</Button>
 			</div>
 		</div>

@@ -11,16 +11,61 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
+type BackfillEstimateResponse = {
+	eligible: number;
+	estimated_cost_usd: string;
+	cost_basis: "history" | "fallback";
+	job_id?: string | null;
+	queued?: number;
+};
+
 const hoisted = vi.hoisted(() => {
 	const state: {
 		lastWsCallback: ((update: unknown) => void) | null;
-	} = { lastWsCallback: null };
+		backfillCalls: Array<{
+			body: unknown;
+			options: {
+				onSuccess?: (data: BackfillEstimateResponse) => void;
+				onError?: (error: unknown) => void;
+			};
+		}>;
+		cancelCalls: Array<{
+			params: { path: { job_id: string } };
+			options: {
+				onError?: (error: unknown) => void;
+			};
+		}>;
+	} = { lastWsCallback: null, backfillCalls: [], cancelCalls: [] };
 	return {
 		state,
 		mockUseSummaryBackfillJob: vi.fn(),
 		mockUseSummaryBackfillJobs: vi.fn(),
 		mockUseBackfillEligible: vi.fn(),
-		mockCancelMutate: vi.fn(),
+		mockCancelMutate: vi.fn(
+			(
+				params: { params: { path: { job_id: string } } },
+				options: { onError?: (error: unknown) => void },
+			) => {
+				state.cancelCalls.push({
+					params: params.params,
+					options,
+				});
+			},
+		),
+		mockBackfillMutate: vi.fn(
+			(
+				body: { body: unknown },
+				options: {
+					onSuccess?: (data: BackfillEstimateResponse) => void;
+					onError?: (error: unknown) => void;
+				},
+			) => {
+				state.backfillCalls.push({
+					body: body.body,
+					options,
+				});
+			},
+		),
 		mockOnSummaryBackfillUpdate: vi.fn(
 			(_jobId: string, cb: (update: unknown) => void) => {
 				state.lastWsCallback = cb;
@@ -33,7 +78,10 @@ const hoisted = vi.hoisted(() => {
 });
 
 vi.mock("@/services/agentRuns", () => ({
-	useBackfillSummaries: () => ({ mutate: vi.fn(), isPending: false }),
+	useBackfillSummaries: () => ({
+		mutate: hoisted.mockBackfillMutate,
+		isPending: false,
+	}),
 	useBackfillEligible: (
 		agentId: string | undefined,
 		promptVersionBelow?: string,
@@ -61,9 +109,11 @@ const {
 	mockUseSummaryBackfillJobs,
 	mockUseBackfillEligible,
 	mockCancelMutate,
+	mockBackfillMutate,
 } = hoisted;
 
 import { SummaryBackfillButton } from "./SummaryBackfillButton";
+import { act } from "react";
 
 const JOB_ID = "00000000-0000-0000-0000-000000000aaa";
 
@@ -72,8 +122,11 @@ beforeEach(() => {
 	mockUseSummaryBackfillJob.mockReset();
 	mockUseSummaryBackfillJobs.mockReset();
 	mockUseBackfillEligible.mockReset();
-	mockCancelMutate.mockReset();
+	mockCancelMutate.mockClear();
+	mockBackfillMutate.mockClear();
 	wsState.lastWsCallback = null;
+	wsState.backfillCalls = [];
+	wsState.cancelCalls = [];
 	// Default eligibility: 4 runs so existing tests see the button. The
 	// "hide when zero" case overrides this explicitly.
 	mockUseBackfillEligible.mockReturnValue({
@@ -113,6 +166,10 @@ beforeEach(() => {
 			estimated_cost_usd: "0.01",
 			actual_cost_usd: "0.00",
 		},
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
 	});
 });
 
@@ -172,6 +229,7 @@ describe("SummaryBackfillButton — terminal state", () => {
 		});
 		const link = screen.getByRole("link", { name: /review failed runs/i });
 		expect(link).toHaveAttribute("href", "/agents/agent-1?tab=runs&summary=failed");
+		expect(link).toHaveClass("text-[var(--bf-danger)]");
 	});
 
 	it("dismiss button hides the card and records the job_id in sessionStorage", async () => {
@@ -224,6 +282,239 @@ describe("SummaryBackfillButton — terminal state", () => {
 			}),
 			expect.any(Object),
 		);
+	});
+
+	it("keeps the latest dry-run estimate and ignores stale responses", async () => {
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseSummaryBackfillJob.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: false,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /resummarize runs/i }),
+		);
+		expect(wsState.backfillCalls).toHaveLength(1);
+
+		await user.click(
+			screen.getByRole("radio", { name: /all completed runs/i }),
+		);
+		expect(wsState.backfillCalls).toHaveLength(2);
+
+		await act(async () => {
+			wsState.backfillCalls[0].options.onSuccess?.({
+				eligible: 3,
+				estimated_cost_usd: "0.03",
+				cost_basis: "history",
+			});
+		});
+		expect(
+			screen.queryByRole("button", { name: /^start$/i }),
+		).not.toBeInTheDocument();
+
+		await act(async () => {
+			wsState.backfillCalls[1].options.onSuccess?.({
+				eligible: 7,
+				estimated_cost_usd: "0.07",
+				cost_basis: "fallback",
+			});
+		});
+		expect(
+			screen.getByRole("button", { name: /^start$/i }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps the estimate dialog open when dry-run loading fails and retries the latest scope", async () => {
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseSummaryBackfillJob.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: false,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /resummarize runs/i }),
+		);
+		expect(wsState.backfillCalls).toHaveLength(1);
+		await act(async () => {
+			wsState.backfillCalls[0].options.onError?.(new Error("boom"));
+		});
+		expect(
+			screen.getByText(/failed to compute estimate/i),
+		).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: /retry estimate/i }),
+		);
+		expect(wsState.backfillCalls).toHaveLength(2);
+		await act(async () => {
+			wsState.backfillCalls[1].options.onSuccess?.({
+				eligible: 5,
+				estimated_cost_usd: "0.05",
+				cost_basis: "history",
+			});
+		});
+		expect(
+			screen.getByRole("button", { name: /^start$/i }),
+		).toBeInTheDocument();
+	});
+
+	it("shows a persistent inline error when start fails and clears it on retry or scope change", async () => {
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseSummaryBackfillJob.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: false,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /resummarize runs/i }),
+		);
+		await act(async () => {
+			wsState.backfillCalls[0].options.onSuccess?.({
+				eligible: 4,
+				estimated_cost_usd: "0.04",
+				cost_basis: "history",
+			});
+		});
+		await user.click(screen.getByRole("button", { name: /^start$/i }));
+		expect(wsState.backfillCalls).toHaveLength(2);
+		await act(async () => {
+			wsState.backfillCalls[1].options.onError?.(new Error("boom"));
+		});
+		expect(
+			screen.getByText(/failed to start resummarization/i),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /retry start/i }),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /retry start/i }));
+		expect(wsState.backfillCalls).toHaveLength(3);
+		expect(
+			screen.queryByText(/failed to start resummarization/i),
+		).not.toBeInTheDocument();
+
+		await act(async () => {
+			wsState.backfillCalls[2].options.onSuccess?.({
+				eligible: 4,
+				estimated_cost_usd: "0.04",
+				cost_basis: "history",
+				job_id: JOB_ID,
+				queued: 4,
+			});
+		});
+		expect(
+			screen.getByTestId("summary-backfill-progress"),
+		).toBeInTheDocument();
+	});
+
+	it("clears a start failure when the scope changes and recomputes the estimate", async () => {
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseSummaryBackfillJob.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: false,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /resummarize runs/i }),
+		);
+		await act(async () => {
+			wsState.backfillCalls[0].options.onSuccess?.({
+				eligible: 4,
+				estimated_cost_usd: "0.04",
+				cost_basis: "history",
+			});
+		});
+		await user.click(screen.getByRole("button", { name: /^start$/i }));
+		await act(async () => {
+			wsState.backfillCalls[1].options.onError?.(new Error("boom"));
+		});
+		expect(
+			screen.getByText(/failed to start resummarization/i),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("radio", { name: /all completed runs/i }));
+		expect(
+			screen.queryByText(/failed to start resummarization/i),
+		).not.toBeInTheDocument();
+		expect(wsState.backfillCalls).toHaveLength(3);
+	});
+
+	it("shows loading progress instead of a fake running snapshot while the job fetch is pending", () => {
+		const refetch = vi.fn();
+		mockUseSummaryBackfillJob.mockReturnValue({
+			data: undefined,
+			isLoading: true,
+			isError: false,
+			isFetching: true,
+			refetch,
+		});
+		renderWithProviders(<SummaryBackfillButton agentId="agent-1" />);
+		expect(screen.getByText(/loading backfill progress/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/checking the current job state/i),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/^0 \/ 0$/)).not.toBeInTheDocument();
+	});
+
+	it("lets the admin retry a failed job fetch inline", async () => {
+		const refetch = vi.fn();
+		mockUseSummaryBackfillJob.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: true,
+			isFetching: false,
+			refetch,
+		});
+		const { user } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+		expect(
+			screen.getByText(/could not load backfill progress/i),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /retry job/i }));
+		expect(refetch).toHaveBeenCalledOnce();
+	});
+
+	it("surfaces cancel failures inline and retries the same job", async () => {
+		const { user } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+		await user.click(screen.getByTestId("summary-backfill-cancel"));
+		expect(wsState.cancelCalls).toHaveLength(1);
+		await act(async () => {
+			wsState.cancelCalls[0].options.onError?.(new Error("nope"));
+		});
+		expect(
+			screen.getByText(/could not cancel backfill/i),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /retry cancel/i }),
+		).toBeInTheDocument();
+		await user.click(screen.getByTestId("summary-backfill-cancel"));
+		expect(wsState.cancelCalls).toHaveLength(2);
 	});
 
 	it("hides entirely when nothing is eligible for backfill", () => {

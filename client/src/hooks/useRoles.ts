@@ -94,8 +94,15 @@ export function useUpdateRole() {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("patch", "/api/roles/{role_id}", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/roles"] });
+		onSuccess: async () => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: ["get", "/api/roles"],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: ["get", "/api/roles/{role_id}"],
+				}),
+			]);
 			toast.success("Role updated", {
 				description: "The role has been updated successfully",
 			});
@@ -172,7 +179,7 @@ export function useRoleUsersPage(
 	});
 }
 
-export function useAssignUsersToRole() {
+export function useAssignUsersToRole(options: { toast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("post", "/api/roles/{role_id}/users", {
@@ -183,7 +190,7 @@ export function useAssignUsersToRole() {
 				queryKey: ["get", "/api/roles/{role_id}/users"],
 			});
 			invalidateRoleList(queryClient);
-			toast.success("Users assigned", {
+			if (options.toast !== false) toast.success("Users assigned", {
 				description: `${userIds.length} user(s) assigned to role`,
 			});
 		},
@@ -192,14 +199,14 @@ export function useAssignUsersToRole() {
 				typeof error === "object" && error && "detail" in error
 					? String(error.detail)
 					: "Failed to assign users";
-			toast.error("Failed to assign users", {
+			if (options.toast !== false) toast.error("Failed to assign users", {
 				description: message,
 			});
 		},
 	});
 }
 
-export function useRemoveUserFromRole() {
+export function useRemoveUserFromRole(options: { toast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("delete", "/api/roles/{role_id}/users/{user_id}", {
@@ -212,7 +219,7 @@ export function useRemoveUserFromRole() {
 					{ params: { path: { role_id: roleId } } },
 				],
 			});
-			toast.success("User removed", {
+			if (options.toast !== false) toast.success("User removed", {
 				description: "User has been removed from the role",
 			});
 		},
@@ -221,7 +228,7 @@ export function useRemoveUserFromRole() {
 				typeof error === "object" && error && "detail" in error
 					? String(error.detail)
 					: "Failed to remove user";
-			toast.error("Failed to remove user", {
+			if (options.toast !== false) toast.error("Failed to remove user", {
 				description: message,
 			});
 		},
@@ -292,6 +299,7 @@ export async function assignRolesToForm(
 
 function invalidateRoleList(qc: ReturnType<typeof useQueryClient>) {
 	qc.invalidateQueries({ queryKey: ["get", "/api/roles"] });
+	qc.invalidateQueries({ queryKey: ["get", "/api/roles/{role_id}"] });
 }
 
 export function useRoleAgents(roleId: string | undefined) {

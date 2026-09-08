@@ -1,9 +1,4 @@
-import {
-	Workflow,
-	FileText,
-	Bot,
-	AppWindow,
-} from "lucide-react";
+import { Workflow, FileText, Bot, AppWindow } from "lucide-react";
 import type { components } from "@/lib/v1";
 
 export type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -65,9 +60,9 @@ export function normalizeEntities(
 			id: f.id,
 			name: f.name,
 			entityType: "form",
-			organizationId: null,
-			accessLevel: "role_based",
-			createdAt: new Date().toISOString(),
+			organizationId: f.organization_id ?? null,
+			accessLevel: f.access_level ?? null,
+			createdAt: f.created_at ?? new Date().toISOString(),
 			usedByCount: f.dependency_count ?? null,
 			original: f,
 		});
@@ -79,8 +74,11 @@ export function normalizeEntities(
 			id: a.id,
 			name: a.name,
 			entityType: "agent",
-			organizationId: (a as { organization_id?: string | null }).organization_id ?? null,
-			accessLevel: (a as { access_level?: string | null }).access_level ?? null,
+			organizationId:
+				(a as { organization_id?: string | null }).organization_id ??
+				null,
+			accessLevel:
+				(a as { access_level?: string | null }).access_level ?? null,
 			createdAt: a.created_at,
 			usedByCount: a.dependency_count ?? null,
 			original: a,
@@ -126,3 +124,14 @@ export const ENTITY_CONFIG = {
 		label: "App",
 	},
 } as const;
+
+/** Solution deployment owns changes to these records. */
+export function isEntityManaged(entity: EntityWithScope): boolean {
+	const source = entity.original;
+	if (!source) return false;
+	return (
+		("is_solution_managed" in source &&
+			source.is_solution_managed === true) ||
+		("solution_id" in source && !!source.solution_id)
+	);
+}

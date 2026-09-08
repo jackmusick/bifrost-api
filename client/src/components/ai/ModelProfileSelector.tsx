@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
+import { ModelSettingsReadError } from "./ModelSettingsReadError";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Bot,
@@ -48,6 +50,8 @@ export interface ModelProfileSelectorProps {
 	disabled?: boolean;
 	chatOnly?: boolean;
 	isSaving?: boolean;
+	/** Parent renders a shared profile-query error for a group of selectors. */
+	profileErrorShownByParent?: boolean;
 }
 
 function profileDescription(profile: AIModelProfile): string {
@@ -63,12 +67,15 @@ export function ModelProfileSelector({
 	disabled = false,
 	chatOnly = false,
 	isSaving = false,
+	profileErrorShownByParent = false,
 }: ModelProfileSelectorProps) {
 	const [creating, setCreating] = useState(false);
 	const [newName, setNewName] = useState("");
 	const [newConnectionId, setNewConnectionId] = useState("");
 	const [newModel, setNewModel] = useState("");
 	const queryClient = useQueryClient();
+	const createSubmissionLockRef = useRef(false);
+	const createErrorRef = useRef<HTMLParagraphElement | null>(null);
 
 	const profilesQuery = useQuery({
 		queryKey: PROFILE_QUERY_KEY,
@@ -86,11 +93,29 @@ export function ModelProfileSelector({
 			),
 		[chatOnly, profilesQuery.data],
 	);
-	const profileOptions = profiles.map((profile) => ({
-		value: profile.id,
-		label: profile.name,
-		description: profileDescription(profile),
-	}));
+	const savedProfile = profilesQuery.data?.find(
+		(profile) => profile.id === value,
+	);
+	const profileOptions = useMemo(() => {
+		const options = profiles.map((profile) => ({
+			value: profile.id,
+			label: profile.name,
+			description: profileDescription(profile),
+		}));
+
+		if (
+			savedProfile &&
+			!options.some((option) => option.value === savedProfile.id)
+		) {
+			options.unshift({
+				value: savedProfile.id,
+				label: savedProfile.name,
+				description: profileDescription(savedProfile),
+			});
+		}
+
+		return options;
+	}, [profiles, savedProfile]);
 	const connections = connectionsQuery.data ?? [];
 	const canCreate = connections.length > 0;
 
@@ -116,6 +141,9 @@ export function ModelProfileSelector({
 						: "Check the provider connection and model name.",
 			});
 		},
+		onSettled: () => {
+			createSubmissionLockRef.current = false;
+		},
 	});
 
 	const selectedConnection = connections.find(
@@ -128,9 +156,20 @@ export function ModelProfileSelector({
 		Boolean(newConnectionId) &&
 		Boolean(newModel.trim()) &&
 		Boolean(inferredName);
+	const comboboxPlaceholder =
+		value && !savedProfile ? "Assigned profile unavailable" : placeholder;
 
 	const submitCreate = () => {
-		if (!formReady) return;
+		if (
+			!formReady ||
+			createMutation.isPending ||
+			createSubmissionLockRef.current ||
+			connectionsQuery.isError ||
+			connectionsQuery.isLoading
+		) {
+			return;
+		}
+		createSubmissionLockRef.current = true;
 		createMutation.mutate({
 			name: inferredName,
 			connection_id: newConnectionId,
@@ -140,9 +179,18 @@ export function ModelProfileSelector({
 		});
 	};
 
+	const dialogFocus = useDialogReturnFocus();
+
+	useEffect(() => {
+		if (createMutation.isError) {
+			createErrorRef.current?.scrollIntoView({ block: "nearest" });
+			createErrorRef.current?.focus({ preventScroll: true });
+		}
+	}, [createMutation.isError]);
+
 	return (
-		<div className="space-y-2">
-			<div className="flex items-center justify-between gap-3">
+		<div className="min-w-0 space-y-2">
+			<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 				<Label htmlFor={id}>{label}</Label>
 				{isSaving ? (
 					<span
@@ -157,8 +205,12 @@ export function ModelProfileSelector({
 						type="button"
 						variant="ghost"
 						size="sm"
-						className="h-7 gap-1.5 px-2 text-xs"
-						onClick={() => setCreating(true)}
+						className="min-h-11 gap-1.5 px-2 text-sm"
+						onClick={() => {
+							createMutation.reset();
+							createSubmissionLockRef.current = false;
+							setCreating(true);
+						}}
 						disabled={disabled || connectionsQuery.isLoading}
 					>
 						<Plus className="h-3.5 w-3.5" />
@@ -166,14 +218,22 @@ export function ModelProfileSelector({
 					</Button>
 				)}
 			</div>
+			{profilesQuery.isError && !profileErrorShownByParent && (
+				<ModelSettingsReadError
+					resource="model profiles"
+					cached={Boolean(profilesQuery.data)}
+					pending={profilesQuery.isFetching}
+					onRetry={() => void profilesQuery.refetch()}
+				/>
+			)}
 			<Combobox
 				id={id}
-				value={value ?? ""}
+				value={savedProfile ? (value ?? "") : ""}
 				onValueChange={(nextValue) => {
 					if (nextValue) onValueChange(nextValue);
 				}}
 				options={profileOptions}
-				placeholder={placeholder}
+				placeholder={comboboxPlaceholder}
 				searchPlaceholder="Search profiles..."
 				emptyText={
 					chatOnly
@@ -181,13 +241,35 @@ export function ModelProfileSelector({
 						: "No profiles found."
 				}
 				isLoading={profilesQuery.isLoading}
-				disabled={disabled || isSaving}
+				disabled={
+					disabled ||
+					isSaving ||
+					(profilesQuery.isError && !profilesQuery.data)
+				}
 			/>
 
-			<Dialog open={creating} onOpenChange={setCreating}>
-				<DialogContent className="sm:max-w-[560px]">
+			<Dialog
+				open={creating}
+				onOpenChange={(open) => {
+					if (!createMutation.isPending) setCreating(open);
+				}}
+			>
+				<DialogContent
+					{...dialogFocus}
+					className="sm:max-w-[560px]"
+					onEscapeKeyDown={(event) => {
+						if (createMutation.isPending) {
+							event.preventDefault();
+						}
+					}}
+					onPointerDownOutside={(event) => {
+						if (createMutation.isPending) {
+							event.preventDefault();
+						}
+					}}
+				>
 					<DialogHeader>
-						<div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+						<div className="mb-2 flex h-9 w-9 items-center justify-center rounded-[var(--bf-radius-control)] bg-primary/10 text-primary">
 							<Sparkles className="h-4 w-4" />
 						</div>
 						<DialogTitle>Create Model Profile</DialogTitle>
@@ -197,107 +279,162 @@ export function ModelProfileSelector({
 						</DialogDescription>
 					</DialogHeader>
 
-					{canCreate ? (
-						<div className="grid gap-4 py-2">
-							<div className="space-y-2">
-								<Label htmlFor="model-profile-name">
-									Profile Name
-								</Label>
-								<Input
-									id="model-profile-name"
-									value={newName}
-									onChange={(event) =>
-										setNewName(event.target.value)
-									}
-									placeholder="Support Chat"
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="model-profile-connection">
-									Provider Connection
-								</Label>
-								<Select
-									value={newConnectionId}
-									onValueChange={setNewConnectionId}
-								>
-									<SelectTrigger
-										id="model-profile-connection"
-										className="w-full rounded-lg"
+					<form
+						className="grid min-w-0 gap-4"
+						onSubmit={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							submitCreate();
+						}}
+					>
+						{connectionsQuery.isError && (
+							<ModelSettingsReadError
+								resource="provider connections"
+								cached={Boolean(connectionsQuery.data)}
+								pending={connectionsQuery.isFetching}
+								onRetry={() => void connectionsQuery.refetch()}
+							/>
+						)}
+						{connectionsQuery.isLoading ? (
+							<p
+								role="status"
+								className="text-sm text-muted-foreground"
+							>
+								Loading provider connections…
+							</p>
+						) : canCreate ? (
+							<fieldset
+								disabled={
+									createMutation.isPending ||
+									connectionsQuery.isError
+								}
+								className="grid min-w-0 gap-4 py-2"
+							>
+								<div className="space-y-2">
+									<Label htmlFor="model-profile-name">
+										Profile Name
+									</Label>
+									<Input
+										id="model-profile-name"
+										value={newName}
+										onChange={(event) =>
+											setNewName(event.target.value)
+										}
+										placeholder="Support Chat"
+									/>
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="model-profile-connection">
+										Provider Connection
+									</Label>
+									<Select
+										value={newConnectionId}
+										disabled={
+											createMutation.isPending ||
+											connectionsQuery.isError
+										}
+										onValueChange={setNewConnectionId}
 									>
-										<SelectValue placeholder="Select a provider connection" />
-									</SelectTrigger>
-									<SelectContent>
-										{connections.map((connection) => (
-											<SelectItem
-												key={connection.id}
-												value={connection.id}
-											>
-												{connection.name} ·{" "}
-												{connection.provider}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="model-profile-model">
-									Model
-								</Label>
-								<Input
-									id="model-profile-model"
-									value={newModel}
-									onChange={(event) =>
-										setNewModel(event.target.value)
-									}
-									placeholder="gpt-5-mini"
-								/>
-							</div>
-							{chatOnly && (
-								<div className="flex items-start gap-2 rounded-lg bg-muted/60 p-3 text-sm">
-									<MessageSquareText className="mt-0.5 h-4 w-4 text-primary" />
-									<p className="text-muted-foreground">
-										New profiles created here are enabled
-										for chat.
+										<SelectTrigger
+											id="model-profile-connection"
+											className="h-auto min-h-11 w-full data-[size=default]:h-auto [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+										>
+											<SelectValue placeholder="Select a provider connection" />
+										</SelectTrigger>
+										<SelectContent>
+											{connections.map((connection) => (
+												<SelectItem
+													key={connection.id}
+													value={connection.id}
+												>
+													{connection.name} ·{" "}
+													{connection.provider}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="model-profile-model">
+										Model
+									</Label>
+									<Input
+										id="model-profile-model"
+										value={newModel}
+										onChange={(event) =>
+											setNewModel(event.target.value)
+										}
+										placeholder="gpt-5-mini"
+									/>
+								</div>
+								{chatOnly && (
+									<div className="flex items-start gap-2 rounded-[var(--bf-radius-surface)] bg-muted/60 p-3 text-sm">
+										<MessageSquareText className="mt-0.5 h-4 w-4 text-primary" />
+										<p className="text-muted-foreground">
+											New profiles created here are
+											enabled for chat.
+										</p>
+									</div>
+								)}
+							</fieldset>
+						) : !connectionsQuery.isError ? (
+							<div className="flex items-start gap-3 rounded-[var(--bf-radius-surface)] border bg-muted/40 p-4">
+								<Bot className="mt-0.5 h-4 w-4 text-muted-foreground" />
+								<div>
+									<p className="text-sm font-medium">
+										Create a provider connection first
+									</p>
+									<p className="mt-1 text-sm text-muted-foreground">
+										Profiles need a saved provider
+										connection before they can be reused.
 									</p>
 								</div>
-							)}
-						</div>
-					) : (
-						<div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-4">
-							<Bot className="mt-0.5 h-4 w-4 text-muted-foreground" />
-							<div>
-								<p className="text-sm font-medium">
-									Create a provider connection first
-								</p>
-								<p className="mt-1 text-sm text-muted-foreground">
-									Profiles need a saved provider connection
-									before they can be reused.
-								</p>
 							</div>
-						</div>
-					)}
+						) : null}
 
-					<DialogFooter>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => setCreating(false)}
-						>
-							Cancel
-						</Button>
-						<Button
-							type="button"
-							onClick={submitCreate}
-							disabled={!formReady || createMutation.isPending}
-						>
-							{createMutation.isPending ? (
-								<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-							) : (
-								<Check className="h-4 w-4" />
-							)}
-							{createMutation.isPending ? "Creating…" : "Create"}
-						</Button>
-					</DialogFooter>
+						{createMutation.isError && (
+							<p
+								ref={createErrorRef}
+								role="alert"
+								tabIndex={-1}
+								className="text-sm text-destructive outline-none [overflow-wrap:anywhere]"
+							>
+								Could not create this profile. Your entries are
+								preserved. Check the provider and model, then
+								try again.
+							</p>
+						)}
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11"
+								disabled={createMutation.isPending}
+								onClick={() => setCreating(false)}
+							>
+								Cancel
+							</Button>
+							<Button
+								type="submit"
+								className="min-h-11"
+								disabled={
+									!formReady ||
+									createMutation.isPending ||
+									connectionsQuery.isError ||
+									connectionsQuery.isLoading
+								}
+							>
+								{createMutation.isPending ? (
+									<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+								) : (
+									<Check className="h-4 w-4" />
+								)}
+								{createMutation.isPending
+									? "Creating…"
+									: "Create"}
+							</Button>
+						</DialogFooter>
+					</form>
 				</DialogContent>
 			</Dialog>
 		</div>

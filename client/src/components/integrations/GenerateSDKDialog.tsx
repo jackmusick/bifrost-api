@@ -1,5 +1,6 @@
+import { GeneratedSDKSummary } from "./GeneratedSDKSummary";
 import { useState } from "react";
-import { Loader2, Code, CheckCircle2, Copy } from "lucide-react";
+import { Loader2, Code, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -18,7 +19,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { toast } from "sonner";
 import {
 	useGenerateSDK,
 	useUpdateIntegrationConfig,
@@ -44,17 +44,24 @@ export function GenerateSDKDialog({
 	integrationName,
 	hasOAuth,
 }: GenerateSDKDialogProps) {
+	const [copyMessage, setCopyMessage] = useState<string | null>(null);
 	const [specUrl, setSpecUrl] = useState("");
 	const [authType, setAuthType] = useState<AuthType>("bearer");
 	const [moduleName, setModuleName] = useState("");
 	const [result, setResult] = useState<GenerateSDKResponse | null>(null);
+	const [generatedSDK, setGeneratedSDK] =
+		useState<GenerateSDKResponse | null>(null);
+	const [generationError, setGenerationError] = useState<string | null>(null);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	// React Query mutations
 	const generateSDKMutation = useGenerateSDK();
 	const updateConfigMutation = useUpdateIntegrationConfig();
 
 	const isGenerating =
-		generateSDKMutation.isPending || updateConfigMutation.isPending;
+		isSubmitting ||
+		generateSDKMutation.isPending ||
+		updateConfigMutation.isPending;
 
 	// Auth-specific fields
 	const [baseUrl, setBaseUrl] = useState("");
@@ -112,27 +119,35 @@ export function GenerateSDKDialog({
 
 	const handleGenerate = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (isGenerating) return;
 		if (!specUrl.trim()) {
-			toast.error("Please enter an OpenAPI spec URL");
+			setGenerationError("Please enter an OpenAPI spec URL");
 			return;
 		}
 
 		const validationError = validateAuthFields();
 		if (validationError) {
-			toast.error(validationError);
+			setGenerationError(validationError);
 			return;
 		}
 
+		setGenerationError(null);
+		setIsSubmitting(true);
+		let sdkResult = generatedSDK;
 		try {
 			// Generate SDK first - this creates the config schema (secret types, etc.)
-			const sdkResult = await generateSDKMutation.mutateAsync({
-				params: { path: { integration_id: integrationId } },
-				body: {
-					spec_url: specUrl.trim(),
-					auth_type: authType,
-					module_name: moduleName.trim() || undefined,
-				},
-			});
+			sdkResult =
+				generatedSDK ??
+				(await generateSDKMutation.mutateAsync({
+					params: { path: { integration_id: integrationId } },
+					body: {
+						spec_url: specUrl.trim(),
+						auth_type: authType,
+						module_name: moduleName.trim() || undefined,
+					},
+				}));
+
+			setGeneratedSDK(sdkResult);
 
 			// Save config AFTER schema exists so _save_config correctly encrypts secrets
 			await updateConfigMutation.mutateAsync({
@@ -141,25 +156,35 @@ export function GenerateSDKDialog({
 			});
 
 			setResult(sdkResult);
-			toast.success("SDK generated successfully!");
-		} catch (error) {
-			console.error("SDK generation failed:", error);
-			toast.error(
-				error instanceof Error
-					? error.message
-					: "Failed to generate SDK",
+		} catch {
+			setGenerationError(
+				sdkResult
+					? "SDK generated, but configuration could not be saved. Review the settings and retry saving configuration."
+					: "Unable to generate the SDK. Check the specification URL and try again.",
 			);
+		} finally {
+			setIsSubmitting(false);
 		}
 	};
 
-	const handleCopyUsage = () => {
+	const handleCopyUsage = async () => {
 		if (result?.usage_example) {
-			navigator.clipboard.writeText(result.usage_example);
-			toast.success("Usage example copied to clipboard");
+			try {
+				await navigator.clipboard.writeText(result.usage_example);
+				setCopyMessage("Usage example copied to clipboard.");
+			} catch {
+				setCopyMessage(
+					"Unable to copy. Select and copy the usage example manually.",
+				);
+			}
 		}
 	};
 
 	const handleClose = () => {
+		if (isGenerating) return;
+		setCopyMessage(null);
+		setGeneratedSDK(null);
+		setGenerationError(null);
 		// Reset state when closing
 		setSpecUrl("");
 		setAuthType("bearer");
@@ -183,6 +208,8 @@ export function GenerateSDKDialog({
 						Base URL <span className="text-destructive">*</span>
 					</Label>
 					<Input
+						className="min-h-11"
+						disabled={isGenerating}
 						id="base-url"
 						placeholder="https://api.example.com"
 						value={baseUrl}
@@ -197,8 +224,11 @@ export function GenerateSDKDialog({
 							Token <span className="text-destructive">*</span>
 						</Label>
 						<Input
+							className="min-h-11"
+							disabled={isGenerating}
 							id="token"
 							type="password"
+							autoComplete="new-password"
 							placeholder="Enter your API token"
 							value={token}
 							onChange={(e) => setToken(e.target.value)}
@@ -215,6 +245,8 @@ export function GenerateSDKDialog({
 								<span className="text-destructive">*</span>
 							</Label>
 							<Input
+								className="min-h-11"
+								disabled={isGenerating}
 								id="header-name"
 								placeholder="x-api-key"
 								value={headerName}
@@ -231,8 +263,11 @@ export function GenerateSDKDialog({
 								<span className="text-destructive">*</span>
 							</Label>
 							<Input
+								className="min-h-11"
+								disabled={isGenerating}
 								id="api-key"
 								type="password"
+								autoComplete="new-password"
 								placeholder="Enter your API key"
 								value={apiKey}
 								onChange={(e) => setApiKey(e.target.value)}
@@ -250,6 +285,8 @@ export function GenerateSDKDialog({
 								<span className="text-destructive">*</span>
 							</Label>
 							<Input
+								className="min-h-11"
+								disabled={isGenerating}
 								id="username"
 								placeholder="Enter username"
 								value={username}
@@ -262,8 +299,11 @@ export function GenerateSDKDialog({
 								<span className="text-destructive">*</span>
 							</Label>
 							<Input
+								className="min-h-11"
+								disabled={isGenerating}
 								id="password"
 								type="password"
+								autoComplete="new-password"
 								placeholder="Enter password"
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
@@ -304,8 +344,8 @@ export function GenerateSDKDialog({
 					// Success state
 					<>
 						<DialogHeader>
-							<DialogTitle className="flex items-center gap-2">
-								<CheckCircle2 className="h-5 w-5 text-green-600" />
+							<DialogTitle className="flex items-start gap-2 [overflow-wrap:anywhere]">
+								<CheckCircle2 className="h-5 w-5 shrink-0 text-[var(--bf-success)]" />
 								SDK Generated Successfully
 							</DialogTitle>
 							<DialogDescription>
@@ -314,59 +354,12 @@ export function GenerateSDKDialog({
 						</DialogHeader>
 
 						<div className="space-y-4 py-4">
-							<div className="grid grid-cols-2 gap-4 text-sm">
-								<div>
-									<span className="text-muted-foreground">
-										Module:
-									</span>
-									<p className="font-mono font-medium">
-										{result.module_name}
-									</p>
-								</div>
-								<div>
-									<span className="text-muted-foreground">
-										Path:
-									</span>
-									<p className="font-mono text-xs">
-										{result.module_path}
-									</p>
-								</div>
-								<div>
-									<span className="text-muted-foreground">
-										Endpoints:
-									</span>
-									<p className="font-medium">
-										{result.endpoint_count}
-									</p>
-								</div>
-								<div>
-									<span className="text-muted-foreground">
-										Schemas:
-									</span>
-									<p className="font-medium">
-										{result.schema_count}
-									</p>
-								</div>
-							</div>
-
-							<div className="space-y-2">
-								<Label>Usage Example</Label>
-								<div className="relative">
-									<pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto ring-1 ring-foreground/5">
-										<code>{result.usage_example}</code>
-									</pre>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="absolute top-2 right-2 h-6 w-6"
-										onClick={handleCopyUsage}
-									>
-										<Copy className="h-3 w-3" />
-									</Button>
-								</div>
-							</div>
-
-							<div className="text-sm text-muted-foreground bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 p-3 rounded-md">
+							<GeneratedSDKSummary
+								result={result}
+								onCopy={handleCopyUsage}
+								copyMessage={copyMessage}
+							/>
+							<div className="text-sm text-muted-foreground bg-[var(--bf-success-soft)] text-[var(--bf-success)] p-3 rounded-md">
 								<p>
 									<strong>Configuration saved!</strong> The
 									authentication settings have been saved to
@@ -377,15 +370,17 @@ export function GenerateSDKDialog({
 						</div>
 
 						<DialogFooter>
-							<Button onClick={handleClose}>Done</Button>
+							<Button className="min-h-11" onClick={handleClose}>
+								Done
+							</Button>
 						</DialogFooter>
 					</>
 				) : (
 					// Form state
 					<form onSubmit={handleGenerate}>
 						<DialogHeader>
-							<DialogTitle className="flex items-center gap-2">
-								<Code className="h-5 w-5" />
+							<DialogTitle className="flex items-start gap-2 [overflow-wrap:anywhere]">
+								<Code className="h-5 w-5 shrink-0" />
 								Generate SDK for {integrationName}
 							</DialogTitle>
 							<DialogDescription>
@@ -403,6 +398,8 @@ export function GenerateSDKDialog({
 									<span className="text-destructive">*</span>
 								</Label>
 								<Input
+									className="min-h-11"
+									disabled={isGenerating || !!generatedSDK}
 									id="spec-url"
 									placeholder="https://api.example.com/openapi.json"
 									value={specUrl}
@@ -420,12 +417,16 @@ export function GenerateSDKDialog({
 									<span className="text-destructive">*</span>
 								</Label>
 								<Select
+									disabled={isGenerating || !!generatedSDK}
 									value={authType}
 									onValueChange={(v) =>
 										setAuthType(v as AuthType)
 									}
 								>
-									<SelectTrigger>
+									<SelectTrigger
+										id="auth-type"
+										className="min-h-11"
+									>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -458,6 +459,8 @@ export function GenerateSDKDialog({
 									</span>
 								</Label>
 								<Input
+									className="min-h-11"
+									disabled={isGenerating || !!generatedSDK}
 									id="module-name"
 									placeholder="example_api"
 									value={moduleName}
@@ -473,33 +476,48 @@ export function GenerateSDKDialog({
 							</div>
 
 							{/* Info message about what will be saved */}
-							<div className="text-sm text-muted-foreground bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 p-3 rounded-md flex items-start gap-2">
+							<div className="text-sm text-muted-foreground bg-muted text-muted-foreground p-3 rounded-md flex items-start gap-2">
 								<span className="mt-0.5">ℹ️</span>
 								<span>{getConfigInfoMessage()}</span>
 							</div>
 						</div>
 
+						{generationError && (
+							<p
+								role="alert"
+								className="mb-4 text-sm text-destructive [overflow-wrap:anywhere]"
+							>
+								{generationError}
+							</p>
+						)}
 						<DialogFooter>
 							<Button
+								className="min-h-11"
 								type="button"
 								variant="outline"
 								onClick={handleClose}
+								disabled={isGenerating}
 							>
 								Cancel
 							</Button>
 							<Button
+								className="min-h-11"
 								type="submit"
 								disabled={isGenerating || !specUrl.trim()}
 							>
 								{isGenerating ? (
 									<>
-										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-										Generating...
+										<Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
+										{generatedSDK
+											? "Saving configuration…"
+											: "Generating..."}
 									</>
 								) : (
 									<>
 										<Code className="h-4 w-4 mr-2" />
-										Generate SDK
+										{generatedSDK
+											? "Retry configuration save"
+											: "Generate SDK"}
 									</>
 								)}
 							</Button>

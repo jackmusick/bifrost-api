@@ -66,19 +66,19 @@ const statusConfig: Record<
 	},
 	running: {
 		icon: Loader2,
-		className: "text-blue-500 animate-spin",
+		className: "text-[var(--bf-info)] motion-safe:animate-spin",
 	},
 	success: {
 		icon: CheckCircle2,
-		className: "text-green-500",
+		className: "text-[var(--bf-success)]",
 	},
 	failed: {
 		icon: XCircle,
-		className: "text-destructive",
+		className: "text-[var(--bf-danger)]",
 	},
 	timeout: {
 		icon: Clock,
-		className: "text-amber-500",
+		className: "text-[var(--bf-warning)]",
 	},
 };
 
@@ -115,23 +115,25 @@ export function ToolExecutionBadge({
 				onClick={() => setIsOpen((value) => !value)}
 				aria-expanded={hasDetails ? isOpen : undefined}
 				className={cn(
-					"flex min-h-11 w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground outline-none transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none motion-reduce:transition-none sm:min-h-7",
-					status === "failed" && "text-destructive",
-					status === "timeout" && "text-amber-600 dark:text-amber-400",
+					"flex min-h-11 w-full items-start gap-2 rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-2.5 py-2 text-left text-xs leading-5 text-muted-foreground outline-none transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none motion-reduce:transition-none",
+					status === "failed" && "text-[var(--bf-danger)]",
+					status === "timeout" && "text-[var(--bf-warning)]",
 					className,
 				)}
 			>
-				<StatusIcon className={cn("h-3 w-3 shrink-0", config.className)} />
-				<span className="font-medium">{toolCall.name}</span>
+				<StatusIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.className)} />
+				<span className="min-w-0 flex-1 font-medium [overflow-wrap:anywhere]">
+					{toolCall.name}
+				</span>
 				{durationMs !== undefined && (
-					<span className="text-muted-foreground">
+					<span className="shrink-0 text-muted-foreground">
 						{formatDuration(durationMs)}
 					</span>
 				)}
 				{hasDetails && (
 					<ChevronDown
 						className={cn(
-							"ml-0.5 h-3 w-3 text-muted-foreground transition-transform motion-reduce:transition-none",
+							"ml-0.5 mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
 							isOpen && "rotate-180",
 						)}
 					/>
@@ -139,13 +141,13 @@ export function ToolExecutionBadge({
 			</button>
 
 			{hasDetails && isOpen && (
-				<div className="mt-1 w-full overflow-hidden rounded-xl border border-border bg-muted/20 text-foreground">
-					<div className="max-h-[28rem] w-full space-y-4 overflow-auto p-4">
+				<div className="mt-1 w-full overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 text-foreground">
+					<div className="max-h-[28rem] w-full space-y-4 overflow-auto p-3 sm:p-4">
 						{/* Input Parameters */}
 						{toolCall.arguments &&
 							Object.keys(toolCall.arguments).length > 0 && (
 								<div>
-									<h4 className="text-xs font-medium text-muted-foreground mb-1">
+									<h4 className="mb-1 text-xs font-medium text-muted-foreground">
 										Input
 									</h4>
 									<PrettyInputDisplay
@@ -164,10 +166,10 @@ export function ToolExecutionBadge({
 						{/* Error */}
 						{error && (
 							<div>
-								<h4 className="text-xs font-medium text-destructive mb-1">
+								<h4 className="mb-1 text-xs font-medium text-[var(--bf-danger)]">
 									Error
 								</h4>
-								<pre className="text-xs font-mono text-destructive whitespace-pre-wrap">
+								<pre className="whitespace-pre-wrap text-xs font-mono leading-5 text-[var(--bf-danger)] [overflow-wrap:anywhere]">
 									{error}
 								</pre>
 							</div>
@@ -176,7 +178,7 @@ export function ToolExecutionBadge({
 						{/* Result */}
 						{result !== undefined && !error && (
 							<div>
-								<h4 className="text-xs font-medium text-muted-foreground mb-1">
+								<h4 className="mb-1 text-xs font-medium text-muted-foreground">
 									Result
 								</h4>
 								{typeof result === "object" &&
@@ -189,7 +191,7 @@ export function ToolExecutionBadge({
 										defaultView="pretty"
 									/>
 								) : (
-									<pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+									<pre className="whitespace-pre-wrap text-xs font-mono leading-5 text-muted-foreground [overflow-wrap:anywhere]">
 										{typeof result === "string"
 											? result
 											: JSON.stringify(result, null, 2)}
@@ -201,19 +203,19 @@ export function ToolExecutionBadge({
 						{/* Logs */}
 						{logs.length > 0 && (
 							<div>
-								<h4 className="text-xs font-medium text-muted-foreground mb-1">
+								<h4 className="mb-1 text-xs font-medium text-muted-foreground">
 									Logs
 								</h4>
-								<div className="max-h-24 overflow-y-auto space-y-0.5">
+								<div className="max-h-24 space-y-0.5 overflow-y-auto">
 									{logs.map((log, index) => (
 										<p
 											key={`${log.timestamp || index}-${index}`}
 											className={cn(
-												"text-xs font-mono",
+												"text-xs font-mono leading-5 [overflow-wrap:anywhere]",
 												log.level === "error" &&
-													"text-destructive",
+													"text-[var(--bf-danger)]",
 												log.level === "warning" &&
-													"text-amber-500",
+													"text-[var(--bf-warning)]",
 												log.level === "info" &&
 													"text-muted-foreground",
 												log.level === "debug" &&

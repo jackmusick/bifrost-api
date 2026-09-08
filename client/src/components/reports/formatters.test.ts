@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formatBytes,
 	formatChartDateLabel,
+	formatChartDateTick,
 	formatCpuSeconds,
 	formatCurrency,
 	formatNumber,
@@ -16,6 +17,11 @@ describe("report formatters", () => {
 		expect(formatChartDateLabel(new Date(2026, 6, 28).getTime())).toBe(
 			"July 28th, 2026",
 		);
+	});
+
+	it("keeps date-only bucket labels on their calendar day", () => {
+		expect(formatChartDateTick("2026-08-10")).toBe("Aug 10");
+		expect(formatChartDateLabel("2026-08-10")).toBe("August 10th, 2026");
 	});
 
 	it("rejects non-primitive chart labels", () => {

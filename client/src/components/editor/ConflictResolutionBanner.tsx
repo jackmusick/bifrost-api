@@ -14,43 +14,56 @@ interface ConflictResolutionBannerProps {
 
 export function ConflictResolutionBanner({
 	conflict,
+	filePath,
 	onResolve,
 }: ConflictResolutionBannerProps) {
 	if (!conflict) return null;
 
 	return (
-		<div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-3">
-			<div className="flex items-center gap-4">
-				<div className="flex items-center gap-2 flex-1">
-					<AlertCircle className="h-4 w-4 text-orange-500" />
-					<span className="text-sm font-medium">
-						This file has a merge conflict
-					</span>
+		<div
+			role="region"
+			aria-label="File merge conflict"
+			className="min-w-0 border-b border-border bg-[var(--bf-warning-soft)] px-4 py-3"
+		>
+			<div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+				<div className="flex min-w-0 flex-1 items-start gap-2">
+					<AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--bf-warning)]" />
+					<div className="min-w-0 space-y-1">
+						<p className="text-sm font-medium">
+							This file has a merge conflict
+						</p>
+						<p className="font-mono text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+							{filePath}
+						</p>
+					</div>
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
 					<Button
+						type="button"
 						size="sm"
 						variant="outline"
 						onClick={() => onResolve("current")}
-						className="border-green-500/20 bg-green-500/10 hover:bg-green-500/20 text-green-700 dark:text-green-400"
+						className="min-h-11 h-auto whitespace-normal"
 					>
-						Keep My Changes
+						Keep my changes
 					</Button>
 					<Button
+						type="button"
 						size="sm"
 						variant="outline"
 						onClick={() => onResolve("incoming")}
-						className="border-blue-500/20 bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-400"
+						className="min-h-11 h-auto whitespace-normal"
 					>
-						Keep Their Changes
+						Keep their changes
 					</Button>
 					<Button
+						type="button"
 						size="sm"
 						variant="outline"
 						onClick={() => onResolve("both")}
-						className="border-purple-500/20 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-400"
+						className="min-h-11 h-auto whitespace-normal"
 					>
-						Keep Both
+						Keep both
 					</Button>
 				</div>
 			</div>

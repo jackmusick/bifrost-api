@@ -46,7 +46,7 @@ export function EntityLogo({
 
 	return (
 		<span
-			className={`relative inline-grid place-items-center overflow-hidden ${className ?? ""}`}
+			className={`relative inline-grid place-items-center overflow-hidden rounded-[var(--bf-radius-control)] border border-border/70 bg-[var(--bf-surface-4)] ${className ?? ""}`}
 			style={{ width: size, height: size }}
 		>
 			<span className="absolute inset-0 grid place-items-center">

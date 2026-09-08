@@ -196,11 +196,14 @@ function RefTable({ title, rows }: { title: string; rows: RefRow[] }) {
 	return (
 		<section className="space-y-2">
 			<h4 className="text-sm font-semibold">{title}</h4>
-			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+			<dl className="grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
 				{rows.map((row) => (
-					<div key={row.term} className="contents">
-						<dt className="font-mono text-foreground">{row.term}</dt>
-						<dd className="text-muted-foreground">{row.def}</dd>
+					<div
+						key={row.term}
+						className="contents"
+					>
+						<dt className="pt-0.5 font-mono text-xs text-muted-foreground">{row.term}</dt>
+						<dd className="mb-3 min-w-0 [overflow-wrap:anywhere] sm:mb-0">{row.def}</dd>
 					</div>
 				))}
 			</dl>
@@ -229,8 +232,8 @@ export function FilePolicyReferencePanel() {
 	return (
 		<HelpSlideout title="File policy reference">
 			<RefTable title="Actions" rows={ACTIONS} />
-			<RefTable title="User fields ({user: …})" rows={USER_FIELDS} />
-			<RefTable title="File fields ({file: …})" rows={FILE_FIELDS} />
+			<RefTable title="User fields ({user: ...})" rows={USER_FIELDS} />
+			<RefTable title="File fields ({file: ...})" rows={FILE_FIELDS} />
 			<RefTable title="Functions" rows={FUNCTIONS} />
 			<RefTable title="Operators" rows={OPERATORS} />
 			<ExamplesSection />

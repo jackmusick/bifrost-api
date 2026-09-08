@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { useState } from "react";
 import { renderWithProviders, screen, within } from "@/test-utils";
 import type { FormField } from "@/lib/client-types";
 
@@ -19,10 +20,9 @@ vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 	dropTargetForElements: () => () => {},
 }));
 vi.mock("@atlaskit/pragmatic-drag-and-drop/combine", () => ({
-	combine: (..._cleanups: unknown[]) => () => {},
-}));
-vi.mock("@atlaskit/pragmatic-drag-and-drop/reorder", () => ({
-	reorder: ({ list }: { list: unknown[] }) => list,
+	combine:
+		(..._cleanups: unknown[]) =>
+		() => {},
 }));
 vi.mock("@atlaskit/pragmatic-drag-and-drop-auto-scroll/element", () => ({
 	autoScrollForElements: () => () => {},
@@ -56,9 +56,7 @@ describe("FieldsPanelDnD — layout", () => {
 	it("renders the field palette with all 11 field templates", () => {
 		mockMetadata.mockReturnValue({ workflows: [] });
 
-		renderWithProviders(
-			<FieldsPanelDnD fields={[]} setFields={vi.fn()} />,
-		);
+		renderWithProviders(<FieldsPanelDnD fields={[]} setFields={vi.fn()} />);
 
 		expect(screen.getByText("Field Palette")).toBeInTheDocument();
 		// Check for a few representative templates.
@@ -68,12 +66,22 @@ describe("FieldsPanelDnD — layout", () => {
 		expect(screen.getByText("Markdown")).toBeInTheDocument();
 	});
 
+	it("uses neutral swatches for palette templates", () => {
+		mockMetadata.mockReturnValue({ workflows: [] });
+
+		renderWithProviders(<FieldsPanelDnD fields={[]} setFields={vi.fn()} />);
+
+		const markdownTemplate = screen.getByRole("button", { name: "Markdown" });
+		expect(markdownTemplate.querySelector("div")).toHaveClass("bg-muted");
+		expect(markdownTemplate.querySelector("div")).not.toHaveClass(
+			"bg-slate-500",
+		);
+	});
+
 	it("renders the empty drop-zone copy when there are no fields", () => {
 		mockMetadata.mockReturnValue({ workflows: [] });
 
-		renderWithProviders(
-			<FieldsPanelDnD fields={[]} setFields={vi.fn()} />,
-		);
+		renderWithProviders(<FieldsPanelDnD fields={[]} setFields={vi.fn()} />);
 
 		expect(screen.getByText(/drop fields here/i)).toBeInTheDocument();
 	});
@@ -85,7 +93,11 @@ describe("FieldsPanelDnD — layout", () => {
 			<FieldsPanelDnD
 				fields={[
 					makeField({ name: "first_name", label: "First Name" }),
-					makeField({ name: "user_email", label: "User Email", type: "email" }),
+					makeField({
+						name: "user_email",
+						label: "User Email",
+						type: "email",
+					}),
 				]}
 				setFields={vi.fn()}
 			/>,
@@ -122,7 +134,11 @@ describe("FieldsPanelDnD — delete flow", () => {
 		mockMetadata.mockReturnValue({ workflows: [] });
 		const fields = [
 			makeField({ name: "first_name", label: "First Name" }),
-			makeField({ name: "user_email", label: "User Email", type: "email" }),
+			makeField({
+				name: "user_email",
+				label: "User Email",
+				type: "email",
+			}),
 		];
 		const setFields = vi.fn();
 
@@ -130,15 +146,9 @@ describe("FieldsPanelDnD — delete flow", () => {
 			<FieldsPanelDnD fields={fields} setFields={setFields} />,
 		);
 
-		// Locate the User Email row (has classes "flex items-center gap-3 rounded-lg border p-3")
-		// and its action buttons: [edit, trash].
-		const emailRow = screen
-			.getByText("User Email")
-			.closest("div.rounded-lg.border")!;
-		const rowButtons = within(emailRow as HTMLElement).getAllByRole(
-			"button",
+		await user.click(
+			screen.getByRole("button", { name: "Delete User Email" }),
 		);
-		await user.click(rowButtons[rowButtons.length - 1]!);
 
 		// Confirm in AlertDialog.
 		await user.click(
@@ -189,8 +199,9 @@ describe("FieldsPanelDnD — workflow input palette", () => {
 		expect(screen.getByText("user_email")).toBeInTheDocument();
 		// "first_name" appears once — for the existing form field row — but NOT
 		// in the workflow inputs panel.
-		const palette = screen.getByText(/workflow inputs/i).closest("div")!
-			.parentElement!;
+		const palette = screen
+			.getByText(/workflow inputs/i)
+			.closest("div")!.parentElement!;
 		expect(
 			within(palette).queryByText("first_name"),
 		).not.toBeInTheDocument();
@@ -207,12 +218,71 @@ describe("FieldsPanelDnD — workflow input palette", () => {
 			],
 		});
 
-		renderWithProviders(
+		renderWithProviders(<FieldsPanelDnD fields={[]} setFields={vi.fn()} />);
+
+		expect(screen.queryByText(/workflow inputs/i)).not.toBeInTheDocument();
+	});
+});
+
+describe("FieldsPanelDnD — keyboard palette selection", () => {
+	it("opens field configuration from a template without dragging", async () => {
+		mockMetadata.mockReturnValue({ workflows: [] });
+		const { user } = renderWithProviders(
 			<FieldsPanelDnD fields={[]} setFields={vi.fn()} />,
 		);
-
+		await user.click(
+			screen.getByRole("button", { name: "Choose a field" }),
+		);
+		const template = screen.getByRole("button", {
+			name: /^Text Input$/,
+		});
+		template.focus();
+		await user.keyboard("{Enter}");
 		expect(
-			screen.queryByText(/workflow inputs/i),
-		).not.toBeInTheDocument();
+			screen.getByRole("dialog", { name: "field-config" }),
+		).toBeInTheDocument();
+	});
+});
+
+describe("FieldsPanelDnD — keyboard reordering", () => {
+	it("moves fields, preserves focus and disables moves past either boundary", async () => {
+		mockMetadata.mockReturnValue({ workflows: [] });
+		function StatefulFields() {
+			const [fields, setFields] = useState([
+				makeField(),
+				makeField({
+					name: "email",
+					label: "Email address",
+					type: "email",
+				}),
+			]);
+			return <FieldsPanelDnD fields={fields} setFields={setFields} />;
+		}
+		const { user } = renderWithProviders(<StatefulFields />);
+		const move = screen.getByRole("button", { name: "Move First Name" });
+		move.focus();
+		await user.keyboard("{Enter}");
+		expect(
+			screen.getByRole("menuitem", { name: "Move up" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await user.keyboard("{ArrowDown}{Enter}");
+		expect(screen.getByRole("status")).toHaveTextContent(
+			"First Name moved to position 2 of 2.",
+		);
+		expect(
+			screen
+				.getAllByRole("button", { name: /^Move / })
+				.map((button) => button.getAttribute("aria-label")),
+		).toEqual(["Move Email address", "Move First Name"]);
+		expect(move).toHaveFocus();
+		await user.keyboard("{Enter}");
+		expect(
+			screen.getByRole("menuitem", { name: "Move down" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await user.keyboard("{ArrowDown}{Enter}");
+		expect(screen.getByRole("status")).toHaveTextContent(
+			"First Name moved to position 1 of 2.",
+		);
+		expect(move).toHaveFocus();
 	});
 });

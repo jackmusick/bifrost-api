@@ -9,7 +9,7 @@
  * 2. Password (fallback) - Traditional password + MFA setup
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { registerUser } from "@/services/auth";
@@ -22,10 +22,9 @@ import {
 	CardContent,
 	CardDescription,
 	CardHeader,
-	CardTitle,
 } from "@/components/ui/card";
 import { Loader2, Mail, User } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Logo } from "@/components/branding/Logo";
 import { useApplicationName } from "@/lib/applicationName";
 import { toast } from "sonner";
@@ -34,6 +33,8 @@ import { AuthSetupSteps } from "@/components/auth/AuthSetupSteps";
 type SetupMode = "choose" | "auth";
 
 export function Setup() {
+	const reducedMotion = useReducedMotion();
+	const headingRef = useRef<HTMLHeadingElement>(null);
 	const navigate = useNavigate();
 	const applicationName = useApplicationName();
 	const {
@@ -49,6 +50,10 @@ export function Setup() {
 
 	const [email, setEmail] = useState("");
 	const [name, setName] = useState("");
+
+	useEffect(() => {
+		if (mode === "auth") headingRef.current?.focus();
+	}, [mode]);
 
 	// Redirect if setup not needed
 	useEffect(() => {
@@ -94,24 +99,32 @@ export function Setup() {
 	if (authLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
 
 	const renderChooseMode = () => (
-		<div className="space-y-4">
+		<form
+			className="space-y-4"
+			onSubmit={(event) => {
+				event.preventDefault();
+				setError(null);
+				setMode("auth");
+			}}
+		>
 			<div className="space-y-2">
 				<Label htmlFor="name">Name</Label>
 				<div className="relative">
 					<User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 					<Input
 						id="name"
+						autoComplete="name"
 						type="text"
 						placeholder="Your name"
 						value={name}
 						onChange={(e) => setName(e.target.value)}
-						className="pl-10"
+						className="h-11 pl-10"
 						autoFocus
 					/>
 				</div>
@@ -122,43 +135,43 @@ export function Setup() {
 					<Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 					<Input
 						id="email"
+						autoComplete="email"
 						type="email"
 						placeholder="admin@example.com"
 						value={email}
 						onChange={(e) => setEmail(e.target.value)}
-						className="pl-10"
+						className="h-11 pl-10"
 						required
 					/>
 				</div>
 			</div>
 			<Button
-				type="button"
-				className="w-full mt-2"
+				type="submit"
+				className="min-h-11 w-full mt-2"
 				disabled={!email}
-				onClick={() => {
-					setError(null);
-					setMode("auth");
-				}}
 			>
 				Continue
 			</Button>
-		</div>
+		</form>
 	);
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+		<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
 			<motion.div
-				initial={{ opacity: 0, y: 20 }}
+				initial={reducedMotion ? false : { opacity: 0, y: 4 }}
 				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.4, ease: "easeOut" }}
+				transition={{
+					duration: reducedMotion ? 0 : 0.36,
+					ease: "easeOut",
+				}}
 				className="w-full max-w-md"
 			>
-				<Card className="border-primary/10 shadow-xl shadow-primary/5">
+				<Card className="rounded-[var(--bf-radius-feature)] border-border shadow-none">
 					<CardHeader className="text-center space-y-4 pb-2">
 						<motion.div
-							initial={{ scale: 0.8, opacity: 0 }}
-							animate={{ scale: 1, opacity: 1 }}
-							transition={{ delay: 0.1, duration: 0.3 }}
+							initial={reducedMotion ? false : { opacity: 0 }}
+							animate={{ opacity: 1 }}
+							transition={{ duration: reducedMotion ? 0 : 0.22 }}
 							className="flex justify-center"
 						>
 							<Logo
@@ -168,27 +181,50 @@ export function Setup() {
 							/>
 						</motion.div>
 						<div className="space-y-1">
-							<CardTitle className="text-2xl font-bold tracking-tight">
+							<h1
+								ref={headingRef}
+								tabIndex={-1}
+								className="font-display text-2xl font-semibold tracking-tight outline-none"
+							>
 								Welcome to {applicationName}
-							</CardTitle>
+							</h1>
 							<CardDescription className="text-base">
 								{mode === "choose" &&
 									"Create your admin account to get started"}
 								{mode === "auth" &&
 									"Choose how to secure your account"}
 							</CardDescription>
+							{mode === "auth" && (
+								<p className="pt-2 text-sm font-medium [overflow-wrap:anywhere]">
+									{email}
+								</p>
+							)}
 						</div>
 					</CardHeader>
 					<CardContent>
 						{mode === "choose" && renderChooseMode()}
 						{mode === "auth" && (
-							<AuthSetupSteps
-								email={email}
-								onPasskeyRegister={handlePasskeySetup}
-								onPasswordRegister={handlePasswordSetup}
-								isPending={isLoading}
-								error={error}
-							/>
+							<>
+								<AuthSetupSteps
+									email={email}
+									onPasskeyRegister={handlePasskeySetup}
+									onPasswordRegister={handlePasswordSetup}
+									isPending={isLoading}
+									error={error}
+								/>
+								<Button
+									type="button"
+									variant="ghost"
+									className="mt-3 min-h-11 w-full"
+									disabled={isLoading}
+									onClick={() => {
+										setMode("choose");
+										setError(null);
+									}}
+								>
+									Change account details
+								</Button>
+							</>
 						)}
 					</CardContent>
 				</Card>

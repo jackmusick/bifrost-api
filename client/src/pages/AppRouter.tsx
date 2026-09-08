@@ -10,16 +10,10 @@
  */
 
 import { useParams, useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppLoadingSkeleton } from "@/components/jsx-app/AppLoadingSkeleton";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { RouteUnavailableState } from "@/components/layout/RouteUnavailableState";
 import { useApplication } from "@/hooks/useApplications";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentChrome } from "@/lib/useDocumentChrome";
@@ -42,7 +36,13 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 	const isEmbed = hasRole("EmbedUser");
 
 	// Fetch application metadata
-	const { data: application, isLoading, error } = useApplication(slugParam);
+	const {
+		data: application,
+		isLoading,
+		error,
+		isFetching,
+		refetch,
+	} = useApplication(slugParam);
 
 	// Drive the browser tab title + favicon from the open app. Skipped in embed
 	// mode, where the host page owns its own chrome. Must run before the early
@@ -62,111 +62,87 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		return <AppLoadingSkeleton message="Loading application..." />;
 	}
 
-	// Error state
+	const backAction = !isEmbed && (
+		<Button
+			type="button"
+			className="min-h-11"
+			variant="outline"
+			onClick={() => navigate("/apps")}
+		>
+			<ArrowLeft aria-hidden="true" className="size-4" />
+			Back to {term(terminology, "app", "formalPlural")}
+		</Button>
+	);
+
 	if (error) {
 		return (
-			<div className="min-h-screen flex items-center justify-center p-4">
-				<Card className="max-w-md w-full">
-					<CardHeader>
-						<div className="flex items-center gap-2 text-destructive">
-							<AlertTriangle className="h-5 w-5" />
-							<CardTitle>
-								{term(terminology, "app", "formalSingular")}{" "}
-								Error
-							</CardTitle>
-						</div>
-						<CardDescription>
-							{error instanceof Error
-								? error.message
-								: `Failed to load ${term(terminology, "app", "formalSingularLower")}`}
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<Button
-							variant="outline"
-							onClick={() => navigate("/apps")}
-						>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to {term(terminology, "app", "formalPlural")}
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<RouteUnavailableState
+				title={`${term(terminology, "app", "formalSingular")} could not be loaded`}
+				description="The app may be unavailable, or your access may have changed. Try loading it again."
+			>
+				<Button
+					type="button"
+					className="min-h-11"
+					disabled={isFetching}
+					onClick={() => void refetch()}
+				>
+					<RefreshCw
+						aria-hidden="true"
+						className={
+							isFetching
+								? "size-4 animate-spin motion-reduce:animate-none"
+								: "size-4"
+						}
+					/>
+					{isFetching ? "Retrying…" : "Try again"}
+				</Button>
+				{backAction}
+			</RouteUnavailableState>
 		);
 	}
 
-	// No application found
 	if (!application) {
 		return (
-			<div className="min-h-screen flex items-center justify-center p-4">
-				<Card className="max-w-md w-full">
-					<CardHeader>
-						<div className="flex items-center gap-2 text-muted-foreground">
-							<AlertTriangle className="h-5 w-5" />
-							<CardTitle>
-								{term(terminology, "app", "formalSingular")} Not
-								Found
-							</CardTitle>
-						</div>
-						<CardDescription>
-							The requested{" "}
-							{term(terminology, "app", "formalSingularLower")}{" "}
-							does not exist or you don't have access to it.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<Button
-							variant="outline"
-							onClick={() => navigate("/apps")}
-						>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to {term(terminology, "app", "formalPlural")}
-						</Button>
-					</CardContent>
-				</Card>
-			</div>
+			<RouteUnavailableState
+				title={`${term(terminology, "app", "formalSingular")} Not Found`}
+				description={`The requested ${term(terminology, "app", "formalSingularLower")} does not exist or you don't have access to it.`}
+			>
+				{backAction}
+			</RouteUnavailableState>
 		);
 	}
 
-	// V1 uses publish/draft. V2 uses deploy and has no in-platform editor.
+	// Preserve the separate V1 publish and V2 deploy contracts.
 	if (!preview && !application.is_published) {
 		const isV2 = application.app_model === "standalone_v2";
 		return (
-			<div className="min-h-screen flex items-center justify-center p-4">
-				<Card className="max-w-md w-full">
-					<CardHeader>
-						<div className="flex items-center gap-2 text-muted-foreground">
-							<AlertTriangle className="h-5 w-5" />
-							<CardTitle>
-								{isV2 ? "Not Deployed" : "Not Published"}
-							</CardTitle>
-						</div>
-						<CardDescription>
-							{isV2
-								? "Deploy this App from its local project with `bifrost app deploy`."
-								: "This application has not been published yet."}
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="flex gap-2">
-						<Button
-							variant="outline"
-							onClick={() => navigate("/apps")}
-						>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back
-						</Button>
-						{!isV2 && (
-							<Button
-								onClick={() =>
-									navigate(`/apps/${slugParam}/edit`)
-							}
-							>
-								Open Editor
-							</Button>
-						)}
-					</CardContent>
-				</Card>
-			</div>
+			<RouteUnavailableState
+				title={isV2 ? "Not Deployed" : "Not Published"}
+				description={
+					isV2 ? (
+						<>
+							Deploy this App from its local project with{" "}
+							<code className="font-mono text-xs">
+								bifrost app deploy
+							</code>
+							.
+						</>
+					) : (
+						"This application has not been published yet."
+					)
+				}
+			>
+				{backAction}
+				{!isV2 && !isEmbed && (
+					<Button
+						type="button"
+						className="min-h-11"
+						onClick={() => navigate(`/apps/${slugParam}/edit`)}
+					>
+						Open Editor
+					</Button>
+				)}
+			</RouteUnavailableState>
 		);
 	}
 
@@ -182,7 +158,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 	);
 
 	if (isEmbed) {
-		return <div className="h-screen overflow-auto">{shell}</div>;
+		return <div className="h-dvh overflow-auto">{shell}</div>;
 	}
 
 	// standalone_v2 apps are full-page: the app owns its whole document and
@@ -190,7 +166,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 	// Wrapping it in AppLayout would impose platform chrome and double up with
 	// the app's own header (v2 spec §2/§4; Codex R4).
 	if (application.app_model === "standalone_v2") {
-		return <div className="h-screen w-screen overflow-hidden">{shell}</div>;
+		return <div className="h-dvh w-full overflow-hidden">{shell}</div>;
 	}
 
 	return (

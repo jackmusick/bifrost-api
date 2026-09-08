@@ -8,6 +8,7 @@
  * covered separately.
  */
 
+import { act } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, waitFor, fireEvent } from "@/test-utils";
 
@@ -31,9 +32,10 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 vi.mock("@/services/events", async () => {
-	const actual = await vi.importActual<typeof import("@/services/events")>(
-		"@/services/events",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/services/events")>(
+			"@/services/events",
+		);
 	return {
 		...actual,
 		useUpdateEventSource: () => ({
@@ -85,9 +87,7 @@ beforeEach(() => {
 	});
 });
 
-function makeScheduleSource(
-	overrides: Partial<EventSource> = {},
-): EventSource {
+function makeScheduleSource(overrides: Partial<EventSource> = {}): EventSource {
 	return {
 		id: "src-1",
 		name: "Daily Sync",
@@ -151,7 +151,9 @@ describe("EditEventSourceDialog — schedule", () => {
 			/>,
 		);
 
-		const trigger = screen.getByRole("combobox", { name: /overlap policy/i });
+		const trigger = screen.getByRole("combobox", {
+			name: /overlap policy/i,
+		});
 		expect(trigger).toBeInTheDocument();
 		// Default value shown in trigger
 		expect(trigger).toHaveTextContent(/skip/i);
@@ -179,9 +181,13 @@ describe("EditEventSourceDialog — schedule", () => {
 		);
 
 		// Change overlap policy to "queue"
-		const trigger = screen.getByRole("combobox", { name: /overlap policy/i });
+		const trigger = screen.getByRole("combobox", {
+			name: /overlap policy/i,
+		});
 		await user.click(trigger);
-		await user.click(await screen.findByRole("option", { name: /^queue$/i }));
+		await user.click(
+			await screen.findByRole("option", { name: /^queue$/i }),
+		);
 
 		await user.click(screen.getByRole("button", { name: /save changes/i }));
 
@@ -199,9 +205,7 @@ describe("EditEventSourceDialog — schedule", () => {
 			/>,
 		);
 
-		expect(
-			screen.queryByLabelText(/rate limit/i),
-		).not.toBeInTheDocument();
+		expect(screen.queryByLabelText(/rate limit/i)).not.toBeInTheDocument();
 	});
 
 	it("surfaces a validation error when cron is cleared on submit", async () => {
@@ -318,10 +322,9 @@ describe("EditEventSourceDialog — webhook rate-limit", () => {
 		);
 
 		// Change the per-minute limit
-		fireEvent.change(
-			screen.getByLabelText(/^max events$/i),
-			{ target: { value: "30" } },
-		);
+		fireEvent.change(screen.getByLabelText(/^max events$/i), {
+			target: { value: "30" },
+		});
 
 		await user.click(screen.getByRole("button", { name: /save changes/i }));
 
@@ -330,5 +333,83 @@ describe("EditEventSourceDialog — webhook rate-limit", () => {
 		expect(body.webhook.rate_limit_per_minute).toBe(30);
 		expect(body.webhook.rate_limit_window_seconds).toBe(60);
 		expect(body.webhook.rate_limit_enabled).toBe(true);
+	});
+});
+
+describe("EditEventSourceDialog — recovery", () => {
+	it("ignores validation that finishes after the expression changes", async () => {
+		let resolveOld: (value: unknown) => void = () => {};
+		let oldSignal: AbortSignal | undefined;
+		mockAuthFetch.mockImplementation(
+			(_url: string, options: RequestInit) => {
+				const { expression } = JSON.parse(options.body as string);
+				if (expression === "0 8 * * *") {
+					oldSignal = options.signal as AbortSignal;
+					return new Promise((resolve) => {
+						resolveOld = resolve;
+					});
+				}
+				return Promise.resolve({
+					ok: true,
+					json: async () => ({
+						valid: true,
+						human_readable: "Latest schedule",
+					}),
+				});
+			},
+		);
+		renderWithProviders(
+			<EditEventSourceDialog
+				source={makeScheduleSource()}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+		const input = screen.getByRole("textbox", { name: "Cron Expression" });
+		fireEvent.change(input, { target: { value: "0 8 * * *" } });
+		await waitFor(() => expect(oldSignal).toBeDefined(), { timeout: 2000 });
+		fireEvent.change(input, { target: { value: "0 10 * * *" } });
+		expect(oldSignal?.aborted).toBe(true);
+		expect(
+			await screen.findByText("Latest schedule", {}, { timeout: 2000 }),
+		).toBeInTheDocument();
+		await act(async () => {
+			resolveOld({
+				ok: true,
+				json: async () => ({
+					valid: false,
+					human_readable: "Stale error",
+					error: "Stale error",
+				}),
+			});
+		});
+		expect(screen.queryByText("Stale error")).not.toBeInTheDocument();
+		expect(screen.getByText("Latest schedule")).toBeInTheDocument();
+	});
+	it("retains edits and allows retry after a save fails", async () => {
+		mockUpdate.mockRejectedValueOnce(new Error("offline"));
+		const onOpenChange = vi.fn();
+		const { user } = renderWithProviders(
+			<EditEventSourceDialog
+				source={makeWebhookSource()}
+				open
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+			target: { value: "Edited webhook" },
+		});
+		await user.click(screen.getByRole("button", { name: "Save Changes" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Could not save your changes",
+		);
+		expect(screen.getByRole("alert")).toHaveFocus();
+		expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
+			"Edited webhook",
+		);
+		expect(onOpenChange).not.toHaveBeenCalled();
+		await user.click(screen.getByRole("button", { name: "Save Changes" }));
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+		expect(mockUpdate).toHaveBeenCalledTimes(2);
 	});
 });

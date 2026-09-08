@@ -148,10 +148,11 @@ describe("ChatAttachmentList", () => {
 			"rounded-none",
 		);
 		const nextButton = screen.getByRole("button", { name: "Next media" });
-		expect(nextButton).toHaveClass("size-11", "shrink-0", "sm:size-7");
+		expect(nextButton).toHaveClass("size-11", "shrink-0", "sm:size-11");
 		expect(screen.getByRole("button", { name: "Download" })).toHaveClass(
 			"h-11",
-			"sm:h-7",
+			"shrink-0",
+			"sm:h-11",
 		);
 		await user.click(nextButton);
 		expect(screen.getByRole("heading", { name: "Launch Concept.png" })).toBeInTheDocument();

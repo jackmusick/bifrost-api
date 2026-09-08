@@ -4,12 +4,13 @@ import { renderWithProviders, screen } from "@/test-utils";
 
 const brandingApi = vi.hoisted(() => ({
 	getBranding: vi.fn(),
+	uploadLogo: vi.fn(),
 }));
 
 vi.mock("@/hooks/useBranding", () => ({
 	getBranding: brandingApi.getBranding,
 	updateBranding: vi.fn(),
-	uploadLogo: vi.fn(),
+	uploadLogo: brandingApi.uploadLogo,
 	resetLogo: vi.fn(),
 	resetColor: vi.fn(),
 	resetApplicationName: vi.fn(),
@@ -50,5 +51,62 @@ describe("Branding", () => {
 		for (const input of screen.getAllByLabelText("Plural")) {
 			expect(input.parentElement).toHaveClass("space-y-2");
 		}
+	});
+
+	it("shows a read error instead of blank branding controls when the initial load fails", async () => {
+		brandingApi.getBranding.mockRejectedValueOnce(new Error("Synthetic failure"));
+
+		renderWithProviders(<Branding />);
+
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Could not load branding settings.");
+		expect(screen.getByRole("button", { name: "Retry branding settings" })).toBeEnabled();
+		expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Color (Hex)")).not.toBeInTheDocument();
+	});
+
+	it("keeps the editable default branding controls when the API returns no branding", async () => {
+		renderWithProviders(<Branding />);
+
+		expect(await screen.findByLabelText("Name")).toHaveValue("");
+		expect(screen.getByLabelText("Color (Hex)")).toHaveValue("#0066CC");
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	});
+
+	it("preserves loaded branding and disables saves when a refresh fails", async () => {
+		brandingApi.getBranding
+			.mockResolvedValueOnce({
+				application_name: "Northwind",
+				primary_color: "#123456",
+				terminology: {
+					app: { singular: "App", plural: "Apps" },
+					agent: { singular: "Agent", plural: "Agents" },
+					form: { singular: "Form", plural: "Forms" },
+				},
+			})
+			.mockRejectedValueOnce(new Error("Synthetic refresh failure"));
+		brandingApi.uploadLogo.mockResolvedValue(undefined);
+
+		const { user } = renderWithProviders(<Branding />);
+
+		const name = await screen.findByLabelText("Name");
+		await user.clear(name);
+		await user.type(name, "Draft Name");
+
+		const fileInput = document.getElementById(
+			"squareLogoInput",
+		) as HTMLInputElement;
+		await user.upload(
+			fileInput,
+			new File(["synthetic"], "logo.png", { type: "image/png" }),
+		);
+
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Could not refresh branding settings.");
+		expect(screen.getByLabelText("Name")).toHaveValue("Draft Name");
+		expect(screen.getByLabelText("Color (Hex)")).toHaveValue("#123456");
+		expect(screen.getByRole("button", { name: "Update Name" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Update Color" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Update Terminology" })).toBeDisabled();
 	});
 });

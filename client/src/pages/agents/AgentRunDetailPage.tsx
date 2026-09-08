@@ -1,3 +1,5 @@
+import { RunAIUsageCard } from "./RunAIUsageCard";
+import { SummaryRegenerationControl } from "@/components/agents/SummaryRegenerationControl";
 /**
  * AgentRunDetailPage — full-page detail view for a single agent run.
  *
@@ -9,7 +11,7 @@
  *   - Main column: <RunReviewPanel variant="page"> + grouped Activity with
  *     an explicit Advanced mode for raw executor records and payloads
  *   - Sidebar: run metadata, AI usage cost breakdown, regen-summary button
- *     (admins only when summary failed), and per-flag conversation when the
+ *     (admins only; failed-summary recovery lives in the review panel), and per-flag conversation when the
  *     run's verdict is "down"
  *
  * Replaces (T33) the legacy `client/src/pages/AgentRunDetail.tsx`.
@@ -18,17 +20,17 @@
  * hooks, shadcn primitives, Tailwind. No inline styles.
  */
 
+import { useAgentRunStepStore } from "@/stores/agentRunStepStore";
+import { RunActivityHeader } from "./RunActivityHeader";
+import { RunActionFeedback } from "./RunActionFeedback";
+import { FleetReadError } from "./FleetReadError";
 import {
 	useMemo,
+	useRef,
 	useState,
 	type MouseEvent as ReactMouseEvent,
 } from "react";
-import {
-	Link,
-	useLocation,
-	useNavigate,
-	useParams,
-} from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
 	AlertCircle,
 	ArrowLeft,
@@ -37,7 +39,6 @@ import {
 	ChevronRight,
 	Code2,
 	Clock,
-	ListTree,
 	Loader2,
 	RefreshCw,
 	Sparkles,
@@ -46,16 +47,10 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { RunDetailHeading } from "@/components/execution/RunDetailHeading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAgent } from "@/hooks/useAgents";
@@ -66,12 +61,12 @@ import {
 	readAgentRunNavigationOrigin,
 	type AgentRunNavigationOrigin,
 } from "@/lib/agent-run-navigation";
-import { formatCost, formatDuration, formatNumber } from "@/lib/utils";
+import { formatDuration, formatNumber } from "@/lib/utils";
 import {
 	useAgentRun,
+	useAgentRunStream,
 	useClearVerdict,
 	useFlagConversation,
-	useRegenerateSummary,
 	useRerunAgentRun,
 	useSendFlagMessage,
 	useSetVerdict,
@@ -103,14 +98,49 @@ export function AgentRunDetailPage() {
 	// `useAgentRun` returns a hand-rolled `AgentRunDetail` type that predates
 	// some OpenAPI fields (asked/did/verdict/etc). Re-cast to the OpenAPI
 	// schema for full field access.
-	const { data: rawRun, isLoading } = useAgentRun(runId);
-	const run = rawRun as unknown as AgentRunDetailResponse | undefined;
+	const {
+		data: rawRun,
+		isLoading,
+		isError: runError,
+		isFetching: runFetching,
+		refetch: refetchRun,
+	} = useAgentRun(runId);
+	useAgentRunStream(runId);
+	const streamedSteps = useAgentRunStepStore((state) =>
+		runId ? state.streams[runId]?.steps : undefined,
+	);
+	const run = useMemo(() => {
+		const fetched = rawRun as unknown as AgentRunDetailResponse | undefined;
+		if (!fetched || !streamedSteps?.length) return fetched;
+		const steps = new Map(
+			[...streamedSteps, ...(fetched.steps ?? [])].map((step) => [
+				step.id,
+				step,
+			]),
+		);
+		return {
+			...fetched,
+			steps: [...steps.values()].sort(
+				(a, b) => a.step_number - b.step_number,
+			),
+		} as AgentRunDetailResponse;
+	}, [rawRun, streamedSteps]);
 	const owningAgentId = run?.agent_id ?? agentId;
-	const { data: agent } = useAgent(owningAgentId);
+	const {
+		data: agent,
+		isError: agentError,
+		isFetching: agentFetching,
+		refetch: refetchAgent,
+	} = useAgent(owningAgentId);
 	const parentRunId = navigationOrigin
 		? undefined
 		: (run?.parent_run_id ?? undefined);
-	const { data: rawParentRun } = useAgentRun(parentRunId);
+	const {
+		data: rawParentRun,
+		isError: parentError,
+		isFetching: parentFetching,
+		refetch: refetchParent,
+	} = useAgentRun(parentRunId);
 	const parentRun = parentRunId
 		? (rawParentRun as unknown as AgentRunDetailResponse | undefined)
 		: undefined;
@@ -121,22 +151,54 @@ export function AgentRunDetailPage() {
 	useAgentRunUpdates({ agentId: owningAgentId });
 
 	const verdict = ((run?.verdict as Verdict | undefined) ?? null) as Verdict;
-	const [note, setNote] = useState<string>(run?.verdict_note ?? "");
+	const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+	const note = runId ? (noteDrafts[runId] ?? run?.verdict_note ?? "") : "";
+	const setNote = (value: string) => {
+		if (runId)
+			setNoteDrafts((previous) => ({ ...previous, [runId]: value }));
+	};
+	const verdictBusy = useRef(false);
+	const [savingVerdict, setSavingVerdict] = useState(false);
+	const [verdictFailure, setVerdictFailure] = useState<{
+		runId: string;
+		verdict: Verdict;
+	} | null>(null);
 	const [advancedView, setAdvancedView] = useState(false);
 	const [previewedActivityId, setPreviewedActivityId] = useState<
 		string | null
 	>(null);
 	const [expandedDelegationsByRun, setExpandedDelegationsByRun] = useState<
 		ReadonlyMap<string, ReadonlySet<string>>
-	>(() => new Map());
+	>(() => {
+		const saved = location.state?.runActivity;
+		return saved?.runId === runId && Array.isArray(saved.expanded)
+			? new Map([
+					[
+						runId!,
+						new Set<string>(
+							saved.expanded.filter(
+								(id: unknown): id is string =>
+									typeof id === "string",
+							),
+						),
+					],
+				])
+			: new Map();
+	});
 	const [restoreActivityByRun, setRestoreActivityByRun] = useState<
 		ReadonlyMap<string, string>
-	>(() => new Map());
+	>(() => {
+		const saved = location.state?.runActivity;
+		return saved?.runId === runId && typeof saved.restore === "string"
+			? new Map([[runId!, saved.restore]])
+			: new Map();
+	});
 
 	const setVerdict = useSetVerdict();
 	const clearVerdict = useClearVerdict();
-	const regenSummary = useRegenerateSummary();
 	const rerun = useRerunAgentRun();
+	const rerunBusy = useRef(false);
+	const [rerunFailure, setRerunFailure] = useState<string | null>(null);
 	const currentRunOrigin: AgentRunNavigationOrigin | null = run
 		? {
 				href: getLocationHref(location),
@@ -145,9 +207,13 @@ export function AgentRunDetailPage() {
 		: null;
 
 	const isFlagged = verdict === "down";
-	const { data: conversation } = useFlagConversation(
-		isFlagged ? runId : undefined,
-	);
+	const {
+		data: conversation,
+		isLoading: conversationLoading,
+		isError: conversationError,
+		isFetching: conversationFetching,
+		refetch: refetchConversation,
+	} = useFlagConversation(isFlagged ? runId : undefined);
 	const sendMessage = useSendFlagMessage();
 
 	function invalidateRun() {
@@ -156,49 +222,73 @@ export function AgentRunDetailPage() {
 	}
 
 	function handleVerdict(next: Verdict) {
-		if (!runId) return;
-		if (next === null) {
+		if (!runId || verdictBusy.current) return;
+		verdictBusy.current = true;
+		setSavingVerdict(true);
+		setVerdictFailure(null);
+		const onSuccess = () => {
+			setNoteDrafts((previous) => ({
+				...previous,
+				[runId]: next === null ? "" : note,
+			}));
+			invalidateRun();
+			void queryClient.invalidateQueries({
+				queryKey: ["agent-runs-infinite"],
+			});
+		};
+		const onError = () => setVerdictFailure({ runId, verdict: next });
+		const onSettled = () => {
+			verdictBusy.current = false;
+			setSavingVerdict(false);
+		};
+		if (next === null)
 			clearVerdict.mutate(
 				{ params: { path: { run_id: runId } } },
-				{ onSuccess: invalidateRun },
+				{ onSuccess, onError, onSettled },
 			);
-		} else {
+		else
 			setVerdict.mutate(
 				{
 					params: { path: { run_id: runId } },
-					body: { verdict: next },
+					body: { verdict: next, note },
 				},
-				{ onSuccess: invalidateRun },
+				{ onSuccess, onError, onSettled },
 			);
-		}
 	}
 
-	function handleSendChat(text: string) {
-		if (!runId) return;
-		sendMessage.mutate({
-			params: { path: { run_id: runId } },
-			body: { content: text },
+	function handleSendChat(text: string): Promise<void> {
+		return new Promise((resolve, reject) => {
+			if (!runId) {
+				reject(new Error("Run unavailable"));
+				return;
+			}
+			sendMessage.mutate(
+				{
+					params: { path: { run_id: runId } },
+					body: { content: text },
+				},
+				{
+					onSuccess: (data) => {
+						queryClient.setQueryData(
+							[
+								"get",
+								"/api/agent-runs/{run_id}/flag-conversation",
+								{ params: { path: { run_id: runId } } },
+							],
+							data,
+						);
+						resolve();
+					},
+					onError: reject,
+				},
+			);
 		});
 	}
 
-	function handleRegenerate() {
-		if (!runId) return;
-		regenSummary.mutate(
-			{ params: { path: { run_id: runId } } },
-			{
-				onSuccess: () => {
-					toast.success("Summary regeneration queued");
-					invalidateRun();
-				},
-				onError: () => {
-					toast.error("Failed to regenerate summary");
-				},
-			},
-		);
-	}
-
 	function handleRerun() {
-		if (!runId || !run?.agent_id) return;
+		if (!runId || !run?.agent_id || rerunBusy.current) return;
+		rerunBusy.current = true;
+		setRerunFailure(null);
 		rerun.mutate(
 			{ params: { path: { run_id: runId } } },
 			{
@@ -215,14 +305,15 @@ export function AgentRunDetailPage() {
 						);
 					}
 				},
-				onError: () => toast.error("Failed to queue rerun"),
+				onError: () => setRerunFailure(runId),
+				onSettled: () => {
+					rerunBusy.current = false;
+				},
 			},
 		);
 	}
 
-	function handleContextBackClick(
-		event: ReactMouseEvent<HTMLAnchorElement>,
-	) {
+	function handleContextBackClick(event: ReactMouseEvent<HTMLAnchorElement>) {
 		if (
 			!navigationOrigin ||
 			event.defaultPrevented ||
@@ -272,6 +363,17 @@ export function AgentRunDetailPage() {
 
 	function handleOpenChildRun(activityId: string) {
 		if (!runId) return;
+		navigate(getLocationHref(location), {
+			replace: true,
+			state: {
+				...location.state,
+				runActivity: {
+					runId,
+					expanded: [...(expandedDelegationsByRun.get(runId) ?? [])],
+					restore: activityId,
+				},
+			},
+		});
 		setPreviewedActivityId(null);
 		setRestoreActivityByRun((current) => {
 			const next = new Map(current);
@@ -293,6 +395,33 @@ export function AgentRunDetailPage() {
 						<Skeleton className="h-48 w-full" />
 					</div>
 				</div>
+			</div>
+		);
+	}
+
+	if (runError && !run) {
+		return (
+			<div className="mx-auto flex max-w-7xl flex-col gap-4">
+				<Button asChild variant="outline" className="w-fit min-h-11">
+					<Link
+						to={
+							navigationOrigin?.href ??
+							(agentId ? `/agents/${agentId}` : "/agents")
+						}
+						onClick={handleContextBackClick}
+					>
+						{navigationOrigin?.label ?? "Back to agent"}
+					</Link>
+				</Button>
+				<h1 className="font-display text-2xl font-semibold">
+					Agent run
+				</h1>
+				<FleetReadError
+					resource="run details"
+					cached={false}
+					pending={runFetching}
+					onRetry={() => void refetchRun()}
+				/>
 			</div>
 		);
 	}
@@ -328,159 +457,175 @@ export function AgentRunDetailPage() {
 	// While the summarizer is running, the RunReviewPanel already shows a
 	// status banner with a regenerate button — hide the sidebar card so we
 	// don't render two competing affordances.
-	const showRegen = (isPlatformAdmin || summaryFailed) && !summaryInFlight;
+	const showRegen = isPlatformAdmin && !summaryFailed && !summaryInFlight;
 	// Header title: `asked` is the user-facing TL;DR (capped ~100 chars by
 	// the summarizer prompt). `did` is a multi-sentence narrative under v3+
 	// and too long for a title; only fall back to it when `asked` is empty.
 	const headerSummary = run.asked || run.did || "Agent run";
-	const parentRunHref = parentRun
+	const parentRunHref = parentRun?.agent_id
 		? `/agents/${parentRun.agent_id}/runs/${parentRun.id}`
 		: null;
 	const backHref =
 		navigationOrigin?.href ??
 		parentRunHref ??
-		`/agents/${run.agent_id}`;
+		(run.agent_id ? `/agents/${run.agent_id}` : "/agents");
 	const backLabel =
 		navigationOrigin?.label ??
-		(parentRun
-			? `Back to ${parentRun.agent_name ?? "parent"} run`
-			: `Back to ${agent?.name ?? run.agent_name ?? "agent"}`);
+		(parentRunHref
+			? `Back to ${parentRun?.agent_name ?? "parent"} run`
+			: run.agent_id
+				? `Back to ${agent?.name ?? run.agent_name ?? "agent"}`
+				: "Back to agents");
 
 	return (
 		<div
 			className="flex flex-col gap-5 max-w-7xl mx-auto"
 			data-testid="agent-run-detail-page"
 		>
+			{runError ? (
+				<FleetReadError
+					resource="run details"
+					cached
+					pending={runFetching}
+					onRetry={() => void refetchRun()}
+				/>
+			) : null}
+			{agentError ? (
+				<FleetReadError
+					resource="agent information"
+					cached={!!agent}
+					pending={agentFetching}
+					onRetry={() => void refetchAgent()}
+				/>
+			) : null}
+			{parentRunId && parentError ? (
+				<FleetReadError
+					resource="parent run"
+					cached={!!parentRun}
+					pending={parentFetching}
+					onRetry={() => void refetchParent()}
+				/>
+			) : null}
 			{/* Breadcrumb */}
 			<Link
 				to={backHref}
 				onClick={handleContextBackClick}
 				data-testid="run-context-back"
-				className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+				className="inline-flex min-h-11 max-w-full w-fit items-center gap-2 rounded-[var(--bf-radius-control)] text-sm text-muted-foreground [overflow-wrap:anywhere] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
-				<ArrowLeft className="h-3 w-3" />
+				<ArrowLeft aria-hidden="true" className="size-4 shrink-0" />
 				{backLabel}
 			</Link>
 
-			{/* Header */}
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-				<div className="flex min-w-0 items-start gap-3">
-					<Bot className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
-					<div className="min-w-0">
-						<h1 className="truncate text-2xl font-extrabold tracking-tight">
-							{headerSummary}
-						</h1>
-						<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-							<RunStatusBadge status={run.status} />
-							{run.started_at ? (
-								<span className="inline-flex items-center gap-1">
-									<Clock className="h-3 w-3" />
-									{new Date(run.started_at).toLocaleString()}
+			<RunDetailHeading
+				title={headerSummary}
+				metadata={
+					<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+						<RunStatusBadge status={run.status} />
+						{run.started_at ? (
+							<span className="inline-flex items-center gap-1">
+								<Clock className="h-3 w-3" />
+								{new Date(run.started_at).toLocaleString()}
+							</span>
+						) : null}
+						{run.duration_ms != null ? (
+							<>
+								<span>·</span>
+								<span>{formatDuration(run.duration_ms)}</span>
+							</>
+						) : null}
+						{advancedView ? (
+							<>
+								<span>·</span>
+								<span>
+									{run.iterations_used} iter ·{" "}
+									{formatNumber(run.tokens_used)} tok
 								</span>
-							) : null}
-							{run.duration_ms != null ? (
-								<>
-									<span>·</span>
-									<span>
-										{formatDuration(run.duration_ms)}
-									</span>
-								</>
-							) : null}
-							{advancedView ? (
-								<>
-									<span>·</span>
-									<span>
-										{run.iterations_used} iter ·{" "}
-										{formatNumber(run.tokens_used)} tok
-									</span>
-								</>
-							) : null}
-						</div>
+							</>
+						) : null}
 					</div>
-				</div>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					data-testid="rerun-button"
-					disabled={rerun.isPending}
-					onClick={handleRerun}
-				>
-					{rerun.isPending ? (
-						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-					) : (
-						<RefreshCw className="h-3.5 w-3.5" />
-					)}
-					Rerun
-				</Button>
-			</div>
+				}
+				actionsLabel="Agent run actions"
+				actions={
+					<Button
+						type="button"
+						variant="outline"
+						className="min-h-11 min-w-0"
+						data-testid="rerun-button"
+						disabled={rerun.isPending || !run.agent_id}
+						onClick={handleRerun}
+					>
+						{rerun.isPending ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+						) : (
+							<RefreshCw className="h-3.5 w-3.5" />
+						)}
+						Rerun
+					</Button>
+				}
+			/>
+
+			<RunActionFeedback
+				pending={rerun.isPending}
+				failed={rerunFailure === runId}
+				onRetry={handleRerun}
+				message="Could not queue a new run. Try again to rerun this execution."
+				pendingLabel="Queuing rerun…"
+				retryLabel="Retry rerun"
+			/>
 
 			{/* Two-column layout */}
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 				{/* Main column. ``min-w-0`` is essential — without it long
 				    JSON strings inside the panel push past the column width
 				    and into the sidebar. */}
 				<div className="lg:col-span-2 flex min-w-0 flex-col gap-4">
-					<Card className="min-w-0 overflow-hidden">
-						<RunReviewPanel
-							run={run}
-							variant="page"
-							verdict={verdict}
-							note={note}
-							onVerdict={handleVerdict}
-							onNote={setNote}
-							onActivityReferencePreview={setPreviewedActivityId}
-							onActivityReferenceActivate={
-								handleActivityReferenceActivate
-							}
-						/>
-					</Card>
+					<RunActionFeedback
+						pending={savingVerdict}
+						failed={verdictFailure?.runId === runId}
+						onRetry={() => {
+							if (verdictFailure)
+								handleVerdict(verdictFailure.verdict);
+						}}
+					/>
+					<fieldset
+						disabled={savingVerdict}
+						className="min-w-0"
+						aria-label="Run review"
+					>
+						<Card className="min-w-0 overflow-hidden">
+							<RunReviewPanel
+								run={run}
+								variant="page"
+								verdict={verdict}
+								note={note}
+								onVerdict={handleVerdict}
+								onNote={setNote}
+								onActivityReferencePreview={
+									setPreviewedActivityId
+								}
+								onActivityReferenceActivate={
+									handleActivityReferenceActivate
+								}
+							/>
+						</Card>
+						{verdict && note !== (run.verdict_note ?? "") ? (
+							<Button
+								className="mt-3"
+								onClick={() => handleVerdict(verdict)}
+							>
+								Save review note
+							</Button>
+						) : null}
+					</fieldset>
 
 					<Card data-slot="run-activity">
-						<CardHeader className="border-b pb-4">
-							<CardTitle className="flex items-center gap-2 text-sm">
-								<ListTree className="h-4 w-4 text-muted-foreground" />
-								Activity
-							</CardTitle>
-							<CardDescription className="text-xs">
-								How the agent handled this run, in order
-							</CardDescription>
-							<CardAction>
-								<div
-									role="group"
-									aria-label="Activity detail level"
-									className="flex rounded-lg bg-muted p-0.5 text-xs"
-								>
-									<button
-										type="button"
-										aria-pressed={!advancedView}
-										onClick={() => setAdvancedView(false)}
-										className={`rounded-md px-2.5 py-1.5 font-medium transition-colors ${
-											!advancedView
-												? "bg-background text-foreground shadow-sm"
-												: "text-muted-foreground hover:text-foreground"
-										}`}
-									>
-										Activity
-									</button>
-									<button
-										type="button"
-										aria-pressed={advancedView}
-										onClick={() => setAdvancedView(true)}
-										className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-medium transition-colors ${
-											advancedView
-												? "bg-background text-foreground shadow-sm"
-												: "text-muted-foreground hover:text-foreground"
-										}`}
-									>
-										<Code2 className="h-3 w-3" />
-										Advanced
-									</button>
-								</div>
-							</CardAction>
-						</CardHeader>
-						<CardContent>
-							<div className="grid gap-5">
+						<RunActivityHeader
+							advanced={advancedView}
+							onChange={setAdvancedView}
+						/>
+						<CardContent className="min-w-0">
+							<div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 [&>*]:min-w-0">
 								<Timeline
 									steps={run.steps ?? []}
 									childRunIds={run.child_run_ids ?? []}
@@ -522,18 +667,18 @@ export function AgentRunDetailPage() {
 								{advancedView &&
 								(run.steps?.length ?? 0) > 0 ? (
 									<details
-										className="group border-t pt-4"
+										className="group min-w-0 border-t pt-4"
 										data-slot="raw-executor-trace"
 									>
-										<summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-											<ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+										<summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+											<ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
 											<Code2 className="h-3.5 w-3.5" />
 											<span>Raw executor trace</span>
 											<span className="ml-auto font-normal tabular-nums">
 												{run.steps?.length ?? 0} events
 											</span>
 										</summary>
-										<div className="mt-2.5 rounded-lg border bg-background/50 p-3">
+										<div className="mt-2.5 min-w-0 overflow-x-auto rounded-[var(--bf-radius-control)] border bg-background/50 p-3">
 											<AdvancedTimeline
 												steps={run.steps ?? []}
 											/>
@@ -554,13 +699,32 @@ export function AgentRunDetailPage() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent className="p-0">
-								<div className="flex h-[420px] flex-col">
-									<FlagConversation
-										conversation={conversation ?? null}
-										onSend={handleSendChat}
-										pending={sendMessage.isPending}
-									/>
-								</div>
+								{conversationError ? (
+									<div className="px-4 pb-3">
+										<FleetReadError
+											resource="tuning conversation"
+											cached={!!conversation}
+											pending={conversationFetching}
+											onRetry={() =>
+												void refetchConversation()
+											}
+										/>
+									</div>
+								) : null}
+								{conversationLoading ? (
+									<div className="p-4">
+										<Skeleton className="h-40 w-full" />
+									</div>
+								) : conversationError &&
+								  !conversation ? null : (
+									<div className="flex h-[420px] flex-col">
+										<FlagConversation
+											conversation={conversation ?? null}
+											onSend={handleSendChat}
+											pending={sendMessage.isPending}
+										/>
+									</div>
+								)}
 							</CardContent>
 						</Card>
 					) : null}
@@ -575,7 +739,7 @@ export function AgentRunDetailPage() {
 							</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+							<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
 								{advancedView ? (
 									<MetaRow label="Run ID">
 										<span className="font-mono text-[11px] break-all">
@@ -624,38 +788,27 @@ export function AgentRunDetailPage() {
 
 					{/* AI usage */}
 					{advancedView && run.ai_usage && run.ai_usage.length > 0 ? (
-						<AIUsageCard
+						<RunAIUsageCard
 							usage={run.ai_usage}
 							totals={run.ai_totals ?? null}
 						/>
 					) : null}
 
-					{/* Regenerate summary (admin-only / failed summary) */}
+					{/* Admin regeneration for summaries without an active status banner. */}
 					{showRegen ? (
 						<Card>
-							<CardContent className="flex items-center justify-between gap-3 py-3 text-xs">
+							<CardContent className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
 								<div>
 									<div className="font-medium">Summary</div>
 									<div className="text-muted-foreground">
-										{summaryFailed
-											? "Generation failed"
-											: "Re-run the summarizer"}
+										Re-run the summarizer
 									</div>
 								</div>
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={regenSummary.isPending}
-									onClick={handleRegenerate}
-									data-testid="regen-summary-button"
-								>
-									{regenSummary.isPending ? (
-										<Loader2 className="h-3 w-3 animate-spin" />
-									) : (
-										<RefreshCw className="h-3 w-3" />
-									)}
-									Regenerate
-								</Button>
+								<SummaryRegenerationControl
+									runId={run.id}
+									allowed={isPlatformAdmin}
+									testId="regen-summary-button"
+								/>
 							</CardContent>
 						</Card>
 					) : null}
@@ -666,24 +819,35 @@ export function AgentRunDetailPage() {
 							<CardTitle className="text-sm">Agent</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<Link
-								to={`/agents/${run.agent_id}`}
-								className="flex items-start gap-2 text-sm hover:underline"
-							>
-								<Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-								<div className="min-w-0">
-									<div className="truncate font-medium">
-										{agent?.name ??
-											run.agent_name ??
-											"Agent"}
-									</div>
-									{agent?.description ? (
-										<div className="text-xs text-muted-foreground line-clamp-2">
-											{agent.description}
+							{run.agent_id ? (
+								<Link
+									to={`/agents/${run.agent_id}`}
+									className="flex items-start gap-2 text-sm hover:underline"
+								>
+									<Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+									<div className="min-w-0">
+										<div className="truncate font-medium">
+											{agent?.name ??
+												run.agent_name ??
+												"Agent"}
 										</div>
-									) : null}
+										{agent?.description ? (
+											<div className="text-xs text-muted-foreground line-clamp-2">
+												{agent.description}
+											</div>
+										) : null}
+									</div>
+								</Link>
+							) : (
+								<div className="space-y-1 text-sm">
+									<p className="font-medium [overflow-wrap:anywhere]">
+										{run.agent_name ?? "Deleted agent"}
+									</p>
+									<p className="text-xs text-muted-foreground">
+										This agent is no longer available.
+									</p>
 								</div>
-							</Link>
+							)}
 						</CardContent>
 					</Card>
 				</div>
@@ -702,7 +866,9 @@ function MetaRow({
 	return (
 		<>
 			<dt className="text-muted-foreground">{label}</dt>
-			<dd className="text-right text-foreground">{children}</dd>
+			<dd className="min-w-0 text-right text-foreground [overflow-wrap:anywhere]">
+				{children}
+			</dd>
 		</>
 	);
 }
@@ -711,25 +877,38 @@ function RunStatusBadge({ status }: { status: string }) {
 	switch (status) {
 		case "completed":
 			return (
-				<Badge variant="default" className="bg-emerald-500 text-white">
+				<Badge
+					variant="outline"
+					className="border-[color:var(--bf-success)]/30 bg-[color:var(--bf-success)]/10 text-[color:var(--bf-success)]"
+				>
 					<CheckCircle className="h-3 w-3" /> Completed
 				</Badge>
 			);
 		case "failed":
 			return (
-				<Badge variant="destructive">
+				<Badge
+					variant="outline"
+					className="border-[color:var(--bf-danger)]/30 bg-[color:var(--bf-danger)]/10 text-[color:var(--bf-danger)]"
+				>
 					<XCircle className="h-3 w-3" /> Failed
 				</Badge>
 			);
 		case "running":
 			return (
-				<Badge variant="secondary">
-					<Loader2 className="h-3 w-3 animate-spin" /> Running
+				<Badge
+					variant="outline"
+					className="border-primary/30 bg-primary/10 text-primary"
+				>
+					<Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />{" "}
+					Running
 				</Badge>
 			);
 		case "budget_exceeded":
 			return (
-				<Badge variant="warning">
+				<Badge
+					variant="outline"
+					className="border-[color:var(--bf-warning)]/30 bg-[color:var(--bf-warning)]/10 text-[color:var(--bf-warning)]"
+				>
 					<AlertCircle className="h-3 w-3" /> Budget exceeded
 				</Badge>
 			);
@@ -737,145 +916,3 @@ function RunStatusBadge({ status }: { status: string }) {
 			return <Badge variant="outline">{status}</Badge>;
 	}
 }
-
-interface AIUsageEntry {
-	provider: string;
-	model: string;
-	input_tokens: number;
-	output_tokens: number;
-	cost?: string | null;
-}
-
-interface AIUsageTotals {
-	total_input_tokens: number;
-	total_output_tokens: number;
-	total_cost: string;
-	call_count: number;
-}
-
-function AIUsageCard({
-	usage,
-	totals,
-}: {
-	usage: NonNullable<AgentRunDetailResponse["ai_usage"]>;
-	totals: AgentRunDetailResponse["ai_totals"] | null;
-}) {
-	const grouped = useMemo(() => {
-		const map = new Map<
-			string,
-			{
-				model: string;
-				calls: number;
-				input_tokens: number;
-				output_tokens: number;
-				cost: number;
-			}
-		>();
-		for (const u of usage as AIUsageEntry[]) {
-			const cost = u.cost ? parseFloat(String(u.cost)) || 0 : 0;
-			const existing = map.get(u.model);
-			if (existing) {
-				existing.calls += 1;
-				existing.input_tokens += u.input_tokens;
-				existing.output_tokens += u.output_tokens;
-				existing.cost += cost;
-			} else {
-				map.set(u.model, {
-					model: u.model,
-					calls: 1,
-					input_tokens: u.input_tokens,
-					output_tokens: u.output_tokens,
-					cost,
-				});
-			}
-		}
-		return Array.from(map.values());
-	}, [usage]);
-
-	const totalsTyped = totals as AIUsageTotals | null;
-
-	return (
-		<Card data-testid="ai-usage-card">
-			<CardHeader className="pb-2">
-				<CardTitle className="flex items-center gap-2 text-sm">
-					<Sparkles className="h-4 w-4 text-purple-500" />
-					AI usage
-				</CardTitle>
-			</CardHeader>
-			<CardContent className="overflow-x-auto">
-				<table className="w-full text-xs">
-					<thead>
-						<tr className="border-b">
-							<th className="py-1.5 pr-2 text-left font-medium text-muted-foreground">
-								Model
-							</th>
-							<th className="py-1.5 pr-2 text-right font-medium text-muted-foreground">
-								Calls
-							</th>
-							<th className="py-1.5 pr-2 text-right font-medium text-muted-foreground">
-								In
-							</th>
-							<th className="py-1.5 pr-2 text-right font-medium text-muted-foreground">
-								Out
-							</th>
-							<th className="py-1.5 text-right font-medium text-muted-foreground">
-								Cost
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{grouped.map((row) => (
-							<tr
-								key={row.model}
-								className="border-b last:border-0"
-							>
-								<td className="py-1.5 pr-2 font-mono text-muted-foreground">
-									{row.model.length > 20
-										? `${row.model.slice(0, 18)}…`
-										: row.model}
-								</td>
-								<td className="py-1.5 pr-2 text-right font-mono">
-									{row.calls}
-								</td>
-								<td className="py-1.5 pr-2 text-right font-mono">
-									{formatNumber(row.input_tokens)}
-								</td>
-								<td className="py-1.5 pr-2 text-right font-mono">
-									{formatNumber(row.output_tokens)}
-								</td>
-								<td className="py-1.5 text-right font-mono">
-									{formatCost(row.cost)}
-								</td>
-							</tr>
-						))}
-					</tbody>
-					{totalsTyped ? (
-						<tfoot>
-							<tr className="bg-muted/40 font-medium">
-								<td className="py-1.5 pr-2">Total</td>
-								<td className="py-1.5 pr-2 text-right font-mono">
-									{totalsTyped.call_count}
-								</td>
-								<td className="py-1.5 pr-2 text-right font-mono">
-									{formatNumber(
-										totalsTyped.total_input_tokens,
-									)}
-								</td>
-								<td className="py-1.5 pr-2 text-right font-mono">
-									{formatNumber(
-										totalsTyped.total_output_tokens,
-									)}
-								</td>
-								<td className="py-1.5 text-right font-mono">
-									{formatCost(totalsTyped.total_cost)}
-								</td>
-							</tr>
-						</tfoot>
-					) : null}
-				</table>
-			</CardContent>
-		</Card>
-	);
-}
-
-export default AgentRunDetailPage;

@@ -18,6 +18,9 @@ function NavigationStateProbe() {
 	);
 }
 
+const mockAuth = vi.fn();
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => mockAuth() }));
+
 const mockUseAgentStats = vi.fn();
 vi.mock("@/services/agents", () => ({
 	useAgentStats: (id: string | undefined) => mockUseAgentStats(id),
@@ -74,6 +77,8 @@ function makeRun(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+	mockListModelProfiles.mockClear();
+	mockAuth.mockReturnValue({ isPlatformAdmin: true });
 	mockUseAgentStats.mockReturnValue({ data: baseStats, isLoading: false });
 	mockUseAgentRuns.mockReturnValue({
 		data: { items: [makeRun()], total: 1, next_cursor: null },
@@ -146,6 +151,13 @@ describe("AgentOverviewTab", () => {
 		await renderTab();
 		expect(await screen.findByText("Support profile")).toBeInTheDocument();
 		expect(screen.getByText("Model profile")).toBeInTheDocument();
+	});
+
+	it("does not request admin model profiles for organization users", async () => {
+		mockAuth.mockReturnValue({ isPlatformAdmin: false });
+		await renderTab();
+		expect(screen.getByText("Primary profile assignment")).toBeVisible();
+		expect(mockListModelProfiles).not.toHaveBeenCalled();
 	});
 
 	it("renders the recent runs list", async () => {
@@ -267,4 +279,49 @@ describe("AgentOverviewTab", () => {
 			screen.getByText(/no runs yet for this agent/i),
 		).toBeInTheDocument();
 	});
+});
+
+it("shows retryable read errors instead of empty activity", async () => {
+	const retryStats = vi.fn();
+	const retryRuns = vi.fn();
+	mockUseAgentStats.mockReturnValue({
+		data: undefined,
+		isLoading: false,
+		isError: true,
+		refetch: retryStats,
+	});
+	mockUseAgentRuns.mockReturnValue({
+		data: undefined,
+		isLoading: false,
+		isError: true,
+		refetch: retryRuns,
+	});
+	const { user } = await renderTab();
+	expect(screen.getByText("Could not load statistics.")).toBeVisible();
+	expect(screen.getByText("Could not load recent runs.")).toBeVisible();
+	expect(screen.queryByText("No activity yet")).not.toBeInTheDocument();
+	expect(
+		screen.queryByText("No runs yet for this agent."),
+	).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry statistics" }));
+	await user.click(screen.getByRole("button", { name: "Retry recent runs" }));
+	expect(retryStats).toHaveBeenCalledOnce();
+	expect(retryRuns).toHaveBeenCalledOnce();
+});
+
+it("retains cached activity when refresh fails", async () => {
+	mockUseAgentStats.mockReturnValue({
+		data: baseStats,
+		isError: true,
+		isLoading: false,
+	});
+	mockUseAgentRuns.mockReturnValue({
+		data: { items: [makeRun()] },
+		isError: true,
+		isLoading: false,
+	});
+	await renderTab();
+	expect(screen.getByText("Help me")).toBeVisible();
+	expect(screen.getByText("95%")).toBeVisible();
+	expect(screen.getByText("Could not load recent runs.")).toBeVisible();
 });

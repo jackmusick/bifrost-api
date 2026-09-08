@@ -47,14 +47,14 @@ export function QueueBanner({
 
 	const actionContent = (
 		<>
-			<Sparkles size={13} /> {actionLabel}
+			<Sparkles className="size-4 shrink-0" aria-hidden="true" /> {actionLabel}
 		</>
 	);
 
 	return (
 		<div
 			className={cn(
-				"flex items-center justify-between gap-3 rounded-2xl bg-rose-500/10 shadow-sm ring-1 ring-rose-500/30 px-4 py-3",
+				"flex min-w-0 flex-col items-stretch justify-between gap-3 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/30 bg-[var(--bf-warning-soft)] p-4 sm:flex-row sm:items-center",
 				className,
 			)}
 			data-slot="queue-banner"
@@ -62,28 +62,28 @@ export function QueueBanner({
 		>
 			<div className="flex min-w-0 items-start gap-3">
 				<span
-					className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-rose-500"
+					className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-[var(--bf-warning)]"
 					aria-hidden
 				/>
-				<div className="min-w-0">
+				<div className="min-w-0 [overflow-wrap:anywhere]">
 					<div className="text-sm font-medium">
 						{count} flagged run{count === 1 ? "" : "s"} in tuning queue
 					</div>
-					<div className="mt-0.5 text-xs text-muted-foreground">
+					<div className="mt-1 text-sm text-muted-foreground">
 						{subtitle}
 					</div>
 				</div>
 			</div>
-			<div className="flex shrink-0 items-center gap-2">
+			<div className="flex min-w-0 shrink-0 items-center gap-2 sm:max-w-[45%]">
 				{actionHref ? (
-					<Button size="sm" className="text-xs" asChild>
+					<Button size="sm" className="min-h-11 h-auto flex-1 whitespace-normal py-2 text-sm sm:flex-none" asChild>
 						<Link to={actionHref}>{actionContent}</Link>
 					</Button>
 				) : onAction ? (
 					<Button
 						type="button"
 						size="sm"
-						className="text-xs"
+						className="min-h-11 h-auto flex-1 whitespace-normal py-2 text-sm sm:flex-none"
 						onClick={onAction}
 					>
 						{actionContent}
@@ -96,7 +96,7 @@ export function QueueBanner({
 						size="icon-sm"
 						onClick={onDismiss}
 						aria-label="Dismiss"
-						className="text-muted-foreground"
+						className="size-11 shrink-0 text-muted-foreground"
 					>
 						<X size={14} />
 					</Button>

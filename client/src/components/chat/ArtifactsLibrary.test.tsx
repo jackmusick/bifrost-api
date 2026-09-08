@@ -68,11 +68,62 @@ describe("ArtifactsLibrary", () => {
 		await screen.findByText("Welcome Page.html");
 
 		const uploadedFilter = screen.getByRole("button", { name: "Uploaded" });
-		expect(uploadedFilter).toHaveClass("min-h-11", "sm:min-h-7");
+		expect(uploadedFilter).toHaveAttribute("aria-pressed", "false");
 		await user.click(uploadedFilter);
+		expect(uploadedFilter).toHaveAttribute("aria-pressed", "true");
 		await waitFor(() =>
 			expect(screen.queryByText("Welcome Page.html")).not.toBeInTheDocument(),
 		);
 		expect(screen.getByText("Source Notes.txt")).toBeInTheDocument();
+	});
+
+	it("renames an artifact with Enter and returns focus to the manage trigger", async () => {
+		services.renameChatArtifact.mockResolvedValueOnce({
+			...artifacts[0],
+			filename: "Renamed Page.html",
+		});
+
+		const { user } = renderWithProviders(<ArtifactsLibrary />);
+		await screen.findByText("Welcome Page.html");
+
+		await user.click(
+			screen.getByRole("button", { name: "Manage Welcome Page.html" }),
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+
+		const input = screen.getByRole("textbox", { name: "Filename" });
+		await user.clear(input);
+		await user.type(input, "Renamed Page.html{Enter}");
+
+		await waitFor(() =>
+			expect(services.renameChatArtifact).toHaveBeenCalledWith(
+				"generated-1",
+				"Renamed Page.html",
+			),
+		);
+		await waitFor(() =>
+			expect(screen.getByText("Renamed Page.html")).toBeInTheDocument(),
+		);
+		expect(
+			screen.getByRole("button", { name: "Manage Renamed Page.html" }),
+		).toHaveFocus();
+	});
+
+	it("deletes an artifact and returns focus to the heading fallback", async () => {
+		services.deleteChatArtifact.mockResolvedValueOnce(undefined);
+
+		const { user } = renderWithProviders(<ArtifactsLibrary />);
+		await screen.findByText("Welcome Page.html");
+
+		await user.click(
+			screen.getByRole("button", { name: "Manage Welcome Page.html" }),
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+		await user.click(screen.getByRole("button", { name: /^delete$/i }));
+
+		await waitFor(() =>
+			expect(screen.queryByText("Welcome Page.html")).not.toBeInTheDocument(),
+		);
+		expect(screen.getByRole("heading", { name: "Artifacts" })).toHaveFocus();
 	});
 });

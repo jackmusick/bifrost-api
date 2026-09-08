@@ -155,4 +155,38 @@ describe("FlagConversation", () => {
 			screen.getByRole("button", { name: /send/i }),
 		).toBeDisabled();
 	});
+
+	it("uses reduced-motion scroll behavior when the user prefers less motion", () => {
+		const scrollTo = vi.fn();
+		const matchMedia = vi.fn((query: string) => ({
+			matches: query.includes("prefers-reduced-motion"),
+			media: query,
+			onchange: null,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		}));
+
+		Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+			configurable: true,
+			value: scrollTo,
+		});
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: matchMedia,
+		});
+
+		renderWithProviders(
+			<FlagConversation
+				conversation={makeConversation([
+					{ kind: "user", content: "still wrong" },
+				])}
+				onSend={() => {}}
+			/>,
+		);
+
+		expect(scrollTo).toHaveBeenCalledWith(
+			expect.objectContaining({ behavior: "auto" }),
+		);
+	});
 });

@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import { AlertCircle, CheckCircle2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 import { authFetch } from "@/lib/api-client";
+import { copyToClipboard } from "@/lib/clipboard";
+import { getErrorMessage } from "@/lib/api-error";
 
 interface ValidationResult {
 	valid: boolean;
@@ -25,68 +29,171 @@ const EXAMPLE_EXPRESSIONS = [
 export function CronTester() {
 	const [expression, setExpression] = useState("");
 	const [result, setResult] = useState<ValidationResult | null>(null);
-	const [copied, setCopied] = useState(false);
+	const [copyResult, setCopyResult] = useState<{
+		expression: string;
+		state: "copying" | "copied" | "error";
+	} | null>(null);
+	const [isValidating, setIsValidating] = useState(false);
+	const copyResetTimerRef = useRef<number | null>(null);
+	const isMountedRef = useRef(true);
+	const validationRequestIdRef = useRef(0);
+	const prefersReducedMotion = useReducedMotion();
+	const copyState = copyResult?.expression === expression ? copyResult.state : "idle";
 
-	const validateExpression = useCallback(async (expr: string) => {
-		if (!expr.trim()) return;
+	const validateExpression = useCallback(async (expr: string, requestId: number) => {
+		if (!expr.trim()) {
+			return;
+		}
 
+		if (!isMountedRef.current || requestId !== validationRequestIdRef.current) {
+			return;
+		}
+
+		setIsValidating(true);
 		try {
 			const response = await authFetch("/api/schedules/validate", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ expression: expr }),
 			});
-			const data = await response.json();
-			setResult(data);
+			const bodyText = await response.text().catch(() => "");
+			if (!isMountedRef.current || requestId !== validationRequestIdRef.current) {
+				return;
+			}
+			if (!response.ok) {
+				let detail = bodyText.trim();
+				try { detail = getErrorMessage(JSON.parse(bodyText), "Validation failed"); } catch { /* Keep plain-text server errors readable. */ }
+				const statusText = response.statusText || `HTTP ${response.status}`;
+				setResult({
+					valid: false,
+					human_readable: "Failed to validate",
+					error: detail ? `${statusText}: ${detail}` : statusText,
+				});
+				return;
+			}
+			try {
+				setResult(JSON.parse(bodyText) as ValidationResult);
+			} catch {
+				setResult({
+					valid: false,
+					human_readable: "Failed to validate",
+					error: "Unable to read validation response",
+				});
+			}
 		} catch {
+			if (!isMountedRef.current || requestId !== validationRequestIdRef.current) {
+				return;
+			}
 			setResult({
 				valid: false,
 				human_readable: "Failed to validate",
 				error: "Unable to connect to validation service",
 			});
+		} finally {
+			if (isMountedRef.current && requestId === validationRequestIdRef.current) {
+				setIsValidating(false);
+			}
 		}
 	}, []);
 
 	// Debounced validation - only validate non-empty expressions
 	useEffect(() => {
-		if (!expression) {
-			// Don't call setResult in effect - result will be filtered in render
+		if (!expression.trim()) {
 			return;
 		}
 
 		const timer = setTimeout(() => {
-			validateExpression(expression);
+			void validateExpression(expression, validationRequestIdRef.current);
 		}, 500);
 
 		return () => clearTimeout(timer);
 	}, [expression, validateExpression]);
 
+	useEffect(() => {
+		isMountedRef.current = true;
+		return () => {
+			isMountedRef.current = false;
+			if (copyResetTimerRef.current !== null) {
+				window.clearTimeout(copyResetTimerRef.current);
+			}
+		};
+	}, []);
+
 	// Computed result - null when expression is empty
 	const displayResult = expression ? result : null;
 
-	const handleCopy = () => {
-		navigator.clipboard.writeText(expression);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
+	const handleExpressionChange = (nextExpression: string) => {
+		validationRequestIdRef.current += 1;
+		setExpression(nextExpression);
+		setResult(null);
+		setIsValidating(false);
+	};
+
+	const handleCopy = async () => {
+		if (!isMountedRef.current || copyState === "copying") return;
+		const copyTarget = expression;
+		setCopyResult({ expression: copyTarget, state: "copying" });
+		const copied = await copyToClipboard(expression);
+		if (!isMountedRef.current) return;
+		if (!copied) {
+			setCopyResult({ expression: copyTarget, state: "error" });
+			return;
+		}
+		setCopyResult({ expression: copyTarget, state: "copied" });
+		if (copyResetTimerRef.current !== null) {
+			window.clearTimeout(copyResetTimerRef.current);
+		}
+		copyResetTimerRef.current = window.setTimeout(() => {
+			setCopyResult((current) =>
+				current?.expression === copyTarget ? null : current,
+			);
+			copyResetTimerRef.current = null;
+		}, 2000);
+	};
+
+	const handleRetry = () => {
+		validationRequestIdRef.current += 1;
+		void validateExpression(expression, validationRequestIdRef.current);
 	};
 
 	return (
 		<div className="space-y-4">
-			<div className="flex gap-2">
+			<div className="flex items-start gap-2">
 				<Input
 					placeholder="0 9 * * *"
+					aria-label="Cron expression"
 					value={expression}
-					onChange={(e) => setExpression(e.target.value)}
-					className="font-mono"
+					onChange={(e) => handleExpressionChange(e.target.value)}
+					className="min-h-11 min-w-0 flex-1 font-mono"
+					aria-describedby="cron-tester-help"
 				/>
 				{expression && (
 					<Button
 						variant="outline"
-						size="icon"
-						onClick={handleCopy}
-						title="Copy expression"
+						size="icon-lg"
+						onClick={() => void handleCopy()}
+						disabled={copyState === "copying"}
+						aria-label={
+							copyState === "copying"
+								? "Copying expression"
+								: copyState === "copied"
+									? "Copied expression"
+									: copyState === "error"
+										? "Retry expression copy"
+										: "Copy expression"
+						}
+						title={
+							copyState === "copying"
+								? "Copying expression"
+								: copyState === "copied"
+									? "Copied expression"
+									: copyState === "error"
+										? "Retry expression copy"
+										: "Copy expression"
+						}
+						className="min-h-11 shrink-0"
 					>
-						{copied ? (
+						{copyState === "copied" ? (
 							<Check className="h-4 w-4" />
 						) : (
 							<Copy className="h-4 w-4" />
@@ -95,29 +202,62 @@ export function CronTester() {
 				)}
 			</div>
 
+			{copyState === "error" && (
+				<p role="alert" className="text-xs leading-5 text-[var(--bf-danger)]">
+					Could not copy the cron expression. Try again, or select it manually.
+				</p>
+			)}
+
+			<p id="cron-tester-help" className="text-xs leading-5 text-muted-foreground">
+				Paste a cron expression to validate it and preview the next run times.
+			</p>
+
+			{isValidating && (
+				<div className="flex items-center gap-2 text-sm text-muted-foreground">
+					<AlertCircle
+						className={cn(
+							"h-4 w-4",
+							!prefersReducedMotion && "motion-safe:animate-pulse",
+						)}
+					/>
+					<span>Validating expression…</span>
+				</div>
+			)}
+
 			{displayResult && (
-				<div className="space-y-3">
+				<div className="space-y-3" aria-live="polite">
 					{displayResult.valid ? (
-						<Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-							<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-							<AlertDescription className="text-green-800 dark:text-green-200">
+						<Alert role="status" className="border-[var(--bf-success)]/20 bg-[var(--bf-success-soft)]/60 text-[var(--bf-success)]">
+							<CheckCircle2 className="h-4 w-4 text-[var(--bf-success)]" />
+							<AlertDescription className="leading-6 text-[var(--bf-success)]">
 								{displayResult.human_readable}
 							</AlertDescription>
 						</Alert>
 					) : (
-						<Alert variant="destructive">
-							<AlertCircle className="h-4 w-4" />
-							<AlertDescription>
-								{displayResult.error ||
-									displayResult.human_readable}
-							</AlertDescription>
+						<Alert className="border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 text-[var(--bf-danger)]">
+							<AlertCircle className="h-4 w-4 text-[var(--bf-danger)]" />
+							<div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+								<AlertDescription className="min-w-0 leading-6 text-[var(--bf-danger)] [overflow-wrap:anywhere]">
+									{displayResult.error || displayResult.human_readable}
+								</AlertDescription>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									className="min-h-11 shrink-0 self-start"
+									onClick={handleRetry}
+									disabled={isValidating}
+								>
+									Retry
+								</Button>
+							</div>
 						</Alert>
 					)}
 
 					{displayResult.warning && (
-						<Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-							<AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-							<AlertDescription className="text-yellow-800 dark:text-yellow-200">
+						<Alert className="border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60 text-[var(--bf-warning)]">
+							<AlertCircle className="h-4 w-4 text-[var(--bf-warning)]" />
+							<AlertDescription className="leading-6 text-[var(--bf-warning)] [overflow-wrap:anywhere]">
 								{displayResult.warning}
 							</AlertDescription>
 						</Alert>
@@ -126,24 +266,22 @@ export function CronTester() {
 					{displayResult.next_runs &&
 						displayResult.next_runs.length > 0 && (
 							<div>
-								<h4 className="text-sm font-semibold mb-2">
-									Next 5 runs:
-								</h4>
+								<h4 className="mb-2 text-sm font-semibold">Next runs</h4>
 								<div className="space-y-1">
 									{displayResult.next_runs.map((run, i) => {
 										const date = new Date(run);
 										return (
 											<div
 												key={i}
-												className="text-sm flex items-center gap-2"
+												className="grid grid-cols-[auto_1fr] gap-x-2 text-sm leading-6 sm:grid-cols-[auto_1fr_auto]"
 											>
-												<span className="text-gray-500 dark:text-gray-400">
+												<span aria-hidden="true" className="row-span-2 text-muted-foreground sm:row-span-1">
 													•
 												</span>
-												<span>
+												<span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
 													{date.toLocaleString()}
 												</span>
-												<span className="text-xs text-gray-500">
+												<span className="col-start-2 text-xs text-muted-foreground sm:col-start-auto">
 													(
 													{formatDistanceToNow(date, {
 														addSuffix: true,
@@ -160,7 +298,7 @@ export function CronTester() {
 			)}
 
 			<div>
-				<h4 className="text-sm font-semibold mb-2">Quick examples:</h4>
+				<h4 className="mb-2 text-sm font-semibold">Quick examples:</h4>
 				<div className="flex flex-wrap gap-2">
 					{EXAMPLE_EXPRESSIONS.map((ex) => (
 						<Button
@@ -168,7 +306,7 @@ export function CronTester() {
 							variant="outline"
 							size="sm"
 							onClick={() => setExpression(ex.expression)}
-							className="text-xs"
+							className="min-h-11 text-xs"
 						>
 							{ex.label}
 						</Button>

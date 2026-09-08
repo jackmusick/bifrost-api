@@ -23,6 +23,8 @@ export interface AppCodeEditorState {
 	hasUnsavedChanges: boolean;
 	/** Whether compilation is in progress */
 	isCompiling: boolean;
+	/** Last save failure, separate from compilation diagnostics. */
+	saveError: string | null;
 }
 
 export interface UseAppCodeEditorOptions {
@@ -35,7 +37,11 @@ export interface UseAppCodeEditorOptions {
 	/** Callback when save is triggered */
 	onSave?: (source: string, compiled: string) => void | Promise<void>;
 	/** Callback when compilation completes */
-	onCompile?: (source: string, compiled: string | null, errors: CompilationError[]) => void;
+	onCompile?: (
+		source: string,
+		compiled: string | null,
+		errors: CompilationError[],
+	) => void;
 }
 
 export interface UseAppCodeEditorResult {
@@ -43,6 +49,8 @@ export interface UseAppCodeEditorResult {
 	state: AppCodeEditorState;
 	/** Update the source code */
 	setSource: (source: string) => void;
+	/** Load saved source into the editor without marking it dirty. */
+	loadSource: (source: string, compiled?: string | null) => void;
 	/** Update the compiled output (e.g. after server-side compilation) */
 	setCompiled: (compiled: string | null) => void;
 	/** Trigger an immediate save */
@@ -84,6 +92,7 @@ export function useAppCodeEditor({
 		errors: [],
 		hasUnsavedChanges: false,
 		isCompiling: false,
+		saveError: null,
 	}));
 
 	const isSavingRef = useRef(false);
@@ -96,12 +105,31 @@ export function useAppCodeEditor({
 
 	// Update source code — just track changes, no compilation
 	const setSource = useCallback((newSource: string) => {
-		setState((prev) => ({
-			...prev,
-			source: newSource,
-			hasUnsavedChanges: true,
-		}));
+		setState((prev) =>
+			prev.source === newSource
+				? prev
+				: {
+						...prev,
+						source: newSource,
+						hasUnsavedChanges: true,
+					},
+		);
 	}, []);
+
+	// Load saved source without flagging the buffer dirty.
+	const loadSource = useCallback(
+		(source: string, compiled?: string | null) => {
+			setState({
+				source,
+				compiled: compiled ?? null,
+				errors: [],
+				hasUnsavedChanges: false,
+				isCompiling: false,
+				saveError: null,
+			});
+		},
+		[],
+	);
 
 	// Update compiled output (e.g. after server returns compiled code)
 	const setCompiled = useCallback((compiled: string | null) => {
@@ -113,22 +141,22 @@ export function useAppCodeEditor({
 		if (isSavingRef.current) return;
 		isSavingRef.current = true;
 
-		setState((prev) => ({ ...prev, isCompiling: true }));
+		setState((prev) => ({ ...prev, isCompiling: true, saveError: null }));
 
 		try {
 			await onSave?.(state.source, state.compiled ?? state.source);
 			setState((prev) => ({
 				...prev,
-				hasUnsavedChanges: false,
+				hasUnsavedChanges: prev.source !== state.source,
 				isCompiling: false,
+				saveError: null,
 			}));
 		} catch (error) {
 			setState((prev) => ({
 				...prev,
 				isCompiling: false,
-				errors: [{
-					message: error instanceof Error ? error.message : "Save failed",
-				}],
+				saveError:
+					error instanceof Error ? error.message : "Save failed",
 			}));
 		} finally {
 			isSavingRef.current = false;
@@ -143,6 +171,7 @@ export function useAppCodeEditor({
 			errors: [],
 			hasUnsavedChanges: false,
 			isCompiling: false,
+			saveError: null,
 		});
 	}, [initialSource, initialCompiled]);
 
@@ -154,6 +183,7 @@ export function useAppCodeEditor({
 	return {
 		state,
 		setSource,
+		loadSource,
 		setCompiled,
 		save,
 		compile,

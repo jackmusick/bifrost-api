@@ -9,6 +9,8 @@ import {
 	Trash2,
 } from "lucide-react";
 
+import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { EntityLogo } from "@/components/EntityLogo";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
@@ -57,6 +59,51 @@ function canLaunchApp(app: ApplicationListItem): boolean {
 	return app.is_published;
 }
 
+function ApplicationActions({
+	app,
+	onOpenSettings,
+	onOpenCode,
+	onDelete,
+}: { app: ApplicationListItem } & Pick<
+	ApplicationListSurfaceProps,
+	"onOpenSettings" | "onOpenCode" | "onDelete"
+>) {
+	if (!onOpenSettings && (!onOpenCode || isV2App(app)) && !onDelete)
+		return null;
+	return (
+		<RecordActionsMenu label={`${app.name} actions`}>
+			{onOpenSettings && (
+				<DropdownMenuItem
+					className="min-h-11"
+					onSelect={() => onOpenSettings(app)}
+				>
+					<Pencil aria-hidden="true" className="size-4" />
+					Settings
+				</DropdownMenuItem>
+			)}
+			{!isV2App(app) && onOpenCode && (
+				<DropdownMenuItem
+					className="min-h-11"
+					onSelect={() => onOpenCode(app)}
+				>
+					<Code2 aria-hidden="true" className="size-4" />
+					Code editor
+				</DropdownMenuItem>
+			)}
+			{onDelete && (
+				<DropdownMenuItem
+					variant="destructive"
+					className="min-h-11"
+					onSelect={() => onDelete(app)}
+				>
+					<Trash2 aria-hidden="true" className="size-4" />
+					Delete
+				</DropdownMenuItem>
+			)}
+		</RecordActionsMenu>
+	);
+}
+
 export function ApplicationListSurface({
 	apps,
 	viewMode,
@@ -73,6 +120,26 @@ export function ApplicationListSurface({
 	emptySearchActive = false,
 }: ApplicationListSurfaceProps) {
 	const terminology = useTerminology();
+	const renderName = (app: ApplicationListItem) => {
+		const open = canLaunchApp(app)
+			? () => onLaunch(app)
+			: !isV2App(app) && onPreview
+				? () => onPreview(app)
+				: undefined;
+		return (
+			<button
+				type="button"
+				disabled={!open}
+				onClick={(event) => {
+					event.stopPropagation();
+					open?.();
+				}}
+				className="min-h-11 min-w-0 text-left font-semibold [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:text-foreground"
+			>
+				{app.name}
+			</button>
+		);
+	};
 
 	if (isLoading) {
 		return <PageLoader message="Loading applications…" size="sm" />;
@@ -125,9 +192,6 @@ export function ApplicationListSurface({
 							<DataTableHead className="w-0 whitespace-nowrap">
 								Status
 							</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap">
-								Version
-							</DataTableHead>
 							<DataTableHead className="w-0 whitespace-nowrap text-right" />
 						</DataTableRow>
 					</DataTableHeader>
@@ -176,8 +240,8 @@ export function ApplicationListSurface({
 											)}
 										</DataTableCell>
 									)}
-									<DataTableCell className="font-medium">
-										<div className="flex items-center gap-2">
+									<DataTableCell className="min-w-0 font-medium">
+										<div className="flex min-w-0 flex-1 items-center gap-2">
 											<EntityLogo
 												entityType="app"
 												entityId={app.id}
@@ -188,7 +252,7 @@ export function ApplicationListSurface({
 												size={20}
 												className="h-5 w-5 shrink-0 rounded object-cover"
 											/>
-											<span>{app.name}</span>
+											{renderName(app)}
 										</div>
 									</DataTableCell>
 									<DataTableCell className="max-w-xs truncate text-muted-foreground">
@@ -199,11 +263,11 @@ export function ApplicationListSurface({
 										)}
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap">
-										<div className="flex gap-1">
+										<div className="flex flex-wrap gap-1">
 											{app.is_published && (
 												<Badge
-													variant="default"
-													className="text-xs"
+													variant="outline"
+													className="border-[var(--bf-success)]/20 bg-[var(--bf-success)]/10 text-[var(--bf-success)] text-xs"
 												>
 													{isV2App(app)
 														? "Deployed"
@@ -213,7 +277,7 @@ export function ApplicationListSurface({
 											{app.has_unpublished_changes && (
 												<Badge
 													variant="outline"
-													className="text-xs"
+													className="border-[var(--bf-warning)]/20 bg-[var(--bf-warning)]/10 text-[var(--bf-warning)] text-xs"
 												>
 													Draft
 												</Badge>
@@ -231,17 +295,11 @@ export function ApplicationListSurface({
 												)}
 										</div>
 									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap">
-										{app.is_published
-											? isV2App(app)
-												? "Deployed"
-												: "Published"
-											: "-"}
-									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap text-right">
-										<div className="flex gap-1 justify-end">
+										<div className="flex justify-end gap-1">
 											<Button
 												size="sm"
+												className="min-h-11 min-w-11 px-3 sm:min-h-0 sm:min-w-0 sm:px-2"
 												onClick={() => onLaunch(app)}
 												disabled={!canLaunchApp(app)}
 												title={
@@ -261,6 +319,7 @@ export function ApplicationListSurface({
 													<Button
 														variant="ghost"
 														size="sm"
+														className="min-h-11 min-w-11 px-3 sm:min-h-0 sm:min-w-0 sm:px-2"
 														onClick={() =>
 															onPreview(app)
 														}
@@ -276,51 +335,14 @@ export function ApplicationListSurface({
 											)}
 											{canManageApps &&
 												!app.is_solution_managed && (
-													<>
-														{onOpenSettings && (
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	onOpenSettings(
-																		app,
-																	)
-																}
-																title="Settings"
-															>
-																<Pencil className="h-4 w-4" />
-															</Button>
-														)}
-														{!isV2App(app) &&
-															onOpenCode && (
-																<Button
-																	variant="ghost"
-																	size="sm"
-																	onClick={() =>
-																		onOpenCode(
-																			app,
-																		)
-																	}
-																	title="Code editor"
-																>
-																	<Code2 className="h-4 w-4" />
-																</Button>
-															)}
-														{onDelete && (
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	onDelete(
-																		app,
-																	)
-																}
-																title={`Delete ${term(terminology, "app", "formalSingularLower")}`}
-															>
-																<Trash2 className="h-4 w-4" />
-															</Button>
-														)}
-													</>
+													<ApplicationActions
+														app={app}
+														onOpenSettings={
+															onOpenSettings
+														}
+														onOpenCode={onOpenCode}
+														onDelete={onDelete}
+													/>
 												)}
 										</div>
 									</DataTableCell>
@@ -334,7 +356,7 @@ export function ApplicationListSurface({
 	}
 
 	return (
-		<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+		<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))]">
 			{apps.map((app) => {
 				const opensPreview =
 					!isV2App(app) && !canLaunchApp(app) && Boolean(onPreview);
@@ -351,8 +373,6 @@ export function ApplicationListSurface({
 				return (
 					<div
 						key={app.id}
-						role="button"
-						tabIndex={0}
 						onPointerEnter={() =>
 							prefetchApplicationDetail(app, opensPreview)
 						}
@@ -360,20 +380,11 @@ export function ApplicationListSurface({
 							prefetchApplicationDetail(app, opensPreview)
 						}
 						onClick={defaultTarget}
-						onKeyDown={(e) => {
-							if (
-								defaultTarget &&
-								(e.key === "Enter" || e.key === " ")
-							) {
-								e.preventDefault();
-								defaultTarget();
-							}
-						}}
-						className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 transition-all hover:-translate-y-px hover:ring-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:ring-foreground/10 dark:hover:ring-foreground/15"
+						className="group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-[var(--bf-radius-surface)] bg-card ring-1 ring-border transition-colors duration-[var(--bf-motion-feedback)] hover:ring-primary/40 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring "
 					>
 						<div className="border-b px-4 py-3">
 							<div className="flex items-start justify-between gap-3">
-								<div className="flex min-w-0 items-center gap-2">
+								<div className="flex min-w-0 flex-1 items-center gap-2">
 									<EntityLogo
 										entityType="app"
 										entityId={app.id}
@@ -384,70 +395,40 @@ export function ApplicationListSurface({
 										size={20}
 										className="h-5 w-5 rounded object-cover shrink-0"
 									/>
-									<span className="truncate text-[14.5px] font-semibold">
-										{app.name}
-									</span>
+									{renderName(app)}
 								</div>
 								{app.is_solution_managed ? (
 									<SolutionManagedBadge
 										solutionId={app.solution_id}
 									/>
 								) : canManageApps ? (
-									<div className="flex shrink-0 gap-1">
-										{onOpenSettings && (
-											<Button
-												type="button"
-												variant="ghost"
-												size="icon"
-												className="h-6 w-6"
-												onClick={(e) => {
-													e.stopPropagation();
-													onOpenSettings(app);
-												}}
-												title="Settings"
-												aria-label="Settings"
-											>
-												<Pencil className="h-3.5 w-3.5" />
-											</Button>
-										)}
-										{!isV2App(app) && onOpenCode && (
-											<Button
-												type="button"
-												variant="ghost"
-												size="icon"
-												className="h-6 w-6"
-												onClick={(e) => {
-													e.stopPropagation();
-													onOpenCode(app);
-												}}
-												title="Code editor"
-												aria-label="Code editor"
-											>
-												<Code2 className="h-3.5 w-3.5" />
-											</Button>
-										)}
-									</div>
+									<ApplicationActions
+										app={app}
+										onOpenSettings={onOpenSettings}
+										onOpenCode={onOpenCode}
+										onDelete={onDelete}
+									/>
 								) : null}
 							</div>
 						</div>
 
-						<div className="relative flex-1 px-4 py-3 min-h-[72px]">
+						<div className="relative min-h-[72px] flex-1 px-4 py-3">
 							{app.description ? (
-								<p className="line-clamp-2 text-[13px] text-muted-foreground">
+								<p className="[overflow-wrap:anywhere] text-[13px] text-muted-foreground">
 									{app.description}
 								</p>
 							) : (
-								<p className="text-[13px] italic text-muted-foreground/50">
+								<p className="text-[13px] italic text-muted-foreground">
 									No description
 								</p>
 							)}
 
 							{!isV2App(app) && (
-								<div className="pointer-events-none absolute inset-0 flex flex-col items-start justify-center gap-1.5 bg-background/85 px-4 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+								<div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
 									{app.is_published && (
 										<button
 											type="button"
-											className="pointer-events-auto text-left text-[13px] font-medium text-foreground hover:text-primary"
+											className="pointer-events-auto min-h-11 text-left text-[13px] font-medium text-foreground hover:text-primary"
 											onClick={(e) => {
 												e.stopPropagation();
 												onLaunch(app);
@@ -462,7 +443,7 @@ export function ApplicationListSurface({
 										onPreview && (
 											<button
 												type="button"
-												className="pointer-events-auto text-left text-[13px] font-medium text-foreground hover:text-primary"
+												className="pointer-events-auto min-h-11 text-left text-[13px] font-medium text-foreground hover:text-primary"
 												onClick={(e) => {
 													e.stopPropagation();
 													onPreview(app);
@@ -476,12 +457,12 @@ export function ApplicationListSurface({
 							)}
 						</div>
 
-						<div className="flex items-center justify-between gap-2 border-t px-4 py-2.5">
-							<div className="flex items-center gap-1.5">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
+							<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 								{app.is_published && (
 									<Badge
-										variant="default"
-										className="text-[10px] px-1.5 py-0"
+										variant="outline"
+										className="border-[var(--bf-success)]/20 bg-[var(--bf-success)]/10 text-[var(--bf-success)] px-1.5 py-0 text-xs"
 									>
 										{isV2App(app)
 											? "Deployed"
@@ -491,7 +472,7 @@ export function ApplicationListSurface({
 								{app.has_unpublished_changes && (
 									<Badge
 										variant="outline"
-										className="text-[10px] px-1.5 py-0"
+										className="border-[var(--bf-warning)]/20 bg-[var(--bf-warning)]/10 px-1.5 py-0 text-[10px] text-[var(--bf-warning)]"
 									>
 										Draft
 									</Badge>
@@ -512,7 +493,7 @@ export function ApplicationListSurface({
 											? "outline"
 											: "default"
 									}
-									className="text-[10px] px-1.5 py-0"
+									className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] px-1.5 py-0.5 text-[10px]"
 								>
 									{app.organization_id ? (
 										<Building2 className="mr-1 h-3 w-3" />

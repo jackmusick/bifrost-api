@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { renderWithProviders, screen, within } from "@/test-utils";
+import { renderWithProviders, screen } from "@/test-utils";
 import type { FormField } from "@/lib/client-types";
 
 // Stub FieldConfigDialog so we don't boot Monaco / services here. The dialog
@@ -38,9 +38,7 @@ describe("FieldsPanel — empty state", () => {
 	it("shows an empty message and the Add Field button when fields=[]", () => {
 		renderWithProviders(<FieldsPanel fields={[]} setFields={vi.fn()} />);
 
-		expect(
-			screen.getByText(/no fields added yet/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/no fields added yet/i)).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /add field/i }),
 		).toBeInTheDocument();
@@ -71,7 +69,9 @@ describe("FieldsPanel — with fields", () => {
 	];
 
 	it("renders each field with its label, name, and type", () => {
-		renderWithProviders(<FieldsPanel fields={fields} setFields={vi.fn()} />);
+		renderWithProviders(
+			<FieldsPanel fields={fields} setFields={vi.fn()} />,
+		);
 
 		expect(screen.getByText("First Name")).toBeInTheDocument();
 		expect(screen.getByText("Email")).toBeInTheDocument();
@@ -81,7 +81,9 @@ describe("FieldsPanel — with fields", () => {
 	});
 
 	it("marks required fields with a Required badge", () => {
-		renderWithProviders(<FieldsPanel fields={fields} setFields={vi.fn()} />);
+		renderWithProviders(
+			<FieldsPanel fields={fields} setFields={vi.fn()} />,
+		);
 
 		expect(screen.getByText(/^required$/i)).toBeInTheDocument();
 	});
@@ -92,13 +94,7 @@ describe("FieldsPanel — with fields", () => {
 			<FieldsPanel fields={fields} setFields={setFields} />,
 		);
 
-		// Locate the Email row by walking up from its label to the bordered row div.
-		const emailRow = screen
-			.getByText("Email")
-			.closest("div.flex.items-center.gap-3")!;
-		const buttonsInRow = within(emailRow as HTMLElement).getAllByRole("button");
-		// Order within the row: [moveUp, moveDown, edit, trash].
-		await user.click(buttonsInRow[buttonsInRow.length - 1]!);
+		await user.click(screen.getByRole("button", { name: "Remove Email" }));
 
 		// Confirm in the AlertDialog. There are two "Remove Field" elements
 		// (the heading and the confirm button); pick the button.
@@ -119,14 +115,10 @@ describe("FieldsPanel — with fields", () => {
 			<FieldsPanel fields={fields} setFields={setFields} />,
 		);
 
-		// Locate the Email row (index 1) and click its move-up button.
-		const emailRow = screen
-			.getByText("Email")
-			.closest("div.flex.items-center.gap-3")!;
-		const rowButtons = within(emailRow as HTMLElement).getAllByRole("button");
-		// Order: [moveUp, moveDown, edit, trash]. The moveUp on the second row
-		// should be enabled.
-		await user.click(rowButtons[0]!);
+		await user.click(screen.getByRole("button", { name: "Move Email up" }));
+		expect(screen.getByRole("status")).toHaveTextContent(
+			"Email moved to position 1 of 2",
+		);
 
 		expect(setFields).toHaveBeenCalledTimes(1);
 		const reordered = setFields.mock.calls[0]![0];

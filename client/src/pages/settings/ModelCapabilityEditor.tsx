@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	CircleHelp,
 	CheckCircle2,
@@ -75,16 +81,68 @@ export function ModelCapabilityEditor({
 	value: ModelCapabilities | null;
 	onChange: (value: ModelCapabilities) => void;
 }) {
-	const [detecting, setDetecting] = useState(false);
-	const [verifying, setVerifying] = useState(false);
+	const [pending, setPending] = useState<{
+		kind: "detect" | "verify";
+		provider: string;
+		model: string;
+		endpoint: string;
+		apiKey?: string;
+	} | null>(null);
+	const pendingForCurrentInput =
+		pending?.provider === provider &&
+		pending?.model === model &&
+		pending?.endpoint === endpoint &&
+		pending?.apiKey === apiKey;
+	const detecting = pendingForCurrentInput && pending?.kind === "detect";
+	const verifying = pendingForCurrentInput && pending?.kind === "verify";
+	const mountedRef = useRef(false);
+	const requestVersion = useRef(0);
+	const currentRequest = useRef<{
+		kind: "detect" | "verify";
+		id: number;
+	} | null>(null);
 	const previousModel = useRef(model);
 	const capabilities = value ?? UNKNOWN;
 	const verified = capabilities.source !== "unknown";
 	const SourceIcon = verified ? CheckCircle2 : CircleHelp;
 
+	const invalidateRequests = useCallback(() => {
+		requestVersion.current += 1;
+		currentRequest.current = null;
+	}, []);
+
+	useLayoutEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			requestVersion.current += 1;
+			currentRequest.current = null;
+		};
+	}, []);
+
+	useLayoutEffect(() => {
+		invalidateRequests();
+	}, [provider, model, endpoint, apiKey, invalidateRequests]);
+
+	const beginRequest = (kind: "detect" | "verify") => {
+		if (
+			!mountedRef.current ||
+			!model.trim() ||
+			currentRequest.current?.kind === kind
+		)
+			return null;
+		const id = ++requestVersion.current;
+		currentRequest.current = { kind, id };
+		setPending({ kind, provider, model, endpoint, apiKey });
+		return id;
+	};
+
+	const isCurrentRequest = (id: number) =>
+		mountedRef.current && currentRequest.current?.id === id;
+
 	const detect = async (announce = false) => {
-		if (!model.trim()) return;
-		setDetecting(true);
+		const requestId = beginRequest("detect");
+		if (requestId === null) return;
 		try {
 			const response = await authFetch(
 				"/api/admin/llm/model-capabilities",
@@ -103,6 +161,9 @@ export function ModelCapabilityEditor({
 				capabilities: ModelCapabilities;
 				message: string;
 			};
+			if (!isCurrentRequest(requestId)) {
+				return;
+			}
 			onChange(result.capabilities);
 			if (announce) {
 				toast.success("Capabilities Updated", {
@@ -110,18 +171,24 @@ export function ModelCapabilityEditor({
 				});
 			}
 		} catch {
+			if (!isCurrentRequest(requestId)) {
+				return;
+			}
 			toast.error("Capability Lookup Failed", {
 				description:
 					"Verify with the provider or set each capability manually.",
 			});
 		} finally {
-			setDetecting(false);
+			if (isCurrentRequest(requestId)) {
+				invalidateRequests();
+				setPending(null);
+			}
 		}
 	};
 
 	const verify = async () => {
-		if (!model.trim()) return;
-		setVerifying(true);
+		const requestId = beginRequest("verify");
+		if (requestId === null) return;
 		try {
 			const response = await authFetch(
 				"/api/admin/llm/model-capabilities/verify",
@@ -141,6 +208,9 @@ export function ModelCapabilityEditor({
 				message?: string;
 				detail?: string;
 			};
+			if (!isCurrentRequest(requestId)) {
+				return;
+			}
 			if (!response.ok || !body.capabilities) {
 				throw new Error(
 					body.detail || "Capability verification failed",
@@ -151,6 +221,9 @@ export function ModelCapabilityEditor({
 				description: body.message || "Provider verification completed.",
 			});
 		} catch (error) {
+			if (!isCurrentRequest(requestId)) {
+				return;
+			}
 			toast.error("Capability Verification Failed", {
 				description:
 					error instanceof Error
@@ -158,7 +231,10 @@ export function ModelCapabilityEditor({
 						: "Confirm the endpoint, key, and model, then retry.",
 			});
 		} finally {
-			setVerifying(false);
+			if (isCurrentRequest(requestId)) {
+				invalidateRequests();
+				setPending(null);
+			}
 		}
 	};
 
@@ -166,13 +242,18 @@ export function ModelCapabilityEditor({
 		if (previousModel.current === model) return;
 		previousModel.current = model;
 		if (!model.trim()) return;
-		const timer = window.setTimeout(() => void detect(), 450);
+		const scheduledVersion = requestVersion.current;
+		const timer = window.setTimeout(() => {
+			if (requestVersion.current === scheduledVersion) void detect();
+		}, 450);
 		return () => window.clearTimeout(timer);
 		// Detection deliberately follows model selection; callback identity is not an input.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [model]);
+	}, [model, provider, endpoint, apiKey]);
 
 	const toggle = (key: CapabilityKey) => {
+		invalidateRequests();
+		setPending(null);
 		onChange({
 			...capabilities,
 			[key]: !capabilities[key],
@@ -182,7 +263,7 @@ export function ModelCapabilityEditor({
 
 	return (
 		<TooltipProvider delayDuration={150}>
-			<div className="flex min-h-5 flex-wrap items-center gap-0.5 text-xs">
+			<div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
 				{CAPABILITIES.map((item) => {
 					const Icon = item.icon;
 					const unknown = capabilities.source === "unknown";
@@ -200,18 +281,18 @@ export function ModelCapabilityEditor({
 									onClick={() => toggle(item.key)}
 									aria-label={`${item.label}: ${state}`}
 									className={cn(
-										"grid h-6 w-6 place-items-center rounded-md outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
-										unknown &&
-											"text-amber-600 dark:text-amber-400",
+										"inline-flex min-h-11 items-center gap-2 px-3 rounded-[var(--bf-radius-control)] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+										unknown && "text-[var(--bf-warning)]",
 										supported &&
 											!unknown &&
-											"text-green-600 dark:text-green-400",
+											"text-[var(--bf-success)]",
 										!supported &&
 											!unknown &&
-											"text-red-600 dark:text-red-400",
+											"text-[var(--bf-danger)]",
 									)}
 								>
-									<Icon className="h-3.5 w-3.5" />
+									<Icon className="size-4 shrink-0" />
+									<span>{item.label}</span>
 								</button>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -225,7 +306,7 @@ export function ModelCapabilityEditor({
 					);
 				})}
 
-				<div className="ml-auto flex items-center gap-0.5">
+				<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
 					{capabilities.source === "unknown" && (
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -233,13 +314,13 @@ export function ModelCapabilityEditor({
 									type="button"
 									variant="ghost"
 									size="icon"
-									className="h-6 w-6 text-blue-600 dark:text-blue-400"
+									className="size-11 text-[var(--bf-info)]"
 									onClick={() => void verify()}
 									disabled={!model.trim() || verifying}
 									aria-label="Verify With Provider"
 								>
 									{verifying ? (
-										<Loader2 className="h-3 w-3 animate-spin" />
+										<Loader2 className="h-3 w-3 motion-safe:animate-spin" />
 									) : (
 										<ShieldCheck className="h-3 w-3" />
 									)}
@@ -254,21 +335,21 @@ export function ModelCapabilityEditor({
 						<TooltipTrigger asChild>
 							<button
 								type="button"
-								className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-normal text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+								className="flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-3 text-sm font-normal text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
 								onClick={() => void detect(true)}
 								disabled={!model.trim() || detecting}
 								aria-label="Refresh Model Capabilities"
 							>
 								<span>{sourceLabel(capabilities.source)}</span>
 								{detecting ? (
-									<Loader2 className="h-3 w-3 animate-spin" />
+									<Loader2 className="h-3 w-3 motion-safe:animate-spin" />
 								) : (
 									<SourceIcon
 										className={cn(
 											"h-3 w-3",
 											verified
-												? "text-green-600 dark:text-green-400"
-												: "text-amber-600 dark:text-amber-400",
+												? "text-[var(--bf-success)]"
+												: "text-[var(--bf-warning)]",
 										)}
 										aria-hidden="true"
 									/>

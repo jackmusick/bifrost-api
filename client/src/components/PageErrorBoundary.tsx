@@ -51,32 +51,32 @@ export class PageErrorBoundary extends Component<Props, State> {
 	render() {
 		if (this.state.hasError) {
 			return (
-				<div className="flex items-center justify-center min-h-[400px] p-4">
-					<Card className="w-full max-w-lg">
-						<CardHeader>
+				<div className="flex min-h-[400px] items-center justify-center p-4">
+					<Card className="flex max-h-[calc(100dvh-2rem)] flex-col w-full max-w-lg overflow-hidden">
+						<CardHeader className="shrink-0">
 							<div className="flex items-center gap-3">
-								<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+								<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] bg-destructive/10">
 									<AlertTriangle className="h-5 w-5 text-destructive" />
 								</div>
-								<div>
-									<CardTitle className="text-lg">
+								<div className="min-w-0">
+									<CardTitle role="heading" aria-level={2} className="text-pretty text-lg [overflow-wrap:anywhere]">
 										Something went wrong
 									</CardTitle>
-									<CardDescription>
+									<CardDescription className="[overflow-wrap:anywhere]">
 										This page encountered an error
 									</CardDescription>
 								</div>
 							</div>
 						</CardHeader>
-						<CardContent>
+						<CardContent className="min-h-0 flex-1 overflow-y-auto">
 							<Alert variant="destructive">
-								<AlertDescription className="font-mono text-sm">
+								<AlertDescription className="font-mono text-sm [overflow-wrap:anywhere]">
 									{this.state.error?.message || "Unknown error"}
 								</AlertDescription>
 							</Alert>
 						</CardContent>
-						<CardFooter>
-							<Button onClick={this.handleReset}>
+						<CardFooter className="flex shrink-0 flex-col gap-2 sm:flex-row">
+							<Button onClick={this.handleReset} className="h-11 w-full sm:w-auto">
 								<RotateCcw className="mr-2 h-4 w-4" />
 								Try Again
 							</Button>

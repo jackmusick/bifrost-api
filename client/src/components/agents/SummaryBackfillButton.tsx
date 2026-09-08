@@ -42,10 +42,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
-import {
-	RadioGroup,
-	RadioGroupItem,
-} from "@/components/ui/radio-group";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
 	useBackfillEligible,
@@ -74,7 +71,10 @@ interface ScopeRequestShape {
 function scopeToRequest(scope: ResummarizeScope): ScopeRequestShape {
 	switch (scope) {
 		case "pending":
-			return { statuses: ["pending", "failed"], prompt_version_below: null };
+			return {
+				statuses: ["pending", "failed"],
+				prompt_version_below: null,
+			};
 		case "older-versions":
 			return {
 				statuses: ["pending", "failed", "completed"],
@@ -130,8 +130,13 @@ export function SummaryBackfillButton({
 		estimated_cost_usd: string;
 		cost_basis: "history" | "fallback";
 	} | null>(null);
+	const [estimateError, setEstimateError] = useState<string | null>(null);
+	const estimateRequestIdRef = useRef(0);
+	const [submitError, setSubmitError] = useState<string | null>(null);
 	const [jobId, setJobId] = useState<string | null>(null);
-	const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
+	const [dismissed, setDismissed] = useState<Set<string>>(() =>
+		readDismissed(),
+	);
 
 	// On mount, re-attach to an already-running job if one exists for this scope.
 	const { data: activeJobs } = useSummaryBackfillJobs(true);
@@ -183,13 +188,19 @@ export function SummaryBackfillButton({
 					: "pending";
 		setScope(initialScope);
 		setPreview(null);
+		setEstimateError(null);
+		setSubmitError(null);
 		setPhase("confirm");
 		// Fire the dry-run for the initial scope.
 		runDryRun(initialScope);
 	}
 
 	function runDryRun(s: ResummarizeScope) {
+		const requestId = ++estimateRequestIdRef.current;
 		const shape = scopeToRequest(s);
+		setEstimateError(null);
+		setSubmitError(null);
+		setPreview(null);
 		backfill.mutate(
 			{
 				body: {
@@ -202,6 +213,7 @@ export function SummaryBackfillButton({
 			},
 			{
 				onSuccess: (data) => {
+					if (requestId !== estimateRequestIdRef.current) return;
 					setPreview({
 						eligible: data.eligible,
 						estimated_cost_usd: String(data.estimated_cost_usd),
@@ -209,6 +221,8 @@ export function SummaryBackfillButton({
 					});
 				},
 				onError: () => {
+					if (requestId !== estimateRequestIdRef.current) return;
+					setEstimateError("Failed to compute estimate");
 					toast.error("Failed to compute estimate");
 				},
 			},
@@ -218,11 +232,11 @@ export function SummaryBackfillButton({
 	function onScopeChange(next: string) {
 		const s = next as ResummarizeScope;
 		setScope(s);
-		setPreview(null);
 		runDryRun(s);
 	}
 
 	function confirmAndSubmit() {
+		setSubmitError(null);
 		const shape = scopeToRequest(scope);
 		backfill.mutate(
 			{
@@ -239,6 +253,7 @@ export function SummaryBackfillButton({
 					if (!data.job_id) {
 						toast.info("Nothing to resummarize");
 						setPhase("idle");
+						setSubmitError(null);
 						return;
 					}
 					setJobId(data.job_id);
@@ -246,6 +261,7 @@ export function SummaryBackfillButton({
 					toast.success(`Queued ${data.queued} summaries`);
 				},
 				onError: () => {
+					setSubmitError("Failed to start resummarization");
 					toast.error("Failed to start resummarization");
 				},
 			},
@@ -278,8 +294,7 @@ export function SummaryBackfillButton({
 		(eligibleAll?.eligible ?? 0) > 0;
 	if (!anyEligible) return null;
 
-	const showAction =
-		preview != null && preview.eligible > 0 && !backfill.isPending;
+	const showAction = preview != null && preview.eligible > 0;
 
 	return (
 		<>
@@ -289,12 +304,13 @@ export function SummaryBackfillButton({
 				size={size}
 				disabled={backfill.isPending}
 				onClick={openDialog}
+				className="min-h-11 gap-2"
 				data-testid="summary-backfill-button"
 			>
 				{backfill.isPending && effectivePhase === "idle" ? (
-					<Loader2 className="h-3.5 w-3.5 animate-spin" />
+					<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 				) : (
-					<RefreshCw className="h-3.5 w-3.5" />
+					<RefreshCw className="h-4 w-4" />
 				)}
 				Resummarize runs
 			</Button>
@@ -305,7 +321,7 @@ export function SummaryBackfillButton({
 					if (!open) setPhase("idle");
 				}}
 			>
-				<AlertDialogContent>
+				<AlertDialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-4rem)]">
 					<AlertDialogHeader>
 						<AlertDialogTitle>Resummarize runs</AlertDialogTitle>
 						<AlertDialogDescription>
@@ -348,23 +364,36 @@ export function SummaryBackfillButton({
 
 						<EstimateLine
 							preview={preview}
+							error={estimateError}
 							pending={backfill.isPending}
 							scope={scope}
 							agentId={agentId}
+							onRetry={() => runDryRun(scope)}
+						/>
+						<SubmitLine
+							error={submitError}
+							pending={backfill.isPending}
+							onRetry={confirmAndSubmit}
 						/>
 					</div>
 
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogCancel className="min-h-11">
+							Cancel
+						</AlertDialogCancel>
 						{showAction ? (
 							<AlertDialogAction
-								onClick={confirmAndSubmit}
+								onClick={(event) => {
+									event.preventDefault();
+									confirmAndSubmit();
+								}}
 								disabled={backfill.isPending}
+								className="min-h-11"
 							>
 								{backfill.isPending ? (
-									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+									<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 								) : null}
-								Start
+								{backfill.isPending ? "Starting…" : "Start"}
 							</AlertDialogAction>
 						) : null}
 					</AlertDialogFooter>
@@ -396,24 +425,28 @@ function ScopeOption({
 	return (
 		<Label
 			htmlFor={id}
-			className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 transition-colors ${
-				selected ? "border-primary bg-primary/5" : "hover:bg-accent/40"
+			className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 px-3 py-3 text-left transition-colors motion-reduce:transition-none ${
+				selected
+					? "border-primary/40 bg-primary/5"
+					: "bg-card hover:bg-muted/60"
 			} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
 		>
 			<RadioGroupItem
 				id={id}
 				value={value}
 				disabled={disabled}
-				className="mt-1"
+				className="mt-0.5 shrink-0"
 			/>
 			<div className="grid flex-1 gap-1 text-sm">
 				<div className="flex items-center justify-between gap-2">
 					<span className="font-medium">{title}</span>
-					<span className="text-xs text-muted-foreground tabular-nums">
+					<span className="text-sm text-muted-foreground tabular-nums">
 						{eligible} run{eligible === 1 ? "" : "s"}
 					</span>
 				</div>
-				<span className="text-xs text-muted-foreground">{description}</span>
+				<span className="text-sm leading-6 text-muted-foreground">
+					{description}
+				</span>
 			</div>
 		</Label>
 	);
@@ -425,32 +458,57 @@ interface EstimateLineProps {
 		estimated_cost_usd: string;
 		cost_basis: "history" | "fallback";
 	} | null;
+	error: string | null;
 	pending: boolean;
 	scope: ResummarizeScope;
 	agentId?: string;
+	onRetry: () => void;
 }
 
-function EstimateLine({ preview, pending, scope, agentId }: EstimateLineProps) {
+function EstimateLine({
+	preview,
+	error,
+	pending,
+	scope,
+	agentId,
+	onRetry,
+}: EstimateLineProps) {
 	if (pending && !preview) {
 		return (
-			<div className="flex items-center gap-2 rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs text-muted-foreground">
-				<Loader2 className="h-3 w-3 animate-spin" />
+			<div className="flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/50 px-3 py-3 text-sm leading-6 text-muted-foreground">
+				<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 				Computing estimate…
 			</div>
 		);
 	}
+	if (error) {
+		return (
+			<div className="grid gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/50 px-3 py-3 text-sm leading-6">
+				<div className="text-[var(--bf-danger)]">{error}</div>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="min-h-11 justify-self-start"
+					onClick={onRetry}
+				>
+					Retry estimate
+				</Button>
+			</div>
+		);
+	}
 	if (!preview) return null;
-	const _ = scope;  // kept for future per-scope copy
+	const _ = scope; // kept for future per-scope copy
 	void _;
 	if (preview.eligible === 0) {
 		return (
-			<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/50 px-3 py-3 text-sm leading-6 text-muted-foreground">
 				Nothing to do for this scope.
 			</div>
 		);
 	}
 	return (
-		<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs">
+		<div className="rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/50 px-3 py-3 text-sm leading-6">
 			Will resummarize{" "}
 			<strong className="font-medium">{preview.eligible}</strong>{" "}
 			{agentId ? "runs for this agent" : "runs platform-wide"}. Estimated
@@ -470,6 +528,40 @@ function EstimateLine({ preview, pending, scope, agentId }: EstimateLineProps) {
 	);
 }
 
+interface SubmitLineProps {
+	error: string | null;
+	pending: boolean;
+	onRetry: () => void;
+}
+
+function SubmitLine({ error, pending, onRetry }: SubmitLineProps) {
+	const errorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (error) errorRef.current?.focus();
+	}, [error]);
+	if (!error) return null;
+	return (
+		<div
+			role="alert"
+			ref={errorRef}
+			tabIndex={-1}
+			className="grid gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/50 px-3 py-3 text-sm leading-6"
+		>
+			<div className="text-[var(--bf-danger)]">{error}</div>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				className="min-h-11 justify-self-start"
+				onClick={onRetry}
+				disabled={pending}
+			>
+				{pending ? "Retrying…" : "Retry start"}
+			</Button>
+		</div>
+	);
+}
+
 // -----------------------------------------------------------------------------
 
 interface SummaryBackfillProgressProps {
@@ -483,8 +575,9 @@ function SummaryBackfillProgress({
 	agentId,
 	onDismiss,
 }: SummaryBackfillProgressProps) {
-	const { data: initial } = useSummaryBackfillJob(jobId);
+	const jobQuery = useSummaryBackfillJob(jobId);
 	const cancel = useCancelBackfillJob();
+	const [cancelError, setCancelError] = useState<string | null>(null);
 	const [live, setLive] = useState<{
 		total: number;
 		succeeded: number;
@@ -513,13 +606,13 @@ function SummaryBackfillProgress({
 	const snapshot = useMemo(
 		() =>
 			live ?? {
-				total: initial?.total ?? 0,
-				succeeded: initial?.succeeded ?? 0,
-				failed: initial?.failed ?? 0,
-				status: initial?.status ?? "running",
-				actual_cost_usd: String(initial?.actual_cost_usd ?? "0"),
+				total: jobQuery.data?.total ?? 0,
+				succeeded: jobQuery.data?.succeeded ?? 0,
+				failed: jobQuery.data?.failed ?? 0,
+				status: jobQuery.data?.status ?? "running",
+				actual_cost_usd: String(jobQuery.data?.actual_cost_usd ?? "0"),
 			},
-		[live, initial],
+		[live, jobQuery.data],
 	);
 
 	const pct = useMemo(() => {
@@ -560,27 +653,85 @@ function SummaryBackfillProgress({
 				`Backfill failed at ${snapshot.succeeded + snapshot.failed} of ${snapshot.total}`,
 			);
 		}
-	}, [isTerminal, snapshot.status, snapshot.succeeded, snapshot.failed, snapshot.total, snapshot.actual_cost_usd]);
+	}, [
+		isTerminal,
+		snapshot.status,
+		snapshot.succeeded,
+		snapshot.failed,
+		snapshot.total,
+		snapshot.actual_cost_usd,
+	]);
 
 	function handleCancel() {
+		setCancelError(null);
 		cancel.mutate(
 			{ params: { path: { job_id: jobId } } },
 			{
 				onError: () => {
+					setCancelError("Could not cancel backfill.");
 					toast.error("Failed to cancel backfill");
 				},
 			},
 		);
 	}
 
+	if (jobQuery.isLoading && !jobQuery.data && !live) {
+		return (
+			<div
+				className="inline-flex w-full max-w-[min(28rem,100%)] flex-col gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-card px-3 py-3 text-sm shadow-sm sm:flex-row sm:items-center"
+				data-testid="summary-backfill-progress"
+				aria-live="polite"
+				data-status="loading"
+			>
+				<Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none text-muted-foreground" />
+				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+					<div className="font-medium">Loading backfill progress</div>
+					<div className="text-sm leading-6 text-muted-foreground">
+						Checking the current job state…
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	if (jobQuery.isError && !jobQuery.data && !live) {
+		return (
+			<div
+				className="inline-flex w-full max-w-[min(28rem,100%)] flex-col gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-card px-3 py-3 text-sm shadow-sm sm:flex-row sm:items-center"
+				data-testid="summary-backfill-progress"
+				aria-live="polite"
+				data-status="error"
+			>
+				<AlertTriangle className="h-4 w-4 shrink-0 text-[var(--bf-danger)]" />
+				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+					<div className="font-medium">
+						Could not load backfill progress
+					</div>
+					<div className="text-sm leading-6 text-muted-foreground">
+						Refresh to check whether the job is still running.
+					</div>
+				</div>
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11 shrink-0"
+					onClick={() => void jobQuery.refetch()}
+					disabled={jobQuery.isFetching}
+				>
+					{jobQuery.isFetching ? "Retrying…" : "Retry job"}
+				</Button>
+			</div>
+		);
+	}
+
 	const statusIcon = !isTerminal ? (
-		<Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+		<Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none text-muted-foreground" />
 	) : snapshot.status === "complete" ? (
-		<CheckCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+		<CheckCircle className="h-4 w-4 shrink-0 text-[var(--bf-success)]" />
 	) : snapshot.status === "cancelled" ? (
-		<XCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+		<XCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
 	) : (
-		<AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+		<AlertTriangle className="h-4 w-4 shrink-0 text-[var(--bf-danger)]" />
 	);
 
 	const headerLabel = !isTerminal
@@ -595,29 +746,51 @@ function SummaryBackfillProgress({
 	// filter so the admin can review the failed runs and retry them.
 	const reviewHref = agentId
 		? `/agents/${agentId}?tab=runs&summary=failed`
-		: "/agents";
+		: "/history?type=agents";
 
 	return (
 		<div
-			className="inline-flex min-w-[280px] items-center gap-3 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 px-3 py-2 text-xs"
+			className="inline-flex w-full max-w-[min(28rem,100%)] flex-col gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-card px-3 py-3 text-sm shadow-sm sm:flex-row sm:items-center"
 			data-testid="summary-backfill-progress"
+			aria-live="polite"
 			data-status={snapshot.status}
 		>
 			{statusIcon}
-			<div className="flex min-w-0 flex-1 flex-col gap-1">
-				<div className="flex items-center justify-between">
+			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+				<div className="flex items-center justify-between gap-3">
 					<span className="font-medium">{headerLabel}</span>
-					<span className="text-muted-foreground">
-						{snapshot.succeeded + snapshot.failed} / {snapshot.total}
+					<span className="text-sm text-muted-foreground">
+						{snapshot.succeeded + snapshot.failed} /{" "}
+						{snapshot.total}
 					</span>
 				</div>
-				<Progress value={pct} className="h-1.5" />
+				<Progress value={pct} className="h-2" />
+				{jobQuery.isError ? (
+					<div className="flex flex-wrap items-center gap-2 text-sm leading-6 text-[var(--bf-danger)]">
+						<span>Refreshing backfill progress failed.</span>
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11"
+							onClick={() => void jobQuery.refetch()}
+							disabled={jobQuery.isFetching}
+						>
+							{jobQuery.isFetching ? "Retrying…" : "Retry job"}
+						</Button>
+					</div>
+				) : null}
+				{cancelError ? (
+					<div className="flex flex-wrap items-center gap-2 text-sm leading-6 text-[var(--bf-danger)]">
+						<span>{cancelError}</span>
+					</div>
+				) : null}
 				{snapshot.failed > 0 ? (
 					<Link
 						to={reviewHref}
-						className="inline-flex items-center text-[11px] text-rose-600 hover:underline dark:text-rose-400"
+						className="inline-flex min-h-11 max-w-full flex-wrap items-center gap-1 text-sm leading-6 text-[var(--bf-danger)] hover:underline motion-reduce:transition-none"
 					>
-						{snapshot.failed} failed — Review failed runs →
+						{snapshot.failed} failed —{" "}
+						{agentId ? "Review failed runs" : "View agent runs"} →
 					</Link>
 				) : null}
 			</div>
@@ -627,25 +800,27 @@ function SummaryBackfillProgress({
 					aria-label="Dismiss"
 					title="Dismiss"
 					onClick={onDismiss}
-					className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+					className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-accent hover:text-foreground"
 					data-testid="summary-backfill-dismiss"
 				>
-					<X className="h-3.5 w-3.5" />
+					<X className="h-4 w-4" />
 				</button>
 			) : (
 				<button
 					type="button"
-					aria-label="Cancel backfill"
-					title="Cancel backfill"
+					aria-label={
+						cancelError ? "Retry cancel" : "Cancel backfill"
+					}
+					title={cancelError ? "Retry cancel" : "Cancel backfill"}
 					onClick={handleCancel}
 					disabled={cancel.isPending}
-					className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+					className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-accent hover:text-foreground disabled:opacity-50"
 					data-testid="summary-backfill-cancel"
 				>
 					{cancel.isPending ? (
-						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 					) : (
-						<X className="h-3.5 w-3.5" />
+						<X className="h-4 w-4" />
 					)}
 				</button>
 			)}

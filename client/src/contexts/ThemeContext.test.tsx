@@ -1,14 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "@testing-library/react";
 
 import { ThemeProvider, useTheme } from "./ThemeContext";
 
 function ThemeProbe() {
-	const { theme } = useTheme();
-	return <div>{theme}</div>;
+	const { theme, toggleTheme } = useTheme();
+	return <button onClick={toggleTheme}>{theme}</button>;
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	window.history.replaceState(null, "", "/");
 	localStorage.clear();
 	document.documentElement.classList.remove("dark");
@@ -47,5 +50,52 @@ describe("ThemeProvider embedded form override", () => {
 			expect(document.documentElement).toHaveClass("dark"),
 		);
 		expect(localStorage.getItem("theme")).toBe("light");
+	});
+});
+
+describe("ThemeProvider motion preference", () => {
+	it("changes and persists the theme without a view transition when motion is reduced", async () => {
+		const startTransition = vi.fn();
+		vi.stubGlobal(
+			"matchMedia",
+			vi.fn((query: string) => ({
+				matches: query === "(prefers-reduced-motion: reduce)",
+				media: query,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+			})),
+		);
+		const descriptor = Object.getOwnPropertyDescriptor(
+			document,
+			"startViewTransition",
+		);
+		Object.defineProperty(document, "startViewTransition", {
+			configurable: true,
+			value: startTransition,
+		});
+		try {
+			render(
+				<ThemeProvider>
+					<ThemeProbe />
+				</ThemeProvider>,
+			);
+			await userEvent
+				.setup()
+				.click(screen.getByRole("button", { name: "dark" }));
+			expect(
+				screen.getByRole("button", { name: "light" }),
+			).toBeInTheDocument();
+			expect(document.documentElement).not.toHaveClass("dark");
+			expect(localStorage.getItem("theme")).toBe("light");
+			expect(startTransition).not.toHaveBeenCalled();
+		} finally {
+			if (descriptor)
+				Object.defineProperty(
+					document,
+					"startViewTransition",
+					descriptor,
+				);
+			else Reflect.deleteProperty(document, "startViewTransition");
+		}
 	});
 });

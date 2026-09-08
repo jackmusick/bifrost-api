@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, FileText, Workflow, FileCode, Loader2 } from "lucide-react";
+import { useReducedMotion } from "framer-motion";
+import { Search, FileText, Workflow, FileCode, Loader2, AlertTriangle } from "lucide-react";
 import { useEditorStore } from "@/stores/editorStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForms } from "@/hooks/useForms";
@@ -17,6 +18,8 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -48,7 +51,10 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 	const [query, setQuery] = useState("");
 	const [results, setResults] = useState<SearchResult[]>([]);
 	const [isSearching, setIsSearching] = useState(false);
+	const [searchError, setSearchError] = useState<string | null>(null);
 	const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const searchRunIdRef = useRef(0);
+	const prefersReducedMotion = useReducedMotion();
 
 	// Defer data fetching until QuickAccess is actually opened
 	const { data: formsData } = useForms(undefined, { enabled: isOpen });
@@ -60,12 +66,16 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 	// Search function
 	const performSearch = useCallback(
 		async (searchQuery: string) => {
+			const runId = ++searchRunIdRef.current;
 			if (!searchQuery.trim()) {
 				setResults([]);
+				setSearchError(null);
+				setIsSearching(false);
 				return;
 			}
 
 			setIsSearching(true);
+			setSearchError(null);
 			const queryLower = searchQuery.toLowerCase();
 			const allResults: SearchResult[] = [];
 
@@ -130,17 +140,22 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 				);
 				allResults.push(...scriptResults);
 			} catch {
-				// Silently handle file search error
+				if (runId === searchRunIdRef.current) {
+					setSearchError("File search is temporarily unavailable");
+				}
 			}
 
-			setResults(allResults);
-			setIsSearching(false);
+			if (runId === searchRunIdRef.current) {
+				setResults(allResults);
+				setIsSearching(false);
+			}
 		},
 		[formsData, workflowsData],
 	);
 
 	// Debounced search
 	useEffect(() => {
+		if (!isOpen) return;
 		if (searchTimeoutRef.current) {
 			clearTimeout(searchTimeoutRef.current);
 		}
@@ -150,11 +165,12 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 		}, 300); // 300ms debounce
 
 		return () => {
+			searchRunIdRef.current += 1;
 			if (searchTimeoutRef.current) {
 				clearTimeout(searchTimeoutRef.current);
 			}
 		};
-	}, [query, performSearch]);
+	}, [query, performSearch, isOpen]);
 
 	// Handle selection
 	const handleSelect = useCallback(
@@ -224,27 +240,61 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 			}}
 			title="Quick access"
 			description="Search forms, workflows, and scripts"
-			className="sm:max-w-2xl"
+			className="top-4! sm:top-1/3! sm:max-w-2xl"
 			showCloseButton={false}
 			// CommandDialog wraps children in <Command> itself; results come
 			// server-ranked, so disable cmdk's own filtering on that wrapper.
-			commandProps={{ shouldFilter: false }}
+			commandProps={{
+				shouldFilter: false,
+				className: "max-h-[calc(100dvh-2rem)] sm:max-h-[calc(66dvh-1rem)]",
+			}}
 		>
-			<div className="relative">
+			<div className="relative shrink-0">
 				<CommandInput
 					placeholder="Search forms, workflows, and scripts..."
 					value={query}
 					onValueChange={setQuery}
 				/>
 				{isSearching && (
-					<Loader2 className="absolute top-1/2 right-4 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+					<Loader2
+						className={cn(
+							"absolute top-1/2 right-4 size-4 -translate-y-1/2 text-muted-foreground",
+							!prefersReducedMotion && "motion-safe:animate-spin",
+						)}
+					/>
 				)}
 			</div>
 
-			<CommandList className="max-h-[400px]">
+			<CommandList className="min-h-0 flex-1 max-h-[400px]">
+				{searchError && (
+					<div className="mx-2 mt-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60 p-3 text-sm text-[var(--bf-warning)]">
+						<div className="flex items-start gap-2">
+							<AlertTriangle className="mt-0.5 size-4 shrink-0" />
+							<div className="min-w-0 flex-1">
+								<p className="leading-6">{searchError}</p>
+								<p className="text-xs leading-5 text-muted-foreground">
+									Forms and workflows still appear. Retry to search scripts
+									again.
+								</p>
+							</div>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="min-h-11 shrink-0"
+								onClick={() => performSearch(query)}
+								disabled={isSearching}
+							>
+								Retry
+							</Button>
+						</div>
+					</div>
+				)}
+
 				{results.length === 0 &&
 					query.trim() !== "" &&
-					!isSearching && (
+					!isSearching &&
+					!searchError && (
 						<div className="px-4 py-8 text-center text-sm text-muted-foreground">
 							No results found
 						</div>
@@ -270,22 +320,22 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 								key={`${result.type}-${result.name}-${index}`}
 								value={`${result.type}-${result.name}-${index}`}
 								onSelect={() => handleSelect(result)}
-								className="items-start gap-3 px-3 py-2.5"
+								className="min-h-11 items-start gap-3 px-3 py-2.5"
 							>
 								<div className="mt-0.5 text-muted-foreground">
 									{getIcon(result.type)}
 								</div>
 								<div className="flex-1 min-w-0">
 									<div className="flex items-center gap-2">
-										<span className="font-medium text-sm">
+										<span className="font-medium text-sm leading-6 [overflow-wrap:anywhere]">
 											{result.name}
 										</span>
-										<span className="text-xs text-muted-foreground capitalize">
+										<span className="text-xs leading-5 text-muted-foreground capitalize">
 											{result.type}
 										</span>
 									</div>
 									{result.description && (
-										<p className="text-xs text-muted-foreground mt-1 truncate">
+										<p className="mt-1 text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
 											{result.description}
 										</p>
 									)}
@@ -298,12 +348,15 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 
 			{/* Footer hint */}
 			{results.length > 0 && (
-				<div className="px-4 py-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+				<div className="hidden shrink-0 items-center justify-between border-t border-border/50 px-4 py-2 text-xs text-muted-foreground sm:flex">
 					<span>↑↓ to navigate</span>
 					<span>Enter to select</span>
 					<span>Esc to close</span>
 				</div>
 			)}
+			<div className="flex shrink-0 justify-end border-t border-border/50 p-1 sm:hidden">
+				<Button variant="ghost" className="min-h-11" onClick={onClose}>Close search</Button>
+			</div>
 		</CommandDialog>
 	);
 }

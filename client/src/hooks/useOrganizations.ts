@@ -48,7 +48,9 @@ export function useOrganization(orgId: string | undefined) {
 /**
  * Create a new organization
  */
-export function useCreateOrganization() {
+export function useCreateOrganization(options?: {
+	toastOnError?: boolean;
+}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("post", "/api/organizations", {
@@ -61,9 +63,11 @@ export function useCreateOrganization() {
 			});
 		},
 		onError: (error) => {
-			toast.error("Failed to create organization", {
-				description: getErrorMessage(error, "Unknown error occurred"),
-			});
+			if (options?.toastOnError !== false) {
+				toast.error("Failed to create organization", {
+					description: getErrorMessage(error, "Unknown error occurred"),
+				});
+			}
 		},
 	});
 }
@@ -71,7 +75,9 @@ export function useCreateOrganization() {
 /**
  * Update an existing organization
  */
-export function useUpdateOrganization() {
+export function useUpdateOrganization(options?: {
+	toastOnError?: boolean;
+}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("patch", "/api/organizations/{org_id}", {
@@ -94,9 +100,11 @@ export function useUpdateOrganization() {
 			});
 		},
 		onError: (error) => {
-			toast.error("Failed to update organization", {
-				description: getErrorMessage(error, "Unknown error occurred"),
-			});
+			if (options?.toastOnError !== false) {
+				toast.error("Failed to update organization", {
+					description: getErrorMessage(error, "Unknown error occurred"),
+				});
+			}
 		},
 	});
 }

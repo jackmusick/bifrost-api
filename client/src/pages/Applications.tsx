@@ -1,22 +1,21 @@
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 /**
  * Applications Page
  *
  * Lists all App Builder applications with management capabilities.
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-	RefreshCw,
-	LayoutGrid,
-	Table as TableIcon,
-} from "lucide-react";
+import { RefreshCw, LayoutGrid, Table as TableIcon } from "lucide-react";
 import { AppInfoDialog } from "@/components/app-builder/AppInfoDialog";
 import {
 	ApplicationListSurface,
 	type ApplicationListItem,
 } from "@/components/applications/ApplicationListSurface";
 import { Button } from "@/components/ui/button";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { ListToolbar } from "@/components/layout/ListToolbar";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -40,6 +39,10 @@ import type { components } from "@/lib/v1";
 type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Applications() {
+	const isDesktop = useIsDesktop();
+	const deleteBusy = useRef(false);
+	const [deletePending, setDeletePending] = useState(false);
+	const [deleteError, setDeleteError] = useState(false);
 	const navigate = useNavigate();
 	const terminology = useTerminology();
 	const { isPlatformAdmin } = useAuth();
@@ -59,16 +62,18 @@ export function Applications() {
 	const {
 		data: applicationsData,
 		isLoading,
+		isError,
+		isFetching,
 		refetch,
 	} = useApplications(
 		isPlatformAdmin
 			? filterOrgId === undefined
 				? undefined
-				: (filterOrgId ?? undefined)
+				: (filterOrgId ?? "global")
 			: undefined,
 	);
 	const applications = applicationsData?.applications ?? [];
-	const deleteApplication = useDeleteApplication();
+	const deleteApplication = useDeleteApplication({ errorToast: false });
 
 	// Fetch organizations for name lookup (platform admins only)
 	const { data: organizations } = useOrganizations({
@@ -103,16 +108,27 @@ export function Applications() {
 
 	const handleDelete = (app: ApplicationListItem) => {
 		setSelectedApp({ id: app.id, name: app.name });
+		setDeleteError(false);
 		setIsDeleteDialogOpen(true);
 	};
 
 	const handleConfirmDelete = async () => {
-		if (!selectedApp) return;
-		await deleteApplication.mutateAsync({
-			params: { path: { app_id: selectedApp.id } },
-		});
-		setIsDeleteDialogOpen(false);
-		setSelectedApp(null);
+		if (!selectedApp || deleteBusy.current) return;
+		deleteBusy.current = true;
+		setDeletePending(true);
+		setDeleteError(false);
+		try {
+			await deleteApplication.mutateAsync({
+				params: { path: { app_id: selectedApp.id } },
+			});
+			setIsDeleteDialogOpen(false);
+			setSelectedApp(null);
+		} catch {
+			setDeleteError(true);
+		} finally {
+			deleteBusy.current = false;
+			setDeletePending(false);
+		}
 	};
 
 	// Filter and search applications
@@ -124,60 +140,65 @@ export function Applications() {
 	]);
 
 	return (
-		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-				<div>
-					<h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-						{term(terminology, "app", "formalPlural")}
-					</h1>
-					<p className="mt-2 text-muted-foreground">
-						{canManageApps
-							? `Build and manage custom ${term(terminology, "app", "formalPluralLower")}`
-							: `Access your custom ${term(terminology, "app", "formalPluralLower")}`}
-					</p>
-				</div>
-				<div className="flex flex-wrap gap-2">
-					{canManageApps && (
-						<ToggleGroup
-							type="single"
-							value={viewMode}
-							onValueChange={(value: string) =>
-								value && setViewMode(value as "grid" | "table")
-							}
-						>
-							<ToggleGroupItem
-								value="grid"
-								aria-label="Grid view"
-								size="sm"
+		<div className="flex min-w-0 flex-col gap-6 max-w-7xl mx-auto lg:h-full">
+			<ListPageHeader
+				title={term(terminology, "app", "formalPlural")}
+				description={
+					canManageApps
+						? `Build and manage custom ${term(terminology, "app", "formalPluralLower")}`
+						: `Access your custom ${term(terminology, "app", "formalPluralLower")}`
+				}
+				actions={
+					<>
+						{canManageApps && isDesktop && (
+							<ToggleGroup
+								aria-label="List layout"
+								type="single"
+								value={viewMode}
+								onValueChange={(value: string) =>
+									value &&
+									setViewMode(value as "grid" | "table")
+								}
 							>
-								<LayoutGrid className="h-4 w-4" />
-							</ToggleGroupItem>
-							<ToggleGroupItem
-								value="table"
-								aria-label="Table view"
-								size="sm"
-							>
-								<TableIcon className="h-4 w-4" />
-							</ToggleGroupItem>
-						</ToggleGroup>
-					)}
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={() => refetch()}
-						title="Refresh"
+								<ToggleGroupItem
+									value="grid"
+									aria-label="Grid view"
+									size="sm"
+									className="size-11 sm:size-9"
+								>
+									<LayoutGrid className="h-4 w-4" />
+								</ToggleGroupItem>
+								<ToggleGroupItem
+									value="table"
+									aria-label="Table view"
+									size="sm"
+									className="size-11 sm:size-9"
+								>
+									<TableIcon className="h-4 w-4" />
+								</ToggleGroupItem>
+							</ToggleGroup>
+						)}
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={() => refetch()}
+							title="Refresh"
+							aria-label="Refresh applications"
+							className="size-11 sm:size-9"
 						>
 							<RefreshCw className="h-4 w-4" />
 						</Button>
-					</div>
-				</div>
+					</>
+				}
+			/>
 
 			{/* Search and Filters */}
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+			<ListToolbar>
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
-					placeholder={`Search ${term(terminology, "app", "formalPluralLower")} by name, description, or slug...`}
+					aria-label={`Search ${term(terminology, "app", "formalPluralLower")}`}
+					placeholder={`Search ${term(terminology, "app", "formalPluralLower")}…`}
 					className="flex-1"
 				/>
 				{isPlatformAdmin && (
@@ -191,29 +212,60 @@ export function Applications() {
 						/>
 					</div>
 				)}
-			</div>
+			</ListToolbar>
 
-			<div className="flex-1 min-h-0 overflow-auto">
-				<ApplicationListSurface
-					apps={filteredApps as ApplicationListItem[]}
-					viewMode={viewMode}
-					isLoading={isLoading}
-					isPlatformAdmin={isPlatformAdmin}
-					canManageApps={canManageApps}
-					getOrgName={getOrgName}
-					onLaunch={handleLaunch}
-					onPreview={handlePreview}
-					onOpenSettings={handleOpenSettings}
-					onOpenCode={handleOpenCode}
-					onDelete={handleDelete}
-					emptySearchActive={Boolean(searchTerm)}
-				/>
+			<div className="min-w-0 space-y-4 lg:flex-1 lg:min-h-0 lg:overflow-auto">
+				{isError && (
+					<div
+						role="alert"
+						className="flex flex-col items-start gap-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-4 sm:flex-row sm:items-center sm:justify-between"
+					>
+						<p className="text-sm text-destructive">
+							Couldn't load{" "}
+							{term(terminology, "app", "formalPluralLower")}.
+							{applicationsData !== undefined &&
+								" Previously loaded records are shown below."}
+						</p>
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11"
+							disabled={isFetching}
+							onClick={() => void refetch()}
+						>
+							{isFetching ? "Retrying…" : "Retry loading"}
+						</Button>
+					</div>
+				)}
+				{isLoading && (
+					<p role="status" className="sr-only">
+						Loading {term(terminology, "app", "formalPluralLower")}…
+					</p>
+				)}
+				{(!isError || applicationsData !== undefined) && (
+					<ApplicationListSurface
+						apps={filteredApps as ApplicationListItem[]}
+						viewMode={isDesktop ? viewMode : "grid"}
+						isLoading={isLoading}
+						isPlatformAdmin={isPlatformAdmin}
+						canManageApps={canManageApps}
+						getOrgName={getOrgName}
+						onLaunch={handleLaunch}
+						onPreview={handlePreview}
+						onOpenSettings={handleOpenSettings}
+						onOpenCode={handleOpenCode}
+						onDelete={handleDelete}
+						emptySearchActive={Boolean(searchTerm)}
+					/>
+				)}
 			</div>
 
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
 				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
+				onOpenChange={(open) => {
+					if (!deleteBusy.current) setIsDeleteDialogOpen(open);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
@@ -227,22 +279,42 @@ export function Applications() {
 							data. This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{deleteError && (
+						<p role="alert" className="text-sm text-destructive">
+							Couldn't delete this{" "}
+							{term(terminology, "app", "formalSingularLower")}.
+							Please retry.
+						</p>
+					)}
+					{deletePending && (
+						<p role="status" className="sr-only">
+							Deleting…
+						</p>
+					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogCancel disabled={deletePending}>
+							Cancel
+						</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={handleConfirmDelete}
+							disabled={deletePending}
+							onClick={(event) => {
+								event.preventDefault();
+								void handleConfirmDelete();
+							}}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
-							{deleteApplication.isPending
+							{deletePending
 								? "Deleting..."
-								: `Delete ${term(terminology, "app", "formalSingular")}`}
+								: deleteError
+									? "Retry delete"
+									: `Delete ${term(terminology, "app", "formalSingular")}`}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 
-				{/* Application settings dialog (opened from card pencil button) */}
-				<AppInfoDialog
+			{/* Application settings dialog (opened from card pencil button) */}
+			<AppInfoDialog
 				appSlug={infoDialogSlug}
 				open={infoDialogSlug !== null}
 				onOpenChange={(o) => {

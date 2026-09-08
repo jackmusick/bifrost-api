@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 /**
  * Timeline has two deliberately different projections of a run:
  *
@@ -86,9 +87,11 @@ export function Timeline({
 	const activity = buildRunActivity(steps, childRunIds, childRuns);
 	if (!activity.length) {
 		return (
-			<div className="rounded-lg border border-dashed px-4 py-5 text-center">
-				<p className="text-sm font-medium">No activity to summarize</p>
-				<p className="mt-1 text-xs text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center">
+				<p className="text-sm font-medium leading-6">
+					No activity to summarize
+				</p>
+				<p className="mt-1 text-sm leading-6 text-muted-foreground">
 					Any recorded executor steps are still available in Advanced.
 				</p>
 			</div>
@@ -97,7 +100,7 @@ export function Timeline({
 
 	return (
 		<ol
-			className="relative grid gap-3 before:absolute before:bottom-5 before:left-[15px] before:top-5 before:w-px before:bg-border"
+			className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 before:absolute before:bottom-5 before:left-[11px] sm:before:left-[21px] before:top-5 before:w-px before:bg-border"
 			aria-label="Run activity"
 		>
 			{activity.map((item) => (
@@ -179,45 +182,45 @@ function ActivityRow({
 					? CircleDot
 					: Check;
 	const tone = isError
-		? "border-rose-500/20 bg-rose-500/[0.06]"
+		? "border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60"
 		: isWarning || isCancelled
-			? "border-amber-500/20 bg-amber-500/[0.06]"
+			? "border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60"
 			: "border-border/70 bg-card";
 	const iconTone = isError
-		? "border-rose-500/25 bg-rose-500/15 text-rose-600 dark:text-rose-300"
+		? "border-[var(--bf-danger)]/25 bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
 		: isWarning || isCancelled
-			? "border-amber-500/25 bg-amber-500/15 text-amber-600 dark:text-amber-300"
+			? "border-[var(--bf-warning)]/25 bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]"
 			: isResponse
-				? "border-violet-500/25 bg-violet-500/15 text-violet-600 dark:text-violet-300"
+				? "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]"
 				: pending
 					? runInProgress
-						? "border-blue-500/25 bg-blue-500/15 text-blue-600 dark:text-blue-300"
+						? "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]"
 						: "border-border bg-muted text-muted-foreground"
-					: "border-emerald-500/25 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300";
+					: "border-[var(--bf-success)]/25 bg-[var(--bf-success-soft)] text-[var(--bf-success)]";
 
 	return (
 		<li
 			id={activityDomId(item.id)}
 			tabIndex={-1}
-			className="relative scroll-mt-24 rounded-xl pl-9 outline-none"
+			className="relative scroll-mt-24 rounded-[var(--bf-radius-feature)] pl-8 outline-none [overflow-wrap:anywhere] sm:pl-12"
 			data-activity-id={item.id}
 			data-activity-kind={item.kind}
 			data-highlighted={highlighted ? "true" : "false"}
 		>
 			<div
 				className={cn(
-					"absolute left-0 top-4 z-10 grid h-[31px] w-[31px] place-items-center rounded-full border shadow-sm",
+					"absolute left-0 top-3 z-10 grid size-6 place-items-center sm:size-11 rounded-full border shadow-sm",
 					iconTone,
 				)}
 			>
-				<Icon className="h-3.5 w-3.5" />
+				<Icon className="h-4 w-4" />
 			</div>
 			<div
 				className={cn(
-					"rounded-xl border px-4 py-3 shadow-sm transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
+					"rounded-[var(--bf-radius-feature)] border px-4 py-4 shadow-sm transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
 					tone,
 					highlighted &&
-						"border-blue-500/50 ring-2 ring-blue-500/45 ring-offset-2 ring-offset-background shadow-[0_0_24px_-4px] shadow-blue-500/40",
+						"border-[var(--bf-info)]/50 ring-2 ring-[var(--bf-info)]/45 ring-offset-2 ring-offset-background",
 				)}
 			>
 				<div className="flex items-start gap-3">
@@ -226,11 +229,11 @@ function ActivityRow({
 							{item.title}
 						</div>
 						{item.description ? (
-							<p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+							<p className="mt-1 text-sm leading-6 text-muted-foreground">
 								{item.description}
 							</p>
 						) : pending ? (
-							<p className="mt-1 text-xs text-muted-foreground">
+							<p className="mt-1 text-sm leading-6 text-muted-foreground">
 								{runInProgress
 									? "In progress"
 									: "No outcome recorded"}
@@ -246,10 +249,10 @@ function ActivityRow({
 						{item.executionId ? (
 							<Link
 								to={`/history/${item.executionId}`}
-								className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8"
+								className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-2 text-sm font-medium text-primary transition-colors hover:bg-[var(--bf-info-soft)]/80 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 							>
 								Execution
-								<ArrowUpRight className="h-3 w-3" />
+								<ArrowUpRight className="h-4 w-4" />
 							</Link>
 						) : null}
 					</div>
@@ -294,20 +297,20 @@ function ActivityTechnicalDetails({ item }: { item: RunActivityItem }) {
 
 	return (
 		<details className="group mt-3 border-t border-border/70 pt-2.5">
-			<summary className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-				<ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-				<Code2 className="h-3 w-3" />
+			<summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-[var(--bf-radius-control)] px-2 text-sm font-medium text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&::-webkit-details-marker]:hidden">
+				<ChevronRight className="h-4 w-4 transition-transform motion-reduce:transition-none group-open:rotate-90" />
+				<Code2 className="h-4 w-4" />
 				Details
 			</summary>
-			<div className="mt-2.5 grid gap-3 rounded-lg bg-background/65 p-3 ring-1 ring-foreground/5">
+			<div className="mt-2.5 grid gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-background/65 p-3">
 				{hasMetadata ? (
-					<dl className="grid gap-x-4 gap-y-1.5 text-[11px] sm:grid-cols-[auto_1fr]">
+					<dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
 						{item.toolName ? (
 							<>
 								<dt className="text-muted-foreground">
 									Internal action
 								</dt>
-								<dd className="min-w-0 break-all font-mono">
+								<dd className="min-w-0 break-all font-mono text-[13px] leading-6">
 									{item.toolName}
 								</dd>
 							</>
@@ -359,7 +362,7 @@ function TechnicalDetailSection({
 }) {
 	return (
 		<section>
-			<div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+			<div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
 				{label}
 			</div>
 			<DetailBlock detail={detail} />
@@ -419,6 +422,8 @@ function DelegationRow({
 		data: rawChild,
 		isLoading,
 		isError,
+		isFetching,
+		refetch,
 	} = useAgentRun(open ? (item.childRunId ?? undefined) : undefined, {
 		refetchInterval: (query) =>
 			ACTIVE_RUN_STATUSES.has(query.state.data?.status ?? "")
@@ -451,10 +456,10 @@ function DelegationRow({
 					</span>
 					<span
 						className={cn(
-							"shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+							"shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium uppercase tracking-wide",
 							delegationFailed
-								? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
-								: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+								? "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
+								: "bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
 						)}
 					>
 						Agent
@@ -467,17 +472,17 @@ function DelegationRow({
 					) : null}
 				</div>
 				{item.task ? (
-					<p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+					<p className="mt-1 text-sm leading-6 text-muted-foreground">
 						{item.task}
 					</p>
 				) : item.description ? (
-					<p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+					<p className="mt-1 text-sm leading-6 text-muted-foreground">
 						{item.description}
 					</p>
 				) : null}
 			</div>
 			{!delegationStatus && item.durationMs != null ? (
-				<div className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">
+				<div className="shrink-0 pt-0.5 text-sm text-muted-foreground">
 					<span>{formatDuration(item.durationMs)}</span>
 				</div>
 			) : null}
@@ -489,29 +494,29 @@ function DelegationRow({
 			ref={rowRef}
 			id={activityDomId(item.id)}
 			tabIndex={-1}
-			className="relative scroll-mt-24 rounded-xl pl-9 outline-none"
+			className="relative scroll-mt-24 rounded-[var(--bf-radius-feature)] pl-8 outline-none [overflow-wrap:anywhere] sm:pl-12"
 			data-activity-id={item.id}
 			data-activity-kind="delegation"
 			data-highlighted={highlighted ? "true" : "false"}
 		>
 			<div
 				className={cn(
-					"absolute left-0 top-4 z-10 grid h-[31px] w-[31px] place-items-center rounded-full border shadow-sm",
+					"absolute left-0 top-3 z-10 grid size-6 place-items-center sm:size-11 rounded-full border shadow-sm",
 					delegationFailed
-						? "border-rose-500/25 bg-rose-500/15 text-rose-600 dark:text-rose-300"
-						: "border-violet-500/25 bg-violet-500/15 text-violet-600 dark:text-violet-300",
+						? "border-[var(--bf-danger)]/25 bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
+						: "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
 				)}
 			>
-				<GitBranch className="h-3.5 w-3.5" />
+				<GitBranch className="h-4 w-4" />
 			</div>
 			<div
 				className={cn(
-					"overflow-hidden rounded-xl border shadow-sm transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
+					"overflow-hidden rounded-[var(--bf-radius-feature)] border shadow-sm transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
 					delegationFailed
-						? "border-rose-500/20 bg-rose-500/[0.055]"
-						: "border-violet-500/20 bg-violet-500/[0.055]",
+						? "border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60"
+						: "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)]/60",
 					highlighted &&
-						"border-violet-500/55 ring-2 ring-violet-500/45 ring-offset-2 ring-offset-background shadow-[0_0_24px_-4px] shadow-violet-500/40",
+						"border-[var(--bf-info)]/55 ring-2 ring-[var(--bf-info)]/45 ring-offset-2 ring-offset-background",
 				)}
 			>
 				<div className="flex flex-col md:flex-row md:items-stretch">
@@ -524,13 +529,13 @@ function DelegationRow({
 							aria-label={`${open ? "Hide" : "Show"} details for ${title}`}
 							aria-describedby={delegationStatusId}
 							className={cn(
-								"group flex min-h-11 min-w-0 flex-1 cursor-pointer items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-violet-500/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-								open && "bg-violet-500/[0.045]",
+								"group flex min-h-11 min-w-0 flex-1 cursor-pointer items-start gap-3 px-4 py-4 text-left transition-colors motion-reduce:transition-none hover:bg-[var(--bf-info-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+								open && "bg-[var(--bf-info-soft)]/60",
 							)}
 						>
 							{rowContent}
 							{isLoading && open ? (
-								<Loader2 className="h-4 w-4 shrink-0 self-center animate-spin text-violet-600 motion-reduce:animate-none dark:text-violet-300" />
+								<Loader2 className="h-4 w-4 shrink-0 self-center animate-spin text-[var(--bf-info)] motion-reduce:animate-none" />
 							) : (
 								<ChevronRight
 									className={cn(
@@ -541,12 +546,12 @@ function DelegationRow({
 							)}
 						</button>
 					) : (
-						<div className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left">
+						<div className="flex min-w-0 flex-1 items-start gap-3 px-4 py-4 text-left">
 							{rowContent}
 						</div>
 					)}
 					{childAgentId && item.childRunId ? (
-						<div className="flex shrink-0 items-center justify-end border-t border-violet-500/15 p-2 md:border-l md:border-t-0">
+						<div className="flex shrink-0 items-center justify-end border-t border-[var(--bf-info)]/15 p-2 md:border-l md:border-t-0">
 							<Link
 								to={`/agents/${childAgentId}/runs/${item.childRunId}`}
 								state={
@@ -558,10 +563,10 @@ function DelegationRow({
 								}
 								onClick={() => onOpenChildRun?.(item.id)}
 								aria-label={`Open ${title} run`}
-								className="inline-flex min-h-11 items-center gap-1 rounded-md px-3 text-xs font-medium text-primary transition-colors hover:bg-violet-500/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8"
+								className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-3 text-sm font-medium text-primary transition-colors hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 							>
 								<span>Open run</span>
-								<ArrowUpRight className="h-3.5 w-3.5" />
+								<ArrowUpRight className="h-4 w-4" />
 							</Link>
 						</div>
 					) : null}
@@ -570,16 +575,40 @@ function DelegationRow({
 				{open ? (
 					<div
 						id={detailsId}
-						className="border-t border-violet-500/15 bg-background/45 px-4 py-4"
+						className="border-t border-[var(--bf-info)]/15 bg-background/45 px-4 py-4"
 					>
+						{isError ? (
+							<div
+								role="alert"
+								className="mb-3 space-y-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
+							>
+								<p>
+									Could not {child ? "refresh" : "load"}{" "}
+									delegated run details.
+									{child
+										? " Previously loaded details are still shown."
+										: ""}
+								</p>
+								<Button
+									variant="outline"
+									className="min-h-11"
+									disabled={isFetching}
+									onClick={() => void refetch()}
+								>
+									Retry delegated run
+								</Button>
+							</div>
+						) : null}
 						{isLoading ? (
-							<div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							<div className="flex items-center gap-2 py-3 text-sm leading-6 text-muted-foreground">
+								<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 								Loading delegated work…
 							</div>
-						) : isError || !child ? (
-							<p className="py-2 text-xs text-rose-600 dark:text-rose-300">
-								Delegated run details are not available.
+						) : !child ? (
+							<p className="py-2 text-sm leading-6 text-muted-foreground">
+								{isError
+									? ""
+									: "Delegated run details are not available."}
 							</p>
 						) : (
 							<div className="grid gap-4">
@@ -608,7 +637,7 @@ function DelegationRow({
 								{depth < 3 &&
 								((child.steps?.length ?? 0) > 0 ||
 									(child.child_run_ids?.length ?? 0) > 0) ? (
-									<div className="rounded-lg border bg-background/65 p-3">
+									<div className="rounded-[var(--bf-radius-feature)] border border-border/70 bg-background/65 p-3">
 										<div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
 											Activity
 										</div>
@@ -668,20 +697,20 @@ function DelegationStatusBadge({
 			id={id}
 			aria-label={`Delegated run status: ${label}`}
 			className={cn(
-				"inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium",
+				"inline-flex min-h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium",
 				failed
-					? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+					? "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
 					: active
-						? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+						? "bg-[var(--bf-info-soft)] text-[var(--bf-info)]"
 						: completed
-							? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+							? "bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
 							: "bg-muted text-muted-foreground",
 			)}
 		>
 			<StatusIcon
 				aria-hidden="true"
 				className={cn(
-					"h-2.5 w-2.5",
+					"h-3 w-3",
 					(status === "running" || status === "cancelling") &&
 						"animate-spin motion-reduce:animate-none",
 				)}
@@ -733,11 +762,11 @@ function DelegationSummary({
 	children: ReactNode;
 }) {
 	return (
-		<div className="rounded-lg bg-background/70 px-3 py-2.5 ring-1 ring-foreground/5">
-			<div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+		<div className="rounded-xl border border-border/70 bg-background/70 px-3 py-3">
+			<div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
 				{label}
 			</div>
-			<div className="text-xs leading-5">{children}</div>
+			<div className="text-sm leading-6">{children}</div>
 		</div>
 	);
 }
@@ -764,7 +793,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 			const args = c.arguments;
 			return {
 				icon: Wrench,
-				iconClass: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+				iconClass: "bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
 				label: `Called ${name}`,
 				summary: null,
 				primaryDetail: isEmptyJson(args)
@@ -779,7 +808,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 			return {
 				icon: CircleDot,
 				iconClass:
-					"bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+					"bg-[var(--bf-success-soft)] text-[var(--bf-success)]",
 				label: `Result from ${name}`,
 				summary: inlineTextPreview(result, 100),
 				primaryDetail: renderDetail(result),
@@ -791,7 +820,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 			const error = c.error ?? c.result;
 			return {
 				icon: AlertCircle,
-				iconClass: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+				iconClass: "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]",
 				label: `Error from ${name}`,
 				summary: inlineTextPreview(error, 100),
 				primaryDetail: renderDetail(error),
@@ -837,8 +866,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 						: "LLM response";
 			return {
 				icon: Bot,
-				iconClass:
-					"bg-violet-500/15 text-violet-600 dark:text-violet-400",
+				iconClass: "bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
 				label,
 				// If we put the names in the label, no summary needed; show the
 				// reasoning text as summary when it's the standalone case.
@@ -862,8 +890,8 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 				icon: AlertCircle,
 				iconClass:
 					type === "error"
-						? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-						: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+						? "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
+						: "bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]",
 				label:
 					type === "cancelled"
 						? "Cancelled"
@@ -922,7 +950,9 @@ export interface AdvancedTimelineProps {
 export function AdvancedTimeline({ steps }: AdvancedTimelineProps) {
 	if (!steps || !steps.length) {
 		return (
-			<p className="text-xs text-muted-foreground">No steps recorded.</p>
+			<p className="text-sm leading-6 text-muted-foreground">
+				No steps recorded.
+			</p>
 		);
 	}
 	return (
@@ -946,7 +976,7 @@ function TimelineRow({
 	const hasDetail = !!vm.primaryDetail || !!vm.secondaryDetail;
 	const Icon = vm.icon;
 	return (
-		<li className="min-w-0 overflow-hidden rounded-md bg-muted/50 ring-1 ring-foreground/5">
+		<li className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-muted/50">
 			<button
 				type="button"
 				onClick={() => hasDetail && setOpen((v) => !v)}
@@ -956,34 +986,35 @@ function TimelineRow({
 					hasDetail ? `Toggle details for step ${index}` : undefined
 				}
 				className={cn(
-					"flex min-w-0 w-full items-start gap-2 px-3 py-2 text-left text-xs",
-					hasDetail && "hover:bg-accent/40",
+					"flex min-h-11 min-w-0 w-full items-start gap-2 px-3 py-3 text-left text-sm leading-6",
+					hasDetail &&
+						"hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 				)}
 			>
 				<div
 					className={cn(
-						"mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full",
+						"mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full",
 						vm.iconClass,
 					)}
 				>
-					<Icon className="h-3 w-3" />
+					<Icon className="h-3.5 w-3.5" />
 				</div>
 				<div className="min-w-0 flex-1">
-					<div className="flex min-w-0 items-baseline gap-2">
+					<div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 						<span
-							className="min-w-0 truncate font-medium"
+							className="min-w-0 break-words font-medium"
 							title={vm.label}
 						>
 							{vm.label}
 						</span>
 						{vm.summary ? (
-							<span className="truncate text-muted-foreground">
+							<span className="break-words text-muted-foreground">
 								{vm.summary}
 							</span>
 						) : null}
 					</div>
 				</div>
-				<span className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+				<span className="ml-auto flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
 					{step.tokens_used ? (
 						<span title="Tokens used">
 							{formatNumber(step.tokens_used)} tok
@@ -996,7 +1027,7 @@ function TimelineRow({
 					{hasDetail ? (
 						<ChevronRight
 							className={cn(
-								"h-3 w-3 transition-transform",
+								"h-4 w-4 transition-transform motion-reduce:transition-none",
 								open && "rotate-90",
 							)}
 						/>
@@ -1004,13 +1035,13 @@ function TimelineRow({
 				</span>
 			</button>
 			{open && hasDetail ? (
-				<div className="border-t px-3 py-2">
+				<div className="border-t border-border/70 px-3 py-3">
 					{vm.primaryDetail ? (
 						<DetailBlock detail={vm.primaryDetail} />
 					) : null}
 					{vm.secondaryDetail ? (
 						<div className="mt-2">
-							<div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+							<div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
 								{vm.secondaryDetail.label}
 							</div>
 							<DetailBlock detail={vm.secondaryDetail} />
@@ -1025,7 +1056,7 @@ function TimelineRow({
 function DetailBlock({ detail }: { detail: DetailRender }) {
 	if (detail.kind === "json") {
 		return (
-			<div className="max-h-[280px] overflow-y-auto rounded-md bg-muted/60 ring-1 ring-foreground/5 p-2.5">
+			<div className="max-h-[320px] overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/60 p-2.5">
 				<VariablesTreeView data={asVariableRecord(detail.value)} />
 			</div>
 		);
@@ -1033,13 +1064,13 @@ function DetailBlock({ detail }: { detail: DetailRender }) {
 	const parsed = tryParseJson(detail.value);
 	if (parsed !== UNPARSEABLE) {
 		return (
-			<div className="max-h-[280px] overflow-y-auto rounded-md bg-muted/60 ring-1 ring-foreground/5 p-2.5">
+			<div className="max-h-[320px] overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/60 p-2.5">
 				<VariablesTreeView data={asVariableRecord(parsed)} />
 			</div>
 		);
 	}
 	return (
-		<div className="max-h-[280px] overflow-y-auto rounded-md bg-muted/60 ring-1 ring-foreground/5 px-3 py-2 text-xs leading-5 whitespace-pre-wrap break-words">
+		<div className="max-h-[320px] overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/60 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words">
 			{detail.value}
 		</div>
 	);

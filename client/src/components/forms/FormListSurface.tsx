@@ -94,7 +94,7 @@ export function FormListSurface({
 
 	if (isLoading) {
 		return viewMode === "grid" || !canManageForms ? (
-			<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))]">
+			<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]">
 				{[...Array(6)].map((_, i) => (
 					<Skeleton key={i} className="h-48 w-full" />
 				))}
@@ -128,7 +128,7 @@ export function FormListSurface({
 					{canManageForms && !emptySearchActive && onCreateEmpty && (
 						<Button
 							variant="outline"
-							size="icon"
+							size="icon-lg"
 							onClick={onCreateEmpty}
 							className="mt-4"
 							title={`Create ${term(terminology, "form", "singular")}`}
@@ -179,7 +179,7 @@ export function FormListSurface({
 												</Badge>
 											) : (
 												<Badge
-													variant="default"
+													variant="outline"
 													className="text-xs"
 												>
 													<Globe className="mr-1 h-3 w-3" />
@@ -226,7 +226,7 @@ export function FormListSurface({
 											<Badge
 												variant={
 													form.is_active
-														? "default"
+														? "outline"
 														: "secondary"
 												}
 											>
@@ -274,7 +274,7 @@ export function FormListSurface({
 														>
 															<Button
 																variant="ghost"
-																size="icon"
+																size="icon-lg"
 																aria-label={`${form.name} actions`}
 															>
 																<MoreVertical className="h-4 w-4" />
@@ -286,7 +286,7 @@ export function FormListSurface({
 														>
 															{onShare && (
 																<DropdownMenuItem
-																	className="min-h-9 whitespace-nowrap px-3"
+																	className="min-h-11 whitespace-nowrap px-3"
 																	onClick={() =>
 																		onShare(
 																			form,
@@ -300,7 +300,7 @@ export function FormListSurface({
 															{!form.is_solution_managed &&
 																onEdit && (
 																	<DropdownMenuItem
-																		className="min-h-9 whitespace-nowrap px-3"
+																		className="min-h-11 whitespace-nowrap px-3"
 																		onClick={() =>
 																			onEdit(
 																				form,
@@ -318,7 +318,7 @@ export function FormListSurface({
 																		<DropdownMenuSeparator />
 																		<DropdownMenuItem
 																			variant="destructive"
-																			className="min-h-9 whitespace-nowrap px-3"
+																			className="min-h-11 whitespace-nowrap px-3"
 																			onClick={() =>
 																				onDelete(
 																					form,
@@ -346,25 +346,25 @@ export function FormListSurface({
 	}
 
 	return (
-		<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))]">
+		<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]">
 			{forms.map((form) => {
 				const validation = formValidation.get(form.id);
 				return (
 					<Card
 						key={form.id}
-						className="hover:border-primary transition-colors flex flex-col"
+						className="min-w-0 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none flex flex-col"
 					>
 						<CardHeader className="pb-3">
-							<div className="flex items-start justify-between gap-2">
+							<div className="flex flex-col items-start justify-between gap-2 sm:flex-row">
 								<CardTitle
-									className="min-w-0 truncate text-base"
+									className="min-w-0 [overflow-wrap:anywhere] text-base"
 									title={form.name}
 								>
 									{form.name}
 								</CardTitle>
 								<Badge
 									variant={
-										form.is_active ? "default" : "secondary"
+										form.is_active ? "outline" : "secondary"
 									}
 									className="shrink-0"
 								>
@@ -380,7 +380,7 @@ export function FormListSurface({
 									Invalid
 								</Badge>
 							)}
-							<CardDescription className="mt-1.5 text-sm line-clamp-2">
+							<CardDescription className="mt-1.5 text-sm [overflow-wrap:anywhere]">
 								{form.description || (
 									<span className="italic text-muted-foreground/60">
 										No description
@@ -424,7 +424,7 @@ export function FormListSurface({
 										</Badge>
 									) : (
 										<Badge
-											variant="default"
+											variant="outline"
 											className="text-xs"
 										>
 											<Globe className="mr-1 h-3 w-3" />
@@ -436,7 +436,7 @@ export function FormListSurface({
 
 							<div className="flex items-center gap-2">
 								<Button
-									className="flex-1"
+									className="min-h-11 flex-1"
 									onClick={() => onLaunch(form)}
 									disabled={
 										(!form.is_active && !canManageForms) ||
@@ -467,7 +467,7 @@ export function FormListSurface({
 											<DropdownMenuTrigger asChild>
 												<Button
 													variant="outline"
-													size="icon"
+													size="icon-lg"
 													aria-label={`${form.name} actions`}
 												>
 													<MoreVertical className="h-4 w-4" />
@@ -479,7 +479,7 @@ export function FormListSurface({
 											>
 												{onShare && (
 													<DropdownMenuItem
-														className="min-h-9 whitespace-nowrap px-3"
+														className="min-h-11 whitespace-nowrap px-3"
 														onClick={() =>
 															onShare(form)
 														}
@@ -490,7 +490,7 @@ export function FormListSurface({
 												{!form.is_solution_managed &&
 													onEdit && (
 														<DropdownMenuItem
-															className="min-h-9 whitespace-nowrap px-3"
+															className="min-h-11 whitespace-nowrap px-3"
 															onClick={() =>
 																onEdit(form)
 															}
@@ -501,7 +501,7 @@ export function FormListSurface({
 												{!form.is_solution_managed &&
 													onToggleActive && (
 														<DropdownMenuItem
-															className="min-h-9 whitespace-nowrap px-3"
+															className="min-h-11 whitespace-nowrap px-3"
 															onClick={() =>
 																onToggleActive(
 																	form,
@@ -520,7 +520,7 @@ export function FormListSurface({
 															<DropdownMenuSeparator />
 															<DropdownMenuItem
 																variant="destructive"
-																className="min-h-9 whitespace-nowrap px-3"
+																className="min-h-11 whitespace-nowrap px-3"
 																onClick={() =>
 																	onDelete(
 																		form,

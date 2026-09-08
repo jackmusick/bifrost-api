@@ -1,0 +1,49 @@
+{
+  "fields": [
+    {
+      "name": "review_id",
+      "label": "Review ID",
+      "type": "text",
+      "required": true,
+      "placeholder": "DR-001",
+      "help_text": "Unique reference for the design review"
+    },
+    {
+      "name": "summary",
+      "label": "Summary",
+      "type": "textarea",
+      "required": true,
+      "placeholder": "Describe the design review scenario",
+      "help_text": "Short summary that will flow into the workflow"
+    },
+    {
+      "name": "priority",
+      "label": "Priority",
+      "type": "select",
+      "required": true,
+      "options": [
+        { "label": "Low", "value": "low" },
+        { "label": "Medium", "value": "medium" },
+        { "label": "High", "value": "high" }
+      ],
+      "default_value": "medium",
+      "help_text": "Representative picklist for intake"
+    },
+    {
+      "name": "owner",
+      "label": "Owner",
+      "type": "text",
+      "required": true,
+      "placeholder": "Design Ops",
+      "help_text": "Person or team responsible for the review"
+    },
+    {
+      "name": "should_fail",
+      "label": "Force Failure",
+      "type": "checkbox",
+      "required": false,
+      "default_value": false,
+      "help_text": "Checked submissions trigger the synthetic failure path"
+    }
+  ]
+}

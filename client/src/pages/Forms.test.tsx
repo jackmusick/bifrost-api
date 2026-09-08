@@ -13,6 +13,8 @@ const mockUseUpdateForm = vi.fn();
 const mockPreloadRunFormPage = vi.fn(() =>
 	Promise.resolve({ default: vi.fn() }),
 );
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => true }));
+
 vi.mock("@/hooks/useForms", () => ({
 	useForms: () => mockUseForms(),
 	useDeleteForm: () => mockUseDeleteForm(),
@@ -128,7 +130,7 @@ describe("Forms — solution-managed badge (grid view)", () => {
 		);
 		expect(screen.getByRole("menu")).toHaveClass("w-48");
 		for (const item of screen.getAllByRole("menuitem")) {
-			expect(item).toHaveClass("min-h-9", "whitespace-nowrap", "px-3");
+			expect(item).toHaveClass("min-h-11", "whitespace-nowrap", "px-3");
 		}
 		expect(
 			screen.getByRole("menuitem", { name: "Edit Form" }),
@@ -211,7 +213,7 @@ describe("Forms — solution-managed badge (table view)", () => {
 		);
 		expect(screen.getByRole("menu")).toHaveClass("w-48");
 		for (const item of screen.getAllByRole("menuitem")) {
-			expect(item).toHaveClass("min-h-9", "whitespace-nowrap", "px-3");
+			expect(item).toHaveClass("min-h-11", "whitespace-nowrap", "px-3");
 		}
 		expect(
 			screen.getByRole("menuitem", { name: "Edit Form" }),
@@ -223,4 +225,14 @@ describe("Forms — solution-managed badge (table view)", () => {
 			screen.getByRole("menuitem", { name: "Share Form" }),
 		).toBeInTheDocument();
 	});
+});
+
+it("distinguishes a failed initial lookup from an empty list and retries", async () => {
+ const refetch = vi.fn();
+ mockUseForms.mockReturnValue({data: undefined, isLoading: false, isError: true, isFetching: false, refetch});
+ const {user} = await renderPage();
+ expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load");
+ expect(screen.queryByText(/No .* found/i)).not.toBeInTheDocument();
+ await user.click(screen.getByRole("button", {name: "Retry loading"}));
+ expect(refetch).toHaveBeenCalledTimes(1);
 });

@@ -9,7 +9,8 @@ import {
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormConfirmation } from "@/components/forms/FormConfirmation";
 import { FormCaptcha } from "@/components/forms/FormCaptcha";
@@ -52,6 +53,7 @@ import {
 	type Schedule,
 } from "@/components/execution/ScheduleControls";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/api-error";
 
 function createSubmissionNonce(): string {
 	const browserCrypto = globalThis.crypto;
@@ -96,7 +98,10 @@ function CheckboxField({
 						})
 					}
 				/>
-				<Label htmlFor={field.name} className="cursor-pointer">
+				<Label
+					htmlFor={field.name}
+					className="flex min-h-11 cursor-pointer items-center [overflow-wrap:anywhere]"
+				>
 					{field.label}
 					{field.required && (
 						<span className="text-destructive ml-1">*</span>
@@ -175,8 +180,13 @@ function FormRendererInner({
 	preventNavigation,
 	allowScheduling = !preventNavigation,
 }: FormRendererProps) {
+	const isDesktop = useIsDesktop();
+	const reduceMotion = useReducedMotion();
 	const navigate = useNavigate();
-	const submitForm = useSubmitForm();
+	const submitForm = useSubmitForm({
+		errorToast: false,
+		successToast: getEmbedTokenClaims()?.embed !== true,
+	});
 	const {
 		context,
 		startupHandle,
@@ -186,7 +196,7 @@ function FormRendererInner({
 	} = useFormContext();
 
 	// Execute launch workflow if configured
-	useLaunchWorkflow({ form });
+	const startup = useLaunchWorkflow({ form });
 
 	// Get typed fields array - memoized to prevent unnecessary re-renders
 	const fields = useMemo(
@@ -209,9 +219,9 @@ function FormRendererInner({
 
 	// Track which inputs we've attempted to load (to prevent infinite loops)
 	const loadedInputsRef = useRef<Record<string, string>>({});
-
-	// Track blur events to trigger data provider loading
-	const fieldBlurTriggerRef = useRef<number>(0);
+	const optionRequests = useRef<
+		Record<string, { hash: string; promise: Promise<DataProviderOption[]> }>
+	>({});
 
 	// Track if initial load is complete
 	const [hasCompletedInitialLoad, setHasCompletedInitialLoad] =
@@ -219,6 +229,16 @@ function FormRendererInner({
 
 	// Track navigation state to keep button disabled through redirect
 	const [isNavigating, setIsNavigating] = useState(false);
+	const submissionBusy = useRef(false);
+	const optionsRetryBusy = useRef(false);
+	const [isRetryingOptions, setIsRetryingOptions] = useState(false);
+	const [submissionError, setSubmissionError] = useState<string | null>(null);
+	const submissionErrorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!submissionError) return;
+		submissionErrorRef.current?.focus();
+		submissionErrorRef.current?.scrollIntoView?.({ block: "center" });
+	}, [submissionError]);
 	const [confirmationMarkdown, setConfirmationMarkdown] = useState<
 		string | null
 	>(null);
@@ -340,135 +360,164 @@ function FormRendererInner({
 		async (fieldOverrides?: Record<string, unknown>) => {
 			const selectFields = fields.filter(hasDynamicOptions);
 
-			for (const field of selectFields) {
-				const cacheKey = providerCacheKey(field);
+			await Promise.all(
+				selectFields.map(async (field) => {
+					const cacheKey = providerCacheKey(field);
 
-				// Evaluate inputs to check if all required fields are available
-				// Pass fieldOverrides to use fresh values
-				const { inputs, hasAllRequired } = evaluateDataProviderInputs(
-					field,
-					fieldOverrides,
-				);
+					// Evaluate inputs to check if all required fields are available
+					// Pass fieldOverrides to use fresh values
+					const { inputs, hasAllRequired } =
+						evaluateDataProviderInputs(field, fieldOverrides);
 
-				// Skip if we don't have all required inputs
-				if (!hasAllRequired) {
-					// Clear any existing options and errors
-					setDataProviderState((prev) => ({
-						...prev,
-						options: {
-							...prev.options,
-							[cacheKey]: undefined,
-						} as Record<string, DataProviderOption[]>,
-						errors: {
-							...prev.errors,
-							[cacheKey]: undefined,
-						} as Record<string, string>,
-					}));
-					continue;
-				}
-
-				// Create a hash of the inputs to detect changes
-				const inputsHash = JSON.stringify(inputs || {});
-
-				// Skip if we've already loaded with these exact inputs
-				if (loadedInputsRef.current[cacheKey] === inputsHash) {
-					continue;
-				}
-
-				// Skip if already loading
-				if (dataProviderState.loading[cacheKey]) {
-					continue;
-				}
-
-				try {
-					// Set loading state
-					setDataProviderState((prev) => ({
-						...prev,
-						loading: { ...prev.loading, [cacheKey]: true },
-						errors: {
-							...prev.errors,
-							[cacheKey]: undefined,
-						} as Record<string, string>,
-					}));
-
-					const options = await getFormFieldOptions(
-						form.id,
-						field.name,
-						inputs || undefined,
-					);
-
-					loadedInputsRef.current[cacheKey] = inputsHash;
-
-					// Update all state in one batch
-					setDataProviderState((prev) => {
-						const newSuccessfullyLoaded = new Set(
-							prev.successfullyLoaded,
-						);
-						newSuccessfullyLoaded.add(cacheKey);
-						return {
-							options: { ...prev.options, [cacheKey]: options },
+					// Skip if we don't have all required inputs
+					if (!hasAllRequired) {
+						delete optionRequests.current[cacheKey];
+						delete loadedInputsRef.current[cacheKey];
+						// Clear any existing options and errors
+						setDataProviderState((prev) => ({
+							...prev,
 							loading: { ...prev.loading, [cacheKey]: false },
-							errors: prev.errors,
-							successfullyLoaded: newSuccessfullyLoaded,
-						};
-					});
-
-					// Auto-fill sibling fields from data provider metadata
-					if (field.auto_fill && options.length > 0) {
-						const metadata = options[0].metadata;
-						if (metadata && setValueRef.current) {
-							Object.entries(field.auto_fill).forEach(
-								([targetField, metadataKey]) => {
-									const value = metadata[metadataKey];
-									if (value !== undefined && value !== null) {
-										setValueRef.current?.(
-											targetField,
-											value,
-											{
-												shouldValidate: true,
-											},
-										);
-									}
-								},
-							);
-						}
+							successfullyLoaded: new Set(
+								[...prev.successfullyLoaded].filter(
+									(key) => key !== cacheKey,
+								),
+							),
+							options: {
+								...prev.options,
+								[cacheKey]: undefined,
+							} as Record<string, DataProviderOption[]>,
+							errors: {
+								...prev.errors,
+								[cacheKey]: undefined,
+							} as Record<string, string>,
+						}));
+						return;
 					}
-				} catch {
-					// Update error state in one batch
-					setDataProviderState((prev) => ({
-						...prev,
-						loading: { ...prev.loading, [cacheKey]: false },
-						errors: {
-							...prev.errors,
-							[cacheKey]: "Unable to load data",
-						},
-						options: {
-							...prev.options,
-							[cacheKey]: undefined,
-						} as Record<string, DataProviderOption[]>,
-					}));
-				}
-			}
+
+					// Create a hash of the inputs to detect changes
+					const inputsHash = JSON.stringify(inputs || {});
+
+					// Skip if we've already loaded with these exact inputs
+					if (loadedInputsRef.current[cacheKey] === inputsHash) {
+						return;
+					}
+
+					const pending = optionRequests.current[cacheKey];
+					if (pending?.hash === inputsHash) {
+						await pending.promise.catch(() => undefined);
+						return;
+					}
+					const request = {
+						hash: inputsHash,
+						promise: getFormFieldOptions(
+							form.id,
+							field.name,
+							inputs || undefined,
+						),
+					};
+					optionRequests.current[cacheKey] = request;
+
+					try {
+						// Set loading state
+						setDataProviderState((prev) => ({
+							...prev,
+							loading: { ...prev.loading, [cacheKey]: true },
+						}));
+
+						const options = await request.promise;
+						if (optionRequests.current[cacheKey] !== request)
+							return;
+
+						loadedInputsRef.current[cacheKey] = inputsHash;
+
+						// Update all state in one batch
+						setDataProviderState((prev) => {
+							const newSuccessfullyLoaded = new Set(
+								prev.successfullyLoaded,
+							);
+							newSuccessfullyLoaded.add(cacheKey);
+							return {
+								options: {
+									...prev.options,
+									[cacheKey]: options,
+								},
+								loading: { ...prev.loading, [cacheKey]: false },
+								errors: {
+									...prev.errors,
+									[cacheKey]: undefined,
+								} as Record<string, string>,
+								successfullyLoaded: newSuccessfullyLoaded,
+							};
+						});
+
+						// Auto-fill sibling fields from data provider metadata
+						if (field.auto_fill && options.length > 0) {
+							const metadata = options[0].metadata;
+							if (metadata && setValueRef.current) {
+								Object.entries(field.auto_fill).forEach(
+									([targetField, metadataKey]) => {
+										const value = metadata[metadataKey];
+										if (
+											value !== undefined &&
+											value !== null
+										) {
+											setValueRef.current?.(
+												targetField,
+												value,
+												{
+													shouldValidate: true,
+												},
+											);
+										}
+									},
+								);
+							}
+						}
+					} catch (error) {
+						if (optionRequests.current[cacheKey] !== request)
+							return;
+						// Update error state in one batch
+						setDataProviderState((prev) => ({
+							...prev,
+							loading: { ...prev.loading, [cacheKey]: false },
+							errors: {
+								...prev.errors,
+								[cacheKey]: getErrorMessage(
+									error,
+									"Could not load available choices.",
+								),
+							},
+							options: {
+								...prev.options,
+								[cacheKey]: undefined,
+							} as Record<string, DataProviderOption[]>,
+						}));
+					} finally {
+						if (optionRequests.current[cacheKey] === request)
+							delete optionRequests.current[cacheKey];
+					}
+				}),
+			);
 		},
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit dataProviderState.loading to prevent infinite loop
 		[fields, evaluateDataProviderInputs, form.id],
 	);
 
-	// Load data providers on mount and when fieldBlurTrigger changes
+	// Reload when evaluated context changes, including asynchronously loaded startup data.
+	// Request tracking and input hashes deduplicate unchanged fields.
 	useEffect(() => {
-		loadDataProviders().then(() => {
-			// Mark initial load as complete after first load
-			if (!hasCompletedInitialLoad) {
-				setHasCompletedInitialLoad(true);
-			}
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [fields, fieldBlurTriggerRef.current]);
+		let active = true;
+		Promise.resolve()
+			.then(() => (active ? loadDataProviders() : undefined))
+			.then(() => {
+				if (active) setHasCompletedInitialLoad(true);
+			});
+		return () => {
+			active = false;
+		};
+	}, [loadDataProviders]);
 
 	// Handler for field blur events
 	const handleFieldBlur = useCallback(() => {
-		// Increment trigger to cause useEffect to re-run
-		fieldBlurTriggerRef.current += 1;
 		loadDataProviders();
 	}, [loadDataProviders]);
 
@@ -596,7 +645,6 @@ function FormRendererInner({
 		handleSubmit,
 		formState: { errors, isValid },
 		setValue,
-		watch,
 		control,
 	} = useForm({
 		resolver: customResolver,
@@ -637,11 +685,13 @@ function FormRendererInner({
 	});
 
 	// Bridge setValue to the ref so loadDataProviders (defined earlier) can use it for auto_fill
-	setValueRef.current = setValue;
+	useEffect(() => {
+		setValueRef.current = setValue;
+	}, [setValue]);
 
 	// Watch all field values and sync to FormContext for visibility evaluation
 	// Use ref to track previous values to avoid infinite loops
-	const formValues = watch();
+	const formValues = useWatch({ control });
 	const prevValuesRef = useRef<Record<string, unknown>>({});
 
 	useEffect(() => {
@@ -686,6 +736,19 @@ function FormRendererInner({
 
 			// Clear data for dependent fields and reload them
 			if (fieldsToClear.length > 0) {
+				fieldsToClear.forEach((cacheKey) => {
+					delete loadedInputsRef.current[cacheKey];
+					delete optionRequests.current[cacheKey];
+					const dependent = fields.find(
+						(field) => providerCacheKey(field) === cacheKey,
+					);
+					if (dependent)
+						setValueRef.current?.(
+							dependent.name,
+							dependent.type === "multi_select" ? [] : "",
+							{ shouldValidate: true },
+						);
+				});
 				setDataProviderState((prev) => {
 					const newOptions = { ...prev.options };
 					const newSuccessfullyLoaded = new Set(
@@ -695,8 +758,6 @@ function FormRendererInner({
 					fieldsToClear.forEach((cacheKey) => {
 						delete newOptions[cacheKey];
 						newSuccessfullyLoaded.delete(cacheKey);
-						// Also clear from loadedInputsRef so loadDataProviders will reload
-						delete loadedInputsRef.current[cacheKey];
 					});
 
 					return {
@@ -714,6 +775,9 @@ function FormRendererInner({
 	}, [formValues, setFieldValue, fields, loadDataProviders]);
 
 	const onSubmit = async (data: Record<string, unknown>) => {
+		if (submissionBusy.current) return;
+		submissionBusy.current = true;
+		setSubmissionError(null);
 		setIsNavigating(true);
 		try {
 			const result = await submitForm.mutateAsync({
@@ -765,7 +829,14 @@ function FormRendererInner({
 				});
 			}
 			// Don't reset isNavigating - component will unmount on navigation (or stay disabled in embedded mode)
-		} catch {
+		} catch (error) {
+			submissionBusy.current = false;
+			setSubmissionError(
+				getErrorMessage(
+					error,
+					"Please try again. Your answers have been kept.",
+				),
+			);
 			if (captchaRequired) {
 				setCaptchaPayload(null);
 				setCaptchaResetSignal((current) => current + 1);
@@ -859,11 +930,6 @@ function FormRendererInner({
 
 	DataProviderField.displayName = "DataProviderField";
 
-	// Create stable callbacks for field value changes
-	const fieldValueChangeCallbacks = useRef<
-		Record<string, (value: string) => void>
-	>({});
-
 	// Helper: apply auto_fill from a selected option's metadata to sibling fields
 	const applyAutoFill = useCallback(
 		(field: FormField, selectedValue: string) => {
@@ -893,37 +959,11 @@ function FormRendererInner({
 	);
 
 	const getFieldValueChangeCallback = useCallback(
-		(fieldName: string, field?: FormField) => {
-			// Invalidate cached callback when auto_fill options change so
-			// the closure always references the latest options array.
-			const cacheKey =
-				field && hasDynamicOptions(field) ? fieldName : undefined;
-			const currentOptions = cacheKey
-				? dataProviderState.options[cacheKey]
-				: undefined;
-			const cacheId = `${fieldName}_${field?.auto_fill ? "af" : ""}${currentOptions ? currentOptions.length : 0}`;
-
-			if (
-				!fieldValueChangeCallbacks.current[fieldName] ||
-				(fieldValueChangeCallbacks.current as Record<string, unknown>)[
-					`${fieldName}_cacheId`
-				] !== cacheId
-			) {
-				fieldValueChangeCallbacks.current[fieldName] = (
-					value: string,
-				) => {
-					setValue(fieldName, value, { shouldValidate: true });
-					if (field?.auto_fill) {
-						applyAutoFill(field, value);
-					}
-				};
-				(fieldValueChangeCallbacks.current as Record<string, unknown>)[
-					`${fieldName}_cacheId`
-				] = cacheId;
-			}
-			return fieldValueChangeCallbacks.current[fieldName];
+		(fieldName: string, field?: FormField) => (value: string) => {
+			setValue(fieldName, value, { shouldValidate: true });
+			if (field?.auto_fill) applyAutoFill(field, value);
 		},
-		[setValue, applyAutoFill, dataProviderState.options],
+		[setValue, applyAutoFill],
 	);
 
 	const renderField = (field: FormField) => {
@@ -1182,7 +1222,7 @@ function FormRendererInner({
 									/>
 									<Label
 										htmlFor={`${field.name}-${option["value"]}`}
-										className="cursor-pointer font-normal"
+										className="flex min-h-11 cursor-pointer items-center font-normal [overflow-wrap:anywhere]"
 									>
 										{option["label"]}
 									</Label>
@@ -1422,6 +1462,26 @@ function FormRendererInner({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [fields, context]);
 
+	const failedOptionFields = visibleFields.filter((field) =>
+		Boolean(dataProviderState.errors[providerCacheKey(field)]),
+	);
+	const optionsRetryPending =
+		isRetryingOptions ||
+		failedOptionFields.some(
+			(field) => dataProviderState.loading[providerCacheKey(field)],
+		);
+	const retryOptions = async () => {
+		if (optionsRetryBusy.current) return;
+		optionsRetryBusy.current = true;
+		setIsRetryingOptions(true);
+		try {
+			await loadDataProviders(formValues);
+		} finally {
+			optionsRetryBusy.current = false;
+			setIsRetryingOptions(false);
+		}
+	};
+
 	// Show loading state while launch workflow executes or data providers load (only on initial load)
 	const isAnyDataProviderLoading = Object.values(
 		dataProviderState.loading,
@@ -1432,7 +1492,7 @@ function FormRendererInner({
 
 	// Dev toggle component - positioned absolutely so it doesn't affect layout
 	const devToggle = onDevModeChange && (
-		<div className="absolute top-4 right-4 flex items-center gap-2">
+		<div className="flex items-center justify-end gap-2 border-b border-border px-4 py-2">
 			<Switch
 				id="dev-mode"
 				checked={devMode}
@@ -1440,7 +1500,7 @@ function FormRendererInner({
 			/>
 			<Label
 				htmlFor="dev-mode"
-				className="flex items-center gap-1.5 text-sm cursor-pointer"
+				className="flex min-h-11 items-center gap-1.5 text-sm cursor-pointer"
 			>
 				<Code2 className="h-3.5 w-3.5" />
 				Dev
@@ -1457,24 +1517,55 @@ function FormRendererInner({
 		);
 	}
 
+	if (startup?.error) {
+		return (
+			<Card className="mx-auto w-full max-w-2xl gap-0 py-0">
+				<CardContent className="space-y-4 py-6">
+					<div role="alert" className="space-y-2">
+						<p className="font-medium">
+							Form data could not be loaded
+						</p>
+						<p className="text-sm text-muted-foreground">
+							This form needs its initial data before you can
+							continue.
+						</p>
+						<p className="break-words text-sm text-destructive">
+							{startup.error}
+						</p>
+					</div>
+					<Button
+						type="button"
+						className="min-h-11 w-full sm:w-auto"
+						onClick={startup.retry}
+					>
+						Retry form data
+					</Button>
+				</CardContent>
+			</Card>
+		);
+	}
+
 	if (showLoadingState) {
 		return (
 			<div className="flex justify-center">
 				<Card
 					className={
 						devMode
-							? "w-full max-w-[calc(42rem+320px)] relative"
-							: "w-full max-w-2xl relative"
+							? "w-full max-w-[calc(42rem+320px)] relative gap-0 py-0"
+							: "w-full max-w-2xl relative gap-0 py-0"
 					}
 				>
 					{devToggle}
-					<div className="flex">
+					<div className="flex min-w-0 flex-col xl:flex-row">
 						{/* Form content */}
-						<CardContent className="pt-6 flex-1 min-w-0 max-w-2xl">
+						<CardContent className="py-6 flex-1 min-w-0 max-w-2xl">
 							<div className="space-y-6">
 								{/* Loading indicator */}
-								<div className="flex items-center gap-3 rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
-									<Loader2 className="h-5 w-5 animate-spin text-primary" />
+								<div
+									role="status"
+									className="flex items-center gap-3 rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5"
+								>
+									<Loader2 className="h-5 w-5 animate-spin text-primary motion-reduce:animate-none" />
 									<div className="flex-1">
 										<p className="text-sm font-medium">
 											{isLoadingLaunchWorkflow
@@ -1483,8 +1574,8 @@ function FormRendererInner({
 										</p>
 										<p className="text-xs text-muted-foreground mt-0.5">
 											{isLoadingLaunchWorkflow
-												? "Executing launch workflow to populate form context"
-												: "Fetching dynamic options from data providers"}
+												? "Preparing the information this form needs"
+												: "Preparing the available choices"}
 										</p>
 									</div>
 								</div>
@@ -1504,13 +1595,18 @@ function FormRendererInner({
 						<motion.div
 							initial={false}
 							animate={{
-								width: devMode ? 320 : 0,
+								width: isDesktop ? (devMode ? 320 : 0) : "100%",
+								height: isDesktop || devMode ? "auto" : 0,
 								opacity: devMode ? 1 : 0,
 							}}
-							transition={{ duration: 0.2, ease: "easeInOut" }}
-							className="overflow-hidden shrink-0"
+							transition={{
+								duration: reduceMotion ? 0 : 0.22,
+								ease: "easeInOut",
+							}}
+							inert={!devMode}
+							className="min-w-0 overflow-hidden shrink-0"
 						>
-							<div className="w-80 h-full border-l p-4">
+							<div className="h-full w-full border-t p-4 xl:w-80 xl:border-t-0 xl:border-l">
 								<FormContextPanel />
 							</div>
 						</motion.div>
@@ -1525,54 +1621,117 @@ function FormRendererInner({
 			<Card
 				className={
 					devMode
-						? "w-full max-w-[calc(42rem+320px)] relative"
-						: "w-full max-w-2xl relative"
+						? "w-full max-w-[calc(42rem+320px)] relative gap-0 py-0"
+						: "w-full max-w-2xl relative gap-0 py-0"
 				}
 			>
 				{devToggle}
-				<div className="flex">
+				<div className="flex min-w-0 flex-col xl:flex-row">
 					{/* Form content */}
-					<CardContent className="pt-6 flex-1 min-w-0 max-w-2xl">
+					<CardContent className="py-6 flex-1 min-w-0 max-w-2xl">
 						<form
-							onSubmit={handleSubmit(onSubmit)}
+							onSubmit={(event) =>
+								void handleSubmit(onSubmit)(event)
+							}
+							aria-busy={submitForm.isPending || isNavigating}
 							className="space-y-4"
 						>
-							<AnimatePresence mode="popLayout" initial={false}>
-								{visibleFields.map((field: FormField) => (
-									<motion.div
-										key={field.name}
-										initial={{
-											opacity: 0,
-											height: 0,
-											marginBottom: 0,
-										}}
-										animate={{
-											opacity: 1,
-											height: "auto",
-											marginBottom: 16,
-										}}
-										exit={{
-											opacity: 0,
-											height: 0,
-											marginBottom: 0,
-										}}
-										transition={{
-											opacity: { duration: 0.15 },
-											height: {
-												duration: 0.2,
-												ease: "easeInOut",
-											},
-											marginBottom: {
-												duration: 0.2,
-												ease: "easeInOut",
-											},
-										}}
-										style={{ overflow: "hidden" }}
+							{(failedOptionFields.length > 0 ||
+								optionsRetryPending) && (
+								<div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+									<div
+										role={
+											optionsRetryPending
+												? "status"
+												: "alert"
+										}
+										className="space-y-1 text-sm"
 									>
-										{renderField(field)}
-									</motion.div>
-								))}
-							</AnimatePresence>
+										<p className="font-medium">
+											{optionsRetryPending
+												? "Loading available choices…"
+												: "Some choices could not be loaded"}
+										</p>
+										<p className="break-words text-muted-foreground">
+											{optionsRetryPending
+												? "Your other answers are kept while we retry."
+												: `Try loading ${failedOptionFields.map((field) => field.label || field.name).join(", ")} again. Your other answers are kept.`}
+										</p>
+									</div>
+									<Button
+										type="button"
+										variant="outline"
+										className="min-h-11 w-full sm:w-auto"
+										disabled={
+											optionsRetryPending ||
+											submitForm.isPending ||
+											isNavigating
+										}
+										onClick={() => void retryOptions()}
+									>
+										{optionsRetryPending
+											? "Retrying…"
+											: "Retry choices"}
+									</Button>
+								</div>
+							)}
+							<fieldset
+								disabled={submitForm.isPending || isNavigating}
+								inert={submitForm.isPending || isNavigating}
+								className="min-w-0"
+							>
+								<AnimatePresence
+									mode="popLayout"
+									initial={false}
+								>
+									{visibleFields.map((field: FormField) => (
+										<motion.div
+											key={field.name}
+											initial={
+												reduceMotion
+													? false
+													: {
+															opacity: 0,
+															height: 0,
+															marginBottom: 0,
+														}
+											}
+											animate={{
+												opacity: 1,
+												height: "auto",
+												marginBottom: 16,
+											}}
+											exit={{
+												opacity: 0,
+												height: 0,
+												marginBottom: 0,
+											}}
+											transition={{
+												opacity: {
+													duration: reduceMotion
+														? 0
+														: 0.12,
+												},
+												height: {
+													duration: reduceMotion
+														? 0
+														: 0.22,
+													ease: "easeInOut",
+												},
+												marginBottom: {
+													duration: reduceMotion
+														? 0
+														: 0.22,
+													ease: "easeInOut",
+												},
+											}}
+											style={{ overflow: "hidden" }}
+										>
+											{renderField(field)}
+										</motion.div>
+									))}
+								</AnimatePresence>
+							</fieldset>
 							<input
 								type="text"
 								name="website"
@@ -1605,9 +1764,25 @@ function FormRendererInner({
 									onPayloadChange={setCaptchaPayload}
 								/>
 							) : null}
+							{submissionError && (
+								<div
+									role="alert"
+									tabIndex={-1}
+									ref={submissionErrorRef}
+									className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm outline-none"
+								>
+									<p className="font-medium">
+										Form could not be submitted
+									</p>
+									<p className="mt-1 break-words text-muted-foreground">
+										{submissionError}
+									</p>
+								</div>
+							)}
 							<div className="pt-4">
 								<Button
 									type="submit"
+									className="min-h-11 w-full sm:w-auto"
 									disabled={
 										!isValid ||
 										(captchaRequired && !captchaPayload) ||
@@ -1630,13 +1805,18 @@ function FormRendererInner({
 					<motion.div
 						initial={false}
 						animate={{
-							width: devMode ? 320 : 0,
+							width: isDesktop ? (devMode ? 320 : 0) : "100%",
+							height: isDesktop || devMode ? "auto" : 0,
 							opacity: devMode ? 1 : 0,
 						}}
-						transition={{ duration: 0.2, ease: "easeInOut" }}
-						className="overflow-hidden shrink-0"
+						transition={{
+							duration: reduceMotion ? 0 : 0.22,
+							ease: "easeInOut",
+						}}
+						inert={!devMode}
+						className="min-w-0 overflow-hidden shrink-0"
 					>
-						<div className="w-80 h-full border-l p-4">
+						<div className="h-full w-full border-t p-4 xl:w-80 xl:border-t-0 xl:border-l">
 							<FormContextPanel />
 						</div>
 					</motion.div>

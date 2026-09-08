@@ -1,3 +1,4 @@
+import { useApplicationName } from "@/lib/applicationName";
 /**
  * Device Authorization Page
  *
@@ -5,7 +6,7 @@
  * Accessed when CLI displays a user code and directs user to /device.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -26,26 +27,27 @@ import {
 	Home,
 	LogOut,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Logo } from "@/components/branding/Logo";
-import { toast } from "sonner";
 
 type AuthorizationStep = "input" | "authorized" | "error";
 
 export function DevicePage() {
+	const reducedMotion = useReducedMotion();
+	const applicationName = useApplicationName();
+	const outcomeRef = useRef<HTMLHeadingElement>(null);
 	const navigate = useNavigate();
 	const location = useLocation();
-	const {
-		isAuthenticated,
-		isLoading: authLoading,
-		logout,
-		user,
-	} = useAuth();
+	const { isAuthenticated, isLoading: authLoading, logout, user } = useAuth();
 
 	const [step, setStep] = useState<AuthorizationStep>("input");
 	const [userCode, setUserCode] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (step !== "input") outcomeRef.current?.focus();
+	}, [step]);
 
 	// Redirect to login if not authenticated
 	useEffect(() => {
@@ -122,7 +124,6 @@ export function DevicePage() {
 
 			// Success
 			setStep("authorized");
-			toast.success("CLI authorized successfully!");
 		} catch (err) {
 			const errorMessage =
 				err instanceof Error
@@ -130,7 +131,6 @@ export function DevicePage() {
 					: "Failed to authorize device";
 			setError(errorMessage);
 			setStep("error");
-			toast.error(errorMessage);
 		} finally {
 			setIsLoading(false);
 		}
@@ -149,32 +149,35 @@ export function DevicePage() {
 	if (authLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+		<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
 			<motion.div
-				initial={{ opacity: 0, y: 20 }}
+				initial={reducedMotion ? false : { opacity: 0, y: 4 }}
 				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.4, ease: "easeOut" }}
+				transition={{
+					duration: reducedMotion ? 0 : 0.36,
+					ease: "easeOut",
+				}}
 				className="w-full max-w-md"
 			>
-				<Card className="border-primary/10 shadow-xl shadow-primary/5">
+				<Card className="rounded-[var(--bf-radius-feature)] border-border shadow-none">
 					<CardHeader className="text-center space-y-4 pb-2">
 						<motion.div
-							initial={{ scale: 0.8, opacity: 0 }}
-							animate={{ scale: 1, opacity: 1 }}
-							transition={{ delay: 0.1, duration: 0.3 }}
+							initial={reducedMotion ? false : { opacity: 0 }}
+							animate={{ opacity: 1 }}
+							transition={{ duration: reducedMotion ? 0 : 0.22 }}
 							className="flex justify-center"
 						>
 							<div className="relative">
 								<Logo
 									type="square"
 									className="h-16 w-16"
-									alt="Bifrost"
+									alt={applicationName}
 								/>
 								<div className="absolute -bottom-1 -right-1 h-6 w-6 bg-primary rounded-full flex items-center justify-center">
 									<Terminal className="h-3 w-3 text-primary-foreground" />
@@ -182,7 +185,7 @@ export function DevicePage() {
 							</div>
 						</motion.div>
 						<div className="space-y-1">
-							<h1 className="text-2xl font-bold tracking-tight">
+							<h1 className="font-display text-2xl font-semibold tracking-tight">
 								Authorize CLI Access
 							</h1>
 							<CardDescription className="text-base">
@@ -201,7 +204,9 @@ export function DevicePage() {
 									<Terminal className="h-4 w-4" />
 									<AlertDescription>
 										Authorizing as{" "}
-										<strong>{user?.email}</strong>
+										<strong className="[overflow-wrap:anywhere]">
+											{user?.email}
+										</strong>
 									</AlertDescription>
 								</Alert>
 
@@ -219,12 +224,16 @@ export function DevicePage() {
 											placeholder="XXXX-YYYY"
 											value={userCode}
 											onChange={handleUserCodeChange}
-											className="text-center text-2xl tracking-widest font-mono"
+											className="h-12 text-center text-2xl tracking-widest font-mono"
+											aria-describedby="device-code-help"
 											maxLength={9} // XXXX-YYYY = 9 chars
 											autoFocus
 											autoComplete="off"
 										/>
-										<p className="text-xs text-muted-foreground text-center">
+										<p
+											id="device-code-help"
+											className="text-xs text-muted-foreground text-center"
+										>
 											Enter the 8-character code from your
 											CLI
 										</p>
@@ -241,7 +250,7 @@ export function DevicePage() {
 
 									<Button
 										type="submit"
-										className="w-full"
+										className="min-h-11 w-full"
 										disabled={
 											isLoading ||
 											userCode.length !== 9 ||
@@ -249,7 +258,7 @@ export function DevicePage() {
 										}
 									>
 										{isLoading ? (
-											<Loader2 className="h-4 w-4 animate-spin mr-2" />
+											<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 										) : (
 											<Terminal className="h-4 w-4 mr-2" />
 										)}
@@ -259,6 +268,7 @@ export function DevicePage() {
 									<div className="grid gap-2 sm:grid-cols-2">
 										<Button
 											type="button"
+											className="min-h-11"
 											variant="outline"
 											onClick={returnHome}
 										>
@@ -267,6 +277,7 @@ export function DevicePage() {
 										</Button>
 										<Button
 											type="button"
+											className="min-h-11"
 											variant="ghost"
 											onClick={logout}
 										>
@@ -280,21 +291,27 @@ export function DevicePage() {
 
 						{step === "authorized" && (
 							<motion.div
-								initial={{ opacity: 0, scale: 0.9 }}
-								animate={{ opacity: 1, scale: 1 }}
-								transition={{ duration: 0.3 }}
+								initial={reducedMotion ? false : { opacity: 0 }}
+								animate={{ opacity: 1 }}
+								transition={{
+									duration: reducedMotion ? 0 : 0.22,
+								}}
 								className="space-y-4 text-center"
 							>
 								<div className="flex justify-center">
-									<div className="h-16 w-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
-										<CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+									<div className="h-16 w-16 bg-[color-mix(in_srgb,var(--bf-success)_12%,transparent)] rounded-full flex items-center justify-center">
+										<CheckCircle className="h-8 w-8 text-[var(--bf-success)]" />
 									</div>
 								</div>
 
 								<div className="space-y-2">
-									<h3 className="text-lg font-semibold text-green-900 dark:text-green-100">
+									<h2
+										ref={outcomeRef}
+										tabIndex={-1}
+										className="font-display text-lg font-semibold outline-none"
+									>
 										CLI Authorized!
-									</h3>
+									</h2>
 									<p className="text-sm text-muted-foreground">
 										You can now return to your terminal and
 										continue working. This window can be
@@ -304,7 +321,7 @@ export function DevicePage() {
 
 								<div className="space-y-2">
 									<Button
-										className="w-full"
+										className="min-h-11 w-full"
 										onClick={returnHome}
 									>
 										<Home className="h-4 w-4" />
@@ -312,7 +329,7 @@ export function DevicePage() {
 									</Button>
 									<Button
 										variant="outline"
-										className="w-full"
+										className="min-h-11 w-full"
 										onClick={handleReset}
 									>
 										<Terminal className="h-4 w-4" />
@@ -320,7 +337,7 @@ export function DevicePage() {
 									</Button>
 									<Button
 										variant="ghost"
-										className="w-full"
+										className="min-h-11 w-full"
 										onClick={logout}
 									>
 										<LogOut className="h-4 w-4" />
@@ -332,21 +349,27 @@ export function DevicePage() {
 
 						{step === "error" && (
 							<motion.div
-								initial={{ opacity: 0, scale: 0.9 }}
-								animate={{ opacity: 1, scale: 1 }}
-								transition={{ duration: 0.3 }}
+								initial={reducedMotion ? false : { opacity: 0 }}
+								animate={{ opacity: 1 }}
+								transition={{
+									duration: reducedMotion ? 0 : 0.22,
+								}}
 								className="space-y-4 text-center"
 							>
 								<div className="flex justify-center">
-									<div className="h-16 w-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
-										<AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+									<div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center">
+										<AlertCircle className="h-8 w-8 text-destructive" />
 									</div>
 								</div>
 
 								<div className="space-y-2">
-									<h3 className="text-lg font-semibold text-red-900 dark:text-red-100">
+									<h2
+										ref={outcomeRef}
+										tabIndex={-1}
+										className="font-display text-lg font-semibold outline-none"
+									>
 										Authorization Failed
-									</h3>
+									</h2>
 									{error && (
 										<Alert variant="destructive">
 											<AlertDescription>
@@ -363,14 +386,14 @@ export function DevicePage() {
 
 								<div className="space-y-2">
 									<Button
-										className="w-full"
+										className="min-h-11 w-full"
 										onClick={handleReset}
 									>
 										Try Again
 									</Button>
 									<Button
 										variant="outline"
-										className="w-full"
+										className="min-h-11 w-full"
 										onClick={returnHome}
 									>
 										<Home className="h-4 w-4" />
@@ -378,7 +401,7 @@ export function DevicePage() {
 									</Button>
 									<Button
 										variant="ghost"
-										className="w-full"
+										className="min-h-11 w-full"
 										onClick={logout}
 									>
 										<LogOut className="h-4 w-4" />

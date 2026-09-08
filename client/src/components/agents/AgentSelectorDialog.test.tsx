@@ -140,9 +140,7 @@ describe("AgentSelectorDialog — async states", () => {
 			error: null,
 		});
 		await renderDialog();
-		expect(
-			screen.getByText(/no agents available/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/no agents available/i)).toBeInTheDocument();
 	});
 });
 
@@ -203,4 +201,25 @@ describe("AgentSelectorDialog — selection", () => {
 		expect(onSelect).not.toHaveBeenCalled();
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
+});
+
+it("uses the current selection when a previously closed dialog opens", async () => {
+	const { AgentSelectorDialog } = await import("./AgentSelectorDialog");
+	const onSelect = vi.fn();
+	const props = {
+		onSelect,
+		onOpenChange: vi.fn(),
+		selectedAgentId: "agent-1",
+	};
+	const { rerender, user } = renderWithProviders(
+		<AgentSelectorDialog {...props} open={false} />,
+	);
+	rerender(<AgentSelectorDialog {...props} selectedAgentId="agent-2" open />);
+	await user.click(screen.getByRole("button", { name: "Select" }));
+	expect(onSelect).toHaveBeenCalledWith("agent-2");
+});
+
+it("does not confirm an agent absent from the available list", async () => {
+	await renderDialog({ selectedAgentId: "removed-agent" });
+	expect(screen.getByRole("button", { name: "Select" })).toBeDisabled();
 });

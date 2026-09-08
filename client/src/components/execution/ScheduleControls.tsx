@@ -123,7 +123,7 @@ export function ScheduleControls({
 
 	return (
 		<div className="flex flex-col gap-3">
-			<Label className="flex items-center gap-2">
+			<Label className="flex min-h-11 items-center gap-2">
 				<Checkbox
 					checked={checked}
 					onCheckedChange={handleCheckedChange}
@@ -134,7 +134,7 @@ export function ScheduleControls({
 			</Label>
 
 			{checked && (
-				<div className="flex flex-col gap-3 pl-6">
+				<div className="flex min-w-0 flex-col gap-3 border-l border-border pl-3 sm:pl-6">
 					<div className="flex flex-wrap gap-2">
 						{QUICK_PICKS.map((pick) => {
 							const active = pick.isActive(value, now);
@@ -143,6 +143,7 @@ export function ScheduleControls({
 									key={pick.label}
 									type="button"
 									size="sm"
+									className="min-h-11 sm:min-h-8"
 									variant={active ? "default" : "outline"}
 									aria-pressed={active}
 									disabled={disabled}

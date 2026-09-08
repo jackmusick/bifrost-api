@@ -9,6 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ApplicationUpdateScreen } from "@/components/ApplicationUpdateScreen";
+import { AppLoadingSkeleton } from "./AppLoadingSkeleton";
+import { BundleLoadFailure } from "./BundleFeedback";
 import { useOrgScope } from "@/hooks/useOrgScope";
 import { authFetch } from "@/lib/api-client";
 import { clearAuthTokens, getActiveToken } from "@/lib/auth-token";
@@ -257,6 +259,8 @@ export function StandaloneV2App({
 		() => JSON.stringify({ appId, isPreview, assets: sourceAssets }),
 		[appId, isPreview, sourceAssets],
 	);
+	const [loadedSourceKey, setLoadedSourceKey] = useState(sourceKey);
+	const [isBootstrapping, setIsBootstrapping] = useState(true);
 	const [recovery, setRecovery] = useState<{
 		sourceKey: string;
 		assets: StandaloneAssets;
@@ -267,7 +271,12 @@ export function StandaloneV2App({
 
 	const token = getActiveToken();
 	const isAuthenticated = Boolean(token);
-	const error = token ? loadError : "Not authenticated — cannot mount the application.";
+	if (loadedSourceKey !== sourceKey) {
+		setLoadedSourceKey(sourceKey);
+		setIsBootstrapping(true);
+		setLoadError(null);
+	}
+	const unauthenticatedError = "Not authenticated — cannot mount the application.";
 
 	useEffect(() => {
 		const mountEl = containerRef.current;
@@ -277,6 +286,7 @@ export function StandaloneV2App({
 		const bootstrapToken = getActiveToken();
 		if (!mountEl || !bootstrapToken) return;
 
+		setIsBootstrapping(true);
 		setLoadError(null);
 		const basename = isPreview
 			? `/apps/${appSlug}/preview`
@@ -332,6 +342,7 @@ export function StandaloneV2App({
 				setLoadError(
 					value instanceof Error ? value.message : "Failed to load the application.",
 				);
+				setIsBootstrapping(false);
 				return;
 			}
 			const failedAssetKey = JSON.stringify(assets);
@@ -340,6 +351,7 @@ export function StandaloneV2App({
 				setLoadError(
 					value instanceof Error ? value.message : "Failed to load the application.",
 				);
+				setIsBootstrapping(false);
 				return;
 			}
 			recoveryAttempts.current.add(recoveryAttemptKey);
@@ -375,6 +387,7 @@ export function StandaloneV2App({
 				if (!cancelled) {
 					setRecovery({ sourceKey, assets: refreshed });
 					setIsRecovering(false);
+					setIsBootstrapping(true);
 				}
 			} catch (recoveryError) {
 				if (!cancelled) {
@@ -384,6 +397,7 @@ export function StandaloneV2App({
 							? recoveryError.message
 							: "Failed to recover the application after deployment.",
 					);
+					setIsBootstrapping(false);
 				}
 			}
 		};
@@ -394,6 +408,7 @@ export function StandaloneV2App({
 				throw new Error("The application's mount() function must return an unmount function.");
 			}
 			appTeardown = teardown;
+			setIsBootstrapping(false);
 		};
 
 		let legacyBootstrap: LegacyBifrostAppBootstrap | null = null;
@@ -418,6 +433,7 @@ export function StandaloneV2App({
 						mountModule(result.appModule);
 					} else if (result.kind === "legacy-loaded") {
 						activeLegacyEntries.add(entryUrl);
+						setIsBootstrapping(false);
 					} else if (result.kind === "legacy-reload") {
 						window.location.reload();
 					} else {
@@ -453,23 +469,39 @@ export function StandaloneV2App({
 		};
 	}, [appId, appSlug, isPreview, assets, sourceKey, scope, isAuthenticated]);
 
-	if (error) {
+	if (!isAuthenticated) {
 		return (
 			<div className="flex h-full w-full items-center justify-center p-6">
 				<pre className="max-w-xl whitespace-pre-wrap text-sm text-destructive">
-					{error}
+					{unauthenticatedError}
 				</pre>
 			</div>
+		);
+	}
+
+	if (loadError) {
+		return (
+			<BundleLoadFailure
+				error={loadError}
+				onRetry={() => window.location.reload()}
+			/>
 		);
 	}
 
 	if (isRecovering) return <ApplicationUpdateScreen />;
 
 	return (
-		<div
-			ref={containerRef}
-			className="h-full w-full"
-			data-testid="solution-v2-app-root"
-		/>
+		<div className="relative h-full w-full">
+			<div
+				ref={containerRef}
+				className="h-full w-full"
+				data-testid="solution-v2-app-root"
+			/>
+			{isBootstrapping ? (
+				<div className="absolute inset-0 z-10">
+					<AppLoadingSkeleton />
+				</div>
+			) : null}
+		</div>
 	);
 }

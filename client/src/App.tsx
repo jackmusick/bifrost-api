@@ -269,8 +269,9 @@ function AppFrame() {
 	// App routes own their nested navigation. Keep their runtime mounted while
 	// the wildcard portion changes so inline_v1 does not detach its stylesheet
 	// and standalone_v2 does not tear down its React root. Other platform routes
-	// retain the keyed reveal animation on every completed navigation.
-	const routeRevealKey = getRouteRevealKey(location.pathname, location.key);
+	// reveal when their pathname changes. Query-only navigation keeps focus and
+	// local state (tabs, filters and editors) intact.
+	const routeRevealKey = getRouteRevealKey(location.pathname, location.state);
 	useEffect(() => {
 		if (isAppRunnerRoute) return;
 		document.title = applicationName;

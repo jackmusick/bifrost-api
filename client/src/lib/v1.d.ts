@@ -30515,6 +30515,10 @@ export interface operations {
             query?: {
                 /** @description Filter by organization */
                 organization_id?: string | null;
+                /** @description Include only global executions */
+                global_only?: boolean;
+                /** @description Filter by exact workflow ID */
+                workflow_id?: string | null;
                 /** @description Filter by workflow name (partial match) */
                 workflow_name?: string | null;
                 /** @description Comma-separated log levels (e.g., ERROR,WARNING) */

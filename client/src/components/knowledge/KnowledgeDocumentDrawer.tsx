@@ -6,17 +6,23 @@
  * Documents always open in editable mode.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { Save, X, ChevronDown, ChevronRight } from "lucide-react";
+import {
+	useState,
+	useEffect,
+	useCallback,
+	useRef,
+	type RefObject,
+} from "react";
+import { Save, X, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import {
 	Sheet,
 	SheetContent,
 	SheetHeader,
 	SheetTitle,
+	SheetDescription,
 } from "@/components/ui/sheet";
 import {
 	AlertDialog,
-	AlertDialogAction,
 	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
@@ -24,6 +30,8 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,11 +47,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { authFetch } from "@/lib/api-client";
 
+const DOCUMENT_SAVED_TOAST = "knowledge-document-saved";
+
 interface KnowledgeDocumentDrawerProps {
 	namespace: string;
 	documentId: string | null;
 	isCreating: boolean;
 	onClose: () => void;
+	returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 interface DocumentFull {
@@ -61,8 +72,12 @@ function MetadataSection({ metadata }: { metadata: Record<string, unknown> }) {
 	const [open, setOpen] = useState(false);
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
-			<CollapsibleTrigger className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-				{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+			<CollapsibleTrigger className="flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none">
+				{open ? (
+					<ChevronDown className="h-4 w-4" />
+				) : (
+					<ChevronRight className="h-4 w-4" />
+				)}
 				Metadata
 			</CollapsibleTrigger>
 			<CollapsibleContent className="mt-2">
@@ -72,82 +87,112 @@ function MetadataSection({ metadata }: { metadata: Record<string, unknown> }) {
 	);
 }
 
-export function KnowledgeDocumentDrawer({
+export function KnowledgeDocumentDrawer(props: KnowledgeDocumentDrawerProps) {
+	if (!props.documentId && !props.isCreating) return null;
+	return (
+		<KnowledgeDocumentSession
+			key={JSON.stringify([
+				props.isCreating,
+				props.namespace,
+				props.documentId,
+			])}
+			{...props}
+		/>
+	);
+}
+
+function responseMessage(detail: unknown, fallback: string): string {
+	if (typeof detail === "string") return detail;
+	if (
+		detail &&
+		typeof detail === "object" &&
+		"message" in detail &&
+		typeof detail.message === "string"
+	)
+		return detail.message;
+	return fallback;
+}
+
+function KnowledgeDocumentSession({
 	namespace,
 	documentId,
 	isCreating,
 	onClose,
+	returnFocusRef,
 }: KnowledgeDocumentDrawerProps) {
+	const returnFocus = useDialogReturnFocus(returnFocusRef, true);
 	const { isPlatformAdmin, user } = useAuth();
 	const [document, setDocument] = useState<DocumentFull | null>(null);
 	const [content, setContent] = useState("");
 	const [key, setKey] = useState("");
 	const [createNamespace, setCreateNamespace] = useState("");
 	const [scopeOrgId, setScopeOrgId] = useState<string | null | undefined>(
-		null,
+		isPlatformAdmin ? null : (user?.organizationId ?? null),
 	);
+	const saveBusy = useRef(false);
+	const saveErrorRef = useRef<HTMLDivElement>(null);
 	const [isSaving, setIsSaving] = useState(false);
 	const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
-	const isOpen = !!documentId || isCreating;
+	const [isLoading, setIsLoading] = useState(!!documentId);
+	const [loadError, setLoadError] = useState(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const loadController = useRef<AbortController | null>(null);
+
+	useEffect(() => {
+		if (saveError) {
+			saveErrorRef.current?.focus();
+			saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [saveError]);
 
 	const loadDocument = useCallback(async () => {
 		if (!documentId || !namespace) return;
+		loadController.current?.abort();
+		const controller = new AbortController();
+		loadController.current = controller;
 		try {
 			const response = await authFetch(
 				`/api/knowledge-sources/${encodeURIComponent(namespace)}/documents/${documentId}`,
+				{ signal: controller.signal },
 			);
-			if (response.ok) {
-				const data: DocumentFull = await response.json();
-				setDocument(data);
-				setContent(data.content);
-				setKey(data.key || "");
-				setScopeOrgId(data.organization_id ?? null);
-			}
+			if (!response.ok) throw new Error("Failed to load document");
+			const data: DocumentFull = await response.json();
+			if (controller.signal.aborted) return;
+			setDocument(data);
+			setContent(data.content);
+			setKey(data.key || "");
+			setScopeOrgId(data.organization_id ?? null);
 		} catch {
-			toast.error("Failed to load document");
+			if (!controller.signal.aborted) setLoadError(true);
+		} finally {
+			if (!controller.signal.aborted) setIsLoading(false);
 		}
 	}, [documentId, namespace]);
 
-	// Either load the existing document (async) or reset form for creation
-	// (sync). The reset path is wrapped in a microtask so the synchronous
-	// effect body does not directly invoke setState (set-state-in-effect rule).
 	useEffect(() => {
-		if (documentId) {
-			void (async () => {
-				await loadDocument();
-			})();
-		} else if (isCreating) {
-			queueMicrotask(() => {
-				setDocument(null);
-				setContent("");
-				setKey("");
-				setCreateNamespace("");
-				setScopeOrgId(
-					isPlatformAdmin ? null : (user?.organizationId ?? null),
-				);
-			});
-		}
-	}, [
-		documentId,
-		isCreating,
-		loadDocument,
-		isPlatformAdmin,
-		user?.organizationId,
-	]);
+		toast.dismiss(DOCUMENT_SAVED_TOAST);
+		void (async () => {
+			await loadDocument();
+		})();
+		return () => loadController.current?.abort();
+	}, [loadDocument]);
 
 	const handleSave = async (forceReplace = false) => {
+		if (saveBusy.current || isLoading || loadError) return;
+		setSaveError(null);
 		if (!content.trim()) {
-			toast.error("Content is required");
+			setSaveError("Content is required");
 			return;
 		}
 
+		saveBusy.current = true;
 		setIsSaving(true);
 		try {
 			if (isCreating) {
 				const ns = createNamespace.trim();
 				if (!ns) {
-					toast.error("Namespace is required");
+					setSaveError("Namespace is required");
 					setIsSaving(false);
 					return;
 				}
@@ -171,19 +216,25 @@ export function KnowledgeDocumentDrawer({
 					},
 				);
 				if (response.ok) {
-					toast.success("Document created");
+					toast.success("Document created", {
+						id: DOCUMENT_SAVED_TOAST,
+					});
 					onClose();
 				} else if (response.status === 409) {
 					const err = await response.json().catch(() => ({}));
-					const detail = err.detail;
-					const msg =
-						typeof detail === "object"
-							? detail?.message
-							: detail || "Resource already exists";
-					toast.error(msg);
+					const msg = responseMessage(
+						err.detail,
+						"Resource already exists",
+					);
+					setSaveError(msg);
 				} else {
 					const err = await response.json().catch(() => ({}));
-					toast.error(err.detail || "Failed to create document");
+					setSaveError(
+						responseMessage(
+							err.detail,
+							"Failed to create document",
+						),
+					);
 				}
 			} else if (documentId && namespace) {
 				const params = new URLSearchParams();
@@ -208,122 +259,211 @@ export function KnowledgeDocumentDrawer({
 					},
 				);
 				if (response.ok) {
-					toast.success("Document updated");
+					toast.success("Document updated", {
+						id: DOCUMENT_SAVED_TOAST,
+					});
 					onClose();
 				} else if (response.status === 409) {
 					const err = await response.json().catch(() => ({}));
-					const detail = err.detail;
-					const msg =
-						typeof detail === "object"
-							? detail?.message
-							: detail || "Resource already exists";
+					const msg = responseMessage(
+						err.detail,
+						"Resource already exists",
+					);
 					setConflictMessage(msg);
 				} else {
 					const err = await response.json().catch(() => ({}));
-					toast.error(err.detail || "Failed to update document");
+					setSaveError(
+						responseMessage(
+							err.detail,
+							"Failed to update document",
+						),
+					);
 				}
 			}
 		} catch {
-			toast.error("Failed to save document");
+			setSaveError("Failed to save document");
 		} finally {
+			saveBusy.current = false;
 			setIsSaving(false);
 		}
 	};
 
 	return (
 		<>
-			<Sheet open={isOpen} onOpenChange={() => onClose()}>
-				<SheetContent className="sm:max-w-[800px] flex flex-col">
-					<SheetHeader>
-						<SheetTitle>
+			<Sheet
+				open
+				onOpenChange={(open) => {
+					if (!open && !isSaving) onClose();
+				}}
+			>
+				<SheetContent
+					{...returnFocus}
+					className="w-full sm:max-w-[800px] h-dvh flex flex-col overflow-hidden"
+					showCloseButton={!isSaving}
+					onEscapeKeyDown={(event) => {
+						if (isSaving) event.preventDefault();
+					}}
+					onInteractOutside={(event) => {
+						if (isSaving) event.preventDefault();
+					}}
+				>
+					<SheetHeader className="shrink-0 border-b px-4 py-5 pr-16 sm:px-6 sm:pr-16">
+						<SheetTitle className="leading-6 [overflow-wrap:anywhere]">
 							{isCreating
 								? "New Document"
-								: (document?.key || "Document")}
+								: document?.key || "Document"}
 						</SheetTitle>
+						<SheetDescription>
+							{isCreating
+								? "Add a reference for your agents."
+								: namespace}
+						</SheetDescription>
 					</SheetHeader>
 
-					<div className="flex-1 flex flex-col gap-4 overflow-hidden mt-4 px-6">
-						{/* Scope selector - shown at top for platform admins */}
-						{isPlatformAdmin && (
-							<div className="space-y-2">
-								<Label>Organization</Label>
-								<OrganizationSelect
-									value={scopeOrgId}
-									onChange={setScopeOrgId}
-									showGlobal={true}
-								/>
-							</div>
-						)}
-
-						{/* Create-mode fields */}
-						{isCreating && (
-							<>
-								<div className="space-y-2">
-									<Label htmlFor="doc-namespace">
-										Namespace
-									</Label>
-									<Input
-										id="doc-namespace"
-										value={createNamespace}
-										onChange={(e) =>
-											setCreateNamespace(e.target.value)
-										}
-										placeholder="e.g. company-docs"
-									/>
-								</div>
-								<div className="space-y-2">
-									<Label htmlFor="doc-key">
-										Key (optional)
-									</Label>
-									<Input
-										id="doc-key"
-										value={key}
-										onChange={(e) => setKey(e.target.value)}
-										placeholder="unique-document-key"
-									/>
-								</div>
-							</>
-						)}
-
-						{/* Editor */}
-						<div className="flex-1 min-h-0 overflow-hidden rounded-md ring-1 ring-foreground/5">
-							<TiptapEditor
-								content={content}
-								onChange={setContent}
-								className="h-full border-0 rounded-none"
-							/>
+					{isLoading ? (
+						<div
+							role="status"
+							className="p-6 text-muted-foreground"
+						>
+							Loading document…
 						</div>
-
-						{/* Metadata (view mode only) */}
-						{!isCreating && document && Object.keys(document.metadata).length > 0 && (
-							<MetadataSection metadata={document.metadata} />
-						)}
-
-						{/* Actions - always show Save and Cancel */}
-						<div className="flex justify-end gap-2 py-2 pb-6">
-							<Button
-								variant="outline"
-								onClick={() => {
-									if (!isCreating && document) {
-										setContent(document.content || "");
-										setScopeOrgId(
-											document.organization_id ?? null,
-										);
-									}
-									onClose();
-								}}
-							>
-								<X className="h-4 w-4 mr-1" />
-								Cancel
-							</Button>
-							<Button
-								onClick={() => handleSave(false)}
+					) : loadError ? (
+						<Alert variant="destructive" className="m-4 w-auto">
+							<AlertTitle>
+								Document could not be loaded
+							</AlertTitle>
+							<AlertDescription>
+								<Button
+									className="mt-3 min-h-11"
+									variant="outline"
+									onClick={() => {
+										setIsLoading(true);
+										setLoadError(false);
+										void loadDocument();
+									}}
+								>
+									Retry document
+								</Button>
+							</AlertDescription>
+						</Alert>
+					) : (
+						<div
+							role="region"
+							aria-label="Document settings"
+							className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6"
+						>
+							<fieldset
 								disabled={isSaving}
+								className="flex min-w-0 flex-col gap-4"
 							>
-								<Save className="h-4 w-4 mr-1" />
-								{isSaving ? "Saving..." : "Save"}
-							</Button>
+								{/* Scope selector - shown at top for platform admins */}
+								{isPlatformAdmin && (
+									<div className="space-y-2">
+										<Label htmlFor="knowledge-scope">
+											Organization
+										</Label>
+										<OrganizationSelect
+											id="knowledge-scope"
+											disabled={isSaving}
+											value={scopeOrgId}
+											onChange={setScopeOrgId}
+											showGlobal={true}
+										/>
+									</div>
+								)}
+
+								{/* Create-mode fields */}
+								{isCreating && (
+									<>
+										<div className="space-y-2">
+											<Label htmlFor="doc-namespace">
+												Namespace
+											</Label>
+											<Input
+												className="min-h-11"
+												id="doc-namespace"
+												value={createNamespace}
+												onChange={(e) =>
+													setCreateNamespace(
+														e.target.value,
+													)
+												}
+												placeholder="e.g. company-docs"
+											/>
+										</div>
+										<div className="space-y-2">
+											<Label htmlFor="doc-key">
+												Key (optional)
+											</Label>
+											<Input
+												className="min-h-11"
+												id="doc-key"
+												value={key}
+												onChange={(e) =>
+													setKey(e.target.value)
+												}
+												placeholder="unique-document-key"
+											/>
+										</div>
+									</>
+								)}
+
+								{/* Editor */}
+								<div className="min-h-[380px] h-[50dvh] shrink-0 overflow-hidden rounded-[var(--bf-radius-control)] border border-border">
+									<TiptapEditor
+										ariaLabel="Document content"
+										readOnly={isSaving}
+										content={content}
+										onChange={setContent}
+										className="h-full border-0 rounded-none"
+									/>
+								</div>
+
+								{/* Metadata (view mode only) */}
+								{!isCreating &&
+									document &&
+									Object.keys(document.metadata).length >
+										0 && (
+										<MetadataSection
+											metadata={document.metadata}
+										/>
+									)}
+							</fieldset>
 						</div>
+					)}
+					{saveError && !conflictMessage && (
+						<Alert
+							variant="destructive"
+							ref={saveErrorRef}
+							tabIndex={-1}
+							className="outline-none mx-4 mb-3 w-auto shrink-0 max-h-32 overflow-y-auto"
+						>
+							<AlertTitle>Document could not be saved</AlertTitle>
+							<AlertDescription>{saveError}</AlertDescription>
+						</Alert>
+					)}
+					<div className="flex shrink-0 justify-end gap-2 border-t px-4 py-4 sm:px-6">
+						<Button
+							variant="outline"
+							className="min-h-11"
+							disabled={isSaving}
+							onClick={onClose}
+						>
+							<X className="size-4" />
+							Cancel
+						</Button>
+						<Button
+							className="min-h-11"
+							onClick={() => void handleSave(false)}
+							disabled={isSaving || isLoading || loadError}
+						>
+							{isSaving ? (
+								<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+							) : (
+								<Save className="size-4" />
+							)}
+							{isSaving ? "Saving…" : "Save"}
+						</Button>
 					</div>
 				</SheetContent>
 			</Sheet>
@@ -331,9 +471,19 @@ export function KnowledgeDocumentDrawer({
 			{/* Replace confirmation dialog */}
 			<AlertDialog
 				open={!!conflictMessage}
-				onOpenChange={() => setConflictMessage(null)}
+				onOpenChange={(open) => {
+					if (!open && !saveBusy.current) {
+						setConflictMessage(null);
+						setSaveError(null);
+					}
+				}}
 			>
-				<AlertDialogContent>
+				<AlertDialogContent
+					className="max-h-[90dvh] overflow-y-auto [overflow-wrap:anywhere]"
+					onEscapeKeyDown={(e) => {
+						if (saveBusy.current) e.preventDefault();
+					}}
+				>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
 							Replace Existing Document?
@@ -342,16 +492,34 @@ export function KnowledgeDocumentDrawer({
 							{conflictMessage} Do you want to replace it?
 						</AlertDialogDescription>
 					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={() => {
-								setConflictMessage(null);
-								handleSave(true);
-							}}
+					{saveError && (
+						<Alert
+							ref={saveErrorRef}
+							tabIndex={-1}
+							variant="destructive"
+							className="outline-none"
 						>
-							Replace
-						</AlertDialogAction>
+							<AlertTitle>
+								Document could not be replaced
+							</AlertTitle>
+							<AlertDescription>{saveError}</AlertDescription>
+						</Alert>
+					)}
+					<AlertDialogFooter>
+						<AlertDialogCancel
+							disabled={isSaving}
+							className="min-h-11"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<Button
+							variant="destructive"
+							disabled={isSaving}
+							className="min-h-11"
+							onClick={() => void handleSave(true)}
+						>
+							{isSaving ? "Replacing…" : "Replace"}
+						</Button>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>

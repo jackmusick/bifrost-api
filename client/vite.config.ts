@@ -273,8 +273,8 @@ export default defineConfig({
 				target: process.env.API_URL || "http://localhost:8000",
 				changeOrigin: true,
 			},
-			// MCP protocol endpoint for external LLM clients (Claude Desktop)
-			"/mcp": {
+			// Match the protocol path boundary so /mcp-servers stays a frontend route.
+			"^/mcp(?:/|\\?|$)": {
 				target: process.env.API_URL || "http://localhost:8000",
 				changeOrigin: true,
 			},

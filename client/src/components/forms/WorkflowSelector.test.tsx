@@ -58,7 +58,9 @@ describe("WorkflowSelector — loading / error", () => {
 			<WorkflowSelector value={undefined} onChange={vi.fn()} />,
 		);
 
-		expect(screen.getByText(/failed to load workflows/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/failed to load workflows/i),
+		).toBeInTheDocument();
 	});
 });
 
@@ -88,11 +90,7 @@ describe("WorkflowSelector — listing & selection", () => {
 		});
 
 		renderWithProviders(
-			<WorkflowSelector
-				value="wf-1"
-				onChange={vi.fn()}
-				showOrgBadge
-			/>,
+			<WorkflowSelector value="wf-1" onChange={vi.fn()} showOrgBadge />,
 		);
 
 		expect(screen.getByText("Create User")).toBeInTheDocument();
@@ -123,4 +121,39 @@ describe("WorkflowSelector — role mismatch warning", () => {
 			expect(mockFetchRoles).toHaveBeenCalledWith(["wf-1"]);
 		});
 	});
+});
+
+it("retries failed workflow reads", async () => {
+	const refetch = vi.fn();
+	mockUseQuery.mockReturnValue({
+		data: undefined,
+		isLoading: false,
+		error: new Error("offline"),
+		refetch,
+	});
+	const { user } = renderWithProviders(
+		<WorkflowSelector value="saved-id" onChange={vi.fn()} />,
+	);
+	await user.click(screen.getByRole("button", { name: "Retry workflows" }));
+	expect(refetch).toHaveBeenCalledTimes(1);
+});
+
+it("retains the last loaded selection when refresh fails", () => {
+	mockUseQuery.mockReturnValue({
+		data: [{ id: "saved-id", name: "Saved workflow" }],
+		isLoading: false,
+		error: new Error("offline"),
+		refetch: vi.fn(),
+	});
+	renderWithProviders(
+		<WorkflowSelector
+			value="saved-id"
+			onChange={vi.fn()}
+			variant="combobox"
+		/>,
+	);
+	expect(screen.getByRole("combobox")).toHaveTextContent("Saved workflow");
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Showing the last loaded list",
+	);
 });

@@ -68,9 +68,10 @@ describe("ExecutionsOverTimeCard", () => {
 			outcomes: { success: 2, failed: 1, total: 3, successRate: 2 / 3 },
 		});
 		expect(screen.getByText(/Last 7 days · 3 runs/)).toBeInTheDocument();
-		expect(
-			screen.getByRole("link", { name: "1 failed" }),
-		).toHaveAttribute("href", "/history?status=Failed");
+		expect(screen.getByRole("link", { name: "1 failed" })).toHaveAttribute(
+			"href",
+			"/history?status=Failed",
+		);
 		expect(
 			screen.queryByTestId("executions-chart-empty"),
 		).not.toBeInTheDocument();
@@ -109,4 +110,34 @@ describe("ExecutionsOverTimeCard", () => {
 		expect(screen.getByText(/Last 30 days · 465 runs/)).toBeInTheDocument();
 		expect(screen.queryByText(/latest 1,000/)).not.toBeInTheDocument();
 	});
+});
+
+it("provides every plotted count in a readable data disclosure", () => {
+	renderCard({
+		buckets: [
+			{
+				start: "2026-09-06T10:00:00Z",
+				success_count: 1234,
+				failed_count: 5,
+			},
+			{
+				start: "2026-09-06T11:00:00Z",
+				success_count: 0,
+				failed_count: 2,
+			},
+		],
+		outcomes: { success: 1234, failed: 7, total: 1241, successRate: 99.4 },
+	});
+	const list = screen.getByRole("list", {
+		name: "Execution counts by period",
+		hidden: true,
+	});
+	expect(list.querySelectorAll("li")).toHaveLength(2);
+	expect(list).toHaveTextContent("1,234");
+	expect(list).toHaveTextContent("Succeeded");
+	expect(list).toHaveTextContent("Failed");
+	expect(list.querySelector("time")).toHaveAttribute(
+		"datetime",
+		"2026-09-06T10:00:00.000Z",
+	);
 });

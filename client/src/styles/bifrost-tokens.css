@@ -1,0 +1,106 @@
+/* Vendored from gobifrost/design-system 11da72e. See docs/design-modernization/TASK.md. */
+:root {
+  color-scheme: light;
+  --bf-brand-cyan: #2fd4d4;
+  --bf-brand-red: #ff5a5a;
+  --bf-brand-orange: #ffb24d;
+  --bf-brand-yellow: #ffe24d;
+  --bf-brand-green: #3ad17a;
+  --bf-brand-blue: #4d6bff;
+  --bf-brand-purple: #7a6bff;
+  --bf-brand-magenta: #d96bff;
+  --bf-primary: #087f86;
+  --bf-primary-hover: #056a70;
+  --bf-primary-foreground: #ffffff;
+  --bf-ink: var(--foreground, #101419);
+  --bf-muted: var(--muted-foreground, #51606c);
+  --bf-canvas: var(--background, #f7f9fa);
+  --bf-paper: var(--card, #ffffff);
+  --bf-cool: var(--muted, #eef2f3);
+  --bf-surface-raised: color-mix(in srgb, var(--bf-paper) 65%, var(--bf-cool));
+  --bf-deep: #08090b;
+  --bf-line: var(--border, #d7dfe3);
+  --bf-line-strong: #aebbc2;
+  --bf-success: #087a48;
+  --bf-warning: #8a5a00;
+  --bf-danger: #b4232d;
+  --bf-info: #1769aa;
+  --bf-success-soft: #e7f5ed;
+  --bf-warning-soft: #fff3d6;
+  --bf-danger-soft: #fce9eb;
+  --bf-info-soft: #e8f2fb;
+  --bf-shadow-float: 0 14px 36px rgba(8, 9, 11, 0.13);
+  --bf-shadow-modal: 0 28px 72px rgba(8, 9, 11, 0.24);
+  --bf-motion-feedback: 120ms;
+  --bf-motion-disclosure: 220ms;
+  --bf-motion-route: 360ms;
+  --bf-motion-progress: 1600ms;
+  --bf-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --bf-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bf-radius-control: 6px;
+  --bf-radius-surface: 4px;
+  --bf-radius-feature: 8px;
+  --bf-control-height: 40px;
+  --bf-row-height: 48px;
+  --bf-local-gap: 12px;
+  --bf-surface-pad: 20px;
+  --bf-section-gap: 64px;
+  --bf-font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bf-font-display: "Prompt", "Inter", system-ui, sans-serif;
+  --bf-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --bf-bridge: linear-gradient(90deg,
+    var(--bf-brand-red), var(--bf-brand-orange), var(--bf-brand-yellow), var(--bf-brand-green),
+    var(--bf-brand-cyan), var(--bf-brand-blue), var(--bf-brand-purple), var(--bf-brand-magenta));
+  --bf-bridge-vertical: linear-gradient(180deg,
+    var(--bf-brand-red), var(--bf-brand-orange), var(--bf-brand-yellow), var(--bf-brand-green),
+    var(--bf-brand-cyan), var(--bf-brand-blue), var(--bf-brand-purple), var(--bf-brand-magenta));
+}
+
+.dark {
+  color-scheme: dark;
+  --bf-primary: #2fd4d4;
+  --bf-primary-hover: #63e1e1;
+  --bf-primary-foreground: #06222a;
+  --bf-ink: var(--foreground, #f7f9fb);
+  --bf-muted: var(--muted-foreground, #9caab5);
+  --bf-canvas: var(--background, #08090b);
+  --bf-paper: var(--card, #0a0c0f);
+  --bf-cool: var(--muted, #11151a);
+  --bf-line: var(--border, #252c34);
+  --bf-line-strong: #3d4853;
+  --bf-success: #47d787;
+  --bf-warning: #ffc154;
+  --bf-danger: #ff727a;
+  --bf-info: #69b9ff;
+  --bf-success-soft: #0c2a1b;
+  --bf-warning-soft: #2c210a;
+  --bf-danger-soft: #321216;
+  --bf-info-soft: #0b2237;
+  --bf-shadow-float: 0 16px 42px rgba(0, 0, 0, 0.45);
+  --bf-shadow-modal: 0 32px 86px rgba(0, 0, 0, 0.66);
+}
+
+[data-density="compact"] {
+  --bf-control-height: 32px;
+  --bf-row-height: 40px;
+  --bf-local-gap: 8px;
+  --bf-surface-pad: 16px;
+  --bf-section-gap: 48px;
+}
+
+[data-density="spacious"] {
+  --bf-control-height: 48px;
+  --bf-row-height: 60px;
+  --bf-local-gap: 16px;
+  --bf-surface-pad: 28px;
+  --bf-section-gap: 80px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bf-motion-feedback: 0ms;
+    --bf-motion-disclosure: 0ms;
+    --bf-motion-route: 0ms;
+    --bf-motion-progress: 0ms;
+  }
+}

@@ -12,7 +12,7 @@ import { EntitySelector } from "./EntitySelector";
 
 describe("EntitySelector — loading", () => {
 	it("renders a skeleton while loading", () => {
-		const { container } = renderWithProviders(
+		renderWithProviders(
 			<EntitySelector
 				entities={[]}
 				value=""
@@ -20,8 +20,9 @@ describe("EntitySelector — loading", () => {
 				isLoading
 			/>,
 		);
-		// Skeleton has no role — assert DOM presence via class signal.
-		expect(container.querySelector(".h-8")).toBeTruthy();
+		expect(
+			screen.getByRole("status", { name: "Loading entities" }),
+		).toBeInTheDocument();
 	});
 });
 

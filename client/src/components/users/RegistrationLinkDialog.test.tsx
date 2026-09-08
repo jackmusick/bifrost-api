@@ -53,11 +53,17 @@ describe("RegistrationLinkDialog", () => {
 		expect(screen.queryByText(/link host/i)).not.toBeInTheDocument();
 		expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 		expect(
+			screen.getByRole("button", { name: /close dialog/i }),
+		).toBeInTheDocument();
+		expect(
 			screen.getByRole("button", { name: /send registration email/i }),
 		).toBeEnabled();
 		expect(
 			screen.getByRole("button", { name: /copy registration link/i }),
 		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /send registration email/i }),
+		).toHaveClass("h-11");
 	});
 
 	it("keeps clipboard failures inside the button state without throwing", () => {
@@ -154,5 +160,51 @@ describe("RegistrationLinkDialog", () => {
 		);
 
 		await waitFor(() => expect(onSendEmail).toHaveBeenCalledOnce());
+	});
+	it("guards a pending send and retains the link after a recoverable failure", async () => {
+		let rejectSend!: (error: Error) => void;
+		const onSendEmail = vi
+			.fn()
+			.mockImplementationOnce(
+				() =>
+					new Promise<void>((_resolve, reject) => {
+						rejectSend = reject;
+					}),
+			)
+			.mockResolvedValue(undefined);
+		const onOpenChange = vi.fn();
+		const { user } = renderWithProviders(
+			<RegistrationLinkDialog
+				open
+				url="/register/synthetic-example"
+				canSendEmail
+				onSendEmail={onSendEmail}
+				onOpenChange={onOpenChange}
+			/>,
+		);
+		await user.click(
+			screen.getByRole("button", { name: /send registration email/i }),
+		);
+		expect(
+			screen.getByRole("button", { name: /sending registration email/i }),
+		).toBeDisabled();
+		expect(
+			screen.getByRole("button", { name: /close dialog/i }),
+		).toBeDisabled();
+		await user.keyboard("{Escape}");
+		expect(onOpenChange).not.toHaveBeenCalled();
+		rejectSend(new Error("Synthetic delivery failure"));
+		await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Synthetic delivery failure",
+		);
+		expect(
+			screen.getByRole("button", { name: /copy registration link/i }),
+		).toBeEnabled();
+		await user.click(
+			screen.getByRole("button", { name: /send registration email/i }),
+		);
+		await waitFor(() => expect(onSendEmail).toHaveBeenCalledTimes(2));
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 	});
 });

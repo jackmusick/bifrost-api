@@ -859,6 +859,8 @@ async def list_executions(
 async def list_logs(
     ctx: Context,
     organization_id: UUID | None = Query(None, description="Filter by organization"),
+    global_only: bool = Query(False, description="Include only global executions"),
+    workflow_id: UUID | None = Query(None, description="Filter by exact workflow ID"),
     workflow_name: str | None = Query(None, description="Filter by workflow name (partial match)"),
     levels: str | None = Query(None, description="Comma-separated log levels (e.g., ERROR,WARNING)"),
     message_search: str | None = Query(None, description="Search in log message content"),
@@ -895,6 +897,8 @@ async def list_logs(
     logs, next_token = await logs_repo.list_logs(
         organization_id=organization_id,
         workflow_name=workflow_name,
+        workflow_id=workflow_id,
+        global_only=global_only,
         levels=level_list,
         message_search=message_search,
         start_date=parsed_start,

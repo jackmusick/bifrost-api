@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LogoDropZone } from "./LogoDropZone";
@@ -69,7 +70,28 @@ describe("LogoDropZone", () => {
 		HTMLInputElement.prototype.click = click;
 		try {
 			render(<LogoDropZone {...baseProps} />);
-			fireEvent.click(screen.getByTestId("logo-drop-zone"));
+			fireEvent.click(
+				screen.getByRole("button", {
+					name: "Upload image (click or drag)",
+				}),
+			);
+			expect(click).toHaveBeenCalled();
+		} finally {
+			HTMLInputElement.prototype.click = orig;
+		}
+	});
+
+	it("opens the file picker from the keyboard", async () => {
+		const user = userEvent.setup();
+		const orig = HTMLInputElement.prototype.click;
+		const click = vi.fn();
+		HTMLInputElement.prototype.click = click;
+		try {
+			render(<LogoDropZone {...baseProps} />);
+			screen
+				.getByRole("button", { name: "Upload image (click or drag)" })
+				.focus();
+			await user.keyboard("{Enter}");
 			expect(click).toHaveBeenCalled();
 		} finally {
 			HTMLInputElement.prototype.click = orig;
@@ -103,5 +125,39 @@ describe("LogoDropZone", () => {
 			// give the (rejected) handler a tick to finish
 			expect(mockAuthFetch).not.toHaveBeenCalled();
 		});
+	});
+	it("does not open the picker when the separate remove button receives a key", () => {
+		const click = vi
+			.spyOn(HTMLInputElement.prototype, "click")
+			.mockImplementation(() => {});
+		try {
+			render(<LogoDropZone {...baseProps} />);
+			fireEvent.load(screen.getByTestId("logo-drop-zone-img"));
+			fireEvent.keyDown(
+				screen.getByRole("button", { name: "Remove image" }),
+				{ key: "Enter" },
+			);
+			expect(click).not.toHaveBeenCalled();
+		} finally {
+			click.mockRestore();
+		}
+	});
+
+	it("ignores a second dropped file while an upload is pending", async () => {
+		let resolveUpload!: (response: Response) => void;
+		mockAuthFetch.mockImplementationOnce(
+			() =>
+				new Promise<Response>((resolve) => {
+					resolveUpload = resolve;
+				}),
+		);
+		render(<LogoDropZone {...baseProps} />);
+		const zone = screen.getByTestId("logo-drop-zone");
+		const file = new File(["x"], "logo.png", { type: "image/png" });
+		fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+		fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+		expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+		resolveUpload(new Response(null, { status: 200 }));
+		await waitFor(() => expect(zone).toHaveAttribute("aria-busy", "false"));
 	});
 });

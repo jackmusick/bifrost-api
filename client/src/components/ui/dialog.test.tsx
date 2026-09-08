@@ -7,7 +7,7 @@
  *     NOT merge against consumers' unprefixed `max-w-2xl`/`max-w-[90vw]` —
  *     the media-scoped rule won at >=640px and every wide dialog rendered
  *     448px. Sizing must stay in unprefixed classes (see dialog.tsx comment).
- *   - The base lost `max-h-[90vh] overflow-y-auto`; ~54 call sites rely on
+ *   - The base lost `max-h-[90dvh] overflow-y-auto`; ~54 call sites rely on
  *     internal scrolling for tall content.
  *   - CommandDialog stopped auto-wrapping children in <Command>, crashing
  *     already-built v2 app bundles (bifrost-runtime contract), and flipped
@@ -39,7 +39,7 @@ describe("DialogContent sizing contract", () => {
 		const classes = renderDialogContent();
 		expect(classes).toContain("max-w-md");
 		expect(classes).toContain("w-[calc(100%-2rem)]");
-		expect(classes).toContain("max-h-[90vh]");
+		expect(classes).toContain("max-h-[90dvh]");
 		expect(classes).toContain("overflow-y-auto");
 		// The landmine: a breakpoint-scoped max-w default silently beats
 		// consumers' unprefixed max-w overrides at >=640px.
@@ -70,7 +70,7 @@ describe("DialogContent sizing contract", () => {
 	it("consumer max-h / overflow overrides win over the internal-scroll default", () => {
 		const classes = renderDialogContent("max-h-[85vh] overflow-hidden flex flex-col");
 		expect(classes).toContain("max-h-[85vh]");
-		expect(classes).not.toContain("max-h-[90vh]");
+		expect(classes).not.toContain("max-h-[90dvh]");
 		expect(classes).toContain("overflow-hidden");
 		expect(classes).not.toContain("overflow-y-auto");
 		expect(classes).toContain("flex");

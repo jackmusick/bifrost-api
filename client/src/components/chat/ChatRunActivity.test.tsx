@@ -13,7 +13,7 @@ describe("ChatRunActivity", () => {
 
 		const status = screen.getByText("Thinking…");
 		expect(status).toHaveClass("chat-activity-shimmer");
-		expect(status.closest("button")).toHaveClass("min-h-11", "sm:min-h-7");
+		expect(status.closest("button")).toHaveClass("min-h-11", "w-full");
 		expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 	});
 

@@ -369,6 +369,7 @@ export function useAgentRunStream(
 		const store = useAgentRunStepStore.getState();
 		store.startStreaming(runId);
 
+		let cancelled = false;
 		let unsubUpdate: (() => void) | null = null;
 		let unsubStep: (() => void) | null = null;
 
@@ -376,6 +377,7 @@ export function useAgentRunStream(
 			try {
 				const channel = `agent-run:${runId}`;
 				await webSocketService.connect([channel]);
+				if (cancelled) return;
 
 				store.setConnectionStatus(runId, true);
 
@@ -423,6 +425,7 @@ export function useAgentRunStream(
 		init();
 
 		return () => {
+			cancelled = true;
 			if (unsubUpdate) unsubUpdate();
 			if (unsubStep) unsubStep();
 			if (runId) {

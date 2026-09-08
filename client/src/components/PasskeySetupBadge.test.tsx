@@ -47,4 +47,22 @@ describe("PasskeySetupBadge", () => {
 			screen.queryByRole("button", { name: /set up passkey/i }),
 		).not.toBeInTheDocument();
 	});
+
+	it("does not crash when localStorage is unavailable", () => {
+		const storageSpy = vi
+			.spyOn(Storage.prototype, "getItem")
+			.mockImplementation(() => {
+				throw new Error("storage denied");
+			});
+
+		try {
+			renderWithProviders(<PasskeySetupBadge />);
+
+			expect(
+				screen.getByRole("button", { name: /set up passkey/i }),
+			).toBeInTheDocument();
+		} finally {
+			storageSpy.mockRestore();
+		}
+	});
 });

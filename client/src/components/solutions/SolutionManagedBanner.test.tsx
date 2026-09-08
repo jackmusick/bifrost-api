@@ -13,6 +13,8 @@ describe("SolutionManagedBanner", () => {
 
 	it("uses the provided entity label in the message", () => {
 		render(<SolutionManagedBanner entityLabel="workflow" />);
-		expect(screen.getByText(/This workflow was installed by a Solution/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/This workflow is read-only here/i),
+		).toBeInTheDocument();
 	});
 });

@@ -11,6 +11,11 @@ import { SolutionDetail } from "./SolutionDetail";
 const APP_LOGO_DATA_URL =
 	"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
 
+let mobileAccess = false;
+vi.mock("@/hooks/useMediaQuery", () => ({
+	useMediaQuery: () => mobileAccess,
+}));
+
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => {
 	const actual =
@@ -186,6 +191,7 @@ async function renderPage() {
 }
 
 beforeEach(() => {
+	mobileAccess = false;
 	vi.clearAllMocks();
 	mockGetSolutionEntities.mockResolvedValue(makeEntities());
 	mockGetSolutionSetup.mockResolvedValue({ setup_complete: true, items: [] });
@@ -405,7 +411,7 @@ describe("SolutionDetail", () => {
 		await user.click(screen.getByTestId("tab-exports"));
 
 		expect(
-			await screen.findByText("Failed to list backup exports"),
+			await screen.findByText("Couldn't load backup exports."),
 		).toBeInTheDocument();
 	});
 
@@ -771,6 +777,12 @@ describe("SolutionDetail", () => {
 			installName: "My Solution",
 			embedded: true,
 		});
+		await user.selectOptions(screen.getByRole("combobox", { name: "Content type" }), "all");
+		expect(screen.queryByTestId("solution-files-explorer")).not.toBeInTheDocument();
+		await user.selectOptions(screen.getByRole("combobox", { name: "Content type" }), "files");
+		expect(await screen.findByTestId("solution-files-explorer")).toBeInTheDocument();
+		expect(screen.getByTestId("chip-files")).toHaveAttribute("aria-pressed", "true");
+
 	});
 
 	it("shows 'Uninstall' in the overflow menu for an active solution", async () => {
@@ -879,4 +891,124 @@ describe("SolutionDetail", () => {
 			expect(mockNavigate).toHaveBeenCalledWith("/solutions"),
 		);
 	});
+});
+
+
+describe("Solution access layouts", () => {
+	it.each([true, false])("preserves keyboard access and search on mobile=%s", async (mobile) => {
+		mobileAccess = mobile;
+		const { user } = await renderPage();
+		await screen.findByTestId("solution-detail");
+		await user.click(screen.getByTestId("tab-access"));
+		if (mobile) {
+			expect(screen.queryByRole("table")).not.toBeInTheDocument();
+			expect(screen.queryByRole("radio", { name: "Grid view" })).not.toBeInTheDocument();
+		} else {
+			expect(screen.getByRole("table")).toBeInTheDocument();
+			await user.click(screen.getByRole("radio", { name: "Grid view" }));
+			expect(screen.queryByRole("table")).not.toBeInTheDocument();
+		}
+		const record = screen.getByRole("button", { name: /Sync Tickets/ });
+		record.focus();
+		await user.keyboard("{Enter}");
+		expect(await screen.findByRole("dialog")).toHaveAccessibleName("Sync Tickets");
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(record).toHaveFocus());
+		await user.type(screen.getByPlaceholderText("Search access..."), "does not exist");
+		expect(await screen.findByText(/No access rows match/)).toBeInTheDocument();
+	});
+});
+
+
+it("retains failed configuration input and retries the scoped payload", async () => {
+	let rejectSave!: (reason: Error) => void;
+	mockSetSolutionConfig.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; })).mockResolvedValueOnce(undefined);
+	const { user } = await renderPage();
+	await screen.findByTestId("solution-detail");
+	await user.click(screen.getByTestId("tab-configuration"));
+	const input = screen.getByLabelText("api_token");
+	await user.type(input, "synthetic-value{Enter}");
+	expect(input).toBeDisabled();
+	expect(screen.getByTestId("save-config-api_token")).toBeDisabled();
+	rejectSave(new Error("Synthetic save failure"));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Your entry is ready to retry");
+	expect(input).toHaveValue("synthetic-value");
+	await user.click(screen.getByRole("button", { name: "Retry save" }));
+	await waitFor(() => expect(input).toHaveValue(""));
+	expect(mockSetSolutionConfig).toHaveBeenCalledTimes(2);
+	expect(mockSetSolutionConfig.mock.calls[1]).toEqual(mockSetSolutionConfig.mock.calls[0]);
+});
+
+
+it("distinguishes setup loading and failure from an empty configuration", async () => {
+	const entities = makeEntities();
+	entities.configs = [];
+	entities.required_configs_unset = [];
+	mockGetSolutionEntities.mockResolvedValue(entities);
+	let rejectSetup!: (reason: Error) => void;
+	mockGetSolutionSetup.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSetup = reject; })).mockResolvedValueOnce({ setup_complete: true, items: [] });
+	const { user } = await renderPage();
+	await screen.findByTestId("solution-detail");
+	await user.click(screen.getByTestId("tab-configuration"));
+	expect(screen.getByRole("status")).toHaveTextContent("Loading setup requirements");
+	expect(screen.queryByText("This Solution declares no configuration.")).not.toBeInTheDocument();
+	rejectSetup(new Error("Synthetic setup failure"));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load setup requirements");
+	expect(screen.queryByText("This Solution declares no configuration.")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry setup status" }));
+	expect(await screen.findByText("This Solution declares no configuration.")).toBeInTheDocument();
+});
+
+it("rechecks endpoint status after a rotation partially fails", async () => {
+	let hasKey = true;
+	mockGetSolutionSetup.mockImplementation(async () => ({
+		setup_complete: hasKey,
+		items: [{ kind: "workflow_endpoint_key", key: "wf-1", workflow_id: "wf-1", workflow_name: "Sync Tickets", required: true, is_set: hasKey }],
+	}));
+	mockRevokeWorkflowKey.mockImplementation(async () => { hasKey = false; });
+	mockCreateWorkflowKey.mockRejectedValueOnce(new Error("Synthetic creation failure")).mockResolvedValueOnce({ raw_key: "synthetic-test-key" });
+	const { user } = await renderPage();
+	await screen.findByTestId("solution-detail");
+	await user.click(screen.getByTestId("tab-configuration"));
+	await user.click(screen.getByRole("button", { name: "Rotate endpoint key" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't finish generating");
+	await user.click(screen.getByRole("button", { name: "Retry key generation" }));
+	await screen.findByRole("dialog");
+	expect(mockRevokeWorkflowKey).toHaveBeenCalledTimes(1);
+	expect(mockCreateWorkflowKey).toHaveBeenCalledTimes(2);
+	expect(mockGetSolutionSetup.mock.calls.length).toBeGreaterThanOrEqual(3);
+});
+
+it("recovers export history loading without treating failure as empty", async () => {
+	mockListSolutionExportJobs.mockRejectedValueOnce(new Error("Synthetic lookup failure")).mockResolvedValueOnce({ jobs: [] });
+	const { user } = await renderPage();
+	await screen.findByTestId("solution-detail");
+	await user.click(screen.getByTestId("tab-exports"));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load backup exports");
+	expect(screen.queryByText("No backup exports queued yet.")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry exports" }));
+	expect(await screen.findByText("No backup exports queued yet.")).toBeInTheDocument();
+});
+
+it("keeps failed export downloads available for retry", async () => {
+	mockListSolutionExportJobs.mockResolvedValue({ jobs: [{ id: "retry-job", status: "completed", download_url: "/fixture", created_at: "2026-09-06T12:00:00Z" }] });
+	mockDownloadSolutionExportJob.mockRejectedValueOnce(new Error("Synthetic download failure")).mockResolvedValueOnce({ blob: new Blob(["synthetic"]), filename: "retry.zip" });
+	const { user } = await renderPage();
+	await screen.findByTestId("solution-detail");
+	await user.click(screen.getByTestId("tab-exports"));
+	await user.click(screen.getByRole("button", { name: "Download" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't download this export");
+	await user.click(screen.getByRole("button", { name: "Retry download" }));
+	await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+	expect(mockDownloadSolutionExportJob.mock.calls).toEqual([["retry-job"], ["retry-job"]]);
+});
+
+it("distinguishes failed README lookup from missing instructions and retries", async () => {
+	mockGetSolutionReadme.mockRejectedValueOnce(new Error("Synthetic README failure")).mockResolvedValueOnce({ readme: "# Recovered setup instructions" });
+	const { user } = await renderPage();
+	await screen.findByTestId("solution-detail");
+	expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load setup instructions");
+	expect(screen.queryByText("No setup instructions provided.")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry instructions" }));
+	expect(await screen.findByRole("heading", { name: "Recovered setup instructions" })).toBeInTheDocument();
 });

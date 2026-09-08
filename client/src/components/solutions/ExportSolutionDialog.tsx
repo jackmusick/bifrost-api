@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { InstallFailure } from "./InstallSession";
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
+import { useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,12 +39,21 @@ export interface ExportSolutionDialogProps {
  *
  * Network calls are the caller's responsibility (onExport prop).
  */
-export function ExportSolutionDialog({
+export function ExportSolutionDialog(props: ExportSolutionDialogProps) {
+	return props.open ? <ExportSession {...props} /> : null;
+}
+
+function ExportSession({
 	open,
 	onOpenChange,
 	onExport,
-	isPending = false,
+	isPending: externalPending = false,
 }: ExportSolutionDialogProps) {
+	const busy = useRef(false);
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const returnFocus = useDialogReturnFocus();
+	const isPending = externalPending || pending;
 	const [mode, setMode] = useState<"shareable" | "full">("shareable");
 	const [password, setPassword] = useState("");
 	const [includeConfigs, setIncludeConfigs] = useState(true);
@@ -63,17 +74,38 @@ export function ExportSolutionDialog({
 				? "Exporting..."
 				: "Export";
 
-	function handleExport() {
-		void onExport(
-			mode,
-			mode === "full" ? password : undefined,
-			mode === "full"
-				? { includeConfigs, includeSecrets, includeTables, includeFiles }
-				: undefined,
-		);
+	async function handleExport() {
+		if (busy.current || isPending || exportDisabled) return;
+		busy.current = true;
+		setPending(true);
+		setError(null);
+		try {
+			await onExport(
+				mode,
+				mode === "full" ? password : undefined,
+				mode === "full"
+					? {
+							includeConfigs,
+							includeSecrets,
+							includeTables,
+							includeFiles,
+						}
+					: undefined,
+			);
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Could not export this Solution. Try again.",
+			);
+		} finally {
+			busy.current = false;
+			setPending(false);
+		}
 	}
 
 	function handleOpenChange(next: boolean) {
+		if (busy.current || isPending) return;
 		if (!next) {
 			// Reset state when closing
 			setMode("shareable");
@@ -88,17 +120,28 @@ export function ExportSolutionDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent
+				{...returnFocus}
+				className="w-[calc(100vw-1rem)] max-h-[92dvh] overflow-y-auto sm:max-w-2xl"
+				showCloseButton={!isPending}
+				onEscapeKeyDown={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+				onInteractOutside={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+			>
 				<DialogHeader>
 					<DialogTitle>Export Solution</DialogTitle>
 					<DialogDescription>
-						Choose how to export this Solution. Definitions, table schemas,
-						config declarations, file-location declarations, and source files
-						are included in both modes.
+						Choose how to export this Solution. Definitions, table
+						schemas, config declarations, file-location
+						declarations, and source files are included in both
+						modes.
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-4">
+				<fieldset disabled={isPending} className="min-w-0 space-y-4">
 					<RadioGroup
 						value={mode}
 						onValueChange={(v) => {
@@ -111,11 +154,11 @@ export function ExportSolutionDialog({
 								setIncludeFiles(true);
 							}
 						}}
-						className="gap-3"
+						className="grid gap-3 sm:grid-cols-2"
 					>
 						<label
 							htmlFor="mode-shareable"
-							className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 hover:bg-muted/50 has-[[data-state=checked]]:border-primary"
+							className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-control)] border p-4 transition-colors motion-reduce:transition-none hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted/40"
 						>
 							<RadioGroupItem
 								id="mode-shareable"
@@ -124,17 +167,20 @@ export function ExportSolutionDialog({
 								className="mt-0.5 shrink-0"
 							/>
 							<span className="min-w-0">
-								<span className="block text-sm font-medium">Package</span>
+								<span className="block text-sm font-medium">
+									Package
+								</span>
 								<span className="mt-0.5 block text-xs text-muted-foreground">
-									Definitions only. Omits runtime values, file payloads, and
-									table rows. Safe to share with others or publish.
+									Definitions only. Omits runtime values, file
+									payloads, and table rows. Safe to share with
+									others or publish.
 								</span>
 							</span>
 						</label>
 
 						<label
 							htmlFor="mode-full"
-							className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 hover:bg-muted/50 has-[[data-state=checked]]:border-primary"
+							className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-control)] border p-4 transition-colors motion-reduce:transition-none hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted/40"
 						>
 							<RadioGroupItem
 								id="mode-full"
@@ -143,11 +189,13 @@ export function ExportSolutionDialog({
 								className="mt-0.5 shrink-0"
 							/>
 							<span className="min-w-0">
-								<span className="block text-sm font-medium">Backup</span>
+								<span className="block text-sm font-medium">
+									Backup
+								</span>
 								<span className="mt-0.5 block text-xs text-muted-foreground">
-									Choose which runtime state to include. Backups run in the
-									background, are encrypted with a password, and are kept for 7
-									days.
+									Choose which runtime state to include.
+									Backups run in the background, are encrypted
+									with a password, and are kept for 7 days.
 								</span>
 							</span>
 						</label>
@@ -158,7 +206,10 @@ export function ExportSolutionDialog({
 							<div className="space-y-1.5">
 								<Label htmlFor="export-password">
 									Password{" "}
-									<span className="text-destructive" aria-hidden>
+									<span
+										className="text-destructive"
+										aria-hidden
+									>
 										*
 									</span>
 								</Label>
@@ -167,19 +218,26 @@ export function ExportSolutionDialog({
 									type="password"
 									required
 									value={password}
-									onChange={(e) => setPassword(e.target.value)}
+									onChange={(e) =>
+										setPassword(e.target.value)
+									}
 									placeholder="Set a password for this backup"
 									autoComplete="new-password"
 								/>
 								<p className="text-xs text-muted-foreground">
-									You will need this password when installing the backup on
-									another instance.
+									You will need this password when installing
+									the backup on another instance.
 								</p>
 							</div>
 
-							<div className="space-y-3 rounded-lg border p-3">
-								<p className="text-sm font-medium">Backup contents</p>
-								<div className="flex items-start gap-3">
+							<div className="space-y-3 rounded-[var(--bf-radius-control)] border p-3">
+								<p className="text-sm font-medium">
+									Backup contents
+								</p>
+								<label
+									htmlFor="export-include-configs"
+									className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-control)] border border-transparent px-3 py-2.5 transition-colors motion-reduce:transition-none hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted/40"
+								>
 									<Checkbox
 										id="export-include-configs"
 										checked={includeConfigs}
@@ -189,18 +247,19 @@ export function ExportSolutionDialog({
 										className="mt-0.5 shrink-0"
 									/>
 									<div className="min-w-0 space-y-0.5">
-										<label
-											htmlFor="export-include-configs"
-											className="cursor-pointer text-sm font-medium leading-none"
-										>
+										<span className="block text-sm font-medium leading-none">
 											Config values
-										</label>
+										</span>
 										<p className="text-xs text-muted-foreground">
-											Includes non-secret configured values for this install.
+											Includes non-secret configured
+											values for this install.
 										</p>
 									</div>
-								</div>
-								<div className="flex items-start gap-3">
+								</label>
+								<label
+									htmlFor="export-include-secrets"
+									className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-control)] border border-transparent px-3 py-2.5 transition-colors motion-reduce:transition-none hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted/40"
+								>
 									<Checkbox
 										id="export-include-secrets"
 										checked={includeSecrets}
@@ -210,18 +269,19 @@ export function ExportSolutionDialog({
 										className="mt-0.5 shrink-0"
 									/>
 									<div className="min-w-0 space-y-0.5">
-										<label
-											htmlFor="export-include-secrets"
-											className="cursor-pointer text-sm font-medium leading-none"
-										>
+										<span className="block text-sm font-medium leading-none">
 											Secrets
-										</label>
+										</span>
 										<p className="text-xs text-muted-foreground">
-											Includes secret config values in the encrypted backup.
+											Includes secret config values in the
+											encrypted backup.
 										</p>
 									</div>
-								</div>
-								<div className="flex items-start gap-3">
+								</label>
+								<label
+									htmlFor="export-include-tables"
+									className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-control)] border border-transparent px-3 py-2.5 transition-colors motion-reduce:transition-none hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted/40"
+								>
 									<Checkbox
 										id="export-include-tables"
 										checked={includeTables}
@@ -231,19 +291,20 @@ export function ExportSolutionDialog({
 										className="mt-0.5 shrink-0"
 									/>
 									<div className="min-w-0 space-y-0.5">
-										<label
-											htmlFor="export-include-tables"
-											className="cursor-pointer text-sm font-medium leading-none"
-										>
+										<span className="block text-sm font-medium leading-none">
 											Table data
-										</label>
+										</span>
 										<p className="text-xs text-muted-foreground">
-											Adds table rows to the encrypted backup payload. Table
-											schemas are already included above.
+											Adds table rows to the encrypted
+											backup payload. Table schemas are
+											already included above.
 										</p>
 									</div>
-								</div>
-								<div className="flex items-start gap-3">
+								</label>
+								<label
+									htmlFor="export-include-files"
+									className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--bf-radius-control)] border border-transparent px-3 py-2.5 transition-colors motion-reduce:transition-none hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted/40"
+								>
 									<Checkbox
 										id="export-include-files"
 										checked={includeFiles}
@@ -253,17 +314,15 @@ export function ExportSolutionDialog({
 										className="mt-0.5 shrink-0"
 									/>
 									<div className="min-w-0 space-y-0.5">
-										<label
-											htmlFor="export-include-files"
-											className="cursor-pointer text-sm font-medium leading-none"
-										>
+										<span className="block text-sm font-medium leading-none">
 											Solution-owned files
-										</label>
+										</span>
 										<p className="text-xs text-muted-foreground">
-											Includes file payloads owned by this Solution.
+											Includes file payloads owned by this
+											Solution.
 										</p>
 									</div>
-								</div>
+								</label>
 								{!hasBackupSelection && (
 									<p className="text-xs text-destructive">
 										Select at least one backup content type.
@@ -272,25 +331,33 @@ export function ExportSolutionDialog({
 							</div>
 						</>
 					)}
-				</div>
+				</fieldset>
+				{error && <InstallFailure message={error} />}
 
 				<DialogFooter>
 					<Button
 						type="button"
 						variant="outline"
+						className="min-h-11"
+						disabled={isPending}
 						onClick={() => handleOpenChange(false)}
 					>
 						Cancel
 					</Button>
 					<Button
 						type="button"
+						className="min-h-11"
 						disabled={exportDisabled || isPending}
 						onClick={handleExport}
 					>
 						{isPending && (
-							<Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+							<Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
 						)}
-						{submitLabel}
+						{error
+							? mode === "full"
+								? "Retry backup"
+								: "Retry export"
+							: submitLabel}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

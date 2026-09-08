@@ -78,7 +78,9 @@ describe("DateTimePicker", () => {
 		fireEvent.change(timeInput, { target: { value: "09:15" } });
 
 		expect(onChange).toHaveBeenCalled();
-		const next = onChange.mock.calls[onChange.mock.calls.length - 1][0] as Date;
+		const next = onChange.mock.calls[
+			onChange.mock.calls.length - 1
+		][0] as Date;
 		expect(next).toBeInstanceOf(Date);
 		// Date portion preserved
 		expect(next.getFullYear()).toBe(2026);
@@ -91,9 +93,7 @@ describe("DateTimePicker", () => {
 
 	it("disables the trigger when disabled is true", async () => {
 		const user = userEvent.setup();
-		render(
-			<DateTimePicker value={null} onChange={() => {}} disabled />,
-		);
+		render(<DateTimePicker value={null} onChange={() => {}} disabled />);
 		const trigger = screen.getByRole("button", {
 			name: /pick date and time/i,
 		});
@@ -101,6 +101,24 @@ describe("DateTimePicker", () => {
 		await user.click(trigger);
 		// Popover should not have opened
 		expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+	});
+
+	it("closes an open picker when scheduling becomes disabled", async () => {
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		const { rerender } = render(
+			<DateTimePicker value={null} onChange={onChange} />,
+		);
+		await user.click(
+			screen.getByRole("button", { name: /pick date and time/i }),
+		);
+		expect(await screen.findByRole("grid")).toBeInTheDocument();
+		rerender(<DateTimePicker value={null} onChange={onChange} disabled />);
+		expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /pick date and time/i }),
+		).toBeDisabled();
+		expect(onChange).not.toHaveBeenCalled();
 	});
 
 	it("disables calendar days before minDate", async () => {

@@ -8,8 +8,20 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { cn } from "@/lib/utils";
 import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
 	FileTree,
 	createAppCodeOperations,
@@ -31,7 +43,11 @@ import {
 	AppWindow,
 } from "lucide-react";
 import { DependencyPanel } from "./DependencyPanel";
-import type { FileNode, FileContent, EditorCallbacks } from "@/components/file-tree/types";
+import type {
+	FileNode,
+	FileContent,
+	EditorCallbacks,
+} from "@/components/file-tree/types";
 
 interface AppCodeEditorLayoutProps {
 	/** Application UUID */
@@ -50,6 +66,12 @@ interface AppCodeEditorLayoutProps {
 
 type ViewMode = "code" | "app";
 type SidebarTab = "files" | "packages";
+type OpenFile = {
+	path: string;
+	name: string;
+	source: string;
+	compiled: string | null;
+};
 
 /**
  * App Code Editor Layout
@@ -67,6 +89,9 @@ export function AppCodeEditorLayout({
 
 	// Layout state
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+	const isDesktop = useMediaQuery("(min-width: 768px)");
+	const [mobileToolsOpen, setMobileToolsOpen] = useState(true);
+	const toolsVisible = isDesktop ? !sidebarCollapsed : mobileToolsOpen;
 	const [viewMode, setViewMode] = useState<ViewMode>("code");
 	const [sidebarTab, setSidebarTab] = useState<SidebarTab>("files");
 
@@ -93,12 +118,10 @@ export function AppCodeEditorLayout({
 	}, [basePath, location.pathname]);
 
 	// File state
-	const [currentFile, setCurrentFile] = useState<{
-		path: string;
-		name: string;
-		source: string;
-		compiled: string | null;
-	} | null>(null);
+	const [currentFile, setCurrentFile] = useState<OpenFile | null>(null);
+	const [pendingOpenFile, setPendingOpenFile] = useState<OpenFile | null>(
+		null,
+	);
 
 	// Create app code operations for the file tree. For a solution-managed
 	// (read-only) app, wrap the mutating ops so create/rename/delete reject
@@ -125,9 +148,56 @@ export function AppCodeEditorLayout({
 
 	// Use a ref to track current file path so the callback can access it
 	const currentFilePathRef = useRef<string | null>(null);
+	const currentFileCompiledRef = useRef<string | null>(null);
 	useEffect(() => {
 		currentFilePathRef.current = currentFile?.path ?? null;
-	}, [currentFile?.path]);
+		currentFileCompiledRef.current = currentFile?.compiled ?? null;
+	}, [currentFile?.compiled, currentFile?.path]);
+
+	// App code editor hook for managing source, compilation, etc.
+	const {
+		state: editorState,
+		setSource,
+		loadSource,
+		setCompiled,
+		save: triggerSave,
+	} = useAppCodeEditor({
+		initialSource: currentFile?.source ?? "",
+		initialCompiled: currentFile?.compiled ?? undefined,
+		compileDelay: 300,
+		onSave: async (source, compiled) => {
+			// Solution-managed apps are read-only — never write (the API 409s
+			// regardless; short-circuit so autosave/Cmd+S don't even try).
+			if (readOnly) return;
+			if (!currentFile) return;
+
+			// Save to API and get compiled code back
+			const response = await authFetch(
+				`/api/applications/${appId}/files/${encodeURIComponent(currentFile.path)}`,
+				{
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ source }),
+				},
+			);
+
+			if (!response.ok) {
+				throw new Error(`Failed to save: ${response.statusText}`);
+			}
+
+			const data = await response.json();
+
+			// Update compiled code from server response
+			if (data.compiled) {
+				setCompiled(data.compiled);
+			}
+
+			// Call external save handler if provided
+			await onSave?.(currentFile.path, source, data.compiled ?? compiled);
+
+			toast.success("File saved", { description: currentFile.name });
+		},
+	});
 
 	// Handle real-time updates from WebSocket via callback
 	const handleWebSocketUpdate = useCallback(
@@ -162,15 +232,29 @@ export function AppCodeEditorLayout({
 								// Re-fetch the file content
 								try {
 									const content = await operations.read(path);
-									if (content) {
+									if (
+										content &&
+										currentFilePathRef.current === path
+									) {
+										const nextSource = content.content;
 										setCurrentFile((prev) =>
 											prev
-												? { ...prev, source: content.content }
+												? {
+														...prev,
+														source: nextSource,
+													}
 												: null,
+										);
+										loadSource(
+											nextSource,
+											currentFileCompiledRef.current,
 										);
 									}
 								} catch (error) {
-									console.error("[AppCodeEditorLayout] Failed to reload file:", error);
+									console.error(
+										"[AppCodeEditorLayout] Failed to reload file:",
+										error,
+									);
 								}
 							},
 						},
@@ -178,7 +262,7 @@ export function AppCodeEditorLayout({
 				}
 			}
 		},
-		[operations],
+		[loadSource, operations],
 	);
 
 	// Real-time updates via WebSocket
@@ -188,89 +272,68 @@ export function AppCodeEditorLayout({
 		onUpdate: handleWebSocketUpdate,
 	});
 
-	// App code editor hook for managing source, compilation, etc.
-	const {
-		state: editorState,
-		setSource,
-		setCompiled,
-		save: triggerSave,
-	} = useAppCodeEditor({
-		initialSource: currentFile?.source ?? "",
-		initialCompiled: currentFile?.compiled ?? undefined,
-		compileDelay: 300,
-		onSave: async (source, compiled) => {
-			// Solution-managed apps are read-only — never write (the API 409s
-			// regardless; short-circuit so autosave/Cmd+S don't even try).
-			if (readOnly) return;
-			if (!currentFile) return;
-
-			try {
-				// Save to API and get compiled code back
-				const response = await authFetch(
-					`/api/applications/${appId}/files/${encodeURIComponent(currentFile.path)}`,
-					{
-						method: "PUT",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({ source }),
-					},
-				);
-
-				if (!response.ok) {
-					throw new Error(`Failed to save: ${response.statusText}`);
-				}
-
-				const data = await response.json();
-
-				// Update compiled code from server response
-				if (data.compiled) {
-					setCompiled(data.compiled);
-				}
-
-				// Call external save handler if provided
-				await onSave?.(currentFile.path, source, data.compiled ?? compiled);
-
-				toast.success("File saved", { description: currentFile.name });
-			} catch (error) {
-				toast.error("Failed to save file", {
-					description: error instanceof Error ? error.message : "Unknown error",
-				});
-				throw error;
-			}
-		},
-	});
-
 	// Handle file open from file tree
 	const handleFileOpen = useCallback(
 		(file: FileNode, content: FileContent) => {
 			// Get compiled from metadata, ensuring it's a string or null
 			const compiledValue = file.metadata?.compiled;
-			const compiled = typeof compiledValue === "string" ? compiledValue : null;
+			const compiled =
+				typeof compiledValue === "string" ? compiledValue : null;
 
-			setCurrentFile({
+			const nextFile = {
 				path: file.path,
 				name: file.name,
 				source: content.content,
 				compiled,
-			});
+			};
+
+			if (editorState.isCompiling) {
+				toast.error("Save in progress", {
+					description:
+						"Wait for the current save to finish before switching files.",
+				});
+				return;
+			}
+
+			if (currentFile?.path === nextFile.path) {
+				return;
+			}
+
+			if (editorState.hasUnsavedChanges) {
+				setPendingOpenFile(nextFile);
+				return;
+			}
+
+			setCurrentFile(nextFile);
+			loadSource(nextFile.source, nextFile.compiled);
+			setMobileToolsOpen(false);
+			setViewMode("code");
 		},
-		[],
+		[
+			currentFile?.path,
+			editorState.hasUnsavedChanges,
+			editorState.isCompiling,
+			loadSource,
+		],
 	);
 
-	// Update editor source when file changes
-	// We intentionally only reset on path change, not content change
-	const currentPath = currentFile?.path;
-	const currentSource = currentFile?.source;
-	useEffect(() => {
-		if (currentSource !== undefined) {
-			setSource(currentSource);
-		}
-	}, [currentPath, currentSource, setSource]);
+	const confirmPendingFileOpen = useCallback(() => {
+		if (!pendingOpenFile || editorState.isCompiling) return;
+		setCurrentFile(pendingOpenFile);
+		loadSource(pendingOpenFile.source, pendingOpenFile.compiled);
+		setMobileToolsOpen(false);
+		setViewMode("code");
+		setPendingOpenFile(null);
+	}, [editorState.isCompiling, loadSource, pendingOpenFile]);
 
 	// Editor callbacks for file tree integration
 	const editorCallbacks = useMemo<EditorCallbacks>(
 		() => ({
 			onFileOpen: handleFileOpen,
 			onFileDeleted: (path: string) => {
+				if (pendingOpenFile?.path === path) {
+					setPendingOpenFile(null);
+				}
 				if (currentFile?.path === path) {
 					setCurrentFile(null);
 				}
@@ -290,7 +353,7 @@ export function AppCodeEditorLayout({
 			},
 			isFileSelected: (path: string) => currentFile?.path === path,
 		}),
-		[currentFile, handleFileOpen],
+		[currentFile, handleFileOpen, pendingOpenFile?.path],
 	);
 
 	// Handle manual save
@@ -313,25 +376,40 @@ export function AppCodeEditorLayout({
 
 	// Handle run/preview
 	const handleRun = useCallback(() => {
+		setMobileToolsOpen(false);
 		if (viewMode === "code") {
 			setViewMode("app");
 		}
 	}, [viewMode]);
 
 	return (
-		<div className="h-full flex flex-col bg-background">
+		<div className="h-full min-h-0 min-w-0 flex flex-col bg-background">
 			{/* Toolbar */}
-			<div className="flex items-center justify-between h-10 px-2 border-b bg-muted/30">
-				<div className="flex items-center gap-2">
+			<div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 px-2 border-b bg-muted/30 md:min-h-10">
+				<div className="flex min-w-0 flex-1 items-center gap-2">
 					{/* Sidebar toggle */}
 					<Button
 						variant="ghost"
 						size="icon"
-						className="h-7 w-7"
-						onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-						title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+						className="size-11 md:size-8"
+						onClick={() =>
+							isDesktop
+								? setSidebarCollapsed(!sidebarCollapsed)
+								: setMobileToolsOpen(!mobileToolsOpen)
+						}
+						aria-label={
+							toolsVisible
+								? "Hide files and packages"
+								: "Show files and packages"
+						}
+						aria-expanded={toolsVisible}
+						title={
+							toolsVisible
+								? "Hide files and packages"
+								: "Show files and packages"
+						}
 					>
-						{sidebarCollapsed ? (
+						{!toolsVisible ? (
 							<PanelLeft className="h-4 w-4" />
 						) : (
 							<PanelLeftClose className="h-4 w-4" />
@@ -339,7 +417,7 @@ export function AppCodeEditorLayout({
 					</Button>
 
 					{/* File name */}
-					<span className="text-sm font-medium truncate max-w-[200px]">
+					<span className="min-w-0 truncate text-sm font-medium">
 						{currentFile?.name || appName}
 					</span>
 
@@ -351,10 +429,10 @@ export function AppCodeEditorLayout({
 					)}
 				</div>
 
-				<div className="flex items-center gap-1">
+				<div className="flex w-full shrink-0 items-center justify-end gap-1 border-t md:w-auto md:border-0">
 					{/* Current app route indicator (in app view) */}
 					{viewMode === "app" && (
-						<span className="text-xs text-muted-foreground mr-2 font-mono">
+						<span className="min-w-0 truncate text-xs text-muted-foreground mr-auto font-mono md:max-w-40">
 							{currentAppRoute}
 						</span>
 					)}
@@ -362,10 +440,20 @@ export function AppCodeEditorLayout({
 					{/* View mode toggles */}
 					<div className="flex items-center gap-0.5 mr-2">
 						<Button
-							variant={viewMode === "code" ? "secondary" : "ghost"}
+							variant={
+								viewMode === "code" ? "secondary" : "ghost"
+							}
 							size="icon"
-							className="h-7 w-7"
-							onClick={() => setViewMode("code")}
+							className="size-11 md:size-8"
+							onClick={() => {
+								setViewMode("code");
+								setMobileToolsOpen(false);
+							}}
+							aria-label="Code"
+							aria-pressed={
+								viewMode === "code" &&
+								(isDesktop || !mobileToolsOpen)
+							}
 							title="Code only"
 						>
 							<Code className="h-4 w-4" />
@@ -373,8 +461,16 @@ export function AppCodeEditorLayout({
 						<Button
 							variant={viewMode === "app" ? "secondary" : "ghost"}
 							size="icon"
-							className="h-7 w-7"
-							onClick={() => setViewMode("app")}
+							className="size-11 md:size-8"
+							onClick={() => {
+								setViewMode("app");
+								setMobileToolsOpen(false);
+							}}
+							aria-label="App preview"
+							aria-pressed={
+								viewMode === "app" &&
+								(isDesktop || !mobileToolsOpen)
+							}
 							title="Full app preview (with navigation)"
 						>
 							<AppWindow className="h-4 w-4" />
@@ -386,7 +482,7 @@ export function AppCodeEditorLayout({
 						variant="ghost"
 						size="sm"
 						onClick={handleRun}
-						className="gap-1"
+						className="h-11 gap-1 md:h-8"
 						title="Run preview (Cmd+Enter)"
 					>
 						<Play className="h-4 w-4" />
@@ -401,93 +497,171 @@ export function AppCodeEditorLayout({
 						disabled={
 							readOnly ||
 							!currentFile ||
+							editorState.isCompiling ||
 							!editorState.hasUnsavedChanges ||
 							editorState.errors.length > 0
 						}
-						className="gap-1"
-						title={readOnly ? "Managed by a Solution — read-only" : "Save (Cmd+S)"}
+						className="h-11 gap-1 md:h-8"
+						title={
+							readOnly
+								? "Managed by a Solution — read-only"
+								: "Save (Cmd+S)"
+						}
 					>
 						<Save className="h-4 w-4" />
-						Save
+						{editorState.isCompiling
+							? "Saving…"
+							: editorState.saveError
+								? "Retry save"
+								: "Save"}
 					</Button>
 				</div>
 			</div>
 
+			{editorState.saveError && (
+				<div
+					role="alert"
+					className="shrink-0 border-b border-[var(--bf-danger)]/30 bg-[var(--bf-danger-soft)] px-3 py-2 text-sm text-[var(--bf-danger)] [overflow-wrap:anywhere]"
+				>
+					Could not save. {editorState.saveError} Your changes are
+					still in the editor.
+				</div>
+			)}
+
+			<AlertDialog
+				open={pendingOpenFile !== null}
+				onOpenChange={(open) => {
+					if (!open) {
+						setPendingOpenFile(null);
+					}
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Discard unsaved changes?
+						</AlertDialogTitle>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
+							{pendingOpenFile
+								? `Open ${pendingOpenFile.name}? Your unsaved changes to ${currentFile?.name || "the current file"} will be lost.`
+								: "Open this file? Your unsaved changes will be lost."}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel className="min-h-11">
+							Keep editing
+						</AlertDialogCancel>
+						<AlertDialogAction
+							className="min-h-11"
+							variant="destructive"
+							disabled={editorState.isCompiling}
+							onClick={(event) => {
+								event.preventDefault();
+								confirmPendingFileOpen();
+							}}
+						>
+							Discard changes
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
 			{/* Main content */}
 			<div className="flex-1 min-h-0 flex">
 				{/* Sidebar */}
-				{!sidebarCollapsed && (
-					<div className="w-60 border-r flex-shrink-0 flex flex-col">
-						{/* Tab switcher */}
-						<div className="flex border-b">
-							<button
-								className={`flex-1 px-3 py-1.5 text-xs font-medium ${
-									sidebarTab === "files"
-										? "border-b-2 border-primary text-foreground"
-										: "text-muted-foreground hover:text-foreground"
-								}`}
-								onClick={() => setSidebarTab("files")}
-							>
-								Files
-							</button>
-							<button
-								className={`flex-1 px-3 py-1.5 text-xs font-medium ${
-									sidebarTab === "packages"
-										? "border-b-2 border-primary text-foreground"
-										: "text-muted-foreground hover:text-foreground"
-								}`}
-								onClick={() => setSidebarTab("packages")}
-							>
-								Packages
-							</button>
-						</div>
-
-						{/* Tab content */}
-						{sidebarTab === "files" ? (
-							<div className="flex-1 overflow-auto">
-								<FileTree
-									operations={operations}
-									iconResolver={appCodeIconResolver}
-									editor={editorCallbacks}
-									refreshTrigger={fileTreeRefresh}
-									config={{
-										enableUpload: false,
-										enableDragMove: !readOnly,
-										enableCreate: !readOnly,
-										enableRename: !readOnly,
-										enableDelete: !readOnly,
-										emptyMessage: "No files yet",
-										loadingMessage: "Loading files...",
-										pathValidator: validateAppCodePath,
-									}}
-								/>
-							</div>
-						) : (
-							<DependencyPanel appId={appId} readOnly={readOnly} />
-						)}
+				<div
+					hidden={!toolsVisible}
+					className={cn(
+						"min-h-0 w-full border-r shrink-0 flex-col md:w-60",
+						toolsVisible ? "flex" : "hidden",
+					)}
+				>
+					{/* Tab switcher */}
+					<div className="flex border-b">
+						<button
+							className={`flex-1 min-h-11 px-3 py-1.5 text-xs font-medium md:min-h-9 ${
+								sidebarTab === "files"
+									? "border-b-2 border-primary text-foreground"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+							aria-pressed={sidebarTab === "files"}
+							onClick={() => setSidebarTab("files")}
+						>
+							Files
+						</button>
+						<button
+							className={`flex-1 min-h-11 px-3 py-1.5 text-xs font-medium md:min-h-9 ${
+								sidebarTab === "packages"
+									? "border-b-2 border-primary text-foreground"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+							aria-pressed={sidebarTab === "packages"}
+							onClick={() => setSidebarTab("packages")}
+						>
+							Packages
+						</button>
 					</div>
-				)}
 
-				{/* Editor and Preview */}
-				<div className="flex-1 min-h-0 flex">
-					{viewMode === "code" ? (
-						<div className="flex-1 min-w-0">
-							{currentFile ? (
-								<AppCodeEditor
-									value={editorState.source}
-									onChange={setSource}
-									onSave={handleSave}
-									errors={editorState.errors}
-									path={currentFile.path}
-									readOnly={readOnly}
-								/>
-							) : (
-								<div className="h-full flex items-center justify-center text-muted-foreground">
-									<p className="text-sm">Select a file to edit</p>
-								</div>
-							)}
+					{/* Tab content */}
+					{sidebarTab === "files" ? (
+						<div className="flex-1 overflow-auto">
+							<FileTree
+								operations={operations}
+								iconResolver={appCodeIconResolver}
+								editor={editorCallbacks}
+								refreshTrigger={fileTreeRefresh}
+								config={{
+									enableUpload: false,
+									enableDragMove: !readOnly,
+									enableCreate: !readOnly,
+									enableRename: !readOnly,
+									enableDelete: !readOnly,
+									emptyMessage: "No files yet",
+									loadingMessage: "Loading files...",
+									pathValidator: validateAppCodePath,
+								}}
+							/>
 						</div>
 					) : (
+						<DependencyPanel
+							key={appId}
+							appId={appId}
+							readOnly={readOnly}
+						/>
+					)}
+				</div>
+
+				{/* Editor and Preview */}
+				<div
+					hidden={!isDesktop && mobileToolsOpen}
+					className={cn(
+						"flex-1 min-w-0 min-h-0",
+						!isDesktop && mobileToolsOpen ? "hidden" : "flex",
+					)}
+				>
+					<div
+						hidden={viewMode !== "code"}
+						className={cn(
+							"flex-1 min-w-0",
+							viewMode !== "code" && "hidden",
+						)}
+					>
+						{currentFile ? (
+							<AppCodeEditor
+								value={editorState.source}
+								onChange={setSource}
+								onSave={handleSave}
+								errors={editorState.errors}
+								path={currentFile.path}
+								readOnly={readOnly}
+							/>
+						) : (
+							<div className="h-full flex items-center justify-center text-muted-foreground">
+								<p className="text-sm">Select a file to edit</p>
+							</div>
+						)}
+					</div>
+					{viewMode === "app" && (
 						/* App preview - full app with navigation */
 						<div className="flex-1 min-h-0 overflow-hidden">
 							<BundledAppShell
@@ -501,19 +675,28 @@ export function AppCodeEditorLayout({
 			</div>
 
 			{/* Status bar */}
-			<div className="flex items-center justify-between h-6 px-2 border-t bg-muted/30 text-xs text-muted-foreground">
-				<div className="flex items-center gap-4">
-					{currentFile && <span>{currentFile.path}</span>}
+			<div className="flex shrink-0 items-center justify-between gap-3 min-h-7 px-2 border-t bg-muted/30 text-xs text-muted-foreground">
+				<div className="flex min-w-0 items-center gap-4">
+					{currentFile && (
+						<span
+							className="truncate font-mono"
+							title={currentFile.path}
+						>
+							{currentFile.path}
+						</span>
+					)}
 				</div>
-				<div className="flex items-center gap-4">
+				<div className="flex min-w-0 items-center gap-4">
 					{editorState.errors.length > 0 && (
-						<span className="text-red-500">
+						<span className="text-destructive">
 							{editorState.errors.length} error
 							{editorState.errors.length > 1 ? "s" : ""}
 						</span>
 					)}
 					{editorState.isCompiling && (
-						<span className="text-yellow-500">Compiling...</span>
+						<span className="text-[var(--bf-warning)]">
+							Compiling...
+						</span>
 					)}
 				</div>
 			</div>

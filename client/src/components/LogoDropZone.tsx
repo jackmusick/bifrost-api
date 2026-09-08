@@ -42,6 +42,7 @@ export function LogoDropZone({
 	onChange,
 }: LogoDropZoneProps) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const mutationInFlight = useRef(false);
 	const [cacheKey, setCacheKey] = useState<string | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
 	const [imageLoaded, setImageLoaded] = useState(false);
@@ -50,6 +51,7 @@ export function LogoDropZone({
 	const [removing, setRemoving] = useState(false);
 
 	async function handleUpload(file: File) {
+		if (mutationInFlight.current) return;
 		const acceptedTypes = accept.split(",").map((t) => t.trim());
 		if (!acceptedTypes.includes(file.type)) {
 			toast.error(
@@ -66,6 +68,7 @@ export function LogoDropZone({
 			return;
 		}
 
+		mutationInFlight.current = true;
 		setUploading(true);
 		try {
 			const fd = new FormData();
@@ -86,11 +89,14 @@ export function LogoDropZone({
 		} catch (err) {
 			toast.error((err as Error).message);
 		} finally {
+			mutationInFlight.current = false;
 			setUploading(false);
 		}
 	}
 
 	async function handleDelete() {
+		if (mutationInFlight.current) return;
+		mutationInFlight.current = true;
 		setRemoving(true);
 		try {
 			const resp = await authFetch(deleteUrl, { method: "DELETE" });
@@ -105,6 +111,7 @@ export function LogoDropZone({
 		} catch (err) {
 			toast.error((err as Error).message);
 		} finally {
+			mutationInFlight.current = false;
 			setRemoving(false);
 		}
 	}
@@ -128,7 +135,10 @@ export function LogoDropZone({
 		[uploadUrl, accept, maxBytes],
 	);
 
-	const rounded = shape === "circle" ? "rounded-full" : "rounded-md";
+	const rounded =
+		shape === "circle"
+			? "rounded-full"
+			: "rounded-[var(--bf-radius-control)]";
 	const src = cacheKey
 		? `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(cacheKey)}`
 		: previewUrl;
@@ -136,22 +146,16 @@ export function LogoDropZone({
 	return (
 		<div
 			data-testid="logo-drop-zone"
-			role="button"
-			tabIndex={0}
+			role="group"
 			aria-label={ariaLabel}
+			aria-busy={uploading || removing}
+			aria-disabled={uploading || removing}
 			title={ariaLabel}
-			onClick={() => fileInputRef.current?.click()}
-			onKeyDown={(e) => {
-				if (e.key === "Enter" || e.key === " ") {
-					e.preventDefault();
-					fileInputRef.current?.click();
-				}
-			}}
 			onDragOver={handleDragOver}
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
 			style={{ width: size, height: size }}
-			className={`relative group cursor-pointer overflow-hidden ${rounded} border bg-muted/40 flex items-center justify-center shrink-0 ${
+			className={`relative group flex shrink-0 cursor-pointer items-center justify-center overflow-hidden ${rounded} border border-border/70 bg-[var(--bf-surface-4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 				isDragging ? "ring-2 ring-primary ring-offset-2" : ""
 			}`}
 		>
@@ -174,34 +178,45 @@ export function LogoDropZone({
 				/>
 			)}
 			<div
-				className={`absolute inset-0 flex items-center justify-center bg-black/50 ${rounded} transition-opacity ${
+				className={`absolute inset-0 flex items-center justify-center ${rounded} bg-black/50 transition-opacity motion-reduce:transition-none ${
 					uploading
 						? "opacity-100"
-						: "opacity-0 group-hover:opacity-100"
+						: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
 				}`}
 			>
 				{uploading ? (
-					<Loader2 className="h-6 w-6 text-white animate-spin" />
+					<Loader2 className="h-6 w-6 text-white motion-safe:animate-spin" />
 				) : (
 					<Camera className="h-6 w-6 text-white" />
 				)}
 			</div>
+			<button
+				type="button"
+				aria-label={ariaLabel}
+				disabled={uploading || removing}
+				onClick={() => {
+					if (!mutationInFlight.current)
+						fileInputRef.current?.click();
+				}}
+				className={`absolute inset-0 z-10 ${rounded} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-wait`}
+			/>
+
 			{imageLoaded && !isErrored && (
 				<button
 					type="button"
 					aria-label="Remove image"
 					title="Remove image"
-					disabled={removing}
+					disabled={uploading || removing}
 					onClick={(e) => {
 						e.stopPropagation();
 						void handleDelete();
 					}}
-					className="absolute top-1 right-1 rounded-full bg-black/70 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/90 disabled:opacity-50"
+					className="absolute top-2 right-2 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/70 p-0 text-white opacity-100 transition-opacity hover:bg-black/90 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-50 motion-reduce:transition-none"
 				>
 					{removing ? (
-						<Loader2 className="h-3 w-3 animate-spin" />
+						<Loader2 className="h-4 w-4 motion-safe:animate-spin" />
 					) : (
-						<Trash2 className="h-3 w-3" />
+						<Trash2 className="h-4 w-4" />
 					)}
 				</button>
 			)}

@@ -146,4 +146,26 @@ describe("OrganizationSelect", () => {
 			screen.queryByPlaceholderText("Search organizations..."),
 		).not.toBeInTheDocument();
 	});
+	it("describes an unavailable selection instead of waiting forever", async () => {
+		useOrganizationsMock.mockReturnValue({ data: [], isLoading: false });
+		await renderSelect({ value: "missing-organization" });
+		expect(screen.getByText("Organization unavailable")).toBeVisible();
+		expect(screen.getByText("missing-organization")).toBeVisible();
+		expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+	});
+	it("forwards form identity and description to the trigger", async () => {
+		const ref = { current: null };
+		await renderSelect({
+			label: "Customer scope",
+			id: "customer-scope",
+			"aria-describedby": "scope-help",
+			ref,
+		});
+		const trigger = screen.getByRole("combobox", {
+			name: "Customer scope",
+		});
+		expect(trigger).toHaveAttribute("id", "customer-scope");
+		expect(trigger).toHaveAttribute("aria-describedby", "scope-help");
+		expect(ref.current).toBe(trigger);
+	});
 });

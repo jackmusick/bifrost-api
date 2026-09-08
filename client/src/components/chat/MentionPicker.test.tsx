@@ -18,7 +18,7 @@ const { agentsRef, useAgentsMock } = vi.hoisted(() => {
 	const agents = { data: [] as Array<Record<string, unknown>> };
 	return {
 		agentsRef: agents,
-		useAgentsMock: vi.fn(() => ({ data: agents.data })),
+		useAgentsMock: vi.fn(() => ({ data: agents.data, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() })),
 	};
 });
 
@@ -251,5 +251,39 @@ describe("MentionPicker — selection & keyboard", () => {
 		fireEvent.keyDown(window, { key: "Escape" });
 
 		expect(onOpenChange).toHaveBeenCalledWith(false);
+	});
+});
+
+
+describe("MentionPicker — focused search and recovery", () => {
+	it("passes focused search edits to its owner", () => {
+		const onSearchChange = vi.fn();
+		renderWithProviders(<MentionPicker open onOpenChange={vi.fn()} onSelect={vi.fn()} searchTerm="" onSearchChange={onSearchChange} />);
+		fireEvent.change(screen.getByRole("combobox"), { target: { value: "dev" } });
+		expect(onSearchChange).toHaveBeenCalledWith("dev");
+	});
+
+	it("selects only once when Enter is pressed in the focused search", () => {
+		const onSelect = vi.fn();
+		renderWithProviders(<MentionPicker open onOpenChange={vi.fn()} onSelect={onSelect} searchTerm="" />);
+		fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter", keyCode: 13 });
+		expect(onSelect).toHaveBeenCalledTimes(1);
+	});
+
+	it("shows loading instead of an empty result", () => {
+		useAgentsMock.mockReturnValueOnce({ data: [], isLoading: true, isError: false, isFetching: true, refetch: vi.fn() });
+		renderWithProviders(<MentionPicker open onOpenChange={vi.fn()} onSelect={vi.fn()} searchTerm="" />);
+		expect(screen.getByRole("status")).toHaveTextContent("Loading agents");
+		expect(screen.queryByText(/no agents found/i)).not.toBeInTheDocument();
+	});
+
+	it("retains cached choices and retries a failed refresh", () => {
+		const refetch = vi.fn();
+		useAgentsMock.mockReturnValueOnce({ data: agentsRef.data, isLoading: false, isError: true, isFetching: false, refetch });
+		renderWithProviders(<MentionPicker open onOpenChange={vi.fn()} onSelect={vi.fn()} searchTerm="" />);
+		expect(screen.getByRole("alert")).toHaveTextContent("Could not refresh agents");
+		expect(screen.getByText("SupportBot")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+		expect(refetch).toHaveBeenCalledTimes(1);
 	});
 });

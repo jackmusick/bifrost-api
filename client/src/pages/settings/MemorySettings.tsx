@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Brain, Loader2 } from "lucide-react";
+import { Brain } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -9,8 +9,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { SettingsToggleRow } from "@/components/shared/SettingsToggleRow";
+import { SettingsLoadError } from "@/components/shared/SettingsLoadError";
 import {
 	getPlatformMemorySettings,
 	updatePlatformMemorySettings,
@@ -19,6 +19,8 @@ import {
 export function MemorySettings() {
 	const [enabled, setEnabled] = useState(false);
 	const [loading, setLoading] = useState(true);
+	const [loadError, setLoadError] = useState(false);
+	const [loadAttempt, setLoadAttempt] = useState(0);
 	const [saving, setSaving] = useState(false);
 
 	useEffect(() => {
@@ -27,16 +29,19 @@ export function MemorySettings() {
 			.then((settings) => {
 				if (active) setEnabled(settings.enabled);
 			})
-			.catch(() => toast.error("Failed to load memory settings"))
+			.catch(() => {
+				if (active) setLoadError(true);
+			})
 			.finally(() => {
 				if (active) setLoading(false);
 			});
 		return () => {
 			active = false;
 		};
-	}, []);
+	}, [loadAttempt]);
 
 	const handleChange = async (nextEnabled: boolean) => {
+		if (loading || saving || loadError) return;
 		setSaving(true);
 		try {
 			const settings = await updatePlatformMemorySettings(nextEnabled);
@@ -64,31 +69,29 @@ export function MemorySettings() {
 				</div>
 				<CardDescription>
 					Enable private memory for Bifrost-connected AI assistants.
-					Memory uses the embedding configuration above.
+					Configure embeddings in the Embeddings settings.
 				</CardDescription>
 			</CardHeader>
-			<CardContent>
-				<div className="flex items-center justify-between gap-6">
-					<div className="space-y-1">
-						<Label htmlFor="platform-memory-enabled">
-							Enable Memory
-						</Label>
-						<p className="text-sm text-muted-foreground">
-							Users can disable memory in their preferences.
-						</p>
-					</div>
-					<div className="flex items-center gap-2">
-						{(loading || saving) && (
-							<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-						)}
-						<Switch
-							id="platform-memory-enabled"
-							checked={enabled}
-							disabled={loading || saving}
-							onCheckedChange={handleChange}
-						/>
-					</div>
-				</div>
+			<CardContent className="space-y-5">
+				{loadError && (
+					<SettingsLoadError
+						name="memory settings"
+						onRetry={() => {
+							setLoading(true);
+							setLoadError(false);
+							setLoadAttempt((value) => value + 1);
+						}}
+					/>
+				)}
+				<SettingsToggleRow
+					id="platform-memory-enabled"
+					label="Enable Memory"
+					description="Users can disable memory in their preferences."
+					checked={enabled}
+					disabled={loading || saving || loadError}
+					busy={loading ? "loading" : saving ? "saving" : undefined}
+					onChange={handleChange}
+				/>
 			</CardContent>
 		</Card>
 	);

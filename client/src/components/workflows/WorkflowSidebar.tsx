@@ -53,6 +53,7 @@ function CategorySection({
 		<div className="border-b">
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
+				aria-expanded={isExpanded}
 				className="flex items-center justify-between w-full py-3 pl-3 pr-6 hover:bg-muted/50 transition-colors text-left"
 			>
 				<div className="flex items-center gap-2">
@@ -86,6 +87,7 @@ function CategorySection({
 							{categories.map((cat) => (
 								<button
 									key={cat.name}
+ aria-pressed={selectedCategory === cat.name}
 									onClick={() =>
 										onSelect(
 											selectedCategory === cat.name
@@ -94,13 +96,13 @@ function CategorySection({
 										)
 									}
 									className={cn(
-										"flex items-center w-full rounded-lg px-4 py-1.5 text-sm transition-colors",
+										"flex min-h-11 w-full items-center rounded-[var(--bf-radius-control)] px-4 py-2 text-sm transition-colors",
 										selectedCategory === cat.name
 											? "bg-primary/10 text-primary font-medium"
 											: "hover:bg-muted/50 text-foreground",
 									)}
 								>
-									<span className="truncate flex-1 text-left min-w-0">
+									<span className="flex-1 text-left min-w-0 whitespace-normal [overflow-wrap:anywhere]">
 										{cat.name}
 									</span>
 									<Badge
@@ -126,6 +128,7 @@ interface EntitySectionProps {
 	selectedId: string | null;
 	onSelect: (id: string | null) => void;
 	isLoading: boolean;
+	hasLoadError?: boolean;
 }
 
 function EntitySection({
@@ -135,6 +138,7 @@ function EntitySection({
 	selectedId,
 	onSelect,
 	isLoading,
+	hasLoadError = false,
 }: EntitySectionProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
 
@@ -142,6 +146,7 @@ function EntitySection({
 		<div className="border-b last:border-b-0">
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
+				aria-expanded={isExpanded}
 				className="flex items-center justify-between w-full py-3 pl-3 pr-6 hover:bg-muted/50 transition-colors text-left"
 			>
 				<div className="flex items-center gap-2">
@@ -154,7 +159,7 @@ function EntitySection({
 					<span className="font-medium text-sm">{title}</span>
 				</div>
 				<Badge variant="secondary" className="text-xs">
-					{isLoading ? "..." : entities.length}
+					{isLoading ? "..." : hasLoadError && entities.length === 0 ? "—" : entities.length}
 				</Badge>
 			</button>
 
@@ -166,7 +171,7 @@ function EntitySection({
 								<Skeleton key={i} className="h-8 w-full" />
 							))}
 						</div>
-					) : entities.length === 0 ? (
+					) : hasLoadError && entities.length === 0 ? null : entities.length === 0 ? (
 						<div className="px-6 py-2 text-xs text-muted-foreground italic">
 							No {title.toLowerCase()} found
 						</div>
@@ -175,6 +180,7 @@ function EntitySection({
 							{entities.map((entity) => (
 								<button
 									key={entity.id}
+ aria-pressed={selectedId === entity.id}
 									onClick={() =>
 										onSelect(
 											selectedId === entity.id
@@ -183,13 +189,13 @@ function EntitySection({
 										)
 									}
 									className={cn(
-										"flex items-center w-full rounded-lg px-4 py-1.5 text-sm transition-colors",
+										"flex min-h-11 w-full items-center rounded-[var(--bf-radius-control)] px-4 py-2 text-sm transition-colors",
 										selectedId === entity.id
 											? "bg-primary/10 text-primary font-medium"
 											: "hover:bg-muted/50 text-foreground",
 									)}
 								>
-									<span className="truncate flex-1 text-left min-w-0">
+									<span className="flex-1 text-left min-w-0 whitespace-normal [overflow-wrap:anywhere]">
 										{entity.name}
 									</span>
 									<Badge
@@ -279,7 +285,7 @@ export function WorkflowSidebar({
 	className,
 }: WorkflowSidebarProps) {
 	const terminology = useTerminology();
-	const { data, isLoading } = $api.useQuery(
+	const { data, isLoading, isError, isFetching, refetch } = $api.useQuery(
 		"get",
 		"/api/workflows/usage-stats",
 		{
@@ -320,7 +326,9 @@ export function WorkflowSidebar({
 			return selectedCategory;
 		}
 		if (selectedFormId && data?.forms) {
-			return data.forms.find((f) => f.id === selectedFormId)?.name ?? null;
+			return (
+				data.forms.find((f) => f.id === selectedFormId)?.name ?? null
+			);
 		}
 		if (selectedAppId && data?.apps) {
 			return data.apps.find((a) => a.id === selectedAppId)?.name ?? null;
@@ -338,7 +346,7 @@ export function WorkflowSidebar({
 	return (
 		<div
 			className={cn(
-				"flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
+				"flex h-full flex-col overflow-hidden rounded-[var(--bf-radius-surface)] bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
 				className,
 			)}
 		>
@@ -347,7 +355,12 @@ export function WorkflowSidebar({
 				<span className="font-medium text-sm">Filters</span>
 				<div className="flex items-center gap-1">
 					{hasActiveFilter && (
-						<Button variant="ghost" size="xs" onClick={clearFilters}>
+						<Button
+							variant="ghost"
+							size="sm"
+ className="min-h-11"
+							onClick={clearFilters}
+						>
 							<X />
 							Clear
 						</Button>
@@ -355,9 +368,10 @@ export function WorkflowSidebar({
 					{onClose && (
 						<Button
 							variant="ghost"
-							size="icon-xs"
+							size="icon-lg"
 							onClick={onClose}
 							title="Hide filters"
+							aria-label="Hide filters"
 						>
 							<PanelLeftClose className="size-4" />
 						</Button>
@@ -371,7 +385,7 @@ export function WorkflowSidebar({
 					<div className="text-xs text-muted-foreground">
 						Filtering by:
 					</div>
-					<div className="text-sm font-medium text-primary truncate">
+					<div className="text-sm font-medium text-primary [overflow-wrap:anywhere]">
 						{selectedFilterName}
 					</div>
 				</div>
@@ -400,30 +414,32 @@ export function WorkflowSidebar({
 				</div>
 				<div className="border-b space-y-0.5 px-2 pb-2">
 					<button
-						onClick={() => onEndpointFilterChange(!endpointFilter)}
+						aria-pressed={endpointFilter}
+ onClick={() => onEndpointFilterChange(!endpointFilter)}
 						className={cn(
-							"flex items-center w-full rounded-lg px-4 py-2 text-sm transition-colors",
+							"flex min-h-11 items-center w-full rounded-[var(--bf-radius-control)] px-4 py-2 text-sm transition-colors",
 							endpointFilter
 								? "bg-primary/10 text-primary font-medium"
 								: "hover:bg-muted/50 text-foreground",
 						)}
 					>
 						<Globe className="h-4 w-4 mr-2 text-muted-foreground" />
-						<span className="truncate flex-1 text-left min-w-0">
+						<span className="flex-1 text-left min-w-0 whitespace-normal [overflow-wrap:anywhere]">
 							Endpoint Enabled
 						</span>
 					</button>
 					<button
-						onClick={() => onOrphanedFilterChange(!orphanedFilter)}
+						aria-pressed={orphanedFilter}
+ onClick={() => onOrphanedFilterChange(!orphanedFilter)}
 						className={cn(
-							"flex items-center w-full rounded-lg px-4 py-2 text-sm transition-colors",
+							"flex min-h-11 items-center w-full rounded-[var(--bf-radius-control)] px-4 py-2 text-sm transition-colors",
 							orphanedFilter
 								? "bg-primary/10 text-primary font-medium"
 								: "hover:bg-muted/50 text-foreground",
 						)}
 					>
 						<Unlink className="h-4 w-4 mr-2 text-muted-foreground" />
-						<span className="truncate flex-1 text-left min-w-0">
+						<span className="flex-1 text-left min-w-0 whitespace-normal [overflow-wrap:anywhere]">
 							Orphaned
 						</span>
 					</button>
@@ -435,9 +451,12 @@ export function WorkflowSidebar({
 						By Usage
 					</span>
 				</div>
+				{isError && <div role="alert" className="mx-3 mb-3 space-y-2 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-3 text-sm"><p>Could not load workflow usage filters.</p><Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>Retry usage filters</Button></div>}
 				<EntitySection
 					title={term(terminology, "form", "plural")}
-					icon={<FileText className="h-4 w-4 text-muted-foreground" />}
+					icon={
+						<FileText className="h-4 w-4 text-muted-foreground" />
+					}
 					entities={data?.forms ?? []}
 					selectedId={selectedFormId}
 					onSelect={(id) => {
@@ -448,6 +467,7 @@ export function WorkflowSidebar({
 						}
 					}}
 					isLoading={isLoading}
+ hasLoadError={isError}
 				/>
 				<EntitySection
 					title={term(terminology, "app", "plural")}
@@ -464,6 +484,7 @@ export function WorkflowSidebar({
 						}
 					}}
 					isLoading={isLoading}
+ hasLoadError={isError}
 				/>
 				<EntitySection
 					title={term(terminology, "agent", "plural")}
@@ -478,6 +499,7 @@ export function WorkflowSidebar({
 						}
 					}}
 					isLoading={isLoading}
+ hasLoadError={isError}
 				/>
 			</div>
 		</div>

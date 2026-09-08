@@ -53,12 +53,18 @@ function preloadImage(url: string, timeout = 5000): Promise<void> {
  * Get current branding settings (public endpoint)
  */
 export async function getBranding(): Promise<BrandingSettings_API | null> {
-	try {
-		const { data } = await apiClient.GET("/api/branding", {});
-		return data || null;
-	} catch {
-		return null;
+	const { data, error } = await apiClient.GET("/api/branding", {});
+
+	if (error) {
+		throw new Error(
+			typeof error === "object" && error !== null && "message" in error
+				? (error as { message?: string }).message ||
+						"Failed to load branding"
+				: "Failed to load branding",
+		);
 	}
+
+	return data || null;
 }
 
 /**

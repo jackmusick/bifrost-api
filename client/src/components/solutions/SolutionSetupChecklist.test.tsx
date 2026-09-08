@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -135,4 +135,23 @@ describe("SolutionSetupChecklist", () => {
 			"11111111-1111-1111-1111-111111111111",
 		);
 	});
+});
+
+
+it("masks secret defaults and retains failed setup input for retry", async () => {
+	let rejectSave!: (reason: Error) => void;
+	const onSet = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; })).mockResolvedValueOnce(undefined);
+	render(<SolutionSetupChecklist items={[{ ...requiredUnset, default: "synthetic-default" }]} setupComplete={false} onSet={onSet} />);
+	const input = screen.getByLabelText("api_key");
+	expect(input).toHaveAttribute("type", "password");
+	expect(input).not.toHaveAttribute("placeholder", "Default: synthetic-default");
+	await userEvent.type(input, "synthetic-value{Enter}");
+	expect(input).toBeDisabled();
+	rejectSave(new Error("Synthetic failure"));
+	expect(await screen.findByRole("alert")).toHaveTextContent("Your entry is ready to retry");
+	expect(input).toHaveValue("synthetic-value");
+	await userEvent.click(screen.getByRole("button", { name: "Retry setting api_key" }));
+	await waitFor(() => expect(input).toHaveValue(""));
+	expect(onSet).toHaveBeenCalledTimes(2);
+	expect(onSet.mock.calls[0]).toEqual(onSet.mock.calls[1]);
 });

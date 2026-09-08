@@ -75,7 +75,9 @@ describe("ChatInput — send behavior", () => {
 				}),
 		);
 		const { user } = renderWithProviders(<ChatInput onSend={onSend} />);
-		const textarea = screen.getByPlaceholderText(/reply/i) as HTMLTextAreaElement;
+		const textarea = screen.getByPlaceholderText(
+			/reply/i,
+		) as HTMLTextAreaElement;
 		fireEvent.change(textarea, { target: { value: "send immediately" } });
 
 		await user.click(screen.getByRole("button", { name: /send message/i }));
@@ -88,12 +90,23 @@ describe("ChatInput — send behavior", () => {
 	it("restores a submitted draft when submission fails", async () => {
 		const onSend = vi.fn().mockRejectedValue(new Error("offline"));
 		const { user } = renderWithProviders(<ChatInput onSend={onSend} />);
-		const textarea = screen.getByPlaceholderText(/reply/i) as HTMLTextAreaElement;
+		const textarea = screen.getByPlaceholderText(
+			/reply/i,
+		) as HTMLTextAreaElement;
 		fireEvent.change(textarea, { target: { value: "please retry" } });
 
 		await user.click(screen.getByRole("button", { name: /send message/i }));
 
 		await waitFor(() => expect(textarea.value).toBe("please retry"));
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Message not sent: offline",
+		);
+		onSend.mockResolvedValueOnce(undefined);
+		await user.click(screen.getByRole("button", { name: /send message/i }));
+		await waitFor(() =>
+			expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+		);
+		expect(onSend).toHaveBeenLastCalledWith("please retry", [], null);
 	});
 
 	it("Shift+Enter does not submit (line break instead)", async () => {
@@ -200,7 +213,7 @@ describe("ChatInput — attachments and model profile", () => {
 		expect(container.firstElementChild?.firstElementChild).toHaveClass(
 			"max-w-4xl",
 		);
-		expect(screen.getByLabelText("Chat input").parentElement).toHaveClass(
+		expect(screen.getByLabelText("Chat input").closest(".bg-card")).toHaveClass(
 			"bg-card",
 			"text-card-foreground",
 		);
@@ -213,10 +226,10 @@ describe("ChatInput — attachments and model profile", () => {
 
 		expect(
 			screen.getByRole("button", { name: "Attach files" }),
-		).toHaveClass("size-11", "sm:size-7");
+		).toHaveClass("size-11");
 		expect(
 			screen.getByRole("button", { name: "Send message" }),
-		).toHaveClass("size-11", "sm:size-7");
+		).toHaveClass("size-11");
 		expect(container.firstElementChild).toHaveClass(
 			"pb-[max(0.75rem,env(safe-area-inset-bottom))]",
 		);

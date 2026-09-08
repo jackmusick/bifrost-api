@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 
-import { renderWithProviders, screen, waitFor } from "@/test-utils";
+import { renderWithProviders, screen, waitFor, within } from "@/test-utils";
 import { ConsumerTab, type ConsumerTabItem } from "./ConsumerTab";
 
 const defaults = {
@@ -173,4 +173,17 @@ describe("ConsumerTab", () => {
 		await user.click(screen.getByRole("link", { name: /next page/i }));
 		expect(onPageChange).toHaveBeenCalledWith(25);
 	});
+});
+
+
+it("keeps removal failure feedback with the selected-item action and retries the selection", async () => {
+	const onUnassign = vi.fn().mockRejectedValueOnce(new Error("Removal failed")).mockResolvedValueOnce(undefined);
+	const { user } = renderWithProviders(<ConsumerTab {...defaults} items={[{ id: "a", primary: "Alice" }]} onUnassign={onUnassign} />);
+	await user.click(screen.getByRole("checkbox", { name: "Select Alice" }));
+	await user.click(screen.getByRole("button", { name: "Unassign from role" }));
+	const actions = screen.getByRole("region", { name: "Selected users" });
+	expect(await within(actions).findByRole("alert")).toHaveTextContent("Removal failed. Your selection is preserved.");
+	await user.click(within(actions).getByRole("button", { name: "Unassign from role" }));
+	await waitFor(() => expect(onUnassign).toHaveBeenCalledTimes(2));
+	expect(onUnassign).toHaveBeenLastCalledWith(["a"]);
 });

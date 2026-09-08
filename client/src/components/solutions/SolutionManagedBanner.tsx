@@ -22,13 +22,15 @@ export function SolutionManagedBanner({
 	entityLabel = "entity",
 }: SolutionManagedBannerProps) {
 	return (
-		<Alert data-testid="solution-managed-banner">
-			<Lock className="h-4 w-4" />
+		<Alert
+			data-testid="solution-managed-banner"
+			className="items-start rounded-[var(--bf-radius-surface)] border-[color:var(--bf-info-soft)] bg-[color:var(--bf-info-soft)]/20"
+		>
+			<Lock aria-hidden="true" className="size-4 text-[var(--bf-info)]" />
 			<AlertTitle>Managed by a Solution</AlertTitle>
 			<AlertDescription>
-				This {entityLabel} was installed by a Solution and is read-only here.
-				Changes are made by re-deploying the Solution, not edited on the
-				platform.
+				This {entityLabel} is read-only here. Re-deploy the Solution to make
+				changes on the platform.
 			</AlertDescription>
 		</Alert>
 	);

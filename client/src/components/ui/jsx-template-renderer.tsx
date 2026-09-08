@@ -1,5 +1,7 @@
 import React from "react";
 import { transform } from "@babel/standalone";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 interface JsxTemplateRendererProps {
 	template: string;
@@ -48,12 +50,17 @@ function evaluateTemplate(
 
 		// Transform JSX to JavaScript using Babel
 		const result = transform(wrappedTemplate, {
-			presets: ["react"],
+			// The evaluator supplies React directly; automatic runtime imports cannot
+			// execute inside its Function body.
+			presets: [["react", { runtime: "classic" }]],
 			filename: "template.jsx",
 		});
 
 		if (!result.code) {
-			return { ok: false, error: "Babel transformation produced no code" };
+			return {
+				ok: false,
+				error: "Babel transformation produced no code",
+			};
 		}
 
 		// Evaluate the transformed code with React and context in scope
@@ -81,16 +88,29 @@ export function JsxTemplateRenderer({
 
 	if (!result.ok) {
 		return (
-			<div className={className}>
-				<div className="text-destructive text-sm p-4 border border-destructive rounded-md">
-					<p className="font-semibold">Template Error</p>
-					<p className="text-xs mt-1 font-mono whitespace-pre-wrap">
+			<Alert variant="destructive" className={className}>
+				<AlertTitle>Template error</AlertTitle>
+				<AlertDescription>
+					<pre
+						tabIndex={0}
+						aria-label="Template error details"
+						className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-sm leading-6 [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					>
 						{result.error}
-					</p>
-				</div>
-			</div>
+					</pre>
+				</AlertDescription>
+			</Alert>
 		);
 	}
 
-	return <div className={className}>{result.element}</div>;
+	return (
+		<div
+			className={cn(
+				"min-w-0 max-w-full overflow-x-auto [overflow-wrap:anywhere]",
+				className,
+			)}
+		>
+			{result.element}
+		</div>
+	);
 }

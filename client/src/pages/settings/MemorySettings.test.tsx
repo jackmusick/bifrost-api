@@ -35,4 +35,20 @@ describe("MemorySettings", () => {
 		await waitFor(() => expect(updateSettings).toHaveBeenCalledWith(true));
 		expect(toggle).toHaveAttribute("aria-checked", "true");
 	});
+	it("keeps unavailable settings disabled until a successful retry", async () => {
+		getSettings.mockRejectedValueOnce(new Error("Offline"));
+		const user = userEvent.setup();
+		render(<MemorySettings />);
+		await screen.findByRole("alert");
+		expect(
+			screen.getByRole("switch", { name: "Enable Memory" }),
+		).toBeDisabled();
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		await waitFor(() =>
+			expect(
+				screen.getByRole("switch", { name: "Enable Memory" }),
+			).toBeEnabled(),
+		);
+		expect(updateSettings).not.toHaveBeenCalled();
+	});
 });

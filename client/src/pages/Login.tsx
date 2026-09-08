@@ -33,7 +33,7 @@ import {
 	ExternalLink,
 	Fingerprint,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { OAuthProvider } from "@/services/auth";
 import { Logo } from "@/components/branding/Logo";
 import { AuthTransition } from "@/components/auth/AuthTransition";
@@ -48,9 +48,11 @@ interface MFAState {
 }
 
 export function Login() {
+	const reducedMotion = useReducedMotion();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const applicationName = useApplicationName();
+	const accountMessage = (location.state as { message?: string } | null)?.message;
 	const {
 		login,
 		loginWithMfa,
@@ -240,9 +242,7 @@ export function Login() {
 	// Clear its transient loading state while keeping the attempt guard.
 	useEffect(() => {
 		const handlePageShow = () => {
-			if (
-				sessionStorage.getItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY)
-			) {
+			if (sessionStorage.getItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY)) {
 				setFinalizing(null);
 				setIsLoading(false);
 			}
@@ -426,25 +426,28 @@ export function Login() {
 	if (authLoading || !authStatusLoaded) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+		<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
 			<motion.div
-				initial={{ opacity: 0, y: 20 }}
+				initial={reducedMotion ? false : { opacity: 0, y: 4 }}
 				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.4, ease: "easeOut" }}
+				transition={{
+					duration: reducedMotion ? 0 : 0.36,
+					ease: "easeOut",
+				}}
 				className="w-full max-w-md"
 			>
-				<Card className="border-primary/10 shadow-xl shadow-primary/5">
+				<Card className="rounded-[var(--bf-radius-feature)] border-border shadow-none">
 					<CardHeader className="text-center space-y-4 pb-2">
 						<motion.div
-							initial={{ scale: 0.8, opacity: 0 }}
-							animate={{ scale: 1, opacity: 1 }}
-							transition={{ delay: 0.1, duration: 0.3 }}
+							initial={reducedMotion ? false : { opacity: 0 }}
+							animate={{ opacity: 1 }}
+							transition={{ duration: reducedMotion ? 0 : 0.22 }}
 							className="flex justify-center"
 						>
 							<Logo
@@ -454,7 +457,7 @@ export function Login() {
 							/>
 						</motion.div>
 						<div className="space-y-1">
-							<h1 className="text-2xl font-bold tracking-tight">
+							<h1 className="font-display text-2xl font-semibold tracking-tight">
 								{applicationName}
 							</h1>
 							<CardDescription className="text-base">
@@ -467,6 +470,11 @@ export function Login() {
 						</div>
 					</CardHeader>
 					<CardContent>
+						{accountMessage && step === "credentials" && !error && (
+							<Alert role="status" className="mb-4">
+								<AlertDescription>{accountMessage}</AlertDescription>
+							</Alert>
+						)}
 						{error && (
 							<Alert variant="destructive" className="mb-4">
 								<AlertDescription>{error}</AlertDescription>
@@ -481,14 +489,14 @@ export function Login() {
 										<Button
 											type="button"
 											variant="outline"
-											className="w-full mb-4"
+											className="min-h-11 w-full mb-4"
 											onClick={handlePasskeyLogin}
 											disabled={
 												isLoading || isPasskeyLoading
 											}
 										>
 											{isPasskeyLoading ? (
-												<Loader2 className="h-4 w-4 animate-spin mr-2" />
+												<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 											) : (
 												<Fingerprint className="h-4 w-4 mr-2" />
 											)}
@@ -500,7 +508,7 @@ export function Login() {
 												<span className="w-full border-t" />
 											</div>
 											<div className="relative flex justify-center text-xs uppercase">
-												<span className="bg-background px-2 text-muted-foreground">
+												<span className="bg-card px-2 text-muted-foreground">
 													Or use email
 												</span>
 											</div>
@@ -524,7 +532,7 @@ export function Login() {
 												onChange={(e) =>
 													setEmail(e.target.value)
 												}
-												className="pl-10"
+												className="h-11 pl-10"
 												required
 												autoFocus
 											/>
@@ -544,20 +552,20 @@ export function Login() {
 												onChange={(e) =>
 													setPassword(e.target.value)
 												}
-												className="pl-10"
+												className="h-11 pl-10"
 												required
 											/>
 										</div>
 									</div>
 									<Button
 										type="submit"
-										className="w-full"
+										className="min-h-11 w-full"
 										disabled={
 											isLoading || !email || !password
 										}
 									>
 										{isLoading ? (
-											<Loader2 className="h-4 w-4 animate-spin mr-2" />
+											<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 										) : null}
 										Sign In
 									</Button>
@@ -570,7 +578,7 @@ export function Login() {
 												<span className="w-full border-t" />
 											</div>
 											<div className="relative flex justify-center text-xs uppercase">
-												<span className="bg-background px-2 text-muted-foreground">
+												<span className="bg-card px-2 text-muted-foreground">
 													Or continue with
 												</span>
 											</div>
@@ -587,7 +595,7 @@ export function Login() {
 														)
 													}
 													disabled={isLoading}
-													className="w-full"
+													className="min-h-11 w-full"
 												>
 													{getProviderIcon(
 														provider.name,
@@ -623,7 +631,7 @@ export function Login() {
 											onChange={(e) =>
 												setMfaCode(e.target.value)
 											}
-											className="pl-10 text-center text-lg tracking-widest"
+											className="h-11 pl-10 font-mono text-center text-lg tracking-widest"
 											maxLength={8}
 											autoFocus
 										/>
@@ -636,12 +644,12 @@ export function Login() {
 
 								<div className="flex items-center space-x-2">
 									<Checkbox
-									id="trustDevice"
-									checked={trustDevice}
-									onCheckedChange={(checked) =>
-										setTrustDevice(checked === true)
-									}
-								/>
+										id="trustDevice"
+										checked={trustDevice}
+										onCheckedChange={(checked) =>
+											setTrustDevice(checked === true)
+										}
+									/>
 									<Label
 										htmlFor="trustDevice"
 										className="text-sm font-normal"
@@ -652,11 +660,11 @@ export function Login() {
 
 								<Button
 									type="submit"
-									className="w-full"
+									className="min-h-11 w-full"
 									disabled={isLoading || mfaCode.length < 6}
 								>
 									{isLoading ? (
-										<Loader2 className="h-4 w-4 animate-spin mr-2" />
+										<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" />
 									) : null}
 									Verify
 								</Button>
@@ -664,7 +672,7 @@ export function Login() {
 								<Button
 									type="button"
 									variant="ghost"
-									className="w-full"
+									className="min-h-11 w-full"
 									onClick={() => {
 										setStep("credentials");
 										setMfaCode("");

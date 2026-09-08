@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderWithProviders, screen } from "@/test-utils";
+import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockUseTables = vi.fn();
 const mockUseDeleteTable = vi.fn();
@@ -57,6 +57,45 @@ async function renderPage() {
 }
 
 describe("Tables — list", () => {
+	it("retains failed deletion for retry", async () => {
+		const mutateAsync = vi
+			.fn()
+			.mockRejectedValueOnce({ detail: "Synthetic delete failure" })
+			.mockResolvedValueOnce(undefined);
+		mockUseDeleteTable.mockReturnValue({ mutateAsync });
+		mockUseTables.mockReturnValue({
+			data: {
+				tables: [
+					{
+						id: "table-review",
+						name: "review_table",
+						organization_id: null,
+						is_solution_managed: false,
+					},
+				],
+			},
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		const { user } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: "review_table actions" }),
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+		await user.click(screen.getByRole("button", { name: "Delete table" }));
+		await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Synthetic delete failure",
+		);
+		await user.click(screen.getByRole("button", { name: "Delete table" }));
+		await waitFor(() =>
+			expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+		);
+		expect(mutateAsync).toHaveBeenNthCalledWith(2, {
+			params: { path: { table_id: "table-review" } },
+		});
+	});
+
 	it("fetches without include_orphaned (orphaned UI stripped)", async () => {
 		await renderPage();
 		// useTables(scope) — no include_orphaned param
@@ -85,10 +124,17 @@ describe("Tables — solution-managed rows are read-only (audit U1)", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		await renderPage();
-
-		expect(screen.getByRole("button", { name: /delete table/i })).toBeDisabled();
-		expect(screen.getByRole("button", { name: /edit table/i })).toBeDisabled();
+		const { user } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: "Managed Customers actions" }),
+		);
+		expect(
+			screen.getByRole("menuitem", { name: "Delete" }),
+		).toHaveAttribute("aria-disabled", "true");
+		expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveAttribute(
+			"aria-disabled",
+			"true",
+		);
 	});
 
 	it("never calls delete for a managed table even if confirm is reached", async () => {
@@ -104,7 +150,10 @@ describe("Tables — solution-managed rows are read-only (audit U1)", () => {
 		const { user } = await renderPage();
 
 		// The disabled Delete button cannot open the dialog; the mutation is never invoked.
-		const del = screen.getByRole("button", { name: /delete table/i });
+		await user.click(
+			screen.getByRole("button", { name: "Managed Customers actions" }),
+		);
+		const del = screen.getByRole("menuitem", { name: "Delete" });
 		await user.click(del).catch(() => {});
 		expect(mutateAsync).not.toHaveBeenCalled();
 	});

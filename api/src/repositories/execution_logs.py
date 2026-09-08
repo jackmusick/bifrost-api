@@ -227,6 +227,8 @@ class ExecutionLogRepository:
         end_date: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
+        workflow_id: UUID | None = None,
+        global_only: bool = False,
     ) -> tuple[list[dict[str, Any]], str | None]:
         """
         List logs across all executions with filtering and pagination.
@@ -234,6 +236,8 @@ class ExecutionLogRepository:
         Args:
             organization_id: Filter by organization
             workflow_name: Filter by workflow name (partial match)
+            workflow_id: Filter by exact workflow identity
+            global_only: Include only executions without an organization
             levels: Filter by log levels (e.g., ["ERROR", "WARNING"])
             message_search: Search in log messages (partial match)
             start_date: Filter logs from this date
@@ -259,6 +263,12 @@ class ExecutionLogRepository:
         # Apply filters
         if organization_id:
             query = query.where(Execution.organization_id == organization_id)
+
+        if global_only:
+            query = query.where(Execution.organization_id.is_(None))
+
+        if workflow_id:
+            query = query.where(Execution.workflow_id == workflow_id)
 
         if workflow_name:
             query = query.where(Execution.workflow_name.ilike(f"%{workflow_name}%"))
