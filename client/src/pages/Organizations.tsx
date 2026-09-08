@@ -54,6 +54,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -235,10 +239,11 @@ export function Organizations() {
 				},
 			});
 			pendingFocusOrgIdRef.current = selectedOrg.id;
-			pendingFocusTargetRef.current =
-				editTriggerRef.current?.matches('[aria-label$="actions"]')
-					? "actions"
-					: "name";
+			pendingFocusTargetRef.current = editTriggerRef.current?.matches(
+				'[aria-label$="actions"]',
+			)
+				? "actions"
+				: "name";
 			setIsEditDialogOpen(false);
 			resetSelection();
 			updateMutation.reset?.();
@@ -401,7 +406,7 @@ export function Organizations() {
 	);
 
 	return (
-		<div className="mx-auto flex h-full max-w-7xl flex-col space-y-6">
+		<PageWorkspace className="mx-auto max-w-7xl">
 			<ListPageHeader
 				title="Organizations"
 				description="Manage customer organizations and their configurations"
@@ -485,7 +490,10 @@ export function Organizations() {
 					</AlertDescription>
 				</Alert>
 			)}
-			<div className="min-h-0 flex-1">
+			<PageScrollArea
+				aria-label="Organizations list"
+				className="lg:flex lg:flex-col lg:overflow-hidden"
+			>
 				{isLoading ? (
 					<div
 						role="status"
@@ -583,7 +591,7 @@ export function Organizations() {
 							))}
 						</ul>
 					) : (
-						<DataTable>
+						<DataTable className="max-h-full">
 							<DataTableHeader>
 								<DataTableRow>
 									<DataTableHead>Name</DataTableHead>
@@ -708,7 +716,7 @@ export function Organizations() {
 						</Button>
 					</div>
 				)}
-			</div>
+			</PageScrollArea>
 
 			<Dialog
 				open={isCreateDialogOpen}
@@ -1031,6 +1039,6 @@ export function Organizations() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</div>
+		</PageWorkspace>
 	);
 }

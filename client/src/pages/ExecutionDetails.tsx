@@ -696,7 +696,7 @@ export function ExecutionDetails({
 	}
 
 	return (
-			<div className="h-full overflow-y-auto">
+			<div className="h-full overflow-y-auto lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
 			{/* Page Header - hidden for embedded users (embedded prop short-circuits earlier) */}
 			{!isEmbed && (
 				<ExecutionPageHeader
@@ -732,7 +732,7 @@ export function ExecutionDetails({
 				</header>
 			)}
 			{/* Two-column layout: Content on left, Sidebar on right */}
-				<div className="p-4 sm:p-6 lg:p-8">
+				<div data-page-scroll className="p-4 sm:p-6 lg:p-8 lg:min-h-0 lg:flex-1 lg:overflow-auto">
 					{refreshError && <div className="mb-6">{refreshError}</div>}
 					<div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] xl:gap-8">
 						{/* Left Column - Main Content (2/3 width) */}

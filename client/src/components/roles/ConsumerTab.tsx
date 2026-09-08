@@ -220,14 +220,16 @@ export function ConsumerTab({
 			toast.success(`Removed ${ids.length} ${consumerLabel}`);
 			setSelected(new Set());
 		} catch (e) {
-			setRemoveFailed(getErrorMessage(e, `Failed to remove ${consumerLabel}`));
+			setRemoveFailed(
+				getErrorMessage(e, `Failed to remove ${consumerLabel}`),
+			);
 		} finally {
 			setSubmitting(false);
 		}
 	};
 
 	return (
-		<div className="flex min-w-0 flex-col gap-3">
+		<div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center [&_input]:min-h-11 [&>button]:min-h-11">
 				<SearchBox
 					value={search}
@@ -402,7 +404,15 @@ export function ConsumerTab({
 					aria-label={`Selected ${consumerLabel}`}
 					className="sticky bottom-2 grid grid-cols-[1fr_auto] items-center gap-3 sm:flex sm:flex-wrap rounded-[var(--bf-radius-surface)] bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
 				>
-					{removeFailed && <p role="alert" className="order-0 col-span-2 w-full text-sm text-destructive [overflow-wrap:anywhere]">{removeFailed}. Your selection is preserved. Try again.</p>}
+					{removeFailed && (
+						<p
+							role="alert"
+							className="order-0 col-span-2 w-full text-sm text-destructive [overflow-wrap:anywhere]"
+						>
+							{removeFailed}. Your selection is preserved. Try
+							again.
+						</p>
+					)}
 					<span className="order-1 text-sm font-medium">
 						{effectiveSelected.size} selected
 					</span>

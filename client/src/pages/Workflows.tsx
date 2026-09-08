@@ -32,6 +32,10 @@ import { fileService } from "@/services/fileService";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListLoadError } from "@/components/layout/ListLoadError";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
@@ -225,8 +229,8 @@ export function Workflows() {
 	};
 
 	const handleOpenInEditor = async (workflow: Workflow) => {
-		const workflowMeta = metadata?.workflows?.find(
-			(w) => workflow.id ? w.id === workflow.id : w.name === workflow.name,
+		const workflowMeta = metadata?.workflows?.find((w) =>
+			workflow.id ? w.id === workflow.id : w.name === workflow.name,
 		);
 		const relativeFilePath = workflowMeta?.relative_file_path;
 
@@ -273,7 +277,14 @@ export function Workflows() {
 	};
 
 	const workflowList = (
-		<div className="min-w-0 space-y-4 xl:min-h-0 xl:flex-1 xl:overflow-auto">
+		<PageScrollArea
+			aria-label="Workflow list"
+			className={
+				viewMode === "table"
+					? "space-y-4 xl:flex xl:flex-col xl:overflow-hidden"
+					: "space-y-4"
+			}
+		>
 			{isError && (
 				<ListLoadError
 					resource="workflows"
@@ -309,11 +320,11 @@ export function Workflows() {
 					emptySearchActive={activeFilterCount > 0}
 				/>
 			)}
-		</div>
+		</PageScrollArea>
 	);
 
 	return (
-		<div className="mx-auto flex min-h-full w-full max-w-7xl min-w-0 flex-col gap-6 pb-1 xl:h-full xl:min-h-0">
+		<PageWorkspace className="mx-auto w-full max-w-7xl pb-1 xl:h-full xl:min-h-0">
 			<ListPageHeader
 				title="Workflows"
 				description="Execute workflows directly with custom parameters"
@@ -528,6 +539,6 @@ export function Workflows() {
 				onSuccess={() => refetch()}
 				initialTab={editDialogInitialTab}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }

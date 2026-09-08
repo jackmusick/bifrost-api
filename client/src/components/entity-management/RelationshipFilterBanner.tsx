@@ -30,7 +30,7 @@ export function RelationshipFilterBanner({
 		<section
 			aria-label="Relationship filter"
 			className={cn(
-				"mb-4 space-y-4 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)]",
+				"mb-4 shrink-0 space-y-4 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)]",
 				toneClass,
 			)}
 		>

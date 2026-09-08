@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { PageWorkspace } from "@/components/layout/PageWorkspace";
 import { Button } from "@/components/ui/button";
 import { WorkflowKeys } from "@/pages/settings/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
@@ -181,7 +182,7 @@ export function Settings() {
 				: [...sections, activeSectionId],
 		);
 	}
-	const contentRef = useRef<HTMLElement>(null);
+	const contentRef = useRef<HTMLDivElement>(null);
 	const mobileNavigationRef = useRef<HTMLButtonElement>(null);
 	const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 	const activeLabel =
@@ -226,7 +227,7 @@ export function Settings() {
 	}, [currentTab]);
 
 	return (
-		<div className="mx-auto flex min-w-0 w-full max-w-7xl flex-col gap-6 lg:h-full lg:min-h-0">
+		<PageWorkspace className="mx-auto w-full max-w-7xl">
 			<ListPageHeader
 				title="Settings"
 				description="Manage platform settings and configuration"
@@ -338,23 +339,26 @@ export function Settings() {
 					})}
 				</nav>
 
-				<section
-					ref={contentRef}
-					className="min-w-0 pb-6 lg:min-h-0 lg:overflow-auto lg:px-1 lg:pr-3"
-				>
-					{settingsSections
-						.flatMap((section) => section.items)
-						.filter((item) => visitedTabs.has(item.value))
-						.map((item) => (
-							<div
-								key={item.value}
-								hidden={item.value !== currentTab}
-							>
-								{createElement(item.content)}
-							</div>
-						))}
+				<section className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+					<div
+						ref={contentRef}
+						data-page-scroll
+						className="min-w-0 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-auto lg:px-1 lg:pr-3"
+					>
+						{settingsSections
+							.flatMap((section) => section.items)
+							.filter((item) => visitedTabs.has(item.value))
+							.map((item) => (
+								<div
+									key={item.value}
+									hidden={item.value !== currentTab}
+								>
+									{createElement(item.content)}
+								</div>
+							))}
+					</div>
 				</section>
 			</div>
-		</div>
+		</PageWorkspace>
 	);
 }

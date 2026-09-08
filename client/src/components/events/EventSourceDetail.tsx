@@ -1,4 +1,5 @@
 import { EventSourceActions } from "./EventSourceActions";
+import { PageScrollArea } from "@/components/layout/PageWorkspace";
 import { useState, useCallback, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -308,7 +309,7 @@ export function EventSourceDetail({
 	const GraphStatusIcon = graphStatus.icon;
 
 	return (
-		<div className="min-w-0 flex flex-col gap-5">
+		<div className="min-w-0 flex flex-col gap-5 lg:min-h-0 lg:flex-1">
 			{/* Header row */}
 			<div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 				<div className="flex min-w-0 items-start gap-3">
@@ -628,19 +629,26 @@ export function EventSourceDetail({
 					</TabsTrigger>
 				</TabsList>
 
-				<TabsContent value="subscriptions" className="mt-4 flex-1">
-					<SubscriptionsTable sourceId={sourceId} />
+				<TabsContent
+					value="subscriptions"
+					className="mt-4 flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<SubscriptionsTable sourceId={sourceId} />
+					</PageScrollArea>
 				</TabsContent>
 
 				<TabsContent
 					value="events"
 					className="mt-4 flex-1 flex flex-col min-h-0"
 				>
-					<EventsTable
-						sourceId={sourceId}
-						source={source}
-						initialEventId={eventId}
-					/>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<EventsTable
+							sourceId={sourceId}
+							source={source}
+							initialEventId={eventId}
+						/>
+					</PageScrollArea>
 				</TabsContent>
 			</Tabs>
 

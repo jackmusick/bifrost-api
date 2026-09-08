@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-	AlertTriangle,
-	Plus,
-	RefreshCw,
-	Upload,
-	Download,
-} from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -27,6 +21,10 @@ import { CreateIntegrationDialog } from "@/components/integrations/CreateIntegra
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
 import { ListLoadError } from "@/components/layout/ListLoadError";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { ImportDialog } from "@/components/ImportDialog";
 import { exportEntities } from "@/services/exportImport";
 import {
@@ -48,7 +46,10 @@ function IntegrationEmptyState({
 	return (
 		<Card>
 			<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-				<Link2 aria-hidden="true" className="h-12 w-12 text-muted-foreground" />
+				<Link2
+					aria-hidden="true"
+					className="h-12 w-12 text-muted-foreground"
+				/>
 				<h3 className="mt-4 text-lg font-semibold">
 					{hasSearch
 						? "No integrations match your search"
@@ -93,8 +94,7 @@ export function Integrations() {
 	const [isImportOpen, setIsImportOpen] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
 
-	const { data, isLoading, isError, isFetching, refetch } =
-		useIntegrations();
+	const { data, isLoading, isError, isFetching, refetch } = useIntegrations();
 	const deleteMutation = useDeleteIntegration();
 	const integrations = data?.items ?? [];
 
@@ -203,7 +203,7 @@ export function Integrations() {
 	const hasSearch = searchTerm.trim().length > 0;
 
 	return (
-		<div className="mx-auto flex h-full max-w-7xl flex-col space-y-6">
+		<PageWorkspace className="mx-auto max-w-7xl">
 			<ListPageHeader
 				title="Integrations"
 				description="Configure integrations and map organizations to external entities"
@@ -278,29 +278,37 @@ export function Integrations() {
 				/>
 			)}
 
-			{isLoading && !data ? (
-				<div className="space-y-2">
-					{[...Array(3)].map((_, index) => (
-						<div
-							key={index}
-							className="h-16 w-full animate-pulse rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/30"
-						/>
-					))}
-				</div>
-			) : filteredIntegrations.length > 0 ? (
-				<IntegrationList
-					integrations={filteredIntegrations}
-					isDesktop={isDesktop}
-					selectedIds={selectedIds}
-					onToggleSelect={toggleSelect}
-					onToggleSelectAll={handleToggleSelectAll}
-					onOpen={handleOpenIntegration}
-					onEdit={handleEdit}
-					onDelete={handleDelete}
-				/>
-			) : (
-				<IntegrationEmptyState hasSearch={hasSearch} onCreate={handleCreate} />
-			)}
+			<PageScrollArea
+				aria-label="Integrations list"
+				className="lg:flex lg:flex-col lg:overflow-hidden"
+			>
+				{isLoading && !data ? (
+					<div className="space-y-2">
+						{[...Array(3)].map((_, index) => (
+							<div
+								key={index}
+								className="h-16 w-full animate-pulse rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/30"
+							/>
+						))}
+					</div>
+				) : filteredIntegrations.length > 0 ? (
+					<IntegrationList
+						integrations={filteredIntegrations}
+						isDesktop={isDesktop}
+						selectedIds={selectedIds}
+						onToggleSelect={toggleSelect}
+						onToggleSelectAll={handleToggleSelectAll}
+						onOpen={handleOpenIntegration}
+						onEdit={handleEdit}
+						onDelete={handleDelete}
+					/>
+				) : (
+					<IntegrationEmptyState
+						hasSearch={hasSearch}
+						onCreate={handleCreate}
+					/>
+				)}
+			</PageScrollArea>
 
 			<ImportDialog
 				open={isImportOpen}
@@ -322,7 +330,10 @@ export function Integrations() {
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle className="flex items-center gap-2">
-							<AlertTriangle aria-hidden="true" className="size-5 text-destructive" />
+							<AlertTriangle
+								aria-hidden="true"
+								className="size-5 text-destructive"
+							/>
 							Delete Integration
 						</AlertDialogTitle>
 						<AlertDialogDescription className="space-y-3">
@@ -339,7 +350,10 @@ export function Integrations() {
 								undone.
 							</p>
 							{deleteError && (
-								<p role="alert" className="text-sm text-destructive">
+								<p
+									role="alert"
+									className="text-sm text-destructive"
+								>
 									{deleteError}
 								</p>
 							)}
@@ -367,6 +381,6 @@ export function Integrations() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</div>
+		</PageWorkspace>
 	);
 }

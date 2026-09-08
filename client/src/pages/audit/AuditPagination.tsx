@@ -19,7 +19,7 @@ export function AuditPagination({
 	return (
 		<nav
 			aria-label="Audit pagination"
-			className="flex flex-wrap items-center justify-between gap-3 py-4"
+			className="flex shrink-0 flex-wrap items-center justify-between gap-3 py-4"
 		>
 			<p className="text-sm text-muted-foreground">
 				{count} event{count !== 1 ? "s" : ""} on this page · Page{" "}

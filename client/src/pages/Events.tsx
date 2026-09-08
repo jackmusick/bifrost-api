@@ -40,6 +40,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
 import { ListLoadError } from "@/components/layout/ListLoadError";
+import { PageWorkspace } from "@/components/layout/PageWorkspace";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -186,10 +187,12 @@ export function Events() {
 
 	if (sourceId) {
 		return (
-			<EventSourceDetail
-				sourceId={sourceId}
-				onClose={handleCloseDetail}
-			/>
+			<PageWorkspace className="max-w-7xl mx-auto">
+				<EventSourceDetail
+					sourceId={sourceId}
+					onClose={handleCloseDetail}
+				/>
+			</PageWorkspace>
 		);
 	}
 

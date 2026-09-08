@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -74,72 +78,84 @@ export function Dashboard() {
 	}
 
 	return (
-		<div className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-6">
-			<ListPageHeader
-				title="Dashboard"
-				description="Platform overview and metrics"
-				actions={
-					<Button
-						type="button"
-						variant="outline"
-						size="icon"
-						onClick={handleRefresh}
-						disabled={refreshing}
-						aria-label="Refresh dashboard"
-						className="size-11 sm:size-9"
-					>
-						<RefreshCw
-							className={`h-4 w-4 ${refreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
-						/>
-					</Button>
-				}
-			/>
-			{(error || agentsError || appsError) && (
-				<Alert variant="destructive">
-					<AlertCircle className="h-4 w-4" />
-					<AlertDescription>
-						Couldn't load {[error && "platform metrics", agentsError && "agent inventory", appsError && "app inventory"].filter(Boolean).join(", ")}. Refresh to try again.
-					</AlertDescription>
-				</Alert>
-			)}
+		<PageWorkspace className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-6">
+			<div className="shrink-0 space-y-6">
+				<ListPageHeader
+					title="Dashboard"
+					description="Platform overview and metrics"
+					actions={
+						<Button
+							type="button"
+							variant="outline"
+							size="icon"
+							onClick={handleRefresh}
+							disabled={refreshing}
+							aria-label="Refresh dashboard"
+							className="size-11 sm:size-9"
+						>
+							<RefreshCw
+								className={`h-4 w-4 ${refreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
+							/>
+						</Button>
+					}
+				/>
+			</div>
+			<PageScrollArea className="space-y-6">
+				{(error || agentsError || appsError) && (
+					<Alert variant="destructive">
+						<AlertCircle className="h-4 w-4" />
+						<AlertDescription>
+							Couldn't load{" "}
+							{[
+								error && "platform metrics",
+								agentsError && "agent inventory",
+								appsError && "app inventory",
+							]
+								.filter(Boolean)
+								.join(", ")}
+							. Refresh to try again.
+						</AlertDescription>
+					</Alert>
+				)}
 
-			{/* Headline numbers paired with the chart, inventory, and value */}
-			<DashboardStatCards
-				windowLabel={WINDOW_LABELS[chartWindow]}
-				outcomes={outcomes}
-				executionsLoading={executionsLoading}
-				executionsError={executionsError}
-				inventory={{
-					workflows: metrics?.workflow_count ?? 0,
-					forms: metrics?.form_count ?? 0,
-					agents: agentsData?.length ?? 0,
-					apps: appsData?.total ?? 0,
-				}}
-				inventoryLoading={isLoading || agentsLoading || appsLoading}
-				inventoryError={Boolean(error) || agentsError || appsError}
-				roi={
-					metrics?.roi_24h
-						? {
-								timeSavedMinutes:
-									metrics.roi_24h.total_time_saved,
-								value: metrics.roi_24h.total_value,
-								valueUnit: metrics.roi_24h.value_unit,
-							}
-						: undefined
-				}
-				roiLoading={isLoading}
-				roiError={Boolean(error)}
-			/>
+				{/* Headline numbers paired with the chart, inventory, and value */}
+				<DashboardStatCards
+					windowLabel={WINDOW_LABELS[chartWindow]}
+					outcomes={outcomes}
+					executionsLoading={executionsLoading}
+					executionsError={executionsError}
+					inventory={{
+						workflows: metrics?.workflow_count ?? 0,
+						forms: metrics?.form_count ?? 0,
+						agents: agentsData?.length ?? 0,
+						apps: appsData?.total ?? 0,
+					}}
+					inventoryLoading={isLoading || agentsLoading || appsLoading}
+					inventoryError={Boolean(error) || agentsError || appsError}
+					roi={
+						metrics?.roi_24h
+							? {
+									timeSavedMinutes:
+										metrics.roi_24h.total_time_saved,
+									value: metrics.roi_24h.total_value,
+									valueUnit: metrics.roi_24h.value_unit,
+								}
+							: undefined
+					}
+					roiLoading={isLoading}
+					roiError={Boolean(error)}
+				/>
 
-			{/* Executions over time — successes and failures overlaid */}
-			<ExecutionsOverTimeCard
-				window={chartWindow}
-				onWindowChange={setChartWindow}
-				buckets={executionTimeSeries?.buckets}
-				outcomes={outcomes}
-				isLoading={executionsLoading}
-				isError={executionsError}
-			/>
-		</div>
+				{/* Executions over time — successes and failures overlaid */}
+				<ExecutionsOverTimeCard
+					window={chartWindow}
+					onWindowChange={setChartWindow}
+					buckets={executionTimeSeries?.buckets}
+					outcomes={outcomes}
+					isLoading={executionsLoading}
+					isError={executionsError}
+				/>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }

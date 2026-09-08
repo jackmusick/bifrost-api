@@ -456,7 +456,7 @@ export function FormBuilder() {
 	}
 
 	return (
-		<div className="flex min-h-full flex-col gap-6 lg:h-full">
+		<div className="flex min-h-full flex-col gap-6 lg:h-full lg:min-h-0">
 			{formLoadError && existingForm && (
 				<Alert variant="destructive">
 					<AlertDescription>
@@ -490,7 +490,7 @@ export function FormBuilder() {
 				</Alert>
 			)}
 
-			<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+			<div className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 				<div className="space-y-2">
 					<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
 						{formName || (isEditing ? "Edit Form" : "New Form")}
@@ -680,7 +680,7 @@ export function FormBuilder() {
 
 				<TabsContent
 					value="preview"
-					className="flex-1 overflow-auto data-[state=active]:block"
+					className="flex-1 lg:min-h-0 lg:overflow-auto data-[state=active]:block"
 				>
 					<FormPreview
 						formName={formName}

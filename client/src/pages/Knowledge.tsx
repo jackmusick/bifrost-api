@@ -54,6 +54,10 @@ import { SearchBox } from "@/components/search/SearchBox";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -513,7 +517,7 @@ export function Knowledge() {
 	};
 
 	return (
-		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
+		<PageWorkspace className="max-w-7xl mx-auto">
 			<ListPageHeader
 				title="Knowledge"
 				description="Manage knowledge documents for AI agents"
@@ -695,261 +699,271 @@ export function Knowledge() {
 				</p>
 			)}
 			{/* Content */}
-			{isLoading ? (
-				<div
-					role="status"
-					aria-label="Loading documents"
-					className="space-y-2"
-				>
-					{[...Array(5)].map((_, i) => (
-						<Skeleton key={i} className="h-12 w-full" />
-					))}
-				</div>
-			) : documents.length > 0 ? (
-				compactLayout ? (
-					<KnowledgeMobileList
-						documents={documents}
-						isPlatformAdmin={isPlatformAdmin}
-						selectedIds={selectedIds}
-						getOrgName={getOrgName}
-						onToggleSelect={toggleSelect}
-						onToggleSelectAll={toggleSelectAll}
-						onOpen={openDocument}
-						onDelete={handleDeleteRequest}
-						page={page}
-						hasMore={hasMore}
-						onPageChange={setPage}
-					/>
-				) : (
-					<div className="flex-1 min-h-0 flex flex-col">
-						<div className="flex-1 min-h-0">
-							<DataTable className="max-h-full">
-								<DataTableHeader>
-									<DataTableRow>
-										{isPlatformAdmin && (
-											<DataTableHead className="w-10">
-												<Checkbox
-													aria-label="Select visible documents"
-													checked={
-														allVisibleSelected
-															? true
-															: someVisibleSelected
-																? "indeterminate"
-																: false
-													}
-													onCheckedChange={
-														toggleSelectAll
-													}
-												/>
-											</DataTableHead>
-										)}
-										<DataTableHead className="w-0 whitespace-nowrap">
-											Scope
-										</DataTableHead>
-										<DataTableHead className="w-0 whitespace-nowrap">
-											Namespace
-										</DataTableHead>
-										<DataTableHead>Key</DataTableHead>
-										<DataTableHead className="w-0 whitespace-nowrap">
-											Created
-										</DataTableHead>
-										<DataTableHead className="w-0 whitespace-nowrap text-right" />
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{documents.map((doc) => (
-										<DataTableRow
-											key={doc.id}
-											clickable
-											onClick={() => openDocument(doc)}
-										>
+			<PageScrollArea
+				aria-label="Knowledge documents list"
+				className="lg:flex lg:flex-col lg:overflow-hidden"
+			>
+				{isLoading ? (
+					<div
+						role="status"
+						aria-label="Loading documents"
+						className="space-y-2"
+					>
+						{[...Array(5)].map((_, i) => (
+							<Skeleton key={i} className="h-12 w-full" />
+						))}
+					</div>
+				) : documents.length > 0 ? (
+					compactLayout ? (
+						<KnowledgeMobileList
+							documents={documents}
+							isPlatformAdmin={isPlatformAdmin}
+							selectedIds={selectedIds}
+							getOrgName={getOrgName}
+							onToggleSelect={toggleSelect}
+							onToggleSelectAll={toggleSelectAll}
+							onOpen={openDocument}
+							onDelete={handleDeleteRequest}
+							page={page}
+							hasMore={hasMore}
+							onPageChange={setPage}
+						/>
+					) : (
+						<div className="flex-1 min-h-0 flex flex-col">
+							<div className="flex-1 min-h-0">
+								<DataTable className="max-h-full">
+									<DataTableHeader>
+										<DataTableRow>
 											{isPlatformAdmin && (
-												<DataTableCell>
+												<DataTableHead className="w-10">
 													<Checkbox
-														aria-label={`Select ${doc.key || doc.id}`}
-														checked={selectedIds.has(
-															doc.id,
-														)}
-														onCheckedChange={() =>
-															toggleSelect(doc.id)
+														aria-label="Select visible documents"
+														checked={
+															allVisibleSelected
+																? true
+																: someVisibleSelected
+																	? "indeterminate"
+																	: false
 														}
-														onClick={(e) =>
-															e.stopPropagation()
+														onCheckedChange={
+															toggleSelectAll
 														}
 													/>
-												</DataTableCell>
+												</DataTableHead>
 											)}
-											<DataTableCell className="w-0 whitespace-nowrap">
-												<KnowledgeDocumentScopeBadge
-													organizationId={
-														doc.organization_id
-													}
-													getOrgName={getOrgName}
-												/>
-											</DataTableCell>
-											<DataTableCell className="w-0 whitespace-nowrap">
-												<div className="flex items-center gap-2">
-													<BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-													{doc.namespace}
-												</div>
-											</DataTableCell>
-											<DataTableCell className="font-mono text-xs">
-												<button
-													type="button"
-													className="min-h-11 text-left [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
-													onClick={(event) => {
-														event.stopPropagation();
-														openDocument(doc);
-													}}
-												>
-													{doc.key || doc.id}
-												</button>
-											</DataTableCell>
-											<DataTableCell className="w-0 whitespace-nowrap text-xs text-muted-foreground">
-												{formatKnowledgeDate(
-													doc.created_at,
+											<DataTableHead className="w-0 whitespace-nowrap">
+												Scope
+											</DataTableHead>
+											<DataTableHead className="w-0 whitespace-nowrap">
+												Namespace
+											</DataTableHead>
+											<DataTableHead>Key</DataTableHead>
+											<DataTableHead className="w-0 whitespace-nowrap">
+												Created
+											</DataTableHead>
+											<DataTableHead className="w-0 whitespace-nowrap text-right" />
+										</DataTableRow>
+									</DataTableHeader>
+									<DataTableBody>
+										{documents.map((doc) => (
+											<DataTableRow
+												key={doc.id}
+												clickable
+												onClick={() =>
+													openDocument(doc)
+												}
+											>
+												{isPlatformAdmin && (
+													<DataTableCell>
+														<Checkbox
+															aria-label={`Select ${doc.key || doc.id}`}
+															checked={selectedIds.has(
+																doc.id,
+															)}
+															onCheckedChange={() =>
+																toggleSelect(
+																	doc.id,
+																)
+															}
+															onClick={(e) =>
+																e.stopPropagation()
+															}
+														/>
+													</DataTableCell>
 												)}
-											</DataTableCell>
-											<DataTableCell className="w-0 whitespace-nowrap text-right">
-												<RecordActionsMenu
-													label={`More actions for ${doc.key || doc.id}`}
-												>
-													<DropdownMenuItem
-														variant="destructive"
-														className="min-h-11 whitespace-nowrap px-3"
-														onClick={(e) => {
-															e.stopPropagation();
-															handleDeleteRequest(
-																doc,
-															);
+												<DataTableCell className="w-0 whitespace-nowrap">
+													<KnowledgeDocumentScopeBadge
+														organizationId={
+															doc.organization_id
+														}
+														getOrgName={getOrgName}
+													/>
+												</DataTableCell>
+												<DataTableCell className="w-0 whitespace-nowrap">
+													<div className="flex items-center gap-2">
+														<BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+														{doc.namespace}
+													</div>
+												</DataTableCell>
+												<DataTableCell className="font-mono text-xs">
+													<button
+														type="button"
+														className="min-h-11 text-left [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
+														onClick={(event) => {
+															event.stopPropagation();
+															openDocument(doc);
 														}}
 													>
-														<Trash2 className="mr-2 h-4 w-4" />
-														Delete
-													</DropdownMenuItem>
-												</RecordActionsMenu>
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-								{(page > 0 || hasMore) && (
-									<DataTableFooter>
-										<DataTableRow>
-											<DataTableCell
-												colSpan={
-													isPlatformAdmin ? 6 : 5
-												}
-												className="p-0"
-											>
-												<div className="px-6 py-4 flex items-center justify-center">
-													<Pagination>
-														<PaginationContent>
-															<PaginationItem>
-																<PaginationPrevious
-																	href="#"
-																	onClick={(
-																		e,
-																	) => {
-																		e.preventDefault();
-																		if (
-																			page >
+														{doc.key || doc.id}
+													</button>
+												</DataTableCell>
+												<DataTableCell className="w-0 whitespace-nowrap text-xs text-muted-foreground">
+													{formatKnowledgeDate(
+														doc.created_at,
+													)}
+												</DataTableCell>
+												<DataTableCell className="w-0 whitespace-nowrap text-right">
+													<RecordActionsMenu
+														label={`More actions for ${doc.key || doc.id}`}
+													>
+														<DropdownMenuItem
+															variant="destructive"
+															className="min-h-11 whitespace-nowrap px-3"
+															onClick={(e) => {
+																e.stopPropagation();
+																handleDeleteRequest(
+																	doc,
+																);
+															}}
+														>
+															<Trash2 className="mr-2 h-4 w-4" />
+															Delete
+														</DropdownMenuItem>
+													</RecordActionsMenu>
+												</DataTableCell>
+											</DataTableRow>
+										))}
+									</DataTableBody>
+									{(page > 0 || hasMore) && (
+										<DataTableFooter>
+											<DataTableRow>
+												<DataTableCell
+													colSpan={
+														isPlatformAdmin ? 6 : 5
+													}
+													className="p-0"
+												>
+													<div className="px-6 py-4 flex items-center justify-center">
+														<Pagination>
+															<PaginationContent>
+																<PaginationItem>
+																	<PaginationPrevious
+																		href="#"
+																		onClick={(
+																			e,
+																		) => {
+																			e.preventDefault();
+																			if (
+																				page >
+																				0
+																			)
+																				setPage(
+																					page -
+																						1,
+																				);
+																		}}
+																		className={
+																			page ===
 																			0
-																		)
-																			setPage(
-																				page -
-																					1,
-																			);
-																	}}
-																	className={
-																		page ===
-																		0
-																			? "min-h-11 min-w-11 pointer-events-none opacity-50"
-																			: "min-h-11 min-w-11 cursor-pointer"
-																	}
-																	aria-disabled={
-																		page ===
-																		0
-																	}
-																/>
-															</PaginationItem>
-															<PaginationItem>
-																<PaginationLink
-																	isActive
-																>
-																	{page + 1}
-																</PaginationLink>
-															</PaginationItem>
-															<PaginationItem>
-																<PaginationNext
-																	href="#"
-																	onClick={(
-																		e,
-																	) => {
-																		e.preventDefault();
-																		if (
-																			hasMore
-																		)
-																			setPage(
-																				page +
-																					1,
-																			);
-																	}}
-																	className={
-																		!hasMore
-																			? "min-h-11 min-w-11 pointer-events-none opacity-50"
-																			: "min-h-11 min-w-11 cursor-pointer"
-																	}
-																	aria-disabled={
-																		!hasMore
-																	}
-																/>
-															</PaginationItem>
-														</PaginationContent>
-													</Pagination>
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-									</DataTableFooter>
-								)}
-							</DataTable>
+																				? "min-h-11 min-w-11 pointer-events-none opacity-50"
+																				: "min-h-11 min-w-11 cursor-pointer"
+																		}
+																		aria-disabled={
+																			page ===
+																			0
+																		}
+																	/>
+																</PaginationItem>
+																<PaginationItem>
+																	<PaginationLink
+																		isActive
+																	>
+																		{page +
+																			1}
+																	</PaginationLink>
+																</PaginationItem>
+																<PaginationItem>
+																	<PaginationNext
+																		href="#"
+																		onClick={(
+																			e,
+																		) => {
+																			e.preventDefault();
+																			if (
+																				hasMore
+																			)
+																				setPage(
+																					page +
+																						1,
+																				);
+																		}}
+																		className={
+																			!hasMore
+																				? "min-h-11 min-w-11 pointer-events-none opacity-50"
+																				: "min-h-11 min-w-11 cursor-pointer"
+																		}
+																		aria-disabled={
+																			!hasMore
+																		}
+																	/>
+																</PaginationItem>
+															</PaginationContent>
+														</Pagination>
+													</div>
+												</DataTableCell>
+											</DataTableRow>
+										</DataTableFooter>
+									)}
+								</DataTable>
+							</div>
 						</div>
-					</div>
-				)
-			) : documentQuery.isError ? null : (
-				<Card>
-					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-						<FileText className="h-12 w-12 text-muted-foreground" />
-						<h3 className="mt-4 text-lg font-semibold">
-							{page > 0
-								? "No more documents"
-								: "No documents found"}
-						</h3>
-						<p className="mt-2 text-sm text-muted-foreground">
-							{page > 0
-								? "You've reached the end of the results."
-								: "Add documents to knowledge namespaces for AI agent RAG"}
-						</p>
-						{page > 0 ? (
-							<Button
-								variant="outline"
-								onClick={() => setPage(0)}
-								className="mt-4"
-							>
-								Back to first page
-							</Button>
-						) : (
-							<Button
-								variant="outline"
-								onClick={() => setIsCreating(true)}
-								className="mt-4"
-							>
-								<Plus className="h-4 w-4 mr-2" />
-								Add Document
-							</Button>
-						)}
-					</CardContent>
-				</Card>
-			)}
+					)
+				) : documentQuery.isError ? null : (
+					<Card>
+						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+							<FileText className="h-12 w-12 text-muted-foreground" />
+							<h3 className="mt-4 text-lg font-semibold">
+								{page > 0
+									? "No more documents"
+									: "No documents found"}
+							</h3>
+							<p className="mt-2 text-sm text-muted-foreground">
+								{page > 0
+									? "You've reached the end of the results."
+									: "Add documents to knowledge namespaces for AI agent RAG"}
+							</p>
+							{page > 0 ? (
+								<Button
+									variant="outline"
+									onClick={() => setPage(0)}
+									className="mt-4"
+								>
+									Back to first page
+								</Button>
+							) : (
+								<Button
+									variant="outline"
+									onClick={() => setIsCreating(true)}
+									className="mt-4"
+								>
+									<Plus className="h-4 w-4 mr-2" />
+									Add Document
+								</Button>
+							)}
+						</CardContent>
+					</Card>
+				)}
+			</PageScrollArea>
 
 			{isDeleteDialogOpen && deleteDoc && (
 				<KnowledgeDeleteDialog
@@ -1000,7 +1014,7 @@ export function Knowledge() {
 					fetchNamespaces();
 				}}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }
 

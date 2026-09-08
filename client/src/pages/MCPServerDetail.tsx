@@ -2,6 +2,10 @@ import { NewConnectionDialog } from "./mcp/components/NewConnectionDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ServerSettingsSummary } from "./mcp/components/ServerSettingsSummary";
 import { ServerConnectionList } from "./mcp/components/ServerConnectionList";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 /**
  * MCPServerDetail — server detail with Connections / Server settings / Manifest
  * tabs (mockup §4).
@@ -143,7 +147,7 @@ export function MCPServerDetail() {
 	}
 
 	return (
-		<div className="space-y-6 max-w-7xl mx-auto">
+		<PageWorkspace className="max-w-7xl mx-auto">
 			{error && (
 				<Alert variant="destructive">
 					<AlertDescription>
@@ -208,7 +212,10 @@ export function MCPServerDetail() {
 				</div>
 			</div>
 
-			<Tabs defaultValue="connections" className="w-full">
+			<Tabs
+				defaultValue="connections"
+				className="flex min-h-0 w-full flex-1 flex-col"
+			>
 				<TabsList
 					aria-label="Server views"
 					className="grid w-full grid-cols-3 group-data-horizontal/tabs:h-auto sm:w-fit"
@@ -233,74 +240,89 @@ export function MCPServerDetail() {
 					</TabsTrigger>
 				</TabsList>
 
-				<TabsContent value="connections" className="space-y-4 pt-4">
-					<div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-						<p className="text-sm text-muted-foreground">
-							Per-org connections to this server. Each org sets
-							its own OAuth app credentials.
-						</p>
-						<div className="flex flex-wrap gap-2 [&_button]:min-h-11">
-							<Button
-								variant="outline"
-								size="sm"
-								type="button"
-								disabled={isFetching}
-								onClick={() => {
-									queryClient.invalidateQueries({
-										queryKey: [
-											"get",
-											"/api/mcp-servers/{server_id}",
-										],
-									});
-								}}
-							>
-								<RefreshCw className="h-4 w-4 mr-1" />
-								Refresh
-							</Button>
-							<Button
-								size="sm"
-								onClick={() => setCreateOpen(true)}
-							>
-								<Plus className="h-4 w-4 mr-1" />
-								New Connection
-							</Button>
+				<TabsContent
+					value="connections"
+					className="flex min-h-0 flex-1 flex-col pt-4"
+				>
+					<PageScrollArea className="space-y-4">
+						<div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+							<p className="text-sm text-muted-foreground">
+								Per-org connections to this server. Each org
+								sets its own OAuth app credentials.
+							</p>
+							<div className="flex flex-wrap gap-2 [&_button]:min-h-11">
+								<Button
+									variant="outline"
+									size="sm"
+									type="button"
+									disabled={isFetching}
+									onClick={() => {
+										queryClient.invalidateQueries({
+											queryKey: [
+												"get",
+												"/api/mcp-servers/{server_id}",
+											],
+										});
+									}}
+								>
+									<RefreshCw className="h-4 w-4 mr-1" />
+									Refresh
+								</Button>
+								<Button
+									size="sm"
+									onClick={() => setCreateOpen(true)}
+								>
+									<Plus className="h-4 w-4 mr-1" />
+									New Connection
+								</Button>
+							</div>
 						</div>
-					</div>
 
-					{server.connections && server.connections.length > 0 ? (
-						<ServerConnectionList
-							serverId={server.id}
-							connections={server.connections}
-							organizationNames={orgById}
-						/>
-					) : (
+						{server.connections && server.connections.length > 0 ? (
+							<ServerConnectionList
+								serverId={server.id}
+								connections={server.connections}
+								organizationNames={orgById}
+							/>
+						) : (
+							<Card>
+								<CardContent className="py-8 text-center text-sm text-muted-foreground">
+									No connections yet. Click "New Connection"
+									to add one.
+								</CardContent>
+							</Card>
+						)}
+					</PageScrollArea>
+				</TabsContent>
+
+				<TabsContent
+					value="settings"
+					className="flex min-h-0 flex-1 flex-col pt-4"
+				>
+					<PageScrollArea>
+						<ServerSettingsSummary server={server} />
+					</PageScrollArea>
+				</TabsContent>
+
+				<TabsContent
+					value="manifest"
+					className="flex min-h-0 flex-1 flex-col pt-4"
+				>
+					<PageScrollArea>
 						<Card>
-							<CardContent className="py-8 text-center text-sm text-muted-foreground">
-								No connections yet. Click "New Connection" to
-								add one.
+							<CardContent className="py-6">
+								<p className="text-sm text-muted-foreground">
+									Manifest export/import for this server
+									template is round-tripped through{" "}
+									<code className="text-xs">
+										.bifrost/mcp-servers.yaml
+									</code>{" "}
+									during a global manifest sync. Per-server
+									export here is a future enhancement.
+								</p>
 							</CardContent>
 						</Card>
-					)}
-				</TabsContent>
-
-				<TabsContent value="settings" className="pt-4">
-					<ServerSettingsSummary server={server} />
-				</TabsContent>
-
-				<TabsContent value="manifest" className="pt-4">
-					<Card>
-						<CardContent className="py-6">
-							<p className="text-sm text-muted-foreground">
-								Manifest export/import for this server template
-								is round-tripped through{" "}
-								<code className="text-xs">
-									.bifrost/mcp-servers.yaml
-								</code>{" "}
-								during a global manifest sync. Per-server export
-								here is a future enhancement.
-							</p>
-						</CardContent>
-					</Card>
+					</PageScrollArea>
 				</TabsContent>
 			</Tabs>
 
@@ -359,6 +381,6 @@ export function MCPServerDetail() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</div>
+		</PageWorkspace>
 	);
 }

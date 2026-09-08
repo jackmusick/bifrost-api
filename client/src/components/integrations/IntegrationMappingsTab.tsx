@@ -166,7 +166,7 @@ export function IntegrationMappingsTab({
 	}, [entityLabelByValue, normalizedSearch, orgsWithMappings]);
 
 	return (
-		<Card>
+		<Card className="lg:min-h-0 lg:flex-1 lg:max-h-full">
 			<CardHeader className="flex flex-col gap-3 space-y-0 lg:flex-row lg:items-start lg:justify-between">
 				<div className="min-w-0">
 					<CardTitle>Organization Mappings</CardTitle>
@@ -192,7 +192,7 @@ export function IntegrationMappingsTab({
 					/>
 				)}
 			</CardHeader>
-			<CardContent>
+			<CardContent className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
 				{isEntitiesError && (
 					<div
 						role="alert"
@@ -267,7 +267,7 @@ export function IntegrationMappingsTab({
 							</div>
 						) : (
 							<ul
-								className="divide-y"
+								className="divide-y lg:min-h-0 lg:flex-1 lg:overflow-auto"
 								aria-label="Organization mappings"
 							>
 								{filteredOrgs.map((org) => {

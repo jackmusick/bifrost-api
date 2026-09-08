@@ -526,7 +526,7 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 
 	return (
 		<>
-			<div className="@container/subscriptions min-w-0">
+			<div className="@container/subscriptions flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
 				<div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 					<p className="text-sm text-muted-foreground">
 						Workflows and agents triggered when events are received
@@ -575,8 +575,8 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 					</div>
 				) : (
 					<>
-						<div className="hidden @[64rem]/subscriptions:block">
-							<DataTable>
+						<div className="hidden min-h-0 flex-1 @[64rem]/subscriptions:block">
+							<DataTable className="max-h-full">
 								<DataTableHeader>
 									<DataTableRow>
 										<DataTableHead className="w-[100px]">

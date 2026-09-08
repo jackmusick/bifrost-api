@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, XCircle } from "lucide-react";
@@ -162,43 +166,47 @@ export function RunForm() {
 	}
 
 	return (
-		<div className="space-y-6">
-			{refreshNotice}
-			{/* Header with back button on left, centered title/description */}
-			<div className="flex justify-center">
-				<div className="w-full max-w-2xl">
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
-						<Button
-							variant="outline"
-							size="icon-lg"
-							onClick={() => navigate("/forms")}
-							title="Back to Forms"
-							aria-label="Back to Forms"
-							className="shrink-0 self-start sm:mt-1"
-						>
-							<ArrowLeft className="h-4 w-4" />
-						</Button>
-						<div className="flex-1 text-left sm:text-center">
-							<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-								{form.name}
-							</h1>
-							{form.description && (
-								<p className="mt-2 text-muted-foreground">
-									{form.description}
-								</p>
-							)}
+		<PageWorkspace>
+			<div className="shrink-0 space-y-6">
+				{refreshNotice}
+				{/* Header with back button on left, centered title/description */}
+				<div className="flex justify-center">
+					<div className="w-full max-w-2xl">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+							<Button
+								variant="outline"
+								size="icon-lg"
+								onClick={() => navigate("/forms")}
+								title="Back to Forms"
+								aria-label="Back to Forms"
+								className="shrink-0 self-start sm:mt-1"
+							>
+								<ArrowLeft className="h-4 w-4" />
+							</Button>
+							<div className="flex-1 text-left sm:text-center">
+								<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+									{form.name}
+								</h1>
+								{form.description && (
+									<p className="mt-2 text-muted-foreground">
+										{form.description}
+									</p>
+								)}
+							</div>
+							{/* Spacer to balance the back button for true centering */}
+							<div className="hidden w-11 shrink-0 sm:block" />
 						</div>
-						{/* Spacer to balance the back button for true centering */}
-						<div className="hidden w-11 shrink-0 sm:block" />
 					</div>
 				</div>
 			</div>
 
-			<FormRenderer
-				form={form}
-				devMode={isPlatformAdmin && devMode}
-				onDevModeChange={isPlatformAdmin ? setDevMode : undefined}
-			/>
-		</div>
+			<PageScrollArea className="space-y-6">
+				<FormRenderer
+					form={form}
+					devMode={isPlatformAdmin && devMode}
+					onDevModeChange={isPlatformAdmin ? setDevMode : undefined}
+				/>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }

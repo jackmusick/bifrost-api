@@ -115,11 +115,10 @@ async function renderPage() {
 
 describe("FleetPage — header + fleet stats", () => {
 	it("renders the Agents heading", async () => {
-		const { container } = await renderPage();
+		await renderPage();
 		expect(
 			screen.getByRole("heading", { name: /^agents$/i }),
 		).toBeInTheDocument();
-		expect(container.firstElementChild).not.toHaveClass("lg:h-full");
 	});
 
 	it("renders fleet stats once loaded", async () => {

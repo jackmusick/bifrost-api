@@ -281,8 +281,8 @@ export function DocumentRecordList({
 	}
 
 	return (
-		<div className="@container min-w-0 space-y-4">
-			<div className="hidden @5xl:flex">
+		<div className="@container flex min-w-0 flex-col gap-4 lg:min-h-0 lg:flex-1">
+			<div className="hidden min-h-0 flex-1 @5xl:flex">
 				<DataTable className="max-h-full">
 					<DataTableHeader>
 						<DataTableRow>

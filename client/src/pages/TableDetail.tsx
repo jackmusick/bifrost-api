@@ -2,6 +2,10 @@ import { useState, useMemo, useRef } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { useTable, useDocuments, useDeleteDocument } from "@/services/tables";
 import { DocumentDialog } from "@/components/tables/DocumentDialog";
 import { TableFilterSidebar } from "@/components/tables/TableFilterSidebar";
@@ -122,7 +126,7 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 		);
 
 	return (
-		<div className="min-w-0 space-y-6">
+		<PageWorkspace>
 			<TableDetailHeader
 				name={table.name}
 				description={table.description}
@@ -172,124 +176,126 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 						: ""}
 				</Button>
 			</div>
-			<div className="flex min-w-0 flex-col items-start gap-6 xl:flex-row">
-				<div
-					id="document-filters"
-					hidden={!sidebarOpen}
-					className="w-full xl:w-72 xl:shrink-0"
-				>
-					<TableFilterSidebar
-						key={filterRevision}
-						onApplyFilters={(where) => {
-							setWhereClause(where);
-							setCurrentPage(0);
-						}}
-						onClearFilters={handleClearFilters}
-						hasActiveFilters={hasActiveFilters}
-						onClose={closeFilters}
-						className="w-full"
-					/>
-				</div>
-				<section
-					aria-label="Documents"
-					className="min-w-0 w-full flex-1 space-y-4"
-				>
-					{documentsQuery.isError && (
-						<DocumentCollectionState
-							title="Documents could not be loaded"
-							description={
-								documentsQuery.data
-									? "Showing the last available documents for this query."
-									: "Your query is preserved. Try loading it again."
-							}
-							error
-							busy={documentsQuery.isFetching}
-							action="Retry documents"
-							onAction={() => void documentsQuery.refetch()}
+			<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+				<div className="flex min-w-0 flex-col items-start gap-6 xl:flex-row lg:h-full lg:min-h-0">
+					<div
+						id="document-filters"
+						hidden={!sidebarOpen}
+						className="w-full xl:w-72 xl:shrink-0"
+					>
+						<TableFilterSidebar
+							key={filterRevision}
+							onApplyFilters={(where) => {
+								setWhereClause(where);
+								setCurrentPage(0);
+							}}
+							onClearFilters={handleClearFilters}
+							hasActiveFilters={hasActiveFilters}
+							onClose={closeFilters}
+							className="w-full"
 						/>
-					)}
-					{documentsQuery.isLoading ? (
-						<DocumentCollectionState title="Loading documents…" />
-					) : (
-						<>
-							{documentsQuery.isFetching && (
-								<p
-									role="status"
-									className="text-sm text-muted-foreground"
-								>
-									Refreshing documents…
-								</p>
-							)}
-							{filteredDocuments.length > 0 ? (
-								<DocumentRecordList
-									documents={filteredDocuments}
-									dataColumns={dataColumns}
-									onEdit={handleEdit}
-									onDelete={setDocumentToDelete}
-								/>
-							) : (
-								!documentsQuery.isError && (
-									<DocumentCollectionState
-										title={
-											searchTerm
-												? "No documents match on this page"
-												: hasActiveFilters
-													? "No documents match your filters"
-													: currentPage > 0
-														? "No documents on this page"
-														: "No documents yet"
-										}
-										description={
-											searchTerm
-												? "Try a different search or move to another page."
-												: hasActiveFilters
-													? "Adjust your query filters to find documents."
-													: currentPage > 0
-														? "The table may have changed. Return to the previous page."
-														: "Add your first document to this table."
-										}
-										action={
-											searchTerm || hasActiveFilters
-												? "Clear search and filters"
-												: currentPage > 0
-													? "Previous page"
-													: "Add document"
-										}
-										onAction={
-											searchTerm || hasActiveFilters
-												? clearAll
-												: currentPage > 0
-													? () =>
-															setCurrentPage(
-																(page) =>
-																	Math.max(
-																		0,
-																		page -
-																			1,
-																	),
-															)
-													: handleAdd
-										}
+					</div>
+					<section
+						aria-label="Documents"
+						className="min-w-0 w-full flex-1 space-y-4"
+					>
+						{documentsQuery.isError && (
+							<DocumentCollectionState
+								title="Documents could not be loaded"
+								description={
+									documentsQuery.data
+										? "Showing the last available documents for this query."
+										: "Your query is preserved. Try loading it again."
+								}
+								error
+								busy={documentsQuery.isFetching}
+								action="Retry documents"
+								onAction={() => void documentsQuery.refetch()}
+							/>
+						)}
+						{documentsQuery.isLoading ? (
+							<DocumentCollectionState title="Loading documents…" />
+						) : (
+							<>
+								{documentsQuery.isFetching && (
+									<p
+										role="status"
+										className="text-sm text-muted-foreground"
+									>
+										Refreshing documents…
+									</p>
+								)}
+								{filteredDocuments.length > 0 ? (
+									<DocumentRecordList
+										documents={filteredDocuments}
+										dataColumns={dataColumns}
+										onEdit={handleEdit}
+										onDelete={setDocumentToDelete}
 									/>
-								)
-							)}
-							{documentsQuery.data && (
-								<DocumentPagination
-									page={currentPage}
-									pageSize={pageSize}
-									total={total}
-									busy={documentsQuery.isFetching}
-									onPageChange={setCurrentPage}
-									onPageSizeChange={(size) => {
-										setPageSize(size);
-										setCurrentPage(0);
-									}}
-								/>
-							)}
-						</>
-					)}
-				</section>
-			</div>
+								) : (
+									!documentsQuery.isError && (
+										<DocumentCollectionState
+											title={
+												searchTerm
+													? "No documents match on this page"
+													: hasActiveFilters
+														? "No documents match your filters"
+														: currentPage > 0
+															? "No documents on this page"
+															: "No documents yet"
+											}
+											description={
+												searchTerm
+													? "Try a different search or move to another page."
+													: hasActiveFilters
+														? "Adjust your query filters to find documents."
+														: currentPage > 0
+															? "The table may have changed. Return to the previous page."
+															: "Add your first document to this table."
+											}
+											action={
+												searchTerm || hasActiveFilters
+													? "Clear search and filters"
+													: currentPage > 0
+														? "Previous page"
+														: "Add document"
+											}
+											onAction={
+												searchTerm || hasActiveFilters
+													? clearAll
+													: currentPage > 0
+														? () =>
+																setCurrentPage(
+																	(page) =>
+																		Math.max(
+																			0,
+																			page -
+																				1,
+																		),
+																)
+														: handleAdd
+											}
+										/>
+									)
+								)}
+								{documentsQuery.data && (
+									<DocumentPagination
+										page={currentPage}
+										pageSize={pageSize}
+										total={total}
+										busy={documentsQuery.isFetching}
+										onPageChange={setCurrentPage}
+										onPageSizeChange={(size) => {
+											setPageSize(size);
+											setCurrentPage(0);
+										}}
+									/>
+								)}
+							</>
+						)}
+					</section>
+				</div>
+			</PageScrollArea>
 			<DocumentDialog
 				returnFocusRef={filterToggle}
 				document={selectedDocument}
@@ -318,6 +324,6 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 					}
 				/>
 			)}
-		</div>
+		</PageWorkspace>
 	);
 }

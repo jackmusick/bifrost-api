@@ -49,6 +49,10 @@ import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
 import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
+import {
 	CreateEditSolution,
 	type CreateEditSolutionMode,
 } from "@/components/solutions/CreateEditSolution";
@@ -218,13 +222,13 @@ export function Solutions() {
 	}
 
 	return (
-		<div
+		<PageWorkspace
 			data-testid="install-dropzone"
 			onDragEnter={handleDragEnter}
 			onDragOver={handleDragOver}
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
-			className="relative flex min-h-full flex-col gap-6 max-w-7xl mx-auto xl:h-full xl:min-h-0"
+			className="relative max-w-7xl mx-auto"
 		>
 			{/* Drag overlay */}
 			{isDragging && (
@@ -321,7 +325,14 @@ export function Solutions() {
 				</div>
 			</ListToolbar>
 
-			<div className="space-y-4 xl:flex-1 xl:min-h-0 xl:overflow-auto">
+			<PageScrollArea
+				aria-label="Solutions list"
+				className={
+					viewMode === "table"
+						? "space-y-4 lg:flex lg:flex-col lg:overflow-hidden"
+						: "space-y-4"
+				}
+			>
 				{listError && (
 					<ListLoadError
 						resource="Solutions"
@@ -414,7 +425,7 @@ export function Solutions() {
 						))}
 					</div>
 				) : (
-					<DataTable>
+					<DataTable className="max-h-full">
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead>Name</DataTableHead>
@@ -481,7 +492,7 @@ export function Solutions() {
 						</DataTableBody>
 					</DataTable>
 				)}
-			</div>
+			</PageScrollArea>
 
 			{dialogMode && (
 				<CreateEditSolution
@@ -494,6 +505,6 @@ export function Solutions() {
 					}}
 				/>
 			)}
-		</div>
+		</PageWorkspace>
 	);
 }

@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { AuditOutcome } from "./AuditOutcome";
 import { AuditEventCards } from "./AuditEventCards";
 import { AuditPagination } from "./AuditPagination";
@@ -138,185 +142,202 @@ export function AuditLogPage() {
 	}
 
 	return (
-		<div className="mx-auto flex w-full min-w-0 max-w-[1400px] flex-col gap-5">
+		<PageWorkspace className="mx-auto flex w-full min-w-0 max-w-[1400px] flex-col gap-5">
 			{/* Header */}
-			<div className="flex items-start justify-between gap-4">
-				<div>
-					<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-						Audit Log
-					</h1>
-					<p className="mt-2 text-sm text-muted-foreground">
-						Trace security decisions and administrative activity
-						across the platform
-					</p>
+			<div className="shrink-0 space-y-6">
+				<div className="flex items-start justify-between gap-4">
+					<div>
+						<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+							Audit Log
+						</h1>
+						<p className="mt-2 text-sm text-muted-foreground">
+							Trace security decisions and administrative activity
+							across the platform
+						</p>
+					</div>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => refetch()}
+						disabled={isFetching || invalidDateRange}
+						aria-label="Refresh audit log"
+						className="size-11 shrink-0"
+					>
+						<RefreshCw
+							className={`h-4 w-4 ${isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+						/>
+					</Button>
 				</div>
-				<Button
-					variant="outline"
-					size="icon"
-					onClick={() => refetch()}
-					disabled={isFetching || invalidDateRange}
-					aria-label="Refresh audit log"
-					className="size-11 shrink-0"
-				>
-					<RefreshCw
-						className={`h-4 w-4 ${isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
-					/>
-				</Button>
-			</div>
 
-			<AuditFilters
-				searchText={searchText}
-				actionGroup={actionGroup}
-				outcome={outcome}
-				startDate={startDate}
-				endDate={endDate}
-				hasActiveFilters={hasActiveFilters}
-				onClear={clearFilters}
-				onChange={(key, value) =>
-					updateFilter(
-						{
-							searchText: setSearchText,
-							actionGroup: setActionGroup,
-							outcome: setOutcome,
-							startDate: setStartDate,
-							endDate: setEndDate,
-						}[key],
-						value,
-					)
-				}
-			/>
+				<AuditFilters
+					searchText={searchText}
+					actionGroup={actionGroup}
+					outcome={outcome}
+					startDate={startDate}
+					endDate={endDate}
+					hasActiveFilters={hasActiveFilters}
+					onClear={clearFilters}
+					onChange={(key, value) =>
+						updateFilter(
+							{
+								searchText: setSearchText,
+								actionGroup: setActionGroup,
+								outcome: setOutcome,
+								startDate: setStartDate,
+								endDate: setEndDate,
+							}[key],
+							value,
+						)
+					}
+				/>
+			</div>
 
 			{/* Content */}
-			<div className="flex min-w-0 flex-col" hidden={invalidDateRange}>
-				{error && (
-					<Alert variant="destructive" className="mb-4">
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>
-							<p>
-								Could not {data ? "refresh" : "load"} the audit
-								log.{" "}
-								{data
-									? "Previously loaded records are still shown."
-									: "Try again to load these events."}
-							</p>
-							<p className="mt-2 [overflow-wrap:anywhere]">
-								{getErrorMessage(error, "Unknown error")}
-							</p>
-							<Button
-								variant="outline"
-								className="mt-3 min-h-11"
-								disabled={isFetching || invalidDateRange}
-								onClick={() => {
-									void refetch();
-								}}
-							>
-								Retry audit log
-							</Button>
-						</AlertDescription>
-					</Alert>
-				)}
+			<PageScrollArea className="lg:overflow-hidden">
+				<div
+					className="flex min-w-0 flex-col lg:h-full lg:min-h-0"
+					hidden={invalidDateRange}
+				>
+					{error && (
+						<Alert variant="destructive" className="mb-4">
+							<AlertCircle className="h-4 w-4" />
+							<AlertDescription>
+								<p>
+									Could not {data ? "refresh" : "load"} the
+									audit log.{" "}
+									{data
+										? "Previously loaded records are still shown."
+										: "Try again to load these events."}
+								</p>
+								<p className="mt-2 [overflow-wrap:anywhere]">
+									{getErrorMessage(error, "Unknown error")}
+								</p>
+								<Button
+									variant="outline"
+									className="mt-3 min-h-11"
+									disabled={isFetching || invalidDateRange}
+									onClick={() => {
+										void refetch();
+									}}
+								>
+									Retry audit log
+								</Button>
+							</AlertDescription>
+						</Alert>
+					)}
 
-				{error && !entries.length ? null : isLoading &&
-				  !entries.length ? (
-					<div
-						role="status"
-						aria-label="Loading audit log"
-						className="flex items-center justify-center py-12"
-					>
-						<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
-					</div>
-				) : entries.length > 0 ? (
-					<>
-						{desktop ? (
-							<DataTable>
-								<DataTableHeader>
-									<DataTableRow>
-										<DataTableHead>Timestamp</DataTableHead>
-										<DataTableHead>Action</DataTableHead>
-										<DataTableHead>Outcome</DataTableHead>
-										<DataTableHead>Actor</DataTableHead>
-										<DataTableHead>Resource</DataTableHead>
-										<DataTableHead>Context</DataTableHead>
-										<DataTableHead>IP</DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{entries.map((entry: AuditLogEntry) => (
-										<DataTableRow key={entry.id}>
-											<DataTableCell className="font-mono text-xs whitespace-nowrap">
-												{new Date(
-													entry.timestamp,
-												).toLocaleString()}
-											</DataTableCell>
-											<DataTableCell>
-												<Badge variant="secondary">
-													{entry.action}
-												</Badge>
-											</DataTableCell>
-											<DataTableCell>
-												<AuditOutcome
-													outcome={entry.outcome}
-												/>
-											</DataTableCell>
-											<DataTableCell className="text-sm">
-												{entry.actor.user_email ||
-													entry.actor.user_name ||
-													(entry.source !== "http"
-														? `(${entry.source})`
-														: "(unauthenticated)")}
-											</DataTableCell>
-											<DataTableCell className="text-sm text-muted-foreground">
-												<div className="whitespace-normal [overflow-wrap:anywhere]">
-													{entry.resource_type
-														? `${entry.resource_type}${entry.resource_id ? ` / ${entry.resource_id}` : ""}`
-														: "-"}
-												</div>
-											</DataTableCell>
-											<DataTableCell className="max-w-80 text-sm text-muted-foreground">
-												<div className="whitespace-normal [overflow-wrap:anywhere]">
-													{auditContext(entry)}
-												</div>
-											</DataTableCell>
-											<DataTableCell className="text-xs font-mono text-muted-foreground">
-												{entry.ip_address || "-"}
-											</DataTableCell>
+					{error && !entries.length ? null : isLoading &&
+					  !entries.length ? (
+						<div
+							role="status"
+							aria-label="Loading audit log"
+							className="flex items-center justify-center py-12"
+						>
+							<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
+						</div>
+					) : entries.length > 0 ? (
+						<>
+							{desktop ? (
+								<DataTable>
+									<DataTableHeader>
+										<DataTableRow>
+											<DataTableHead>
+												Timestamp
+											</DataTableHead>
+											<DataTableHead>
+												Action
+											</DataTableHead>
+											<DataTableHead>
+												Outcome
+											</DataTableHead>
+											<DataTableHead>Actor</DataTableHead>
+											<DataTableHead>
+												Resource
+											</DataTableHead>
+											<DataTableHead>
+												Context
+											</DataTableHead>
+											<DataTableHead>IP</DataTableHead>
 										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
-						) : (
-							<AuditEventCards
-								entries={entries}
-								context={auditContext}
+									</DataTableHeader>
+									<DataTableBody>
+										{entries.map((entry: AuditLogEntry) => (
+											<DataTableRow key={entry.id}>
+												<DataTableCell className="font-mono text-xs whitespace-nowrap">
+													{new Date(
+														entry.timestamp,
+													).toLocaleString()}
+												</DataTableCell>
+												<DataTableCell>
+													<Badge variant="secondary">
+														{entry.action}
+													</Badge>
+												</DataTableCell>
+												<DataTableCell>
+													<AuditOutcome
+														outcome={entry.outcome}
+													/>
+												</DataTableCell>
+												<DataTableCell className="text-sm">
+													{entry.actor.user_email ||
+														entry.actor.user_name ||
+														(entry.source !== "http"
+															? `(${entry.source})`
+															: "(unauthenticated)")}
+												</DataTableCell>
+												<DataTableCell className="text-sm text-muted-foreground">
+													<div className="whitespace-normal [overflow-wrap:anywhere]">
+														{entry.resource_type
+															? `${entry.resource_type}${entry.resource_id ? ` / ${entry.resource_id}` : ""}`
+															: "-"}
+													</div>
+												</DataTableCell>
+												<DataTableCell className="max-w-80 text-sm text-muted-foreground">
+													<div className="whitespace-normal [overflow-wrap:anywhere]">
+														{auditContext(entry)}
+													</div>
+												</DataTableCell>
+												<DataTableCell className="text-xs font-mono text-muted-foreground">
+													{entry.ip_address || "-"}
+												</DataTableCell>
+											</DataTableRow>
+										))}
+									</DataTableBody>
+								</DataTable>
+							) : (
+								<AuditEventCards
+									entries={entries}
+									context={auditContext}
+								/>
+							)}
+							<AuditPagination
+								count={entries.length}
+								page={currentPage}
+								hasNext={!!data?.continuation_token}
+								pending={isFetching}
+								onPrevious={handlePreviousPage}
+								onNext={handleNextPage}
 							/>
-						)}
-						<AuditPagination
-							count={entries.length}
-							page={currentPage}
-							hasNext={!!data?.continuation_token}
-							pending={isFetching}
-							onPrevious={handlePreviousPage}
-							onNext={handleNextPage}
-						/>
-					</>
-				) : (
-					<Card>
-						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-							<h3 className="text-lg font-semibold">
-								{hasActiveFilters
-									? "No matching audit events"
-									: "No audit events yet"}
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{hasActiveFilters
-									? "Try adjusting your filters or date range."
-									: "Administrative activity and security decisions will appear here."}
-							</p>
-						</CardContent>
-					</Card>
-				)}
-			</div>
-		</div>
+						</>
+					) : (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+								<h3 className="text-lg font-semibold">
+									{hasActiveFilters
+										? "No matching audit events"
+										: "No audit events yet"}
+								</h3>
+								<p className="mt-2 text-sm text-muted-foreground">
+									{hasActiveFilters
+										? "Try adjusting your filters or date range."
+										: "Administrative activity and security decisions will appear here."}
+								</p>
+							</CardContent>
+						</Card>
+					)}
+				</div>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }
 

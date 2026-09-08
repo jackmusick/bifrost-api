@@ -12,6 +12,10 @@ import { SolutionDeleteDialog } from "@/components/solutions/SolutionDeleteDialo
 
 import { useId, useMemo, useRef, useState } from "react";
 import { Progress } from "@/components/ui/progress";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { GeneratedEndpointKeyDialog } from "@/components/solutions/GeneratedEndpointKeyDialog";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -2551,9 +2555,9 @@ export function SolutionDetail() {
 	}
 
 	return (
-		<div
+		<PageWorkspace
 			data-testid="solution-detail"
-			className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-5 overflow-y-auto"
+			className="mx-auto w-full max-w-7xl gap-5"
 		>
 			{/* Breadcrumb */}
 			<div className="flex min-w-0 shrink-0 flex-wrap items-center text-sm [overflow-wrap:anywhere]">
@@ -2787,7 +2791,7 @@ export function SolutionDetail() {
 					<Tabs
 						value={tab}
 						onValueChange={(v) => setTab(v as TabKey)}
-						className="flex min-h-0 shrink-0 flex-col"
+						className="flex min-h-0 flex-1 flex-col"
 					>
 						<TabsList
 							aria-label="Solution sections"
@@ -2857,20 +2861,22 @@ export function SolutionDetail() {
 						    with a status/contents summary so it's never empty. */}
 						<TabsContent
 							value="overview"
-							className="flex-1 min-h-0"
+							className="flex min-h-0 flex-1 flex-col"
 						>
-							<OverviewTab
-								readme={readmeData?.readme ?? null}
-								readmeLoading={readmeLoading}
-								readmeError={readmeError}
-								onRetryReadme={() => void refetchReadme()}
-								entityCounts={entityCounts}
-								configsCount={configsCount}
-								version={sol.version ?? null}
-								gitConnected={sol.git_connected}
-								orgName={orgName}
-								onPickEntity={openContentKind}
-							/>
+							<PageScrollArea>
+								<OverviewTab
+									readme={readmeData?.readme ?? null}
+									readmeLoading={readmeLoading}
+									readmeError={readmeError}
+									onRetryReadme={() => void refetchReadme()}
+									entityCounts={entityCounts}
+									configsCount={configsCount}
+									version={sol.version ?? null}
+									gitConnected={sol.git_connected}
+									orgName={orgName}
+									onPickEntity={openContentKind}
+								/>
+							</PageScrollArea>
 						</TabsContent>
 
 						{/* CONTENTS — the 6 entity inventories as one tab with type chips. */}
@@ -2940,7 +2946,7 @@ export function SolutionDetail() {
 									</button>
 								))}
 							</div>
-							<div className="flex-1 min-h-0 overflow-auto">
+							<PageScrollArea>
 								{activeKind ? (
 									<EntityTabContent
 										kind={activeKind}
@@ -2955,85 +2961,97 @@ export function SolutionDetail() {
 										onPick={(k) => setContentsFilter(k)}
 									/>
 								)}
-							</div>
+							</PageScrollArea>
 						</TabsContent>
 
 						<TabsContent
 							value="access"
-							className="flex-1 min-h-0 overflow-hidden"
+							className="flex min-h-0 flex-1 flex-col"
 						>
-							<AccessTab
-								rows={accessRows}
-								selected={selectedAccessRow}
-								onSelect={(row) => setSelectedAccessId(row.id)}
-								onClose={() => setSelectedAccessId(null)}
-							/>
+							<PageScrollArea>
+								<AccessTab
+									rows={accessRows}
+									selected={selectedAccessRow}
+									onSelect={(row) =>
+										setSelectedAccessId(row.id)
+									}
+									onClose={() => setSelectedAccessId(null)}
+								/>
+							</PageScrollArea>
 						</TabsContent>
 
 						{/* CONFIGURATION — config VALUES + integration connections; the
 						    permanent home of what was the one-time Setup wizard. */}
 						<TabsContent
 							value="configuration"
-							className="flex-1 min-h-0 overflow-auto"
+							className="flex min-h-0 flex-1 flex-col"
 						>
-							<ConfigurationTab
-								configs={data.configs ?? []}
-								orgId={sol.organization_id ?? null}
-								setupItems={setupData?.items ?? []}
-								setupComplete={effectiveSetupComplete}
-								setupError={setupError}
-								setupLoading={setupLoading}
-								setupFetching={setupFetching}
-								onRetrySetup={() => void refetchSetup()}
-								onInvalidate={invalidate}
-								onSetConfig={async (key, value) => {
-									await setSolutionConfig({
-										key,
-										value,
-										type: asConfigType(
-											setupData?.items.find(
-												(item) => item.key === key,
-											)?.type ?? "string",
-										),
-										organizationId:
-											sol.organization_id ?? null,
-									});
-									toast.success(`Set ${key}`);
-									invalidate();
-								}}
-								onGenerateWorkflowKey={
-									generateWorkflowEndpointKey
-								}
-								onFinish={() => {
-									invalidate();
-									if (effectiveSetupComplete)
-										setTab("overview");
-								}}
-							/>
+							<PageScrollArea>
+								<ConfigurationTab
+									configs={data.configs ?? []}
+									orgId={sol.organization_id ?? null}
+									setupItems={setupData?.items ?? []}
+									setupComplete={effectiveSetupComplete}
+									setupError={setupError}
+									setupLoading={setupLoading}
+									setupFetching={setupFetching}
+									onRetrySetup={() => void refetchSetup()}
+									onInvalidate={invalidate}
+									onSetConfig={async (key, value) => {
+										await setSolutionConfig({
+											key,
+											value,
+											type: asConfigType(
+												setupData?.items.find(
+													(item) => item.key === key,
+												)?.type ?? "string",
+											),
+											organizationId:
+												sol.organization_id ?? null,
+										});
+										toast.success(`Set ${key}`);
+										invalidate();
+									}}
+									onGenerateWorkflowKey={
+										generateWorkflowEndpointKey
+									}
+									onFinish={() => {
+										invalidate();
+										if (effectiveSetupComplete)
+											setTab("overview");
+									}}
+								/>
+							</PageScrollArea>
 						</TabsContent>
 
 						<TabsContent
 							value="exports"
-							className="flex-1 min-h-0 overflow-auto"
+							className="flex min-h-0 flex-1 flex-col"
 						>
-							<ExportsTab
-								jobs={exportJobsQuery.data?.jobs ?? []}
-								isLoading={exportJobsQuery.isLoading}
-								isFetching={exportJobsQuery.isFetching}
-								onRetry={() => void exportJobsQuery.refetch()}
-								error={
-									exportJobsQuery.error instanceof Error
-										? exportJobsQuery.error.message
-										: exportJobsQuery.isError
-											? "Failed to load backup exports"
-											: undefined
-								}
-								onDownload={async (job) => {
-									const { blob, filename } =
-										await downloadSolutionExportJob(job.id);
-									downloadBlob(blob, filename);
-								}}
-							/>
+							<PageScrollArea>
+								<ExportsTab
+									jobs={exportJobsQuery.data?.jobs ?? []}
+									isLoading={exportJobsQuery.isLoading}
+									isFetching={exportJobsQuery.isFetching}
+									onRetry={() =>
+										void exportJobsQuery.refetch()
+									}
+									error={
+										exportJobsQuery.error instanceof Error
+											? exportJobsQuery.error.message
+											: exportJobsQuery.isError
+												? "Failed to load backup exports"
+												: undefined
+									}
+									onDownload={async (job) => {
+										const { blob, filename } =
+											await downloadSolutionExportJob(
+												job.id,
+											);
+										downloadBlob(blob, filename);
+									}}
+								/>
+							</PageScrollArea>
 						</TabsContent>
 					</Tabs>
 
@@ -3135,6 +3153,6 @@ export function SolutionDetail() {
 					/>
 				</>
 			) : null}
-		</div>
+		</PageWorkspace>
 	);
 }

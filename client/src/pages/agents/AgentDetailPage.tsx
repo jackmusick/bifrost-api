@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { EntityLogo } from "@/components/EntityLogo";
 import { AgentDeleteDialog } from "./AgentDeleteDialog";
 import { FleetReadError } from "./FleetReadError";
@@ -205,266 +209,283 @@ export function AgentDetailPage() {
 	}
 
 	return (
-		<div
+		<PageWorkspace
 			className={cn(
 				"mx-auto flex w-full max-w-[1400px] min-w-0 flex-col gap-5",
 			)}
 		>
-			{agentError && !isCreate ? (
-				<FleetReadError
-					resource="agent details"
-					cached={!!agent}
-					pending={agentFetching}
-					onRetry={() => void refetchAgent()}
-				/>
-			) : null}
-			{/* Breadcrumb */}
-			<div
-				className={cn(
-					"flex min-w-0 flex-wrap items-center gap-1.5 text-[13px]",
-					TONE_MUTED,
-				)}
-			>
-				<Link
-					to={fromSolution ? `/solutions/${fromSolution}` : "/agents"}
-					className="inline-flex min-h-11 items-center gap-1 hover:text-foreground sm:min-h-0"
-				>
-					<ArrowLeft className="h-3 w-3" />{" "}
-					{fromSolution
-						? "Back to Solution"
-						: term(terminology, "agent", "plural")}
-				</Link>
-				{!isCreate && agent ? (
-					<>
-						<span>/</span>
-						<span className="min-w-0 [overflow-wrap:anywhere]">
-							{agent.name}
-						</span>
-					</>
+			<div className="shrink-0 space-y-6">
+				{agentError && !isCreate ? (
+					<FleetReadError
+						resource="agent details"
+						cached={!!agent}
+						pending={agentFetching}
+						onRetry={() => void refetchAgent()}
+					/>
 				) : null}
-			</div>
-
-			{/* Header */}
-			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div className="flex items-start gap-3 min-w-0 flex-1">
+				{/* Breadcrumb */}
+				<div
+					className={cn(
+						"flex min-w-0 flex-wrap items-center gap-1.5 text-[13px]",
+						TONE_MUTED,
+					)}
+				>
+					<Link
+						to={
+							fromSolution
+								? `/solutions/${fromSolution}`
+								: "/agents"
+						}
+						className="inline-flex min-h-11 items-center gap-1 hover:text-foreground sm:min-h-0"
+					>
+						<ArrowLeft className="h-3 w-3" />{" "}
+						{fromSolution
+							? "Back to Solution"
+							: term(terminology, "agent", "plural")}
+					</Link>
 					{!isCreate && agent ? (
-						agent.is_solution_managed ? (
-							<EntityLogo
-								entityType="agent"
-								entityId={agent.id}
-								logo={agent.logo_url}
-								size={48}
-								fallback={<Bot className="h-5 w-5" />}
-							/>
-						) : (
-							<AgentLogoEditor
-								agentId={agent.id}
-								logoUrl={agent.logo_url}
-							/>
-						)
-					) : null}
-					<div className="min-w-0 flex-1">
-						<h1
-							className={cn(
-								"flex flex-wrap items-center gap-2.5",
-								TYPE_PAGE_TITLE,
-							)}
-						>
+						<>
+							<span>/</span>
 							<span className="min-w-0 [overflow-wrap:anywhere]">
-								{isCreate
-									? "New agent"
-									: (agent?.name ?? "Unknown agent")}
+								{agent.name}
 							</span>
-							{!isCreate && agent ? (
-								isActive ? (
-									<span className={PILL_ACTIVE}>Active</span>
-								) : (
-									<Badge
-										variant="secondary"
-										className="text-[11px]"
-									>
-										Paused
-									</Badge>
-								)
-							) : null}
-						</h1>
-						{!isCreate && agent?.description ? (
-							<p
+						</>
+					) : null}
+				</div>
+
+				{/* Header */}
+				<div className="flex flex-wrap items-start justify-between gap-4">
+					<div className="flex items-start gap-3 min-w-0 flex-1">
+						{!isCreate && agent ? (
+							agent.is_solution_managed ? (
+								<EntityLogo
+									entityType="agent"
+									entityId={agent.id}
+									logo={agent.logo_url}
+									size={48}
+									fallback={<Bot className="h-5 w-5" />}
+								/>
+							) : (
+								<AgentLogoEditor
+									agentId={agent.id}
+									logoUrl={agent.logo_url}
+								/>
+							)
+						) : null}
+						<div className="min-w-0 flex-1">
+							<h1
 								className={cn(
-									"mt-1 [overflow-wrap:anywhere]",
-									TYPE_BODY,
-									TONE_MUTED,
+									"flex flex-wrap items-center gap-2.5",
+									TYPE_PAGE_TITLE,
 								)}
 							>
-								{agent.description}
-							</p>
-						) : null}
-					</div>
-				</div>
-				{!isCreate && agent ? (
-					<div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-						{hasChat ? (
-							<TooltipProvider>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<span>
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={
-													!isActive || actionPending
-												}
-												onClick={handleStartChat}
-												data-testid="start-chat-button"
-												className="min-h-11 sm:min-h-0"
-											>
-												{createConversation.isPending ? (
-													<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-												) : (
-													<MessageSquare className="h-3.5 w-3.5" />
-												)}
-												Start chat
-											</Button>
+								<span className="min-w-0 [overflow-wrap:anywhere]">
+									{isCreate
+										? "New agent"
+										: (agent?.name ?? "Unknown agent")}
+								</span>
+								{!isCreate && agent ? (
+									isActive ? (
+										<span className={PILL_ACTIVE}>
+											Active
 										</span>
-									</TooltipTrigger>
-									<TooltipContent>
-										{isActive
-											? `Open a chat session with this ${term(terminology, "agent", "singularLower")}`
-											: `${term(terminology, "agent", "singular")} is paused`}
-									</TooltipContent>
-								</Tooltip>
-							</TooltipProvider>
-						) : null}
-						<Button
-							variant="outline"
-							size="sm"
-							className="min-h-11 sm:min-h-0"
-							onClick={() => setActive(!isActive)}
-							title={
-								agent.is_solution_managed
-									? "Managed by a Solution"
-									: undefined
-							}
-							disabled={
-								actionPending || agent.is_solution_managed
-							}
-						>
-							{isActive ? (
-								<>
-									<Pause className="h-3.5 w-3.5" /> Pause
-								</>
-							) : (
-								<>
-									<PlayCircle className="h-3.5 w-3.5" />{" "}
-									Activate
-								</>
-							)}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-							onClick={() => setConfirmDeleteOpen(true)}
-							disabled={
-								actionPending || agent.is_solution_managed
-							}
-							title={
-								agent.is_solution_managed
-									? "Managed by a Solution"
-									: "Delete agent"
-							}
-							aria-label="Delete agent"
-						>
-							<Trash2 className="h-3.5 w-3.5" />
-						</Button>
-						{isPlatformAdmin ? (
-							<SummaryBackfillButton
-								agentId={agent.id ?? undefined}
-							/>
-						) : null}
+									) : (
+										<Badge
+											variant="secondary"
+											className="text-[11px]"
+										>
+											Paused
+										</Badge>
+									)
+								) : null}
+							</h1>
+							{!isCreate && agent?.description ? (
+								<p
+									className={cn(
+										"mt-1 [overflow-wrap:anywhere]",
+										TYPE_BODY,
+										TONE_MUTED,
+									)}
+								>
+									{agent.description}
+								</p>
+							) : null}
+						</div>
 					</div>
+					{!isCreate && agent ? (
+						<div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+							{hasChat ? (
+								<TooltipProvider>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<span>
+												<Button
+													variant="outline"
+													size="sm"
+													disabled={
+														!isActive ||
+														actionPending
+													}
+													onClick={handleStartChat}
+													data-testid="start-chat-button"
+													className="min-h-11 sm:min-h-0"
+												>
+													{createConversation.isPending ? (
+														<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+													) : (
+														<MessageSquare className="h-3.5 w-3.5" />
+													)}
+													Start chat
+												</Button>
+											</span>
+										</TooltipTrigger>
+										<TooltipContent>
+											{isActive
+												? `Open a chat session with this ${term(terminology, "agent", "singularLower")}`
+												: `${term(terminology, "agent", "singular")} is paused`}
+										</TooltipContent>
+									</Tooltip>
+								</TooltipProvider>
+							) : null}
+							<Button
+								variant="outline"
+								size="sm"
+								className="min-h-11 sm:min-h-0"
+								onClick={() => setActive(!isActive)}
+								title={
+									agent.is_solution_managed
+										? "Managed by a Solution"
+										: undefined
+								}
+								disabled={
+									actionPending || agent.is_solution_managed
+								}
+							>
+								{isActive ? (
+									<>
+										<Pause className="h-3.5 w-3.5" /> Pause
+									</>
+								) : (
+									<>
+										<PlayCircle className="h-3.5 w-3.5" />{" "}
+										Activate
+									</>
+								)}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+								onClick={() => setConfirmDeleteOpen(true)}
+								disabled={
+									actionPending || agent.is_solution_managed
+								}
+								title={
+									agent.is_solution_managed
+										? "Managed by a Solution"
+										: "Delete agent"
+								}
+								aria-label="Delete agent"
+							>
+								<Trash2 className="h-3.5 w-3.5" />
+							</Button>
+							{isPlatformAdmin ? (
+								<SummaryBackfillButton
+									agentId={agent.id ?? undefined}
+								/>
+							) : null}
+						</div>
+					) : null}
+				</div>
+
+				{!isCreate && agent ? (
+					<AgentDeleteDialog
+						agentId={agent.id}
+						name={agent.name}
+						open={confirmDeleteOpen}
+						onOpenChange={setConfirmDeleteOpen}
+						onDeleted={() => navigate("/agents")}
+					/>
 				) : null}
+
+				<RunActionFeedback
+					pending={actionPending}
+					failed={actionFailure?.id === agentId}
+					onRetry={() => {
+						if (actionFailure?.kind === "chat") handleStartChat();
+						else if (actionFailure?.active !== undefined)
+							setActive(actionFailure.active);
+					}}
+					pendingLabel={
+						createConversation.isPending
+							? "Starting chat…"
+							: "Updating agent status…"
+					}
+					message={
+						actionFailure?.kind === "chat"
+							? "Could not start the chat. Try again."
+							: "Could not update the agent status. Try again."
+					}
+					retryLabel={
+						actionFailure?.kind === "chat"
+							? "Retry start chat"
+							: "Retry status update"
+					}
+				/>
+				{/* Pill tabs */}
+				<PillTabs
+					items={[
+						{
+							value: "overview",
+							label: "Overview",
+							disabled: isCreate,
+						},
+						{
+							value: "runs",
+							label: "Runs",
+							count: runCount,
+							disabled: isCreate,
+						},
+						{ value: "settings", label: "Settings" },
+					]}
+					value={tab}
+					onValueChange={(v) => handleTabChange(v as Tab)}
+				/>
 			</div>
 
-			{!isCreate && agent ? (
-				<AgentDeleteDialog
-					agentId={agent.id}
-					name={agent.name}
-					open={confirmDeleteOpen}
-					onOpenChange={setConfirmDeleteOpen}
-					onDeleted={() => navigate("/agents")}
-				/>
-			) : null}
-
-			<RunActionFeedback
-				pending={actionPending}
-				failed={actionFailure?.id === agentId}
-				onRetry={() => {
-					if (actionFailure?.kind === "chat") handleStartChat();
-					else if (actionFailure?.active !== undefined)
-						setActive(actionFailure.active);
-				}}
-				pendingLabel={
-					createConversation.isPending
-						? "Starting chat…"
-						: "Updating agent status…"
-				}
-				message={
-					actionFailure?.kind === "chat"
-						? "Could not start the chat. Try again."
-						: "Could not update the agent status. Try again."
-				}
-				retryLabel={
-					actionFailure?.kind === "chat"
-						? "Retry start chat"
-						: "Retry status update"
-				}
-			/>
-			{/* Pill tabs */}
-			<PillTabs
-				items={[
-					{
-						value: "overview",
-						label: "Overview",
-						disabled: isCreate,
-					},
-					{
-						value: "runs",
-						label: "Runs",
-						count: runCount,
-						disabled: isCreate,
-					},
-					{ value: "settings", label: "Settings" },
-				]}
-				value={tab}
-				onValueChange={(v) => handleTabChange(v as Tab)}
-			/>
-
 			{/* Tab body */}
-			{tab === "overview" && !isCreate && agentId ? (
-				<AgentOverviewTab agentId={agentId} />
-			) : null}
-			{tab === "runs" && !isCreate && agentId ? (
-				<AgentRunsTab agentId={agentId} />
-			) : null}
-			{tab === "settings" || settingsVisited ? (
-				<div hidden={tab !== "settings"}>
-					{isCreate ? (
-						<AgentSettingsTab
-							key="create"
-							mode="create"
-							onCreated={handleCreated}
-						/>
-					) : (
-						<AgentSettingsTab
-							key={agentId}
-							mode="edit"
-							agent={agent ?? null}
-						/>
-					)}
-				</div>
-			) : null}
-		</div>
+			<PageScrollArea
+				className={
+					tab === "runs"
+						? "lg:flex lg:flex-col lg:overflow-hidden"
+						: "space-y-6"
+				}
+			>
+				{tab === "overview" && !isCreate && agentId ? (
+					<AgentOverviewTab agentId={agentId} />
+				) : null}
+				{tab === "runs" && !isCreate && agentId ? (
+					<AgentRunsTab agentId={agentId} />
+				) : null}
+				{tab === "settings" || settingsVisited ? (
+					<div hidden={tab !== "settings"}>
+						{isCreate ? (
+							<AgentSettingsTab
+								key="create"
+								mode="create"
+								onCreated={handleCreated}
+							/>
+						) : (
+							<AgentSettingsTab
+								key={agentId}
+								mode="edit"
+								agent={agent ?? null}
+							/>
+						)}
+					</div>
+				) : null}
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }
 

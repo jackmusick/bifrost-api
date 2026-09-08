@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { RunAIUsageCard } from "./RunAIUsageCard";
 import { SummaryRegenerationControl } from "@/components/agents/SummaryRegenerationControl";
 /**
@@ -478,381 +482,400 @@ export function AgentRunDetailPage() {
 				: "Back to agents");
 
 	return (
-		<div
+		<PageWorkspace
 			className="flex flex-col gap-5 max-w-7xl mx-auto"
 			data-testid="agent-run-detail-page"
 		>
-			{runError ? (
-				<FleetReadError
-					resource="run details"
-					cached
-					pending={runFetching}
-					onRetry={() => void refetchRun()}
-				/>
-			) : null}
-			{agentError ? (
-				<FleetReadError
-					resource="agent information"
-					cached={!!agent}
-					pending={agentFetching}
-					onRetry={() => void refetchAgent()}
-				/>
-			) : null}
-			{parentRunId && parentError ? (
-				<FleetReadError
-					resource="parent run"
-					cached={!!parentRun}
-					pending={parentFetching}
-					onRetry={() => void refetchParent()}
-				/>
-			) : null}
-			{/* Breadcrumb */}
-			<Link
-				to={backHref}
-				onClick={handleContextBackClick}
-				data-testid="run-context-back"
-				className="inline-flex min-h-11 max-w-full w-fit items-center gap-2 rounded-[var(--bf-radius-control)] text-sm text-muted-foreground [overflow-wrap:anywhere] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-			>
-				<ArrowLeft aria-hidden="true" className="size-4 shrink-0" />
-				{backLabel}
-			</Link>
+			<div className="shrink-0 space-y-6">
+				{runError ? (
+					<FleetReadError
+						resource="run details"
+						cached
+						pending={runFetching}
+						onRetry={() => void refetchRun()}
+					/>
+				) : null}
+				{agentError ? (
+					<FleetReadError
+						resource="agent information"
+						cached={!!agent}
+						pending={agentFetching}
+						onRetry={() => void refetchAgent()}
+					/>
+				) : null}
+				{parentRunId && parentError ? (
+					<FleetReadError
+						resource="parent run"
+						cached={!!parentRun}
+						pending={parentFetching}
+						onRetry={() => void refetchParent()}
+					/>
+				) : null}
+				{/* Breadcrumb */}
+				<Link
+					to={backHref}
+					onClick={handleContextBackClick}
+					data-testid="run-context-back"
+					className="inline-flex min-h-11 max-w-full w-fit items-center gap-2 rounded-[var(--bf-radius-control)] text-sm text-muted-foreground [overflow-wrap:anywhere] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					<ArrowLeft aria-hidden="true" className="size-4 shrink-0" />
+					{backLabel}
+				</Link>
 
-			<RunDetailHeading
-				title={headerSummary}
-				metadata={
-					<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-						<RunStatusBadge status={run.status} />
-						{run.started_at ? (
-							<span className="inline-flex items-center gap-1">
-								<Clock className="h-3 w-3" />
-								{new Date(run.started_at).toLocaleString()}
-							</span>
-						) : null}
-						{run.duration_ms != null ? (
-							<>
-								<span>·</span>
-								<span>{formatDuration(run.duration_ms)}</span>
-							</>
-						) : null}
-						{advancedView ? (
-							<>
-								<span>·</span>
-								<span>
-									{run.iterations_used} iter ·{" "}
-									{formatNumber(run.tokens_used)} tok
+				<RunDetailHeading
+					title={headerSummary}
+					metadata={
+						<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+							<RunStatusBadge status={run.status} />
+							{run.started_at ? (
+								<span className="inline-flex items-center gap-1">
+									<Clock className="h-3 w-3" />
+									{new Date(run.started_at).toLocaleString()}
 								</span>
-							</>
-						) : null}
-					</div>
-				}
-				actionsLabel="Agent run actions"
-				actions={
-					<Button
-						type="button"
-						variant="outline"
-						className="min-h-11 min-w-0"
-						data-testid="rerun-button"
-						disabled={rerun.isPending || !run.agent_id}
-						onClick={handleRerun}
-					>
-						{rerun.isPending ? (
-							<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-						) : (
-							<RefreshCw className="h-3.5 w-3.5" />
-						)}
-						Rerun
-					</Button>
-				}
-			/>
+							) : null}
+							{run.duration_ms != null ? (
+								<>
+									<span>·</span>
+									<span>
+										{formatDuration(run.duration_ms)}
+									</span>
+								</>
+							) : null}
+							{advancedView ? (
+								<>
+									<span>·</span>
+									<span>
+										{run.iterations_used} iter ·{" "}
+										{formatNumber(run.tokens_used)} tok
+									</span>
+								</>
+							) : null}
+						</div>
+					}
+					actionsLabel="Agent run actions"
+					actions={
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11 min-w-0"
+							data-testid="rerun-button"
+							disabled={rerun.isPending || !run.agent_id}
+							onClick={handleRerun}
+						>
+							{rerun.isPending ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+							) : (
+								<RefreshCw className="h-3.5 w-3.5" />
+							)}
+							Rerun
+						</Button>
+					}
+				/>
 
-			<RunActionFeedback
-				pending={rerun.isPending}
-				failed={rerunFailure === runId}
-				onRetry={handleRerun}
-				message="Could not queue a new run. Try again to rerun this execution."
-				pendingLabel="Queuing rerun…"
-				retryLabel="Retry rerun"
-			/>
+				<RunActionFeedback
+					pending={rerun.isPending}
+					failed={rerunFailure === runId}
+					onRetry={handleRerun}
+					message="Could not queue a new run. Try again to rerun this execution."
+					pendingLabel="Queuing rerun…"
+					retryLabel="Retry rerun"
+				/>
+			</div>
 
 			{/* Two-column layout */}
-			<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-				{/* Main column. ``min-w-0`` is essential — without it long
+			<PageScrollArea className="space-y-6">
+				<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+					{/* Main column. ``min-w-0`` is essential — without it long
 				    JSON strings inside the panel push past the column width
 				    and into the sidebar. */}
-				<div className="lg:col-span-2 flex min-w-0 flex-col gap-4">
-					<RunActionFeedback
-						pending={savingVerdict}
-						failed={verdictFailure?.runId === runId}
-						onRetry={() => {
-							if (verdictFailure)
-								handleVerdict(verdictFailure.verdict);
-						}}
-					/>
-					<fieldset
-						disabled={savingVerdict}
-						className="min-w-0"
-						aria-label="Run review"
-					>
-						<Card className="min-w-0 overflow-hidden">
-							<RunReviewPanel
-								run={run}
-								variant="page"
-								verdict={verdict}
-								note={note}
-								onVerdict={handleVerdict}
-								onNote={setNote}
-								onActivityReferencePreview={
-									setPreviewedActivityId
-								}
-								onActivityReferenceActivate={
-									handleActivityReferenceActivate
-								}
-							/>
-						</Card>
-						{verdict && note !== (run.verdict_note ?? "") ? (
-							<Button
-								className="mt-3"
-								onClick={() => handleVerdict(verdict)}
-							>
-								Save review note
-							</Button>
-						) : null}
-					</fieldset>
-
-					<Card data-slot="run-activity">
-						<RunActivityHeader
-							advanced={advancedView}
-							onChange={setAdvancedView}
+					<div className="lg:col-span-2 flex min-w-0 flex-col gap-4">
+						<RunActionFeedback
+							pending={savingVerdict}
+							failed={verdictFailure?.runId === runId}
+							onRetry={() => {
+								if (verdictFailure)
+									handleVerdict(verdictFailure.verdict);
+							}}
 						/>
-						<CardContent className="min-w-0">
-							<div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 [&>*]:min-w-0">
-								<Timeline
-									steps={run.steps ?? []}
-									childRunIds={run.child_run_ids ?? []}
-									childRuns={run.child_runs ?? []}
-									runStatus={run.status}
-									showTechnicalDetails={advancedView}
-									highlightedActivityId={previewedActivityId}
-									expandedDelegationIds={
-										runId
-											? expandedDelegationsByRun.get(
-													runId,
-												)
-											: undefined
+						<fieldset
+							disabled={savingVerdict}
+							className="min-w-0"
+							aria-label="Run review"
+						>
+							<Card className="min-w-0 overflow-hidden">
+								<RunReviewPanel
+									run={run}
+									variant="page"
+									verdict={verdict}
+									note={note}
+									onVerdict={handleVerdict}
+									onNote={setNote}
+									onActivityReferencePreview={
+										setPreviewedActivityId
 									}
-									onDelegationExpandedChange={
-										handleDelegationExpandedChange
-									}
-									restoreActivityId={
-										runId
-											? restoreActivityByRun.get(runId)
-											: null
-									}
-									onOpenChildRun={handleOpenChildRun}
-									childRunOrigin={
-										currentRunOrigin ?? undefined
+									onActivityReferenceActivate={
+										handleActivityReferenceActivate
 									}
 								/>
-								{advancedView && (run.input || run.output) ? (
-									<section className="border-t pt-4">
-										<div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-											Run payloads
-										</div>
-										<RunPayloads
-											input={run.input}
-											output={run.output}
-										/>
-									</section>
-								) : null}
-								{advancedView &&
-								(run.steps?.length ?? 0) > 0 ? (
-									<details
-										className="group min-w-0 border-t pt-4"
-										data-slot="raw-executor-trace"
-									>
-										<summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-											<ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
-											<Code2 className="h-3.5 w-3.5" />
-											<span>Raw executor trace</span>
-											<span className="ml-auto font-normal tabular-nums">
-												{run.steps?.length ?? 0} events
-											</span>
-										</summary>
-										<div className="mt-2.5 min-w-0 overflow-x-auto rounded-[var(--bf-radius-control)] border bg-background/50 p-3">
-											<AdvancedTimeline
-												steps={run.steps ?? []}
+							</Card>
+							{verdict && note !== (run.verdict_note ?? "") ? (
+								<Button
+									className="mt-3"
+									onClick={() => handleVerdict(verdict)}
+								>
+									Save review note
+								</Button>
+							) : null}
+						</fieldset>
+
+						<Card data-slot="run-activity">
+							<RunActivityHeader
+								advanced={advancedView}
+								onChange={setAdvancedView}
+							/>
+							<CardContent className="min-w-0">
+								<div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 [&>*]:min-w-0">
+									<Timeline
+										steps={run.steps ?? []}
+										childRunIds={run.child_run_ids ?? []}
+										childRuns={run.child_runs ?? []}
+										runStatus={run.status}
+										showTechnicalDetails={advancedView}
+										highlightedActivityId={
+											previewedActivityId
+										}
+										expandedDelegationIds={
+											runId
+												? expandedDelegationsByRun.get(
+														runId,
+													)
+												: undefined
+										}
+										onDelegationExpandedChange={
+											handleDelegationExpandedChange
+										}
+										restoreActivityId={
+											runId
+												? restoreActivityByRun.get(
+														runId,
+													)
+												: null
+										}
+										onOpenChildRun={handleOpenChildRun}
+										childRunOrigin={
+											currentRunOrigin ?? undefined
+										}
+									/>
+									{advancedView &&
+									(run.input || run.output) ? (
+										<section className="border-t pt-4">
+											<div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+												Run payloads
+											</div>
+											<RunPayloads
+												input={run.input}
+												output={run.output}
+											/>
+										</section>
+									) : null}
+									{advancedView &&
+									(run.steps?.length ?? 0) > 0 ? (
+										<details
+											className="group min-w-0 border-t pt-4"
+											data-slot="raw-executor-trace"
+										>
+											<summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+												<ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
+												<Code2 className="h-3.5 w-3.5" />
+												<span>Raw executor trace</span>
+												<span className="ml-auto font-normal tabular-nums">
+													{run.steps?.length ?? 0}{" "}
+													events
+												</span>
+											</summary>
+											<div className="mt-2.5 min-w-0 overflow-x-auto rounded-[var(--bf-radius-control)] border bg-background/50 p-3">
+												<AdvancedTimeline
+													steps={run.steps ?? []}
+												/>
+											</div>
+										</details>
+									) : null}
+								</div>
+							</CardContent>
+						</Card>
+
+						{/* Per-flag conversation (only when verdict=down) */}
+						{isFlagged ? (
+							<Card data-testid="flag-conversation-card">
+								<CardHeader className="pb-2">
+									<CardTitle className="flex items-center gap-2 text-sm">
+										<Sparkles className="h-4 w-4" />
+										Tuning conversation
+									</CardTitle>
+								</CardHeader>
+								<CardContent className="p-0">
+									{conversationError ? (
+										<div className="px-4 pb-3">
+											<FleetReadError
+												resource="tuning conversation"
+												cached={!!conversation}
+												pending={conversationFetching}
+												onRetry={() =>
+													void refetchConversation()
+												}
 											/>
 										</div>
-									</details>
-								) : null}
-							</div>
-						</CardContent>
-					</Card>
+									) : null}
+									{conversationLoading ? (
+										<div className="p-4">
+											<Skeleton className="h-40 w-full" />
+										</div>
+									) : conversationError &&
+									  !conversation ? null : (
+										<div className="flex h-[420px] flex-col">
+											<FlagConversation
+												conversation={
+													conversation ?? null
+												}
+												onSend={handleSendChat}
+												pending={sendMessage.isPending}
+											/>
+										</div>
+									)}
+								</CardContent>
+							</Card>
+						) : null}
+					</div>
 
-					{/* Per-flag conversation (only when verdict=down) */}
-					{isFlagged ? (
-						<Card data-testid="flag-conversation-card">
+					{/* Sidebar */}
+					<div className="flex min-w-0 flex-col gap-4">
+						<Card>
 							<CardHeader className="pb-2">
-								<CardTitle className="flex items-center gap-2 text-sm">
-									<Sparkles className="h-4 w-4" />
-									Tuning conversation
+								<CardTitle className="text-sm">
+									Run details
 								</CardTitle>
 							</CardHeader>
-							<CardContent className="p-0">
-								{conversationError ? (
-									<div className="px-4 pb-3">
-										<FleetReadError
-											resource="tuning conversation"
-											cached={!!conversation}
-											pending={conversationFetching}
-											onRetry={() =>
-												void refetchConversation()
-											}
-										/>
+							<CardContent>
+								<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+									{advancedView ? (
+										<MetaRow label="Run ID">
+											<span className="font-mono text-[11px] break-all">
+												{run.id}
+											</span>
+										</MetaRow>
+									) : null}
+									{run.started_at ? (
+										<MetaRow label="Started">
+											{new Date(
+												run.started_at,
+											).toLocaleString()}
+										</MetaRow>
+									) : null}
+									<MetaRow label="Duration">
+										{run.duration_ms != null
+											? formatDuration(run.duration_ms)
+											: "—"}
+									</MetaRow>
+									{advancedView ? (
+										<>
+											<MetaRow label="Iterations">
+												{run.iterations_used}
+											</MetaRow>
+											<MetaRow label="Tokens">
+												{formatNumber(run.tokens_used)}
+											</MetaRow>
+											<MetaRow label="Model">
+												<span className="font-mono">
+													{run.llm_model ?? "default"}
+												</span>
+											</MetaRow>
+										</>
+									) : null}
+									<MetaRow label="Trigger">
+										{run.trigger_type}
+									</MetaRow>
+									{run.caller_email ? (
+										<MetaRow label="Caller">
+											{run.caller_name ??
+												run.caller_email}
+										</MetaRow>
+									) : null}
+								</dl>
+							</CardContent>
+						</Card>
+
+						{/* AI usage */}
+						{advancedView &&
+						run.ai_usage &&
+						run.ai_usage.length > 0 ? (
+							<RunAIUsageCard
+								usage={run.ai_usage}
+								totals={run.ai_totals ?? null}
+							/>
+						) : null}
+
+						{/* Admin regeneration for summaries without an active status banner. */}
+						{showRegen ? (
+							<Card>
+								<CardContent className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
+									<div>
+										<div className="font-medium">
+											Summary
+										</div>
+										<div className="text-muted-foreground">
+											Re-run the summarizer
+										</div>
 									</div>
-								) : null}
-								{conversationLoading ? (
-									<div className="p-4">
-										<Skeleton className="h-40 w-full" />
-									</div>
-								) : conversationError &&
-								  !conversation ? null : (
-									<div className="flex h-[420px] flex-col">
-										<FlagConversation
-											conversation={conversation ?? null}
-											onSend={handleSendChat}
-											pending={sendMessage.isPending}
-										/>
+									<SummaryRegenerationControl
+										runId={run.id}
+										allowed={isPlatformAdmin}
+										testId="regen-summary-button"
+									/>
+								</CardContent>
+							</Card>
+						) : null}
+
+						{/* Agent card */}
+						<Card>
+							<CardHeader className="pb-2">
+								<CardTitle className="text-sm">Agent</CardTitle>
+							</CardHeader>
+							<CardContent>
+								{run.agent_id ? (
+									<Link
+										to={`/agents/${run.agent_id}`}
+										className="flex items-start gap-2 text-sm hover:underline"
+									>
+										<Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+										<div className="min-w-0">
+											<div className="truncate font-medium">
+												{agent?.name ??
+													run.agent_name ??
+													"Agent"}
+											</div>
+											{agent?.description ? (
+												<div className="text-xs text-muted-foreground line-clamp-2">
+													{agent.description}
+												</div>
+											) : null}
+										</div>
+									</Link>
+								) : (
+									<div className="space-y-1 text-sm">
+										<p className="font-medium [overflow-wrap:anywhere]">
+											{run.agent_name ?? "Deleted agent"}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											This agent is no longer available.
+										</p>
 									</div>
 								)}
 							</CardContent>
 						</Card>
-					) : null}
+					</div>
 				</div>
-
-				{/* Sidebar */}
-				<div className="flex min-w-0 flex-col gap-4">
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">
-								Run details
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
-								{advancedView ? (
-									<MetaRow label="Run ID">
-										<span className="font-mono text-[11px] break-all">
-											{run.id}
-										</span>
-									</MetaRow>
-								) : null}
-								{run.started_at ? (
-									<MetaRow label="Started">
-										{new Date(
-											run.started_at,
-										).toLocaleString()}
-									</MetaRow>
-								) : null}
-								<MetaRow label="Duration">
-									{run.duration_ms != null
-										? formatDuration(run.duration_ms)
-										: "—"}
-								</MetaRow>
-								{advancedView ? (
-									<>
-										<MetaRow label="Iterations">
-											{run.iterations_used}
-										</MetaRow>
-										<MetaRow label="Tokens">
-											{formatNumber(run.tokens_used)}
-										</MetaRow>
-										<MetaRow label="Model">
-											<span className="font-mono">
-												{run.llm_model ?? "default"}
-											</span>
-										</MetaRow>
-									</>
-								) : null}
-								<MetaRow label="Trigger">
-									{run.trigger_type}
-								</MetaRow>
-								{run.caller_email ? (
-									<MetaRow label="Caller">
-										{run.caller_name ?? run.caller_email}
-									</MetaRow>
-								) : null}
-							</dl>
-						</CardContent>
-					</Card>
-
-					{/* AI usage */}
-					{advancedView && run.ai_usage && run.ai_usage.length > 0 ? (
-						<RunAIUsageCard
-							usage={run.ai_usage}
-							totals={run.ai_totals ?? null}
-						/>
-					) : null}
-
-					{/* Admin regeneration for summaries without an active status banner. */}
-					{showRegen ? (
-						<Card>
-							<CardContent className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
-								<div>
-									<div className="font-medium">Summary</div>
-									<div className="text-muted-foreground">
-										Re-run the summarizer
-									</div>
-								</div>
-								<SummaryRegenerationControl
-									runId={run.id}
-									allowed={isPlatformAdmin}
-									testId="regen-summary-button"
-								/>
-							</CardContent>
-						</Card>
-					) : null}
-
-					{/* Agent card */}
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Agent</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{run.agent_id ? (
-								<Link
-									to={`/agents/${run.agent_id}`}
-									className="flex items-start gap-2 text-sm hover:underline"
-								>
-									<Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-									<div className="min-w-0">
-										<div className="truncate font-medium">
-											{agent?.name ??
-												run.agent_name ??
-												"Agent"}
-										</div>
-										{agent?.description ? (
-											<div className="text-xs text-muted-foreground line-clamp-2">
-												{agent.description}
-											</div>
-										) : null}
-									</div>
-								</Link>
-							) : (
-								<div className="space-y-1 text-sm">
-									<p className="font-medium [overflow-wrap:anywhere]">
-										{run.agent_name ?? "Deleted agent"}
-									</p>
-									<p className="text-xs text-muted-foreground">
-										This agent is no longer available.
-									</p>
-								</div>
-							)}
-						</CardContent>
-					</Card>
-				</div>
-			</div>
-		</div>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }
 

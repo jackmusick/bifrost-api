@@ -56,6 +56,10 @@ import { UserEmailCell } from "@/components/users/UserEmailCell";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
 import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
+import {
 	BulkMoveOrgDialog,
 	BulkReplaceRolesDialog,
 	BulkResultDialog,
@@ -469,7 +473,7 @@ export function Users() {
 	);
 
 	return (
-		<div className="min-h-full flex flex-col space-y-6 max-w-7xl mx-auto">
+		<PageWorkspace className="max-w-7xl mx-auto">
 			<ListPageHeader
 				title="Users"
 				description={
@@ -610,7 +614,11 @@ export function Users() {
 				</Alert>
 			)}
 			{/* Content */}
-			<div className="flex-1 min-h-0" aria-busy={usersQuery.isFetching}>
+			<PageScrollArea
+				aria-label="Users list"
+				className="lg:flex lg:flex-col lg:overflow-hidden"
+				aria-busy={usersQuery.isFetching}
+			>
 				{usersQuery.isLoading ? (
 					<div
 						className="space-y-2"
@@ -1142,7 +1150,7 @@ export function Users() {
 						</p>
 					</div>
 				)}
-			</div>
+			</PageScrollArea>
 
 			<BulkActionBar
 				count={selection.count}
@@ -1242,6 +1250,6 @@ export function Users() {
 					onConfirm={handleConfirmDelete}
 				/>
 			)}
-		</div>
+		</PageWorkspace>
 	);
 }

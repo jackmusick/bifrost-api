@@ -63,7 +63,7 @@ export function EntityListToolbar({
 	return (
 		<section
 			aria-label="Entity list controls"
-			className="mb-4 space-y-3 rounded-[var(--bf-radius-surface)] border bg-card p-[var(--bf-surface-pad)]"
+			className="mb-4 shrink-0 space-y-3 rounded-[var(--bf-radius-surface)] border bg-card p-[var(--bf-surface-pad)]"
 		>
 			<div className="grid gap-3">
 				<div className="flex items-center gap-2">

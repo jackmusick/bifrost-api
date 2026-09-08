@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { FleetReviewDialog } from "./FleetReviewDialog";
 import { FleetHeader } from "./FleetHeader";
 import { FleetToolbar } from "./FleetToolbar";
@@ -134,107 +138,117 @@ export function FleetPage() {
 	);
 
 	return (
-		<div className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-4 md:gap-5">
-			<FleetHeader
-				title={term(terminology, "agent", "plural")}
-				agentLabel={term(terminology, "agent", "singularLower")}
-				total={totalAgents}
-				active={activeCount}
-				actions={isPlatformAdmin ? <SummaryBackfillButton /> : null}
-			/>
-
-			{reviewOpen && (
-				<FleetReviewDialog onClose={() => setReviewOpen(false)} />
-			)}
-			{/* Tuning queue banner */}
-			{fleetStats && fleetStats.needs_review > 0 ? (
-				<QueueBanner
-					count={fleetStats.needs_review}
-					actionLabel="Review now"
-					onAction={() => setReviewOpen(true)}
+		<PageWorkspace className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-4 md:gap-5">
+			<div className="shrink-0 space-y-6">
+				<FleetHeader
+					title={term(terminology, "agent", "plural")}
+					agentLabel={term(terminology, "agent", "singularLower")}
+					total={totalAgents}
+					active={activeCount}
+					actions={isPlatformAdmin ? <SummaryBackfillButton /> : null}
 				/>
-			) : null}
 
-			{fleetError && (
-				<FleetReadError
-					resource="fleet statistics"
-					cached={!!fleetStats}
-					pending={fleetFetching}
-					onRetry={() => {
-						void refetchFleet();
-					}}
-				/>
-			)}
-			{!(fleetError && !fleetStats) && (
-				<FleetMetrics
-					stats={fleetStats}
-					loading={fleetLoading}
-					scopeLabel={
-						isPlatformAdmin
-							? "All organizations"
-							: "Your organization"
-					}
-					agentLabel={term(terminology, "agent", "pluralLower")}
-				/>
-			)}
+				{reviewOpen && (
+					<FleetReviewDialog onClose={() => setReviewOpen(false)} />
+				)}
+				{/* Tuning queue banner */}
+				{fleetStats && fleetStats.needs_review > 0 ? (
+					<QueueBanner
+						count={fleetStats.needs_review}
+						actionLabel="Review now"
+						onAction={() => setReviewOpen(true)}
+					/>
+				) : null}
 
-			<FleetToolbar
-				agentLabel={term(terminology, "agent", "pluralLower")}
-				query={query}
-				filterOrgId={filterOrgId}
-				showInactive={showInactive}
-				view={view}
-				isPlatformAdmin={isPlatformAdmin}
-				onQueryChange={setQuery}
-				onOrganizationChange={setFilterOrgId}
-				onInactiveChange={setShowInactive}
-				onViewChange={setView}
-			/>
-
-			{/* Content */}
-			<div className="min-w-0 space-y-4 pb-1">
-				{agentsError && (
+				{fleetError && (
 					<FleetReadError
-						resource={term(terminology, "agent", "pluralLower")}
-						cached={!!agents}
-						pending={agentsFetching}
+						resource="fleet statistics"
+						cached={!!fleetStats}
+						pending={fleetFetching}
 						onRetry={() => {
-							void refetchAgents();
+							void refetchFleet();
 						}}
 					/>
 				)}
-				{agentsError && !agents ? null : agentsLoading ? (
-					<PageLoader
-						message={`Loading ${term(terminology, "agent", "pluralLower")}…`}
-						size="sm"
-					/>
-				) : filtered.length === 0 ? (
-					<EmptyState hasQuery={query.trim().length > 0} />
-				) : view === "grid" || !tableAvailable ? (
-					<div
-						className={cn(
-							"grid md:grid-cols-2 xl:grid-cols-3",
-							GAP_CARD,
-						)}
-					>
-						{filtered.map((agent) => (
-							<AgentGridCard
-								key={agent.id}
-								agent={agent}
-								showOrg={isPlatformAdmin}
-								orgName={getOrgName(agent.organization_id)}
-							/>
-						))}
-					</div>
-				) : (
-					<AgentTable
-						agents={filtered}
-						showOrg={isPlatformAdmin}
-						getOrgName={getOrgName}
+				{!(fleetError && !fleetStats) && (
+					<FleetMetrics
+						stats={fleetStats}
+						loading={fleetLoading}
+						scopeLabel={
+							isPlatformAdmin
+								? "All organizations"
+								: "Your organization"
+						}
+						agentLabel={term(terminology, "agent", "pluralLower")}
 					/>
 				)}
+
+				<FleetToolbar
+					agentLabel={term(terminology, "agent", "pluralLower")}
+					query={query}
+					filterOrgId={filterOrgId}
+					showInactive={showInactive}
+					view={view}
+					isPlatformAdmin={isPlatformAdmin}
+					onQueryChange={setQuery}
+					onOrganizationChange={setFilterOrgId}
+					onInactiveChange={setShowInactive}
+					onViewChange={setView}
+				/>
 			</div>
-		</div>
+
+			{/* Content */}
+			<PageScrollArea
+				className={
+					view === "table" && tableAvailable
+						? "lg:overflow-hidden"
+						: undefined
+				}
+			>
+				<div className="min-w-0 space-y-4 pb-1 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+					{agentsError && (
+						<FleetReadError
+							resource={term(terminology, "agent", "pluralLower")}
+							cached={!!agents}
+							pending={agentsFetching}
+							onRetry={() => {
+								void refetchAgents();
+							}}
+						/>
+					)}
+					{agentsError && !agents ? null : agentsLoading ? (
+						<PageLoader
+							message={`Loading ${term(terminology, "agent", "pluralLower")}…`}
+							size="sm"
+						/>
+					) : filtered.length === 0 ? (
+						<EmptyState hasQuery={query.trim().length > 0} />
+					) : view === "grid" || !tableAvailable ? (
+						<div
+							className={cn(
+								"grid md:grid-cols-2 xl:grid-cols-3",
+								GAP_CARD,
+							)}
+						>
+							{filtered.map((agent) => (
+								<AgentGridCard
+									key={agent.id}
+									agent={agent}
+									showOrg={isPlatformAdmin}
+									orgName={getOrgName(agent.organization_id)}
+								/>
+							))}
+						</div>
+					) : (
+						<AgentTable
+							agents={filtered}
+							showOrg={isPlatformAdmin}
+							getOrgName={getOrgName}
+						/>
+					)}
+				</div>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }
 
@@ -473,7 +487,12 @@ function AgentTable({
 	getOrgName: (orgId: string | null | undefined) => string;
 }) {
 	return (
-		<div className={cn("overflow-hidden border", RADIUS_CARD)}>
+		<div
+			className={cn(
+				"min-h-0 max-h-full overflow-hidden border",
+				RADIUS_CARD,
+			)}
+		>
 			<DataTable>
 				<DataTableHeader>
 					<DataTableRow>

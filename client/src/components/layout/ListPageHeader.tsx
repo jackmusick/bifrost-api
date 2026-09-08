@@ -26,7 +26,7 @@ export function ListPageHeader({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between",
+				"flex min-w-0 shrink-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between",
 				className,
 			)}
 		>

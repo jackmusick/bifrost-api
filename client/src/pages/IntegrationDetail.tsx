@@ -6,6 +6,10 @@ import { useParams, Link } from "react-router-dom";
 import { XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
+import {
 	Card,
 	CardContent,
 	CardDescription,
@@ -769,7 +773,7 @@ export function IntegrationDetail() {
 	}
 
 	return (
-		<div className="space-y-6">
+		<PageWorkspace>
 			<IntegrationPageHeader
 				name={integration.name}
 				description={
@@ -783,152 +787,179 @@ export function IntegrationDetail() {
 				onGenerateSDK={() => setGenerateSDKDialogOpen(true)}
 				onEdit={() => setEditDialogOpen(true)}
 			/>
-			{isIntegrationError && (
-				<IntegrationReadError
-					resource="integration"
-					cached
-					pending={isFetchingIntegration}
-					onRetry={() => {
-						void refetchIntegration();
-					}}
+			<PageScrollArea className="space-y-6 lg:flex lg:flex-col lg:gap-6 lg:space-y-0">
+				{isIntegrationError && (
+					<IntegrationReadError
+						resource="integration"
+						cached
+						pending={isFetchingIntegration}
+						onRetry={() => {
+							void refetchIntegration();
+						}}
+					/>
+				)}
+				{isOrgsError && (
+					<IntegrationReadError
+						resource="organizations"
+						cached
+						pending={isFetchingOrgs}
+						onRetry={() => {
+							void refetchOrgs();
+						}}
+					/>
+				)}
+				{/* Config Defaults & OAuth Status */}
+				<IntegrationOverview
+					integration={integration}
+					oauthConfig={oauthConfig}
+					isOAuthConnected={isOAuthConnected}
+					isOAuthExpired={isOAuthExpired}
+					isOAuthExpiringSoon={isOAuthExpiringSoon}
+					canUseAuthCodeFlow={canUseAuthCodeFlow}
+					onOpenDefaultsDialog={handleOpenDefaultsDialog}
+					onOAuthConnect={handleIntegrationOAuthConnect}
+					onOAuthRefresh={handleIntegrationOAuthRefresh}
+					onEditOAuthConfig={() => setEditingOAuthConfig(true)}
+					onDeleteOAuthConfig={() => setDeleteOAuthDialogOpen(true)}
+					onCreateOAuthConfig={() => setOAuthConfigDialogOpen(true)}
+					isAuthorizePending={authorizeMutation.isPending}
+					isRefreshPending={refreshMutation.isPending}
 				/>
-			)}
-			{isOrgsError && (
-				<IntegrationReadError
-					resource="organizations"
-					cached
-					pending={isFetchingOrgs}
-					onRetry={() => {
-						void refetchOrgs();
-					}}
-				/>
-			)}
-			{/* Config Defaults & OAuth Status */}
-			<IntegrationOverview
-				integration={integration}
-				oauthConfig={oauthConfig}
-				isOAuthConnected={isOAuthConnected}
-				isOAuthExpired={isOAuthExpired}
-				isOAuthExpiringSoon={isOAuthExpiringSoon}
-				canUseAuthCodeFlow={canUseAuthCodeFlow}
-				onOpenDefaultsDialog={handleOpenDefaultsDialog}
-				onOAuthConnect={handleIntegrationOAuthConnect}
-				onOAuthRefresh={handleIntegrationOAuthRefresh}
-				onEditOAuthConfig={() => setEditingOAuthConfig(true)}
-				onDeleteOAuthConfig={() => setDeleteOAuthDialogOpen(true)}
-				onCreateOAuthConfig={() => setOAuthConfigDialogOpen(true)}
-				isAuthorizePending={authorizeMutation.isPending}
-				isRefreshPending={refreshMutation.isPending}
-			/>
 
-			{/* Tabs for Mappings and Config Overrides */}
-			<Tabs defaultValue="mappings" className="space-y-4">
-				<TabsList
-					aria-label="Integration views"
-					className="grid grid-cols-2 w-full group-data-horizontal/tabs:h-auto sm:w-fit"
+				{/* Tabs for Mappings and Config Overrides */}
+				<Tabs
+					defaultValue="mappings"
+					className="flex min-h-0 flex-col gap-4 lg:min-h-96 lg:flex-1"
 				>
-					<TabsTrigger
-						className="h-auto min-h-11 whitespace-normal"
-						value="mappings"
+					<TabsList
+						aria-label="Integration views"
+						className="grid grid-cols-2 w-full group-data-horizontal/tabs:h-auto sm:w-fit"
 					>
-						Mappings
-					</TabsTrigger>
-					<TabsTrigger
-						className="h-auto min-h-11 whitespace-normal"
-						value="config-overrides"
-					>
-						Config Overrides
-					</TabsTrigger>
-				</TabsList>
-
-				<TabsContent value="mappings">
-					{mappingSaveError && (
-						<div
-							role="alert"
-							className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center rounded-[var(--bf-radius-control)] border border-destructive/20 bg-destructive/10 p-4 text-sm"
+						<TabsTrigger
+							className="h-auto min-h-11 whitespace-normal"
+							value="mappings"
 						>
-							<p className="min-w-0 flex-1">{mappingSaveError}</p>
-							{failedMappingBatch && (
-								<Button
-									type="button"
-									variant="outline"
-									className="min-h-11"
-									disabled={batchMutation.isPending}
-									onClick={() => {
-										void saveMappings(failedMappingBatch);
-									}}
-								>
-									Retry mapping save
-								</Button>
-							)}
-						</div>
-					)}
-					<fieldset
-						disabled={batchMutation.isPending}
-						className="min-w-0"
-					>
-						{batchMutation.isPending && (
-							<p
-								role="status"
-								className="mb-3 text-sm text-muted-foreground"
-							>
-								Saving mappings…
-							</p>
-						)}
-						<IntegrationMappingsTab
-							orgsWithMappings={orgsWithMappings}
-							entities={entities}
-							isLoadingEntities={isLoadingEntities}
-							isEntitiesError={isEntitiesError}
-							isFetchingEntities={isFetchingEntities}
-							onRetryEntities={() => {
-								void refetchEntities();
-							}}
-							hasDataProvider={
-								!!integration.list_entities_data_provider_id
-							}
-							hasOAuth={!!integration.has_oauth_config}
-							configSchema={integration?.config_schema || []}
-							configDefaults={integration?.config_defaults}
-							autoMatchSuggestions={autoMatchSuggestions}
-							matchStats={matchStats}
-							isMatching={isMatching}
-							isDeletePending={deleteMutation.isPending}
-							onRunAutoMatch={runAutoMatch}
-							onAcceptAllSuggestions={handleAcceptAllSuggestions}
-							onClearSuggestions={clearSuggestions}
-							onAcceptSuggestion={handleAcceptSuggestion}
-							onRejectSuggestion={rejectSuggestion}
-							onUpdateOrgMapping={handleEntitySelect}
-							onOpenConfigDialog={handleOpenConfigDialog}
-							onDeleteMapping={handleDeleteMappingClick}
-							onConnectMapping={handleConnectMapping}
-							onDisconnectMapping={handleDisconnectMapping}
-							onRefreshMapping={handleRefreshMapping}
-							pendingMappingAction={pendingMappingAction}
-						/>
-					</fieldset>
-				</TabsContent>
+							Mappings
+						</TabsTrigger>
+						<TabsTrigger
+							className="h-auto min-h-11 whitespace-normal"
+							value="config-overrides"
+						>
+							Config Overrides
+						</TabsTrigger>
+					</TabsList>
 
-				<TabsContent value="config-overrides">
-					<Card>
-						<CardHeader>
-							<CardTitle>Configuration Overrides</CardTitle>
-							<CardDescription>
-								Manage organization-specific configuration
-								overrides
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<ConfigOverridesTab
-								orgsWithMappings={orgsWithMappings}
-								configSchema={integration?.config_schema || []}
-								integrationId={integrationId || ""}
-							/>
-						</CardContent>
-					</Card>
-				</TabsContent>
-			</Tabs>
+					<TabsContent
+						value="mappings"
+						className="flex min-h-0 flex-1 flex-col"
+					>
+						<div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+							{mappingSaveError && (
+								<div
+									role="alert"
+									className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center rounded-[var(--bf-radius-control)] border border-destructive/20 bg-destructive/10 p-4 text-sm"
+								>
+									<p className="min-w-0 flex-1">
+										{mappingSaveError}
+									</p>
+									{failedMappingBatch && (
+										<Button
+											type="button"
+											variant="outline"
+											className="min-h-11"
+											disabled={batchMutation.isPending}
+											onClick={() => {
+												void saveMappings(
+													failedMappingBatch,
+												);
+											}}
+										>
+											Retry mapping save
+										</Button>
+									)}
+								</div>
+							)}
+							<fieldset
+								disabled={batchMutation.isPending}
+								className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+							>
+								{batchMutation.isPending && (
+									<p
+										role="status"
+										className="mb-3 text-sm text-muted-foreground"
+									>
+										Saving mappings…
+									</p>
+								)}
+								<IntegrationMappingsTab
+									orgsWithMappings={orgsWithMappings}
+									entities={entities}
+									isLoadingEntities={isLoadingEntities}
+									isEntitiesError={isEntitiesError}
+									isFetchingEntities={isFetchingEntities}
+									onRetryEntities={() => {
+										void refetchEntities();
+									}}
+									hasDataProvider={
+										!!integration.list_entities_data_provider_id
+									}
+									hasOAuth={!!integration.has_oauth_config}
+									configSchema={
+										integration?.config_schema || []
+									}
+									configDefaults={
+										integration?.config_defaults
+									}
+									autoMatchSuggestions={autoMatchSuggestions}
+									matchStats={matchStats}
+									isMatching={isMatching}
+									isDeletePending={deleteMutation.isPending}
+									onRunAutoMatch={runAutoMatch}
+									onAcceptAllSuggestions={
+										handleAcceptAllSuggestions
+									}
+									onClearSuggestions={clearSuggestions}
+									onAcceptSuggestion={handleAcceptSuggestion}
+									onRejectSuggestion={rejectSuggestion}
+									onUpdateOrgMapping={handleEntitySelect}
+									onOpenConfigDialog={handleOpenConfigDialog}
+									onDeleteMapping={handleDeleteMappingClick}
+									onConnectMapping={handleConnectMapping}
+									onDisconnectMapping={
+										handleDisconnectMapping
+									}
+									onRefreshMapping={handleRefreshMapping}
+									pendingMappingAction={pendingMappingAction}
+								/>
+							</fieldset>
+						</div>
+					</TabsContent>
+
+					<TabsContent
+						value="config-overrides"
+						className="flex min-h-0 flex-1 flex-col"
+					>
+						<Card>
+							<CardHeader>
+								<CardTitle>Configuration Overrides</CardTitle>
+								<CardDescription>
+									Manage organization-specific configuration
+									overrides
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<ConfigOverridesTab
+									orgsWithMappings={orgsWithMappings}
+									configSchema={
+										integration?.config_schema || []
+									}
+									integrationId={integrationId || ""}
+								/>
+							</CardContent>
+						</Card>
+					</TabsContent>
+				</Tabs>
+			</PageScrollArea>
 
 			{/* OAuth Configuration Dialog (Create) */}
 			{integrationId && (
@@ -1029,6 +1060,6 @@ export function IntegrationDetail() {
 				onTest={handleTestConnection}
 				isTestPending={testMutation.isPending}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }

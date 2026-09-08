@@ -114,7 +114,7 @@ export function KnowledgeTab({ roleId }: { roleId: string }) {
 	};
 
 	return (
-		<div className="flex min-w-0 flex-col gap-4">
+		<div className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:flex-1">
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
 				<SearchBox
 					value={search}
@@ -187,7 +187,7 @@ export function KnowledgeTab({ roleId }: { roleId: string }) {
 					onToggleAll={toggleAll}
 				/>
 			) : (
-				<DataTable>
+				<DataTable className="max-h-full">
 					<DataTableHeader>
 						<DataTableRow>
 							<DataTableHead className="w-0 whitespace-nowrap">

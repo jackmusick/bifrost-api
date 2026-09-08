@@ -17,7 +17,7 @@ interface ExecutionPageHeaderProps {
 
 export function ExecutionPageHeader({ name, status, onBack, onCopyId, onOpenEditor, onRerun, onCancel, openingEditor, rerunning }: ExecutionPageHeaderProps) {
 	return (
-		<header className="@container space-y-3 border-b bg-background px-4 pb-4 pt-2 sm:px-6 lg:px-8 xl:sticky xl:top-0 xl:z-10">
+		<header className="@container shrink-0 space-y-3 border-b bg-background px-4 pb-4 pt-2 sm:px-6 lg:px-8">
 			<div className="flex items-center justify-between gap-3">
 				<Button type="button" variant="ghost" className="min-h-11 px-2" aria-label="Back to history" onClick={onBack}><ArrowLeft aria-hidden="true" className="size-4" />History</Button>
 				<Button type="button" variant="ghost" className="size-11" aria-label="Copy execution ID" title="Copy execution ID" onClick={onCopyId}><Copy aria-hidden="true" className="size-4" /></Button>

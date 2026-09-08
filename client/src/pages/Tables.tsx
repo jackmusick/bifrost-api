@@ -31,6 +31,7 @@ import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadg
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import { PageWorkspace } from "@/components/layout/PageWorkspace";
 import { TableRecordList } from "@/components/tables/TableRecordList";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSearch } from "@/hooks/useSearch";
@@ -201,7 +202,7 @@ export function Tables() {
 	);
 
 	return (
-		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
+		<PageWorkspace className="max-w-7xl mx-auto">
 			<ListPageHeader
 				title="Data Tables"
 				description="Manage document tables for your applications"
@@ -528,6 +529,6 @@ export function Tables() {
 					returnFocusRef={createButtonRef}
 				/>
 			)}
-		</div>
+		</PageWorkspace>
 	);
 }

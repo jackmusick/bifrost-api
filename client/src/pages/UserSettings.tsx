@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { BasicInfo } from "@/pages/user-settings/BasicInfo";
 import { Security } from "@/pages/user-settings/Security";
 import { DeveloperSettings } from "@/pages/user-settings/Developer";
@@ -58,13 +62,17 @@ export function UserSettings() {
 	}, [requestedTab, currentTab, navigate]);
 
 	return (
-		<div className="min-w-0 max-w-3xl mx-auto space-y-6">
+		<PageWorkspace className="max-w-3xl mx-auto">
 			<ListPageHeader
 				title="User Settings"
 				description="Manage your profile, security, connections, and preferences"
 			/>
 
-			<Tabs value={currentTab} onValueChange={handleTabChange}>
+			<Tabs
+				value={currentTab}
+				onValueChange={handleTabChange}
+				className="flex min-h-0 flex-1 flex-col"
+			>
 				<div ref={tabStripRef} className="overflow-x-auto">
 					<TabsList variant="line" className="h-auto w-max">
 						{settingsTabs.map(({ value, label }) => (
@@ -87,12 +95,14 @@ export function UserSettings() {
 							value={value}
 							forceMount
 							hidden={value !== currentTab}
-							className="mt-6 data-[state=inactive]:hidden"
+							className="mt-6 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
 						>
-							<Component />
+							<PageScrollArea>
+								<Component />
+							</PageScrollArea>
 						</TabsContent>
 					))}
 			</Tabs>
-		</div>
+		</PageWorkspace>
 	);
 }

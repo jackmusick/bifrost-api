@@ -4,6 +4,8 @@ Latest hands-on review: [September 8 corrections](review-corrections-2026-09-08.
 
 This directory tracks the migration of the platform interface to the Bifrost design system. All 64 route entries and 578 tracked modules/components have passed UI review; shared-contract reconciliation is complete. Final delivery checks remain in progress. See [progress](PROGRESS.md) for the current checkpoint and [coverage](coverage.md) for the remaining work. The [review queue](REVIEW-QUEUE.md) separates implementation batches, existing work awaiting acceptance, and final delivery gates.
 
+The [page scrolling contract and route audit](scrolling.md) define desktop bounded content, compact tables, mobile flow, and verification limits.
+
 ## Design authority
 
 [DESIGN.md](../../DESIGN.md) describes the product contract. The source design system is the sibling `design-system` repository, with the initial token snapshot taken from commit `11da72e`. The platform vendors those tokens in `client/src/styles/bifrost-tokens.css` and maps them to existing component variables in `client/src/index.css`.

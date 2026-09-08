@@ -169,9 +169,9 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 	}
 
 	return (
-		<div className="agent-runs-tab flex min-w-0 flex-col gap-4">
+		<div className="agent-runs-tab flex min-w-0 flex-col gap-4 lg:h-full lg:min-h-0">
 			{/* Search + filter bar */}
-			<div className="flex flex-wrap items-center gap-3">
+			<div className="flex shrink-0 flex-wrap items-center gap-3">
 				<div className="relative min-w-0 flex-[1_1_15rem] max-w-md">
 					<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 					<Input
@@ -247,7 +247,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 				) : null}
 			</div>
 
-			<div className="agent-runs-filter-region">
+			<div className="agent-runs-filter-region shrink-0">
 				<CapturedDataFilter
 					agentId={agentId}
 					value={metadataConditions}
@@ -291,7 +291,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 			)}
 			{/* Run list */}
 			<div
-				className="agent-runs-scroll-region flex flex-col gap-2"
+				className="agent-runs-scroll-region flex flex-col gap-2 lg:min-h-0 lg:flex-1 lg:overflow-auto [&>*]:shrink-0"
 				role="region"
 				aria-label="Run history"
 			>

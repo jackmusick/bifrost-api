@@ -772,7 +772,7 @@ export function EntityManagement() {
 	);
 
 	return (
-		<div className="flex min-h-full flex-col space-y-6 lg:h-full">
+		<div className="flex min-h-full flex-col gap-6 lg:h-full lg:min-h-0">
 			<ListPageHeader
 				title="Entity Management"
 				description="Manage organization and access settings for workflows, forms, agents, and apps"
@@ -787,7 +787,7 @@ export function EntityManagement() {
 			<EntityCollectionStatus collections={collections} />
 
 			{/* Main Content - Two Column Layout */}
-			<div className="grid grid-cols-1 gap-6 lg:min-h-80 lg:flex-1 lg:grid-cols-5">
+			<div className="grid grid-cols-1 gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-5">
 				{/* Left Column: Entities List */}
 				<div className="lg:col-span-2 flex flex-col min-h-0">
 					{/* Relationship Filter Banner */}
@@ -919,7 +919,7 @@ export function EntityManagement() {
 					</div>
 				</div>
 
-				<div className="hidden min-w-0 flex-col lg:col-span-3 lg:flex lg:min-h-0">
+				<div className="hidden min-w-0 flex-col lg:col-span-3 lg:flex lg:min-h-0 lg:overflow-auto">
 					<EntityAssignmentPanel
 						entities={allEntities}
 						selectedIds={selectedIds}

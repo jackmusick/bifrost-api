@@ -297,8 +297,8 @@ export function EventsTable({
 								/>
 							))}
 						</ul>
-						<div className="hidden @[60rem]/events:block">
-							<DataTable>
+						<div className="hidden min-h-0 flex-1 @[60rem]/events:block">
+							<DataTable className="max-h-full">
 								<DataTableHeader>
 									<DataTableRow>
 										<DataTableHead>

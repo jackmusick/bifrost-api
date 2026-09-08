@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { parseSolutionFrom } from "@/lib/solution-back-nav";
@@ -31,7 +35,12 @@ export function ExecuteWorkflow() {
 	const { search } = useLocation();
 	const fromSolution = parseSolutionFrom(search);
 	const backTo = fromSolution ? `/solutions/${fromSolution}` : "/workflows";
-	const { data, isLoading, error: metadataError, refetch } = useWorkflowsMetadata();
+	const {
+		data,
+		isLoading,
+		error: metadataError,
+		refetch,
+	} = useWorkflowsMetadata();
 	const executeWorkflow = useExecuteWorkflow();
 
 	// Track navigation state to keep button disabled through redirect
@@ -129,10 +138,22 @@ export function ExecuteWorkflow() {
 			<div className="mx-auto min-w-0 max-w-2xl space-y-6">
 				<Alert variant="destructive">
 					<XCircle className="h-4 w-4" />
-					<AlertTitle>{metadataError ? "Unable to load workflow" : "Workflow not found"}</AlertTitle>
-					<AlertDescription>{metadataError ? "Workflow information could not be loaded. Try again." : "This workflow may have been removed or may not be available to you."}</AlertDescription>
+					<AlertTitle>
+						{metadataError
+							? "Unable to load workflow"
+							: "Workflow not found"}
+					</AlertTitle>
+					<AlertDescription>
+						{metadataError
+							? "Workflow information could not be loaded. Try again."
+							: "This workflow may have been removed or may not be available to you."}
+					</AlertDescription>
 				</Alert>
-				{metadataError && <Button variant="outline" onClick={() => void refetch()}>Try again</Button>}
+				{metadataError && (
+					<Button variant="outline" onClick={() => void refetch()}>
+						Try again
+					</Button>
+				)}
 				<Button onClick={() => navigate(backTo)}>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					{fromSolution ? "Back to Solution" : "Back to Workflows"}
@@ -142,121 +163,130 @@ export function ExecuteWorkflow() {
 	}
 
 	return (
-		<div className="mx-auto min-w-0 max-w-2xl space-y-6">
-			<div className="flex justify-center">
-				<div className="w-full max-w-2xl">
-					<div className="flex items-start gap-3">
-						<Button
-							variant="ghost"
-							size="icon"
-							className="size-11 shrink-0"
-							onClick={() => navigate(backTo)}
-							aria-label={
-								fromSolution
-									? "Back to Solution"
-									: "Back to Workflows"
-							}
-						>
-							<ArrowLeft className="h-4 w-4" />
-						</Button>
-						<div className="min-w-0">
-							<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-								Execute Workflow
-							</h1>
-							<p className="mt-2 text-sm leading-6 text-muted-foreground">
-								Workflow:{" "}
-								<span className="font-mono [overflow-wrap:anywhere]">
-									{workflow.name}
-								</span>
-							</p>
+		<PageWorkspace className="mx-auto min-w-0 max-w-2xl ">
+			<div className="shrink-0 space-y-6">
+				<div className="flex justify-center">
+					<div className="w-full max-w-2xl">
+						<div className="flex items-start gap-3">
+							<Button
+								variant="ghost"
+								size="icon"
+								className="size-11 shrink-0"
+								onClick={() => navigate(backTo)}
+								aria-label={
+									fromSolution
+										? "Back to Solution"
+										: "Back to Workflows"
+								}
+							>
+								<ArrowLeft className="h-4 w-4" />
+							</Button>
+							<div className="min-w-0">
+								<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+									Execute Workflow
+								</h1>
+								<p className="mt-2 text-sm leading-6 text-muted-foreground">
+									Workflow:{" "}
+									<span className="font-mono [overflow-wrap:anywhere]">
+										{workflow.name}
+									</span>
+								</p>
+							</div>
 						</div>
 					</div>
 				</div>
 			</div>
 
-			<div className="flex justify-center">
-				<div className="w-full max-w-2xl">
-					<Card>
-						<CardHeader>
-							<CardTitle>Parameters</CardTitle>
-							{workflow.description && (
-								<CardDescription className="[overflow-wrap:anywhere]">
-									{workflow.description}
-								</CardDescription>
-							)}
-						</CardHeader>
-						<CardContent>
-							<form
-								onSubmit={(e) => {
-									e.preventDefault();
-									void handleExecute(paramValues);
-								}}
-							>
-								<WorkflowParametersForm
-									parameters={workflow.parameters || []}
-									onExecute={handleExecute}
-									isExecuting={
-										executeWorkflow.isPending || isNavigating
-									}
-									values={paramValues}
-									onChange={setOverrides}
-									renderAsDiv
-									showExecuteButton={false}
-								/>
-								<div className="mt-6">
-									<ScheduleControls
-										value={schedule}
-										onChange={setSchedule}
+			<PageScrollArea className="space-y-6">
+				<div className="flex justify-center">
+					<div className="w-full max-w-2xl">
+						<Card>
+							<CardHeader>
+								<CardTitle>Parameters</CardTitle>
+								{workflow.description && (
+									<CardDescription className="[overflow-wrap:anywhere]">
+										{workflow.description}
+									</CardDescription>
+								)}
+							</CardHeader>
+							<CardContent>
+								<form
+									onSubmit={(e) => {
+										e.preventDefault();
+										void handleExecute(paramValues);
+									}}
+								>
+									<WorkflowParametersForm
+										parameters={workflow.parameters || []}
+										onExecute={handleExecute}
+										isExecuting={
+											executeWorkflow.isPending ||
+											isNavigating
+										}
+										values={paramValues}
+										onChange={setOverrides}
+										renderAsDiv
+										showExecuteButton={false}
+									/>
+									<div className="mt-6">
+										<ScheduleControls
+											value={schedule}
+											onChange={setSchedule}
+											disabled={
+												executeWorkflow.isPending ||
+												isNavigating
+											}
+										/>
+									</div>
+									{submitError && (
+										<div
+											ref={submitErrorRef}
+											tabIndex={-1}
+											className="mt-6 outline-none"
+										>
+											<Alert
+												variant="destructive"
+												aria-live="assertive"
+											>
+												<XCircle className="h-4 w-4" />
+												<AlertTitle>
+													Failed to{" "}
+													{isScheduled
+														? "schedule"
+														: "execute"}{" "}
+													workflow
+												</AlertTitle>
+												<AlertDescription>
+													{submitError}
+												</AlertDescription>
+											</Alert>
+										</div>
+									)}
+									<Button
+										type="submit"
+										className="mt-6 min-h-11 w-full"
 										disabled={
 											executeWorkflow.isPending ||
 											isNavigating
 										}
-									/>
-								</div>
-								{submitError && (
-									<div
-										ref={submitErrorRef}
-										tabIndex={-1}
-										className="mt-6 outline-none"
 									>
-										<Alert
-											variant="destructive"
-											aria-live="assertive"
-										>
-											<XCircle className="h-4 w-4" />
-											<AlertTitle>
-												Failed to{" "}
-												{isScheduled ? "schedule" : "execute"}{" "}
-												workflow
-											</AlertTitle>
-											<AlertDescription>
-												{submitError}
-											</AlertDescription>
-										</Alert>
-									</div>
-								)}
-							<Button
-								type="submit"
-								className="mt-6 min-h-11 w-full"
-								disabled={
-									executeWorkflow.isPending || isNavigating
-								}
-							>
-								{executeWorkflow.isPending ||
-								isNavigating ? (
-									<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-								) : (
-									<Play className="mr-2 h-4 w-4" />
-								)}
-								{executeWorkflow.isPending || isNavigating
-									? submittingLabel
-									: submitLabel}
-							</Button>
-						</form>
-					</CardContent>
-					</Card>
+										{executeWorkflow.isPending ||
+										isNavigating ? (
+											<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+										) : (
+											<Play className="mr-2 h-4 w-4" />
+										)}
+										{executeWorkflow.isPending ||
+										isNavigating
+											? submittingLabel
+											: submitLabel}
+									</Button>
+								</form>
+							</CardContent>
+						</Card>
+					</div>
 				</div>
-			</div>
-		</div>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }

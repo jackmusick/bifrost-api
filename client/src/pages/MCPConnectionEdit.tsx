@@ -1,5 +1,9 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ConnectionToolCatalog } from "./mcp/components/ConnectionToolCatalog";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 /**
  * MCPConnectionEdit — per-org connection edit (mockup §5).
  *
@@ -384,7 +388,7 @@ export function MCPConnectionEdit() {
 	const isClientCredentials = server.oauth_flow_type === "client_credentials";
 
 	return (
-		<div className="min-w-0 space-y-6 max-w-5xl mx-auto">
+		<PageWorkspace className="max-w-5xl mx-auto">
 			{(connectionError || serverError) && (
 				<Alert variant="destructive">
 					<AlertDescription>
@@ -421,418 +425,439 @@ export function MCPConnectionEdit() {
 				</h1>
 			</div>
 
-			<fieldset disabled={pagePending} className="min-w-0 space-y-6">
-				{/* OAuth credentials */}
-				<Card>
-					<CardContent className="py-6 space-y-4">
-						<h2 className="text-lg font-semibold">
-							OAuth credentials (this org)
-						</h2>
-						<p className="text-xs text-muted-foreground">
-							Register a confidential OAuth app in the vendor with
-							the redirect URL shown on the server template, paste
-							credentials here.
-						</p>
-
-						<div className="space-y-2">
-							<Label htmlFor="client_id">Client ID</Label>
-							<Input
-								id="client_id"
-								value={clientId}
-								onChange={(e) => setClientId(e.target.value)}
-								className="min-h-11 font-mono"
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<div className="flex items-center gap-2">
-								<Checkbox
-									id="set_new_secret"
-									checked={setNewSecret}
-									onCheckedChange={(v) =>
-										setSetNewSecret(v === true)
-									}
-								/>
-								<Label
-									htmlFor="set_new_secret"
-									className="flex min-h-11 cursor-pointer items-center"
-								>
-									Set new client secret
-								</Label>
-							</div>
+			<PageScrollArea>
+				<fieldset disabled={pagePending} className="min-w-0 space-y-6">
+					{/* OAuth credentials */}
+					<Card>
+						<CardContent className="py-6 space-y-4">
+							<h2 className="text-lg font-semibold">
+								OAuth credentials (this org)
+							</h2>
 							<p className="text-xs text-muted-foreground">
-								Existing secret is preserved unless this is
-								checked.
+								Register a confidential OAuth app in the vendor
+								with the redirect URL shown on the server
+								template, paste credentials here.
 							</p>
-						</div>
 
-						{setNewSecret && (
 							<div className="space-y-2">
-								<Label htmlFor="client_secret">
-									New client secret
-								</Label>
-								<div className="flex gap-2">
-									<Input
-										id="client_secret"
-										className="min-h-11 min-w-0 flex-1"
-										autoComplete="new-password"
-										type={showSecret ? "text" : "password"}
-										value={clientSecret}
-										onChange={(e) =>
-											setClientSecret(e.target.value)
+								<Label htmlFor="client_id">Client ID</Label>
+								<Input
+									id="client_id"
+									value={clientId}
+									onChange={(e) =>
+										setClientId(e.target.value)
+									}
+									className="min-h-11 font-mono"
+								/>
+							</div>
+
+							<div className="space-y-2">
+								<div className="flex items-center gap-2">
+									<Checkbox
+										id="set_new_secret"
+										checked={setNewSecret}
+										onCheckedChange={(v) =>
+											setSetNewSecret(v === true)
 										}
-										placeholder="••••••••••••••••"
 									/>
-									<Button
-										type="button"
-										variant="outline"
-										size="icon"
-										className="min-h-11 min-w-11 shrink-0"
-										aria-label={
-											showSecret
-												? "Hide client secret"
-												: "Show client secret"
-										}
-										aria-controls="client_secret"
-										onClick={() => setShowSecret((s) => !s)}
+									<Label
+										htmlFor="set_new_secret"
+										className="flex min-h-11 cursor-pointer items-center"
 									>
-										{showSecret ? (
-											<EyeOff className="h-4 w-4" />
-										) : (
-											<Eye className="h-4 w-4" />
-										)}
-									</Button>
+										Set new client secret
+									</Label>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									Existing secret is preserved unless this is
+									checked.
+								</p>
+							</div>
+
+							{setNewSecret && (
+								<div className="space-y-2">
+									<Label htmlFor="client_secret">
+										New client secret
+									</Label>
+									<div className="flex gap-2">
+										<Input
+											id="client_secret"
+											className="min-h-11 min-w-0 flex-1"
+											autoComplete="new-password"
+											type={
+												showSecret ? "text" : "password"
+											}
+											value={clientSecret}
+											onChange={(e) =>
+												setClientSecret(e.target.value)
+											}
+											placeholder="••••••••••••••••"
+										/>
+										<Button
+											type="button"
+											variant="outline"
+											size="icon"
+											className="min-h-11 min-w-11 shrink-0"
+											aria-label={
+												showSecret
+													? "Hide client secret"
+													: "Show client secret"
+											}
+											aria-controls="client_secret"
+											onClick={() =>
+												setShowSecret((s) => !s)
+											}
+										>
+											{showSecret ? (
+												<EyeOff className="h-4 w-4" />
+											) : (
+												<Eye className="h-4 w-4" />
+											)}
+										</Button>
+									</div>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Optional URL overrides */}
+					<Card>
+						<CardContent className="py-6 space-y-4">
+							<h2 className="text-lg font-semibold">
+								Optional URL overrides{" "}
+								<span className="text-sm font-normal text-muted-foreground">
+									(usually empty)
+								</span>
+							</h2>
+							<div className="space-y-2">
+								<Label htmlFor="server_url_override">
+									Server URL override
+								</Label>
+								<Input
+									id="server_url_override"
+									value={serverUrlOverride}
+									onChange={(e) =>
+										setServerUrlOverride(e.target.value)
+									}
+									placeholder={`(uses server template: ${server.server_url})`}
+									className="min-h-11 font-mono text-xs"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Set this only if this org points at a
+									different vendor deployment than the server
+									template (e.g., regional / sovereign cloud).
+								</p>
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* Availability */}
+					<Card>
+						<CardContent className="py-6 space-y-4">
+							<h2 className="text-lg font-semibold">
+								Availability
+							</h2>
+
+							<div className="flex items-start gap-3">
+								<Checkbox
+									id="available_in_chat"
+									checked={availableInChat}
+									onCheckedChange={(v) =>
+										setAvailableInChat(v === true)
+									}
+									className="mt-0.5"
+								/>
+								<div>
+									<Label
+										htmlFor="available_in_chat"
+										className="flex min-h-11 cursor-pointer items-center font-semibold"
+									>
+										Available in user chat
+									</Label>
+									<p className="text-xs text-muted-foreground mt-1">
+										Use the shared service connection as a
+										fallback when a chat user hasn't
+										completed their own personal OAuth.{" "}
+										<em>
+											Recommended only when the service
+											account is a dedicated
+											bifrost-service@ account, not a real
+											user's.
+										</em>
+									</p>
 								</div>
 							</div>
-						)}
-					</CardContent>
-				</Card>
 
-				{/* Optional URL overrides */}
-				<Card>
-					<CardContent className="py-6 space-y-4">
-						<h2 className="text-lg font-semibold">
-							Optional URL overrides{" "}
-							<span className="text-sm font-normal text-muted-foreground">
-								(usually empty)
-							</span>
-						</h2>
-						<div className="space-y-2">
-							<Label htmlFor="server_url_override">
-								Server URL override
-							</Label>
-							<Input
-								id="server_url_override"
-								value={serverUrlOverride}
-								onChange={(e) =>
-									setServerUrlOverride(e.target.value)
-								}
-								placeholder={`(uses server template: ${server.server_url})`}
-								className="min-h-11 font-mono text-xs"
-							/>
-							<p className="text-xs text-muted-foreground">
-								Set this only if this org points at a different
-								vendor deployment than the server template
-								(e.g., regional / sovereign cloud).
-							</p>
-						</div>
-					</CardContent>
-				</Card>
-
-				{/* Availability */}
-				<Card>
-					<CardContent className="py-6 space-y-4">
-						<h2 className="text-lg font-semibold">Availability</h2>
-
-						<div className="flex items-start gap-3">
-							<Checkbox
-								id="available_in_chat"
-								checked={availableInChat}
-								onCheckedChange={(v) =>
-									setAvailableInChat(v === true)
-								}
-								className="mt-0.5"
-							/>
-							<div>
-								<Label
-									htmlFor="available_in_chat"
-									className="flex min-h-11 cursor-pointer items-center font-semibold"
-								>
-									Available in user chat
-								</Label>
-								<p className="text-xs text-muted-foreground mt-1">
-									Use the shared service connection as a
-									fallback when a chat user hasn't completed
-									their own personal OAuth.{" "}
-									<em>
-										Recommended only when the service
-										account is a dedicated bifrost-service@
-										account, not a real user's.
-									</em>
-								</p>
-							</div>
-						</div>
-
-						<div className="flex items-start gap-3">
-							<Checkbox
-								id="available_to_autonomous"
-								checked={availableToAutonomous}
-								onCheckedChange={(v) =>
-									setAvailableToAutonomous(v === true)
-								}
-								className="mt-0.5"
-							/>
-							<div>
-								<Label
-									htmlFor="available_to_autonomous"
-									className="flex min-h-11 cursor-pointer items-center font-semibold"
-								>
-									Available to autonomous agents
-								</Label>
-								<p className="text-xs text-muted-foreground mt-1">
-									Schedules and webhook-triggered runs use the
-									shared service connection. Without this,
-									autonomous agents cannot invoke this
-									server's tools.
-								</p>
-							</div>
-						</div>
-
-						<p className="text-xs text-muted-foreground/80 pt-2">
-							Both unchecked = personal-use only. Users still need
-							to OAuth individually.
-						</p>
-					</CardContent>
-				</Card>
-
-				{/* Shared service connection */}
-				<Card>
-					<CardContent className="py-6 space-y-4">
-						<h2 className="text-lg font-semibold">
-							Shared service connection
-						</h2>
-
-						<div className="flex flex-wrap items-center justify-between gap-4">
-							<div>
-								{isConnected ? (
-									<>
-										<Badge
-											variant="default"
-											className="bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
-										>
-											Connected
-										</Badge>
-										<p className="text-xs text-muted-foreground mt-1">
-											Service token linked. Refresh
-											handled automatically by the OAuth
-											refresh job.
-										</p>
-									</>
-								) : (
-									<>
-										<Badge
-											variant="default"
-											className="bg-amber-600 hover:bg-amber-700"
-										>
-											Not connected
-										</Badge>
-										<p className="text-xs text-muted-foreground mt-1">
-											No shared service token. The chat /
-											autonomous fallback flags above
-											won't take effect until you connect.
-										</p>
-									</>
-								)}
-							</div>
-							<div className="flex gap-2">
-								{isClientCredentials ? (
-									<ActivateButton
-										connectionId={connection.id}
-										isConnected={isConnected}
-									/>
-								) : (
-									<Button
-										variant="outline"
-										onClick={() =>
-											setConnectModalOpen(true)
-										}
+							<div className="flex items-start gap-3">
+								<Checkbox
+									id="available_to_autonomous"
+									checked={availableToAutonomous}
+									onCheckedChange={(v) =>
+										setAvailableToAutonomous(v === true)
+									}
+									className="mt-0.5"
+								/>
+								<div>
+									<Label
+										htmlFor="available_to_autonomous"
+										className="flex min-h-11 cursor-pointer items-center font-semibold"
 									>
-										{isConnected ? "Reconnect" : "Connect"}
-									</Button>
-								)}
-								{isConnected && (
-									<Button
-										variant="outline"
-										className="text-destructive hover:text-destructive hover:bg-destructive/10"
-										disabled={pagePending}
-										onClick={handleDisconnect}
-									>
-										{serviceAction === "disconnect"
-											? "Disconnecting…"
-											: disconnectError
-												? "Retry disconnect"
-												: "Disconnect"}
-									</Button>
-								)}
+										Available to autonomous agents
+									</Label>
+									<p className="text-xs text-muted-foreground mt-1">
+										Schedules and webhook-triggered runs use
+										the shared service connection. Without
+										this, autonomous agents cannot invoke
+										this server's tools.
+									</p>
+								</div>
 							</div>
-						</div>
-						{disconnectError && (
-							<p
-								role="alert"
-								className="text-sm text-destructive [overflow-wrap:anywhere]"
-							>
-								{disconnectError}
-							</p>
-						)}
-					</CardContent>
-				</Card>
 
-				{/* Tool catalog */}
-				<Card>
-					<CardContent className="py-6 space-y-4">
-						<div className="flex flex-wrap items-center justify-between gap-3">
+							<p className="text-xs text-muted-foreground/80 pt-2">
+								Both unchecked = personal-use only. Users still
+								need to OAuth individually.
+							</p>
+						</CardContent>
+					</Card>
+
+					{/* Shared service connection */}
+					<Card>
+						<CardContent className="py-6 space-y-4">
 							<h2 className="text-lg font-semibold">
-								Tool catalog{" "}
-								<Badge variant="secondary" className="ml-2">
-									{(connection.tools ?? []).length} tools ·{" "}
-									{
-										(connection.tools ?? []).filter(
-											(t) => t.enabled,
-										).length
-									}{" "}
-									enabled
-								</Badge>
+								Shared service connection
 							</h2>
-							<Button
-								variant="outline"
-								size="sm"
-								type="button"
-								className="min-h-11"
-								disabled={
-									refreshTools.isPending || !isConnected
-								}
-								onClick={handleRefreshTools}
-								title={
-									isConnected
-										? "Re-fetch tools/list from the vendor"
-										: "Connect first to refresh the catalog"
-								}
-							>
-								{refreshTools.isPending ? (
-									<Loader2 className="h-4 w-4 mr-1 animate-spin motion-reduce:animate-none" />
-								) : null}
-								{catalogError
-									? "Retry catalog refresh"
-									: "Refresh catalog"}
-							</Button>
-						</div>
 
-						{catalogError && (
-							<p
-								role="alert"
-								className="text-sm text-destructive [overflow-wrap:anywhere]"
-							>
-								{catalogError}
-							</p>
-						)}
-						{(connection.tools ?? []).length === 0 ? (
-							<p className="text-sm text-muted-foreground">
-								No tools cached. Refresh the catalog after the
-								service connection is healthy to populate.
-							</p>
-						) : (
-							<>
-								{/*
-								 * Auth-context summary at the connection level.
-								 * The MCP protocol's tools/list response doesn't
-								 * carry per-tool auth-context metadata, so we
-								 * describe how this connection will resolve
-								 * tokens once, instead of slapping a misleading
-								 * badge on every row.
-								 */}
-								<div className="text-xs text-muted-foreground border-l-2 border-primary bg-primary/5 px-3 py-2 rounded-md">
-									{isClientCredentials ? (
+							<div className="flex flex-wrap items-center justify-between gap-4">
+								<div>
+									{isConnected ? (
 										<>
-											<strong>
-												Server-to-server auth:
-											</strong>{" "}
-											every tool call uses the shared
-											service token (no per-user mode in
-											client_credentials flow).
-										</>
-									) : availableInChat &&
-									  availableToAutonomous ? (
-										<>
-											Tools resolve to the calling user's
-											personal token if connected; fall
-											back to the shared service token in
-											chat and autonomous runs.
-										</>
-									) : availableInChat ? (
-										<>
-											Tools resolve to the calling user's
-											personal token if connected; fall
-											back to the shared service token in
-											chat only.{" "}
-											<em>
-												Autonomous agent runs cannot use
-												these tools until "Available to
-												autonomous agents" is enabled.
-											</em>
-										</>
-									) : availableToAutonomous ? (
-										<>
-											Tools resolve to the calling user's
-											personal token if connected.
-											Autonomous runs use the shared
-											service token.{" "}
-											<em>
-												Chat users without a personal
-												connection get a connect prompt.
-											</em>
+											<Badge
+												variant="default"
+												className="bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+											>
+												Connected
+											</Badge>
+											<p className="text-xs text-muted-foreground mt-1">
+												Service token linked. Refresh
+												handled automatically by the
+												OAuth refresh job.
+											</p>
 										</>
 									) : (
 										<>
-											<strong>Per-user only:</strong>{" "}
-											users must individually OAuth their
-											account; no shared service fallback.
-											Autonomous agent runs cannot use
-											these tools.
+											<Badge
+												variant="default"
+												className="bg-amber-600 hover:bg-amber-700"
+											>
+												Not connected
+											</Badge>
+											<p className="text-xs text-muted-foreground mt-1">
+												No shared service token. The
+												chat / autonomous fallback flags
+												above won't take effect until
+												you connect.
+											</p>
 										</>
 									)}
 								</div>
-								<ConnectionToolCatalog
-									tools={connection.tools ?? []}
-									enabledMap={toolEnabledMap}
-									onChange={(id, enabled) =>
-										setToolEnabledMap((previous) => ({
-											...previous,
-											[id]: enabled,
-										}))
+								<div className="flex gap-2">
+									{isClientCredentials ? (
+										<ActivateButton
+											connectionId={connection.id}
+											isConnected={isConnected}
+										/>
+									) : (
+										<Button
+											variant="outline"
+											onClick={() =>
+												setConnectModalOpen(true)
+											}
+										>
+											{isConnected
+												? "Reconnect"
+												: "Connect"}
+										</Button>
+									)}
+									{isConnected && (
+										<Button
+											variant="outline"
+											className="text-destructive hover:text-destructive hover:bg-destructive/10"
+											disabled={pagePending}
+											onClick={handleDisconnect}
+										>
+											{serviceAction === "disconnect"
+												? "Disconnecting…"
+												: disconnectError
+													? "Retry disconnect"
+													: "Disconnect"}
+										</Button>
+									)}
+								</div>
+							</div>
+							{disconnectError && (
+								<p
+									role="alert"
+									className="text-sm text-destructive [overflow-wrap:anywhere]"
+								>
+									{disconnectError}
+								</p>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Tool catalog */}
+					<Card>
+						<CardContent className="py-6 space-y-4">
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<h2 className="text-lg font-semibold">
+									Tool catalog{" "}
+									<Badge variant="secondary" className="ml-2">
+										{(connection.tools ?? []).length} tools
+										·{" "}
+										{
+											(connection.tools ?? []).filter(
+												(t) => t.enabled,
+											).length
+										}{" "}
+										enabled
+									</Badge>
+								</h2>
+								<Button
+									variant="outline"
+									size="sm"
+									type="button"
+									className="min-h-11"
+									disabled={
+										refreshTools.isPending || !isConnected
 									}
-								/>
-							</>
-						)}
-						<p className="text-xs text-muted-foreground">
-							Catalog is per-connection: the vendor's tools/list
-							response after this org's service-account OAuth.
-							Other orgs may see different tools.
-						</p>
-					</CardContent>
-				</Card>
-			</fieldset>
-			{saveError && (
-				<Alert
-					ref={saveErrorRef}
-					tabIndex={-1}
-					variant="destructive"
-					className="outline-none"
-				>
-					<AlertDescription className="[overflow-wrap:anywhere]">
-						{saveError}
-					</AlertDescription>
-				</Alert>
-			)}
+									onClick={handleRefreshTools}
+									title={
+										isConnected
+											? "Re-fetch tools/list from the vendor"
+											: "Connect first to refresh the catalog"
+									}
+								>
+									{refreshTools.isPending ? (
+										<Loader2 className="h-4 w-4 mr-1 animate-spin motion-reduce:animate-none" />
+									) : null}
+									{catalogError
+										? "Retry catalog refresh"
+										: "Refresh catalog"}
+								</Button>
+							</div>
+
+							{catalogError && (
+								<p
+									role="alert"
+									className="text-sm text-destructive [overflow-wrap:anywhere]"
+								>
+									{catalogError}
+								</p>
+							)}
+							{(connection.tools ?? []).length === 0 ? (
+								<p className="text-sm text-muted-foreground">
+									No tools cached. Refresh the catalog after
+									the service connection is healthy to
+									populate.
+								</p>
+							) : (
+								<>
+									{/*
+									 * Auth-context summary at the connection level.
+									 * The MCP protocol's tools/list response doesn't
+									 * carry per-tool auth-context metadata, so we
+									 * describe how this connection will resolve
+									 * tokens once, instead of slapping a misleading
+									 * badge on every row.
+									 */}
+									<div className="text-xs text-muted-foreground border-l-2 border-primary bg-primary/5 px-3 py-2 rounded-md">
+										{isClientCredentials ? (
+											<>
+												<strong>
+													Server-to-server auth:
+												</strong>{" "}
+												every tool call uses the shared
+												service token (no per-user mode
+												in client_credentials flow).
+											</>
+										) : availableInChat &&
+										  availableToAutonomous ? (
+											<>
+												Tools resolve to the calling
+												user's personal token if
+												connected; fall back to the
+												shared service token in chat and
+												autonomous runs.
+											</>
+										) : availableInChat ? (
+											<>
+												Tools resolve to the calling
+												user's personal token if
+												connected; fall back to the
+												shared service token in chat
+												only.{" "}
+												<em>
+													Autonomous agent runs cannot
+													use these tools until
+													"Available to autonomous
+													agents" is enabled.
+												</em>
+											</>
+										) : availableToAutonomous ? (
+											<>
+												Tools resolve to the calling
+												user's personal token if
+												connected. Autonomous runs use
+												the shared service token.{" "}
+												<em>
+													Chat users without a
+													personal connection get a
+													connect prompt.
+												</em>
+											</>
+										) : (
+											<>
+												<strong>Per-user only:</strong>{" "}
+												users must individually OAuth
+												their account; no shared service
+												fallback. Autonomous agent runs
+												cannot use these tools.
+											</>
+										)}
+									</div>
+									<ConnectionToolCatalog
+										tools={connection.tools ?? []}
+										enabledMap={toolEnabledMap}
+										onChange={(id, enabled) =>
+											setToolEnabledMap((previous) => ({
+												...previous,
+												[id]: enabled,
+											}))
+										}
+									/>
+								</>
+							)}
+							<p className="text-xs text-muted-foreground">
+								Catalog is per-connection: the vendor's
+								tools/list response after this org's
+								service-account OAuth. Other orgs may see
+								different tools.
+							</p>
+						</CardContent>
+					</Card>
+				</fieldset>
+				{saveError && (
+					<Alert
+						ref={saveErrorRef}
+						tabIndex={-1}
+						variant="destructive"
+						className="outline-none"
+					>
+						<AlertDescription className="[overflow-wrap:anywhere]">
+							{saveError}
+						</AlertDescription>
+					</Alert>
+				)}
+			</PageScrollArea>
 			{/* Save / Cancel / Delete */}
 			<div className="flex flex-wrap items-center gap-3 pt-2 [&_button]:min-h-11">
 				<Button onClick={handleSave} disabled={pagePending}>
@@ -928,7 +953,7 @@ export function MCPConnectionEdit() {
 					userEmail={user?.email ?? "your account"}
 				/>
 			)}
-		</div>
+		</PageWorkspace>
 	);
 }
 

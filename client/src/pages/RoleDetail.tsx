@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -155,7 +159,7 @@ export function RoleDetail() {
 	};
 
 	return (
-		<div className="flex min-w-0 w-full flex-col gap-5 max-w-7xl mx-auto">
+		<PageWorkspace className="w-full max-w-7xl mx-auto gap-5">
 			<RoleDetailHeader
 				name={role.name}
 				description={role.description}
@@ -200,23 +204,53 @@ export function RoleDetail() {
 					})}
 				</TabsList>
 
-				<TabsContent value="users" className="flex-1 min-h-0">
-					<UsersTab roleId={role.id} />
+				<TabsContent
+					value="users"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<UsersTab roleId={role.id} />
+					</PageScrollArea>
 				</TabsContent>
-				<TabsContent value="forms" className="flex-1 min-h-0">
-					<FormsTab roleId={role.id} />
+				<TabsContent
+					value="forms"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<FormsTab roleId={role.id} />
+					</PageScrollArea>
 				</TabsContent>
-				<TabsContent value="agents" className="flex-1 min-h-0">
-					<AgentsTab roleId={role.id} />
+				<TabsContent
+					value="agents"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<AgentsTab roleId={role.id} />
+					</PageScrollArea>
 				</TabsContent>
-				<TabsContent value="apps" className="flex-1 min-h-0">
-					<AppsTab roleId={role.id} />
+				<TabsContent
+					value="apps"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<AppsTab roleId={role.id} />
+					</PageScrollArea>
 				</TabsContent>
-				<TabsContent value="workflows" className="flex-1 min-h-0">
-					<WorkflowsTab roleId={role.id} />
+				<TabsContent
+					value="workflows"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<WorkflowsTab roleId={role.id} />
+					</PageScrollArea>
 				</TabsContent>
-				<TabsContent value="knowledge" className="flex-1 min-h-0">
-					<KnowledgeTab roleId={role.id} />
+				<TabsContent
+					value="knowledge"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
+						<KnowledgeTab roleId={role.id} />
+					</PageScrollArea>
 				</TabsContent>
 			</Tabs>
 
@@ -234,7 +268,7 @@ export function RoleDetail() {
 				onOpenChange={setDeleteOpen}
 				onDelete={handleDelete}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }
 

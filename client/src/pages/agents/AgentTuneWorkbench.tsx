@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 /**
  * AgentTuneWorkbench — two-column tuning workbench.
  *
@@ -226,180 +230,186 @@ export function AgentTuneWorkbench() {
 		);
 
 	return (
-		<div
+		<PageWorkspace
 			className="mx-auto flex min-w-0 w-full max-w-[1400px] flex-col gap-5"
 			data-testid="agent-tune-workbench"
 		>
-			<TuneHeader
-				agentId={agentId}
-				agentName={agent?.name}
-				flaggedCount={flaggedTotal}
-				stats={stats ?? null}
-				statsLoading={statsLoading}
-				action={
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						data-testid="dryrun-button"
-						disabled={!proposal || !edits.trim() || busy}
-						onClick={handleDryRun}
-					>
-						{tuningDryRun.isPending ? (
-							<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-						) : (
-							<PlayCircle className="h-3.5 w-3.5" />
-						)}
-						Run dry-run
-					</Button>
-				}
-			/>
-
-			{agentError && (
-				<FleetReadError
-					resource="agent"
-					cached={!!agent}
-					pending={agentFetching}
-					onRetry={() => {
-						void refetchAgent();
-					}}
-				/>
-			)}
-			{statsError && (
-				<FleetReadError
-					resource="agent statistics"
-					cached={!!stats}
-					pending={statsFetching}
-					onRetry={() => {
-						void refetchStats();
-					}}
-				/>
-			)}
-			{actionError?.action === "dry-run" && (
-				<TuningActionError message={actionError.message} />
-			)}
-
-			{/* Dry-run results (full-width, appears after first run) */}
-			{dryRun ? <TuningDryRunResults {...dryRun} /> : null}
-
-			<div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-				{/* Left: flagged runs */}
-				<div
-					className="flex min-w-0 flex-col gap-3"
-					data-testid="tune-pane-flagged"
-				>
-					<TuningFlaggedRuns
-						runs={flagged}
-						total={flaggedTotal}
-						loading={flaggedLoading}
-						error={flaggedError}
-						cached={!!flaggedResp}
-						fetching={flaggedFetching}
-						onRetry={() => void refetchFlagged()}
-						hasMore={hasNextPage}
-						loadingMore={isFetchingNextPage}
-						moreError={isFetchNextPageError}
-						onLoadMore={() => void fetchNextPage()}
-					/>
-					<Button
-						type="button"
-						data-testid="generate-proposal-button"
-						className="min-h-11 h-auto whitespace-normal py-2"
-						disabled={!canGenerate}
-						onClick={handleGenerate}
-					>
-						{tuningSession.isPending ? (
-							<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-						) : (
-							<Sparkles className="h-3.5 w-3.5" />
-						)}
-						{proposal
-							? "Re-generate"
-							: `Generate proposal from ${flaggedTotal} run${flaggedTotal === 1 ? "" : "s"}`}
-					</Button>
-					{actionError?.action === "generate" && (
-						<TuningActionError message={actionError.message} />
-					)}
-				</div>
-
-				{/* Center: prompt editor */}
-				<div
-					className="flex min-w-0 flex-col gap-3"
-					data-testid="tune-pane-editor"
-				>
-					<div className={TYPE_PANE_LABEL}>Prompt editor</div>
-
-					{/* Current prompt (collapsible) */}
-					<div className="overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card">
-						<button
+			<div className="shrink-0 space-y-6">
+				<TuneHeader
+					agentId={agentId}
+					agentName={agent?.name}
+					flaggedCount={flaggedTotal}
+					stats={stats ?? null}
+					statsLoading={statsLoading}
+					action={
+						<Button
 							type="button"
-							data-testid="current-prompt-toggle"
-							onClick={() => setCurrentOpen((o) => !o)}
-							className="flex min-h-11 w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm"
-							aria-expanded={currentOpen}
+							variant="outline"
+							size="sm"
+							data-testid="dryrun-button"
+							disabled={!proposal || !edits.trim() || busy}
+							onClick={handleDryRun}
 						>
-							<span className="font-medium">Current prompt</span>
-							<ChevronDown
-								className={cn(
-									"h-3 w-3 transition-transform motion-reduce:transition-none",
-									currentOpen ? "rotate-0" : "-rotate-90",
-								)}
-							/>
-						</button>
-						{currentOpen ? (
-							<pre className="max-h-60 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] border-t px-4 py-3 font-mono text-sm text-muted-foreground">
-								{currentPrompt || "(no system prompt set)"}
-							</pre>
-						) : null}
+							{tuningDryRun.isPending ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+							) : (
+								<PlayCircle className="h-3.5 w-3.5" />
+							)}
+							Run dry-run
+						</Button>
+					}
+				/>
+			</div>
+
+			<PageScrollArea className="space-y-6">
+				{agentError && (
+					<FleetReadError
+						resource="agent"
+						cached={!!agent}
+						pending={agentFetching}
+						onRetry={() => {
+							void refetchAgent();
+						}}
+					/>
+				)}
+				{statsError && (
+					<FleetReadError
+						resource="agent statistics"
+						cached={!!stats}
+						pending={statsFetching}
+						onRetry={() => {
+							void refetchStats();
+						}}
+					/>
+				)}
+				{actionError?.action === "dry-run" && (
+					<TuningActionError message={actionError.message} />
+				)}
+
+				{/* Dry-run results (full-width, appears after first run) */}
+				{dryRun ? <TuningDryRunResults {...dryRun} /> : null}
+
+				<div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+					{/* Left: flagged runs */}
+					<div
+						className="flex min-w-0 flex-col gap-3"
+						data-testid="tune-pane-flagged"
+					>
+						<TuningFlaggedRuns
+							runs={flagged}
+							total={flaggedTotal}
+							loading={flaggedLoading}
+							error={flaggedError}
+							cached={!!flaggedResp}
+							fetching={flaggedFetching}
+							onRetry={() => void refetchFlagged()}
+							hasMore={hasNextPage}
+							loadingMore={isFetchingNextPage}
+							moreError={isFetchNextPageError}
+							onLoadMore={() => void fetchNextPage()}
+						/>
+						<Button
+							type="button"
+							data-testid="generate-proposal-button"
+							className="min-h-11 h-auto whitespace-normal py-2"
+							disabled={!canGenerate}
+							onClick={handleGenerate}
+						>
+							{tuningSession.isPending ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+							) : (
+								<Sparkles className="h-3.5 w-3.5" />
+							)}
+							{proposal
+								? "Re-generate"
+								: `Generate proposal from ${flaggedTotal} run${flaggedTotal === 1 ? "" : "s"}`}
+						</Button>
+						{actionError?.action === "generate" && (
+							<TuningActionError message={actionError.message} />
+						)}
 					</div>
 
-					{/* Proposed prompt */}
-					{tuningSession.isPending ? (
-						<div className="rounded-[var(--bf-radius-surface)] border bg-card p-4">
-							<div className={cn("mb-2 text-xs", TONE_MUTED)}>
-								Building proposal…
+					{/* Center: prompt editor */}
+					<div
+						className="flex min-w-0 flex-col gap-3"
+						data-testid="tune-pane-editor"
+					>
+						<div className={TYPE_PANE_LABEL}>Prompt editor</div>
+
+						{/* Current prompt (collapsible) */}
+						<div className="overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card">
+							<button
+								type="button"
+								data-testid="current-prompt-toggle"
+								onClick={() => setCurrentOpen((o) => !o)}
+								className="flex min-h-11 w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm"
+								aria-expanded={currentOpen}
+							>
+								<span className="font-medium">
+									Current prompt
+								</span>
+								<ChevronDown
+									className={cn(
+										"h-3 w-3 transition-transform motion-reduce:transition-none",
+										currentOpen ? "rotate-0" : "-rotate-90",
+									)}
+								/>
+							</button>
+							{currentOpen ? (
+								<pre className="max-h-60 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] border-t px-4 py-3 font-mono text-sm text-muted-foreground">
+									{currentPrompt || "(no system prompt set)"}
+								</pre>
+							) : null}
+						</div>
+
+						{/* Proposed prompt */}
+						{tuningSession.isPending ? (
+							<div className="rounded-[var(--bf-radius-surface)] border bg-card p-4">
+								<div className={cn("mb-2 text-xs", TONE_MUTED)}>
+									Building proposal…
+								</div>
+								<Skeleton className="h-32 w-full" />
 							</div>
-							<Skeleton className="h-32 w-full" />
-						</div>
-					) : !proposal ? (
-						<div
-							data-testid="editor-empty-state"
-							className={cn(
-								"rounded-[var(--bf-radius-surface)] border border-dashed p-6 text-center",
-								TYPE_MUTED,
-								TONE_MUTED,
-							)}
-						>
-							Select{" "}
-							<span className="font-medium">
-								Generate proposal
-							</span>{" "}
-							to read the flagged runs and suggest one
-							consolidated prompt change.
-						</div>
-					) : (
-						<TuningProposalEditor
-							currentPrompt={currentPrompt}
-							edits={edits}
-							summary={proposal.summary}
-							error={
-								actionError?.action === "apply"
-									? actionError.message
-									: undefined
-							}
-							busy={busy}
-							applying={applyTuning.isPending}
-							onChange={(value) => {
-								setEdits(value);
-								setDryRun(null);
-							}}
-							onDiscard={handleDiscard}
-							onApply={handleApply}
-						/>
-					)}
+						) : !proposal ? (
+							<div
+								data-testid="editor-empty-state"
+								className={cn(
+									"rounded-[var(--bf-radius-surface)] border border-dashed p-6 text-center",
+									TYPE_MUTED,
+									TONE_MUTED,
+								)}
+							>
+								Select{" "}
+								<span className="font-medium">
+									Generate proposal
+								</span>{" "}
+								to read the flagged runs and suggest one
+								consolidated prompt change.
+							</div>
+						) : (
+							<TuningProposalEditor
+								currentPrompt={currentPrompt}
+								edits={edits}
+								summary={proposal.summary}
+								error={
+									actionError?.action === "apply"
+										? actionError.message
+										: undefined
+								}
+								busy={busy}
+								applying={applyTuning.isPending}
+								onChange={(value) => {
+									setEdits(value);
+									setDryRun(null);
+								}}
+								onDiscard={handleDiscard}
+								onApply={handleApply}
+							/>
+						)}
+					</div>
 				</div>
-			</div>
-		</div>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }
 

@@ -17,6 +17,10 @@ import { Button } from "@/components/ui/button";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
 import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
+import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogCancel,
@@ -140,7 +144,7 @@ export function Applications() {
 	]);
 
 	return (
-		<div className="flex min-w-0 flex-col gap-6 max-w-7xl mx-auto lg:h-full">
+		<PageWorkspace className="max-w-7xl mx-auto">
 			<ListPageHeader
 				title={term(terminology, "app", "formalPlural")}
 				description={
@@ -214,7 +218,14 @@ export function Applications() {
 				)}
 			</ListToolbar>
 
-			<div className="min-w-0 space-y-4 lg:flex-1 lg:min-h-0 lg:overflow-auto">
+			<PageScrollArea
+				aria-label={`${term(terminology, "app", "formalPlural")} list`}
+				className={
+					viewMode === "table"
+						? "space-y-4 lg:flex lg:flex-col lg:overflow-hidden"
+						: "space-y-4"
+				}
+			>
 				{isError && (
 					<div
 						role="alert"
@@ -258,7 +269,7 @@ export function Applications() {
 						emptySearchActive={Boolean(searchTerm)}
 					/>
 				)}
-			</div>
+			</PageScrollArea>
 
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
@@ -321,6 +332,6 @@ export function Applications() {
 					if (!o) setInfoDialogSlug(null);
 				}}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }

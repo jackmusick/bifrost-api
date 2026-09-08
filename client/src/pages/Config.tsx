@@ -32,6 +32,10 @@ import { useWeightedSearch } from "@/hooks/useSearch";
 import { toast } from "sonner";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 
 import { useConfigs, useDeleteConfig } from "@/hooks/useConfig";
@@ -226,7 +230,7 @@ export function Config() {
 	);
 
 	return (
-		<div className="h-full flex flex-col space-y-6">
+		<PageWorkspace>
 			<ListPageHeader
 				title="Configuration"
 				description={
@@ -338,240 +342,254 @@ export function Config() {
 				</Alert>
 			)}
 			{/* Content */}
-			{isLoading ? (
-				<div
-					className="flex items-center justify-center py-12"
-					role="status"
-					aria-label="Loading configuration"
-				>
-					<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
-				</div>
-			) : isError && !configs ? null : filteredConfigs.length > 0 ? (
-				<div className="flex-1 min-h-0">
-					{isNarrow ? (
-						<div className="rounded-[var(--bf-radius-surface)] border bg-card">
-							{isPlatformAdmin && (
-								<label className="flex min-h-11 items-center gap-3 border-b px-4 py-2 text-sm">
-									{renderSelectAll()}Select visible
-								</label>
-							)}
-							<ul aria-label="Configuration" className="divide-y">
-								{filteredConfigs.map((config) => (
-									<li
-										key={
-											config.id ??
-											`${config.org_id}-${config.key}`
-										}
-										className="min-w-0 space-y-3 p-4"
-									>
-										<div className="flex items-start gap-2">
+			<PageScrollArea
+				aria-label="Configuration list"
+				className="lg:flex lg:flex-col lg:overflow-hidden"
+			>
+				{isLoading ? (
+					<div
+						className="flex items-center justify-center py-12"
+						role="status"
+						aria-label="Loading configuration"
+					>
+						<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
+					</div>
+				) : isError && !configs ? null : filteredConfigs.length > 0 ? (
+					<div className="flex-1 min-h-0">
+						{isNarrow ? (
+							<div className="rounded-[var(--bf-radius-surface)] border bg-card">
+								{isPlatformAdmin && (
+									<label className="flex min-h-11 items-center gap-3 border-b px-4 py-2 text-sm">
+										{renderSelectAll()}Select visible
+									</label>
+								)}
+								<ul
+									aria-label="Configuration"
+									className="divide-y"
+								>
+									{filteredConfigs.map((config) => (
+										<li
+											key={
+												config.id ??
+												`${config.org_id}-${config.key}`
+											}
+											className="min-w-0 space-y-3 p-4"
+										>
+											<div className="flex items-start gap-2">
+												{isPlatformAdmin && (
+													<label className="flex h-11 w-11 shrink-0 items-center justify-center">
+														{renderSelection(
+															config,
+														)}
+													</label>
+												)}
+												<h2 className="min-w-0 flex-1 py-1 font-mono text-sm font-medium [overflow-wrap:anywhere]">
+													<button
+														type="button"
+														className="min-h-11 w-full rounded-[var(--bf-radius-control)] text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+														onClick={() =>
+															handleEdit(config)
+														}
+													>
+														{config.key}
+													</button>
+												</h2>
+											</div>
+											<div className="flex flex-wrap items-center justify-between gap-2">
+												{getTypeBadge(config.type)}
+												{renderActions(config)}
+											</div>
+											<dl className="space-y-3 text-sm">
+												<div>
+													<dt className="text-xs text-muted-foreground">
+														Value
+													</dt>
+													<dd className="mt-1 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+														{maskValue(
+															config.value,
+															config.type,
+														)}
+													</dd>
+												</div>
+												{isPlatformAdmin && (
+													<div>
+														<dt className="text-xs text-muted-foreground">
+															Organization
+														</dt>
+														<dd className="mt-1 [overflow-wrap:anywhere]">
+															{getOrgName(
+																config.org_id,
+															)}
+														</dd>
+													</div>
+												)}
+												{config.integration_name && (
+													<div>
+														<dt className="text-xs text-muted-foreground">
+															Integration
+														</dt>
+														<dd className="mt-1 [overflow-wrap:anywhere]">
+															{
+																config.integration_name
+															}
+														</dd>
+													</div>
+												)}
+												{config.description && (
+													<div>
+														<dt className="text-xs text-muted-foreground">
+															Description
+														</dt>
+														<dd className="mt-1 text-muted-foreground [overflow-wrap:anywhere]">
+															{config.description}
+														</dd>
+													</div>
+												)}
+											</dl>
+										</li>
+									))}
+								</ul>
+							</div>
+						) : (
+							<DataTable className="max-h-full">
+								<DataTableHeader>
+									<DataTableRow>
+										{isPlatformAdmin && (
+											<DataTableHead className="w-10">
+												{renderSelectAll()}
+											</DataTableHead>
+										)}
+										{isPlatformAdmin && (
+											<DataTableHead className="w-0 whitespace-nowrap">
+												Organization
+											</DataTableHead>
+										)}
+										<DataTableHead className="w-0 whitespace-nowrap">
+											Integration
+										</DataTableHead>
+										<DataTableHead>Key</DataTableHead>
+										<DataTableHead className="w-0 whitespace-nowrap">
+											Value
+										</DataTableHead>
+										<DataTableHead className="w-0 whitespace-nowrap">
+											Type
+										</DataTableHead>
+										<DataTableHead>
+											Description
+										</DataTableHead>
+										<DataTableHead className="w-0 whitespace-nowrap text-right" />
+									</DataTableRow>
+								</DataTableHeader>
+								<DataTableBody>
+									{filteredConfigs.map((config) => (
+										<DataTableRow
+											clickable
+											onClick={() => handleEdit(config)}
+											key={
+												config.id ??
+												`${config.org_id}-${config.key}`
+											}
+										>
 											{isPlatformAdmin && (
-												<label className="flex h-11 w-11 shrink-0 items-center justify-center">
+												<DataTableCell>
 													{renderSelection(config)}
-												</label>
+												</DataTableCell>
 											)}
-											<h2 className="min-w-0 flex-1 py-1 font-mono text-sm font-medium [overflow-wrap:anywhere]">
+											{isPlatformAdmin && (
+												<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
+													{config.org_id ? (
+														<Badge
+															variant="outline"
+															className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
+														>
+															<Building2 className="mr-1 h-3 w-3" />
+															{getOrgName(
+																config.org_id,
+															)}
+														</Badge>
+													) : (
+														<Badge
+															variant="outline"
+															className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
+														>
+															<Globe className="mr-1 h-3 w-3" />
+															Global
+														</Badge>
+													)}
+												</DataTableCell>
+											)}
+											<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
+												{config.integration_name ? (
+													<span className="text-xs [overflow-wrap:anywhere]">
+														{
+															config.integration_name
+														}
+													</span>
+												) : (
+													<span className="text-muted-foreground">
+														-
+													</span>
+												)}
+											</DataTableCell>
+											<DataTableCell className="min-w-40 max-w-64 font-mono text-xs [overflow-wrap:anywhere]">
 												<button
 													type="button"
-													className="min-h-11 w-full rounded-[var(--bf-radius-control)] text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+													className="min-h-11 rounded-[var(--bf-radius-control)] text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 													onClick={() =>
 														handleEdit(config)
 													}
 												>
 													{config.key}
 												</button>
-											</h2>
-										</div>
-										<div className="flex flex-wrap items-center justify-between gap-2">
-											{getTypeBadge(config.type)}
-											{renderActions(config)}
-										</div>
-										<dl className="space-y-3 text-sm">
-											<div>
-												<dt className="text-xs text-muted-foreground">
-													Value
-												</dt>
-												<dd className="mt-1 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
-													{maskValue(
-														config.value,
-														config.type,
-													)}
-												</dd>
-											</div>
-											{isPlatformAdmin && (
-												<div>
-													<dt className="text-xs text-muted-foreground">
-														Organization
-													</dt>
-													<dd className="mt-1 [overflow-wrap:anywhere]">
-														{getOrgName(
-															config.org_id,
-														)}
-													</dd>
-												</div>
-											)}
-											{config.integration_name && (
-												<div>
-													<dt className="text-xs text-muted-foreground">
-														Integration
-													</dt>
-													<dd className="mt-1 [overflow-wrap:anywhere]">
-														{
-															config.integration_name
-														}
-													</dd>
-												</div>
-											)}
-											{config.description && (
-												<div>
-													<dt className="text-xs text-muted-foreground">
-														Description
-													</dt>
-													<dd className="mt-1 text-muted-foreground [overflow-wrap:anywhere]">
-														{config.description}
-													</dd>
-												</div>
-											)}
-										</dl>
-									</li>
-								))}
-							</ul>
-						</div>
-					) : (
-						<DataTable className="max-h-full">
-							<DataTableHeader>
-								<DataTableRow>
-									{isPlatformAdmin && (
-										<DataTableHead className="w-10">
-											{renderSelectAll()}
-										</DataTableHead>
-									)}
-									{isPlatformAdmin && (
-										<DataTableHead className="w-0 whitespace-nowrap">
-											Organization
-										</DataTableHead>
-									)}
-									<DataTableHead className="w-0 whitespace-nowrap">
-										Integration
-									</DataTableHead>
-									<DataTableHead>Key</DataTableHead>
-									<DataTableHead className="w-0 whitespace-nowrap">
-										Value
-									</DataTableHead>
-									<DataTableHead className="w-0 whitespace-nowrap">
-										Type
-									</DataTableHead>
-									<DataTableHead>Description</DataTableHead>
-									<DataTableHead className="w-0 whitespace-nowrap text-right" />
-								</DataTableRow>
-							</DataTableHeader>
-							<DataTableBody>
-								{filteredConfigs.map((config) => (
-									<DataTableRow
-										clickable
-										onClick={() => handleEdit(config)}
-										key={
-											config.id ??
-											`${config.org_id}-${config.key}`
-										}
-									>
-										{isPlatformAdmin && (
-											<DataTableCell>
-												{renderSelection(config)}
 											</DataTableCell>
-										)}
-										{isPlatformAdmin && (
-											<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
-												{config.org_id ? (
-													<Badge
-														variant="outline"
-														className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
-													>
-														<Building2 className="mr-1 h-3 w-3" />
-														{getOrgName(
-															config.org_id,
-														)}
-													</Badge>
-												) : (
-													<Badge
-														variant="outline"
-														className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
-													>
-														<Globe className="mr-1 h-3 w-3" />
-														Global
-													</Badge>
+											<DataTableCell className="min-w-28 max-w-44 font-mono text-xs [overflow-wrap:anywhere]">
+												{maskValue(
+													config.value,
+													config.type,
 												)}
 											</DataTableCell>
-										)}
-										<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
-											{config.integration_name ? (
-												<span className="text-xs [overflow-wrap:anywhere]">
-													{config.integration_name}
-												</span>
-											) : (
-												<span className="text-muted-foreground">
-													-
-												</span>
-											)}
-										</DataTableCell>
-										<DataTableCell className="min-w-40 max-w-64 font-mono text-xs [overflow-wrap:anywhere]">
-											<button
-												type="button"
-												className="min-h-11 rounded-[var(--bf-radius-control)] text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-												onClick={() =>
-													handleEdit(config)
-												}
-											>
-												{config.key}
-											</button>
-										</DataTableCell>
-										<DataTableCell className="min-w-28 max-w-44 font-mono text-xs [overflow-wrap:anywhere]">
-											{maskValue(
-												config.value,
-												config.type,
-											)}
-										</DataTableCell>
-										<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
-											{getTypeBadge(config.type)}
-										</DataTableCell>
-										<DataTableCell className="min-w-32 max-w-56 text-sm text-muted-foreground [overflow-wrap:anywhere]">
-											{config.description || "-"}
-										</DataTableCell>
-										<DataTableCell className="w-0 whitespace-nowrap text-right">
-											{renderActions(config)}
-										</DataTableCell>
-									</DataTableRow>
-								))}
-							</DataTableBody>
-						</DataTable>
-					)}
-				</div>
-			) : (
-				<Card>
-					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-						<Key className="h-12 w-12 text-muted-foreground" />
-						<h3 className="mt-4 text-lg font-semibold">
-							{searchTerm
-								? "No configuration matches your search"
-								: "No configuration found"}
-						</h3>
-						<p className="mt-2 text-sm text-muted-foreground">
-							{searchTerm
-								? "Try adjusting your search term or clear the filter"
-								: "Get started by creating your first config entry"}
-						</p>
-						<Button
-							variant="outline"
-							className="mt-4 min-h-11 lg:min-h-0"
-							onClick={handleAdd}
-							title="Add Config"
-						>
-							<Plus className="h-4 w-4" />
-							Add configuration
-						</Button>
-					</CardContent>
-				</Card>
-			)}
+											<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
+												{getTypeBadge(config.type)}
+											</DataTableCell>
+											<DataTableCell className="min-w-32 max-w-56 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+												{config.description || "-"}
+											</DataTableCell>
+											<DataTableCell className="w-0 whitespace-nowrap text-right">
+												{renderActions(config)}
+											</DataTableCell>
+										</DataTableRow>
+									))}
+								</DataTableBody>
+							</DataTable>
+						)}
+					</div>
+				) : (
+					<Card>
+						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+							<Key className="h-12 w-12 text-muted-foreground" />
+							<h3 className="mt-4 text-lg font-semibold">
+								{searchTerm
+									? "No configuration matches your search"
+									: "No configuration found"}
+							</h3>
+							<p className="mt-2 text-sm text-muted-foreground">
+								{searchTerm
+									? "Try adjusting your search term or clear the filter"
+									: "Get started by creating your first config entry"}
+							</p>
+							<Button
+								variant="outline"
+								className="mt-4 min-h-11 lg:min-h-0"
+								onClick={handleAdd}
+								title="Add Config"
+							>
+								<Plus className="h-4 w-4" />
+								Add configuration
+							</Button>
+						</CardContent>
+					</Card>
+				)}
+			</PageScrollArea>
 
 			<ConfigDialog
 				config={selectedConfig}
@@ -594,6 +612,6 @@ export function Config() {
 					returnFocusRef={addButtonRef}
 				/>
 			)}
-		</div>
+		</PageWorkspace>
 	);
 }

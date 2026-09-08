@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { Button } from "@/components/ui/button";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { useState, useMemo } from "react";
@@ -17,10 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-	useUsageReport,
-	type UsageSource,
-} from "@/services/usage";
+import { useUsageReport, type UsageSource } from "@/services/usage";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
@@ -113,171 +114,184 @@ export function UsageReports() {
 	const showConversationTable = source === "chat" || source === "all";
 
 	return (
-		<div className="min-w-0 space-y-6">
-			<ListPageHeader
-				title="Usage Reports"
-				description="AI usage and resource consumption analytics"
-				actions={
-					isPlatformAdmin && (
-						<div className="flex min-h-11 flex-wrap items-center gap-3">
-							{showDemoData && (
-								<Badge variant="outline">Demo Mode</Badge>
-							)}
-							<Switch
-								id="demo-mode"
-								checked={showDemoData}
-								onCheckedChange={setShowDemoData}
-							/>
-							<Label
-								htmlFor="demo-mode"
-								className="flex min-h-11 cursor-pointer items-center text-sm text-muted-foreground"
-							>
-								Show Demo Data
-							</Label>
-						</div>
-					)
-				}
-			/>
-
-			{/* Demo Mode Banner */}
-			{showDemoData && (
-				<Alert className="rounded-[var(--bf-radius-surface)] border-border bg-muted/40">
-					<Sparkles className="h-4 w-4 text-muted-foreground" />
-					<AlertDescription className="text-muted-foreground">
-						Displaying sample data for demonstration purposes.
-						Toggle off to view real usage data.
-					</AlertDescription>
-				</Alert>
-			)}
-
-			{/* Filters: Date Range, Source Tabs, and Organization */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Report Period</CardTitle>
-					<CardDescription>
-						Select a date range and source for the usage report
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<DateRangePicker
-						dateRange={dateRange}
-						onDateRangeChange={setDateRange}
-					/>
-
-					<div className="flex min-w-0 flex-wrap items-center gap-4">
-						<Label className="text-sm font-medium">Source:</Label>
-						<Tabs
-							value={source}
-							onValueChange={(v) => setSource(v as UsageSource)}
-						>
-							<TabsList>
-								<TabsTrigger value="all">All</TabsTrigger>
-								<TabsTrigger value="executions">
-									Executions
-								</TabsTrigger>
-								<TabsTrigger value="chat">Chat</TabsTrigger>
-								<TabsTrigger value="agents">Agents</TabsTrigger>
-							</TabsList>
-						</Tabs>
-						{isPlatformAdmin && (
-							<div className="w-full sm:ml-auto sm:w-64">
-								<OrganizationSelect
-									value={filterOrgId}
-									onChange={setFilterOrgId}
-									showAll={true}
-									showGlobal={true}
-									placeholder="All organizations"
+		<PageWorkspace className="min-w-0 ">
+			<div className="shrink-0 space-y-6">
+				<ListPageHeader
+					title="Usage Reports"
+					description="AI usage and resource consumption analytics"
+					actions={
+						isPlatformAdmin && (
+							<div className="flex min-h-11 flex-wrap items-center gap-3">
+								{showDemoData && (
+									<Badge variant="outline">Demo Mode</Badge>
+								)}
+								<Switch
+									id="demo-mode"
+									checked={showDemoData}
+									onCheckedChange={setShowDemoData}
 								/>
+								<Label
+									htmlFor="demo-mode"
+									className="flex min-h-11 cursor-pointer items-center text-sm text-muted-foreground"
+								>
+									Show Demo Data
+								</Label>
 							</div>
-						)}
-					</div>
-				</CardContent>
-			</Card>
+						)
+					}
+				/>
+
+				{/* Demo Mode Banner */}
+				{showDemoData && (
+					<Alert className="rounded-[var(--bf-radius-surface)] border-border bg-muted/40">
+						<Sparkles className="h-4 w-4 text-muted-foreground" />
+						<AlertDescription className="text-muted-foreground">
+							Displaying sample data for demonstration purposes.
+							Toggle off to view real usage data.
+						</AlertDescription>
+					</Alert>
+				)}
+
+				{/* Filters: Date Range, Source Tabs, and Organization */}
+				<Card>
+					<CardHeader>
+						<CardTitle>Report Period</CardTitle>
+						<CardDescription>
+							Select a date range and source for the usage report
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<DateRangePicker
+							dateRange={dateRange}
+							onDateRangeChange={setDateRange}
+						/>
+
+						<div className="flex min-w-0 flex-wrap items-center gap-4">
+							<Label className="text-sm font-medium">
+								Source:
+							</Label>
+							<Tabs
+								value={source}
+								onValueChange={(v) =>
+									setSource(v as UsageSource)
+								}
+							>
+								<TabsList>
+									<TabsTrigger value="all">All</TabsTrigger>
+									<TabsTrigger value="executions">
+										Executions
+									</TabsTrigger>
+									<TabsTrigger value="chat">Chat</TabsTrigger>
+									<TabsTrigger value="agents">
+										Agents
+									</TabsTrigger>
+								</TabsList>
+							</Tabs>
+							{isPlatformAdmin && (
+								<div className="w-full sm:ml-auto sm:w-64">
+									<OrganizationSelect
+										value={filterOrgId}
+										onChange={setFilterOrgId}
+										showAll={true}
+										showGlobal={true}
+										placeholder="All organizations"
+									/>
+								</div>
+							)}
+						</div>
+					</CardContent>
+				</Card>
+			</div>
 
 			{/* Error Alert */}
-			{hasError && (
-				<Alert variant="destructive">
-					<AlertCircle className="h-4 w-4" />
-					<AlertDescription className="flex flex-col items-start gap-3">
-						<span>
-							{data
-								? "Usage data could not be refreshed. Showing the last loaded report."
-								: "Usage data could not be loaded. Try again to retrieve this report."}
-						</span>
-						<Button
-							type="button"
-							variant="outline"
-							className="min-h-11 w-fit"
-							disabled={isFetching}
-							onClick={() => void refetch()}
-						>
-							{isFetching ? "Retrying…" : "Retry report"}
-						</Button>
-					</AlertDescription>
-				</Alert>
-			)}
+			<PageScrollArea className="space-y-6">
+				{hasError && (
+					<Alert variant="destructive">
+						<AlertCircle className="h-4 w-4" />
+						<AlertDescription className="flex flex-col items-start gap-3">
+							<span>
+								{data
+									? "Usage data could not be refreshed. Showing the last loaded report."
+									: "Usage data could not be loaded. Try again to retrieve this report."}
+							</span>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11 w-fit"
+								disabled={isFetching}
+								onClick={() => void refetch()}
+							>
+								{isFetching ? "Retrying…" : "Retry report"}
+							</Button>
+						</AlertDescription>
+					</Alert>
+				)}
 
-			{(!hasError || data) && (
-				<>
-					{/* Summary Cards */}
-					<UsageSummaryCards data={data} isLoading={isLoadingData} />
+				{(!hasError || data) && (
+					<>
+						{/* Summary Cards */}
+						<UsageSummaryCards
+							data={data}
+							isLoading={isLoadingData}
+						/>
 
-					{/* Trends Chart */}
-					<UsageCharts
-						trends={data?.trends}
-						isLoading={isLoadingData}
-					/>
+						{/* Trends Chart */}
+						<UsageCharts
+							trends={data?.trends}
+							isLoading={isLoadingData}
+						/>
 
-					{/* By-Workflow Table */}
-					{(source === "all" || source === "executions") && (
-						<WorkflowTable
-							workflows={data?.by_workflow}
+						{/* By-Workflow Table */}
+						{(source === "all" || source === "executions") && (
+							<WorkflowTable
+								workflows={data?.by_workflow}
+								isLoading={isLoadingData}
+								startDate={startDate}
+								endDate={endDate}
+								isDemo={showDemoData}
+							/>
+						)}
+
+						{/* By-Conversation Table */}
+						{showConversationTable && (
+							<ConversationTable
+								conversations={data?.by_conversation}
+								isLoading={isLoadingData}
+								startDate={startDate}
+								endDate={endDate}
+								isDemo={showDemoData}
+							/>
+						)}
+
+						{/* By-Agent Table */}
+						{(source === "all" || source === "agents") && (
+							<AgentTable
+								agents={data?.by_agent}
+								isLoading={isLoadingData}
+							/>
+						)}
+
+						{/* By-Organization Table - Only shown in global scope */}
+						{isGlobalScope && (
+							<OrganizationTable
+								organizations={data?.by_organization}
+								isLoading={isLoadingData}
+								startDate={startDate}
+								endDate={endDate}
+								isDemo={showDemoData}
+							/>
+						)}
+
+						{/* Knowledge Storage Table */}
+						<KnowledgeStorageTable
+							data={data}
 							isLoading={isLoadingData}
 							startDate={startDate}
-							endDate={endDate}
 							isDemo={showDemoData}
 						/>
-					)}
-
-					{/* By-Conversation Table */}
-					{showConversationTable && (
-						<ConversationTable
-							conversations={data?.by_conversation}
-							isLoading={isLoadingData}
-							startDate={startDate}
-							endDate={endDate}
-							isDemo={showDemoData}
-						/>
-					)}
-
-					{/* By-Agent Table */}
-					{(source === "all" || source === "agents") && (
-						<AgentTable
-							agents={data?.by_agent}
-							isLoading={isLoadingData}
-						/>
-					)}
-
-					{/* By-Organization Table - Only shown in global scope */}
-					{isGlobalScope && (
-						<OrganizationTable
-							organizations={data?.by_organization}
-							isLoading={isLoadingData}
-							startDate={startDate}
-							endDate={endDate}
-							isDemo={showDemoData}
-						/>
-					)}
-
-					{/* Knowledge Storage Table */}
-					<KnowledgeStorageTable
-						data={data}
-						isLoading={isLoadingData}
-						startDate={startDate}
-						isDemo={showDemoData}
-					/>
-				</>
-			)}
-		</div>
+					</>
+				)}
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }

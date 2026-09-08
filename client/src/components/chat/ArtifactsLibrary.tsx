@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Search } from "lucide-react";
@@ -159,142 +163,154 @@ export function ArtifactsLibrary() {
 	};
 
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto">
-			<div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
-				<div className="mb-7">
-					<h1
-						ref={headingRef}
-						tabIndex={-1}
-						className="font-display text-2xl font-semibold tracking-tight outline-none"
-					>
-						Artifacts
-					</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
-						Files created or used in your conversations.
-					</p>
-				</div>
-
-				<div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-					<div
-						className="flex shrink-0 flex-wrap gap-1"
-						role="group"
-						aria-label="Artifact type"
-					>
-						{(["all", "artifact", "attachment"] as const).map(
-							(value) => (
-								<Button
-									key={value}
-									type="button"
-									variant={
-										filter === value ? "secondary" : "ghost"
-									}
-									size="sm"
-									aria-pressed={filter === value}
-									onClick={() => setFilter(value)}
-									className="min-h-11 capitalize"
-								>
-									{value === "artifact"
-										? "Generated"
-										: value === "attachment"
-											? "Uploaded"
-											: value}
-								</Button>
-							),
-						)}
-					</div>
-
-					<label className="relative block w-full sm:w-72">
-						<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-						<span className="sr-only">Search artifacts</span>
-						<Input
-							value={search}
-							onChange={(event) => setSearch(event.target.value)}
-							placeholder="Search files"
-							className="h-11 pl-9"
-						/>
-					</label>
-				</div>
-
-				{artifactsQuery.isError && (
-					<div
-						role="alert"
-						className="mb-4 flex flex-col items-start gap-3 rounded-[var(--bf-radius-control)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)] p-4 text-sm sm:flex-row sm:items-center sm:justify-between"
-					>
-						<p>
-							{artifactsQuery.data
-								? "Could not refresh artifacts. Previously loaded files are still shown."
-								: "Artifacts could not be loaded. Retry to continue."}
+		<div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
+			<PageWorkspace className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
+				<div className="shrink-0 space-y-6">
+					<div className="shrink-0">
+						<h1
+							ref={headingRef}
+							tabIndex={-1}
+							className="font-display text-2xl font-semibold tracking-tight outline-none"
+						>
+							Artifacts
+						</h1>
+						<p className="mt-1 text-sm text-muted-foreground">
+							Files created or used in your conversations.
 						</p>
-						<Button
-							type="button"
-							variant="outline"
-							className="min-h-11 shrink-0"
-							disabled={artifactsQuery.isFetching}
-							onClick={() => {
-								void artifactsQuery.refetch();
-							}}
-						>
-							{artifactsQuery.isFetching
-								? "Retrying…"
-								: "Retry artifacts"}
-						</Button>
 					</div>
-				)}
 
-				<div className="overflow-hidden rounded-[var(--bf-radius-surface)] border bg-background">
-					{artifactsQuery.isLoading ? (
+					<div className="flex flex-wrap items-center justify-between gap-3">
 						<div
-							role="status"
-							aria-label="Loading artifacts"
-							className="space-y-1 p-2"
+							className="flex shrink-0 flex-wrap gap-1"
+							role="group"
+							aria-label="Artifact type"
 						>
-							{[1, 2, 3, 4].map((item) => (
-								<Skeleton key={item} className="h-16 w-full" />
-							))}
-						</div>
-					) : artifactsQuery.isError &&
-					  !artifactsQuery.data ? null : filtered.length === 0 ? (
-						<div className="p-10 text-center">
-							<FileText className="mx-auto h-7 w-7 text-muted-foreground" />
-							<p className="mt-3 text-sm font-medium">
-								{search.trim() || filter !== "all"
-									? "No matching files"
-									: "No artifacts yet"}
-							</p>
-							<p className="mt-1 text-sm text-muted-foreground">
-								{search.trim() || filter !== "all"
-									? "Try another search or show all file types."
-									: "Generated files and chat attachments will appear here."}
-							</p>
-							{(search.trim() || filter !== "all") && (
-								<Button
-									type="button"
-									variant="outline"
-									className="mt-4 min-h-11"
-									onClick={() => {
-										setSearch("");
-										setFilter("all");
-									}}
-								>
-									Clear filters
-								</Button>
+							{(["all", "artifact", "attachment"] as const).map(
+								(value) => (
+									<Button
+										key={value}
+										type="button"
+										variant={
+											filter === value
+												? "secondary"
+												: "ghost"
+										}
+										size="sm"
+										aria-pressed={filter === value}
+										onClick={() => setFilter(value)}
+										className="min-h-11 capitalize"
+									>
+										{value === "artifact"
+											? "Generated"
+											: value === "attachment"
+												? "Uploaded"
+												: value}
+									</Button>
+								),
 							)}
 						</div>
-					) : (
-						<ul className="divide-y">
-							{filtered.map((artifact) => (
-								<ArtifactRecord
-									key={artifact.id}
-									artifact={artifact}
-									onPreview={setPreview}
-									onRename={startRename}
-									onDelete={startDelete}
-								/>
-							))}
-						</ul>
-					)}
+
+						<label className="relative block w-full sm:w-72">
+							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+							<span className="sr-only">Search artifacts</span>
+							<Input
+								value={search}
+								onChange={(event) =>
+									setSearch(event.target.value)
+								}
+								placeholder="Search files"
+								className="h-11 pl-9"
+							/>
+						</label>
+					</div>
 				</div>
-			</div>
+
+				<PageScrollArea className="space-y-6">
+					{artifactsQuery.isError && (
+						<div
+							role="alert"
+							className="mb-4 flex flex-col items-start gap-3 rounded-[var(--bf-radius-control)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)] p-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+						>
+							<p>
+								{artifactsQuery.data
+									? "Could not refresh artifacts. Previously loaded files are still shown."
+									: "Artifacts could not be loaded. Retry to continue."}
+							</p>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11 shrink-0"
+								disabled={artifactsQuery.isFetching}
+								onClick={() => {
+									void artifactsQuery.refetch();
+								}}
+							>
+								{artifactsQuery.isFetching
+									? "Retrying…"
+									: "Retry artifacts"}
+							</Button>
+						</div>
+					)}
+
+					<div className="overflow-hidden rounded-[var(--bf-radius-surface)] border bg-background">
+						{artifactsQuery.isLoading ? (
+							<div
+								role="status"
+								aria-label="Loading artifacts"
+								className="space-y-1 p-2"
+							>
+								{[1, 2, 3, 4].map((item) => (
+									<Skeleton
+										key={item}
+										className="h-16 w-full"
+									/>
+								))}
+							</div>
+						) : artifactsQuery.isError &&
+						  !artifactsQuery.data ? null : filtered.length ===
+						  0 ? (
+							<div className="p-10 text-center">
+								<FileText className="mx-auto h-7 w-7 text-muted-foreground" />
+								<p className="mt-3 text-sm font-medium">
+									{search.trim() || filter !== "all"
+										? "No matching files"
+										: "No artifacts yet"}
+								</p>
+								<p className="mt-1 text-sm text-muted-foreground">
+									{search.trim() || filter !== "all"
+										? "Try another search or show all file types."
+										: "Generated files and chat attachments will appear here."}
+								</p>
+								{(search.trim() || filter !== "all") && (
+									<Button
+										type="button"
+										variant="outline"
+										className="mt-4 min-h-11"
+										onClick={() => {
+											setSearch("");
+											setFilter("all");
+										}}
+									>
+										Clear filters
+									</Button>
+								)}
+							</div>
+						) : (
+							<ul className="divide-y">
+								{filtered.map((artifact) => (
+									<ArtifactRecord
+										key={artifact.id}
+										artifact={artifact}
+										onPreview={setPreview}
+										onRename={startRename}
+										onDelete={startDelete}
+									/>
+								))}
+							</ul>
+						)}
+					</div>
+				</PageScrollArea>
+			</PageWorkspace>
 
 			<FilePreviewSheet
 				conversationId={preview?.conversation_id ?? ""}

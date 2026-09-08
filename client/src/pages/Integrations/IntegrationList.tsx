@@ -343,7 +343,7 @@ function IntegrationMobileList({
 		!allVisibleSelected;
 
 	return (
-		<div className="min-h-0 flex-1 space-y-3 overflow-auto">
+		<div className="min-w-0 space-y-3">
 			<label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-3 text-sm text-muted-foreground">
 				<Checkbox
 					aria-label="Select all visible integrations"

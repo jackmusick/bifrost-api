@@ -1,6 +1,10 @@
 import { ListLoadError } from "@/components/layout/ListLoadError";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -139,16 +143,16 @@ export function Forms() {
 		setActionPending(true);
 		setActionError(false);
 		try {
-		// If the form is already inactive, purge it permanently
-		const purge = !selectedForm.isActive;
-		await deleteForm.mutateAsync({
-			params: {
-				path: { form_id: selectedForm.id },
-				query: { purge },
-			},
-		});
-		setIsDeleteDialogOpen(false);
-		setSelectedForm(null);
+			// If the form is already inactive, purge it permanently
+			const purge = !selectedForm.isActive;
+			await deleteForm.mutateAsync({
+				params: {
+					path: { form_id: selectedForm.id },
+					query: { purge },
+				},
+			});
+			setIsDeleteDialogOpen(false);
+			setSelectedForm(null);
 		} catch {
 			setActionError(true);
 		} finally {
@@ -177,23 +181,23 @@ export function Forms() {
 		setActionPending(true);
 		setActionError(false);
 		try {
-		await updateForm.mutateAsync({
-			params: { path: { form_id: selectedForm.id } },
-			body: {
-				name: null,
-				description: null,
-				workflow_id: null,
-				form_schema: null,
-				is_active: !selectedForm.isActive,
-				access_level: null,
-				launch_workflow_id: null,
-				allowed_query_params: null,
-				default_launch_params: null,
-				clear_roles: false,
-			},
-		});
-		setIsDisableDialogOpen(false);
-		setSelectedForm(null);
+			await updateForm.mutateAsync({
+				params: { path: { form_id: selectedForm.id } },
+				body: {
+					name: null,
+					description: null,
+					workflow_id: null,
+					form_schema: null,
+					is_active: !selectedForm.isActive,
+					access_level: null,
+					launch_workflow_id: null,
+					allowed_query_params: null,
+					default_launch_params: null,
+					clear_roles: false,
+				},
+			});
+			setIsDisableDialogOpen(false);
+			setSelectedForm(null);
 		} catch {
 			setActionError(true);
 		} finally {
@@ -228,59 +232,64 @@ export function Forms() {
 	]);
 
 	return (
-		<div className="flex min-w-0 flex-col gap-6 max-w-7xl mx-auto">
+		<PageWorkspace className="max-w-7xl mx-auto">
 			<ListPageHeader
-                title={term(terminology, "form", "plural")}
-                description={canManageForms
-                    ? `Launch workflows with guided ${term(terminology, "form", "singularLower")} interfaces`
-                    : `Launch workflows with guided ${term(terminology, "form", "pluralLower")}`}
-                actions={<>
-					{canManageForms && isDesktop && (
-						<ToggleGroup
-							aria-label="List layout"
-							type="single"
-							value={viewMode}
-							onValueChange={(value: string) =>
-								value && setViewMode(value as "grid" | "table")
-							}
-						>
-							<ToggleGroupItem
-								value="grid"
-								aria-label="Grid view"
-								size="sm"
+				title={term(terminology, "form", "plural")}
+				description={
+					canManageForms
+						? `Launch workflows with guided ${term(terminology, "form", "singularLower")} interfaces`
+						: `Launch workflows with guided ${term(terminology, "form", "pluralLower")}`
+				}
+				actions={
+					<>
+						{canManageForms && isDesktop && (
+							<ToggleGroup
+								aria-label="List layout"
+								type="single"
+								value={viewMode}
+								onValueChange={(value: string) =>
+									value &&
+									setViewMode(value as "grid" | "table")
+								}
 							>
-								<LayoutGrid className="h-4 w-4" />
-							</ToggleGroupItem>
-							<ToggleGroupItem
-								value="table"
-								aria-label="Table view"
-								size="sm"
-							>
-								<TableIcon className="h-4 w-4" />
-							</ToggleGroupItem>
-						</ToggleGroup>
-					)}
-					<Button
-						variant="outline"
-						size="icon-lg"
-						onClick={() => refetch()}
-						title="Refresh"
-						aria-label="Refresh forms"
-					>
-						<RefreshCw className="h-4 w-4" />
-					</Button>
-					{canManageForms && (
+								<ToggleGroupItem
+									value="grid"
+									aria-label="Grid view"
+									size="sm"
+								>
+									<LayoutGrid className="h-4 w-4" />
+								</ToggleGroupItem>
+								<ToggleGroupItem
+									value="table"
+									aria-label="Table view"
+									size="sm"
+								>
+									<TableIcon className="h-4 w-4" />
+								</ToggleGroupItem>
+							</ToggleGroup>
+						)}
 						<Button
 							variant="outline"
 							size="icon-lg"
-							onClick={handleCreate}
-							title={`Create ${term(terminology, "form", "singular")}`}
-							aria-label={`Create ${term(terminology, "form", "singular")}`}
+							onClick={() => refetch()}
+							title="Refresh"
+							aria-label="Refresh forms"
 						>
-							<Plus className="h-4 w-4" />
+							<RefreshCw className="h-4 w-4" />
 						</Button>
-					)}
-				</>}
+						{canManageForms && (
+							<Button
+								variant="outline"
+								size="icon-lg"
+								onClick={handleCreate}
+								title={`Create ${term(terminology, "form", "singular")}`}
+								aria-label={`Create ${term(terminology, "form", "singular")}`}
+							>
+								<Plus className="h-4 w-4" />
+							</Button>
+						)}
+					</>
+				}
 			/>
 
 			{/* Search and Filters */}
@@ -304,32 +313,58 @@ export function Forms() {
 				)}
 			</ListToolbar>
 
-			{isError && <ListLoadError resource={term(terminology, "form", "pluralLower")} hasCachedData={forms !== undefined} isRetrying={isFetching} onRetry={() => void refetch()} />}
-            {isLoading && <p role="status" className="sr-only">Loading {term(terminology, "form", "pluralLower")}…</p>}
-            {(!isError || forms !== undefined) && <FormListSurface
-				forms={filteredForms as FormListItem[]}
-				viewMode={isDesktop ? viewMode : "grid"}
-				isLoading={isLoading}
-				isPlatformAdmin={isPlatformAdmin}
-				canManageForms={canManageForms}
-				getOrgName={getOrgName}
-				formValidation={
-					formValidation as Map<string, FormValidationState>
+			<PageScrollArea
+				aria-label={`${term(terminology, "form", "plural")} list`}
+				className={
+					viewMode === "table"
+						? "space-y-4 lg:flex lg:flex-col lg:overflow-hidden"
+						: "space-y-4"
 				}
-				onLaunch={(form) => handleLaunch(form.id)}
-				onShare={(form) =>
-					setShareForm({ id: form.id, name: form.name })
-				}
-				onEdit={(form) => handleEdit(form.id)}
-				onDelete={(form) =>
-					handleDelete(form.id, form.name, form.is_active)
-				}
-				onToggleActive={(form) =>
-					handleToggleActive(form.id, form.name, form.is_active)
-				}
-				onCreateEmpty={handleCreate}
-				emptySearchActive={Boolean(searchTerm)}
-			/>}
+			>
+				{isError && (
+					<ListLoadError
+						resource={term(terminology, "form", "pluralLower")}
+						hasCachedData={forms !== undefined}
+						isRetrying={isFetching}
+						onRetry={() => void refetch()}
+					/>
+				)}
+				{isLoading && (
+					<p role="status" className="sr-only">
+						Loading {term(terminology, "form", "pluralLower")}…
+					</p>
+				)}
+				{(!isError || forms !== undefined) && (
+					<FormListSurface
+						forms={filteredForms as FormListItem[]}
+						viewMode={isDesktop ? viewMode : "grid"}
+						isLoading={isLoading}
+						isPlatformAdmin={isPlatformAdmin}
+						canManageForms={canManageForms}
+						getOrgName={getOrgName}
+						formValidation={
+							formValidation as Map<string, FormValidationState>
+						}
+						onLaunch={(form) => handleLaunch(form.id)}
+						onShare={(form) =>
+							setShareForm({ id: form.id, name: form.name })
+						}
+						onEdit={(form) => handleEdit(form.id)}
+						onDelete={(form) =>
+							handleDelete(form.id, form.name, form.is_active)
+						}
+						onToggleActive={(form) =>
+							handleToggleActive(
+								form.id,
+								form.name,
+								form.is_active,
+							)
+						}
+						onCreateEmpty={handleCreate}
+						emptySearchActive={Boolean(searchTerm)}
+					/>
+				)}
+			</PageScrollArea>
 
 			{shareForm ? (
 				<FormShareDialog
@@ -343,7 +378,9 @@ export function Forms() {
 			{/* Disable/Enable Confirmation Dialog */}
 			<AlertDialog
 				open={isDisableDialogOpen}
-				onOpenChange={(open) => { if (!actionBusy.current) setIsDisableDialogOpen(open); }}
+				onOpenChange={(open) => {
+					if (!actionBusy.current) setIsDisableDialogOpen(open);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
@@ -368,13 +405,26 @@ export function Forms() {
 							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
-					{actionError && <p role="alert" className="text-sm text-destructive">Couldn't update this form. Please retry.</p>}
-					{actionPending && <p role="status" className="sr-only">Updating form…</p>}
+					{actionError && (
+						<p role="alert" className="text-sm text-destructive">
+							Couldn't update this form. Please retry.
+						</p>
+					)}
+					{actionPending && (
+						<p role="status" className="sr-only">
+							Updating form…
+						</p>
+					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel disabled={actionPending}>Cancel</AlertDialogCancel>
+						<AlertDialogCancel disabled={actionPending}>
+							Cancel
+						</AlertDialogCancel>
 						<AlertDialogAction
 							disabled={actionPending}
-							onClick={(event) => { event.preventDefault(); void handleConfirmToggleActive(); }}
+							onClick={(event) => {
+								event.preventDefault();
+								void handleConfirmToggleActive();
+							}}
 							className={
 								selectedForm?.isActive
 									? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -385,9 +435,11 @@ export function Forms() {
 								? selectedForm?.isActive
 									? "Disabling..."
 									: "Enabling..."
-								: actionError ? "Retry update" : selectedForm?.isActive
-									? "Disable Form"
-									: "Enable Form"}
+								: actionError
+									? "Retry update"
+									: selectedForm?.isActive
+										? "Disable Form"
+										: "Enable Form"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -396,33 +448,54 @@ export function Forms() {
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
 				open={isDeleteDialogOpen}
-				onOpenChange={(open) => { if (!actionBusy.current) setIsDeleteDialogOpen(open); }}
+				onOpenChange={(open) => {
+					if (!actionBusy.current) setIsDeleteDialogOpen(open);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>{selectedForm?.isActive ? "Deactivate form?" : "Permanently delete form?"}</AlertDialogTitle>
+						<AlertDialogTitle>
+							{selectedForm?.isActive
+								? "Deactivate form?"
+								: "Permanently delete form?"}
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							{selectedForm && !selectedForm.isActive
 								? `This will permanently remove the inactive form "${selectedForm.name}". This action cannot be undone.`
 								: `This will deactivate the form "${selectedForm?.name}". Users will no longer be able to access or execute this form.`}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
-					{actionError && <p role="alert" className="text-sm text-destructive">Couldn't update this form. Please retry.</p>}
-					{actionPending && <p role="status" className="sr-only">Updating form…</p>}
+					{actionError && (
+						<p role="alert" className="text-sm text-destructive">
+							Couldn't update this form. Please retry.
+						</p>
+					)}
+					{actionPending && (
+						<p role="status" className="sr-only">
+							Updating form…
+						</p>
+					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel disabled={actionPending}>Cancel</AlertDialogCancel>
+						<AlertDialogCancel disabled={actionPending}>
+							Cancel
+						</AlertDialogCancel>
 						<AlertDialogAction
 							disabled={actionPending}
-							onClick={(event) => { event.preventDefault(); void handleConfirmDelete(); }}
+							onClick={(event) => {
+								event.preventDefault();
+								void handleConfirmDelete();
+							}}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							{actionPending
 								? "Deleting..."
-								: actionError ? "Retry delete" : "Delete Form"}
+								: actionError
+									? "Retry delete"
+									: "Delete Form"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</div>
+		</PageWorkspace>
 	);
 }

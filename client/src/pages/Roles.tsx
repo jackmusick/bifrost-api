@@ -41,6 +41,10 @@ import { RoleDialog } from "@/components/roles/RoleDialog";
 import { ListPagination } from "@/components/pagination/ListPagination";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
@@ -419,7 +423,7 @@ export function Roles() {
 	};
 
 	return (
-		<div className="mx-auto flex lg:h-full max-w-7xl flex-col space-y-6">
+		<PageWorkspace className="mx-auto max-w-7xl">
 			<ListPageHeader
 				title="Roles"
 				description="Control access to forms, agents, apps, workflows, and knowledge. Select a count to manage assignments."
@@ -468,7 +472,10 @@ export function Roles() {
 			)}
 
 			{/* Content */}
-			<div className="flex-1 min-h-0">
+			<PageScrollArea
+				aria-label="Roles list"
+				className="lg:flex lg:flex-col lg:overflow-hidden"
+			>
 				{rolesQuery.isLoading ? (
 					<div className="space-y-2">
 						{[...Array(5)].map((_, i) => (
@@ -571,7 +578,7 @@ export function Roles() {
 						</DataTableFooter>
 					</DataTable>
 				)}
-			</div>
+			</PageScrollArea>
 
 			<RoleDialog
 				role={selectedRole}
@@ -590,7 +597,7 @@ export function Roles() {
 				onOpenChange={setIsDeleteOpen}
 				onDelete={handleConfirmDelete}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }
 

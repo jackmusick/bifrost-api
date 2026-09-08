@@ -34,14 +34,14 @@ export function DiagnosticsPage() {
 	}
 
 	return (
-		<div className="mx-auto flex w-full min-w-0 max-w-[1100px] flex-col gap-6">
+		<div className="mx-auto flex w-full min-w-0 max-w-[1100px] flex-col gap-6 lg:h-full lg:min-h-0">
 			<ListPageHeader
 				title="Diagnostics"
 				description="Monitor system health, process pools, and troubleshoot issues"
 			/>
 
-			<Tabs defaultValue="workers" className="min-w-0">
-				<div className="max-w-[1100px] mx-auto w-full">
+			<Tabs defaultValue="workers" className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+				<div className="max-w-[1100px] mx-auto w-full shrink-0">
 					<TabsList
 						aria-label="Diagnostics views"
 						className="w-full sm:w-auto"
@@ -54,10 +54,10 @@ export function DiagnosticsPage() {
 						</TabsTrigger>
 					</TabsList>
 				</div>
-				<TabsContent value="workers" className="min-w-0 pt-4">
+				<TabsContent value="workers" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
 					<WorkersTab />
 				</TabsContent>
-				<TabsContent value="scheduler" className="min-w-0 pt-4">
+				<TabsContent value="scheduler" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
 					<SchedulerTab />
 				</TabsContent>
 			</Tabs>

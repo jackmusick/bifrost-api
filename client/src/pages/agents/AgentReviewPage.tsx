@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 /**
  * AgentReviewPage — focused review queue for an agent's flagged runs.
  *
@@ -329,119 +333,126 @@ export function AgentReviewPage() {
 	const flaggedRemaining = queueTotal;
 
 	return (
-		<div
+		<PageWorkspace
 			className="flex flex-col gap-4 max-w-5xl mx-auto"
 			data-testid="review-flipbook"
 		>
-			{agentHeader}
+			<div className="shrink-0 space-y-6">
+				{agentHeader}
 
-			{/* Header */}
-			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-						<Sparkles className="h-5 w-5" />
-						Review runs
-					</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
-						<span data-testid="review-counter">
-							{idx + 1} of {queueTotal}
-						</span>{" "}
-						·{" "}
-						<span className="text-[var(--bf-danger)]">
-							{flaggedRemaining} flagged
+				{/* Header */}
+				<div className="flex flex-wrap items-start justify-between gap-3">
+					<div>
+						<h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+							<Sparkles className="h-5 w-5" />
+							Review runs
+						</h1>
+						<p className="mt-1 text-sm text-muted-foreground">
+							<span data-testid="review-counter">
+								{idx + 1} of {queueTotal}
+							</span>{" "}
+							·{" "}
+							<span className="text-[var(--bf-danger)]">
+								{flaggedRemaining} flagged
+							</span>
+						</p>
+					</div>
+					<div className="flex flex-wrap items-center gap-3">
+						<span className="hidden items-center gap-2 text-xs text-muted-foreground sm:inline-flex">
+							<Keyboard className="h-3.5 w-3.5" />
+							<Kbd>←/→</Kbd> navigate
+							<Kbd>U</Kbd>/<Kbd>D</Kbd> verdict
+							<Kbd>Esc</Kbd> exit
 						</span>
-					</p>
-				</div>
-				<div className="flex flex-wrap items-center gap-3">
-					<span className="hidden items-center gap-2 text-xs text-muted-foreground sm:inline-flex">
-						<Keyboard className="h-3.5 w-3.5" />
-						<Kbd>←/→</Kbd> navigate
-						<Kbd>U</Kbd>/<Kbd>D</Kbd> verdict
-						<Kbd>Esc</Kbd> exit
-					</span>
-					{flaggedRemaining > 0 ? (
-						<Button asChild>
-							<Link to={`/agents/${agentId}/tune`}>
-								<Sparkles className="h-4 w-4" />
-								Tune with {flaggedRemaining} flagged
-							</Link>
-						</Button>
-					) : null}
+						{flaggedRemaining > 0 ? (
+							<Button asChild>
+								<Link to={`/agents/${agentId}/tune`}>
+									<Sparkles className="h-4 w-4" />
+									Tune with {flaggedRemaining} flagged
+								</Link>
+							</Button>
+						) : null}
+					</div>
 				</div>
 			</div>
 
-			{queueError ? (
-				<FleetReadError
-					resource="review queue"
-					cached
-					pending={queueFetching}
-					onRetry={() => void refetchQueue()}
-				/>
-			) : null}
-			{detailError ? (
-				<FleetReadError
-					resource="run details"
-					cached={!!detail}
-					pending={detailFetching}
-					onRetry={() => void refetchDetail()}
-				/>
-			) : null}
-
-			{saving ? (
-				<p role="status" className="text-sm text-muted-foreground">
-					Saving review…
-				</p>
-			) : null}
-			{saveError?.runId === current?.id ? (
-				<div
-					role="alert"
-					ref={saveErrorRef}
-					tabIndex={-1}
-					className="space-y-3 rounded-[var(--bf-radius-surface)] border bg-[var(--bf-warning-soft)] p-4 text-sm"
-				>
-					<p>Could not save your review. Your note is still here.</p>
-					<Button
-						variant="outline"
-						onClick={() => handleVerdict(saveError.verdict)}
-					>
-						Retry review
-					</Button>
-				</div>
-			) : null}
-			{/* Flipbook card */}
-			{detail ? (
-				<fieldset
-					disabled={saving}
-					className="min-w-0"
-					aria-label="Run review"
-				>
-					<FlipbookCard
-						key={detail.id}
-						run={detail}
-						verdict={
-							((detail.verdict as Verdict | undefined) ??
-								null) as Verdict
-						}
-						note={note}
-						onVerdict={handleVerdict}
-						onNote={setNote}
-						runNavigationOrigin={runNavigationOrigin}
+			<PageScrollArea className="space-y-6">
+				{queueError ? (
+					<FleetReadError
+						resource="review queue"
+						cached
+						pending={queueFetching}
+						onRetry={() => void refetchQueue()}
 					/>
-					{note !== (detail.verdict_note ?? "") &&
-					(detail.verdict === "up" || detail.verdict === "down") ? (
+				) : null}
+				{detailError ? (
+					<FleetReadError
+						resource="run details"
+						cached={!!detail}
+						pending={detailFetching}
+						onRetry={() => void refetchDetail()}
+					/>
+				) : null}
+
+				{saving ? (
+					<p role="status" className="text-sm text-muted-foreground">
+						Saving review…
+					</p>
+				) : null}
+				{saveError?.runId === current?.id ? (
+					<div
+						role="alert"
+						ref={saveErrorRef}
+						tabIndex={-1}
+						className="space-y-3 rounded-[var(--bf-radius-surface)] border bg-[var(--bf-warning-soft)] p-4 text-sm"
+					>
+						<p>
+							Could not save your review. Your note is still here.
+						</p>
 						<Button
-							className="mt-3"
-							onClick={() =>
-								handleVerdict(detail.verdict as Verdict)
-							}
+							variant="outline"
+							onClick={() => handleVerdict(saveError.verdict)}
 						>
-							Save note and continue
+							Retry review
 						</Button>
-					) : null}
-				</fieldset>
-			) : !detailError ? (
-				<Skeleton className="h-96 w-full" />
-			) : null}
+					</div>
+				) : null}
+				{/* Flipbook card */}
+				{detail ? (
+					<fieldset
+						disabled={saving}
+						className="min-w-0"
+						aria-label="Run review"
+					>
+						<FlipbookCard
+							key={detail.id}
+							run={detail}
+							verdict={
+								((detail.verdict as Verdict | undefined) ??
+									null) as Verdict
+							}
+							note={note}
+							onVerdict={handleVerdict}
+							onNote={setNote}
+							runNavigationOrigin={runNavigationOrigin}
+						/>
+						{note !== (detail.verdict_note ?? "") &&
+						(detail.verdict === "up" ||
+							detail.verdict === "down") ? (
+							<Button
+								className="mt-3"
+								onClick={() =>
+									handleVerdict(detail.verdict as Verdict)
+								}
+							>
+								Save note and continue
+							</Button>
+						) : null}
+					</fieldset>
+				) : !detailError ? (
+					<Skeleton className="h-96 w-full" />
+				) : null}
+			</PageScrollArea>
 
 			{/* Footer nav */}
 			<div className="flex flex-wrap items-center justify-between gap-3">
@@ -500,7 +511,7 @@ export function AgentReviewPage() {
 					</p>
 				</div>
 			) : null}
-		</div>
+		</PageWorkspace>
 	);
 }
 
