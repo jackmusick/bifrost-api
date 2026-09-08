@@ -316,7 +316,9 @@ test.describe.serial("Public form iframe", () => {
 			await expect(
 				adminPage.getByText("Published", { exact: true }),
 			).toBeVisible();
-			const embedCode = adminPage.getByLabel("Embed Code");
+			const embedCode = adminPage.getByLabel("Embed code source", {
+				exact: true,
+			});
 			await expect(embedCode).toContainText(
 				"theme=light&header=true&background=solid",
 			);
@@ -393,14 +395,16 @@ test.describe.serial("Public form iframe", () => {
 			await expect(frame.getByLabel("Company name")).toHaveValue(
 				"Acme Corporation",
 			);
-			await frame.getByLabel("Email").fill("visitor@example.com");
+			await frame
+				.getByRole("textbox", { name: "Email *", exact: true })
+				.fill("visitor@example.com");
 			const submit = frame.getByRole("button", { name: "Submit" });
 			await expect(submit).toBeDisabled();
 			await frame
 				.getByRole("checkbox", { name: "I'm not a robot" })
 				.click();
 			await expect(
-				frame.getByText("Verified", { exact: true }),
+				frame.locator("label").filter({ hasText: /^Verified$/ }),
 			).toBeVisible();
 			await expect(submit).toBeEnabled();
 			await submit.click();
@@ -546,7 +550,9 @@ test.describe.serial("Public form iframe", () => {
 			.getByRole("combobox", { name: "Company *", exact: true })
 			.click();
 		await frame.getByText("Acme Corporation", { exact: true }).click();
-		await frame.getByLabel("Email").fill("hmac@example.com");
+		await frame
+			.getByRole("textbox", { name: "Email *", exact: true })
+			.fill("hmac@example.com");
 		await expect(
 			frame.getByRole("checkbox", { name: "I'm not a robot" }),
 		).toHaveCount(0);
@@ -569,7 +575,14 @@ test.describe.serial("Public form iframe", () => {
 			timeout: 30_000,
 		});
 		await expect(frame.getByText("hmac@example.com").first()).toBeVisible();
-		await expect(frame.getByRole("status")).toHaveCount(0);
+		// The result page announces execution status. It must not show the
+		// public form's confirmation message instead of the signed result.
+		await expect(
+			frame.getByRole("heading", { name: "Thank you", exact: true }),
+		).toHaveCount(0);
+		await expect(
+			frame.getByText("Your form was submitted.", { exact: true }),
+		).toHaveCount(0);
 	});
 
 	test("blocks a disallowed browser ancestor on the final document", async ({

@@ -20,7 +20,7 @@ Keep Monaco and React Flow behavior unless a concrete defect requires a bounded 
 
 Mobile review must establish that each page is easy to understand and operate, beyond preventing overflow. Choose a presentation that fits the task: labelled records for data lists where tables lose meaning, clear primary actions, readable metadata, accessible sorting/filtering and reachable bulk actions. Preserve access to the complete data and desktop capabilities. Keep tables where comparison requires them only with a deliberate narrow-screen interaction.
 
-Inspect visual hierarchy and actual task completion at narrow widths and short heights. A screenshot that fits and a 44px button alone do not establish completion. Review grouped-button selected, hover and focus treatments against canonical branding in both themes; the user's reported inconsistent green highlight remains an open defect until reproduced and resolved.
+Inspect visual hierarchy and actual task completion at narrow widths and short heights. A screenshot that fits and a 44px button alone do not establish completion. Review grouped-button selected, hover and focus treatments against canonical branding in both themes. Current shared and route controls have been reviewed against those tokens, and the editor's hard-coded green Validate action was removed. The exact historical button group reported by the user could not be identified from the available context; do not claim that specific screenshot was reproduced. Remaining green source accents belong to status or entity categories, not grouped-button selection.
 
 ## Delivery sequence
 

@@ -1,6 +1,6 @@
 # Bifrost interface modernization
 
-This directory tracks the migration of the platform interface to the Bifrost design system. All64 route entries have passed UI review; shared-contract reconciliation and final delivery checks remain in progress. See [progress](PROGRESS.md) for the current checkpoint and [coverage](coverage.md) for the remaining work. The [review queue](REVIEW-QUEUE.md) separates implementation batches, existing work awaiting acceptance, and final delivery gates.
+This directory tracks the migration of the platform interface to the Bifrost design system. All 64 route entries and 578 tracked modules/components have passed UI review; shared-contract reconciliation is complete. Final delivery checks remain in progress. See [progress](PROGRESS.md) for the current checkpoint and [coverage](coverage.md) for the remaining work. The [review queue](REVIEW-QUEUE.md) separates implementation batches, existing work awaiting acceptance, and final delivery gates.
 
 ## Design authority
 

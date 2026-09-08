@@ -17,3 +17,7 @@ Current checkpoint: all64 route entries are UI Verified. This includes Layout an
 - Verify the built candidate through the NetBird preview, complete authorized push/delivery, and report exact SHA/check results.
 
 The preview remains http://bifrost-debug-design-system-modernization-0-38.netbird.cloud. Browser recovery tests use synthetic API/WebSocket fixtures; they do not create real workflow executions or identity-provider changes.
+
+## Latest gate checkpoint
+
+Initial committed-candidate gate passed all2699 client tests, backend quality,5938 unit tests and1808 backend E2E tests, then found ambiguous public-form browser locators after accessible copy/status additions. The complete corrected public-form spec passes5 tests with real publication/submission, signed result, iframe scroll and ancestor enforcement. Application source is unchanged by this repair. Commit the test/documentation repair and rerun the full exact-HEAD gate before push. See the final entries in PROGRESS.md for evidence and explicit environment skips.
