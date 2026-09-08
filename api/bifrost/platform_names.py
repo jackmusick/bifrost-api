@@ -31,6 +31,7 @@ from __future__ import annotations
 PLATFORM_EXPORT_NAMES: frozenset[str] = frozenset({
     # React
     "React", "Fragment", "Suspense", "lazy", "memo", "forwardRef",
+    "createContext", "createElement", "useDebugValue", "useInsertionEffect", "useSyncExternalStore",
     "useState", "useEffect", "useCallback", "useMemo", "useRef",
     "useContext", "useReducer", "useLayoutEffect", "useId",
     "useTransition", "useDeferredValue", "useImperativeHandle",

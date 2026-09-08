@@ -453,3 +453,13 @@ async def test_write_entry_imports_tailwind_css_when_present() -> None:
     assert f"./{TAILWIND_OUTPUT_CSS}" in entry, (
         "entry must import the generated tailwind CSS so esbuild bundles it"
     )
+
+
+def test_portal_context_primitives_use_host_platform_not_lucide(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    names = {"createContext", "createElement", "useContext"}
+    pkg = _build_pkg_with_bifrost_imports(bundler, tmp_path, names)
+    for name in names:
+        assert f"export const {name} = _p['{name}'];" in pkg
+    assert 'from "lucide-react"' not in pkg
