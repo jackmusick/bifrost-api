@@ -170,7 +170,7 @@ export function WorkflowListSurface({
 						onSelect={() => onEditScope(workflow)}
 					>
 						<Pencil aria-hidden="true" className="size-4" />
-						Edit organization scope
+						Edit
 					</DropdownMenuItem>
 				)}
 			{workflow.endpoint_enabled && onEditEndpoint && (

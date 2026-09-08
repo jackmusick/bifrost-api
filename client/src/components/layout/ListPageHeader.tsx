@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 interface ListPageHeaderProps {
 	title: ReactNode;
+	titleAccessory?: ReactNode;
 	description?: ReactNode;
 	actions?: ReactNode;
 	children?: ReactNode;
@@ -15,6 +16,7 @@ interface ListPageHeaderProps {
 
 export function ListPageHeader({
 	title,
+	titleAccessory,
 	description,
 	actions,
 	children,
@@ -31,14 +33,17 @@ export function ListPageHeader({
 			)}
 		>
 			<div className="min-w-0 flex-1 sm:basis-64">
-				<h1
-					className={cn(
-						"[overflow-wrap:anywhere] font-display text-2xl font-semibold tracking-tight sm:text-3xl",
-						titleClassName,
-					)}
-				>
-					{title}
-				</h1>
+				<div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3">
+					<h1
+						className={cn(
+							"[overflow-wrap:anywhere] font-display text-2xl font-semibold tracking-tight sm:text-3xl",
+							titleClassName,
+						)}
+					>
+						{title}
+					</h1>
+					{titleAccessory}
+				</div>
 				{description && (
 					<p
 						className={cn(

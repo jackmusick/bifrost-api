@@ -171,7 +171,8 @@ const headerStyle = (C: Palette): CSSProperties => ({
   borderBottom: `1px solid ${C.border}`,
   padding: "0.5rem 1rem",
   background: C.surface,
-  fontFamily: "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
+  fontFamily:
+    "var(--bf-font-sans, Inter, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif)",
   position: "relative",
 });
 const backLinkStyle = (C: Palette): CSSProperties => ({

@@ -644,7 +644,7 @@
 		padding: 0.125rem 0.25rem;
 		border-radius: 0.25rem;
 		font-size: 0.875em;
-		font-family: ui-monospace, monospace;
+		font-family: var(--font-mono);
 	}
 
 	& pre {

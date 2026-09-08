@@ -1,7 +1,7 @@
 /**
  * Tests for the Workflows page — focused on the SolutionManagedBadge
  * affordance: managed workflows show the shared admin-only badge and hide the
- * "Edit organization scope" control; non-managed workflows keep it.
+ * "Edit" control; non-managed workflows keep it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -116,7 +116,7 @@ describe("Workflows — solution-managed badge (grid view)", () => {
 		expect(badge).toHaveAttribute("href", "/solutions/s1");
 		expect(
 			screen.queryByRole("menuitem", {
-				name: /edit organization scope/i,
+				name: /^edit$/i,
 			}),
 		).not.toBeInTheDocument();
 	});
@@ -135,7 +135,7 @@ describe("Workflows — solution-managed badge (grid view)", () => {
 			screen.queryByTestId("solution-managed-badge"),
 		).not.toBeInTheDocument();
 		expect(
-			screen.getByRole("menuitem", { name: /edit organization scope/i }),
+			screen.getByRole("menuitem", { name: /^edit$/i }),
 		).toBeInTheDocument();
 	});
 });
@@ -170,7 +170,7 @@ describe("Workflows — solution-managed badge (table view)", () => {
 		).toHaveAttribute("href", "/solutions/s1");
 		expect(
 			screen.queryByRole("menuitem", {
-				name: /edit organization scope/i,
+				name: /^edit$/i,
 			}),
 		).not.toBeInTheDocument();
 	});
@@ -186,7 +186,7 @@ describe("Workflows — solution-managed badge (table view)", () => {
 		).not.toBeInTheDocument();
 		expect(
 			screen.getByRole("menuitem", {
-				name: /edit organization scope/i,
+				name: /^edit$/i,
 			}),
 		).toBeInTheDocument();
 	});

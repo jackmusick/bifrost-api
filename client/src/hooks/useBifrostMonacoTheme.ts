@@ -44,7 +44,7 @@ export function useBifrostMonacoTheme() {
 		beforeMount,
 		onMount,
 		options: {
-			fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+			fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
 			fontSize: 13,
 			lineHeight: 21,
 			cursorBlinking: reducedMotion

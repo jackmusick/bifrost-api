@@ -21,11 +21,9 @@ import {
 	DataTableRow,
 	DataTableFooter,
 } from "@/components/ui/data-table";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { LogsView } from "./ExecutionHistory/components/LogsView";
 import { ExecutionRecord } from "./ExecutionHistory/components/ExecutionRecord";
 import { ExecutionDrawer } from "./ExecutionHistory/components/ExecutionDrawer";
@@ -121,7 +119,6 @@ export function ExecutionHistory() {
 	};
 	const [searchTerm, setSearchTerm] = useState("");
 	const [dateRange, setDateRange] = useState<DateRange | undefined>();
-	const [showLocal, setShowLocal] = useState(false);
 	const [viewMode, setViewMode] = useState<"executions" | "logs">(
 		"executions",
 	);
@@ -180,8 +177,8 @@ export function ExecutionHistory() {
 			baseFilters.status = statusFilter;
 		}
 
-		// Add excludeLocal filter (inverse of showLocal)
-		baseFilters.excludeLocal = !showLocal;
+		// Retain the default exclusion for legacy local-runner records.
+		baseFilters.excludeLocal = true;
 
 		// Workflow IDs are implementation details; only admins get this filter.
 		if (isPlatformAdmin && workflowIdFilter) {
@@ -206,7 +203,7 @@ export function ExecutionHistory() {
 		}
 
 		return baseFilters;
-	}, [statusFilter, dateRange, showLocal, isPlatformAdmin, workflowIdFilter]);
+	}, [statusFilter, dateRange, isPlatformAdmin, workflowIdFilter]);
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
@@ -275,7 +272,7 @@ export function ExecutionHistory() {
 
 	// Reset pagination when filters change. Adjust during render with a
 	// previous-key sentinel rather than via setState-in-effect.
-	const filtersKey = `${statusFilter}|${dateRange?.from?.toISOString() ?? ""}|${dateRange?.to?.toISOString() ?? ""}|${showLocal}|${filterOrgId ?? ""}|${workflowIdFilter ?? ""}`;
+	const filtersKey = `${statusFilter}|${dateRange?.from?.toISOString() ?? ""}|${dateRange?.to?.toISOString() ?? ""}|${filterOrgId ?? ""}|${workflowIdFilter ?? ""}`;
 	const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
 	if (prevFiltersKey !== filtersKey) {
 		setPrevFiltersKey(filtersKey);
@@ -344,14 +341,58 @@ export function ExecutionHistory() {
 	const showPaginationFooter = hasMore || pageStack.length > 0;
 	const executionPageSummary = `${filteredExecutions.length} run${filteredExecutions.length !== 1 ? "s" : ""} on this page · Page ${pageStack.length + 1}`;
 
+	const historyTypeToggle = isPlatformAdmin ? (
+		<ToggleGroup
+			type="single"
+			value={historyType}
+			onValueChange={(value: string) => {
+				if (!value) return;
+				setSearchParams(
+					(prev) => {
+						const next = new URLSearchParams(prev);
+						if (value === "workflows") {
+							next.delete("type");
+						} else {
+							next.set("type", value);
+						}
+						return next;
+					},
+					{ replace: true },
+				);
+			}}
+			aria-label="Execution history type"
+			size="lg"
+			className="grid w-full grid-cols-2 justify-start sm:flex sm:w-auto"
+			data-testid="history-type-toggle"
+		>
+			<ToggleGroupItem
+				value="workflows"
+				aria-label="Workflows"
+				className="gap-1.5"
+			>
+				<WorkflowIcon className="h-3.5 w-3.5" />
+				Workflows
+			</ToggleGroupItem>
+			<ToggleGroupItem
+				value="agents"
+				aria-label="Agents"
+				className="gap-1.5"
+			>
+				<BotIcon className="h-3.5 w-3.5" />
+				Agents
+			</ToggleGroupItem>
+		</ToggleGroup>
+	) : null;
+
 	return (
 		<section
 			aria-labelledby="history-heading"
-			className="mx-auto flex min-h-full lg:h-full lg:min-h-0 w-full max-w-7xl min-w-0 flex-col gap-4 pb-1 sm:gap-6"
+			className="mx-auto flex min-h-full lg:h-full lg:min-h-0 w-full max-w-7xl min-w-0 flex-col gap-4 pb-1"
 		>
 			<ListPageHeader
 				className="shrink-0 flex-row flex-nowrap items-start gap-4"
 				title={<span id="history-heading">History</span>}
+				titleAccessory={isDesktop ? historyTypeToggle : null}
 				description={
 					<span data-testid="history-summary">
 						{historyType === "agents" ? (
@@ -422,59 +463,18 @@ export function ExecutionHistory() {
 				}
 				actionsClassName="shrink-0 self-start"
 			/>
-			{isPlatformAdmin ? (
-				<ToggleGroup
-					type="single"
-					value={historyType}
-					onValueChange={(value: string) => {
-						if (!value) return;
-						setSearchParams(
-							(prev) => {
-								const next = new URLSearchParams(prev);
-								if (value === "workflows") {
-									next.delete("type");
-								} else {
-									next.set("type", value);
-								}
-								return next;
-							},
-							{ replace: true },
-						);
-					}}
-					aria-label="Execution history type"
-					size="lg"
-					className="mt-1 grid w-full grid-cols-2 justify-start sm:flex sm:w-auto"
-					data-testid="history-type-toggle"
-				>
-					<ToggleGroupItem
-						value="workflows"
-						aria-label="Workflows"
-						className="gap-1.5"
-					>
-						<WorkflowIcon className="h-3.5 w-3.5" />
-						Workflows
-					</ToggleGroupItem>
-					<ToggleGroupItem
-						value="agents"
-						aria-label="Agents"
-						className="gap-1.5"
-					>
-						<BotIcon className="h-3.5 w-3.5" />
-						Agents
-					</ToggleGroupItem>
-				</ToggleGroup>
-			) : null}
+			{!isDesktop && historyTypeToggle}
 
 			{historyType === "agents" ? <AgentRunsPanel /> : null}
 
 			{historyType === "workflows" ? (
 				<PageScrollArea
 					aria-label="Workflow history workspace"
-					className="flex flex-col gap-6"
+					className="flex flex-col gap-3"
 				>
 					<ListToolbar className="items-stretch">
-						<div className="flex min-w-0 flex-col gap-3">
-							<div className="flex min-w-0 items-start gap-2">
+						<div className="flex w-full min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+							<div className="flex min-w-0 items-start gap-2 lg:flex-1 lg:basis-52">
 								<SearchBox
 									value={searchTerm}
 									onChange={setSearchTerm}
@@ -484,7 +484,7 @@ export function ExecutionHistory() {
 												? "Search log messages..."
 												: "Search logs…"
 											: isDesktop
-												? "Search by workflow name, user, or execution ID..."
+												? "Search runs…"
 												: "Search runs…"
 									}
 									aria-label={
@@ -492,7 +492,7 @@ export function ExecutionHistory() {
 											? "Search log messages..."
 											: "Search by workflow name, user, or execution ID..."
 									}
-									className="min-w-0 flex-1 lg:min-w-[240px]"
+									className="min-w-0 flex-1 lg:min-w-52"
 								/>
 								{!isDesktop && (
 									<Button
@@ -521,14 +521,14 @@ export function ExecutionHistory() {
 								)}
 							</div>
 
-							<div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+							<div className="flex min-w-0 flex-col gap-3 lg:contents">
 								<div
 									id="history-filters"
 									data-testid="history-filters"
 									hidden={!isDesktop && !filtersOpen}
 									className={
 										isDesktop
-											? "flex min-w-0 flex-wrap items-center gap-3"
+											? "contents"
 											: filtersOpen
 												? "flex flex-col gap-3 rounded-[var(--bf-radius-surface)] border border-border bg-card p-3"
 												: "hidden"
@@ -565,11 +565,11 @@ export function ExecutionHistory() {
 											variant="combobox"
 											allowClear={true}
 											placeholder="All workflows"
-											className="w-full min-w-0 lg:w-48"
+											className="w-full min-w-0 lg:w-44"
 										/>
 									)}
 									{isPlatformAdmin && (
-										<div className="w-full min-w-0 lg:w-56">
+										<div className="w-full min-w-0 lg:w-44">
 											<OrganizationSelect
 												value={filterOrgId}
 												onChange={setFilterOrgId}
@@ -582,39 +582,15 @@ export function ExecutionHistory() {
 									<DateRangePicker
 										dateRange={dateRange}
 										onDateRangeChange={setDateRange}
-										className="w-full min-w-0 sm:w-auto"
+										className="w-full min-w-0 sm:w-auto lg:w-56"
 									/>
 								</div>
 								<div
 									data-testid="history-controls"
 									className="flex flex-wrap items-center gap-3 lg:ml-auto"
 								>
-									{/* Show Local Executions - only for executions view */}
-									{viewMode === "executions" && (
-										<div className="flex items-center gap-2">
-											<Checkbox
-												id="show-local"
-												checked={showLocal}
-												onCheckedChange={(checked) =>
-													setShowLocal(
-														checked === true,
-													)
-												}
-											/>
-											<Label
-												htmlFor="show-local"
-												className="flex min-h-11 cursor-pointer items-center whitespace-nowrap text-sm font-normal text-muted-foreground"
-											>
-												Show local
-											</Label>
-										</div>
-									)}
 									{isPlatformAdmin && (
 										<>
-											<Separator
-												orientation="vertical"
-												className="h-5"
-											/>
 											<div className="flex items-center gap-2">
 												<Switch
 													id="view-mode"
