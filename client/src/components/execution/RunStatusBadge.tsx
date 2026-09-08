@@ -67,7 +67,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal text-[color:var(--bf-success)]"
+					className="min-w-24 gap-1 font-normal text-[color:var(--bf-success)]"
 				>
 					<CheckCircle2 className="h-3 w-3 text-[color:var(--bf-success)]" />
 					Completed
@@ -77,7 +77,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeDangerStyle}
 				>
 					<XCircle className="h-3 w-3" />
@@ -88,7 +88,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeDangerStyle}
 				>
 					<Clock className="h-3 w-3" />
@@ -99,7 +99,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeWarningStyle}
 				>
 					<AlertTriangle className="h-3 w-3" />
@@ -110,7 +110,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeInfoStyle}
 				>
 					{activityIndicator}
@@ -122,7 +122,7 @@ export function RunStatusBadge({
 				return (
 					<Badge
 						variant="outline"
-						className="gap-1 font-normal"
+						className="min-w-24 gap-1 font-normal"
 						style={activeInfoStyle}
 					>
 						{activityIndicator}
@@ -134,7 +134,7 @@ export function RunStatusBadge({
 				return (
 					<Badge
 						variant="outline"
-						className="gap-1 font-normal"
+						className="min-w-24 gap-1 font-normal"
 						style={activeWarningStyle}
 					>
 						{activityIndicator}
@@ -146,7 +146,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeInfoStyle}
 				>
 					{activityIndicator}
@@ -167,7 +167,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeInfoStyle}
 					{...(title ? { title } : {})}
 				>
@@ -180,7 +180,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal"
+					className="min-w-24 gap-1 font-normal"
 					style={activeWarningStyle}
 				>
 					{activityIndicator}
@@ -191,7 +191,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal text-muted-foreground"
+					className="min-w-24 gap-1 font-normal text-muted-foreground"
 				>
 					<XCircle className="h-3 w-3" />
 					Cancelled
@@ -199,7 +199,7 @@ export function RunStatusBadge({
 			);
 		default:
 			return (
-				<Badge variant="outline" className="font-normal">
+				<Badge variant="outline" className="min-w-24 font-normal">
 					{status}
 				</Badge>
 			);

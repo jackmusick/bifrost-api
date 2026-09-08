@@ -22,20 +22,20 @@ export function RunStatusBadge({ status }: { status: string }) {
 			return (
 				<Badge
 					variant="default"
-					className="bg-[var(--bf-success)]/10 text-[var(--bf-success)]"
+					className="min-w-24 bg-[var(--bf-success)]/10 text-[var(--bf-success)]"
 				>
 					<CheckCircle className="h-3 w-3" /> Completed
 				</Badge>
 			);
 		case "failed":
 			return (
-				<Badge variant="destructive">
+				<Badge variant="destructive" className="min-w-24">
 					<XCircle className="h-3 w-3" /> Failed
 				</Badge>
 			);
 		case "running":
 			return (
-				<Badge variant="secondary">
+				<Badge variant="secondary" className="min-w-24">
 					<Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />{" "}
 					Running
 				</Badge>
@@ -44,13 +44,13 @@ export function RunStatusBadge({ status }: { status: string }) {
 			return (
 				<Badge
 					variant="warning"
-					className="bg-[var(--bf-warning)]/10 text-[var(--bf-warning)]"
+					className="min-w-24 bg-[var(--bf-warning)]/10 text-[var(--bf-warning)]"
 				>
 					<AlertCircle className="h-3 w-3" /> Budget exceeded
 				</Badge>
 			);
 		default:
-			return <Badge variant="outline">{status}</Badge>;
+			return <Badge variant="outline" className="min-w-24">{status}</Badge>;
 	}
 }
 

@@ -34,7 +34,7 @@ export function AIBehaviorSettings() {
 	};
 
 	return (
-		<div className="min-w-0 max-w-3xl space-y-6">
+		<div className="min-w-0 w-full space-y-6">
 			<div><h2 className="font-display text-2xl font-semibold tracking-tight">Chat instructions</h2><p className="mt-1 text-sm text-muted-foreground">Set the default behavior for agentless conversations. Agent prompts remain configured on each agent.</p></div>
 			{isError && <div role="alert" className="space-y-3 rounded-[var(--bf-radius-surface)] border bg-[var(--bf-warning-soft)] p-4 text-sm">
 				<p>{data ? "Could not refresh instructions. Your current draft is still available." : "Could not load chat instructions. Retry before editing."}</p>

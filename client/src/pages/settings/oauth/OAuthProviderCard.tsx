@@ -26,7 +26,7 @@ interface ProviderCardProps {
 }
 
 export function OAuthProviderCard({
-	provider: _provider,
+	provider,
 	title,
 	description,
 	configured,
@@ -139,7 +139,7 @@ export function OAuthProviderCard({
 				<CardHeader>
 					<div className="flex flex-wrap items-start justify-between gap-3">
 						<div className="flex min-w-0 flex-wrap items-center gap-2">
-							<Shield className="h-5 w-5" />
+							{provider === "oidc" ? <Shield className="h-5 w-5" /> : <img src={`/provider-icons/${provider === "microsoft" ? "entra-id.svg" : "google.png"}`} alt="" aria-hidden="true" className="h-5 w-5 object-contain" />}
 							<CardTitle ref={headingRef} tabIndex={-1} className="text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</CardTitle>
 							{configured && (
 								<Badge
