@@ -1,7 +1,8 @@
 import * as React from "react";
-import { ChevronsUpDown, Loader2, X } from "lucide-react";
+import { ChevronsUpDown, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { SelectionChip } from "@/components/ui/selection-chip";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -190,21 +191,12 @@ function SelectedOption({
 	onRemove: () => void;
 }) {
 	return (
-		<li className="flex max-w-full min-w-0 items-center gap-2 rounded-[var(--bf-radius-control)] border bg-muted pl-3">
-			<span className="min-w-0 text-sm leading-6 [overflow-wrap:anywhere]">
-				{label}
-			</span>
-			<Button
-				type="button"
-				variant="ghost"
-				size="icon"
-				className="h-11 w-11 shrink-0"
+		<li className="min-w-0 max-w-full">
+			<SelectionChip
+				label={label}
 				disabled={disabled}
-				aria-label={`Remove ${label}`}
-				onClick={onRemove}
-			>
-				<X className="h-4 w-4" />
-			</Button>
+				onRemove={onRemove}
+			/>
 		</li>
 	);
 }

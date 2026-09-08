@@ -1,9 +1,9 @@
 import * as React from "react";
-import { ChevronsUpDown, X } from "lucide-react";
+import { ChevronsUpDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { SelectionChip } from "@/components/ui/selection-chip";
 import {
 	Command,
 	CommandEmpty,
@@ -93,29 +93,17 @@ export function MultiCombobox({
 				>
 					{displayedItems.map((option) => (
 						<li key={option.value} className="min-w-0 max-w-full">
-							<Badge
-								variant="secondary"
-								className="h-auto min-h-11 max-w-full whitespace-normal gap-2 text-sm leading-5"
-							>
-								<span className="min-w-0 [overflow-wrap:anywhere]">
-									{option.label}
-								</span>
-								<button
-									type="button"
-									disabled={unavailable}
-									aria-label={`Remove ${option.label}`}
-									className="inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] hover:bg-muted-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-									onClick={(event) =>
-										handleRemove(option.value, event)
-									}
-								>
-									<X className="size-4" />
-								</button>
-							</Badge>
+							<SelectionChip
+								label={option.label}
+								disabled={unavailable}
+								onRemove={(event) =>
+									handleRemove(option.value, event)
+								}
+							/>
 						</li>
 					))}
 					{overflowCount > 0 && (
-						<li className="flex min-h-11 items-center text-sm text-muted-foreground">
+						<li className="flex min-h-7 items-center text-xs text-muted-foreground">
 							+{overflowCount} more
 						</li>
 					)}
