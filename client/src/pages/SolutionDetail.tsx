@@ -487,7 +487,7 @@ function SolutionEntityGrid({
 									navigate(href);
 								}
 							}}
-							className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 transition-all hover:-translate-y-px hover:ring-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:ring-foreground/10 dark:hover:ring-foreground/15"
+							className="group relative flex cursor-pointer flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-card transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none"
 						>
 							<div className="border-b px-4 py-3">
 								<div className="flex items-start justify-between gap-3">
@@ -553,7 +553,7 @@ function SolutionEntityGrid({
 						<Link
 							key={entity.id}
 							to={href}
-							className="group flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border border-border/70 bg-card transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+							className="group flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border border-border/70 bg-card transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none"
 						>
 							<div className="border-b px-4 pb-3 pt-3.5">
 								<div className="flex items-start justify-between gap-3">
@@ -1660,7 +1660,7 @@ function AccessTab({
 								onClick={(event) =>
 									openAccessRow(row, event.currentTarget)
 								}
-								className="flex min-w-0 flex-col gap-3 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 text-left transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+								className="flex min-w-0 flex-col gap-3 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 text-left transition-colors duration-[var(--bf-motion-feedback)] hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none"
 							>
 								<span className="flex flex-wrap items-center justify-between gap-2">
 									<EntityKindBadge kind={row.kind} />

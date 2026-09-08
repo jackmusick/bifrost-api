@@ -261,7 +261,7 @@ function PreviewSession({ location, scope, path }: FilePreviewProps) {
 							onError={() =>
 								setError("Image could not be displayed")
 							}
-							className="max-h-full min-h-10 min-w-10 max-w-full rounded-[var(--bf-radius-surface)] bg-muted object-contain ring-1 ring-border"
+							className="max-h-full min-h-10 min-w-10 max-w-full rounded-[var(--bf-radius-surface)] border border-border bg-muted object-contain"
 						/>
 					</div>
 				) : (

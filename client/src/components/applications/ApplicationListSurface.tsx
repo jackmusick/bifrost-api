@@ -397,7 +397,7 @@ export function ApplicationListSurface({
 							prefetchApplicationDetail(app, opensPreview)
 						}
 						onClick={defaultTarget}
-						className="group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-[var(--bf-radius-surface)] bg-card ring-1 ring-border transition-colors duration-[var(--bf-motion-feedback)] hover:ring-primary/40 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring "
+						className="group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-[var(--bf-radius-surface)] bg-card ring-1 ring-inset ring-border transition-colors duration-[var(--bf-motion-feedback)] hover:ring-primary/40 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring "
 					>
 						<div className="border-b px-4 py-3">
 							<div className="flex items-start justify-between gap-3">

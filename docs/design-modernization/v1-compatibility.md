@@ -79,3 +79,47 @@ remain part of release acceptance.
 Legacy compiler utilities use the `bifrost-app-utilities` cascade layer, ordered below host components/utilities. They add classes absent from the host without overriding its responsive layout. Authored app CSS stays unlayered; shared React providers and body-portaled controls remain unchanged. Bundle schema4 refreshes old generated assets through the existing manifest rebuild path for both draft and live inline apps. This does not sandbox arbitrary authored global CSS or alter standalone V2 asset ownership.
 
 V1 matrix4230 passed all eight published/preview x320/1440 light/dark custom-purple reduced-motion cases after the utility-layer correction. It exercises metadata failure/retry, Dialog, CommandDialog search, Select, controlled input, tabs and calendar width. Parent inspected the dark320 preview capture; the fixture page itself scrolls and the calendar continues below the captured viewport. This is component/route behavior evidence, not a new full app-editor acceptance. API quality25767 completed successfully: Pyright reports0 errors/0 warnings and Ruff reports all checks passed.
+
+## Production-source compatibility exercise (2026-09-08)
+
+A read-only copy of production's **Service Margin Dashboard** is published in the
+review debug stack as `/apps/v1-review-margin-dashboard` (application
+`268e5b3a-5373-46c5-a76c-0a4139b42d4f`). Its ten source files, including the layout,
+five pages, three local components and `app.yaml`, were verified byte for byte
+against the production download. Its Recharts 3.7 dependency is retained.
+Production source is not checked into this repository.
+
+Ten debug-only workflows implement the original path/function references with
+synthetic clients, financial metrics and team members. Refresh and analysis return
+synthetic results; they do not call production integrations or an AI provider.
+Pool changes persist to `v1-review-margin-pools.json` in the debug temp file
+location. Its file policy allows platform-admin read/write, matching the review
+account. No production records, credentials or role assignments were copied.
+
+Browser acceptance on the published copy:
+
+- All five routes loaded: summary, team, clients, actions and pools.
+- Summary Recharts bars, gauge sectors and trend line rendered after animation.
+- Client search filtered rows; opening a row loaded the detail Sheet; Escape closed it.
+- Re-analyze and Refresh Data completed against the synthetic workflows.
+- Dragging an unassigned member into Projects persisted across reload; removing
+  the member persisted and restored the initial assignment.
+- Desktop dark and light summary captures were taken. The parent inspected the
+  dark summary and detail Sheet. Route and client interaction checks reported no
+  browser page errors.
+
+This exercise also exposed limitations already explicit in the copied source:
+its fixed `w-64` sidebar squeezes the content at 390px, and its Sheet specifies a
+400px minimum width. The mobile client-page capture confirms the sidebar issue.
+The source is deliberately unchanged; this is a compatibility fixture, not a
+redesign of the copied app. These app-authored layouts require their own mobile
+adaptation. A zero document overflow measurement alone did not catch the visibly
+cramped content.
+
+The current branch also passed 43 tests across runtime exports, app shells,
+workflow hooks, routing and the focused compatibility fixture, plus the eight
+published/preview × 320/1440 × light/dark browser cases for the synthetic legacy
+components app. These are evidence for the exercised contracts, not certification
+of every V1 component, every production app or visual equivalence to the old host.
+Shared V1 components continue to inherit the host design; app-authored layouts and
+colors remain in the app source.
