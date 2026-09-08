@@ -20,3 +20,10 @@ Validation: 31 existing History/workflow tests passed. Parent screenshots review
 at 1280px, 1440px and 390px, including expanded mobile filters. Browser checks
 confirmed Logs/Agents switching and reaching the last desktop table row with
 window scroll remaining zero. TypeScript and scoped ESLint passed.
+
+Pagination follow-up: History still placed the shared controls inside a shaded
+DataTableFooter. It now renders the same footer below the table as Audit, with
+one shared desktop/mobile instance definition. The desktop results region uses a
+bounded flex column so pagination stays visible while the table body scrolls.
+Parent browser verification reached the last row with window scroll zero and
+pagination in the viewport; 18 History tests and scoped lint passed.
