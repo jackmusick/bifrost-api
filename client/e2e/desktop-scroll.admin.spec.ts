@@ -1,5 +1,103 @@
 import { expect, test } from "@playwright/test";
 
+for (const width of [1440, 1100]) {
+	for (const filtersOpen of [false, true]) {
+		test(`document records accept wheel scrolling at ${width}px, filters ${filtersOpen}`, async ({
+			page,
+		}) => {
+			await page.setViewportSize({ width, height: 600 });
+			const id = "00000000-0000-4000-8000-000000000001";
+			await page.route(`**/api/tables/${id}`, (route) =>
+				route.fulfill({
+					json: {
+						id,
+						name: "Scroll documents",
+						description: "Document scrolling fixture",
+						organization_id: null,
+					},
+				}),
+			);
+			await page.route(`**/api/tables/${id}/documents/query`, (route) =>
+				route.fulfill({
+					json: {
+						documents: Array.from({ length: 40 }, (_, i) => ({
+							id: `scroll-document-${i}`,
+							data: { name: `Device ${i}` },
+							created_at: null,
+						})),
+						total: 40,
+					},
+				}),
+			);
+			await page.goto(`/tables/${id}`);
+			await expect(
+				page.getByRole("heading", {
+					name: "Scroll documents",
+					exact: true,
+				}),
+			).toBeVisible();
+			if (filtersOpen)
+				await page.getByRole("button", { name: /^Filters/ }).click();
+			const region = page.getByRole("region", {
+				name: "Documents",
+				exact: true,
+			});
+			await expect(
+				region.getByText("scroll-document-39", { exact: true }).first(),
+			).toBeAttached();
+			const table = region.locator("table:visible");
+			const records = (await table.count())
+				? table.locator("tbody > tr")
+				: region
+						.getByRole("list", { name: "Document records" })
+						.locator(":scope > li");
+			await expect(records).toHaveCount(40);
+			const owner = await records.first().evaluateHandle((element) => {
+				let parent = element.parentElement;
+				while (
+					parent &&
+					!(
+						getComputedStyle(parent).overflowY === "auto" &&
+						parent.scrollHeight > parent.clientHeight &&
+						parent.clientHeight > 0
+					)
+				)
+					parent = parent.parentElement;
+				return parent;
+			});
+			const bounds = await owner.evaluate((element) => {
+				if (!(element instanceof HTMLElement))
+					throw new Error("Records have no scrolling ancestor");
+				const r = element.getBoundingClientRect();
+				return {
+					x: r.x,
+					y: r.y,
+					width: r.width,
+					height: r.height,
+					tag: element.tagName,
+				};
+			});
+			expect(bounds.tag).not.toBe("MAIN");
+			expect(bounds.height).toBeGreaterThan(75);
+			await page.mouse.move(
+				bounds.x + bounds.width / 2,
+				bounds.y + bounds.height / 2,
+			);
+			await page.mouse.wheel(0, 20000);
+			await expect(records.last()).toBeInViewport();
+			await expect(
+				page.getByRole("heading", {
+					name: "Scroll documents",
+					exact: true,
+				}),
+			).toBeInViewport();
+			await expect(
+				page.getByRole("combobox", { name: "Documents per page" }),
+			).toBeInViewport();
+		});
+	}
+}
+
 const configs = (count: number) =>
 	Array.from({ length: count }, (_, index) => ({
 		id: `scroll-config-${index}`,

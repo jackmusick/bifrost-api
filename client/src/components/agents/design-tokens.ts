@@ -79,8 +79,8 @@ export const RADIUS_BUTTON = "rounded-[var(--bf-radius-control)]";
 // Card surface — the repeated base container
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Base card surface: card chrome (radius + card bg + shadow + hairline ring). Add padding separately. */
-export const CARD_SURFACE = `${RADIUS_CARD} bg-card ring-1 ring-border`;
+/** Inset outline stays visible against bounded scroll-container edges. Add padding separately. */
+export const CARD_SURFACE = `${RADIUS_CARD} bg-card ring-1 ring-inset ring-border`;
 
 /** Hover feedback without moving content. */
 export const CARD_HOVER =

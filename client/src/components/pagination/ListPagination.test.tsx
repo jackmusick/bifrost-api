@@ -17,10 +17,11 @@ describe("ListPagination", () => {
 			/>,
 		);
 
-		expect(screen.getByText("26–50 of 72")).toBeInTheDocument();
-		expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
-		await user.click(screen.getByRole("link", { name: /previous/i }));
-		await user.click(screen.getByRole("link", { name: /next/i }));
+		expect(
+			screen.getByText("26–50 of 72 · Page 2 of 3"),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /previous/i }));
+		await user.click(screen.getByRole("button", { name: /next/i }));
 		expect(onPageChange).toHaveBeenNthCalledWith(1, 0);
 		expect(onPageChange).toHaveBeenNthCalledWith(2, 50);
 	});
@@ -37,13 +38,9 @@ describe("ListPagination", () => {
 		);
 
 		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
-		expect(screen.getByRole("link", { name: /previous/i })).toHaveAttribute(
-			"aria-disabled",
-			"true",
-		);
-		expect(screen.getByRole("link", { name: /next/i })).toHaveAttribute(
-			"aria-disabled",
-			"true",
-		);
+		expect(
+			screen.getByRole("button", { name: /previous/i }),
+		).toBeDisabled();
+		expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
 	});
 });

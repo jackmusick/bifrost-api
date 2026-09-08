@@ -221,7 +221,7 @@ export function Applications() {
 			<PageScrollArea
 				aria-label={`${term(terminology, "app", "formalPlural")} list`}
 				className={
-					viewMode === "table"
+					isDesktop && viewMode === "table"
 						? "space-y-4 lg:flex lg:flex-col lg:overflow-hidden"
 						: "space-y-4"
 				}

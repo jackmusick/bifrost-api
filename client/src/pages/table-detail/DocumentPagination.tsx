@@ -1,5 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { PaginationFooter } from "@/components/pagination/PaginationFooter";
 import {
 	Select,
 	SelectContent,
@@ -26,69 +25,55 @@ export function DocumentPagination({
 	onPageSizeChange,
 }: Props) {
 	const pages = Math.max(1, Math.ceil(total / pageSize));
+	const first =
+		total === 0 || page * pageSize >= total ? 0 : page * pageSize + 1;
+	const last = Math.min((page + 1) * pageSize, total);
 	return (
-		<footer className="flex flex-wrap items-center justify-between gap-4 border-t pt-4 text-sm">
-			<div className="flex flex-wrap items-center gap-3">
-				<p role="status" className="text-muted-foreground">
-					{total === 0 || page * pageSize >= total
-						? 0
-						: page * pageSize + 1}
-					–{Math.min((page + 1) * pageSize, total)} of {total}{" "}
-					documents
-				</p>
-				<Select
-					value={String(pageSize)}
-					onValueChange={(value) => onPageSizeChange(Number(value))}
-					disabled={busy}
-				>
-					<SelectTrigger
-						aria-label="Documents per page"
-						className="min-h-11 w-20"
-					>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{[10, 25, 50, 100].map((size) => (
-							<SelectItem
-								key={size}
-								value={String(size)}
-								className="min-h-11"
-							>
-								{size}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-				<span className="text-muted-foreground">per page</span>
-			</div>
-			<nav
+		<footer className="shrink-0 border-t">
+			<PaginationFooter
 				aria-label="Document pages"
-				className="flex w-full items-center justify-between gap-3 sm:w-auto"
-			>
-				<Button
-					type="button"
-					variant="outline"
-					size="icon-lg"
-					aria-label="Previous page"
-					disabled={busy || page === 0}
-					onClick={() => onPageChange(Math.max(0, page - 1))}
-				>
-					<ChevronLeft aria-hidden="true" className="size-4" />
-				</Button>
-				<span className="tabular-nums">
-					Page {page + 1} of {Math.max(pages, page + 1)}
-				</span>
-				<Button
-					type="button"
-					variant="outline"
-					size="icon-lg"
-					aria-label="Next page"
-					disabled={busy || page >= pages - 1}
-					onClick={() => onPageChange(page + 1)}
-				>
-					<ChevronRight aria-hidden="true" className="size-4" />
-				</Button>
-			</nav>
+				className="gap-4 pt-4"
+				summary={
+					<span className="flex flex-wrap items-center gap-3">
+						<span role="status" className="text-muted-foreground">
+							{first}–{last} of {total} documents · Page{" "}
+							{page + 1} of {Math.max(pages, page + 1)}
+						</span>
+						<Select
+							value={String(pageSize)}
+							onValueChange={(value) =>
+								onPageSizeChange(Number(value))
+							}
+							disabled={busy}
+						>
+							<SelectTrigger
+								aria-label="Documents per page"
+								className="min-h-11 w-20"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{[10, 25, 50, 100].map((size) => (
+									<SelectItem
+										key={size}
+										value={String(size)}
+										className="min-h-11"
+									>
+										{size}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<span className="text-muted-foreground">per page</span>
+					</span>
+				}
+				pending={busy}
+				showControls={pages > 1 || page > 0}
+				previousDisabled={busy || page === 0}
+				nextDisabled={busy || page >= pages - 1}
+				onPrevious={() => onPageChange(Math.max(0, page - 1))}
+				onNext={() => onPageChange(page + 1)}
+			/>
 		</footer>
 	);
 }

@@ -92,7 +92,7 @@ describe("TableDetail document navigation and recovery", () => {
 			"missing",
 		);
 		await screen.findByText("No documents match on this page");
-		await user.click(screen.getByRole("button", { name: "Next page" }));
+		await user.click(screen.getByRole("button", { name: "Next" }));
 		expect(mockUseDocuments).toHaveBeenLastCalledWith(
 			"tbl-1",
 			expect.objectContaining({ offset: 25, limit: 25 }),

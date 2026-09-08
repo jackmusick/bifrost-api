@@ -185,8 +185,14 @@ export function ConsumerTab({
 		visibleItems.every((i) => effectiveSelected.has(i.id));
 	const someVisibleSelected =
 		!allVisibleSelected && effectiveSelected.size > 0;
+	const showPagination =
+		!!pagination &&
+		(pagination.offset > 0 || pagination.total > pagination.limit);
 	const showEmptyPagination =
-		!!pagination && !isLoading && items.length === 0 && !readState?.isError;
+		showPagination &&
+		!isLoading &&
+		items.length === 0 &&
+		!readState?.isError;
 
 	const toggleOne = (id: string) =>
 		setSelected((prev) => {
@@ -282,7 +288,9 @@ export function ConsumerTab({
 								onItemClick={onItemClick}
 								getItemHref={getItemHref}
 							/>
-							{pagination && <ListPagination {...pagination} />}
+							{showPagination && pagination && (
+								<ListPagination {...pagination} />
+							)}
 						</>
 					) : (
 						<DataTable className="max-h-full">
@@ -376,7 +384,7 @@ export function ConsumerTab({
 									</DataTableRow>
 								))}
 							</DataTableBody>
-							{pagination && (
+							{showPagination && pagination && (
 								<DataTableFooter>
 									<DataTableRow>
 										<DataTableCell
@@ -396,7 +404,9 @@ export function ConsumerTab({
 					)}
 				</div>
 			)}
-			{showEmptyPagination && <ListPagination {...pagination} />}
+			{showEmptyPagination && pagination && (
+				<ListPagination {...pagination} />
+			)}
 
 			{effectiveSelected.size > 0 && (
 				<div

@@ -146,6 +146,25 @@ describe("ConsumerTab", () => {
 		expect(onRequestCandidates).toHaveBeenCalledOnce();
 	});
 
+	it("omits pagination when assigned users fit on one page", () => {
+		renderWithProviders(
+			<ConsumerTab
+				{...defaults}
+				items={[{ id: "a", primary: "Alice" }]}
+				pagination={{
+					offset: 0,
+					limit: 25,
+					total: 1,
+					onPageChange: vi.fn(),
+				}}
+			/>,
+		);
+		expect(screen.getByText("Alice")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("navigation", { name: /pagination/i }),
+		).toBeNull();
+	});
+
 	it("keeps pagination in the pinned table footer", async () => {
 		const user = userEvent.setup();
 		const onPageChange = vi.fn();
@@ -170,7 +189,7 @@ describe("ConsumerTab", () => {
 			screen.getAllByRole("table")[0].parentElement?.parentElement,
 		).toHaveClass("max-h-full");
 
-		await user.click(screen.getByRole("link", { name: /next page/i }));
+		await user.click(screen.getByRole("button", { name: /^Next$/i }));
 		expect(onPageChange).toHaveBeenCalledWith(25);
 	});
 
@@ -196,22 +215,36 @@ describe("ConsumerTab", () => {
 			name: /pagination/i,
 		});
 		expect(pagination.closest("tfoot")).toBeNull();
-		expect(screen.getByText("26–30 of 30")).toBeInTheDocument();
+		expect(screen.getByText(/26–30 of 30/)).toBeInTheDocument();
 
-		await user.click(screen.getByRole("link", { name: /previous page/i }));
+		await user.click(screen.getByRole("button", { name: /^Previous$/i }));
 		expect(onPageChange).toHaveBeenCalledWith(0);
 	});
 });
 
-
 it("keeps removal failure feedback with the selected-item action and retries the selection", async () => {
-	const onUnassign = vi.fn().mockRejectedValueOnce(new Error("Removal failed")).mockResolvedValueOnce(undefined);
-	const { user } = renderWithProviders(<ConsumerTab {...defaults} items={[{ id: "a", primary: "Alice" }]} onUnassign={onUnassign} />);
+	const onUnassign = vi
+		.fn()
+		.mockRejectedValueOnce(new Error("Removal failed"))
+		.mockResolvedValueOnce(undefined);
+	const { user } = renderWithProviders(
+		<ConsumerTab
+			{...defaults}
+			items={[{ id: "a", primary: "Alice" }]}
+			onUnassign={onUnassign}
+		/>,
+	);
 	await user.click(screen.getByRole("checkbox", { name: "Select Alice" }));
-	await user.click(screen.getByRole("button", { name: "Unassign from role" }));
+	await user.click(
+		screen.getByRole("button", { name: "Unassign from role" }),
+	);
 	const actions = screen.getByRole("region", { name: "Selected users" });
-	expect(await within(actions).findByRole("alert")).toHaveTextContent("Removal failed. Your selection is preserved.");
-	await user.click(within(actions).getByRole("button", { name: "Unassign from role" }));
+	expect(await within(actions).findByRole("alert")).toHaveTextContent(
+		"Removal failed. Your selection is preserved.",
+	);
+	await user.click(
+		within(actions).getByRole("button", { name: "Unassign from role" }),
+	);
 	await waitFor(() => expect(onUnassign).toHaveBeenCalledTimes(2));
 	expect(onUnassign).toHaveBeenLastCalledWith(["a"]);
 });

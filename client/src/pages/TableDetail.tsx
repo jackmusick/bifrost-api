@@ -177,11 +177,11 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 				</Button>
 			</div>
 			<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
-				<div className="flex min-w-0 flex-col items-start gap-6 xl:flex-row lg:h-full lg:min-h-0">
+				<div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:h-full lg:min-h-0">
 					<div
 						id="document-filters"
 						hidden={!sidebarOpen}
-						className="w-full xl:w-72 xl:shrink-0"
+						className="w-full shrink-0 lg:max-h-full lg:w-64 lg:overflow-auto xl:w-72"
 					>
 						<TableFilterSidebar
 							key={filterRevision}
@@ -197,7 +197,7 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 					</div>
 					<section
 						aria-label="Documents"
-						className="min-w-0 w-full flex-1 space-y-4"
+						className="min-w-0 w-full flex-1 space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:space-y-0"
 					>
 						{documentsQuery.isError && (
 							<DocumentCollectionState

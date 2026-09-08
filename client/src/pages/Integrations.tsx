@@ -280,7 +280,11 @@ export function Integrations() {
 
 			<PageScrollArea
 				aria-label="Integrations list"
-				className="lg:flex lg:flex-col lg:overflow-hidden"
+				className={
+					isDesktop
+						? "lg:flex lg:flex-col lg:overflow-hidden"
+						: undefined
+				}
 			>
 				{isLoading && !data ? (
 					<div className="space-y-2">

@@ -13,14 +13,11 @@ import { ListLoadError } from "@/components/layout/ListLoadError";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import {
-	Bot,
-	Clock,
-	RefreshCw,
-} from "lucide-react";
+import { Bot, Clock, RefreshCw } from "lucide-react";
 
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { AgentRunRecord, RunStatusBadge, VerdictGlyph } from "./AgentRunRecord";
+import { PaginationFooter } from "@/components/pagination/PaginationFooter";
 import { Button } from "@/components/ui/button";
 import {
 	DataTable,
@@ -32,14 +29,6 @@ import {
 	DataTableFooter,
 } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Pagination,
-	PaginationContent,
-	PaginationItem,
-	PaginationLink,
-	PaginationNext,
-	PaginationPrevious,
-} from "@/components/ui/pagination";
 import {
 	useAgentRunListStream,
 	useInfiniteAgentRuns,
@@ -76,13 +65,17 @@ export function AgentRunsPanel() {
 		fetchNextPage,
 	} = useInfiniteAgentRuns({ pageSize: PAGE_SIZE });
 	const rerun = useRerunAgentRun();
- const [pendingRunId, setPendingRunId] = useState<string | null>(null);
- const [rerunError, setRerunError] = useState<{id: string; name: string} | null>(null);
- const rerunBusy = useRef(false);
- const rerunErrorRef = useRef<HTMLDivElement>(null);
- useEffect(() => { if (rerunError) rerunErrorRef.current?.focus(); }, [rerunError]);
- const isRerunning = rerun.isPending || pendingRunId !== null;
-
+	const [pendingRunId, setPendingRunId] = useState<string | null>(null);
+	const [rerunError, setRerunError] = useState<{
+		id: string;
+		name: string;
+	} | null>(null);
+	const rerunBusy = useRef(false);
+	const rerunErrorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (rerunError) rerunErrorRef.current?.focus();
+	}, [rerunError]);
+	const isRerunning = rerun.isPending || pendingRunId !== null;
 
 	// Subscribe to real-time updates; the hook patches the shared
 	// ["agent-runs", ...] cache in place so new runs prepend and in-progress
@@ -93,6 +86,18 @@ export function AgentRunsPanel() {
 	const total = data?.pages[0]?.total ?? 0;
 	const hasPreviousPage = pageIndex > 0;
 	const hasFollowingPage = (pageIndex + 1) * PAGE_SIZE < total;
+	const agentRunsPaginationFooter = (className?: string) => (
+		<PaginationFooter
+			aria-label="Agent run pages"
+			className={className}
+			summary={`Page ${pageIndex + 1}`}
+			pending={isFetchingNextPage}
+			previousDisabled={!hasPreviousPage || isFetchingNextPage}
+			nextDisabled={!hasFollowingPage || isFetchingNextPage}
+			onPrevious={() => setPageIndex((current) => current - 1)}
+			onNext={() => void handleNextPage()}
+		/>
+	);
 
 	async function handleNextPage() {
 		const nextPageIndex = pageIndex + 1;
@@ -108,16 +113,19 @@ export function AgentRunsPanel() {
 	}
 
 	function handleRerun(runId: string) {
-  if (rerunBusy.current) return;
-  const source = runs.find(run => run.id === runId);
-  if (!source) return;
-  rerunBusy.current = true; setPendingRunId(runId); setRerunError(null);
+		if (rerunBusy.current) return;
+		const source = runs.find((run) => run.id === runId);
+		if (!source) return;
+		rerunBusy.current = true;
+		setPendingRunId(runId);
+		setRerunError(null);
 
 		rerun.mutate(
 			{ params: { path: { run_id: runId } } },
 			{
 				onSuccess: (data) => {
- rerunBusy.current = false; setPendingRunId(null);
+					rerunBusy.current = false;
+					setPendingRunId(null);
 					toast.success("Rerun queued");
 					if (data.run_id) {
 						// We don't know the agent_id from the response — find it
@@ -131,14 +139,26 @@ export function AgentRunsPanel() {
 						}
 					}
 				},
-				onError: () => { rerunBusy.current = false; setPendingRunId(null); setRerunError({id: source.id, name: source.agent_name || "this agent"}); },
+				onError: () => {
+					rerunBusy.current = false;
+					setPendingRunId(null);
+					setRerunError({
+						id: source.id,
+						name: source.agent_name || "this agent",
+					});
+				},
 			},
 		);
 	}
 
 	if (isLoading) {
 		return (
-			<div role="status" aria-label="Loading agent runs" className="space-y-2" data-testid="agent-runs-panel-loading">
+			<div
+				role="status"
+				aria-label="Loading agent runs"
+				className="space-y-2"
+				data-testid="agent-runs-panel-loading"
+			>
 				{[...Array(5)].map((_, i) => (
 					<Skeleton key={i} className="h-48 w-full xl:h-10" />
 				))}
@@ -148,26 +168,48 @@ export function AgentRunsPanel() {
 
 	if (isError && !data) {
 		return (
-			<div role="alert" className="space-y-3 rounded-[var(--bf-radius-surface)] border border-border bg-card p-4">
+			<div
+				role="alert"
+				className="space-y-3 rounded-[var(--bf-radius-surface)] border border-border bg-card p-4"
+			>
 				<p className="font-medium">Couldn't load agent runs</p>
-				<p className="text-sm text-muted-foreground">Try again to load recent runs.</p>
-				<Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Retrying…" : "Retry loading agent runs"}</Button>
+				<p className="text-sm text-muted-foreground">
+					Try again to load recent runs.
+				</p>
+				<Button
+					variant="outline"
+					className="min-h-11"
+					disabled={isFetching}
+					onClick={() => void refetch()}
+				>
+					{isFetching ? "Retrying…" : "Retry loading agent runs"}
+				</Button>
 			</div>
 		);
 	}
 
-	const cachedError = isError && data && !isFetchNextPageError ? <ListLoadError resource="agent runs" hasCachedData={runs.length > 0} isRetrying={isFetching} onRetry={() => void refetch()} /> : null;
- if (runs.length === 0) {
-		return (<>
- {cachedError}
-			<div
-				className="rounded-[var(--bf-radius-surface)] border border-border bg-card p-8 text-center text-sm text-muted-foreground"
-				data-testid="agent-runs-panel-empty"
-			>
-				<Bot className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-				No agent runs yet.
-			</div>
- </>);
+	const cachedError =
+		isError && data && !isFetchNextPageError ? (
+			<ListLoadError
+				resource="agent runs"
+				hasCachedData={runs.length > 0}
+				isRetrying={isFetching}
+				onRetry={() => void refetch()}
+			/>
+		) : null;
+	if (runs.length === 0) {
+		return (
+			<>
+				{cachedError}
+				<div
+					className="rounded-[var(--bf-radius-surface)] border border-border bg-card p-8 text-center text-sm text-muted-foreground"
+					data-testid="agent-runs-panel-empty"
+				>
+					<Bot className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+					No agent runs yet.
+				</div>
+			</>
+		);
 	}
 
 	return (
@@ -175,171 +217,197 @@ export function AgentRunsPanel() {
 			className="flex min-h-0 min-w-0 flex-1 flex-col gap-4"
 			data-testid="agent-runs-panel"
 		>
- {cachedError}
- {isFetchNextPageError && <div role="alert" className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-4 text-sm"><p>Could not load the next page. You’re still on page {pageIndex + 1}.</p><Button variant="outline" className="min-h-11" disabled={isFetchingNextPage} onClick={() => void handleNextPage()}>Retry next page</Button></div>}
- {rerunError && <div ref={rerunErrorRef} tabIndex={-1} role="alert" className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-4 text-sm">
-  <p className="text-destructive [overflow-wrap:anywhere]">Could not queue a rerun for {rerunError.name}. The original run is unchanged.</p>
-  <Button variant="outline" className="min-h-11" disabled={isRerunning} onClick={() => handleRerun(rerunError.id)}>Retry rerun</Button>
- </div>}
+			{cachedError}
+			{isFetchNextPageError && (
+				<div
+					role="alert"
+					className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-4 text-sm"
+				>
+					<p>
+						Could not load the next page. You’re still on page{" "}
+						{pageIndex + 1}.
+					</p>
+					<Button
+						variant="outline"
+						className="min-h-11"
+						disabled={isFetchingNextPage}
+						onClick={() => void handleNextPage()}
+					>
+						Retry next page
+					</Button>
+				</div>
+			)}
+			{rerunError && (
+				<div
+					ref={rerunErrorRef}
+					tabIndex={-1}
+					role="alert"
+					className="space-y-3 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-4 text-sm"
+				>
+					<p className="text-destructive [overflow-wrap:anywhere]">
+						Could not queue a rerun for {rerunError.name}. The
+						original run is unchanged.
+					</p>
+					<Button
+						variant="outline"
+						className="min-h-11"
+						disabled={isRerunning}
+						onClick={() => handleRerun(rerunError.id)}
+					>
+						Retry rerun
+					</Button>
+				</div>
+			)}
 
 			{!isDesktop ? (
-				<div className="space-y-4">
-					<ul aria-label="Agent run records" className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-card">
+				<div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-auto xl:overflow-visible">
+					<ul
+						aria-label="Agent run records"
+						className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-card"
+					>
 						{runs.map((run) => (
-							<AgentRunRecord key={run.id} run={run} navigationState={runNavigationState} isRerunning={isRerunning} onRerun={handleRerun} />
+							<AgentRunRecord
+								key={run.id}
+								run={run}
+								navigationState={runNavigationState}
+								isRerunning={isRerunning}
+								onRerun={handleRerun}
+							/>
 						))}
 					</ul>
-					{total > PAGE_SIZE && <nav aria-label="Agent run pages" className="flex flex-wrap items-center justify-between gap-2">
-						<Button variant="outline" className="min-h-11" disabled={!hasPreviousPage || isFetchingNextPage} onClick={() => setPageIndex(current => current - 1)}>Previous</Button>
-						<span className="text-sm text-muted-foreground" aria-current="page">Page {pageIndex + 1}</span>
-						<Button variant="outline" className="min-h-11" disabled={!hasFollowingPage || isFetchingNextPage} onClick={() => void handleNextPage()}>{isFetchingNextPage ? "Loading…" : "Next"}</Button>
-					</nav>}
+					{total > PAGE_SIZE && agentRunsPaginationFooter()}
 				</div>
 			) : (
-			<DataTable className="min-h-0 min-w-0 [&_table]:table-fixed">
-				<DataTableHeader>
-					<DataTableRow>
-						<DataTableHead className="w-full px-2 sm:w-40 sm:px-4 xl:w-1/4">Agent</DataTableHead>
-						<DataTableHead className="hidden sm:table-cell">Asked</DataTableHead>
-						<DataTableHead className="w-28 whitespace-nowrap px-2 sm:px-4">Status</DataTableHead>
-						<DataTableHead className="hidden w-20 whitespace-nowrap text-right lg:table-cell">
-							Duration
-						</DataTableHead>
-						<DataTableHead className="hidden w-24 whitespace-nowrap xl:table-cell">Verdict</DataTableHead>
-						<DataTableHead className="hidden w-48 whitespace-nowrap xl:table-cell">Started</DataTableHead>
-						<DataTableHead className="w-20 whitespace-nowrap px-2 sm:px-4"></DataTableHead>
-					</DataTableRow>
-				</DataTableHeader>
-				<DataTableBody>
-					{runs.map((run) => (
-						<DataTableRow
-							key={run.id}
-							className="cursor-pointer hover:bg-accent/40"
-							onClick={() =>
-								navigate(
-									`/agents/${run.agent_id}/runs/${run.id}`,
-									{ state: runNavigationState },
-								)
-							}
-						>
-							<DataTableCell className="min-w-0 overflow-hidden px-2 sm:px-4">
-								<div className="flex min-w-0 items-center gap-2">
-									<Bot className="h-3.5 w-3.5 text-muted-foreground" />
-									<Link to={`/agents/${run.agent_id}/runs/${run.id}`} state={runNavigationState} onClick={event => event.stopPropagation()} title={run.agent_name ?? "Agent"} className="flex min-h-11 min-w-0 items-center rounded-[var(--bf-radius-control)] font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="truncate">{run.agent_name ?? "Agent"}</span></Link>
-									<span className="xl:hidden">
-										<VerdictGlyph verdict={run.verdict} />
-									</span>
-								</div>
-								<p className="mt-1 truncate text-xs text-muted-foreground sm:hidden">
-									{run.asked || run.did || "—"}
-								</p>
-								<div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden text-xs text-muted-foreground xl:hidden">
-									<span className="inline-flex min-w-0 items-center gap-1">
-										<Clock className="h-3 w-3 shrink-0" />
-										<span className="truncate">
-											{run.started_at ? formatDate(run.started_at) : "—"}
-										</span>
-									</span>
-									{run.duration_ms != null && (
-										<span className="tabular-nums lg:hidden">
-											{formatDuration(run.duration_ms)}
-										</span>
-									)}
-								</div>
-							</DataTableCell>
-							<DataTableCell className="hidden max-w-md truncate sm:table-cell">
-								{run.asked || run.did || "—"}
-							</DataTableCell>
-							<DataTableCell className="w-28 whitespace-nowrap px-2 sm:px-4">
-								<RunStatusBadge status={run.status} />
-							</DataTableCell>
-							<DataTableCell className="hidden w-0 whitespace-nowrap text-right tabular-nums lg:table-cell">
-								{run.duration_ms != null
-									? formatDuration(run.duration_ms)
-									: "—"}
-							</DataTableCell>
-							<DataTableCell className="hidden w-24 whitespace-nowrap xl:table-cell">
-								<VerdictGlyph verdict={run.verdict} />
-							</DataTableCell>
-							<DataTableCell className="hidden w-0 whitespace-nowrap text-xs text-muted-foreground xl:table-cell">
-								<span className="inline-flex items-center gap-1">
-									<Clock className="h-3 w-3" />
-									{run.started_at
-										? formatDate(run.started_at)
-										: "—"}
-								</span>
-							</DataTableCell>
-							<DataTableCell
-								className="w-11 whitespace-nowrap px-2 sm:w-0 sm:px-4"
-								onClick={(e) => e.stopPropagation()}
-							>
-								<Button
-									type="button"
-									size="icon-lg"
-									variant="ghost"
-									data-testid={`rerun-${run.id}`}
-									disabled={isRerunning}
-									onClick={() => handleRerun(run.id)}
-									title="Rerun with the same input"
-								>
-									<RefreshCw className="h-3.5 w-3.5" />
-								</Button>
-							</DataTableCell>
-						</DataTableRow>
-					))}
-				</DataTableBody>
-				{total > PAGE_SIZE && (
-					<DataTableFooter>
+				<DataTable className="min-h-0 min-w-0 [&_table]:table-fixed">
+					<DataTableHeader>
 						<DataTableRow>
-							<DataTableCell colSpan={7} className="p-0">
-								<div className="flex items-center justify-center px-6 py-3">
-									<Pagination>
-										<PaginationContent>
-											<PaginationItem>
-												<PaginationPrevious
-													onClick={(event) => {
-														event.preventDefault();
-														if (hasPreviousPage) {
-															setPageIndex((current) => current - 1);
-														}
-													}}
-													className={
-														hasPreviousPage
-															? "cursor-pointer"
-															: "pointer-events-none opacity-50"
-													}
-													aria-disabled={!hasPreviousPage}
-												/>
-											</PaginationItem>
-											<PaginationItem>
-												<PaginationLink isActive>
-													{pageIndex + 1}
-												</PaginationLink>
-											</PaginationItem>
-											<PaginationItem>
-												<PaginationNext
-													onClick={(event) => {
-														event.preventDefault();
-														void handleNextPage();
-													}}
-													className={
-														hasFollowingPage && !isFetchingNextPage
-															? "cursor-pointer"
-															: "pointer-events-none opacity-50"
-													}
-													aria-disabled={
-														!hasFollowingPage || isFetchingNextPage
-													}
-												/>
-											</PaginationItem>
-										</PaginationContent>
-									</Pagination>
-								</div>
-							</DataTableCell>
+							<DataTableHead className="w-full px-2 sm:w-40 sm:px-4 xl:w-1/4">
+								Agent
+							</DataTableHead>
+							<DataTableHead className="hidden sm:table-cell">
+								Asked
+							</DataTableHead>
+							<DataTableHead className="w-28 whitespace-nowrap px-2 sm:px-4">
+								Status
+							</DataTableHead>
+							<DataTableHead className="hidden w-20 whitespace-nowrap text-right lg:table-cell">
+								Duration
+							</DataTableHead>
+							<DataTableHead className="hidden w-24 whitespace-nowrap xl:table-cell">
+								Verdict
+							</DataTableHead>
+							<DataTableHead className="hidden w-48 whitespace-nowrap xl:table-cell">
+								Started
+							</DataTableHead>
+							<DataTableHead className="w-20 whitespace-nowrap px-2 sm:px-4"></DataTableHead>
 						</DataTableRow>
-					</DataTableFooter>
-				)}
-			</DataTable>
+					</DataTableHeader>
+					<DataTableBody>
+						{runs.map((run) => (
+							<DataTableRow
+								key={run.id}
+								className="cursor-pointer hover:bg-accent/40"
+								onClick={() =>
+									navigate(
+										`/agents/${run.agent_id}/runs/${run.id}`,
+										{ state: runNavigationState },
+									)
+								}
+							>
+								<DataTableCell className="min-w-0 overflow-hidden px-2 sm:px-4">
+									<div className="flex min-w-0 items-center gap-2">
+										<Bot className="h-3.5 w-3.5 text-muted-foreground" />
+										<Link
+											to={`/agents/${run.agent_id}/runs/${run.id}`}
+											state={runNavigationState}
+											onClick={(event) =>
+												event.stopPropagation()
+											}
+											title={run.agent_name ?? "Agent"}
+											className="flex min-h-11 min-w-0 items-center rounded-[var(--bf-radius-control)] font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										>
+											<span className="truncate">
+												{run.agent_name ?? "Agent"}
+											</span>
+										</Link>
+										<span className="xl:hidden">
+											<VerdictGlyph
+												verdict={run.verdict}
+											/>
+										</span>
+									</div>
+									<p className="mt-1 truncate text-xs text-muted-foreground sm:hidden">
+										{run.asked || run.did || "—"}
+									</p>
+									<div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden text-xs text-muted-foreground xl:hidden">
+										<span className="inline-flex min-w-0 items-center gap-1">
+											<Clock className="h-3 w-3 shrink-0" />
+											<span className="truncate">
+												{run.started_at
+													? formatDate(run.started_at)
+													: "—"}
+											</span>
+										</span>
+										{run.duration_ms != null && (
+											<span className="tabular-nums lg:hidden">
+												{formatDuration(
+													run.duration_ms,
+												)}
+											</span>
+										)}
+									</div>
+								</DataTableCell>
+								<DataTableCell className="hidden max-w-md truncate sm:table-cell">
+									{run.asked || run.did || "—"}
+								</DataTableCell>
+								<DataTableCell className="w-28 whitespace-nowrap px-2 sm:px-4">
+									<RunStatusBadge status={run.status} />
+								</DataTableCell>
+								<DataTableCell className="hidden w-0 whitespace-nowrap text-right tabular-nums lg:table-cell">
+									{run.duration_ms != null
+										? formatDuration(run.duration_ms)
+										: "—"}
+								</DataTableCell>
+								<DataTableCell className="hidden w-24 whitespace-nowrap xl:table-cell">
+									<VerdictGlyph verdict={run.verdict} />
+								</DataTableCell>
+								<DataTableCell className="hidden w-0 whitespace-nowrap text-xs text-muted-foreground xl:table-cell">
+									<span className="inline-flex items-center gap-1">
+										<Clock className="h-3 w-3" />
+										{run.started_at
+											? formatDate(run.started_at)
+											: "—"}
+									</span>
+								</DataTableCell>
+								<DataTableCell
+									className="w-11 whitespace-nowrap px-2 sm:w-0 sm:px-4"
+									onClick={(e) => e.stopPropagation()}
+								>
+									<Button
+										type="button"
+										size="icon-lg"
+										variant="ghost"
+										data-testid={`rerun-${run.id}`}
+										disabled={isRerunning}
+										onClick={() => handleRerun(run.id)}
+										title="Rerun with the same input"
+									>
+										<RefreshCw className="h-3.5 w-3.5" />
+									</Button>
+								</DataTableCell>
+							</DataTableRow>
+						))}
+					</DataTableBody>
+					{total > PAGE_SIZE && (
+						<DataTableFooter>
+							<DataTableRow>
+								<DataTableCell colSpan={7} className="p-0">
+									{agentRunsPaginationFooter("px-6")}
+								</DataTableCell>
+							</DataTableRow>
+						</DataTableFooter>
+					)}
+				</DataTable>
 			)}
 		</div>
 	);

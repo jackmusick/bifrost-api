@@ -282,7 +282,7 @@ export function DocumentRecordList({
 
 	return (
 		<div className="@container flex min-w-0 flex-col gap-4 lg:min-h-0 lg:flex-1">
-			<div className="hidden min-h-0 flex-1 @5xl:flex">
+			<div className="hidden min-h-0 flex-1 flex-col @5xl:flex">
 				<DataTable className="max-h-full">
 					<DataTableHeader>
 						<DataTableRow>
@@ -321,7 +321,10 @@ export function DocumentRecordList({
 				</DataTable>
 			</div>
 
-			<ul aria-label="Document records" className="@5xl:hidden space-y-3">
+			<ul
+				aria-label="Document records"
+				className="@5xl:hidden space-y-3 lg:min-h-0 lg:overflow-auto"
+			>
 				{documents.map((doc) => (
 					<DocumentMobileRecord
 						key={doc.id}

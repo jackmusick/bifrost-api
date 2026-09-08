@@ -1,5 +1,7 @@
 # Page scrolling contract
 
+Follow-up: [record reachability corrections](scroll-regressions-2026-09-08.md) supersede the initial visual-only acceptance for Table Detail and intermediate-width card layouts.
+
 Desktop workspaces keep navigation and primary page controls available while content uses the remaining viewport. Small result sets stay compact; long results scroll. At widths below `lg`, ordinary pages return to natural vertical flow and mobile record layouts. Editors, chat, and execution consoles retain their purpose-built pane scrolling.
 
 ## Composition

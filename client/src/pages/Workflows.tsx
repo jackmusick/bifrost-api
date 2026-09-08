@@ -480,7 +480,7 @@ export function Workflows() {
 					{workflowList}
 				</div>
 			) : (
-				<div className="flex flex-col gap-4">
+				<div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row">
 					{sidebarOpen ? (
 						<WorkflowSidebar
 							categories={categories}
@@ -503,13 +503,13 @@ export function Workflows() {
 									: undefined
 							}
 							onClose={() => setSidebarOpen(false)}
-							className="w-full"
+							className="w-full lg:max-h-full lg:w-64 lg:shrink-0 lg:overflow-auto"
 						/>
 					) : (
 						<Button
 							variant="outline"
 							onClick={() => setSidebarOpen(true)}
-							className="h-11 w-full justify-start gap-2"
+							className="h-11 w-full justify-start gap-2 lg:w-auto lg:shrink-0"
 							title="Show filters"
 							aria-expanded={sidebarOpen}
 						>

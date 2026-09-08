@@ -316,7 +316,7 @@ export function Forms() {
 			<PageScrollArea
 				aria-label={`${term(terminology, "form", "plural")} list`}
 				className={
-					viewMode === "table"
+					isDesktop && viewMode === "table"
 						? "space-y-4 lg:flex lg:flex-col lg:overflow-hidden"
 						: "space-y-4"
 				}
