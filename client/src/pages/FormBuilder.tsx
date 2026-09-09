@@ -456,7 +456,7 @@ export function FormBuilder() {
 	}
 
 	return (
-		<div className="flex min-h-full flex-col gap-6 lg:h-full lg:min-h-0">
+		<div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col gap-6 lg:h-full lg:min-h-0">
 			{formLoadError && existingForm && (
 				<Alert variant="destructive">
 					<AlertDescription>
@@ -656,7 +656,7 @@ export function FormBuilder() {
 				inert={isSaving}
 				aria-busy={isSaving}
 				defaultValue="builder"
-				className="w-full flex-1 flex flex-col lg:min-h-0 lg:overflow-hidden"
+				className="flex w-full flex-1 flex-col lg:min-h-0 lg:overflow-hidden"
 			>
 				<TabsList className="flex-shrink-0">
 					<TabsTrigger value="builder">Form Builder</TabsTrigger>

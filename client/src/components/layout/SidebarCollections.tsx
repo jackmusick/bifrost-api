@@ -1,6 +1,7 @@
 import { Folder, Plus } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { $api } from "@/lib/api-client";
+import { isVisibleCollection } from "@/services/home";
 import { getIcon } from "@/lib/icons";
 import { SidebarLink } from "./sidebarLinks";
 
@@ -13,13 +14,21 @@ export function SidebarCollections({
 }) {
 	const location = useLocation();
 	const home = $api.useQuery("get", "/api/home");
-	const collections = home.data?.collections ?? [];
+	const collections = (home.data?.collections ?? []).filter(
+		isVisibleCollection,
+	);
 	const selectedCollection = new URLSearchParams(location.search).get(
 		"collection",
 	);
 
+	if (!collections.length) return null;
 	return (
 		<div className="space-y-1">
+			{!isCollapsed && (
+				<h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					Collections
+				</h3>
+			)}
 			{collections.map((collection) => {
 				const Icon = getIcon(collection.icon, Folder);
 				const to = {

@@ -352,19 +352,8 @@ export function Sidebar({
 									);
 								})}
 							</div>
-							{section.title === "Workspace" && (
-								<div className="space-y-1">
-									{!isCollapsed && (
-										<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
-											Collections
-										</h3>
-									)}
-									<SidebarCollections
-										isCollapsed={isCollapsed}
-									/>
-								</div>
-							)}
-						</Fragment>
+							{section.title === "Workspace" && (<SidebarCollections isCollapsed={isCollapsed} />)}
+</Fragment>
 					))}
 				</nav>
 			</aside>
@@ -446,20 +435,8 @@ export function Sidebar({
 										);
 									})}
 								</div>
-								{section.title === "Workspace" && (
-									<div className="space-y-1">
-										<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
-											Collections
-										</h3>
-										<SidebarCollections
-											isCollapsed={false}
-											onNavigate={() =>
-												setIsMobileMenuOpen(false)
-											}
-										/>
-									</div>
-								)}
-							</Fragment>
+								{section.title === "Workspace" && (<SidebarCollections isCollapsed={false} onNavigate={() => setIsMobileMenuOpen(false)} />)}
+</Fragment>
 						))}
 					</nav>
 				</SheetContent>

@@ -45,9 +45,8 @@ test.describe("Home collections (admin)", () => {
 			await expect(
 				page.getByRole("button", { name: AGENT_NAME, exact: true }),
 			).toBeVisible();
-			await page
-				.getByRole("link", { name: "New collection", exact: true })
-				.click();
+			await page.goto("/");
+			await page.getByRole("button", { name: "Create a collection", exact: true }).click();
 			await expect(
 				page.getByRole("dialog", { name: "New collection" }),
 			).toBeVisible();

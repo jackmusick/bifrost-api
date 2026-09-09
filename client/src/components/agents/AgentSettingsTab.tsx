@@ -472,7 +472,7 @@ export function AgentSettingsTab({
 				rolesLoading ||
 				knowledgeError ||
 				knowledgeLoading ? (
-					<div className="space-y-3 px-5 pt-5">
+					<div className={agentsError || toolsError || rolesError || knowledgeError ? "space-y-3 px-5 pt-5" : "sr-only"}>
 						<SettingsResourceNotice
 							resource="available agents"
 							failed={agentsError}

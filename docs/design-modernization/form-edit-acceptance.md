@@ -18,3 +18,13 @@ The designer retains its fields/preview layout and keyboard reorder controls. Fi
 Existing forms hydrate role_ids from FormPublic and save replacements through the existing PATCH contract. New-form partial role-save recovery remains separate and retains its prior behavior. Source-reviewed update_form bulk replacement handles role_ids=[], while omitted role_ids leaves assignments untouched; existing API e2e role tests cover that contract but were not rerun in this UI pass.
 
 All browser mutations are synthetic. No customer forms, roles or workflow runs changed. The platform-admin route guard and backend solution-managed write guard remain; this UI acceptance does not replace application-wide access tests, complete shared schema/runtime compatibility checks or release gates.
+
+## Responsive workspace follow-up
+
+The editor workspace is centered and capped at 1400px, including its heading and
+actions. Desktop uses a 16–20rem palette plus a flexible field canvas. Narrow
+layouts stack the palette and fields, retain the collapsible palette and touch
+controls, and keep the field workspace usable. This applies to editing, not just
+Preview. Live checks at 2560×1440 and 390×844 verified bounded width, no horizontal
+overflow, opening field settings, and switching to Preview. Existing form-builder
+and field-panel interaction tests passed.

@@ -626,12 +626,12 @@ export function FieldsPanelDnD({
 	};
 
 	return (
-		<div className="flex flex-col lg:grid lg:grid-cols-4 gap-4 w-full lg:h-full min-h-0">
+		<div className="flex min-h-0 w-full flex-col gap-4 lg:grid lg:h-full lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
 			<span role="status" className="sr-only">
 				{reorderAnnouncement}
 			</span>
 			{/* Field Palette */}
-			<Card className="lg:col-span-1 flex shrink-0 flex-col lg:h-full lg:min-h-0 overflow-hidden">
+			<Card className="flex shrink-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
 				<CardHeader className="pb-3 flex-shrink-0">
 					<div className="flex items-center gap-2">
 						<WorkflowIcon className="h-4 w-4 text-primary" />
@@ -655,7 +655,7 @@ export function FieldsPanelDnD({
 					</Button>
 				</CardHeader>
 				<CardContent
-					className={`${paletteExpanded ? "" : "hidden lg:block"} space-y-4 overflow-y-auto max-h-56 lg:max-h-none flex-1 min-h-0`}
+					className={`${paletteExpanded ? "" : "hidden lg:block"} min-h-0 flex-1 space-y-4 overflow-y-auto max-h-72 sm:max-h-80 lg:max-h-none`}
 				>
 					{/* Workflow Inputs Section */}
 					{workflowParams.length > 0 && (
@@ -732,7 +732,7 @@ export function FieldsPanelDnD({
 			</Card>
 
 			{/* Drop Zone */}
-			<Card className="lg:col-span-3 flex flex-1 min-h-0 flex-col lg:h-full overflow-hidden">
+			<Card className="flex min-h-[28rem] flex-1 flex-col overflow-hidden lg:h-full lg:min-h-0">
 				<CardHeader className="flex-shrink-0">
 					<div className="flex items-center justify-between">
 						<div>
@@ -760,7 +760,7 @@ export function FieldsPanelDnD({
 						</Button>
 					</div>
 				</CardHeader>
-				<CardContent className="lg:overflow-y-auto flex-1 min-h-0">
+				<CardContent className="min-h-0 flex-1 overflow-y-auto">
 					<div ref={dropZoneRef} className="min-h-full">
 						{fields.length > 0 ? (
 							<div className="space-y-2">

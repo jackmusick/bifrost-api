@@ -1,3 +1,4 @@
+import { isVisibleCollection } from "@/services/home";
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -61,7 +62,7 @@ export function Home() {
 	);
 	const busy = create.isPending || update.isPending || remove.isPending;
 	const resources = home.data?.resources ?? NO_RESOURCES;
-	const collections = home.data?.collections ?? [];
+	const collections = (home.data?.collections ?? []).filter(isVisibleCollection);
 	const selected = collections.find(
 		(collection) => collection.id === params.get("collection"),
 	);

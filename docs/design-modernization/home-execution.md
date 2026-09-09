@@ -194,3 +194,17 @@ Updating shared agents to private now assigns the current user as owner and remo
 agent role grants. Updating an already-private agent preserves its existing owner,
 including when a platform admin edits it. Returning to shared access clears the
 private owner. Existing non-admin publishing restrictions remain in place.
+
+### Empty collections and lookup loading
+
+Home and SidebarCollections share `isVisibleCollection`: a collection is visible
+when it has accessible resources or the viewer can edit it. Managers retain empty
+collections so they can populate them. Readers do not see shared collections with
+no usable resources. The sidebar component owns its heading and returns nothing
+when no visible collections exist. Home retains a single Create a collection CTA
+in its empty state; no show-empty toggle is needed.
+
+Removed visible stacks of lookup-loading text above agent and user edit forms.
+Those status messages remain available to assistive technology; lookup controls
+retain their loading feedback and errors still expose retry actions. The agent
+form no longer adds top padding for loading-only notices.

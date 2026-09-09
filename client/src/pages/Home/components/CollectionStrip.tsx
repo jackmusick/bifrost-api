@@ -21,10 +21,12 @@ export function CollectionStrip({
 		<section className="space-y-3" aria-label="Collections">
 			<div className="flex items-center justify-between gap-3">
 				<h2 className="text-base font-semibold">Collections</h2>
-				<Button variant="ghost" size="sm" onClick={onCreate}>
-					<Plus className="size-4" />
-					New collection
-				</Button>
+				{collections.length > 0 && (
+					<Button variant="ghost" size="sm" onClick={onCreate}>
+						<Plus className="size-4" />
+						New collection
+					</Button>
+				)}
 			</div>
 			{collections.length === 0 ? (
 				<div className="flex flex-wrap items-center justify-between gap-3 rounded border border-dashed p-4">

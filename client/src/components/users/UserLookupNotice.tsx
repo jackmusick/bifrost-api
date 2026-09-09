@@ -37,7 +37,7 @@ export function UserLookupNotice({
 			</div>
 		);
 	return loading ? (
-		<p role="status" className="text-sm text-muted-foreground">
+		<p role="status" className="sr-only">
 			Loading {resource}…
 		</p>
 	) : null;

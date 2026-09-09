@@ -17,7 +17,7 @@ export function SettingsResourceNotice({
 }) {
 	if (loading)
 		return (
-			<p role="status" className="text-sm text-muted-foreground">
+			<p role="status" className="sr-only">
 				Loading {resource}…
 			</p>
 		);
