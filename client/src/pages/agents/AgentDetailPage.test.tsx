@@ -256,3 +256,8 @@ it("uses the creation form even when a disabled tab is in the URL", async () => 
 		"create",
 	);
 });
+
+ it("does not show a status-update failure on a fresh New Agent page", async () => {
+ await renderAtRoute("/agents/new");
+ expect(screen.queryByText("Could not update the agent status. Try again.")).not.toBeInTheDocument();
+ });

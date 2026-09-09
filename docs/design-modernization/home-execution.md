@@ -172,3 +172,25 @@ OrganizationSelect now supports opt-in `showPersonal` with the exported
 CollectionEditor translates it back to `shared: false, organization_id: null`.
 Shared scope selection is still restricted to platform admins, and audience
 changes retain the existing resource compatibility filtering.
+
+### Agent private scope and New Agent feedback
+
+AgentSettingsTab opts into OrganizationSelect's personal choice. Selecting Only me
+maps to `access_level: private`, hides access-level and role controls, and clears
+role selections. Regular users start private in their own organization; admins
+can select private or return to Global/an organization to configure shared access.
+Private remains hidden by default for scope-picker callers that do not opt in.
+
+New Agent previously compared `actionFailure?.id` to an absent agent ID; both were
+undefined, incorrectly rendering the status-update failure banner before any
+mutation. The feedback now requires an actual failed action.
+
+Client regression tests cover private defaults, hidden sharing controls, restoring
+shared controls, the submitted private access level, and absence of the false
+creation error. A live debug create verified private access plus an owner ID and
+removed the synthetic agent afterward.
+
+Updating shared agents to private now assigns the current user as owner and removes
+agent role grants. Updating an already-private agent preserves its existing owner,
+including when a platform admin edits it. Returning to shared access clears the
+private owner. Existing non-admin publishing restrictions remain in place.

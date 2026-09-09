@@ -263,6 +263,7 @@ describe("AgentSettingsTab — create mode", () => {
 			expect(mockCreateMutation).toHaveBeenCalledTimes(1);
 		});
 		expect(mockCreateMutation.mock.calls[0][0].body.name).toBe("Sales Bot");
+		expect(mockCreateMutation.mock.calls[0][0].body.access_level).toBe("private");
 		expect(
 			mockCreateMutation.mock.calls[0][0].body.llm_profile_id,
 		).toBeNull();
@@ -425,3 +426,21 @@ it("renders solution-managed settings as read-only", async () => {
 	expect(screen.getByTestId("save-agent-button")).toBeDisabled();
 	expect(screen.getByTestId("solution-managed-banner")).toBeVisible();
 });
+
+ it("uses private scope for regular users and hides sharing controls", async () => {
+ await renderTab({ mode: "create", agent: null });
+ expect(screen.getByRole("combobox", { name: "Scope" })).toHaveTextContent("Only me");
+ expect(screen.queryByRole("combobox", { name: "Access level" })).not.toBeInTheDocument();
+ expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
+ });
+ it("lets admins select private scope and restore sharing controls", async () => {
+ mockAuth.mockReturnValue({ isPlatformAdmin: true, user: { organizationId: "org-1" } });
+ const { user } = await renderTab({ mode: "create", agent: null });
+ await user.click(screen.getByRole("combobox", { name: "Scope" }));
+ await user.click(screen.getByRole("option", { name: /Only me/ }));
+ expect(screen.queryByRole("combobox", { name: "Access level" })).not.toBeInTheDocument();
+ expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
+ await user.click(screen.getByRole("combobox", { name: "Scope" }));
+ await user.click(screen.getByRole("option", { name: /Global/ }));
+ expect(screen.getByRole("combobox", { name: "Access level" })).toBeInTheDocument();
+ });

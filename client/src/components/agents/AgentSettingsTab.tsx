@@ -63,7 +63,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import {
+	OrganizationSelect,
+	PERSONAL_SCOPE,
+} from "@/components/forms/OrganizationSelect";
 
 import {
 	CARD_SURFACE,
@@ -119,7 +122,12 @@ const formSchema = z.object({
 	description: z.string().max(500).optional(),
 	system_prompt: z.string().min(1, "System prompt is required"),
 	channels: z.array(z.enum(["chat", "voice", "teams", "slack"])),
-	access_level: z.enum(["authenticated", "everyone", "role_based"]),
+	access_level: z.enum([
+		"private",
+		"authenticated",
+		"everyone",
+		"role_based",
+	]),
 	organization_id: z.string().nullable(),
 	tool_ids: z.array(z.string()),
 	system_tools: z.array(z.string()),
@@ -235,7 +243,7 @@ export function AgentSettingsTab({
 					"chat",
 				]) as AgentChannel[],
 				access_level: (a.access_level ?? "role_based") as
-					"authenticated" | "everyone" | "role_based",
+					"private" | "authenticated" | "everyone" | "role_based",
 				organization_id: a.organization_id ?? null,
 				tool_ids: a.tool_ids ?? [],
 				system_tools: a.system_tools ?? [],
@@ -255,7 +263,7 @@ export function AgentSettingsTab({
 			description: "",
 			system_prompt: "",
 			channels: ["chat"],
-			access_level: "role_based",
+			access_level: isPlatformAdmin ? "role_based" : "private",
 			organization_id: defaultOrgId,
 			tool_ids: [],
 			system_tools: [],
@@ -269,7 +277,7 @@ export function AgentSettingsTab({
 			max_token_budget: null,
 			is_active: true,
 		};
-	}, [agent, defaultOrgId]);
+	}, [agent, defaultOrgId, isPlatformAdmin]);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
@@ -398,7 +406,7 @@ export function AgentSettingsTab({
 			tool_ids: values.tool_ids,
 			system_tools: values.system_tools,
 			delegated_agent_ids: values.delegated_agent_ids,
-			role_ids: values.role_ids,
+			role_ids: values.access_level === "private" ? [] : values.role_ids,
 			knowledge_sources: values.knowledge_sources,
 			mcp_connection_ids: values.mcp_connection_ids,
 			llm_profile_id: values.llm_profile_id,
@@ -505,29 +513,68 @@ export function AgentSettingsTab({
 				>
 					{/* Identity */}
 					<FormSection title="Identity">
-						{isPlatformAdmin ? (
-							<FormField
-								control={form.control}
-								name="organization_id"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Organization</FormLabel>
-										<FormControl>
-											<OrganizationSelect
-												value={field.value}
-												onChange={field.onChange}
-												showGlobal
-											/>
-										</FormControl>
-										<FormDescription>
-											Global agents are available to every
-											organization.
-										</FormDescription>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						) : null}
+						<FormField
+							control={form.control}
+							name="organization_id"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Scope</FormLabel>
+									<FormControl>
+										<OrganizationSelect
+											value={
+												accessLevel === "private"
+													? PERSONAL_SCOPE
+													: field.value
+											}
+											label="Scope"
+											showPersonal
+											disabled={!isPlatformAdmin}
+											onChange={(scope) => {
+												if (scope === PERSONAL_SCOPE) {
+													form.setValue(
+														"access_level",
+														"private",
+														{ shouldDirty: true },
+													);
+													form.setValue(
+														"role_ids",
+														[],
+														{ shouldDirty: true },
+													);
+													if (mode === "create")
+														field.onChange(
+															user?.organizationId ??
+																null,
+														);
+												} else {
+													field.onChange(
+														scope ?? null,
+													);
+													if (
+														accessLevel ===
+														"private"
+													)
+														form.setValue(
+															"access_level",
+															"role_based",
+															{
+																shouldDirty: true,
+															},
+														);
+												}
+											}}
+											showGlobal
+										/>
+									</FormControl>
+									<FormDescription>
+										{accessLevel === "private"
+											? "Private agents are available only to their owner."
+											: "Choose the organization scope, then set who can access this agent."}
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
 						<FormField
 							control={form.control}
 							name="name"
@@ -566,53 +613,59 @@ export function AgentSettingsTab({
 								</FormItem>
 							)}
 						/>
-						<FormField
-							control={form.control}
-							name="access_level"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Access level</FormLabel>
-									<Select
-										value={field.value}
-										onValueChange={field.onChange}
-									>
-										<FormControl>
-											<SelectTrigger
-												aria-label="Access level"
-												className="w-full"
-											>
-												<SelectValue>
-													{
-														ACCESS_LEVELS.find(
-															(level) =>
-																level.value ===
-																field.value,
-														)?.label
-													}
-												</SelectValue>
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											{ACCESS_LEVELS.map((lvl) => (
-												<SelectItem
-													key={lvl.value}
-													value={lvl.value}
-													className="whitespace-normal"
+						{accessLevel !== "private" && (
+							<FormField
+								control={form.control}
+								name="access_level"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Access level</FormLabel>
+										<Select
+											value={field.value}
+											onValueChange={field.onChange}
+										>
+											<FormControl>
+												<SelectTrigger
+													aria-label="Access level"
+													className="w-full"
 												>
-													<div className="flex min-w-0 flex-col text-left">
-														<span>{lvl.label}</span>
-														<span className="text-xs text-muted-foreground">
-															{lvl.description}
-														</span>
-													</div>
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
+													<SelectValue>
+														{
+															ACCESS_LEVELS.find(
+																(level) =>
+																	level.value ===
+																	field.value,
+															)?.label
+														}
+													</SelectValue>
+												</SelectTrigger>
+											</FormControl>
+											<SelectContent>
+												{ACCESS_LEVELS.map((lvl) => (
+													<SelectItem
+														key={lvl.value}
+														value={lvl.value}
+														className="whitespace-normal"
+													>
+														<div className="flex min-w-0 flex-col text-left">
+															<span>
+																{lvl.label}
+															</span>
+															<span className="text-xs text-muted-foreground">
+																{
+																	lvl.description
+																}
+															</span>
+														</div>
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						)}
 						{accessLevel === "role_based" ? (
 							<FormField
 								control={form.control}
@@ -649,7 +702,8 @@ export function AgentSettingsTab({
 													</Button>
 												</FormControl>
 											</PopoverTrigger>
-											<PopoverContent variant="picker"
+											<PopoverContent
+												variant="picker"
 												className="p-0"
 												align="start"
 											>

@@ -410,7 +410,7 @@ export function AgentDetailPage() {
 
 				<RunActionFeedback
 					pending={actionPending}
-					failed={actionFailure?.id === agentId}
+					failed={!!actionFailure && actionFailure.id === agentId}
 					onRetry={() => {
 						if (actionFailure?.kind === "chat") handleStartChat();
 						else if (actionFailure?.active !== undefined)
