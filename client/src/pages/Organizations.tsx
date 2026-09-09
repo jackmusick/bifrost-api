@@ -1,5 +1,6 @@
 import {
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type MouseEvent,
@@ -24,6 +25,7 @@ import {
 	DataTable,
 	DataTableBody,
 	DataTableCell,
+	DataTableFooter,
 	DataTableHead,
 	DataTableHeader,
 	DataTableRow,
@@ -73,9 +75,11 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSearch } from "@/hooks/useSearch";
 import type { components } from "@/lib/v1";
 import { RequiredInstructionsSettings } from "@/pages/settings/RequiredInstructionsSettings";
+import { ListPagination } from "@/components/pagination/ListPagination";
 
 type Organization = components["schemas"]["OrganizationPublic"];
 type EditTab = "general" | "instructions";
+const PAGE_SIZE = 25;
 
 interface OrganizationFormData {
 	name: string;
@@ -138,6 +142,7 @@ export function Organizations() {
 	const [formData, setFormData] = useState<OrganizationFormData>(EMPTY_FORM);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [showInactive, setShowInactive] = useState(false);
+	const [offset, setOffset] = useState(0);
 
 	const { data, isLoading, isFetching, error, refetch } = useOrganizations({
 		includeInactive: showInactive,
@@ -151,6 +156,18 @@ export function Organizations() {
 		"domain",
 		"id",
 	]);
+	const clampedOffset =
+		offset > 0 && offset >= filteredOrgs.length
+			? Math.max(
+					0,
+					Math.floor((filteredOrgs.length - 1) / PAGE_SIZE) *
+						PAGE_SIZE,
+				)
+			: offset;
+	const pagedOrgs = useMemo(
+		() => filteredOrgs.slice(clampedOffset, clampedOffset + PAGE_SIZE),
+		[filteredOrgs, clampedOffset],
+	);
 
 	const createMutation = useCreateOrganization({ toastOnError: false });
 	const updateMutation = useUpdateOrganization({ toastOnError: false });
@@ -450,7 +467,10 @@ export function Organizations() {
 			<ListToolbar>
 				<SearchBox
 					value={searchTerm}
-					onChange={setSearchTerm}
+					onChange={(value) => {
+						setSearchTerm(value);
+						setOffset(0);
+					}}
 					placeholder="Search by name, domain, or ID..."
 					aria-label="Search organizations"
 					className="w-full sm:flex-1"
@@ -459,7 +479,10 @@ export function Organizations() {
 					<Switch
 						id="show-inactive-organizations"
 						checked={showInactive}
-						onCheckedChange={setShowInactive}
+						onCheckedChange={(checked) => {
+							setShowInactive(checked);
+							setOffset(0);
+						}}
 					/>
 					<Label
 						htmlFor="show-inactive-organizations"
@@ -507,89 +530,98 @@ export function Organizations() {
 					</div>
 				) : error && !data ? null : filteredOrgs.length > 0 ? (
 					compactLayout ? (
-						<ul
-							aria-label="Organizations"
-							className="divide-y rounded-[var(--bf-radius-surface)] border bg-card"
-						>
-							{filteredOrgs.map((org) => (
-								<li
-									key={org.id}
-									className="space-y-3 p-4"
-									data-org-id={org.id}
-								>
-									<div className="flex items-start gap-3">
-										<div className="min-w-0 flex-1">
-											<h2 className="text-base font-semibold">
-												<button
-													type="button"
-													data-org-id={org.id}
-													onClick={(event) =>
-														handleEdit(org, event)
-													}
-													aria-label={`Edit ${org.name}`}
-													className="min-h-11 w-full rounded-[var(--bf-radius-control)] text-left [overflow-wrap:anywhere] transition-colors duration-[var(--bf-motion-feedback)] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
-												>
-													{org.name}
-												</button>
-											</h2>
-											<div className="mt-1 flex flex-wrap gap-2">
-												{org.is_provider && (
+						<div className="rounded-[var(--bf-radius-surface)] border bg-card">
+							<ul aria-label="Organizations" className="divide-y">
+								{pagedOrgs.map((org) => (
+									<li
+										key={org.id}
+										className="space-y-3 p-4"
+										data-org-id={org.id}
+									>
+										<div className="flex items-start gap-3">
+											<div className="min-w-0 flex-1">
+												<h2 className="text-base font-semibold">
+													<button
+														type="button"
+														data-org-id={org.id}
+														onClick={(event) =>
+															handleEdit(
+																org,
+																event,
+															)
+														}
+														aria-label={`Edit ${org.name}`}
+														className="min-h-11 w-full rounded-[var(--bf-radius-control)] text-left [overflow-wrap:anywhere] transition-colors duration-[var(--bf-motion-feedback)] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+													>
+														{org.name}
+													</button>
+												</h2>
+												<div className="mt-1 flex flex-wrap gap-2">
+													{org.is_provider && (
+														<Badge
+															variant="outline"
+															className="border-[var(--bf-info)]/20 bg-[var(--bf-info)]/10 text-[var(--bf-info)] dark:bg-[var(--bf-info)]/15"
+														>
+															Provider
+														</Badge>
+													)}
 													<Badge
 														variant="outline"
-														className="border-[var(--bf-info)]/20 bg-[var(--bf-info)]/10 text-[var(--bf-info)] dark:bg-[var(--bf-info)]/15"
+														className={
+															org.is_active
+																? "border-[color:var(--bf-success)]/30 text-[color:var(--bf-success)]"
+																: "text-muted-foreground"
+														}
 													>
-														Provider
+														{org.is_active
+															? "Active"
+															: "Inactive"}
 													</Badge>
-												)}
-												<Badge
-													variant="outline"
-													className={
-														org.is_active
-															? "border-[color:var(--bf-success)]/30 text-[color:var(--bf-success)]"
-															: "text-muted-foreground"
-													}
-												>
-													{org.is_active
-														? "Active"
-														: "Inactive"}
-												</Badge>
+												</div>
 											</div>
+											{renderOrganizationActions(org)}
 										</div>
-										{renderOrganizationActions(org)}
-									</div>
-									<dl className="grid gap-3 text-sm">
-										<div>
-											<dt className="text-xs text-muted-foreground">
-												Email domain
-											</dt>
-											<dd className="mt-1 [overflow-wrap:anywhere]">
-												{org.domain || "Not set"}
-											</dd>
-										</div>
-										<div>
-											<dt className="text-xs text-muted-foreground">
-												Organization ID
-											</dt>
-											<dd className="mt-1 font-mono text-xs [overflow-wrap:anywhere]">
-												{org.id}
-											</dd>
-										</div>
-										<div>
-											<dt className="text-xs text-muted-foreground">
-												Created
-											</dt>
-											<dd className="mt-1">
-												{org.created_at
-													? new Date(
-															org.created_at,
-														).toLocaleDateString()
-													: "Not available"}
-											</dd>
-										</div>
-									</dl>
-								</li>
-							))}
-						</ul>
+										<dl className="grid gap-3 text-sm">
+											<div>
+												<dt className="text-xs text-muted-foreground">
+													Email domain
+												</dt>
+												<dd className="mt-1 [overflow-wrap:anywhere]">
+													{org.domain || "Not set"}
+												</dd>
+											</div>
+											<div>
+												<dt className="text-xs text-muted-foreground">
+													Organization ID
+												</dt>
+												<dd className="mt-1 font-mono text-xs [overflow-wrap:anywhere]">
+													{org.id}
+												</dd>
+											</div>
+											<div>
+												<dt className="text-xs text-muted-foreground">
+													Created
+												</dt>
+												<dd className="mt-1">
+													{org.created_at
+														? new Date(
+																org.created_at,
+															).toLocaleDateString()
+														: "Not available"}
+												</dd>
+											</div>
+										</dl>
+									</li>
+								))}
+							</ul>
+							<ListPagination
+								offset={clampedOffset}
+								limit={PAGE_SIZE}
+								total={filteredOrgs.length}
+								isFetching={isFetching}
+								onPageChange={setOffset}
+							/>
+						</div>
 					) : (
 						<DataTable className="max-h-full">
 							<DataTableHeader>
@@ -602,11 +634,13 @@ export function Organizations() {
 									<DataTableHead className="hidden w-0 whitespace-nowrap md:table-cell">
 										Created
 									</DataTableHead>
-									<DataTableHead className="w-0 whitespace-nowrap text-right" />
+									<DataTableHead className="w-0 whitespace-nowrap text-right">
+										Actions
+									</DataTableHead>
 								</DataTableRow>
 							</DataTableHeader>
 							<DataTableBody>
-								{filteredOrgs.map((org) => (
+								{pagedOrgs.map((org) => (
 									<DataTableRow
 										key={org.id}
 										clickable
@@ -691,6 +725,19 @@ export function Organizations() {
 									</DataTableRow>
 								))}
 							</DataTableBody>
+							<DataTableFooter>
+								<DataTableRow>
+									<DataTableCell colSpan={5} className="p-0">
+										<ListPagination
+											offset={clampedOffset}
+											limit={PAGE_SIZE}
+											total={filteredOrgs.length}
+											isFetching={isFetching}
+											onPageChange={setOffset}
+										/>
+									</DataTableCell>
+								</DataTableRow>
+							</DataTableFooter>
 						</DataTable>
 					)
 				) : (

@@ -146,7 +146,7 @@ describe("ConsumerTab", () => {
 		expect(onRequestCandidates).toHaveBeenCalledOnce();
 	});
 
-	it("omits pagination when assigned users fit on one page", () => {
+	it("keeps the pagination summary when assigned users fit on one page", () => {
 		renderWithProviders(
 			<ConsumerTab
 				{...defaults}
@@ -160,9 +160,10 @@ describe("ConsumerTab", () => {
 			/>,
 		);
 		expect(screen.getByText("Alice")).toBeInTheDocument();
+		expect(screen.getByText("1–1 of 1 · Page 1 of 1")).toBeInTheDocument();
 		expect(
-			screen.queryByRole("navigation", { name: /pagination/i }),
-		).toBeNull();
+			screen.queryByRole("button", { name: /^Next$/i }),
+		).not.toBeInTheDocument();
 	});
 
 	it("keeps pagination in the pinned table footer", async () => {

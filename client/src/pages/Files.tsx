@@ -14,7 +14,7 @@ export function Files() {
 	});
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-4">
+		<div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-4">
 			<ListPageHeader
 				className="shrink-0"
 				title="Files"

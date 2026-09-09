@@ -140,7 +140,7 @@ export function EntityCard({
 			<div
 				ref={ref}
 				className={cn(
-					"flex items-start gap-3 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)] transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none",
+					"flex min-w-0 items-start gap-3 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)] transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none",
 					!managed && "cursor-grab active:cursor-grabbing",
 					dragging && "opacity-50",
 					selected
@@ -148,14 +148,15 @@ export function EntityCard({
 						: "bg-card hover:border-primary/50",
 				)}
 			>
-				<Checkbox
-					checked={selected && !managed}
-					disabled={managed}
-					onCheckedChange={onSelect}
-					onClick={(e) => e.stopPropagation()}
-					aria-label={`Select ${entity.name}`}
-					className="mt-0.5"
-				/>
+				<label className="flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)]">
+					<Checkbox
+						checked={selected && !managed}
+						disabled={managed}
+						onCheckedChange={onSelect}
+						onClick={(e) => e.stopPropagation()}
+						aria-label={`Select ${entity.name}`}
+					/>
+				</label>
 
 				{!managed && (
 					<GripVertical
@@ -164,7 +165,7 @@ export function EntityCard({
 					/>
 				)}
 
-				<div className="flex-1 min-w-0 space-y-3">
+				<div className="min-w-0 flex-1 space-y-3">
 					{/* Row 1: Name + Type badge + Actions */}
 					<div className="flex flex-wrap items-center justify-between gap-2">
 						<div className="flex min-w-0 basis-full items-start gap-2">
@@ -188,7 +189,7 @@ export function EntityCard({
 							<div className="ml-auto flex shrink-0 items-center gap-1">
 								<Button
 									variant="ghost"
-									size="icon"
+									size="icon-lg"
 									aria-label={`Show dependencies for ${entity.name}`}
 									title="Show dependencies"
 									onClick={() =>
@@ -232,13 +233,15 @@ export function EntityCard({
 					</div>
 
 					{/* Row 2: Organization */}
-					<div className="flex items-center gap-1 text-xs text-muted-foreground">
+					<div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
 						{entity.organizationId ? (
 							<Building2 className="h-3 w-3 shrink-0" />
 						) : (
 							<Globe className="h-3 w-3 shrink-0" />
 						)}
-						<span>{orgName}</span>
+						<span className="min-w-0 [overflow-wrap:anywhere]">
+							{orgName}
+						</span>
 					</div>
 
 					{/* Row 3: Access Level + Date + Used By Count */}

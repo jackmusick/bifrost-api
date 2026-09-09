@@ -27,7 +27,7 @@ export function EntityAssignmentSheet(
 				<Button
 					variant="outline"
 					size="lg"
-					className="w-full lg:hidden"
+					className="w-full xl:hidden"
 					disabled={props.disabled}
 				>
 					<SlidersHorizontal aria-hidden="true" className="size-4" />

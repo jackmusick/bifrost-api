@@ -35,14 +35,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import {
-	Pagination,
-	PaginationContent,
-	PaginationItem,
-	PaginationLink,
-	PaginationNext,
-	PaginationPrevious,
-} from "@/components/ui/pagination";
+import { PaginationFooter } from "@/components/pagination/PaginationFooter";
 import {
 	Select,
 	SelectContent,
@@ -284,6 +277,8 @@ function KnowledgeMobileList({
 	hasMore: boolean;
 	onPageChange: (page: number) => void;
 }) {
+	const showPagination = page > 0 || hasMore;
+
 	return (
 		<section className="space-y-3 lg:hidden">
 			{isPlatformAdmin && (
@@ -320,50 +315,35 @@ function KnowledgeMobileList({
 					/>
 				))}
 			</ul>
-			{(page > 0 || hasMore) && (
-				<div className="pt-1">
-					<Pagination>
-						<PaginationContent>
-							<PaginationItem>
-								<PaginationPrevious
-									href="#"
-									onClick={(e) => {
-										e.preventDefault();
-										if (page > 0) onPageChange(page - 1);
-									}}
-									className={
-										page === 0
-											? "min-h-11 min-w-11 pointer-events-none opacity-50"
-											: "min-h-11 min-w-11 cursor-pointer"
-									}
-									aria-disabled={page === 0}
-								/>
-							</PaginationItem>
-							<PaginationItem>
-								<PaginationLink isActive>
-									{page + 1}
-								</PaginationLink>
-							</PaginationItem>
-							<PaginationItem>
-								<PaginationNext
-									href="#"
-									onClick={(e) => {
-										e.preventDefault();
-										if (hasMore) onPageChange(page + 1);
-									}}
-									className={
-										!hasMore
-											? "min-h-11 min-w-11 pointer-events-none opacity-50"
-											: "min-h-11 min-w-11 cursor-pointer"
-									}
-									aria-disabled={!hasMore}
-								/>
-							</PaginationItem>
-						</PaginationContent>
-					</Pagination>
-				</div>
+			{showPagination && (
+				<KnowledgePagination
+					page={page}
+					hasMore={hasMore}
+					onPageChange={onPageChange}
+				/>
 			)}
 		</section>
+	);
+}
+
+function KnowledgePagination({
+	page,
+	hasMore,
+	onPageChange,
+}: {
+	page: number;
+	hasMore: boolean;
+	onPageChange: (page: number) => void;
+}) {
+	return (
+		<PaginationFooter
+			aria-label="Knowledge documents pagination"
+			summary={`Page ${page + 1}`}
+			previousDisabled={page === 0}
+			nextDisabled={!hasMore}
+			onPrevious={() => onPageChange(Math.max(0, page - 1))}
+			onNext={() => onPageChange(page + 1)}
+		/>
 	);
 }
 
@@ -761,7 +741,9 @@ export function Knowledge() {
 											<DataTableHead className="w-0 whitespace-nowrap">
 												Created
 											</DataTableHead>
-											<DataTableHead className="w-0 whitespace-nowrap text-right" />
+											<DataTableHead className="w-px whitespace-nowrap text-right">
+												Actions
+											</DataTableHead>
 										</DataTableRow>
 									</DataTableHeader>
 									<DataTableBody>
@@ -853,73 +835,11 @@ export function Knowledge() {
 													}
 													className="p-0"
 												>
-													<div className="px-6 py-4 flex items-center justify-center">
-														<Pagination>
-															<PaginationContent>
-																<PaginationItem>
-																	<PaginationPrevious
-																		href="#"
-																		onClick={(
-																			e,
-																		) => {
-																			e.preventDefault();
-																			if (
-																				page >
-																				0
-																			)
-																				setPage(
-																					page -
-																						1,
-																				);
-																		}}
-																		className={
-																			page ===
-																			0
-																				? "min-h-11 min-w-11 pointer-events-none opacity-50"
-																				: "min-h-11 min-w-11 cursor-pointer"
-																		}
-																		aria-disabled={
-																			page ===
-																			0
-																		}
-																	/>
-																</PaginationItem>
-																<PaginationItem>
-																	<PaginationLink
-																		isActive
-																	>
-																		{page +
-																			1}
-																	</PaginationLink>
-																</PaginationItem>
-																<PaginationItem>
-																	<PaginationNext
-																		href="#"
-																		onClick={(
-																			e,
-																		) => {
-																			e.preventDefault();
-																			if (
-																				hasMore
-																			)
-																				setPage(
-																					page +
-																						1,
-																				);
-																		}}
-																		className={
-																			!hasMore
-																				? "min-h-11 min-w-11 pointer-events-none opacity-50"
-																				: "min-h-11 min-w-11 cursor-pointer"
-																		}
-																		aria-disabled={
-																			!hasMore
-																		}
-																	/>
-																</PaginationItem>
-															</PaginationContent>
-														</Pagination>
-													</div>
+													<KnowledgePagination
+														page={page}
+														hasMore={hasMore}
+														onPageChange={setPage}
+													/>
 												</DataTableCell>
 											</DataTableRow>
 										</DataTableFooter>

@@ -772,7 +772,7 @@ export function EntityManagement() {
 	);
 
 	return (
-		<div className="flex min-h-full flex-col gap-6 lg:h-full lg:min-h-0">
+		<div className="mx-auto flex min-h-full w-full max-w-[1600px] min-w-0 flex-col gap-6 xl:h-full xl:min-h-0">
 			<ListPageHeader
 				title="Entity Management"
 				description="Manage organization and access settings for workflows, forms, agents, and apps"
@@ -787,9 +787,9 @@ export function EntityManagement() {
 			<EntityCollectionStatus collections={collections} />
 
 			{/* Main Content - Two Column Layout */}
-			<div className="grid grid-cols-1 gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-5">
+			<div className="grid grid-cols-1 gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-5">
 				{/* Left Column: Entities List */}
-				<div className="lg:col-span-2 flex flex-col min-h-0">
+				<div className="flex min-h-0 min-w-0 flex-col xl:col-span-2">
 					{/* Relationship Filter Banner */}
 					{relationshipFilter && (
 						<RelationshipFilterBanner
@@ -858,7 +858,7 @@ export function EntityManagement() {
 					/>
 
 					{/* Entity List */}
-					<div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+					<div className="min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
 						{(isLoading && allEntities.length === 0) ||
 						(relationshipFilter && loadingGraph) ? (
 							<div className="space-y-2">
@@ -869,7 +869,7 @@ export function EntityManagement() {
 						) : relationshipFilter &&
 						  graphError &&
 						  !graphData ? null : filteredEntities.length > 0 ? (
-							<div className="space-y-2 pr-2">
+							<div className="space-y-2 xl:pr-2">
 								{filteredEntities.map((entity) => (
 									<EntityCard
 										key={`${entity.entityType}-${entity.id}`}
@@ -919,7 +919,7 @@ export function EntityManagement() {
 					</div>
 				</div>
 
-				<div className="hidden min-w-0 flex-col lg:col-span-3 lg:flex lg:min-h-0 lg:overflow-auto">
+				<div className="hidden min-w-0 flex-col xl:col-span-3 xl:flex xl:min-h-0 xl:overflow-auto">
 					<EntityAssignmentPanel
 						entities={allEntities}
 						selectedIds={selectedIds}

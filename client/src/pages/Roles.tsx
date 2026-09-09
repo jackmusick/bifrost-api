@@ -547,7 +547,7 @@ export function Roles() {
 									onSort={handleSort}
 									className="w-0 whitespace-nowrap"
 								/>
-								<DataTableHead className="sticky right-0 w-0 whitespace-nowrap bg-background text-right">
+								<DataTableHead className="sticky right-0 w-px whitespace-nowrap bg-muted text-right">
 									Actions
 								</DataTableHead>
 							</DataTableRow>
@@ -657,7 +657,7 @@ function RoleRow({
 					: "N/A"}
 			</DataTableCell>
 			<DataTableCell
-				className="w-0 whitespace-nowrap text-right sticky right-0 bg-card group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--muted)_50%)]"
+				className="sticky right-0 w-px whitespace-nowrap bg-card text-right group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--muted)_50%)]"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<RoleActionsMenu

@@ -80,9 +80,9 @@ export function MCPServers() {
 	const filtered = useSearch(servers, searchTerm, ["name", "server_url"]);
 
 	return (
-		<PageWorkspace className="gap-5">
+		<PageWorkspace className="mx-auto w-full max-w-[1400px] gap-5">
 			{/* Header */}
-			<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+			<div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
 				<div>
 					<h1 className="font-display text-2xl font-semibold sm:text-3xl">
 						MCP Servers
@@ -92,7 +92,7 @@ export function MCPServers() {
 						Per-org credentials live on connections.
 					</p>
 				</div>
-				<div className="flex flex-wrap gap-2 [&>button]:min-h-11">
+				<div className="grid w-full grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-2 xl:w-auto xl:flex xl:flex-wrap xl:justify-end [&>button]:min-h-11">
 					<Button
 						variant="outline"
 						size="icon"
@@ -102,7 +102,7 @@ export function MCPServers() {
 						}}
 						aria-label="Refresh MCP servers"
 						disabled={isFetching || connectionsFetching}
-						className="size-11"
+						className="size-11 shrink-0"
 					>
 						<RefreshCw className="h-4 w-4" />
 					</Button>
@@ -111,6 +111,7 @@ export function MCPServers() {
 						size="sm"
 						disabled
 						title="Coming soon — manifest import"
+						className="min-w-0"
 					>
 						<Upload className="h-4 w-4 mr-1" />
 						Import from manifest
@@ -119,6 +120,7 @@ export function MCPServers() {
 						variant="default"
 						size="sm"
 						onClick={() => setIsCreateOpen(true)}
+						className="min-w-0"
 					>
 						<Plus className="h-4 w-4 mr-1" />
 						New Server
@@ -406,7 +408,7 @@ function MCPServerCards({
 				>
 					<Link
 						to={`/mcp-servers/${server.id}`}
-						className="inline-flex min-h-11 items-center font-medium text-primary"
+						className="inline-flex min-h-11 max-w-full items-center font-medium text-primary [overflow-wrap:anywhere]"
 					>
 						{server.name}
 					</Link>
@@ -415,7 +417,9 @@ function MCPServerCards({
 							? "Organization template"
 							: "Platform template"}
 					</p>
-					<p className="font-mono text-sm">{server.server_url}</p>
+					<p className="font-mono text-sm break-all">
+						{server.server_url}
+					</p>
 					<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
 						<dt className="text-muted-foreground">Connections</dt>
 						<dd>

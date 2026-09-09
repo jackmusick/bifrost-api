@@ -962,7 +962,9 @@ export function Users() {
 											/>
 										</button>
 									</DataTableHead>
-									<DataTableHead className="w-0 whitespace-nowrap text-right sticky right-0 bg-background"></DataTableHead>
+									<DataTableHead className="sticky right-0 w-px whitespace-nowrap bg-muted text-right">
+										Actions
+									</DataTableHead>
 								</DataTableRow>
 							</DataTableHeader>
 							<DataTableBody>
@@ -1109,7 +1111,7 @@ export function Users() {
 													: "Never"}
 											</DataTableCell>
 											<DataTableCell
-												className="w-0 whitespace-nowrap text-right sticky right-0 bg-card group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--muted)_50%)]"
+												className="sticky right-0 w-px whitespace-nowrap bg-card text-right group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--muted)_50%)]"
 												onClick={(e) =>
 													e.stopPropagation()
 												}

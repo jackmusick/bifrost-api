@@ -70,7 +70,7 @@ describe("Roles", () => {
 		const { user } = renderWithProviders(<Roles />);
 
 		expect(screen.getByText("Billing admins")).toBeInTheDocument();
-		expect(screen.getByText("1–25 of 30")).toBeInTheDocument();
+		expect(screen.getByText(/1.25 of 30/)).toBeInTheDocument();
 		expect(
 			screen.getByRole("columnheader", { name: "Name" }),
 		).toHaveAttribute("aria-sort", "ascending");
@@ -89,7 +89,7 @@ describe("Roles", () => {
 			expect.objectContaining({ limit: 25, offset: 0 }),
 		);
 
-		await user.click(screen.getByRole("link", { name: /next page/i }));
+		await user.click(screen.getByRole("button", { name: "Next" }));
 		await waitFor(() => {
 			expect(mockUseRolesPage).toHaveBeenLastCalledWith(
 				expect.objectContaining({ limit: 25, offset: 25 }),

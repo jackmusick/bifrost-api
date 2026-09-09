@@ -54,7 +54,7 @@ type Organization = components["schemas"]["OrganizationPublic"];
 export function Config() {
 	const addButtonRef = useRef<HTMLButtonElement>(null);
 	const { scope, isGlobalScope } = useOrgScope();
-	const isNarrow = useMediaQuery("(max-width: 1023px)");
+	const isNarrow = useMediaQuery("(max-width: 1279px)");
 	const { isPlatformAdmin } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
@@ -230,7 +230,7 @@ export function Config() {
 	);
 
 	return (
-		<PageWorkspace>
+		<PageWorkspace className="mx-auto w-full max-w-[1400px]">
 			<ListPageHeader
 				title="Configuration"
 				description={
@@ -289,16 +289,16 @@ export function Config() {
 					</div>
 				)}
 				{isPlatformAdmin && (
-					<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+					<div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:w-auto sm:flex sm:flex-wrap sm:items-center">
 						{selectedIds.size > 0 && (
-							<span className="text-sm text-muted-foreground">
+							<span className="col-span-2 text-sm text-muted-foreground sm:col-span-1 sm:mr-1">
 								{selectedIds.size} selected
 							</span>
 						)}
 						<Button
 							variant="outline"
 							size="sm"
-							className="min-h-11 lg:min-h-0"
+							className="min-h-11 w-full sm:w-auto lg:min-h-0"
 							onClick={handleExport}
 							disabled={isExporting}
 						>
@@ -310,7 +310,7 @@ export function Config() {
 						<Button
 							variant="outline"
 							size="sm"
-							className="min-h-11 lg:min-h-0"
+							className="min-h-11 w-full sm:w-auto lg:min-h-0"
 							onClick={() => setIsImportOpen(true)}
 						>
 							<Upload className="h-4 w-4 mr-1" />
@@ -344,7 +344,7 @@ export function Config() {
 			{/* Content */}
 			<PageScrollArea
 				aria-label="Configuration list"
-				className="lg:flex lg:flex-col lg:overflow-hidden"
+				className="xl:flex xl:flex-col xl:overflow-hidden"
 			>
 				{isLoading ? (
 					<div
@@ -394,12 +394,12 @@ export function Config() {
 														{config.key}
 													</button>
 												</h2>
+												{renderActions(config)}
 											</div>
 											<div className="flex flex-wrap items-center justify-between gap-2">
 												{getTypeBadge(config.type)}
-												{renderActions(config)}
 											</div>
-											<dl className="space-y-3 text-sm">
+											<dl className="grid gap-3 text-sm sm:grid-cols-2">
 												<div>
 													<dt className="text-xs text-muted-foreground">
 														Value
@@ -496,11 +496,11 @@ export function Config() {
 												</DataTableCell>
 											)}
 											{isPlatformAdmin && (
-												<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
+												<DataTableCell className="min-w-40 max-w-56 [overflow-wrap:anywhere]">
 													{config.org_id ? (
 														<Badge
 															variant="outline"
-															className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
+															className="max-w-full whitespace-nowrap text-xs"
 														>
 															<Building2 className="mr-1 h-3 w-3" />
 															{getOrgName(
@@ -510,7 +510,7 @@ export function Config() {
 													) : (
 														<Badge
 															variant="outline"
-															className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
+															className="max-w-full whitespace-nowrap text-xs"
 														>
 															<Globe className="mr-1 h-3 w-3" />
 															Global

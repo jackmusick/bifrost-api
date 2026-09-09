@@ -57,7 +57,7 @@ export function FolderListing({
 	onFolderAction,
 	onUploaded,
 }: FolderListingProps) {
-	const compactLayout = useMediaQuery("(max-width: 1023px)");
+	const compactLayout = useMediaQuery("(max-width: 1439px)");
 	const listing = useQuery({
 		queryKey: ["file-structure", scope, location, prefix],
 		queryFn: () => listStructure(location!, prefix, scope),
@@ -135,14 +135,14 @@ export function FolderListing({
 		return (
 			<li
 				key={entry.path}
-				className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4"
+				className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 [overflow-wrap:anywhere]"
 			>
 				<div className="flex items-start gap-3">
 					<Icon className="mt-3 size-5 shrink-0 text-muted-foreground" />
-					<div className="min-w-0 flex-1">
+					<div className="min-w-0 flex-1 space-y-1">
 						<button
 							type="button"
-							className="min-h-11 text-left text-sm font-medium [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
+							className="min-h-11 max-w-full text-left text-sm font-medium [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
 							onClick={() =>
 								isFolder
 									? onOpenFolder(entry.path)
@@ -154,7 +154,7 @@ export function FolderListing({
 						<p className="text-xs text-muted-foreground">
 							{isFolder ? "Folder" : "File"}
 						</p>
-						{managedBadge}
+						<div>{managedBadge}</div>
 					</div>
 					{renderActions(entry)}
 				</div>

@@ -110,8 +110,8 @@ export function EntityListToolbar({
 					</div>
 				</div>
 
-				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+				<div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+					<div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:col-span-1">
 						{filters}
 					</div>
 					<label htmlFor={sortId} className="sr-only">
@@ -133,7 +133,7 @@ export function EntityListToolbar({
 						type="button"
 						variant="outline"
 						size="icon-lg"
-						className="shrink-0"
+						className="shrink-0 justify-self-start sm:justify-self-auto"
 						aria-label={
 							ascending ? "Sort descending" : "Sort ascending"
 						}
@@ -162,7 +162,7 @@ export function EntityListToolbar({
 						{busy ? busyMessage : selectionSummary}
 					</p>
 					{selectedCount > 0 ? (
-						<div className="flex flex-wrap items-center gap-2">
+						<div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:items-center">
 							{assignmentAction}
 							<Button
 								type="button"

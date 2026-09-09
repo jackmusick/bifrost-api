@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEditorStore } from "@/stores/editorStore";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
+import { PasskeySetupBadge } from "@/components/PasskeySetupBadge";
 import { HeaderStatusIndicators } from "./HeaderStatusIndicators";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useProfile } from "@/hooks/useProfile";
@@ -38,6 +39,7 @@ export function Header({
 }: HeaderProps = {}) {
 	const navigate = useNavigate();
 	const compactHeader = useMediaQuery("(max-width: 1279px)");
+	const mobileHeader = useMediaQuery("(max-width: 639px)");
 	const { user, logout, isPlatformAdmin } = useAuth();
 	const openEditor = useEditorStore((state) => state.openEditor);
 	const openQuickAccess = useQuickAccessStore(
@@ -119,6 +121,8 @@ export function Header({
 						/>
 					)}
 
+					{!mobileHeader && <PasskeySetupBadge />}
+
 					{/* AI assistant connection — only renders while MCP is enabled */}
 					<BifrostRunMenu />
 
@@ -194,6 +198,7 @@ export function Header({
 					aria-label="Workspace status"
 				>
 					<HeaderStatusIndicators isPlatformAdmin={isPlatformAdmin} />
+					{mobileHeader && <PasskeySetupBadge />}
 				</div>
 			)}
 		</header>

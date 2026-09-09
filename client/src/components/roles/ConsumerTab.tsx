@@ -187,7 +187,7 @@ export function ConsumerTab({
 		!allVisibleSelected && effectiveSelected.size > 0;
 	const showPagination =
 		!!pagination &&
-		(pagination.offset > 0 || pagination.total > pagination.limit);
+		(items.length > 0 || pagination.offset > 0 || pagination.total > 0);
 	const showEmptyPagination =
 		showPagination &&
 		!isLoading &&

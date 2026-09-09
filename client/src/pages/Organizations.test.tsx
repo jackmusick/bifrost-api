@@ -36,15 +36,28 @@ const organizations = [
 		created_by: "admin@example.com",
 	},
 ];
+const manyOrganizations = Array.from({ length: 30 }, (_, index) => ({
+	id: `org-${index + 1}`,
+	name: `Organization ${index + 1}`,
+	domain: `org-${index + 1}.example`,
+	is_active: true,
+	is_provider: false,
+	settings: {},
+	created_at: "2026-08-13T00:00:00Z",
+	updated_at: "2026-08-13T00:00:00Z",
+	created_by: "admin@example.com",
+}));
+let organizationRows = organizations;
 
 vi.mock("@/hooks/useOrganizations", () => ({
 	useOrganizations: (options?: { includeInactive?: boolean }) => {
 		mockUseOrganizations(options);
 		return {
 			data: options?.includeInactive
-				? organizations
-				: organizations.filter((org) => org.is_active),
+				? organizationRows
+				: organizationRows.filter((org) => org.is_active),
 			isLoading: false,
+			isFetching: false,
 			refetch: vi.fn(),
 		};
 	},
@@ -123,9 +136,11 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }));
 
 vi.mock("@/pages/settings/RequiredInstructionsSettings", () => ({
-	RequiredInstructionsSettings: ({ organizationId }: { organizationId: string }) => (
-		<div>Instructions for {organizationId}</div>
-	),
+	RequiredInstructionsSettings: ({
+		organizationId,
+	}: {
+		organizationId: string;
+	}) => <div>Instructions for {organizationId}</div>,
 }));
 
 import { Organizations } from "./Organizations";
@@ -136,6 +151,7 @@ beforeEach(() => {
 	mockUpdate.mockReset();
 	nextCreateError = undefined;
 	nextUpdateError = undefined;
+	organizationRows = organizations;
 	mockUseMediaQuery.mockReturnValue(false);
 });
 
@@ -169,6 +185,49 @@ describe("Organizations", () => {
 		await user.click(screen.getByRole("tab", { name: "Instructions" }));
 
 		expect(screen.getByText("Instructions for org-1")).toBeVisible();
+	});
+
+	it("paginates organizations with the shared table footer", async () => {
+		const user = userEvent.setup();
+		organizationRows = manyOrganizations;
+
+		render(<Organizations />);
+
+		expect(screen.getByText("Organization 1")).toBeVisible();
+		expect(screen.queryByText("Organization 26")).not.toBeInTheDocument();
+		expect(screen.getByText(/1.25 of 30/)).toBeInTheDocument();
+		expect(
+			screen
+				.getByRole("navigation", { name: /pagination/i })
+				.closest("tfoot"),
+		).not.toBeNull();
+
+		await user.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(screen.getByText("Organization 26")).toBeVisible();
+		expect(screen.queryByText("Organization 1")).not.toBeInTheDocument();
+		expect(screen.getByText(/26.30 of 30/)).toBeInTheDocument();
+	});
+
+	it("paginates organizations on mobile", async () => {
+		const user = userEvent.setup();
+		organizationRows = manyOrganizations;
+		mockUseMediaQuery.mockReturnValue(true);
+
+		render(<Organizations />);
+
+		const list = screen.getByRole("list", { name: "Organizations" });
+		expect(within(list).getByText("Organization 1")).toBeVisible();
+		expect(
+			within(list).queryByText("Organization 26"),
+		).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Next" }));
+
+		expect(within(list).getByText("Organization 26")).toBeVisible();
+		expect(
+			within(list).queryByText("Organization 1"),
+		).not.toBeInTheDocument();
 	});
 
 	it("saves organization status from the General tab", async () => {
@@ -223,13 +282,22 @@ describe("Organizations", () => {
 		nextUpdateError = new Error("Cannot update right now");
 		render(<Organizations />);
 		await user.click(screen.getByRole("button", { name: "Acme actions" }));
-		await user.click(screen.getByRole("menuitem", { name: "Disable Acme" }));
+		await user.click(
+			screen.getByRole("menuitem", { name: "Disable Acme" }),
+		);
 		await user.click(screen.getByRole("button", { name: "Disable" }));
-		expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toHaveTextContent("Cannot update right now");
+		expect(
+			within(screen.getByRole("alertdialog")).getByRole("alert"),
+		).toHaveTextContent("Cannot update right now");
 		await user.click(screen.getByRole("button", { name: "Disable" }));
-		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+		await waitFor(() =>
+			expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+		);
 		expect(mockUpdate).toHaveBeenCalledTimes(2);
-		expect(mockUpdate).toHaveBeenLastCalledWith({ params: { path: { org_id: "org-1" } }, body: { is_active: false } });
+		expect(mockUpdate).toHaveBeenLastCalledWith({
+			params: { path: { org_id: "org-1" } },
+			body: { is_active: false },
+		});
 	});
 
 	it("returns focus to the edit opener after close on desktop and mobile", async () => {
@@ -259,7 +327,9 @@ describe("Organizations", () => {
 		await user.click(screen.getByRole("button", { name: "Acme actions" }));
 		await user.click(screen.getByRole("menuitem", { name: "Edit Acme" }));
 		await user.click(screen.getByRole("button", { name: "Save Changes" }));
-		expect(screen.getByRole("button", { name: "Acme actions" })).toHaveFocus();
+		expect(
+			screen.getByRole("button", { name: "Acme actions" }),
+		).toHaveFocus();
 	});
 
 	it("keeps create drafts open when create fails", async () => {
@@ -275,22 +345,30 @@ describe("Organizations", () => {
 			screen.getByLabelText("Organization Name"),
 			"Failing Org",
 		);
-		await user.click(screen.getByRole("button", { name: "Create Organization" }));
+		await user.click(
+			screen.getByRole("button", { name: "Create Organization" }),
+		);
 
-		const dialog = screen.getByRole("dialog", { name: "Create Organization" });
+		const dialog = screen.getByRole("dialog", {
+			name: "Create Organization",
+		});
 		expect(dialog).toBeVisible();
 		expect(within(dialog).getByRole("alert")).toHaveFocus();
-		expect(within(dialog).getByText("Failed to create organization")).toBeVisible();
-		expect(within(dialog).getByText("Synthetic create failure")).toBeVisible();
-		expect(screen.getByLabelText("Organization Name")).toHaveValue("Failing Org");
+		expect(
+			within(dialog).getByText("Failed to create organization"),
+		).toBeVisible();
+		expect(
+			within(dialog).getByText("Synthetic create failure"),
+		).toBeVisible();
+		expect(screen.getByLabelText("Organization Name")).toHaveValue(
+			"Failing Org",
+		);
 
 		await user.click(
 			within(dialog).getByRole("button", { name: "Retry create" }),
 		);
 
-		await waitFor(() =>
-			expect(mockCreate).toHaveBeenCalledTimes(2),
-		);
+		await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
 		await waitFor(() =>
 			expect(
 				screen.queryByRole("dialog", { name: "Create Organization" }),
@@ -310,16 +388,24 @@ describe("Organizations", () => {
 		await user.type(nameField, "Acme Edited");
 		await user.click(screen.getByRole("button", { name: "Save Changes" }));
 
-		const dialog = screen.getByRole("dialog", { name: "Edit Organization" });
+		const dialog = screen.getByRole("dialog", {
+			name: "Edit Organization",
+		});
 		expect(dialog).toBeVisible();
 		expect(within(dialog).getByRole("alert")).toHaveFocus();
-		expect(within(dialog).getByText("Failed to update organization")).toBeVisible();
-		expect(within(dialog).getByText("Synthetic update failure")).toBeVisible();
+		expect(
+			within(dialog).getByText("Failed to update organization"),
+		).toBeVisible();
+		expect(
+			within(dialog).getByText("Synthetic update failure"),
+		).toBeVisible();
 		expect(screen.getByLabelText("Organization Name")).toHaveValue(
 			"Acme Edited",
 		);
 
-		await user.click(within(dialog).getByRole("button", { name: "Retry save" }));
+		await user.click(
+			within(dialog).getByRole("button", { name: "Retry save" }),
+		);
 
 		await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
 		await waitFor(() =>
@@ -345,7 +431,9 @@ describe("Organizations", () => {
 		await user.click(screen.getByRole("menuitem", { name: "Edit Acme" }));
 		await user.click(screen.getByRole("button", { name: "Save Changes" }));
 
-		const dialog = screen.getByRole("dialog", { name: "Edit Organization" });
+		const dialog = screen.getByRole("dialog", {
+			name: "Edit Organization",
+		});
 		expect(dialog).toHaveAttribute("aria-busy", "true");
 		expect(dialog).toHaveAttribute("inert");
 
@@ -385,11 +473,17 @@ describe("Organizations", () => {
 			screen.getByLabelText("Organization Name"),
 			"Pending Org",
 		);
-		await user.click(screen.getByRole("button", { name: "Create Organization" }));
+		await user.click(
+			screen.getByRole("button", { name: "Create Organization" }),
+		);
 
-		expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
+		expect(
+			screen.getByRole("button", { name: "Creating..." }),
+		).toBeDisabled();
 		await user.keyboard("{Escape}");
-		expect(screen.getByRole("dialog", { name: "Create Organization" })).toBeVisible();
+		expect(
+			screen.getByRole("dialog", { name: "Create Organization" }),
+		).toBeVisible();
 
 		await act(async () => {
 			resolveCreate();

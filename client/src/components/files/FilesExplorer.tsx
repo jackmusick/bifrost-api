@@ -377,12 +377,13 @@ export function FilesExplorer({
 					{!install && (
 						<>
 							<Tabs
+								className="w-full sm:w-auto"
 								value={view}
 								onValueChange={(value) =>
 									setView(value as "browse" | "policies")
 								}
 							>
-								<TabsList className="min-h-11 group-data-horizontal/tabs:h-auto">
+								<TabsList className="min-h-11 w-full group-data-horizontal/tabs:h-auto sm:w-auto">
 									<TabsTrigger
 										className="min-h-11"
 										value="browse"
@@ -401,7 +402,7 @@ export function FilesExplorer({
 								type="button"
 								size="sm"
 								variant="outline"
-								className="min-h-11"
+								className="min-h-11 flex-1 sm:flex-none"
 								onClick={() => setNewShareOpen(true)}
 							>
 								<Plus className="h-4 w-4" /> New Share
@@ -424,7 +425,7 @@ export function FilesExplorer({
 							<Button
 								type="button"
 								size="sm"
-								className="min-h-11"
+								className="min-h-11 flex-1 sm:flex-none"
 								onClick={() => uploadInputRef.current?.click()}
 								disabled={uploading}
 							>

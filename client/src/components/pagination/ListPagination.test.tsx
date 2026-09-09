@@ -43,4 +43,23 @@ describe("ListPagination", () => {
 		).toBeDisabled();
 		expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
 	});
+
+	it("keeps the summary but hides controls for a single page", () => {
+		render(
+			<ListPagination
+				offset={0}
+				limit={25}
+				total={1}
+				onPageChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("1–1 of 1 · Page 1 of 1")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /previous/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /next/i }),
+		).not.toBeInTheDocument();
+	});
 });
