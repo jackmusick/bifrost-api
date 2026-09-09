@@ -90,3 +90,22 @@ History retains date grouping with larger, higher-contrast date rows. Home cente
 Verification: 49 targeted component tests passed. A live debug browser check expanded metadata, switched through all three tabs, confirmed each panel remained visible and the disclosure followed it, checked mobile overflow, and measured zero vertical offset between the search icon and input centers. Screenshots: `/tmp/bifrost-design-review/execution-unboxed-expanded.png` and `execution-unboxed-bottom.png`.
 
 The live streaming spec passed with the new expanded-metadata/tab-switching regression. Client TypeScript and scoped ESLint passed.
+
+### Collection dialog follow-up
+
+The collection editor owns one scrollable form body. The dialog shell clips overflow,
+its header and action footer stay fixed, and the icon/resource lists participate in
+that same scroll area. This avoids competing scrollbars and removes the outer
+padding that previously compounded the footer spacing. Selected items and search
+results show the object's icon with app/form/agent fallbacks.
+
+Delete follows AppInfoDialog's placement and destructive ghost styling: left of
+Cancel/Save on desktop, below the paired actions on mobile. Role, table, workflow,
+and user edit dialogs do not expose Delete in their save footer; deletion is a
+separate action for those entities. Collection deletion retains its explicit
+confirmation and does not delete its resources.
+
+Reviewed the live debug dialog at 1440×1000 and 390×844: exactly one vertical
+scroll area, visible actions at the bottom, and a 1px border between the footer
+bottom and dialog edge. Home E2E now checks these scrolling and footer bounds
+while editing a collection at desktop and mobile widths.

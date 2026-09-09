@@ -71,7 +71,7 @@ export function CollectionIconPicker({
 				onChange={(event) => setSearch(event.target.value)}
 			/>
 			<div
-				className="flex max-h-40 flex-wrap gap-1 overflow-auto p-1"
+				className="flex flex-wrap gap-1 p-1"
 				aria-label="Available icons"
 			>
 				{matches.map((name) => {

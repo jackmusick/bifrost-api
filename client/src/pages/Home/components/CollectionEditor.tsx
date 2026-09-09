@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { createElement, useState } from "react";
+import {
+	AppWindow,
+	ArrowDown,
+	ArrowUp,
+	Bot,
+	FileInput,
+	Trash2,
+} from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -26,6 +33,7 @@ import type {
 	HomeCollectionWrite,
 	HomeResource,
 } from "@/services/home";
+import { getIcon } from "@/lib/icons";
 import { CollectionIconPicker } from "./CollectionIconPicker";
 
 export function CollectionEditor({
@@ -92,8 +100,8 @@ export function CollectionEditor({
 				if (!open && !busy) onClose();
 			}}
 		>
-			<DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-xl">
-				<DialogHeader>
+			<DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+				<DialogHeader className="shrink-0 px-5 py-5 sm:px-6">
 					<DialogTitle>
 						{collection ? "Edit collection" : "New collection"}
 					</DialogTitle>
@@ -103,7 +111,7 @@ export function CollectionEditor({
 					</DialogDescription>
 				</DialogHeader>
 				<form
-					className="flex min-h-0 flex-col gap-4"
+					className="flex min-h-0 flex-col overflow-hidden"
 					onSubmit={(event) => {
 						event.preventDefault();
 						onSave({
@@ -119,7 +127,7 @@ export function CollectionEditor({
 						});
 					}}
 				>
-					<div className="min-h-0 space-y-5 overflow-y-auto px-1 pb-1">
+					<div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain px-5 pb-5 pt-1 sm:px-6">
 						<div className="space-y-2">
 							<Label htmlFor="collection-name">Name</Label>
 							<Input
@@ -210,6 +218,9 @@ export function CollectionEditor({
 											key={key}
 											className="flex min-w-0 items-center gap-1 px-2 py-1"
 										>
+											<CollectionResourceIcon
+												resource={resourceMap.get(key)}
+											/>
 											<span className="min-w-0 flex-1 truncate text-sm">
 												{resourceMap.get(key)?.name}
 											</span>
@@ -256,7 +267,7 @@ export function CollectionEditor({
 									setSearch(event.target.value)
 								}
 							/>
-							<div className="max-h-52 overflow-auto rounded border">
+							<div className="rounded border">
 								{matches.map((resource) => (
 									<label
 										key={resource.key}
@@ -288,6 +299,9 @@ export function CollectionEditor({
 												)
 											}
 										/>
+										<CollectionResourceIcon
+											resource={resource}
+										/>
 										<span className="min-w-0 text-sm">
 											<span className="block [overflow-wrap:anywhere]">
 												{resource.name}
@@ -309,24 +323,34 @@ export function CollectionEditor({
 						</fieldset>
 					</div>
 					{error && (
-						<p role="alert" className="text-sm text-destructive">
+						<p
+							role="alert"
+							className="shrink-0 px-5 pb-3 text-sm text-destructive sm:px-6"
+						>
 							{error}
 						</p>
 					)}
 					{confirmDelete && (
-						<p role="alert" className="text-sm">
+						<p
+							role="alert"
+							className="shrink-0 px-5 pb-3 text-sm sm:px-6"
+						>
 							Delete this collection? Its apps, forms, and agents
 							will remain available.
 						</p>
 					)}
-					<DialogFooter className="shrink-0 gap-2 border-t pt-4">
+					<DialogFooter className="shrink-0 gap-2 border-t px-5 py-4 sm:px-6">
 						{collection && (
 							<Button
 								type="button"
 								variant={
 									confirmDelete ? "destructive" : "ghost"
 								}
-								className="sm:mr-auto"
+								className={
+									confirmDelete
+										? "min-h-11 sm:mr-auto"
+										: "min-h-11 text-destructive hover:bg-destructive/10 hover:text-destructive sm:mr-auto"
+								}
 								disabled={busy}
 								onClick={() =>
 									confirmDelete
@@ -338,20 +362,36 @@ export function CollectionEditor({
 								{confirmDelete ? "Confirm delete" : "Delete"}
 							</Button>
 						)}
-						<Button
-							type="button"
-							variant="outline"
-							disabled={busy}
-							onClick={onClose}
-						>
-							Cancel
-						</Button>
-						<Button type="submit" disabled={busy || !name.trim()}>
-							{busy ? "Saving…" : "Save collection"}
-						</Button>
+						<div className="grid grid-cols-2 gap-2 sm:flex">
+							<Button
+								type="button"
+								variant="outline"
+								disabled={busy}
+								onClick={onClose}
+							>
+								Cancel
+							</Button>
+							<Button
+								type="submit"
+								disabled={busy || !name.trim()}
+							>
+								{busy ? "Saving…" : "Save collection"}
+							</Button>
+						</div>
 					</DialogFooter>
 				</form>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function CollectionResourceIcon({ resource }: { resource?: HomeResource }) {
+	if (!resource) return null;
+	return createElement(
+		getIcon(
+			resource.icon,
+			{ app: AppWindow, form: FileInput, agent: Bot }[resource.kind],
+		),
+		{ className: "mx-1 size-5 shrink-0 text-primary", "aria-hidden": true },
 	);
 }

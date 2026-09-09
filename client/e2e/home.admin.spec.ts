@@ -93,6 +93,26 @@ test.describe("Home collections (admin)", () => {
 			await expect(
 				page.getByRole("dialog", { name: "Edit collection" }),
 			).toBeVisible();
+			// Long collection editors have one scrolling body and a fixed footer.
+			const dialog = page.getByRole("dialog", { name: "Edit collection" });
+			const originalViewport = page.viewportSize();
+			for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+				await page.setViewportSize(viewport);
+				const scrollingBodies = await dialog.evaluate((root) =>
+					[root, ...root.querySelectorAll<HTMLElement>("*")].filter((element) =>
+						["auto", "scroll"].includes(getComputedStyle(element).overflowY) &&
+						element.scrollHeight > element.clientHeight + 1,
+					).length,
+				);
+				expect(scrollingBodies).toBe(1);
+				await dialog.locator(".overflow-y-auto").evaluate((element) => { element.scrollTop = element.scrollHeight; });
+				await expect(dialog.getByRole("button", { name: "Save collection" })).toBeInViewport();
+				const bottomGap = await dialog.locator('[data-slot="dialog-footer"]').evaluate((footer) =>
+					footer.closest('[role="dialog"]')!.getBoundingClientRect().bottom - footer.getBoundingClientRect().bottom,
+				);
+				expect(bottomGap).toBeLessThan(3);
+			}
+			if (originalViewport) await page.setViewportSize(originalViewport);
 			await page.getByLabel("Name").fill(EDITED_COLLECTION_NAME);
 			await page.getByRole("button", { name: "Save collection" }).click();
 			await expect(
