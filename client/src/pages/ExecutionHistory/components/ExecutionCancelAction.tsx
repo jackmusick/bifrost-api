@@ -89,7 +89,7 @@ export function ExecutionCancelAction({
 				<Button
 					variant="outline"
 					size={compact && !error ? "icon-lg" : "default"}
-					className="min-h-11 whitespace-normal"
+					className={compact && !error ? "min-h-11 whitespace-normal lg:size-8 lg:min-h-8" : "min-h-11 whitespace-normal"}
 					title={label}
 					aria-label={
 						pending

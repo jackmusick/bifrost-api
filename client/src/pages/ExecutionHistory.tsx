@@ -10,7 +10,6 @@ import {
 	Globe,
 	AlertCircle,
 	SearchX,
-	Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -350,7 +349,7 @@ export function ExecutionHistory() {
 
 	// One source of truth for the column count (admins get the Org column).
 	const previewOpen = isDesktop && previewExecutionId !== null;
-	const columnCount = previewOpen ? 5 : isPlatformAdmin ? 8 : 7;
+	const columnCount = previewOpen ? 4 : isPlatformAdmin ? 7 : 6;
 
 	const showPaginationFooter = hasMore || pageStack.length > 0;
 	const executionPageSummary = `${filteredExecutions.length} run${filteredExecutions.length !== 1 ? "s" : ""} on this page · Page ${pageStack.length + 1}`;
@@ -1017,9 +1016,7 @@ export function ExecutionHistory() {
 															<DataTableHead className="w-px whitespace-nowrap text-right">
 																Duration
 															</DataTableHead>
-															<DataTableHead className="w-px text-right">
-																Preview
-															</DataTableHead>
+
 															{!previewOpen && (
 																<DataTableHead className="w-px text-right"></DataTableHead>
 															)}
@@ -1259,33 +1256,10 @@ export function ExecutionHistory() {
 																						{duration ??
 																							"—"}
 																					</DataTableCell>
-																					<DataTableCell className="w-px text-right">
-																						<Button
-																							variant={
-																								previewExecutionId ===
-																								execution.execution_id
-																									? "secondary"
-																									: "ghost"
-																							}
-																							size="icon-lg"
-																							onClick={() =>
-																								handlePreviewExecution(
-																									execution.execution_id,
-																								)
-																							}
-																							aria-label={`Preview execution ${execution.workflow_name}`}
-																							aria-pressed={
-																								previewExecutionId ===
-																								execution.execution_id
-																							}
-																							title="Preview execution"
-																						>
-																							<Eye className="h-4 w-4" />
-																						</Button>
-																					</DataTableCell>
+
 																					{!previewOpen && (
-																						<DataTableCell className="w-px text-right">
-																							<div className="flex min-w-11 items-center justify-end gap-1">
+																						<DataTableCell className="w-px px-2 text-right">
+																							<div className="flex min-w-11 items-center justify-end gap-1 lg:min-w-8">
 																								<ExecutionCancelAction
 																									compact
 																									executionId={

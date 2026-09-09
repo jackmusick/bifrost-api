@@ -154,3 +154,11 @@ copying trigger-width classes. Future searchable pickers should use this variant
 Content overrides remain available for intentionally wider pickers. Action menus
 use intrinsic content width capped to the viewport, independent of icon triggers.
 Ordinary Select already uses the trigger as a minimum rather than a fixed width.
+
+### Compact History actions
+
+Removed the desktop Preview column: row and workflow-title clicks already open
+the execution preview. The remaining Cancel slot uses a 32px desktop control
+with reduced cell padding; smaller screens retain the 44px touch target. Space stays
+reserved after completion so the table does not shift. Day-group column spans
+were reduced to match the removed column.
