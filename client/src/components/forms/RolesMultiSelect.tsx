@@ -94,9 +94,9 @@ export function RolesMultiSelect({
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent
+			<PopoverContent variant="picker"
 				className={cn(
-					"w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0",
+					"p-0",
 					contentClassName,
 				)}
 				align="start"

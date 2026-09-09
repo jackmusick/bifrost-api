@@ -649,8 +649,8 @@ export function AgentSettingsTab({
 													</Button>
 												</FormControl>
 											</PopoverTrigger>
-											<PopoverContent
-												className="w-[var(--radix-popover-trigger-width)] p-0"
+											<PopoverContent variant="picker"
+												className="p-0"
 												align="start"
 											>
 												<Command>

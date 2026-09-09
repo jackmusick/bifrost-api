@@ -104,8 +104,8 @@ export function MultiCombobox({
 						)}
 					</Button>
 				</PopoverTrigger>
-				<PopoverContent
-					className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+				<PopoverContent variant="picker"
+					className="p-0"
 					align="start"
 					aria-label="Select options"
 				>

@@ -142,3 +142,15 @@ History reserves space for the conditional Cancel action and for duration/start
 values, with tabular digits for timestamps. These columns no longer contract as
 an execution completes or clock values change. This keeps workflow/status columns
 from moving when the Cancel action disappears.
+
+### Shared dropdown sizing contract
+
+Searchable dropdowns use `PopoverContent variant="picker"`. The primitive owns
+one default: at least 20rem wide, at least the trigger width when there is room,
+and capped to the viewport gutter. WorkflowSelector, OrganizationSelect, generic
+comboboxes/multicomboboxes, role selectors, user/app/workflow/agent editor pickers,
+dynamic configuration options, and MCPToolPicker use this contract instead of
+copying trigger-width classes. Future searchable pickers should use this variant.
+Content overrides remain available for intentionally wider pickers. Action menus
+use intrinsic content width capped to the viewport, independent of icon triggers.
+Ordinary Select already uses the trigger as a minimum rather than a fixed width.

@@ -636,9 +636,9 @@ function DynamicField({
 							<ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent
+					<PopoverContent variant="picker"
 						aria-label={`${property.title || fieldName} options`}
-						className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+						className="p-0"
 						align="start"
 					>
 						<Command>

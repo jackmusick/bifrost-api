@@ -107,8 +107,8 @@ export function Combobox({
 					)}
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent
-				className="max-h-[var(--radix-popover-content-available-height)] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+			<PopoverContent variant="picker"
+				className="max-h-[var(--radix-popover-content-available-height)] overflow-hidden p-0"
 				align="start"
 			>
 				<Command
