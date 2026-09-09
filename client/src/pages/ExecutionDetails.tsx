@@ -1,14 +1,10 @@
+import { ExecutionInspector } from "@/components/execution/ExecutionInspector";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RunDetailHeading } from "@/components/execution/RunDetailHeading";
 import { ExecutionPageHeader } from "@/components/execution/ExecutionPageHeader";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import {
-	XCircle,
-	Loader2,
-	RefreshCw,
-	ChevronDown,
-	Copy,
-} from "lucide-react";
+import { XCircle, Loader2, RefreshCw, ChevronDown, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
@@ -32,7 +28,7 @@ import {
 	ExecutionSidebar,
 	ExecutionCancelDialog,
 	ExecutionRerunDialog,
-	ExecutionMetadataBar,
+	ExecutionActivityTrace,
 	RunStatusBadge,
 	PrettyInputDisplay,
 	type LogEntry,
@@ -47,7 +43,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
-import { parseBackendDate } from "@/lib/utils";
 import type { StreamingLog } from "@/stores/executionStreamStore";
 
 type ExecutionStatus =
@@ -217,26 +212,15 @@ export function ExecutionDetails({
 	const executionStatus = execution?.status as ExecutionStatus | undefined;
 	const reduceMotion = useReducedMotion();
 	const isCancelled = executionStatus === "Cancelled";
-	const outcomeTone = isCancelled ? "border-border bg-muted/50 text-muted-foreground" : "border-destructive/30 bg-destructive/10 text-destructive";
+	const outcomeTone = isCancelled
+		? "border-border bg-muted/50 text-muted-foreground"
+		: "border-destructive/30 bg-destructive/10 text-destructive";
 	const isComplete =
 		executionStatus === "Success" ||
 		executionStatus === "Failed" ||
 		executionStatus === "CompletedWithErrors" ||
 		executionStatus === "Timeout" ||
 		executionStatus === "Cancelled";
-	const totalDurationMs = (() => {
-		if (!execution?.started_at || !execution.completed_at) return null;
-		const startedAt = parseBackendDate(execution.started_at).getTime();
-		const completedAt = parseBackendDate(execution.completed_at).getTime();
-		if (
-			Number.isNaN(startedAt) ||
-			Number.isNaN(completedAt) ||
-			completedAt < startedAt
-		) {
-			return null;
-		}
-		return completedAt - startedAt;
-	})();
 
 	// Data now comes from single API call - create adapter variables for compatibility
 	const resultData = execution
@@ -330,7 +314,9 @@ export function ExecutionDetails({
 		);
 
 		if (!workflow?.id) {
-			setRerunError("The workflow is unavailable. Close this dialog and refresh before trying again.");
+			setRerunError(
+				"The workflow is unavailable. Close this dialog and refresh before trying again.",
+			);
 			return;
 		}
 
@@ -361,7 +347,9 @@ export function ExecutionDetails({
 				}
 			}
 		} catch {
-			setRerunError("Couldn't start the workflow. Your original input is ready to retry.");
+			setRerunError(
+				"Couldn't start the workflow. Your original input is ready to retry.",
+			);
 		} finally {
 			rerunBusy.current = false;
 			setIsRerunning(false);
@@ -486,11 +474,23 @@ export function ExecutionDetails({
 	}
 
 	if (!execution) {
-		return <div className={embedded ? "p-4" : "mx-auto max-w-2xl p-4 sm:p-6"}>
-			<ExecutionReadError pending={isFetching} onRetry={() => void refetch()} onBack={embedded ? undefined : () => navigate("/history")} />
-		</div>;
+		return (
+			<div className={embedded ? "p-4" : "mx-auto max-w-2xl p-4 sm:p-6"}>
+				<ExecutionReadError
+					pending={isFetching}
+					onRetry={() => void refetch()}
+					onBack={embedded ? undefined : () => navigate("/history")}
+				/>
+			</div>
+		);
 	}
-	const refreshError = error ? <ExecutionReadError cached pending={isFetching} onRetry={() => void refetch()} /> : null;
+	const refreshError = error ? (
+		<ExecutionReadError
+			cached
+			pending={isFetching}
+			onRetry={() => void refetch()}
+		/>
+	) : null;
 
 	// Embedded mode — single-column layout for slideout drawer
 	if (embedded) {
@@ -506,7 +506,8 @@ export function ExecutionDetails({
 		const hasAiUsage = aiUsageList && aiUsageList.length > 0;
 		const hasMetrics =
 			isPlatformAdmin &&
-			(execution.peak_memory_bytes != null || execution.cpu_total_seconds != null);
+			(execution.peak_memory_bytes != null ||
+				execution.cpu_total_seconds != null);
 		const hasVariables =
 			isPlatformAdmin &&
 			isComplete &&
@@ -554,26 +555,33 @@ export function ExecutionDetails({
 				{actionsContainer &&
 					createPortal(actionButtons, actionsContainer)}
 
-				<div className="p-4 space-y-4">
+				<div className="space-y-4">
 					{refreshError}
-					{/* Compact metadata header */}
-					<ExecutionMetadataBar
-						workflowName={execution.workflow_name}
-						status={executionStatus as ExecutionStatus}
+					<div className="space-y-2">
+						<h3 className="font-display text-lg font-semibold [overflow-wrap:anywhere]">
+							{execution.workflow_name}
+						</h3>
+						<RunStatusBadge
+							status={executionStatus as string}
+							queuePosition={streamState?.queuePosition}
+							waitReason={streamState?.waitReason}
+						/>
+					</div>
+					<ExecutionActivityTrace
+						status={executionStatus}
+						startedAt={execution.started_at}
+						completedAt={execution.completed_at}
 						executedByName={execution.executed_by_name}
 						orgName={execution.org_name}
-						startedAt={execution.started_at}
-						durationMs={execution.duration_ms}
-						totalDurationMs={totalDurationMs}
-						queuePosition={streamState?.queuePosition}
-						waitReason={streamState?.waitReason}
-						availableMemoryMb={streamState?.availableMemoryMb}
-						requiredMemoryMb={streamState?.requiredMemoryMb}
+						isConnected={isConnected}
+						isStreamingEnabled={signalrEnabled}
 					/>
 
 					{/* Error message — the triage answer; loud, copyable */}
 					{execution.error_message && (
-						<div className={`rounded-[var(--bf-radius-surface)] border p-3 ${outcomeTone}`}>
+						<div
+							className={`rounded-[var(--bf-radius-surface)] border p-3 ${outcomeTone}`}
+						>
 							<div className="flex items-start gap-2">
 								<XCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
 								<pre className="min-w-0 flex-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] font-mono">
@@ -586,11 +594,21 @@ export function ExecutionDetails({
 									onClick={() =>
 										void copyWithToast(
 											execution.error_message ?? "",
-											isCancelled ? "Cancellation message copied" : "Error copied",
+											isCancelled
+												? "Cancellation message copied"
+												: "Error copied",
 										)
 									}
-									title={isCancelled ? "Copy cancellation message" : "Copy error"}
-									aria-label={isCancelled ? "Copy cancellation message" : "Copy error"}
+									title={
+										isCancelled
+											? "Copy cancellation message"
+											: "Copy error"
+									}
+									aria-label={
+										isCancelled
+											? "Copy cancellation message"
+											: "Copy error"
+									}
 								>
 									<Copy className="h-3.5 w-3.5" />
 								</Button>
@@ -598,45 +616,51 @@ export function ExecutionDetails({
 						</div>
 					)}
 
-					{/* Result */}
-					{isComplete && execution.result != null && (
-						<ExecutionResultPanel
-							result={resultData?.result}
-							resultType={resultData?.result_type}
-							workflowName={execution.workflow_name}
-							isLoading={isLoadingResult}
-						/>
-					)}
-
-					{/* Input data */}
-					{execution.input_data && (
-						<section>
-							<h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-								Input Parameters
-							</h4>
+					<Tabs defaultValue="logs" className="min-w-0">
+						<TabsList aria-label="Execution preview content">
+							<TabsTrigger value="logs">Logs</TabsTrigger>
+							<TabsTrigger value="input">Input</TabsTrigger>
+							<TabsTrigger value="result">Result</TabsTrigger>
+						</TabsList>
+						<TabsContent value="logs" className="mt-3 min-w-0">
+							<ExecutionLogsPanel
+								key={executionId}
+								logs={mergedLogs as LogEntry[]}
+								status={executionStatus}
+								isConnected={isConnected}
+								isLoading={isLoadingLogs}
+								isPlatformAdmin={isPlatformAdmin}
+								maxHeight="min(55vh, 36rem)"
+							/>
+						</TabsContent>
+						<TabsContent value="input" className="mt-3 min-w-0">
 							<PrettyInputDisplay
 								inputData={
-									execution.input_data as Record<
+									(execution.input_data ?? {}) as Record<
 										string,
 										unknown
 									>
 								}
-								showToggle={true}
+								showToggle
 								defaultView="pretty"
 							/>
-						</section>
-					)}
-
-					{/* Logs */}
-				<ExecutionLogsPanel
-					logs={mergedLogs as LogEntry[]}
-					status={executionStatus}
-					isConnected={isConnected}
-					isLoading={isLoadingLogs}
-					isPlatformAdmin={isPlatformAdmin}
-					maxHeight="min(48vh, 28rem)"
-				/>
-
+						</TabsContent>
+						<TabsContent value="result" className="mt-3 min-w-0">
+							{isComplete ? (
+								<ExecutionResultPanel
+									result={resultData?.result}
+									resultType={resultData?.result_type}
+									workflowName={execution.workflow_name}
+									isLoading={isLoadingResult}
+								/>
+							) : (
+								<p className="py-4 text-sm text-muted-foreground">
+									The result will be available when this run
+									completes.
+								</p>
+							)}
+						</TabsContent>
+					</Tabs>
 					{/* Extra details — collapsible */}
 					{isComplete && hasExtras && (
 						<Collapsible>
@@ -679,8 +703,8 @@ export function ExecutionDetails({
 					onOpenChange={setShowCancelDialog}
 					workflowName={execution.workflow_name}
 					isCancelling={isCancelling}
-				error={cancelError}
-				onConfirm={handleCancelExecution}
+					error={cancelError}
+					onConfirm={handleCancelExecution}
 				/>
 
 				<ExecutionRerunDialog
@@ -688,7 +712,7 @@ export function ExecutionDetails({
 					onOpenChange={setShowRerunDialog}
 					workflowName={execution.workflow_name}
 					isRerunning={isRerunning}
-				error={rerunError}
+					error={rerunError}
 					onConfirm={handleRerunExecution}
 				/>
 			</div>
@@ -696,27 +720,46 @@ export function ExecutionDetails({
 	}
 
 	return (
-			<div className="h-full overflow-y-auto lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
+		<div className="h-full overflow-y-auto bg-background lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
 			{/* Page Header - hidden for embedded users (embedded prop short-circuits earlier) */}
 			{!isEmbed && (
 				<ExecutionPageHeader
 					name={execution.workflow_name}
-					status={<RunStatusBadge
-									status={executionStatus as string}
-									queuePosition={streamState?.queuePosition}
-									waitReason={streamState?.waitReason}
-									availableMemoryMb={
-										streamState?.availableMemoryMb
-									}
-									requiredMemoryMb={
-										streamState?.requiredMemoryMb
-									}
-								/>}
+					status={
+						<RunStatusBadge
+							status={executionStatus as string}
+							queuePosition={streamState?.queuePosition}
+							waitReason={streamState?.waitReason}
+							availableMemoryMb={streamState?.availableMemoryMb}
+							requiredMemoryMb={streamState?.requiredMemoryMb}
+						/>
+					}
 					onBack={() => navigate("/history")}
-					onCopyId={() => void copyWithToast(execution.execution_id, "Execution ID copied")}
-					onOpenEditor={metadata?.workflows?.find((workflow: WorkflowMetadata) => workflow.name === execution.workflow_name)?.source_file_path ? handleOpenInEditor : undefined}
-					onRerun={isPlatformAdmin && isComplete ? () => setShowRerunDialog(true) : undefined}
-					onCancel={execution.status === "Running" || execution.status === "Pending" ? () => setShowCancelDialog(true) : undefined}
+					onCopyId={() =>
+						void copyWithToast(
+							execution.execution_id,
+							"Execution ID copied",
+						)
+					}
+					onOpenEditor={
+						metadata?.workflows?.find(
+							(workflow: WorkflowMetadata) =>
+								workflow.name === execution.workflow_name,
+						)?.source_file_path
+							? handleOpenInEditor
+							: undefined
+					}
+					onRerun={
+						isPlatformAdmin && isComplete
+							? () => setShowRerunDialog(true)
+							: undefined
+					}
+					onCancel={
+						execution.status === "Running" ||
+						execution.status === "Pending"
+							? () => setShowCancelDialog(true)
+							: undefined
+					}
 					openingEditor={isOpeningInEditor}
 					rerunning={isRerunning}
 				/>
@@ -726,118 +769,169 @@ export function ExecutionDetails({
 				<header className="border-b px-4 py-4 sm:px-6 lg:px-8">
 					<RunDetailHeading
 						title={execution.workflow_name}
-						metadata={<div role="status" aria-live="polite"><RunStatusBadge status={executionStatus as string} /></div>}
+						metadata={
+							<div role="status" aria-live="polite">
+								<RunStatusBadge
+									status={executionStatus as string}
+								/>
+							</div>
+						}
 						actionsLabel="Execution actions"
 					/>
 				</header>
 			)}
-			{/* Two-column layout: Content on left, Sidebar on right */}
-				<div data-page-scroll className="p-4 sm:p-6 lg:p-8 lg:min-h-0 lg:flex-1 lg:overflow-auto">
-					{refreshError && <div className="mb-6">{refreshError}</div>}
-					<div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] xl:gap-8">
-						{/* Left Column - Main Content (2/3 width) */}
-						<div className="min-w-0 space-y-6">
-						{/* Error — the forensic answer leads the page, full
-						    width in the primary column, copyable. */}
-						{execution.error_message && (
-							<motion.div
-								initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: reduceMotion ? 0 : 0.22 }}
-								data-testid="execution-error-banner"
+			<div
+				data-page-scroll
+				className="min-h-0 flex-1 overflow-auto xl:overflow-hidden"
+			>
+				<div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 p-4 sm:p-5 lg:p-6 xl:h-full xl:min-h-0">
+					{refreshError}
+					<ExecutionActivityTrace
+						status={executionStatus}
+						startedAt={execution.started_at}
+						completedAt={execution.completed_at}
+						executedByName={execution.executed_by_name}
+						orgName={execution.org_name}
+						isConnected={isConnected}
+						isStreamingEnabled={signalrEnabled}
+					/>
+					{execution.error_message && (
+						<motion.div
+							initial={
+								reduceMotion ? false : { opacity: 0, y: 20 }
+							}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: reduceMotion ? 0 : 0.22 }}
+							data-testid="execution-error-banner"
+						>
+							<div
+								className={`rounded-[var(--bf-radius-surface)] border p-4 ${outcomeTone}`}
 							>
-								<div className={`rounded-[var(--bf-radius-surface)] border p-4 ${outcomeTone}`}>
-									<div className="flex items-start gap-3">
-										<XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-										<div className="flex-1 min-w-0">
-											<p className="text-sm font-semibold">
-												{isCancelled ? "This run was cancelled" : "This run failed"}
-											</p>
-											<pre className="mt-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] font-mono">
-												{execution.error_message}
-											</pre>
-										</div>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="size-11 flex-shrink-0 text-inherit sm:size-7"
-											onClick={() =>
-												void copyWithToast(
-													execution.error_message ??
-														"",
-													isCancelled ? "Cancellation message copied" : "Error copied",
-												)
-											}
-											title={isCancelled ? "Copy cancellation message" : "Copy error"}
-									aria-label={isCancelled ? "Copy cancellation message" : "Copy error"}
-										>
-											<Copy className="h-4 w-4" />
-										</Button>
+								<div className="flex items-start gap-3">
+									<XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+									<div className="flex-1 min-w-0">
+										<p className="text-sm font-semibold">
+											{isCancelled
+												? "This run was cancelled"
+												: "This run failed"}
+										</p>
+										<pre className="mt-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] font-mono">
+											{execution.error_message}
+										</pre>
 									</div>
+									<Button
+										variant="ghost"
+										size="icon"
+										className="size-11 flex-shrink-0 text-inherit sm:size-7"
+										onClick={() =>
+											void copyWithToast(
+												execution.error_message ?? "",
+												isCancelled
+													? "Cancellation message copied"
+													: "Error copied",
+											)
+										}
+										title={
+											isCancelled
+												? "Copy cancellation message"
+												: "Copy error"
+										}
+										aria-label={
+											isCancelled
+												? "Copy cancellation message"
+												: "Copy error"
+										}
+									>
+										<Copy className="h-4 w-4" />
+									</Button>
 								</div>
-							</motion.div>
-						)}
+							</div>
+						</motion.div>
+					)}
 
-						{/* Result Section — only when there is (or can be) a
-						    result; a failed run with no result renders the
-						    error banner instead of "No result returned". */}
-						{isComplete &&
-							(execution.result != null ||
-								executionStatus === "Success") && (
-								<motion.div
-									initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-									animate={{ opacity: 1, y: 0 }}
-									transition={{ duration: reduceMotion ? 0 : 0.22 }}
-								>
+					<div className="grid min-h-0 grid-cols-1 gap-4 xl:flex-1 xl:overflow-hidden xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+						<motion.div
+							initial={
+								reduceMotion ? false : { opacity: 0, y: 16 }
+							}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: reduceMotion ? 0 : 0.22 }}
+							className="min-h-0 min-w-0 xl:flex xl:flex-col"
+						>
+							<ExecutionLogsPanel
+								logs={mergedLogs as LogEntry[]}
+								status={executionStatus}
+								isConnected={isConnected}
+								isLoading={isLoadingLogs}
+								isPlatformAdmin={isPlatformAdmin}
+								maxHeight="max(18rem, calc(100dvh - 23rem))"
+								variant="primary"
+							/>
+						</motion.div>
+
+						<ExecutionInspector
+							key={executionId}
+							completed={isComplete}
+							input={
+								<PrettyInputDisplay
+									inputData={
+										(execution.input_data ?? {}) as Record<
+											string,
+											unknown
+										>
+									}
+									showToggle
+									defaultView="pretty"
+								/>
+							}
+							output={
+								isComplete &&
+								(execution.result != null ||
+									executionStatus === "Success") ? (
 									<ExecutionResultPanel
 										result={resultData?.result}
 										resultType={resultData?.result_type}
 										workflowName={execution.workflow_name}
 										isLoading={isLoadingResult}
 									/>
-								</motion.div>
-							)}
-
-						{/* Logs Section */}
-						<motion.div
-							initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: reduceMotion ? 0 : 0.22 }}
-						>
-								<ExecutionLogsPanel
-									logs={mergedLogs as LogEntry[]}
-									status={executionStatus}
-									isConnected={isConnected}
-									isLoading={isLoadingLogs}
+								) : (
+									<p className="py-4 text-sm text-muted-foreground">
+										{isComplete
+											? "This run did not return a result."
+											: "Output will appear when this run completes."}
+									</p>
+								)
+							}
+							details={
+								<ExecutionSidebar
+									executedByName={execution.executed_by_name}
+									orgName={execution.org_name}
+									scheduledAt={execution.scheduled_at}
+									startedAt={execution.started_at}
+									completedAt={execution.completed_at}
+									inputData={execution.input_data}
+									isComplete={isComplete}
 									isPlatformAdmin={isPlatformAdmin}
-									maxHeight="min(72vh, 52rem)"
+									isLoading={isLoading}
+									variablesData={variablesData}
+									peakMemoryBytes={
+										execution.peak_memory_bytes
+									}
+									cpuTotalSeconds={
+										execution.cpu_total_seconds
+									}
+									durationMs={execution.duration_ms}
+									aiUsage={execution.ai_usage}
+									aiTotals={execution.ai_totals}
+									executionContext={
+										execution.execution_context
+									}
 								/>
-							</motion.div>
-						</div>
-
-						{/* Right Column - Sidebar (1/3 width) */}
-						<div className="min-w-0">
-							<ExecutionSidebar
-								executedByName={execution.executed_by_name}
-								orgName={execution.org_name}
-								scheduledAt={execution.scheduled_at}
-								startedAt={execution.started_at}
-								completedAt={execution.completed_at}
-								inputData={execution.input_data}
-								isComplete={isComplete}
-								isPlatformAdmin={isPlatformAdmin}
-								isLoading={isLoading}
-								variablesData={variablesData}
-								peakMemoryBytes={execution.peak_memory_bytes}
-								cpuTotalSeconds={execution.cpu_total_seconds}
-								durationMs={execution.duration_ms}
-								aiUsage={execution.ai_usage}
-								aiTotals={execution.ai_totals}
-								executionContext={execution.execution_context}
-							/>
-						</div>
+							}
+						/>
 					</div>
 				</div>
+			</div>
 
 			{/* Cancel Confirmation Dialog */}
 			<ExecutionCancelDialog

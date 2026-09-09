@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "@testing-library/react";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeProvider, useTheme } from "./ThemeContext";
 
 function ThemeProbe() {
@@ -88,6 +89,43 @@ describe("ThemeProvider motion preference", () => {
 			expect(document.documentElement).not.toHaveClass("dark");
 			expect(localStorage.getItem("theme")).toBe("light");
 			expect(startTransition).not.toHaveBeenCalled();
+		} finally {
+			if (descriptor)
+				Object.defineProperty(
+					document,
+					"startViewTransition",
+					descriptor,
+				);
+			else Reflect.deleteProperty(document, "startViewTransition");
+		}
+	});
+});
+
+describe("ThemeToggle animation ownership", () => {
+	it("starts one transition and applies the theme inside its callback", async () => {
+		const descriptor = Object.getOwnPropertyDescriptor(
+			document,
+			"startViewTransition",
+		);
+		const startTransition = vi.fn((update: () => void) => {
+			update();
+			expect(document.documentElement).not.toHaveClass("dark");
+		});
+		Object.defineProperty(document, "startViewTransition", {
+			configurable: true,
+			value: startTransition,
+		});
+		try {
+			render(
+				<ThemeProvider>
+					<ThemeToggle />
+				</ThemeProvider>,
+			);
+			await userEvent
+				.setup()
+				.click(screen.getByRole("button", { name: "Toggle theme" }));
+			expect(startTransition).toHaveBeenCalledTimes(1);
+			expect(localStorage.getItem("theme")).toBe("light");
 		} finally {
 			if (descriptor)
 				Object.defineProperty(

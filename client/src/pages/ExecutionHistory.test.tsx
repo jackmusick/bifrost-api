@@ -81,7 +81,37 @@ vi.mock("sonner", () => ({
 
 // Stub heavy children so they don't explode without their own data deps.
 vi.mock("@/pages/ExecutionHistory/components/ExecutionDrawer", () => ({
-	ExecutionDrawer: () => null,
+	ExecutionDrawer: ({
+		executionId,
+		open,
+	}: {
+		executionId: string | null;
+		open: boolean;
+	}) =>
+		open ? (
+			<div role="dialog" aria-label="Execution details">
+				{executionId}
+			</div>
+		) : null,
+}));
+
+vi.mock("@/pages/ExecutionHistory/components/ExecutionPreviewPanel", () => ({
+	ExecutionPreviewPanel: ({
+		executionId,
+		onClose,
+	}: {
+		executionId: string | null;
+		onClose: () => void;
+	}) =>
+		executionId ? (
+			<aside
+				aria-label="Execution preview"
+				data-testid="execution-preview"
+			>
+				<p>{executionId}</p>
+				<button onClick={onClose}>Close execution preview</button>
+			</aside>
+		) : null,
 }));
 
 vi.mock("@/pages/ExecutionHistory/components/LogsView", () => ({
@@ -478,7 +508,12 @@ describe("ExecutionHistory — feed rendering", () => {
 		).toHaveClass("hidden", "lg:table-cell");
 		expect(
 			screen.getByRole("columnheader", { name: "Duration" }),
-		).toHaveClass("hidden", "xl:table-cell");
+		).toHaveClass("w-px", "whitespace-nowrap", "text-right");
+		expect(
+			screen.queryByRole("complementary", {
+				name: "Execution preview",
+			}),
+		).not.toBeInTheDocument();
 		expect(screen.getByRole("tablist").parentElement).toHaveClass(
 			"no-scrollbar",
 			"overflow-x-auto",
@@ -538,6 +573,70 @@ describe("ExecutionHistory — feed rendering", () => {
 		await renderPage();
 
 		expect(screen.getByText("Graph API returned 403")).toBeInTheDocument();
+	});
+
+	it("keeps desktop row navigation separate from the preview action", async () => {
+		mockAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			user: { id: "admin-1", email: "admin@example.com" },
+		});
+		mockUseExecutions.mockReturnValue({
+			data: { executions: [makeRow()], continuation_token: null },
+			isFetching: false,
+			isError: false,
+			refetch: mockRefetch,
+		});
+
+		const { user } = await renderPage();
+
+		const row = screen.getByTestId("execution-row");
+		expect(row).toHaveAttribute(
+			"data-execution-id",
+			"11111111-1111-1111-1111-111111111111",
+		);
+		expect(
+			screen.getByRole("link", { name: "test-workflow" }),
+		).toHaveAttribute(
+			"href",
+			"/history/11111111-1111-1111-1111-111111111111",
+		);
+
+		await user.click(
+			screen.getByRole("button", {
+				name: "Preview execution test-workflow",
+			}),
+		);
+		expect(screen.getByTestId("execution-preview")).toHaveTextContent(
+			"11111111-1111-1111-1111-111111111111",
+		);
+		expect(
+			screen.queryByRole("columnheader", { name: "Organization" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("columnheader", { name: "Run by" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("columnheader", { name: "Started" }),
+		).toHaveClass("hidden", "2xl:table-cell");
+		expect(screen.getByTestId("execution-workflow-cell")).toHaveClass(
+			"min-w-64",
+			"py-2",
+		);
+		expect(screen.getByTestId("location-probe")).toHaveTextContent(/^\/$/);
+		expect(row).toHaveAttribute("data-state", "selected");
+
+		await user.click(
+			screen.getByRole("button", { name: "Close execution preview" }),
+		);
+		expect(
+			screen.queryByTestId("execution-preview"),
+		).not.toBeInTheDocument();
+		expect(row).not.toHaveAttribute("data-state");
+
+		await user.click(row);
+		expect(screen.getByTestId("location-probe")).toHaveTextContent(
+			"/history/11111111-1111-1111-1111-111111111111",
+		);
 	});
 });
 
@@ -635,6 +734,14 @@ describe("mobile execution records", () => {
 		);
 		expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
 		expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+		await user.click(
+			within(record).getByRole("button", {
+				name: "Preview execution test-workflow",
+			}),
+		);
+		expect(
+			screen.getByRole("dialog", { name: "Execution details" }),
+		).toHaveTextContent("11111111-1111-1111-1111-111111111111");
 		await user.click(
 			within(record).getByRole("button", {
 				name: "Cancel scheduled execution",

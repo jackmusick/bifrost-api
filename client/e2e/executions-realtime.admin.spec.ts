@@ -119,6 +119,17 @@ test.describe("Execution Realtime Streaming", () => {
 		).toBeVisible({ timeout: 10000 });
 		await expect(page.getByText("Lines", { exact: true })).toBeVisible();
 
+		// Filtering and clearing must work with actual pointer events on mobile.
+		// A translated clear button previously moved under the input when pressed.
+		await page.setViewportSize({ width: 390, height: 844 });
+		const search = page.getByRole("textbox", { name: "Search logs" });
+		await search.fill("streaming log line 20");
+		await expect(streamingLines).toHaveCount(1);
+		await page.getByRole("button", { name: "Clear log search" }).click();
+		await expect(search).toHaveValue("");
+		await expect(streamingLines).toHaveCount(21);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
 		// Assertion 5: no console errors happened during the run.
 		expect(consoleErrors, consoleErrors.join("\n")).toEqual([]);
 	});

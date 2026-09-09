@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
 	LayoutDashboard,
+	Home,
 	Workflow,
 	History,
 	Building,
@@ -56,7 +57,7 @@ const navSections: NavSection[] = [
 		items: [
 			{
 				title: "Dashboard",
-				href: "/",
+				href: "/dashboard",
 				icon: LayoutDashboard,
 				requiresPlatformAdmin: true,
 			},
@@ -65,6 +66,7 @@ const navSections: NavSection[] = [
 	{
 		title: "Hub",
 		items: [
+			{ title: "Home", href: "/", icon: Home },
 			{
 				title: "Chat",
 				href: "/chat",

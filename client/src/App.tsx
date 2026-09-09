@@ -38,6 +38,9 @@ import {
 } from "@/lib/detail-route-loaders";
 
 // Lazy load all page components for code splitting
+const Home = lazyWithReload(() =>
+	import("@/pages/Home").then((m) => ({ default: m.Home })),
+);
 const Dashboard = lazyWithReload(() =>
 	import("@/pages/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
@@ -358,8 +361,16 @@ const routeElements = (
 		/>
 
 		<Route path="/" element={<Layout />}>
-			{/* Dashboard - PlatformAdmin only (OrgUsers redirected to /forms) */}
-			<Route index element={<Dashboard />} />
+			{/* Home is available to authenticated users; metrics remain admin-only. */}
+			<Route index element={<Home />} />
+			<Route
+				path="dashboard"
+				element={
+					<ProtectedRoute requirePlatformAdmin>
+						<Dashboard />
+					</ProtectedRoute>
+				}
+			/>
 
 			{/* Workflows - PlatformAdmin only */}
 			<Route

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { Eye } from "lucide-react";
 import { RunStatusBadge } from "@/components/execution";
+import { Button } from "@/components/ui/button";
 import type { components } from "@/lib/v1";
 import { formatRunDuration, formatRunTime } from "./historyView";
 
@@ -8,7 +10,7 @@ interface ExecutionRecordProps {
 	execution: ExecutionSummary;
 	status: ExecutionSummary["status"] | "Cancelled";
 	organizationName?: string;
-	onOpen: () => void;
+	onPreview: () => void;
 	actions: ReactNode;
 }
 
@@ -16,7 +18,7 @@ export function ExecutionRecord({
 	execution,
 	status,
 	organizationName,
-	onOpen,
+	onPreview,
 	actions,
 }: ExecutionRecordProps) {
 	const anchorIso =
@@ -25,25 +27,25 @@ export function ExecutionRecord({
 		execution.completed_at;
 	return (
 		<li data-testid="execution-record" className="min-w-0 space-y-3 p-4">
-			<RunStatusBadge
-				status={status}
-				scheduledAt={execution.scheduled_at}
-			/>
+			<div className="flex items-start justify-between gap-3">
+				<RunStatusBadge
+					status={status}
+					scheduledAt={execution.scheduled_at}
+				/>
+				<Button
+					variant="outline"
+					size="sm"
+					className="min-h-9 shrink-0 gap-1.5 px-2"
+					onClick={onPreview}
+					aria-label={`Preview execution ${execution.workflow_name}`}
+				>
+					<Eye className="h-3.5 w-3.5" />
+					Preview
+				</Button>
+			</div>
 			<a
 				href={`/history/${execution.execution_id}`}
-				onClick={(event) => {
-					if (
-						event.metaKey ||
-						event.ctrlKey ||
-						event.shiftKey ||
-						event.altKey ||
-						event.button !== 0
-					)
-						return;
-					event.preventDefault();
-					onOpen();
-				}}
-				className="flex min-h-11 items-center font-mono text-sm font-medium [overflow-wrap:anywhere] rounded-[var(--bf-radius-control)] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				className="flex min-h-11 items-center rounded-[var(--bf-radius-control)] font-mono text-sm font-medium [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				{execution.workflow_name}
 			</a>

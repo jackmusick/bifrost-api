@@ -117,13 +117,23 @@ afterEach(() => {
 		.forEach((el) => el.remove());
 });
 
-async function renderShell({ isPreview = true }: { isPreview?: boolean } = {}) {
+async function renderShell({
+	isPreview = true,
+	appName,
+	appLogo,
+}: {
+	isPreview?: boolean;
+	appName?: string | null;
+	appLogo?: string | null;
+} = {}) {
 	const { BundledAppShell } = await import("./BundledAppShell");
 	return renderWithProviders(
 		<BundledAppShell
 			appId="app-1"
 			appSlug="my-app"
 			isPreview={isPreview}
+			appName={appName}
+			appLogo={appLogo}
 		/>,
 	);
 }
@@ -142,9 +152,15 @@ describe("BundledAppShell — loading", () => {
 				}),
 		);
 
-		await renderShell();
+		await renderShell({
+			appName: "Dispatch Board",
+			appLogo: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+		});
 
-		expect(screen.getByText(/loading application/i)).toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveAccessibleName(
+			"Opening Dispatch Board…",
+		);
+		expect(screen.getByText("Dispatch Board")).toBeInTheDocument();
 
 		// Clean up the hanging promise so the test doesn't leak.
 		resolveFetch({

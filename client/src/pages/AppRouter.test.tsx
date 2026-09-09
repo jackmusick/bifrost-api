@@ -37,6 +37,7 @@ beforeEach(() => {
 			id: "app-1",
 			slug: "sample",
 			name: "Sample",
+			logo: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
 			is_published: true,
 			app_model: "inline_v1",
 		},
@@ -77,6 +78,7 @@ it("keeps V1 preview draft routing inside app chrome", () => {
 			id: "app-1",
 			slug: "sample",
 			name: "Sample",
+			logo: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
 			is_published: false,
 			app_model: "inline_v1",
 		},
@@ -86,7 +88,12 @@ it("keeps V1 preview draft routing inside app chrome", () => {
 		screen.getByRole("region", { name: "App chrome" }),
 	).toBeInTheDocument();
 	expect(state.shell).toHaveBeenCalledWith(
-		expect.objectContaining({ appId: "app-1", isPreview: true }),
+		expect.objectContaining({
+			appId: "app-1",
+			isPreview: true,
+			appName: "Sample",
+			appLogo: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+		}),
 	);
 });
 it("leaves standalone apps full-page", () => {

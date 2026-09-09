@@ -10,6 +10,7 @@ import {
 	useEffect,
 	ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { parseFormEmbedPresentation } from "@/lib/form-embed-presentation";
 
 type Theme = "dark" | "light";
@@ -87,7 +88,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 		// Use View Transitions API for smooth animation
 		document.startViewTransition(() => {
-			setThemeState(newTheme);
+			flushSync(() => setThemeState(newTheme));
 			localStorage.setItem("theme", newTheme);
 		});
 	};

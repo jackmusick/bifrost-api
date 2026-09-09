@@ -30,3 +30,12 @@ Every coverage-ledger item requires an individual source review and applicable r
 Mobile acceptance means an easy-to-use, readable composition, beyond preventing page overflow. Review the user's task at the narrow viewport: show record identity and the highest-priority value together, retain the remaining labeled values, and make sorting and actions directly usable. Prefer record summaries for dense report/list tables where sideways reading separates labels from values. Keep desktop comparison tables when useful; both representations must share data, ordering, permissions and actions. Test the intermediate widths where the sidebar reduces available content width. A horizontal scroller alone is not evidence that a dense data page is mobile-friendly.
 
 Selected control groups use tenant primary tokens. Semantic green indicates a meaningful positive status or outcome; audit hard-coded green selection treatments independently from success indicators.
+
+
+## Home, collections, and execution
+
+Home combines accessible apps, forms, and chat-enabled agents, with personal pins and collections plus administrator-curated shared collections. Organization and resource type must remain visible when browsing across customers. Collections organize existing access; they do not grant it. Use the existing Lucide library for collection icons.
+
+Execution gives wrapping log messages the primary space, with timestamps and severity secondary. Never infer workflow steps or percent completion from plain logs. Use an indeterminate brand-aware activity trace while running, respect reduced motion, and preserve manual inspector choices when results arrive. On desktop, logs and the inspector scroll within the available height; on mobile, use full-width sections. History preview must preserve table scroll bounds and keep shared pagination visible.
+
+See [Home and execution experience](docs/design-modernization/home-execution.md) for behavior, verification, and rollout details.

@@ -63,6 +63,7 @@ vi.mock("@/components/execution", () => ({
 	ExecutionMetadataBar: ({ workflowName }: { workflowName: string }) => (
 		<div>{workflowName}</div>
 	),
+	ExecutionActivityTrace: () => <div>Live stream idle</div>,
 	RunStatusBadge: ({ status }: { status: string }) => <span>{status}</span>,
 	PrettyInputDisplay: () => <div>Input</div>,
 }));

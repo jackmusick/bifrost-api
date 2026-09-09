@@ -153,6 +153,8 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 			key={application.id}
 			appId={application.id}
 			appSlug={application.slug}
+			appName={application.name}
+			appLogo={application.logo}
 			isPreview={preview}
 		/>
 	);

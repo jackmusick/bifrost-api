@@ -5,7 +5,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 export function ThemeToggle({ className }: { className?: string } = {}) {
 	const { theme, setTheme } = useTheme();
 
-	const toggleTheme = async (event: React.MouseEvent<HTMLButtonElement>) => {
+	const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
 		const newTheme = theme === "light" ? "dark" : "light";
 
 		// Check if View Transitions API is supported
@@ -29,19 +29,13 @@ export function ThemeToggle({ className }: { className?: string } = {}) {
 			Math.max(y, window.innerHeight - y),
 		);
 
-		// Start the view transition
-		const transition = document.startViewTransition(() => {
-			setTheme(newTheme);
-		});
-
-		// Animate from the button position
-		await transition.ready;
 		document.documentElement.style.setProperty("--transition-x", `${x}px`);
 		document.documentElement.style.setProperty("--transition-y", `${y}px`);
 		document.documentElement.style.setProperty(
 			"--transition-r",
 			`${maxRadius}px`,
 		);
+		setTheme(newTheme);
 	};
 
 	return (

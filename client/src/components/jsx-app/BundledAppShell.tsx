@@ -149,6 +149,8 @@ interface BundledAppShellProps {
 	appId: string;
 	appSlug: string;
 	isPreview: boolean;
+	appName?: string | null;
+	appLogo?: string | null;
 }
 
 // React component type exported by the bundled entry.
@@ -307,6 +309,8 @@ export function BundledAppShell({
 	appId,
 	appSlug,
 	isPreview,
+	appName,
+	appLogo,
 }: BundledAppShellProps) {
 	const initiallyPrepared = getPreparedAppBundle(appId, isPreview);
 	// The bundle's default export is a React component. We render it INLINE
@@ -684,7 +688,7 @@ export function BundledAppShell({
 	// the app's routes (deep-links/refresh work) — NOT an iframe (Codex P1-b/G7).
 	if (appModel === "standalone_v2") {
 		if (!v2Mount) {
-			return <AppLoadingSkeleton message="Loading application..." />;
+			return <AppLoadingSkeleton appName={appName} appLogo={appLogo} />;
 		}
 		return (
 			<StandaloneV2App
@@ -706,7 +710,7 @@ export function BundledAppShell({
 			{BundledApp ? (
 				<BundledApp />
 			) : (
-				<AppLoadingSkeleton message="Loading application..." />
+				<AppLoadingSkeleton appName={appName} appLogo={appLogo} />
 			)}
 			{(showBanner || showMigrateNotice) && (
 				<BundleNoticeStack>

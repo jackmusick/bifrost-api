@@ -3,13 +3,14 @@ import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { ExecutionCancelAction } from "./ExecutionHistory/components/ExecutionCancelAction";
 import { ExecutionCleanupDialog } from "./ExecutionHistory/components/ExecutionCleanupDialog";
 import { useState, useMemo, Fragment } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
 	RefreshCw,
 	History as HistoryIcon,
 	Globe,
 	AlertCircle,
 	SearchX,
+	Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LogsView } from "./ExecutionHistory/components/LogsView";
 import { ExecutionRecord } from "./ExecutionHistory/components/ExecutionRecord";
 import { ExecutionDrawer } from "./ExecutionHistory/components/ExecutionDrawer";
+import { ExecutionPreviewPanel } from "./ExecutionHistory/components/ExecutionPreviewPanel";
 import { RunStatusBadge } from "@/components/execution";
 import {
 	formatRunDuration,
@@ -81,6 +83,7 @@ const STATUS_TABS: ExecutionStatus[] = [
 
 export function ExecutionHistory() {
 	const isDesktop = useIsDesktop();
+	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const agentRunsFetching = useIsFetching({
 		queryKey: ["agent-runs-infinite"],
@@ -129,6 +132,9 @@ export function ExecutionHistory() {
 		null,
 	);
 	const [drawerOpen, setDrawerOpen] = useState(false);
+	const [previewExecutionId, setPreviewExecutionId] = useState<string | null>(
+		null,
+	);
 	// IDs that were optimistically flipped to Cancelled after a successful 200.
 	const [optimisticCancelledIds, setOptimisticCancelledIds] = useState<
 		Set<string>
@@ -236,6 +242,14 @@ export function ExecutionHistory() {
 		setDrawerOpen(true);
 	};
 
+	const handlePreviewExecution = (execution_id: string) => {
+		if (isDesktop) {
+			setPreviewExecutionId(execution_id);
+			return;
+		}
+		handleViewDetails(execution_id);
+	};
+
 	const handleCancelled = (id: string, scheduled: boolean) => {
 		if (scheduled)
 			setOptimisticCancelledIds((previous) => new Set([...previous, id]));
@@ -335,7 +349,8 @@ export function ExecutionHistory() {
 	);
 
 	// One source of truth for the column count (admins get the Org column).
-	const columnCount = isPlatformAdmin ? 7 : 6;
+	const previewOpen = isDesktop && previewExecutionId !== null;
+	const columnCount = previewOpen ? 5 : isPlatformAdmin ? 8 : 7;
 
 	const showPaginationFooter = hasMore || pageStack.length > 0;
 	const executionPageSummary = `${filteredExecutions.length} run${filteredExecutions.length !== 1 ? "s" : ""} on this page · Page ${pageStack.length + 1}`;
@@ -904,8 +919,8 @@ export function ExecutionHistory() {
 																				: "Global"
 																			: undefined
 																	}
-																	onOpen={() =>
-																		handleViewDetails(
+																	onPreview={() =>
+																		handlePreviewExecution(
 																			execution.execution_id,
 																		)
 																	}
@@ -949,259 +964,365 @@ export function ExecutionHistory() {
 											{paginationFooter}
 										</div>
 									) : (
-										<>
-											<DataTable className="min-w-0">
-												<DataTableHeader>
-													<DataTableRow>
-														{isPlatformAdmin && (
-															<DataTableHead className="hidden w-px xl:table-cell">
-																Organization
-															</DataTableHead>
-														)}
-														<DataTableHead className="w-full">
-															Workflow
-														</DataTableHead>
-														<DataTableHead className="w-px">
-															Status
-														</DataTableHead>
-														<DataTableHead className="hidden w-px xl:table-cell">
-															Run by
-														</DataTableHead>
-														<DataTableHead className="hidden w-px lg:table-cell">
-															Started
-														</DataTableHead>
-														<DataTableHead className="hidden w-px text-right xl:table-cell">
-															Duration
-														</DataTableHead>
-														<DataTableHead className="w-px text-right"></DataTableHead>
-													</DataTableRow>
-												</DataTableHeader>
-												<DataTableBody>
-													{dayGroups.map((group) => (
-														<Fragment
-															key={group.key}
-														>
-															<DataTableRow
-																className="border-b hover:bg-transparent"
-																data-testid="history-day-row"
+										<div
+											className={
+												previewOpen
+													? "grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(34rem,1fr)_minmax(22rem,28rem)]"
+													: "grid min-h-0 flex-1 gap-3"
+											}
+										>
+											<div className="flex min-h-0 min-w-0 flex-col gap-3">
+												<DataTable className="min-w-0">
+													<DataTableHeader>
+														<DataTableRow>
+															{isPlatformAdmin &&
+																!previewOpen && (
+																	<DataTableHead className="hidden w-px xl:table-cell">
+																		Organization
+																	</DataTableHead>
+																)}
+															<DataTableHead
+																className={
+																	previewOpen
+																		? "w-full min-w-64"
+																		: "w-full"
+																}
 															>
-																<DataTableCell
-																	colSpan={
-																		columnCount
+																Workflow
+															</DataTableHead>
+															<DataTableHead className="w-px">
+																Status
+															</DataTableHead>
+															{!previewOpen && (
+																<DataTableHead className="hidden w-px xl:table-cell">
+																	Run by
+																</DataTableHead>
+															)}
+															<DataTableHead
+																className={
+																	previewOpen
+																		? "hidden w-px whitespace-nowrap 2xl:table-cell"
+																		: "hidden w-px lg:table-cell"
+																}
+															>
+																Started
+															</DataTableHead>
+															<DataTableHead className="w-px whitespace-nowrap text-right">
+																Duration
+															</DataTableHead>
+															<DataTableHead className="w-px text-right">
+																Preview
+															</DataTableHead>
+															{!previewOpen && (
+																<DataTableHead className="w-px text-right"></DataTableHead>
+															)}
+														</DataTableRow>
+													</DataTableHeader>
+													<DataTableBody>
+														{dayGroups.map(
+															(group) => (
+																<Fragment
+																	key={
+																		group.key
 																	}
-																	className="bg-muted/40 dark:bg-background/50 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
 																>
-																	{
-																		group.label
-																	}
-																</DataTableCell>
-															</DataTableRow>
-															{group.executions.map(
-																(execution) => {
-																	// Apply optimistic flip: if the user just
-																	// confirmed cancel on this row, render it
-																	// as Cancelled until refetch converges.
-																	const displayStatus =
-																		optimisticCancelledIds.has(
-																			execution.execution_id,
-																		)
-																			? "Cancelled"
-																			: execution.status;
-
-																	const isGlobalExecution =
-																		!execution.org_id;
-																	const anchor =
-																		runAnchorDate(
-																			execution,
-																		);
-																	const anchorIso =
-																		execution.started_at ??
-																		execution.scheduled_at ??
-																		execution.completed_at;
-																	const duration =
-																		formatRunDuration(
-																			execution.started_at,
-																			execution.completed_at,
-																		);
-																	const hasErrorDetail =
-																		!!execution.error_message &&
-																		(displayStatus ===
-																			"Failed" ||
-																			displayStatus ===
-																				"Timeout" ||
-																			displayStatus ===
-																				"CompletedWithErrors");
-
-																	return (
-																		<DataTableRow
-																			key={
-																				execution.execution_id
+																	<DataTableRow
+																		className="border-b hover:bg-transparent"
+																		data-testid="history-day-row"
+																	>
+																		<DataTableCell
+																			colSpan={
+																				columnCount
 																			}
-																			data-testid="execution-row"
-																			data-execution-id={
-																				execution.execution_id
-																			}
-																			clickable
-																			href={`/history/${execution.execution_id}`}
-																			onClick={(
-																				e,
-																			) => {
-																				if (
-																					e.metaKey ||
-																					e.ctrlKey ||
-																					e.button ===
-																						1
-																				)
-																					return;
-																				handleViewDetails(
-																					execution.execution_id,
-																				);
-																			}}
+																			className="bg-muted/40 dark:bg-background/50 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
 																		>
-																			{isPlatformAdmin && (
-																				<DataTableCell className="hidden w-px whitespace-nowrap text-sm text-muted-foreground xl:table-cell">
-																					{isGlobalExecution ? (
-																						<span className="inline-flex items-center gap-1.5">
-																							<Globe className="h-3.5 w-3.5" />
-																							Global
-																						</span>
-																					) : (
-																						getOrgName(
-																							execution.org_id,
-																						)
-																					)}
-																				</DataTableCell>
-																			)}
-																			<DataTableCell
-																				className="w-full max-w-0"
-																				data-testid="execution-workflow-cell"
-																			>
-																				<div className="truncate font-mono text-sm font-medium">
-																					{
-																						execution.workflow_name
+																			{
+																				group.label
+																			}
+																		</DataTableCell>
+																	</DataTableRow>
+																	{group.executions.map(
+																		(
+																			execution,
+																		) => {
+																			// Apply optimistic flip: if the user just
+																			// confirmed cancel on this row, render it
+																			// as Cancelled until refetch converges.
+																			const displayStatus =
+																				optimisticCancelledIds.has(
+																					execution.execution_id,
+																				)
+																					? "Cancelled"
+																					: execution.status;
+
+																			const isGlobalExecution =
+																				!execution.org_id;
+																			const anchor =
+																				runAnchorDate(
+																					execution,
+																				);
+																			const anchorIso =
+																				execution.started_at ??
+																				execution.scheduled_at ??
+																				execution.completed_at;
+																			const duration =
+																				formatRunDuration(
+																					execution.started_at,
+																					execution.completed_at,
+																				);
+																			const hasErrorDetail =
+																				!!execution.error_message &&
+																				(displayStatus ===
+																					"Failed" ||
+																					displayStatus ===
+																						"Timeout" ||
+																					displayStatus ===
+																						"CompletedWithErrors");
+
+																			return (
+																				<DataTableRow
+																					key={
+																						execution.execution_id
 																					}
-																				</div>
-																				{hasErrorDetail && (
-																					<div
-																						className="mt-0.5 truncate text-xs text-destructive/90"
+																					data-testid="execution-row"
+																					data-execution-id={
+																						execution.execution_id
+																					}
+																					data-state={
+																						previewExecutionId ===
+																						execution.execution_id
+																							? "selected"
+																							: undefined
+																					}
+																					clickable
+																					href={`/history/${execution.execution_id}`}
+																					onClick={() =>
+																						navigate(
+																							`/history/${execution.execution_id}`,
+																						)
+																					}
+																				>
+																					{isPlatformAdmin &&
+																						!previewOpen && (
+																							<DataTableCell className="hidden w-px whitespace-nowrap text-sm text-muted-foreground xl:table-cell">
+																								{isGlobalExecution ? (
+																									<span className="inline-flex items-center gap-1.5">
+																										<Globe className="h-3.5 w-3.5" />
+																										Global
+																									</span>
+																								) : (
+																									getOrgName(
+																										execution.org_id,
+																									)
+																								)}
+																							</DataTableCell>
+																						)}
+																					<DataTableCell
+																						className={
+																							previewOpen
+																								? "w-full min-w-64 max-w-0 py-2"
+																								: "w-full max-w-0"
+																						}
+																						data-testid="execution-workflow-cell"
+																					>
+																						<Link
+																							to={`/history/${execution.execution_id}`}
+																							className="block truncate rounded-[var(--bf-radius-control)] font-mono text-sm font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+																						>
+																							{
+																								execution.workflow_name
+																							}
+																						</Link>
+																						{hasErrorDetail && (
+																							<div
+																								className="mt-0.5 truncate text-xs text-destructive/90"
+																								title={
+																									execution.error_message ??
+																									undefined
+																								}
+																							>
+																								{
+																									execution.error_message
+																								}
+																							</div>
+																						)}
+																						<div
+																							className={
+																								previewOpen
+																									? "mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
+																									: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground xl:hidden"
+																							}
+																						>
+																							{isPlatformAdmin && (
+																								<span>
+																									{isGlobalExecution
+																										? "Global"
+																										: getOrgName(
+																												execution.org_id,
+																											)}
+																								</span>
+																							)}
+																							<span
+																								className={
+																									previewOpen
+																										? undefined
+																										: "xl:hidden"
+																								}
+																							>
+																								by{" "}
+																								{
+																									execution.executed_by_name
+																								}
+																							</span>
+																							<span
+																								className={
+																									previewOpen
+																										? "2xl:hidden"
+																										: "lg:hidden"
+																								}
+																							>
+																								{anchorIso
+																									? formatRunTime(
+																											anchorIso,
+																										)
+																									: "Not started"}
+																							</span>
+																							{!previewOpen && (
+																								<span className="xl:hidden">
+																									{duration ??
+																										"No duration"}
+																								</span>
+																							)}
+																						</div>
+																					</DataTableCell>
+																					<DataTableCell className="w-px whitespace-nowrap">
+																						<RunStatusBadge
+																							status={
+																								displayStatus
+																							}
+																							scheduledAt={
+																								execution.scheduled_at
+																							}
+																						/>
+																					</DataTableCell>
+																					{!previewOpen && (
+																						<DataTableCell className="hidden w-px whitespace-nowrap text-sm text-muted-foreground xl:table-cell">
+																							{
+																								execution.executed_by_name
+																							}
+																						</DataTableCell>
+																					)}
+																					<DataTableCell
+																						className={
+																							previewOpen
+																								? "hidden w-px whitespace-nowrap text-sm text-muted-foreground 2xl:table-cell"
+																								: "hidden w-px whitespace-nowrap text-sm text-muted-foreground lg:table-cell"
+																						}
 																						title={
-																							execution.error_message ??
-																							undefined
+																							anchor
+																								? formatDate(
+																										anchor,
+																									)
+																								: undefined
 																						}
 																					>
-																						{
-																							execution.error_message
-																						}
-																					</div>
-																				)}
-																				<div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground xl:hidden">
-																					{isPlatformAdmin && (
-																						<span>
-																							{isGlobalExecution
-																								? "Global"
-																								: getOrgName(
-																										execution.org_id,
-																									)}
-																						</span>
-																					)}
-																					<span className="xl:hidden">
-																						by{" "}
-																						{
-																							execution.executed_by_name
-																						}
-																					</span>
-																					<span className="lg:hidden">
 																						{anchorIso
 																							? formatRunTime(
 																									anchorIso,
 																								)
-																							: "Not started"}
-																					</span>
-																					<span className="xl:hidden">
+																							: "—"}
+																					</DataTableCell>
+																					<DataTableCell className="w-px whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground">
 																						{duration ??
-																							"No duration"}
-																					</span>
-																				</div>
-																			</DataTableCell>
-																			<DataTableCell className="w-px whitespace-nowrap">
-																				<RunStatusBadge
-																					status={
-																						displayStatus
-																					}
-																					scheduledAt={
-																						execution.scheduled_at
-																					}
-																				/>
-																			</DataTableCell>
-																			<DataTableCell className="hidden w-px whitespace-nowrap text-sm text-muted-foreground xl:table-cell">
-																				{
-																					execution.executed_by_name
-																				}
-																			</DataTableCell>
-																			<DataTableCell
-																				className="hidden w-px whitespace-nowrap text-sm text-muted-foreground lg:table-cell"
-																				title={
-																					anchor
-																						? formatDate(
-																								anchor,
-																							)
-																						: undefined
-																				}
-																			>
-																				{anchorIso
-																					? formatRunTime(
-																							anchorIso,
-																						)
-																					: "—"}
-																			</DataTableCell>
-																			<DataTableCell className="hidden w-px whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground xl:table-cell">
-																				{duration ??
-																					"—"}
-																			</DataTableCell>
-																			<DataTableCell className="w-px text-right">
-																				<div className="flex items-center justify-end gap-1">
-																					<ExecutionCancelAction
-																						compact
-																						executionId={
-																							execution.execution_id
-																						}
-																						workflowName={
-																							execution.workflow_name
-																						}
-																						status={
-																							optimisticCancelledIds.has(
-																								execution.execution_id,
-																							)
-																								? "Cancelled"
-																								: execution.status
-																						}
-																						scheduledAt={
-																							execution.scheduled_at
-																						}
-																						onCancelled={(
-																							scheduled,
-																						) =>
-																							handleCancelled(
-																								execution.execution_id,
-																								scheduled,
-																							)
-																						}
-																						onRefresh={() =>
-																							void refetch()
-																						}
-																					/>
-																				</div>
-																			</DataTableCell>
-																		</DataTableRow>
-																	);
-																},
-															)}
-														</Fragment>
-													))}
-												</DataTableBody>
-											</DataTable>
-											{paginationFooter}
-										</>
+																							"—"}
+																					</DataTableCell>
+																					<DataTableCell className="w-px text-right">
+																						<Button
+																							variant={
+																								previewExecutionId ===
+																								execution.execution_id
+																									? "secondary"
+																									: "ghost"
+																							}
+																							size="icon-lg"
+																							onClick={() =>
+																								handlePreviewExecution(
+																									execution.execution_id,
+																								)
+																							}
+																							aria-label={`Preview execution ${execution.workflow_name}`}
+																							aria-pressed={
+																								previewExecutionId ===
+																								execution.execution_id
+																							}
+																							title="Preview execution"
+																						>
+																							<Eye className="h-4 w-4" />
+																						</Button>
+																					</DataTableCell>
+																					{!previewOpen && (
+																						<DataTableCell className="w-px text-right">
+																							<div className="flex items-center justify-end gap-1">
+																								<ExecutionCancelAction
+																									compact
+																									executionId={
+																										execution.execution_id
+																									}
+																									workflowName={
+																										execution.workflow_name
+																									}
+																									status={
+																										optimisticCancelledIds.has(
+																											execution.execution_id,
+																										)
+																											? "Cancelled"
+																											: execution.status
+																									}
+																									scheduledAt={
+																										execution.scheduled_at
+																									}
+																									onCancelled={(
+																										scheduled,
+																									) =>
+																										handleCancelled(
+																											execution.execution_id,
+																											scheduled,
+																										)
+																									}
+																									onRefresh={() =>
+																										void refetch()
+																									}
+																								/>
+																							</div>
+																						</DataTableCell>
+																					)}
+																				</DataTableRow>
+																			);
+																		},
+																	)}
+																</Fragment>
+															),
+														)}
+													</DataTableBody>
+												</DataTable>
+												{paginationFooter}
+											</div>
+											{previewOpen && (
+												<ExecutionPreviewPanel
+													executionId={
+														previewExecutionId
+													}
+													onClose={() =>
+														setPreviewExecutionId(
+															null,
+														)
+													}
+													onExecutionChange={
+														setPreviewExecutionId
+													}
+												/>
+											)}
+										</div>
 									)
 								) : hasActiveFilters ? (
 									<div
