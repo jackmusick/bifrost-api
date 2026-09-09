@@ -129,6 +129,25 @@ test.describe("Execution Realtime Streaming", () => {
 		).toBeVisible({ timeout: 10000 });
 		await expect(page.getByText("Lines", { exact: true })).toBeVisible();
 
+		// Expanded metadata must not consume or cover the selected tab content.
+		const details = page.getByRole("button", {
+			name: "More details",
+			exact: true,
+		});
+		await details.click();
+		await page.getByRole("tab", { name: "Input", exact: true }).click();
+		const inputPanel = page.getByRole("tabpanel", {
+			name: "Input",
+			exact: true,
+		});
+		await expect(inputPanel).toBeVisible();
+		expect((await inputPanel.boundingBox())!.height).toBeGreaterThan(30);
+		expect((await details.boundingBox())!.y).toBeGreaterThan(
+			(await inputPanel.boundingBox())!.y,
+		);
+		await page.getByRole("tab", { name: "Result", exact: true }).click();
+		await expect(page.getByText("Lines", { exact: true })).toBeVisible();
+
 		// Filtering and clearing must work with actual pointer events on mobile.
 		// A translated clear button previously moved under the input when pressed.
 		await page.setViewportSize({ width: 390, height: 844 });

@@ -80,3 +80,13 @@ Validation:
 
 - Live test command `./test.sh client e2e e2e/home.admin.spec.ts e2e/executions-realtime.admin.spec.ts` passed: setup plus both journeys. Streaming starts with Result selected, supports switching to Logs, preserves that choice at completion, reveals the completed Result on request, and supports mobile log filtering/clearing.
 - Final client TypeScript and full ESLint checks passed. No full-platform or production acceptance run was performed in this focused iteration.
+
+## Execution disclosure layout follow-up
+
+The full page and preview now omit the extra bordered execution-content wrapper. Tabs and expanded metadata use natural document flow inside the existing page/preview scroller: expanding More details cannot shrink the selected panel to zero height. Bottom spacing belongs to that scroll content. The activity metadata and selected content share an 84rem maximum-width wrapper.
+
+History retains date grouping with larger, higher-contrast date rows. Home centers its search icon relative to the actual input height and uses the shared OrganizationSelect, including searchable organizations and All/Global scope semantics.
+
+Verification: 49 targeted component tests passed. A live debug browser check expanded metadata, switched through all three tabs, confirmed each panel remained visible and the disclosure followed it, checked mobile overflow, and measured zero vertical offset between the search icon and input centers. Screenshots: `/tmp/bifrost-design-review/execution-unboxed-expanded.png` and `execution-unboxed-bottom.png`.
+
+The live streaming spec passed with the new expanded-metadata/tab-switching regression. Client TypeScript and scoped ESLint passed.

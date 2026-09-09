@@ -38,15 +38,12 @@ export function ExecutionInspector({
 	return (
 		<aside
 			aria-label="Execution content"
-			className={cn(
-				"flex min-h-0 min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card p-4",
-				className,
-			)}
+			className={cn("min-w-0 pb-4", className)}
 		>
 			<Tabs
 				value={currentTab}
 				onValueChange={handleTabChange}
-				className="min-h-0 min-w-0 xl:flex-1"
+				className="min-w-0"
 			>
 				<div className="mb-4 min-w-0">
 					<TabsList aria-label="Execution content tabs">
@@ -55,26 +52,19 @@ export function ExecutionInspector({
 						<TabsTrigger value="logs">Logs</TabsTrigger>
 					</TabsList>
 				</div>
-				<TabsContent
-					value="result"
-					className="mt-0 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
-				>
+				<TabsContent value="result" className="mt-0 min-w-0">
 					{result}
 				</TabsContent>
-				<TabsContent
-					value="input"
-					className="mt-0 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
-				>
+				<TabsContent value="input" className="mt-0 min-w-0">
 					{input}
 				</TabsContent>
-				<TabsContent
-					value="logs"
-					className="mt-0 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
-				>
+				<TabsContent value="logs" className="mt-0 min-w-0">
 					{logs}
 				</TabsContent>
 			</Tabs>
-			{summary && <div className="mt-4 min-w-0">{summary}</div>}
+			{summary && (
+				<div className="mt-6 min-w-0 border-t pt-4">{summary}</div>
+			)}
 		</aside>
 	);
 }

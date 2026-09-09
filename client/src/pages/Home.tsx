@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Search } from "lucide-react";
@@ -15,13 +15,7 @@ import { CatalogFilters } from "./Home/components/CatalogFilters";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { PageLoader } from "@/components/PageLoader";
 import { toast } from "sonner";
 import type {
@@ -110,20 +104,6 @@ export function Home() {
 			},
 			{ replace: true },
 		);
-	const orgOptions = useMemo(
-		() =>
-			[
-				...new Map(
-					resources
-						.filter((resource) => resource.organization_id)
-						.map((resource) => [
-							resource.organization_id!,
-							resource.organization_name,
-						]),
-				).entries(),
-			].sort((a, b) => a[1].localeCompare(b[1])),
-		[resources],
-	);
 	const inScope = (resource: HomeResource) =>
 		org === "all" ||
 		(org === "global"
@@ -271,7 +251,7 @@ export function Home() {
 				/>
 				<div className="flex flex-col gap-3 sm:flex-row">
 					<div className="relative min-w-0 flex-1">
-						<Search className="pointer-events-none absolute left-3 top-4 size-4 sm:top-5 text-muted-foreground" />
+						<Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
 						<Input
 							className="h-12 pl-10 sm:h-14"
 							aria-label="Search Home resources"
@@ -283,30 +263,29 @@ export function Home() {
 						/>
 					</div>
 					{isPlatformAdmin && (
-						<Select
-							value={org}
-							onValueChange={(value) => updateParam("org", value)}
-						>
-							<SelectTrigger
-								aria-label="Organization filter"
-								className="h-10 w-full sm:w-60"
-							>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="all">
-									All organizations
-								</SelectItem>
-								<SelectItem value="global">
-									Global resources
-								</SelectItem>
-								{orgOptions.map(([id, name]) => (
-									<SelectItem key={id} value={id}>
-										{name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+						<OrganizationSelect
+							aria-label="Organization filter"
+							value={
+								org === "all"
+									? undefined
+									: org === "global"
+										? null
+										: org
+							}
+							onChange={(value) =>
+								updateParam(
+									"org",
+									value === undefined
+										? "all"
+										: value === null
+											? "global"
+											: value,
+								)
+							}
+							showAll
+							showGlobal
+							triggerClassName="w-full sm:w-60"
+						/>
 					)}
 				</div>
 				<CatalogFilters

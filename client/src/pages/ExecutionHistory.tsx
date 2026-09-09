@@ -890,7 +890,7 @@ export function ExecutionHistory() {
 													className="space-y-2"
 													aria-label={group.label}
 												>
-													<h2 className="text-xs font-semibold text-muted-foreground">
+													<h2 className="py-2 text-sm font-semibold text-foreground">
 														{group.label}
 													</h2>
 													<ul className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-card">
@@ -1041,7 +1041,7 @@ export function ExecutionHistory() {
 																			colSpan={
 																				columnCount
 																			}
-																			className="bg-muted/40 dark:bg-background/50 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+																			className="bg-muted py-3 text-sm font-semibold text-foreground"
 																		>
 																			{
 																				group.label

@@ -523,8 +523,8 @@ export function ExecutionDetails({
 							</p>
 							<p className="mt-2 text-xs text-muted-foreground">
 								{mergedLogs.length} log line
-								{mergedLogs.length === 1 ? "" : "s"} captured
-								so far.
+								{mergedLogs.length === 1 ? "" : "s"} captured so
+								far.
 							</p>
 						</div>
 						<Button
@@ -837,11 +837,8 @@ export function ExecutionDetails({
 					/>
 				</header>
 			)}
-			<div
-				data-page-scroll
-				className="min-h-0 flex-1 overflow-auto"
-			>
-				<div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 p-4 sm:p-5 lg:p-6 xl:h-full xl:min-h-0">
+			<div data-page-scroll className="min-h-0 flex-1 overflow-auto">
+				<div className="mx-auto flex w-full max-w-[84rem] flex-col gap-4 p-4 pb-8 sm:p-5 sm:pb-8 lg:p-6 lg:pb-10">
 					{refreshError}
 					<ExecutionActivityTrace
 						status={executionStatus}
@@ -906,14 +903,14 @@ export function ExecutionDetails({
 						</motion.div>
 					)}
 
-					<div className="min-h-0 xl:flex xl:justify-center">
+					<div className="min-w-0">
 						<motion.div
 							initial={
 								reduceMotion ? false : { opacity: 0, y: 16 }
 							}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: reduceMotion ? 0 : 0.22 }}
-							className="min-h-0 w-full max-w-[84rem] min-w-0"
+							className="w-full min-w-0"
 						>
 							<ExecutionInspector
 								key={executionId}
