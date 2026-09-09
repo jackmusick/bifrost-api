@@ -40,6 +40,7 @@ export function ExecutionResultPanel({
 					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
 					defaultView="pretty"
+					context="result"
 				/>
 			);
 		}
@@ -72,6 +73,7 @@ export function ExecutionResultPanel({
 					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
 					defaultView="pretty"
+					context="result"
 				/>
 			);
 		}

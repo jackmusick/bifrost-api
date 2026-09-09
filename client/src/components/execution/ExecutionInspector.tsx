@@ -1,53 +1,80 @@
 import { useState, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 export function ExecutionInspector({
 	input,
-	output,
-	details,
-	completed,
+	result,
+	logs,
+	summary,
+	defaultTab = "result",
+	value,
+	onValueChange,
+	className,
 }: {
 	input: ReactNode;
-	output: ReactNode;
-	details: ReactNode;
-	completed: boolean;
+	result: ReactNode;
+	logs: ReactNode;
+	summary?: ReactNode;
+	defaultTab?: "result" | "input" | "logs";
+	value?: "result" | "input" | "logs";
+	onValueChange?: (value: "result" | "input" | "logs") => void;
+	className?: string;
 }) {
 	const [selectedTab, setSelectedTab] = useState<string | null>(null);
+	const currentTab = value ?? selectedTab ?? defaultTab;
+	const handleTabChange = (nextValue: string) => {
+		if (
+			nextValue === "result" ||
+			nextValue === "input" ||
+			nextValue === "logs"
+		) {
+			onValueChange?.(nextValue);
+		}
+		if (!value) {
+			setSelectedTab(nextValue);
+		}
+	};
 	return (
 		<aside
-			aria-label="Run inspector"
-			className="flex min-h-0 min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card p-4"
+			aria-label="Execution content"
+			className={cn(
+				"flex min-h-0 min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card p-4",
+				className,
+			)}
 		>
-			<h2 className="mb-4 text-base font-semibold">Run details</h2>
 			<Tabs
-				value={selectedTab ?? (completed ? "output" : "input")}
-				onValueChange={setSelectedTab}
+				value={currentTab}
+				onValueChange={handleTabChange}
 				className="min-h-0 min-w-0 xl:flex-1"
 			>
-				<TabsList aria-label="Run inspector content">
-					<TabsTrigger value="output">Output</TabsTrigger>
-					<TabsTrigger value="input">Input</TabsTrigger>
-					<TabsTrigger value="details">Details</TabsTrigger>
-				</TabsList>
+				<div className="mb-4 min-w-0">
+					<TabsList aria-label="Execution content tabs">
+						<TabsTrigger value="result">Result</TabsTrigger>
+						<TabsTrigger value="input">Input</TabsTrigger>
+						<TabsTrigger value="logs">Logs</TabsTrigger>
+					</TabsList>
+				</div>
 				<TabsContent
-					value="output"
-					className="mt-4 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
+					value="result"
+					className="mt-0 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
 				>
-					{output}
+					{result}
 				</TabsContent>
 				<TabsContent
 					value="input"
-					className="mt-4 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
+					className="mt-0 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
 				>
 					{input}
 				</TabsContent>
 				<TabsContent
-					value="details"
-					className="mt-4 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
+					value="logs"
+					className="mt-0 min-h-0 min-w-0 xl:flex-1 xl:overflow-auto"
 				>
-					{details}
+					{logs}
 				</TabsContent>
 			</Tabs>
+			{summary && <div className="mt-4 min-w-0">{summary}</div>}
 		</aside>
 	);
 }

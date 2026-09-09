@@ -3,7 +3,7 @@ import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { ExecutionCancelAction } from "./ExecutionHistory/components/ExecutionCancelAction";
 import { ExecutionCleanupDialog } from "./ExecutionHistory/components/ExecutionCleanupDialog";
 import { useState, useMemo, Fragment } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
 	RefreshCw,
 	History as HistoryIcon,
@@ -83,7 +83,6 @@ const STATUS_TABS: ExecutionStatus[] = [
 
 export function ExecutionHistory() {
 	const isDesktop = useIsDesktop();
-	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const agentRunsFetching = useIsFetching({
 		queryKey: ["agent-runs-infinite"],
@@ -221,6 +220,7 @@ export function ExecutionHistory() {
 		isPlatformAdmin ? filterOrgId : undefined,
 		filters as ExecutionFilters,
 		currentToken,
+		{ preservePageData: true },
 	);
 
 	// Memoize executions to prevent dependency issues
@@ -972,7 +972,14 @@ export function ExecutionHistory() {
 											}
 										>
 											<div className="flex min-h-0 min-w-0 flex-col gap-3">
-												<DataTable className="min-w-0">
+												<DataTable
+													className="min-w-0"
+													aria-busy={
+														isFetching
+															? "true"
+															: undefined
+													}
+												>
 													<DataTableHeader>
 														<DataTableRow>
 															{isPlatformAdmin &&
@@ -1097,8 +1104,8 @@ export function ExecutionHistory() {
 																					clickable
 																					href={`/history/${execution.execution_id}`}
 																					onClick={() =>
-																						navigate(
-																							`/history/${execution.execution_id}`,
+																						handlePreviewExecution(
+																							execution.execution_id,
 																						)
 																					}
 																				>
@@ -1127,6 +1134,22 @@ export function ExecutionHistory() {
 																					>
 																						<Link
 																							to={`/history/${execution.execution_id}`}
+																							onClick={(
+																								event,
+																							) => {
+																								if (
+																									isDesktop &&
+																									!event.metaKey &&
+																									!event.ctrlKey &&
+																									!event.shiftKey &&
+																									!event.altKey
+																								) {
+																									event.preventDefault();
+																									handlePreviewExecution(
+																										execution.execution_id,
+																									);
+																								}
+																							}}
 																							className="block truncate rounded-[var(--bf-radius-control)] font-mono text-sm font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 																						>
 																							{

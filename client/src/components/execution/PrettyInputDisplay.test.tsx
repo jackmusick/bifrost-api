@@ -39,6 +39,16 @@ describe("PrettyInputDisplay — empty state", () => {
 		renderWithProviders(<PrettyInputDisplay inputData={{}} />);
 		expect(screen.getByText(/no input parameters/i)).toBeInTheDocument();
 	});
+
+	it("uses result wording for empty result objects", () => {
+		renderWithProviders(
+			<PrettyInputDisplay inputData={{}} context="result" />,
+		);
+		expect(screen.getByText(/no result fields/i)).toBeInTheDocument();
+		expect(
+			screen.queryByText(/no input parameters/i),
+		).not.toBeInTheDocument();
+	});
 });
 
 describe("PrettyInputDisplay — label and value formatting", () => {
@@ -347,8 +357,22 @@ describe("PrettyInputDisplay — view toggle", () => {
 		);
 		expect(screen.getByText(/viewing 2 parameters/i)).toBeInTheDocument();
 	});
-});
 
+	it("announces result fields in result context", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={{ a: 1, b: 2 }}
+				showToggle={true}
+				defaultView="pretty"
+				context="result"
+			/>,
+		);
+		expect(screen.getByText(/viewing 2 result fields/i)).toBeInTheDocument();
+		expect(
+			screen.queryByText(/viewing 2 parameters/i),
+		).not.toBeInTheDocument();
+	});
+});
 
 describe("PrettyInputDisplay — narrow panel records", () => {
 	it("provides labelled records with the same missing-value and preview contract", () => {

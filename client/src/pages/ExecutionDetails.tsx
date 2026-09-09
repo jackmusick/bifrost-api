@@ -1,5 +1,4 @@
 import { ExecutionInspector } from "@/components/execution/ExecutionInspector";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RunDetailHeading } from "@/components/execution/RunDetailHeading";
 import { ExecutionPageHeader } from "@/components/execution/ExecutionPageHeader";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -160,6 +159,17 @@ export function ExecutionDetails({
 	const [rerunError, setRerunError] = useState<string>();
 	const rerunBusy = useRef(false);
 	const [isOpeningInEditor, setIsOpeningInEditor] = useState(false);
+	const [selectedContentState, setSelectedContentState] = useState<{
+		executionId: string | undefined;
+		tab: "result" | "input" | "logs";
+	}>({ executionId, tab: "result" });
+	const selectedContentTab =
+		selectedContentState.executionId === executionId
+			? selectedContentState.tab
+			: "result";
+	const setSelectedContentTab = (tab: "result" | "input" | "logs") => {
+		setSelectedContentState({ executionId, tab });
+	};
 
 	// Editor store actions
 	const openFileInTab = useEditorStore((state) => state.openFileInTab);
@@ -492,8 +502,84 @@ export function ExecutionDetails({
 		/>
 	) : null;
 
-	// Embedded mode — single-column layout for slideout drawer
-	if (embedded) {
+	const runningResult = (
+		<div className="space-y-4 py-1">
+			<p className="text-sm text-muted-foreground">
+				{executionStatus === "Pending"
+					? "This run is waiting to start. The result will appear here when it completes."
+					: executionStatus === "Cancelling"
+						? "Cancellation has been requested. Any available activity remains below."
+						: "This run is active. The result will appear here when it completes."}
+			</p>
+			{mergedLogs.length > 0 && (
+				<div className="rounded-[var(--bf-radius-surface)] border bg-muted/40 p-3">
+					<div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+						<div className="min-w-0">
+							<p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+								Latest activity
+							</p>
+							<p className="mt-1 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+								{mergedLogs[mergedLogs.length - 1]?.message}
+							</p>
+							<p className="mt-2 text-xs text-muted-foreground">
+								{mergedLogs.length} log line
+								{mergedLogs.length === 1 ? "" : "s"} captured
+								so far.
+							</p>
+						</div>
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11 shrink-0"
+							onClick={() => setSelectedContentTab("logs")}
+						>
+							View logs
+						</Button>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+
+	const resultContent =
+		isComplete &&
+		(execution.result != null || executionStatus === "Success") ? (
+			<ExecutionResultPanel
+				result={resultData?.result}
+				resultType={resultData?.result_type}
+				workflowName={execution.workflow_name}
+				isLoading={isLoadingResult}
+			/>
+		) : isComplete ? (
+			<p className="py-4 text-sm text-muted-foreground">
+				This run did not return a result.
+			</p>
+		) : (
+			runningResult
+		);
+
+	const inputContent = (
+		<PrettyInputDisplay
+			inputData={(execution.input_data ?? {}) as Record<string, unknown>}
+			showToggle
+			defaultView="pretty"
+		/>
+	);
+
+	const logsContent = (
+		<ExecutionLogsPanel
+			key={executionId}
+			logs={mergedLogs as LogEntry[]}
+			status={executionStatus}
+			isConnected={isConnected}
+			isLoading={isLoadingLogs}
+			isPlatformAdmin={isPlatformAdmin}
+			maxHeight="min(60vh, 42rem)"
+			variant="primary"
+		/>
+	);
+
+	const renderExtraDetails = (triggerClassName?: string) => {
 		const aiUsageList = execution.ai_usage as
 			| {
 					provider: string;
@@ -517,6 +603,46 @@ export function ExecutionDetails({
 		const hasExtras =
 			hasAiUsage || hasMetrics || hasVariables || hasExecutionContext;
 
+		if (!isComplete || !hasExtras) return null;
+
+		return (
+			<Collapsible>
+				<CollapsibleTrigger
+					className={
+						triggerClassName ??
+						"flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&[data-state=open]>svg]:rotate-180"
+					}
+				>
+					<ChevronDown className="h-4 w-4 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none" />
+					More details
+				</CollapsibleTrigger>
+				<CollapsibleContent className="space-y-4 pt-3">
+					<ExecutionSidebar
+						executedByName={execution.executed_by_name}
+						orgName={execution.org_name}
+						scheduledAt={execution.scheduled_at}
+						startedAt={execution.started_at}
+						completedAt={execution.completed_at}
+						inputData={execution.input_data}
+						isComplete={isComplete}
+						isPlatformAdmin={isPlatformAdmin}
+						isLoading={isLoading}
+						variablesData={variablesData}
+						peakMemoryBytes={execution.peak_memory_bytes}
+						cpuTotalSeconds={execution.cpu_total_seconds}
+						durationMs={execution.duration_ms}
+						aiUsage={execution.ai_usage}
+						aiTotals={execution.ai_totals}
+						executionContext={execution.execution_context}
+						extrasOnly
+					/>
+				</CollapsibleContent>
+			</Collapsible>
+		);
+	};
+
+	// Embedded mode — single-column layout for slideout drawer
+	if (embedded) {
 		const actionButtons = (
 			<>
 				{isPlatformAdmin && isComplete && (
@@ -616,86 +742,17 @@ export function ExecutionDetails({
 						</div>
 					)}
 
-					<Tabs defaultValue="logs" className="min-w-0">
-						<TabsList aria-label="Execution preview content">
-							<TabsTrigger value="logs">Logs</TabsTrigger>
-							<TabsTrigger value="input">Input</TabsTrigger>
-							<TabsTrigger value="result">Result</TabsTrigger>
-						</TabsList>
-						<TabsContent value="logs" className="mt-3 min-w-0">
-							<ExecutionLogsPanel
-								key={executionId}
-								logs={mergedLogs as LogEntry[]}
-								status={executionStatus}
-								isConnected={isConnected}
-								isLoading={isLoadingLogs}
-								isPlatformAdmin={isPlatformAdmin}
-								maxHeight="min(55vh, 36rem)"
-							/>
-						</TabsContent>
-						<TabsContent value="input" className="mt-3 min-w-0">
-							<PrettyInputDisplay
-								inputData={
-									(execution.input_data ?? {}) as Record<
-										string,
-										unknown
-									>
-								}
-								showToggle
-								defaultView="pretty"
-							/>
-						</TabsContent>
-						<TabsContent value="result" className="mt-3 min-w-0">
-							{isComplete ? (
-								<ExecutionResultPanel
-									result={resultData?.result}
-									resultType={resultData?.result_type}
-									workflowName={execution.workflow_name}
-									isLoading={isLoadingResult}
-								/>
-							) : (
-								<p className="py-4 text-sm text-muted-foreground">
-									The result will be available when this run
-									completes.
-								</p>
-							)}
-						</TabsContent>
-					</Tabs>
-					{/* Extra details — collapsible */}
-					{isComplete && hasExtras && (
-						<Collapsible>
-							<CollapsibleTrigger className="flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] text-sm text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none w-full px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&[data-state=open]>svg]:rotate-180">
-								<ChevronDown className="h-4 w-4 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none" />
-								More details
-							</CollapsibleTrigger>
-							<CollapsibleContent className="space-y-4 pt-2">
-								<ExecutionSidebar
-									executedByName={execution.executed_by_name}
-									orgName={execution.org_name}
-									startedAt={execution.started_at}
-									completedAt={execution.completed_at}
-									inputData={execution.input_data}
-									isComplete={isComplete}
-									isPlatformAdmin={isPlatformAdmin}
-									isLoading={isLoading}
-									variablesData={variablesData}
-									peakMemoryBytes={
-										execution.peak_memory_bytes
-									}
-									cpuTotalSeconds={
-										execution.cpu_total_seconds
-									}
-									durationMs={execution.duration_ms}
-									aiUsage={execution.ai_usage}
-									aiTotals={execution.ai_totals}
-									executionContext={
-										execution.execution_context
-									}
-									extrasOnly
-								/>
-							</CollapsibleContent>
-						</Collapsible>
-					)}
+					<ExecutionInspector
+						key={executionId}
+						value={selectedContentTab}
+						onValueChange={setSelectedContentTab}
+						result={resultContent}
+						input={inputContent}
+						logs={logsContent}
+						summary={renderExtraDetails(
+							"flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&[data-state=open]>svg]:rotate-180",
+						)}
+					/>
 				</div>
 
 				<ExecutionCancelDialog
@@ -782,7 +839,7 @@ export function ExecutionDetails({
 			)}
 			<div
 				data-page-scroll
-				className="min-h-0 flex-1 overflow-auto xl:overflow-hidden"
+				className="min-h-0 flex-1 overflow-auto"
 			>
 				<div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 p-4 sm:p-5 lg:p-6 xl:h-full xl:min-h-0">
 					{refreshError}
@@ -849,86 +906,26 @@ export function ExecutionDetails({
 						</motion.div>
 					)}
 
-					<div className="grid min-h-0 grid-cols-1 gap-4 xl:flex-1 xl:overflow-hidden xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+					<div className="min-h-0 xl:flex xl:justify-center">
 						<motion.div
 							initial={
 								reduceMotion ? false : { opacity: 0, y: 16 }
 							}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: reduceMotion ? 0 : 0.22 }}
-							className="min-h-0 min-w-0 xl:flex xl:flex-col"
+							className="min-h-0 w-full max-w-[84rem] min-w-0"
 						>
-							<ExecutionLogsPanel
-								logs={mergedLogs as LogEntry[]}
-								status={executionStatus}
-								isConnected={isConnected}
-								isLoading={isLoadingLogs}
-								isPlatformAdmin={isPlatformAdmin}
-								maxHeight="max(18rem, calc(100dvh - 23rem))"
-								variant="primary"
+							<ExecutionInspector
+								key={executionId}
+								className="max-h-full"
+								value={selectedContentTab}
+								onValueChange={setSelectedContentTab}
+								result={resultContent}
+								input={inputContent}
+								logs={logsContent}
+								summary={renderExtraDetails()}
 							/>
 						</motion.div>
-
-						<ExecutionInspector
-							key={executionId}
-							completed={isComplete}
-							input={
-								<PrettyInputDisplay
-									inputData={
-										(execution.input_data ?? {}) as Record<
-											string,
-											unknown
-										>
-									}
-									showToggle
-									defaultView="pretty"
-								/>
-							}
-							output={
-								isComplete &&
-								(execution.result != null ||
-									executionStatus === "Success") ? (
-									<ExecutionResultPanel
-										result={resultData?.result}
-										resultType={resultData?.result_type}
-										workflowName={execution.workflow_name}
-										isLoading={isLoadingResult}
-									/>
-								) : (
-									<p className="py-4 text-sm text-muted-foreground">
-										{isComplete
-											? "This run did not return a result."
-											: "Output will appear when this run completes."}
-									</p>
-								)
-							}
-							details={
-								<ExecutionSidebar
-									executedByName={execution.executed_by_name}
-									orgName={execution.org_name}
-									scheduledAt={execution.scheduled_at}
-									startedAt={execution.started_at}
-									completedAt={execution.completed_at}
-									inputData={execution.input_data}
-									isComplete={isComplete}
-									isPlatformAdmin={isPlatformAdmin}
-									isLoading={isLoading}
-									variablesData={variablesData}
-									peakMemoryBytes={
-										execution.peak_memory_bytes
-									}
-									cpuTotalSeconds={
-										execution.cpu_total_seconds
-									}
-									durationMs={execution.duration_ms}
-									aiUsage={execution.ai_usage}
-									aiTotals={execution.ai_totals}
-									executionContext={
-										execution.execution_context
-									}
-								/>
-							}
-						/>
 					</div>
 				</div>
 			</div>

@@ -477,3 +477,23 @@ it("switches catalog presentation and sorts recent launches", async () => {
 	);
 	expect(screen.getByTestId("location-probe")).toHaveTextContent("view=list");
 });
+
+it("shows a compact overview and opens the full catalog explicitly", async () => {
+	const { user } = renderHome();
+	expect(
+		screen.getByRole("region", { name: "Explore resources" }),
+	).toBeInTheDocument();
+	expect(
+		screen.queryByRole("region", { name: "Browse resources" }),
+	).not.toBeInTheDocument();
+	expect(
+		screen.queryByText("Continue where you left off"),
+	).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Browse all 3" }));
+	expect(
+		screen.getByRole("region", { name: "Browse resources" }),
+	).toBeInTheDocument();
+	expect(
+		screen.queryByRole("region", { name: "Pinned resources" }),
+	).not.toBeInTheDocument();
+});

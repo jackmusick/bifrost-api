@@ -18,7 +18,7 @@ The user approved a shared Home for apps, forms and agents, personal favorites a
 
 Home launches work; History finds previous or active runs; execution explains their activity and outcome. Personal organization is available to ordinary authenticated users. Shared curation follows existing administrative privileges. Resources removed or inaccessible must not leak metadata through collections. Organization context must remain visible when a provider browses across customers.
 
-Desktop execution and History are bounded workspaces; mobile uses focused full-width content. Plain logs are a primary experience, with timestamps secondary and wrapping messages retaining available width. Structured events may supply richer views only when the recorded data supports them. Motion represents activity, not invented progress.
+Desktop execution and History are bounded workspaces; mobile uses focused full-width content. Result is the default experience, followed by Input and Logs. Log messages wrap with timestamps secondary; logs occupy space only when selected. Structured events may supply richer views only when the recorded data supports them. Motion represents activity, not invented progress.
 
 Approved concepts: Home `exec-04191ae9-0afe-4ae3-ab38-5e2e386c62a4.png`, History `exec-ffa284d4-eff1-44be-ab9c-e47b3a482bd4.png`, execution `exec-21e7f13b-154f-4fed-865e-6b4c6ad5b6cb.png`, in the session's generated-images directory. Use real shared components rather than reproduce incidental inconsistencies in generated images.
 
@@ -28,7 +28,7 @@ Home is at `/`; the administrative dashboard remains at `/dashboard`. Star an ap
 
 Home uses the existing resource repositories to enforce access. Collection membership never changes permissions. Inaccessible entries are omitted from responses, retained on ordinary edits, and cannot be exposed by changing a collection's audience. Embedded sessions cannot use workspace curation APIs. Favorites and recent launches persist per user.
 
-Execution puts plain logs first: wrapping messages, search, severity filtering, copy/download, follow/pause, and a separate input/output inspector. Completion reveals output unless the user explicitly chose another inspector tab. Activity animation is indeterminate and respects reduced motion. History offers an explicit preview action alongside direct navigation; its shared pagination remains outside the bounded table scroller.
+Execution uses the same Result, Input, Logs content in the full page and preview. Result is selected by default; changing tabs remains a deliberate choice during streaming. Running results show truthful status and available activity. Metadata is collapsible, and an absent log stream reserves no column. History row/name clicks open the preview on desktop and the existing detail drawer on mobile; the preview retains an explicit full-page link. Shared pagination remains outside the bounded table scroller.
 
 ## Verification — 2026-09-08
 
@@ -52,7 +52,7 @@ Apply migration `20260908_home_collections` before serving the new Home APIs. It
 
 The approved Home mock is implemented in the existing shell. Workspace navigation is Home, Chat, and History; accessible collections follow as shortcuts. Management links are separated for platform administrators, with the existing Data, Platform, and Reports destinations retained. Dashboard is available through an administrator-only Home/Dashboard route tab, with its protected route unchanged.
 
-Search and category counts stay above the desktop scroll region. Choosing a category, searching, or opening a collection brings the results first and resets the content scroll position. The unfiltered overview shows up to three pinned shortcuts (with View all for additional pins), collections, the complete paginated catalog, then recent work. Cards are the default; list view and sorting by name or recent launch remain available. Collection order is preserved unless explicitly sorted.
+Search and category counts stay above the desktop scroll region. Choosing a category, searching, or opening a collection brings the results first and resets the content scroll position. The unfiltered overview shows up to three pinned shortcuts (with View all for additional pins), collections, a compact catalog preview grouped by Apps, Forms, and Agents. Each group shows at most two entries and links to its complete catalog. Browse all explicitly opens the full paginated catalog; the recent-work section is removed. Home shares Dashboard’s 1,400px maximum width. Cards are the default; list view and sorting by name or recent launch remain available. Collection order is preserved unless explicitly sorted.
 
 Whole resource cards open their resource; favorite controls remain separate. Mobile retains full-width content and collection links close the navigation drawer. Existing resource APIs and V1 app runtime behavior are unchanged.
 
@@ -63,3 +63,20 @@ Follow-up validation:
 - Full client ESLint and TypeScript checks passed before the final collection-heading spacing adjustment; final affected component tests and type/lint checks cover that adjustment.
 - Debug browser checks at 1440×1000 and 390×844 reported no page errors or horizontal mobile overflow. Category results begin at y=281 on desktop. Mobile collection navigation closes the drawer; sidebar collection creation opens and dismisses correctly.
 - Screenshots: `/tmp/bifrost-design-review/workspace-{desktop,filtered,mobile,mobile-filtered,mobile-collection}.png`.
+
+
+## Result-first and catalog refinement — 2026-09-08
+
+This iteration replaces the log-first split pane with a shared Result/Input/Logs presentation. Short results and failures size to their content; long results scroll within available desktop height. While active, Result includes the latest actual log message and a View logs action. Result objects use result-field wording rather than input-parameter labels. Manual tab selection is preserved while a run updates.
+
+History now opens previews from ordinary desktop row/name clicks. The explicit full-page link and modified-link browser gestures remain available. Pagination fixes retain current rows only when the page cursor/offset changes within the same scope and filters; they cover History executions, History logs, Audit, and table documents. See [pagination audit](pagination-audit.md).
+
+Validation:
+- Combined scoped run: 40 test files, 275 tests passed (Home, execution components/details, History/components, Audit, table documents, and pagination hooks/guards).
+- Debug browser: Home measured 1,400px wide at a 2,560px viewport; no horizontal overflow at 390px.
+- Debug execution review covered completed structured results, failed results, Result/Input/Logs switching, mobile layout, and desktop preview opening.
+- A held History continuation request retained the same table DOM element and disabled Next; no page errors were reported.
+- Review screenshots: `/tmp/bifrost-design-review/home-refined-wide.png`, `result-first-desktop.png`, `result-first-mobile.png`, `result-first-preview.png`, and `result-first-failed.png`.
+
+- Live test command `./test.sh client e2e e2e/home.admin.spec.ts e2e/executions-realtime.admin.spec.ts` passed: setup plus both journeys. Streaming starts with Result selected, supports switching to Logs, preserves that choice at completion, reveals the completed Result on request, and supports mobile log filtering/clearing.
+- Final client TypeScript and full ESLint checks passed. No full-platform or production acceptance run was performed in this focused iteration.

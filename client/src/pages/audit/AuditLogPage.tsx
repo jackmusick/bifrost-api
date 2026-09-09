@@ -94,6 +94,7 @@ export function AuditLogPage() {
 	const { data, isLoading, isFetching, error, refetch } = useAuditLog(
 		queryParams,
 		!invalidDateRange,
+		{ preservePageData: true },
 	);
 
 	const entries = data?.entries ?? [];
@@ -238,7 +239,9 @@ export function AuditLogPage() {
 					) : entries.length > 0 ? (
 						<>
 							{desktop ? (
-								<DataTable>
+								<DataTable
+									aria-busy={isFetching ? "true" : undefined}
+								>
 									<DataTableHeader>
 										<DataTableRow>
 											<DataTableHead>

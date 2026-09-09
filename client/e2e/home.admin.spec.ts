@@ -37,7 +37,7 @@ test.describe("Home collections (admin)", () => {
 				.getByRole("link", { name: "Home", exact: true })
 				.click();
 			await page
-				.getByRole("button", { name: "Agents", exact: true })
+				.getByRole("button", { name: "View all agents", exact: true })
 				.click();
 			await page
 				.getByRole("textbox", { name: "Search Home resources" })

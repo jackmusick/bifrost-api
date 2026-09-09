@@ -5,7 +5,7 @@ const mockUseAuditLog = vi.fn();
 const mockUseAuth = vi.fn();
 
 vi.mock("@/hooks/useAuditLog", () => ({
-	useAuditLog: (params: unknown) => mockUseAuditLog(params),
+	useAuditLog: (...args: unknown[]) => mockUseAuditLog(...args),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -124,12 +124,18 @@ describe("AuditLogPage policy filters", () => {
 			),
 		).toBeInTheDocument();
 
-		await user.click(screen.getByRole("combobox", { name: "Action filter" }));
+		await user.click(
+			screen.getByRole("combobox", { name: "Action filter" }),
+		);
 		await user.click(
 			await screen.findByRole("option", { name: "Policy denials" }),
 		);
-		await user.click(screen.getByRole("combobox", { name: "Outcome filter" }));
-		await user.click(await screen.findByRole("option", { name: "Failure" }));
+		await user.click(
+			screen.getByRole("combobox", { name: "Outcome filter" }),
+		);
+		await user.click(
+			await screen.findByRole("option", { name: "Failure" }),
+		);
 		fireEvent.change(
 			screen.getByRole("searchbox", { name: "Search audit events" }),
 			{ target: { value: filePath } },
@@ -138,10 +144,12 @@ describe("AuditLogPage policy filters", () => {
 		await waitFor(() => {
 			expect(mockUseAuditLog).toHaveBeenLastCalledWith(
 				expect.objectContaining({
-						action: "policy.deny",
-						outcome: "failure",
-						search: filePath,
+					action: "policy.deny",
+					outcome: "failure",
+					search: filePath,
 				}),
+				true,
+				{ preservePageData: true },
 			);
 		});
 		expect(
@@ -164,5 +172,43 @@ describe("AuditLogPage policy filters", () => {
 		expect(
 			screen.getByRole("button", { name: "Return to Dashboard" }),
 		).toBeVisible();
+	});
+
+	it("keeps the existing audit table visible and busy while a page fetch is pending", () => {
+		mockUseAuditLog.mockReturnValueOnce({
+			data: {
+				entries: [
+					{
+						id: "page-one",
+						timestamp: "2026-08-25T12:00:00Z",
+						action: "policy.deny",
+						resource_type: "file",
+						resource_id: null,
+						outcome: "failure",
+						source: "http",
+						actor: {
+							user_email: "auditor@example.com",
+							user_name: "Auditor",
+						},
+						ip_address: "192.0.2.10",
+						details: { location: "reports", path: filePath },
+					},
+				],
+				continuation_token: "next-page",
+			},
+			isLoading: false,
+			isFetching: true,
+			error: null,
+			refetch: vi.fn(),
+		});
+
+		renderWithProviders(<AuditLogPage />);
+
+		expect(
+			screen.getByRole("table").closest("[aria-busy]"),
+		).toHaveAttribute("aria-busy", "true");
+		expect(screen.getByText(`reports / ${filePath}`)).toBeInTheDocument();
+		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 	});
 });

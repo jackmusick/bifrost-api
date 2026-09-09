@@ -1,29 +1,28 @@
 import { describe, expect, it } from "vitest";
+import { useState } from "react";
 import { renderWithProviders, screen } from "@/test-utils";
 import { ExecutionInspector } from "./ExecutionInspector";
 
 describe("ExecutionInspector", () => {
-	it("opens on output for completed runs and switches between inspector tabs", async () => {
+	it("opens on result and switches between execution content tabs", async () => {
 		const { user } = renderWithProviders(
 			<ExecutionInspector
-				completed
-				output={<div>Rendered output payload</div>}
+				result={<div>Rendered result payload</div>}
 				input={<div>Submitted input payload</div>}
-				details={<div>Run metadata payload</div>}
+				logs={<div>Run logs payload</div>}
 			/>,
 		);
 
-		expect(screen.getByRole("tab", { name: "Output" })).toHaveAttribute(
+		expect(screen.getByLabelText("Execution content")).toBeInTheDocument();
+		expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
-		expect(screen.getByText("Rendered output payload")).toBeVisible();
+		expect(screen.getByText("Rendered result payload")).toBeVisible();
 		expect(
 			screen.queryByText("Submitted input payload"),
 		).not.toBeInTheDocument();
-		expect(
-			screen.queryByText("Run metadata payload"),
-		).not.toBeInTheDocument();
+		expect(screen.queryByText("Run logs payload")).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("tab", { name: "Input" }));
 		expect(screen.getByRole("tab", { name: "Input" })).toHaveAttribute(
@@ -32,84 +31,102 @@ describe("ExecutionInspector", () => {
 		);
 		expect(screen.getByText("Submitted input payload")).toBeVisible();
 		expect(
-			screen.queryByText("Rendered output payload"),
+			screen.queryByText("Rendered result payload"),
 		).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole("tab", { name: "Details" }));
-		expect(screen.getByRole("tab", { name: "Details" })).toHaveAttribute(
+		await user.click(screen.getByRole("tab", { name: "Logs" }));
+		expect(screen.getByRole("tab", { name: "Logs" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
-		expect(screen.getByText("Run metadata payload")).toBeVisible();
+		expect(screen.getByText("Run logs payload")).toBeVisible();
 		expect(
 			screen.queryByText("Submitted input payload"),
 		).not.toBeInTheDocument();
 	});
 
-	it("auto-reveals output when a run completes until the user manually selects a tab", async () => {
+	it("keeps a manual logs selection across content updates", async () => {
 		const { rerender, user } = renderWithProviders(
 			<ExecutionInspector
-				completed={false}
-				output={<div>Final output</div>}
+				result={<div>Final result</div>}
 				input={<div>Original input</div>}
-				details={<div>Run details body</div>}
+				logs={<div>Run logs body</div>}
 			/>,
 		);
 
-		expect(screen.getByRole("tab", { name: "Input" })).toHaveAttribute(
+		expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
-		expect(screen.getByText("Original input")).toBeVisible();
+		expect(screen.getByText("Final result")).toBeVisible();
+
+		await user.click(screen.getByRole("tab", { name: "Logs" }));
+		expect(screen.getByText("Run logs body")).toBeVisible();
 
 		rerender(
 			<ExecutionInspector
-				completed
-				output={<div>Final output</div>}
-				input={<div>Original input</div>}
-				details={<div>Run details body</div>}
-			/>,
-		);
-		expect(screen.getByRole("tab", { name: "Output" })).toHaveAttribute(
-			"aria-selected",
-			"true",
-		);
-		expect(screen.getByText("Final output")).toBeVisible();
-
-		await user.click(screen.getByRole("tab", { name: "Details" }));
-		expect(screen.getByText("Run details body")).toBeVisible();
-
-		rerender(
-			<ExecutionInspector
-				completed={false}
-				output={<div>Updated output</div>}
+				result={<div>Updated result</div>}
 				input={<div>Updated input</div>}
-				details={<div>Updated details body</div>}
+				logs={<div>Updated logs body</div>}
 			/>,
 		);
-		expect(screen.getByRole("tab", { name: "Details" })).toHaveAttribute(
+		expect(screen.getByRole("tab", { name: "Logs" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
-		expect(screen.getByText("Updated details body")).toBeVisible();
+		expect(screen.getByText("Updated logs body")).toBeVisible();
 		expect(screen.queryByText("Updated input")).not.toBeInTheDocument();
 	});
 
-	it("opens on input while a run is still active", () => {
-		renderWithProviders(
-			<ExecutionInspector
-				completed={false}
-				output={<div>Pending output</div>}
-				input={<div>Live input</div>}
-				details={<div>Pending details</div>}
-			/>,
-		);
+	it("supports controlled tab changes from parent actions", async () => {
+		const Wrapper = () => {
+			const [tab, setTab] = useState<"result" | "input" | "logs">(
+				"result",
+			);
+			return (
+				<>
+					<button type="button" onClick={() => setTab("logs")}>
+						View logs
+					</button>
+					<ExecutionInspector
+						value={tab}
+						onValueChange={setTab}
+						result={<div>Pending result</div>}
+						input={<div>Live input</div>}
+						logs={<div>Pending logs</div>}
+					/>
+				</>
+			);
+		};
+		const { user } = renderWithProviders(<Wrapper />);
 
-		expect(screen.getByRole("tab", { name: "Input" })).toHaveAttribute(
+		expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
-		expect(screen.getByText("Live input")).toBeVisible();
-		expect(screen.queryByText("Pending output")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "View logs" }));
+		expect(screen.getByRole("tab", { name: "Logs" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		expect(screen.getByText("Pending logs")).toBeVisible();
+	});
+
+	it("renders collapsed summary below the selected content", () => {
+		renderWithProviders(
+			<ExecutionInspector
+				result={<div>Primary result</div>}
+				input={<div>Live input</div>}
+				logs={<div>Pending logs</div>}
+				summary={<button type="button">More details</button>}
+			/>,
+		);
+
+		const result = screen.getByText("Primary result");
+		const summary = screen.getByRole("button", { name: "More details" });
+		expect(
+			result.compareDocumentPosition(summary) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
 	});
 });

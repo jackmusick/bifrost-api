@@ -96,12 +96,36 @@ describe("TableDetail document navigation and recovery", () => {
 		expect(mockUseDocuments).toHaveBeenLastCalledWith(
 			"tbl-1",
 			expect.objectContaining({ offset: 25, limit: 25 }),
+			{ preservePageData: true },
 		);
 		expect(
 			screen.getByRole("textbox", {
 				name: "Search documents on this page",
 			}),
 		).toHaveValue("missing");
+	});
+
+	it("keeps retained documents and paging controls mounted during a page fetch", async () => {
+		mockUseDocuments.mockReturnValue({
+			data: {
+				documents: [
+					{ id: "doc-1", data: { name: "Alpha" }, created_at: null },
+				],
+				total: 50,
+			},
+			isLoading: false,
+			isFetching: true,
+			refetch: vi.fn(),
+		});
+
+		await renderAtRoute("/tables/tbl-1");
+
+		expect(
+			screen.getByRole("region", { name: "Documents" }),
+		).toHaveAttribute("aria-busy", "true");
+		expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
+		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 	});
 
 	it("distinguishes a failed query from an empty table and offers retry", async () => {

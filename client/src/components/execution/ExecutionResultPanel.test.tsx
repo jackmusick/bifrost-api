@@ -13,11 +13,13 @@ import { renderWithProviders, screen } from "@/test-utils";
 vi.mock("./PrettyInputDisplay", () => ({
 	PrettyInputDisplay: ({
 		inputData,
+		context,
 	}: {
 		inputData: Record<string, unknown>;
+		context?: string;
 	}) => (
 		<div aria-label="pretty-input-stub">
-			PRETTY:{JSON.stringify(inputData)}
+			PRETTY:{context}:{JSON.stringify(inputData)}
 		</div>
 	),
 }));
@@ -70,6 +72,7 @@ describe("ExecutionResultPanel — renderer dispatch", () => {
 	it("renders JSON objects via PrettyInputDisplay when resultType=json", async () => {
 		await renderPanel({ result: { foo: "bar" }, resultType: "json" });
 		const pretty = screen.getByLabelText("pretty-input-stub");
+		expect(pretty.textContent).toContain("PRETTY:result:");
 		expect(pretty.textContent).toContain('"foo":"bar"');
 	});
 

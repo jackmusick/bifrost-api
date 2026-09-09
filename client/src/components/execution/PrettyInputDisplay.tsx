@@ -12,6 +12,7 @@ interface PrettyInputDisplayProps {
 	inputData: Record<string, unknown> | unknown[];
 	showToggle?: boolean;
 	defaultView?: "pretty" | "tree";
+	context?: "input" | "result";
 }
 
 /**
@@ -315,6 +316,7 @@ export function PrettyInputDisplay({
 	inputData,
 	showToggle = false,
 	defaultView = "pretty",
+	context = "input",
 }: PrettyInputDisplayProps) {
 	const [view, setView] = useState<"pretty" | "tree">(defaultView);
 
@@ -347,14 +349,20 @@ export function PrettyInputDisplay({
 	if (entries.length === 0) {
 		return (
 			<div className="text-center text-muted-foreground py-8">
-				{isTopLevelArray ? "No items" : "No input parameters"}
+				{isTopLevelArray
+					? "No items"
+					: context === "result"
+						? "No result fields"
+						: "No input parameters"}
 			</div>
 		);
 	}
 
 	const countLine = isTopLevelArray
 		? `${inputData.length} item${inputData.length !== 1 ? "s" : ""}`
-		: `Viewing ${entries.length} parameter${entries.length !== 1 ? "s" : ""}`;
+		: context === "result"
+			? `Viewing ${entries.length} result field${entries.length !== 1 ? "s" : ""}`
+			: `Viewing ${entries.length} parameter${entries.length !== 1 ? "s" : ""}`;
 
 	const toggleBar = (
 		<InputDisplayToolbar

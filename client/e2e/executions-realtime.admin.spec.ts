@@ -78,6 +78,11 @@ test.describe("Execution Realtime Streaming", () => {
 		await page.goto(`/history/${executionId}`);
 		await page.waitForURL(new RegExp(`/history/${executionId}`));
 
+		await expect(
+			page.getByRole("tab", { name: "Result", exact: true }),
+		).toHaveAttribute("aria-selected", "true");
+		await page.getByRole("tab", { name: "Logs", exact: true }).click();
+
 		// Assertion 1: at least one log message appears while running.
 		// Each emitted line renders as visible text in the logs panel. The
 		// WebSocket frames deliver them one-at-a-time, so seeing ANY of them
@@ -108,6 +113,11 @@ test.describe("Execution Realtime Streaming", () => {
 			.first()
 			.waitFor({ state: "visible", timeout: 30000 });
 
+		await expect(
+			page.getByRole("tab", { name: "Logs", exact: true }),
+		).toHaveAttribute("aria-selected", "true");
+		await page.getByRole("tab", { name: "Result", exact: true }).click();
+
 		// Assertion 4: the final result panel renders once complete. The
 		// ExecutionResultPanel section is headed by an exact "Result" heading
 		// (the restyle replaced the old "Workflow execution result" card
@@ -122,13 +132,18 @@ test.describe("Execution Realtime Streaming", () => {
 		// Filtering and clearing must work with actual pointer events on mobile.
 		// A translated clear button previously moved under the input when pressed.
 		await page.setViewportSize({ width: 390, height: 844 });
+		await page.getByRole("tab", { name: "Logs", exact: true }).click();
 		const search = page.getByRole("textbox", { name: "Search logs" });
 		await search.fill("streaming log line 20");
 		await expect(streamingLines).toHaveCount(1);
 		await page.getByRole("button", { name: "Clear log search" }).click();
 		await expect(search).toHaveValue("");
 		await expect(streamingLines).toHaveCount(21);
-		expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+		expect(
+			await page.evaluate(
+				() => document.documentElement.scrollWidth <= window.innerWidth,
+			),
+		).toBe(true);
 
 		// Assertion 5: no console errors happened during the run.
 		expect(consoleErrors, consoleErrors.join("\n")).toEqual([]);

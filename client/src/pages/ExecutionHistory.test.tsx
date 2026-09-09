@@ -278,6 +278,7 @@ describe("ExecutionHistory — ?status= round-trip", () => {
 				status: "Failed,Timeout,Stuck,CompletedWithErrors",
 			}),
 			undefined,
+			{ preservePageData: true },
 		);
 		// The dashboard's "4 failed" link promise lands on exactly 4 rows.
 		expect(screen.getAllByTestId("execution-row")).toHaveLength(4);
@@ -298,6 +299,7 @@ describe("ExecutionHistory — ?status= round-trip", () => {
 			undefined,
 			expect.objectContaining({ status: "Running" }),
 			undefined,
+			{ preservePageData: true },
 		);
 
 		// No rows match → filtered empty state; clearing filters must also
@@ -326,6 +328,7 @@ describe("ExecutionHistory — workflow filter visibility", () => {
 			undefined,
 			expect.not.objectContaining({ workflow_id: "workflow-1" }),
 			undefined,
+			{ preservePageData: true },
 		);
 	});
 
@@ -575,7 +578,7 @@ describe("ExecutionHistory — feed rendering", () => {
 		expect(screen.getByText("Graph API returned 403")).toBeInTheDocument();
 	});
 
-	it("keeps desktop row navigation separate from the preview action", async () => {
+	it("opens the desktop preview from row and workflow-name clicks while keeping the full-page link href", async () => {
 		mockAuth.mockReturnValue({
 			isPlatformAdmin: true,
 			user: { id: "admin-1", email: "admin@example.com" },
@@ -601,11 +604,7 @@ describe("ExecutionHistory — feed rendering", () => {
 			"/history/11111111-1111-1111-1111-111111111111",
 		);
 
-		await user.click(
-			screen.getByRole("button", {
-				name: "Preview execution test-workflow",
-			}),
-		);
+		await user.click(row);
 		expect(screen.getByTestId("execution-preview")).toHaveTextContent(
 			"11111111-1111-1111-1111-111111111111",
 		);
@@ -633,10 +632,11 @@ describe("ExecutionHistory — feed rendering", () => {
 		).not.toBeInTheDocument();
 		expect(row).not.toHaveAttribute("data-state");
 
-		await user.click(row);
-		expect(screen.getByTestId("location-probe")).toHaveTextContent(
-			"/history/11111111-1111-1111-1111-111111111111",
+		await user.click(screen.getByRole("link", { name: "test-workflow" }));
+		expect(screen.getByTestId("execution-preview")).toHaveTextContent(
+			"11111111-1111-1111-1111-111111111111",
 		);
+		expect(screen.getByTestId("location-probe")).toHaveTextContent(/^\/$/);
 	});
 });
 
@@ -699,6 +699,33 @@ describe("ExecutionHistory — list states", () => {
 		await renderPage();
 
 		expect(screen.getByTestId("history-loading")).toBeInTheDocument();
+	});
+
+	it("keeps retained execution rows and pagination controls mounted during a page fetch", async () => {
+		mockUseExecutions.mockReturnValue({
+			data: {
+				executions: [makeRow()],
+				continuation_token: "next",
+			},
+			isFetching: true,
+			isError: false,
+			refetch: mockRefetch,
+		});
+
+		await renderPage();
+
+		expect(
+			screen.getByRole("table").closest("[aria-busy]"),
+		).toHaveAttribute("aria-busy", "true");
+		expect(screen.getByTestId("execution-row")).toBeInTheDocument();
+		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+		expect(mockUseExecutions).toHaveBeenLastCalledWith(
+			undefined,
+			expect.any(Object),
+			undefined,
+			{ preservePageData: true },
+		);
 	});
 });
 

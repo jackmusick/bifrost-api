@@ -82,7 +82,10 @@ export function LogsTable({
 					))}
 				</ul>
 			) : (
-				<DataTable className="[&_table]:table-fixed">
+				<DataTable
+					className="[&_table]:table-fixed"
+					aria-busy={isFetching ? "true" : undefined}
+				>
 					<DataTableHeader>
 						<DataTableRow>
 							<DataTableHead className="w-[150px]">

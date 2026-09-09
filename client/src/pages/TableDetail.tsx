@@ -49,7 +49,9 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 		[whereClause, pageSize, currentPage],
 	);
 	const tableQuery = useTable(tableId);
-	const documentsQuery = useDocuments(tableId, query);
+	const documentsQuery = useDocuments(tableId, query, {
+		preservePageData: true,
+	});
 	const deleteDocument = useDeleteDocument();
 	const table = tableQuery.data;
 	const documents = useMemo(
@@ -198,6 +200,9 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 					<section
 						aria-label="Documents"
 						className="min-w-0 w-full flex-1 space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:space-y-0"
+						aria-busy={
+							documentsQuery.isFetching ? "true" : undefined
+						}
 					>
 						{documentsQuery.isError && (
 							<DocumentCollectionState

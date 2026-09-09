@@ -5,7 +5,7 @@ import { MessageSquare, Search } from "lucide-react";
 import { $api } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCreateConversation, useConversations } from "@/hooks/useChat";
+import { useCreateConversation } from "@/hooks/useChat";
 import {
 	PageWorkspace,
 	PageScrollArea,
@@ -32,7 +32,7 @@ import type {
 import { ResourceCard } from "./Home/components/ResourceCard";
 import { HomeBrowse } from "./Home/components/HomeBrowse";
 import { CollectionStrip } from "./Home/components/CollectionStrip";
-import { RecentWork } from "./Home/components/RecentWork";
+import { HomeCatalogOverview } from "./Home/components/HomeCatalogOverview";
 import { CollectionEditor } from "./Home/components/CollectionEditor";
 
 const NO_RESOURCES: HomeResource[] = [];
@@ -44,7 +44,6 @@ export function Home() {
 	const [params, setParams] = useSearchParams();
 	const queryClient = useQueryClient();
 	const home = $api.useQuery("get", "/api/home");
-	const conversations = useConversations();
 	const createConversation = useCreateConversation();
 	const [editor, setEditor] = useState<HomeCollection | "new" | null>(null);
 	const [editorError, setEditorError] = useState("");
@@ -76,6 +75,11 @@ export function Home() {
 	const kind = params.get("type") ?? "all";
 	const org = params.get("org") ?? "all";
 	const grid = params.get("view") !== "list";
+	const overview =
+		!search &&
+		kind === "all" &&
+		!selected &&
+		params.get("catalog") !== "all";
 	const collectionParam = params.get("collection");
 	const pageParam = params.get("page");
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -101,6 +105,7 @@ export function Home() {
 					if (next.get("sort") === "collection") next.delete("sort");
 				}
 				if (key === "org") next.delete("collection");
+				if (key === "type" && value === "all") next.delete("catalog");
 				return next;
 			},
 			{ replace: true },
@@ -127,13 +132,6 @@ export function Home() {
 	const pinned = resources.filter(
 		(resource) => resource.pinned && inScope(resource),
 	);
-	const recent = resources
-		.filter((resource) => resource.last_opened_at && inScope(resource))
-		.sort(
-			(a, b) =>
-				Date.parse(b.last_opened_at!) - Date.parse(a.last_opened_at!),
-		)
-		.slice(0, 3);
 	const ordered = selected
 		? (selected.resource_keys ?? []).flatMap(
 				(key) =>
@@ -257,7 +255,7 @@ export function Home() {
 			</div>
 		);
 	return (
-		<PageWorkspace className="gap-5">
+		<PageWorkspace className="mx-auto w-full max-w-[1400px] gap-5">
 			<div className="shrink-0 space-y-4">
 				<ListPageHeader
 					title="Home"
@@ -322,7 +320,7 @@ export function Home() {
 				aria-label="Home workspace"
 				className="space-y-7 pb-2 pr-1"
 			>
-				{!search && kind === "all" && !selected && (
+				{overview && (
 					<>
 						<section
 							className="space-y-3"
@@ -351,12 +349,13 @@ export function Home() {
 								)}
 							</div>
 							{pinned.length ? (
-								<div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(14rem,1fr))]">
+								<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
 									{(showAllPins
 										? pinned
 										: pinned.slice(0, 3)
 									).map((resource) => (
 										<ResourceCard
+											compact
 											key={resource.key}
 											resource={resource}
 											onOpen={openResource}
@@ -389,37 +388,39 @@ export function Home() {
 						/>
 					</>
 				)}
-				<HomeBrowse
-					selected={selected}
-					onEdit={openEditor}
-					total={filtered.length}
-					grid={grid}
-					sort={sort}
-					visible={visible}
-					resourceCount={resources.length}
-					busy={opening || preference.isPending}
-					page={page}
-					updateParam={updateParam}
-					onOpen={openResource}
-					onPin={pinResource}
-					onPageChange={(offset) =>
-						setParams(
-							(previous) => {
-								const next = new URLSearchParams(previous);
-								next.set("page", String(offset / 12));
-								return next;
-							},
-							{ replace: true },
-						)
-					}
-				/>
-				{!search && kind === "all" && !selected && (
-					<RecentWork
-						recent={recent}
-						conversations={conversations.data}
-						showConversations={org === "all"}
+				{overview ? (
+					<HomeCatalogOverview
+						resources={resources.filter(inScope)}
 						onOpen={openResource}
-						busy={opening}
+						onPin={pinResource}
+						busy={opening || preference.isPending}
+						onCategory={(value) => updateParam("type", value)}
+						onViewAll={() => updateParam("catalog", "all")}
+					/>
+				) : (
+					<HomeBrowse
+						selected={selected}
+						onEdit={openEditor}
+						total={filtered.length}
+						grid={grid}
+						sort={sort}
+						visible={visible}
+						resourceCount={resources.length}
+						busy={opening || preference.isPending}
+						page={page}
+						updateParam={updateParam}
+						onOpen={openResource}
+						onPin={pinResource}
+						onPageChange={(offset) =>
+							setParams(
+								(previous) => {
+									const next = new URLSearchParams(previous);
+									next.set("page", String(offset / 12));
+									return next;
+								},
+								{ replace: true },
+							)
+						}
 					/>
 				)}
 			</PageScrollArea>

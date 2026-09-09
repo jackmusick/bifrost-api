@@ -54,8 +54,10 @@ vi.mock("@/components/PageLoader", () => ({
 }));
 
 vi.mock("@/components/execution", () => ({
-	ExecutionResultPanel: () => <div>Result</div>,
-	ExecutionLogsPanel: () => <div>Logs</div>,
+	ExecutionResultPanel: () => <div data-testid="result-panel">Result body</div>,
+	ExecutionLogsPanel: ({ logs }: { logs?: unknown[] }) => (
+		<div data-testid="logs-panel">Logs {logs?.length ?? 0}</div>
+	),
 	ExecutionSidebar: () => <aside>Sidebar</aside>,
 	ExecutionCancelDialog: () => null,
 	ExecutionRerunDialog: ({ open }: { open: boolean }) =>
@@ -169,15 +171,103 @@ describe("ExecutionDetails — failed-run hierarchy", () => {
 		expect(banner).toHaveTextContent("RuntimeError: boom");
 		// The stubbed Result panel must NOT render for a failed run with no
 		// result — previously it produced a dead "No result returned" card.
-		expect(screen.queryByText("Result")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("result-panel")).not.toBeInTheDocument();
 	});
 
 	it("renders the Result panel for successful runs and no error banner", async () => {
 		await renderPage();
-		expect(screen.getByText("Result")).toBeInTheDocument();
+		expect(screen.getByTestId("result-panel")).toBeInTheDocument();
 		expect(
 			screen.queryByTestId("execution-error-banner"),
 		).not.toBeInTheDocument();
+	});
+});
+
+describe("ExecutionDetails — result-first inspector", () => {
+	it("defaults to Result before Input and Logs", async () => {
+		await renderPage();
+
+		expect(
+			screen.getByLabelText("Execution content"),
+		).toBeInTheDocument();
+		const tabs = screen.getAllByRole("tab");
+		expect(tabs.map((tab) => tab.textContent)).toEqual([
+			"Result",
+			"Input",
+			"Logs",
+		]);
+		expect(
+			screen.getByRole("tab", { name: "Result" }),
+		).toHaveAttribute("aria-selected", "true");
+		expect(
+			screen.queryByRole("tab", { name: "Output" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("tab", { name: "Details" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows truthful active status in Result for a running run with no logs", async () => {
+		mockUseExecution.mockReturnValue({
+			data: {
+				...execution,
+				status: "Running",
+				result: null,
+				result_type: null,
+				logs: [],
+				completed_at: null,
+			},
+			isLoading: false,
+			error: null,
+		});
+
+		await renderPage();
+
+		expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		expect(
+			screen.getByText(
+				"This run is active. The result will appear here when it completes.",
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/log line/)).not.toBeInTheDocument();
+	});
+
+	it("summarizes available running logs in Result without opening a log column", async () => {
+		mockUseExecution.mockReturnValue({
+			data: {
+				...execution,
+				status: "Running",
+				result: null,
+				result_type: null,
+				logs: [
+					{
+						timestamp: "2026-04-23T10:00:01Z",
+						level: "info",
+						message: "Started",
+					},
+				],
+				completed_at: null,
+			},
+			isLoading: false,
+			error: null,
+		});
+
+		const { user } = await renderPage();
+
+		expect(screen.getByText("Started")).toBeInTheDocument();
+		expect(
+			screen.getByText("1 log line captured so far."),
+		).toBeInTheDocument();
+		expect(screen.queryByTestId("logs-panel")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "View logs" }));
+		expect(screen.getByRole("tab", { name: "Logs" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		expect(screen.getByTestId("logs-panel")).toHaveTextContent("Logs 1");
 	});
 });
 
