@@ -89,7 +89,7 @@ async function renderPage() {
 
 describe("ExecuteWorkflow — run-now path (no schedule)", () => {
 	it(
-		"submits a body without scheduled_at or delay_seconds when the schedule checkbox is untouched",
+		"submits a body without scheduled_at or delay_seconds when the schedule switch is untouched",
 		async () => {
 			const { user } = await renderPage();
 
@@ -133,7 +133,7 @@ describe("ExecuteWorkflow — scheduled path", () => {
 			const { user } = await renderPage();
 
 			await user.click(
-				await screen.findByRole("checkbox", {
+				await screen.findByRole("switch", {
 					name: /schedule for later/i,
 				}),
 			);
@@ -175,7 +175,7 @@ describe("ExecuteWorkflow — scheduled path", () => {
 			const { user } = await renderPage();
 
 			await user.click(
-				await screen.findByRole("checkbox", {
+				await screen.findByRole("switch", {
 					name: /schedule for later/i,
 				}),
 			);
@@ -212,7 +212,7 @@ describe("ExecuteWorkflow — scheduled path", () => {
 			const { user } = await renderPage();
 
 			await user.click(
-				await screen.findByRole("checkbox", {
+				await screen.findByRole("switch", {
 					name: /schedule for later/i,
 				}),
 			);
@@ -255,7 +255,7 @@ describe("ExecuteWorkflow — mutation errors", () => {
 		const { user } = await renderPage();
 
 		await user.click(
-			await screen.findByRole("checkbox", {
+			await screen.findByRole("switch", {
 				name: /schedule for later/i,
 			}),
 		);

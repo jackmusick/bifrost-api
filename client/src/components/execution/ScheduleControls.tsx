@@ -2,9 +2,9 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { Switch } from "@/components/ui/switch";
 
 export interface Schedule {
 	/** ISO-8601 UTC string, set when the user picks an absolute time. */
@@ -124,7 +124,7 @@ export function ScheduleControls({
 	return (
 		<div className="flex flex-col gap-3">
 			<Label className="flex min-h-11 items-center gap-2">
-				<Checkbox
+				<Switch
 					checked={checked}
 					onCheckedChange={handleCheckedChange}
 					disabled={disabled}

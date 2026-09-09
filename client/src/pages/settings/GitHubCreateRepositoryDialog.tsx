@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -109,7 +109,7 @@ export function GitHubCreateRepositoryDialog({
 						</div>
 
 						<div className="flex items-center space-x-2">
-							<Checkbox
+							<Switch
 								id="new-repo-private"
 								checked={isPrivate}
 								onCheckedChange={(checked) =>

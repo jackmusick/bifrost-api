@@ -2,7 +2,7 @@ import { useId } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RotateCcw, CheckCircle2 } from "lucide-react";
@@ -106,7 +106,7 @@ export function ConfigFieldInput({
 		switch (field.type) {
 			case "bool":
 				return (
-					<Checkbox
+					<Switch
 						id={inputId}
 						aria-describedby={
 							field.description ? descriptionId : undefined

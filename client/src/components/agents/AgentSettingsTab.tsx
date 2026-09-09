@@ -62,6 +62,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TiptapEditor } from "@/components/ui/tiptap-editor";
 import { Textarea } from "@/components/ui/textarea";
 import {
 	OrganizationSelect,
@@ -868,10 +869,15 @@ export function AgentSettingsTab({
 								<FormItem>
 									<FormLabel>System prompt</FormLabel>
 									<FormControl>
-										<Textarea
-											className="min-h-[200px] font-mono text-sm"
+										<TiptapEditor
+											content={field.value}
+											onChange={field.onChange}
+											onBlur={field.onBlur}
+											ariaLabel="System prompt"
+											readOnly={pending || isSolutionManaged}
+											className="min-w-0"
+											editorClassName="min-h-[200px] max-h-[28rem]"
 											placeholder="You are a helpful assistant…"
-											{...field}
 										/>
 									</FormControl>
 									<FormDescription>

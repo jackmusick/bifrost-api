@@ -216,7 +216,7 @@ describe("FormRenderer — required validation", () => {
 		);
 
 		expect(
-			screen.queryByRole("checkbox", { name: /schedule for later/i }),
+			screen.queryByRole("switch", { name: /schedule for later/i }),
 		).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /submit/i }));
 
@@ -360,7 +360,7 @@ describe("FormRenderer — field types", () => {
 });
 
 describe("FormRenderer — scheduling", () => {
-	it("submits a body without scheduled_at or delay_seconds when the schedule checkbox is untouched", async () => {
+	it("submits a body without scheduled_at or delay_seconds when the schedule switch is untouched", async () => {
 		const form = makeForm([
 			{
 				name: "comment",
@@ -423,7 +423,7 @@ describe("FormRenderer — scheduling", () => {
 
 		// Flip "Schedule for later" and pick "In 15 min".
 		await user.click(
-			screen.getByRole("checkbox", { name: /schedule for later/i }),
+			screen.getByRole("switch", { name: /schedule for later/i }),
 		);
 		await user.click(screen.getByRole("button", { name: /in 15 min/i }));
 
@@ -466,7 +466,7 @@ describe("FormRenderer — scheduling", () => {
 		await waitFor(() => expect(submit).toBeEnabled(), { timeout: 3000 });
 
 		await user.click(
-			screen.getByRole("checkbox", { name: /schedule for later/i }),
+			screen.getByRole("switch", { name: /schedule for later/i }),
 		);
 		await user.click(screen.getByRole("button", { name: /in 15 min/i }));
 

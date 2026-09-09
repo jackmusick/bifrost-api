@@ -35,7 +35,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 
 import {
 	Dialog,
@@ -453,7 +453,7 @@ export function MCPConnectionEdit() {
 
 							<div className="space-y-2">
 								<div className="flex items-center gap-2">
-									<Checkbox
+									<Switch
 										id="set_new_secret"
 										checked={setNewSecret}
 										onCheckedChange={(v) =>
@@ -558,7 +558,7 @@ export function MCPConnectionEdit() {
 							</h2>
 
 							<div className="flex items-start gap-3">
-								<Checkbox
+								<Switch
 									id="available_in_chat"
 									checked={availableInChat}
 									onCheckedChange={(v) =>
@@ -588,7 +588,7 @@ export function MCPConnectionEdit() {
 							</div>
 
 							<div className="flex items-start gap-3">
-								<Checkbox
+								<Switch
 									id="available_to_autonomous"
 									checked={availableToAutonomous}
 									onCheckedChange={(v) =>

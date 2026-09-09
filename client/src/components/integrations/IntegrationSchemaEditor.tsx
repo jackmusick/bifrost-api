@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
 	Select,
 	SelectContent,
@@ -117,7 +117,7 @@ function SchemaField({
 					</Select>
 				</div>
 				<Label htmlFor={`${id}-required`} className="min-h-11 gap-2">
-					<Checkbox
+					<Switch
 						id={`${id}-required`}
 						checked={field.required}
 						onCheckedChange={(checked) =>

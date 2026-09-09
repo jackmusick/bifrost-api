@@ -14,7 +14,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Select,
@@ -342,7 +342,7 @@ function DynamicField({
 
 		return (
 			<div className="flex min-w-0 items-start gap-3">
-				<Checkbox
+				<Switch
 					className="mt-3 shrink-0"
 					aria-describedby={
 						property.description ? descriptionId : undefined

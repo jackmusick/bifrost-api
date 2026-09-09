@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Combobox } from "@/components/ui/combobox";
 import {
 	ExpressionEditor,
@@ -371,7 +371,7 @@ function FieldConfigDialogContent({
 		<DialogContent className="w-[calc(100vw-1rem)] max-h-[90dvh] overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-[1200px]">
 			<div className="flex h-full max-h-[90dvh] flex-col lg:flex-row">
 				{/* Main content area */}
-				<div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 [&_input]:min-h-11 [&_button:not([data-slot=checkbox])]:min-h-11">
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 [&_input]:min-h-11 [&_button:not([role=switch]):not([role=checkbox])]:min-h-11">
 					<DialogHeader className="shrink-0">
 						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 							<div>
@@ -591,7 +591,7 @@ function FieldConfigDialogContent({
 
 							<div className="space-y-2">
 								<div className="flex items-center gap-2">
-									<Checkbox
+									<Switch
 										id="allowAsQueryParam"
 										checked={allowAsQueryParam}
 										onCheckedChange={(checked) =>
@@ -701,7 +701,7 @@ function FieldConfigDialogContent({
 									</Label>
 									{type === "checkbox" ? (
 										<div className="flex items-center gap-2 pt-1">
-											<Checkbox
+											<Switch
 												id="defaultValue"
 												checked={defaultValue === true}
 												onCheckedChange={(checked) =>

@@ -239,3 +239,14 @@ describe("FieldConfigDialog — conditional rendering", () => {
 		});
 	});
 });
+
+
+it("saves query parameter opt-in from the settings switch", async () => {
+	const { user, onSave } = renderDialog();
+	await user.type(screen.getByLabelText(/field name/i), "customer");
+	const toggle = screen.getByRole("switch", { name: /allow as query parameter/i });
+	expect(toggle).not.toBeChecked();
+	await user.click(toggle);
+	await user.click(screen.getByRole("button", { name: /add field/i }));
+	expect(onSave.mock.calls[0]![0]).toMatchObject({ allow_as_query_param: true });
+});

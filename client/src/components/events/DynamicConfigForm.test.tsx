@@ -110,7 +110,7 @@ describe("DynamicConfigForm — string field", () => {
 });
 
 describe("DynamicConfigForm — boolean field", () => {
-	it("renders a checkbox and emits booleans", async () => {
+	it("renders a switch and emits booleans", async () => {
 		const { user, onChange } = renderForm({
 			type: "object",
 			properties: {
@@ -118,7 +118,7 @@ describe("DynamicConfigForm — boolean field", () => {
 			},
 		});
 
-		await user.click(screen.getByRole("checkbox", { name: /enabled/i }));
+		await user.click(screen.getByRole("switch", { name: /enabled/i }));
 
 		expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
 	});

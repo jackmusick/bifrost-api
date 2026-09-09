@@ -1,7 +1,7 @@
 /**
  * Component tests for ScheduleControls.
  *
- * Covers the "Schedule for later" checkbox reveal, the quick-pick buttons
+ * Covers the "Schedule for later" switch reveal, the quick-pick buttons
  * (15m / 1h / 4h / tomorrow 9 AM), and the past-time validation hint.
  * The DateTimePicker itself is exercised in its own test file; here we just
  * confirm it's rendered in the revealed state.
@@ -26,16 +26,16 @@ afterEach(() => {
 });
 
 describe("ScheduleControls — collapsed (run-now) state", () => {
-	it("renders only the checkbox when value is null", () => {
+	it("renders only the switch when value is null", () => {
 		renderWithProviders(
 			<ScheduleControls value={null} onChange={() => {}} />,
 		);
 
-		const checkbox = screen.getByRole("checkbox", {
+		const scheduleSwitch = screen.getByRole("switch", {
 			name: /schedule for later/i,
 		});
-		expect(checkbox).toBeInTheDocument();
-		expect(checkbox).not.toBeChecked();
+		expect(scheduleSwitch).toBeInTheDocument();
+		expect(scheduleSwitch).not.toBeChecked();
 
 		// Quick picks should not be present yet.
 		expect(
@@ -46,14 +46,14 @@ describe("ScheduleControls — collapsed (run-now) state", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("calls onChange({ delay_seconds: 900 }) when the box is first checked", async () => {
+	it("calls onChange({ delay_seconds: 900 }) when the switch is first checked", async () => {
 		const onChange = vi.fn();
 		const { user } = renderWithProviders(
 			<ScheduleControls value={null} onChange={onChange} />,
 		);
 
 		await user.click(
-			screen.getByRole("checkbox", { name: /schedule for later/i }),
+			screen.getByRole("switch", { name: /schedule for later/i }),
 		);
 
 		expect(onChange).toHaveBeenCalledTimes(1);
@@ -156,7 +156,7 @@ describe("ScheduleControls — expanded (run-later) state", () => {
 });
 
 describe("ScheduleControls — unchecking", () => {
-	it("calls onChange(null) when the box is unchecked", async () => {
+	it("calls onChange(null) when the switch is unchecked", async () => {
 		const onChange = vi.fn();
 		const { user } = renderWithProviders(
 			<ScheduleControls
@@ -166,7 +166,7 @@ describe("ScheduleControls — unchecking", () => {
 		);
 
 		await user.click(
-			screen.getByRole("checkbox", { name: /schedule for later/i }),
+			screen.getByRole("switch", { name: /schedule for later/i }),
 		);
 		expect(onChange).toHaveBeenCalledWith(null);
 	});
@@ -199,15 +199,15 @@ describe("ScheduleControls — validation", () => {
 });
 
 describe("ScheduleControls — disabled", () => {
-	it("disables the checkbox when disabled=true", () => {
+	it("disables the switch when disabled=true", () => {
 		renderWithProviders(
 			<ScheduleControls value={null} onChange={() => {}} disabled />,
 		);
 
-		const checkbox = screen.getByRole("checkbox", {
+		const scheduleSwitch = screen.getByRole("switch", {
 			name: /schedule for later/i,
 		});
-		expect(checkbox).toBeDisabled();
+		expect(scheduleSwitch).toBeDisabled();
 	});
 
 	it("disables quick picks and the picker when expanded + disabled", () => {

@@ -87,7 +87,7 @@ describe("ConfigFieldInput — int", () => {
 });
 
 describe("ConfigFieldInput — bool", () => {
-	it("toggles via the checkbox", async () => {
+	it("toggles via the switch", async () => {
 		const onChange = vi.fn();
 		const { user } = renderWithProviders(
 			<ConfigFieldInput
@@ -97,7 +97,7 @@ describe("ConfigFieldInput — bool", () => {
 			/>,
 		);
 
-		await user.click(screen.getByRole("checkbox"));
+		await user.click(screen.getByRole("switch"));
 
 		expect(onChange).toHaveBeenLastCalledWith(true);
 	});

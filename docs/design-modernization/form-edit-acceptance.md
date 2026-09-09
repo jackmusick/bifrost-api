@@ -28,3 +28,19 @@ controls, and keep the field workspace usable. This applies to editing, not just
 Preview. Live checks at 2560×1440 and 390×844 verified bounded width, no horizontal
 overflow, opening field settings, and switching to Preview. Existing form-builder
 and field-panel interaction tests passed.
+
+
+## Settings controls and editors follow-up
+
+Field settings use the shared Switch for query-parameter opt-in and boolean
+defaults. Descendant button sizing excludes switch and checkbox roles. Other
+boolean configuration controls were aligned in integrations, event configuration,
+scheduling, MCP connections, repository creation, and workflow keys. Selection
+checkboxes and runtime form/v1 checkbox semantics are retained.
+
+Available Context uses the shared JSON syntax renderer and active branding tokens.
+Agent instructions use the shared Tiptap editor and continue to persist Markdown;
+solution-managed instructions remain read-only. Live debug review verified mobile
+switch geometry and highlighted context, plus creating an agent with bold
+instructions, reading back Markdown, and deleting the synthetic test agent.
+Focused component tests, TypeScript, and scoped lint passed.

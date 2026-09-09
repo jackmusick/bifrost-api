@@ -14,7 +14,7 @@ it("names schema controls and routes edits/add/remove to the correct field", asy
 			onRemove={onRemove}
 		/>,
 	);
-	await user.click(screen.getByRole("checkbox", { name: "Required" }));
+	await user.click(screen.getByRole("switch", { name: "Required" }));
 	expect(onUpdate).toHaveBeenCalledWith(0, { required: true });
 	await user.click(screen.getByRole("button", { name: "Add Field" }));
 	expect(onAdd).toHaveBeenCalledOnce();

@@ -150,7 +150,7 @@ describe("AgentSettingsTab — edit mode", () => {
 		const promptInput = screen.getByRole("textbox", {
 			name: /system prompt/i,
 		}) as HTMLTextAreaElement;
-		expect(promptInput.value).toBe("You are a triage bot.");
+		expect(promptInput).toHaveTextContent("You are a triage bot.");
 	});
 
 	it("submits via update mutation on Save", async () => {
@@ -421,7 +421,7 @@ it("renders solution-managed settings as read-only", async () => {
 		agent: { ...existingAgent, is_solution_managed: true },
 	});
 	expect(screen.getByLabelText("Name")).toBeDisabled();
-	expect(screen.getByLabelText("System prompt")).toBeDisabled();
+	expect(screen.getByLabelText("System prompt")).toHaveAttribute("contenteditable", "false");
 	expect(screen.getByRole("combobox", { name: "Tools" })).toBeDisabled();
 	expect(screen.getByTestId("save-agent-button")).toBeDisabled();
 	expect(screen.getByTestId("solution-managed-banner")).toBeVisible();

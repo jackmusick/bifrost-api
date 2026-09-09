@@ -25,7 +25,15 @@ const syntax: Record<string, CSSProperties> = {
 };
 
 /** Bounded, keyboard-scrollable JSON preview using the active design tokens. */
-export function JsonValuePreview({ value }: { value: unknown }) {
+export function JsonValuePreview({
+	value,
+	maxHeight = "16rem",
+	ariaLabel = "JSON preview",
+}: {
+	value: unknown;
+	maxHeight?: CSSProperties["maxHeight"];
+	ariaLabel?: string;
+}) {
 	const json = JSON.stringify(value, null, 2) ?? "undefined";
 	const truncated = json.length > MAX_HIGHLIGHTED_JSON_CHARS;
 	return (
@@ -40,9 +48,10 @@ export function JsonValuePreview({ value }: { value: unknown }) {
 			)}
 			<div
 				role="region"
-				aria-label="JSON preview"
+				aria-label={ariaLabel}
+				style={{ maxHeight }}
 				tabIndex={0}
-				className="max-h-64 min-w-0 max-w-full overflow-auto rounded-[var(--bf-radius-surface)] border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				className="min-w-0 max-w-full overflow-auto rounded-[var(--bf-radius-surface)] border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				{truncated ? (
 					<pre className="whitespace-pre-wrap p-3 font-mono text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">

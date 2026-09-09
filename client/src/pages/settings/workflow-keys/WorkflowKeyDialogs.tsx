@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
 	Dialog,
 	DialogContent,
@@ -147,7 +147,7 @@ export function WorkflowKeyCreateDialog({
 							</div>
 
 							<div className="flex items-start gap-3">
-								<Checkbox
+								<Switch
 									id="workflow-key-global"
 									checked={formValues.isGlobal}
 									onCheckedChange={(checked) =>
