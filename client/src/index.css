@@ -727,3 +727,28 @@
   min-height: 20rem;
  }
 }
+
+/* Paint-only orbit: status updates never change the badge's layout box. */
+@property --bf-orbit-angle {
+ syntax: "<angle>";
+ initial-value: 0deg;
+ inherits: false;
+}
+@keyframes bf-running-orbit {
+ to { --bf-orbit-angle: 360deg; }
+}
+.bf-running-orbit {
+ position: absolute;
+ inset: -1px;
+ border-radius: inherit;
+ padding: 1px;
+ pointer-events: none;
+ background: conic-gradient(from var(--bf-orbit-angle), transparent 35%, color-mix(in oklch, var(--primary), transparent 50%) 65%, var(--primary) 82%, transparent 100%);
+ mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+ mask-composite: exclude;
+ filter: drop-shadow(0 0 2px var(--primary));
+ animation: bf-running-orbit 2.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+ .bf-running-orbit { animation: none; }
+}

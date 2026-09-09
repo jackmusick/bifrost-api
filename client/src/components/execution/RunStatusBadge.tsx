@@ -6,12 +6,7 @@
  * details page so all three agree on what success and failure look like.
  */
 
-import {
-	AlertTriangle,
-	CheckCircle2,
-	Clock,
-	XCircle,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { parseBackendDate } from "@/lib/utils";
 
@@ -110,10 +105,13 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="min-w-24 gap-1 font-normal"
-					style={activeInfoStyle}
+					className="bf-running-border relative min-w-24 gap-1 overflow-visible font-normal text-foreground"
 				>
-					{activityIndicator}
+					<span
+						data-testid="run-status-activity-indicator"
+						aria-hidden="true"
+						className="bf-running-orbit"
+					/>
 					Running
 				</Badge>
 			);

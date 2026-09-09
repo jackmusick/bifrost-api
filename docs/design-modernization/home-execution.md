@@ -133,3 +133,12 @@ execution detail regressions, TypeScript and scoped lint; Docker streaming E2E
 passed and now checks that multiple messages appear in the Result activity feed
 before opening technical logs. Live desktop and mobile feed screenshots show
 wrapped messages without horizontal overflow.
+
+### Running status motion and History stability
+
+Running badges now use a rotating conic border highlight in the configured primary
+color. The overlay is absolute and paint-only; reduced-motion keeps it static.
+History reserves space for the conditional Cancel action and for duration/start
+values, with tabular digits for timestamps. These columns no longer contract as
+an execution completes or clock values change. This keeps workflow/status columns
+from moving when the Cancel action disappears.

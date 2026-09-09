@@ -1238,8 +1238,8 @@ export function ExecutionHistory() {
 																					<DataTableCell
 																						className={
 																							previewOpen
-																								? "hidden w-px whitespace-nowrap text-sm text-muted-foreground 2xl:table-cell"
-																								: "hidden w-px whitespace-nowrap text-sm text-muted-foreground lg:table-cell"
+																								? "hidden w-28 min-w-28 whitespace-nowrap text-sm tabular-nums text-muted-foreground 2xl:table-cell"
+																								: "hidden w-28 min-w-28 whitespace-nowrap text-sm tabular-nums text-muted-foreground lg:table-cell"
 																						}
 																						title={
 																							anchor
@@ -1255,7 +1255,7 @@ export function ExecutionHistory() {
 																								)
 																							: "—"}
 																					</DataTableCell>
-																					<DataTableCell className="w-px whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground">
+																					<DataTableCell className="w-24 min-w-24 whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground">
 																						{duration ??
 																							"—"}
 																					</DataTableCell>
@@ -1285,7 +1285,7 @@ export function ExecutionHistory() {
 																					</DataTableCell>
 																					{!previewOpen && (
 																						<DataTableCell className="w-px text-right">
-																							<div className="flex items-center justify-end gap-1">
+																							<div className="flex min-w-11 items-center justify-end gap-1">
 																								<ExecutionCancelAction
 																									compact
 																									executionId={
