@@ -81,6 +81,9 @@ test.describe("Execution Realtime Streaming", () => {
 		await expect(
 			page.getByRole("tab", { name: "Result", exact: true }),
 		).toHaveAttribute("aria-selected", "true");
+		const activity = page.getByRole("log", { name: "Workflow messages" });
+		await expect(activity).toBeVisible({ timeout: 45000 });
+		await expect.poll(() => activity.locator("li").count(), { timeout: 15000 }).toBeGreaterThan(1);
 		await page.getByRole("tab", { name: "Logs", exact: true }).click();
 
 		// Assertion 1: at least one log message appears while running.

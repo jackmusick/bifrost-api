@@ -109,3 +109,27 @@ Reviewed the live debug dialog at 1440×1000 and 390×844: exactly one vertical
 scroll area, visible actions at the bottom, and a 1px border between the footer
 bottom and dialog edge. Home E2E now checks these scrolling and footer bounds
 while editing a collection at desktop and mobile widths.
+
+### History picker and live activity follow-up
+
+OrganizationSelect now opens at the greater of 20rem or its trigger width,
+clamped to the viewport gutter. This shared default covers narrow History
+filters as well as wider form controls. Live History inspection measured a
+176px trigger and a 320px popup.
+
+The Result tab's running state now shows a reusable ExecutionActivityFeed of
+actual messages in order, with proportional text and a quiet timeline. It follows
+new messages until the user scrolls back; Follow latest activity resumes following.
+View logs retains access to levels, timestamps, search, and technical details.
+The same feed is used by full execution details and the embedded preview.
+
+On re-entry, a stream's default Running status could overwrite terminal API data
+in the query cache. Terminal cached statuses now reject nonterminal stream
+updates; cached trigger re-entry also bypasses the new-run fetch delay. Regression
+tests cover both paths with a real QueryClient for the status overwrite.
+
+Validation: organization picker/component tests, activity follow/pause test,
+execution detail regressions, TypeScript and scoped lint; Docker streaming E2E
+passed and now checks that multiple messages appear in the Result activity feed
+before opening technical logs. Live desktop and mobile feed screenshots show
+wrapped messages without horizontal overflow.

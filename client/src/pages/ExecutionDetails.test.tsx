@@ -3,9 +3,16 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen, waitFor } from "@/test-utils";
+import {
+	makeQueryClient,
+	renderWithProviders,
+	screen,
+	waitFor,
+} from "@/test-utils";
 
 const mockUseExecution = vi.fn();
+const mockUseExecutionStream = vi.fn();
+let mockStreamState: unknown;
 vi.mock("@/hooks/useExecutions", () => ({
 	useExecution: (...args: unknown[]) => mockUseExecution(...args),
 	cancelExecution: vi.fn(),
@@ -24,11 +31,23 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 vi.mock("@/hooks/useExecutionStream", () => ({
-	useExecutionStream: () => ({ isConnected: false }),
+	useExecutionStream: (...args: unknown[]) => mockUseExecutionStream(...args),
 }));
 
 vi.mock("@/stores/executionStreamStore", () => ({
-	useExecutionStreamStore: () => undefined,
+	useExecutionStreamStore: (
+		selector?: (state: { streams: Record<string, unknown> }) => unknown,
+	) => {
+		const state = mockStreamState
+			? {
+					streams: {
+						"11111111-1111-1111-1111-111111111111":
+							mockStreamState,
+					},
+				}
+			: { streams: {} };
+		return selector ? selector(state) : state;
+	},
 }));
 
 vi.mock("@/stores/editorStore", () => ({
@@ -96,9 +115,19 @@ const execution = {
 	cpu_total_seconds: null,
 	error_message: null,
 };
+const executionQueryKey = [
+	"get",
+	"/api/executions/{execution_id}",
+	{
+		params: {
+			path: { execution_id: execution.execution_id },
+		},
+	},
+];
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockStreamState = undefined;
 	mockAuth.mockReturnValue({
 		isPlatformAdmin: false,
 		hasRole: () => false,
@@ -112,6 +141,7 @@ beforeEach(() => {
 		data: { workflows: [] },
 		isLoading: false,
 	});
+	mockUseExecutionStream.mockReturnValue({ isConnected: false });
 });
 
 async function renderPage() {
@@ -259,7 +289,7 @@ describe("ExecutionDetails — result-first inspector", () => {
 
 		expect(screen.getByText("Started")).toBeInTheDocument();
 		expect(
-			screen.getByText("1 log line captured so far."),
+			screen.getByRole("heading", { name: "Activity" }),
 		).toBeInTheDocument();
 		expect(screen.queryByTestId("logs-panel")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "View logs" }));
@@ -268,6 +298,107 @@ describe("ExecutionDetails — result-first inspector", () => {
 			"true",
 		);
 		expect(screen.getByTestId("logs-panel")).toHaveTextContent("Logs 1");
+	});
+});
+
+describe("ExecutionDetails — navigation fetch gating", () => {
+	const triggerState = {
+		workflow_name: execution.workflow_name,
+		workflow_id: execution.workflow_id,
+		input_data: execution.input_data,
+	};
+
+	it("defers the initial API fetch for a newly triggered execution", async () => {
+		mockUseExecution.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			error: null,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+
+		const { ExecutionDetails } = await import("./ExecutionDetails");
+		renderWithProviders(
+			<ExecutionDetails executionId={execution.execution_id} />,
+			{
+				initialEntries: [
+					{
+						pathname: "/history/11111111-1111-1111-1111-111111111111",
+						state: triggerState,
+					} as unknown as string,
+				],
+			},
+		);
+
+		expect(mockUseExecution).toHaveBeenCalledWith(undefined, {
+			disablePolling: false,
+		});
+		expect(mockUseExecutionStream).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				executionId: execution.execution_id,
+				enabled: true,
+			}),
+		);
+	});
+
+	it("fetches immediately on browser-back re-entry when cached execution data exists", async () => {
+		const queryClient = makeQueryClient();
+		queryClient.setQueryData(
+			executionQueryKey,
+			{ ...execution, status: "Running", completed_at: null },
+		);
+
+		const { ExecutionDetails } = await import("./ExecutionDetails");
+		renderWithProviders(
+			<ExecutionDetails executionId={execution.execution_id} />,
+			{
+				initialEntries: [
+					{
+						pathname: "/history/11111111-1111-1111-1111-111111111111",
+						state: triggerState,
+					} as unknown as string,
+				],
+				queryClient,
+			},
+		);
+
+		expect(mockUseExecution).toHaveBeenCalledWith(execution.execution_id, {
+			disablePolling: false,
+		});
+	});
+
+	it("does not let a stale default stream status overwrite a terminal cached status", async () => {
+		mockStreamState = {
+			status: "Running",
+			streamingLogs: [],
+			hasReceivedUpdate: false,
+			isComplete: false,
+		};
+		const queryClient = makeQueryClient();
+		queryClient.setQueryData(executionQueryKey, {
+			...execution,
+			status: "Success",
+		});
+
+		const { ExecutionDetails } = await import("./ExecutionDetails");
+		renderWithProviders(
+			<ExecutionDetails executionId={execution.execution_id} />,
+			{
+				initialEntries: [
+					{
+						pathname: "/history/11111111-1111-1111-1111-111111111111",
+						state: triggerState,
+					} as unknown as string,
+				],
+				queryClient,
+			},
+		);
+
+		await waitFor(() =>
+			expect(queryClient.getQueryData(executionQueryKey)).toMatchObject({
+				status: "Success",
+			}),
+		);
 	});
 });
 

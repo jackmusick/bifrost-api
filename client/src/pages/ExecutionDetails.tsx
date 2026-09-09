@@ -1,3 +1,4 @@
+import { ExecutionActivityFeed } from "@/components/execution/ExecutionActivityFeed";
 import { ExecutionInspector } from "@/components/execution/ExecutionInspector";
 import { RunDetailHeading } from "@/components/execution/RunDetailHeading";
 import { ExecutionPageHeader } from "@/components/execution/ExecutionPageHeader";
@@ -61,6 +62,22 @@ interface WorkflowsMetadataResponse {
 // Stable empty array so the merged-logs memo doesn't recompute every
 // render while no stream is attached.
 const NO_STREAMING_LOGS: StreamingLog[] = [];
+const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
+	"Success",
+	"Failed",
+	"CompletedWithErrors",
+	"Timeout",
+	"Cancelled",
+]);
+
+function isTerminalExecutionStatus(
+	status: unknown,
+): status is ExecutionStatus {
+	return (
+		typeof status === "string" &&
+		TERMINAL_EXECUTION_STATUSES.has(status as ExecutionStatus)
+	);
+}
 
 /** Copy with the secure/insecure-context-aware helper; only toast success when it worked. */
 async function copyWithToast(text: string, successMessage: string) {
@@ -96,11 +113,21 @@ export function ExecutionDetails({
 	const { isPlatformAdmin, hasRole } = useAuth();
 	const isEmbed = hasRole("EmbedUser");
 	const queryClient = useQueryClient();
+	const executionQueryKey = useMemo(
+		() => [
+			"get",
+			"/api/executions/{execution_id}",
+			{ params: { path: { execution_id: executionId } } },
+		],
+		[executionId],
+	);
+	const hasCachedExecution = !!queryClient.getQueryData(executionQueryKey);
 
 	// Check if we came from an execution trigger (has navigation state).
 	// location.state persists across browser refreshes (React Router uses history.state),
 	// so we clear it immediately after reading to prevent deferred-fetch on refresh.
 	const [hasNavigationState] = useState(() => location.state != null);
+	const shouldDeferInitialFetch = hasNavigationState && !hasCachedExecution;
 	useEffect(() => {
 		if (location.state != null) {
 			navigate(location.pathname, { replace: true, state: null });
@@ -112,7 +139,7 @@ export function ExecutionDetails({
 
 	// Fallback timer - enable fetch after 5s if WebSocket hasn't received updates
 	const [fetchFallbackEnabled, setFetchFallbackEnabled] =
-		useState(!hasNavigationState);
+		useState(!shouldDeferInitialFetch);
 
 	// Get streaming logs from store
 	// Use stable selector to avoid infinite loops
@@ -127,19 +154,19 @@ export function ExecutionDetails({
 	const [prevExecutionId, setPrevExecutionId] = useState(executionId);
 	if (prevExecutionId !== executionId) {
 		setPrevExecutionId(executionId);
-		setFetchFallbackEnabled(!hasNavigationState);
+		setFetchFallbackEnabled(!shouldDeferInitialFetch);
 	}
 
 	// Fallback timer — set 5s fallback for navigation state. Timer-based
 	// state transitions are a legitimate effect since they happen after a
 	// scheduled callback (not synchronously in the effect body).
 	useEffect(() => {
-		if (hasNavigationState) {
+		if (shouldDeferInitialFetch) {
 			const timer = setTimeout(() => setFetchFallbackEnabled(true), 5000);
 			return () => clearTimeout(timer);
 		}
 		return undefined;
-	}, [executionId, hasNavigationState]);
+	}, [executionId, shouldDeferInitialFetch]);
 
 	// Determine if we should fetch from API
 	// Fetch when:
@@ -187,13 +214,9 @@ export function ExecutionDetails({
 	const handleStreamComplete = useCallback(() => {
 		// Refetch full execution data when complete
 		queryClient.invalidateQueries({
-			queryKey: [
-				"get",
-				"/api/executions/{execution_id}",
-				{ params: { path: { execution_id: executionId } } },
-			],
+			queryKey: executionQueryKey,
 		});
-	}, [queryClient, executionId]);
+	}, [queryClient, executionQueryKey]);
 
 	// Real-time updates via WebSocket (only for running/pending/cancelling executions)
 	const { isConnected } = useExecutionStream({
@@ -271,13 +294,16 @@ export function ExecutionDetails({
 		if (streamStatus && executionId) {
 			// Use openapi-react-query's query key format
 			queryClient.setQueryData(
-				[
-					"get",
-					"/api/executions/{execution_id}",
-					{ params: { path: { execution_id: executionId } } },
-				],
+				executionQueryKey,
 				(old: unknown) => {
 					if (!old || typeof old !== "object") return old;
+					const oldStatus = (old as Record<string, unknown>).status;
+					if (
+						isTerminalExecutionStatus(oldStatus) &&
+						!isTerminalExecutionStatus(streamStatus)
+					) {
+						return old;
+					}
 					return {
 						...(old as Record<string, unknown>),
 						status: streamStatus,
@@ -285,7 +311,7 @@ export function ExecutionDetails({
 				},
 			);
 		}
-	}, [streamStatus, executionId, queryClient]);
+	}, [streamStatus, executionId, queryClient, executionQueryKey]);
 
 	const handleCancelExecution = async () => {
 		if (!executionId || !execution || cancelBusy.current) return;
@@ -511,33 +537,7 @@ export function ExecutionDetails({
 						? "Cancellation has been requested. Any available activity remains below."
 						: "This run is active. The result will appear here when it completes."}
 			</p>
-			{mergedLogs.length > 0 && (
-				<div className="rounded-[var(--bf-radius-surface)] border bg-muted/40 p-3">
-					<div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-						<div className="min-w-0">
-							<p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-								Latest activity
-							</p>
-							<p className="mt-1 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
-								{mergedLogs[mergedLogs.length - 1]?.message}
-							</p>
-							<p className="mt-2 text-xs text-muted-foreground">
-								{mergedLogs.length} log line
-								{mergedLogs.length === 1 ? "" : "s"} captured so
-								far.
-							</p>
-						</div>
-						<Button
-							type="button"
-							variant="outline"
-							className="min-h-11 shrink-0"
-							onClick={() => setSelectedContentTab("logs")}
-						>
-							View logs
-						</Button>
-					</div>
-				</div>
-			)}
+			<ExecutionActivityFeed logs={mergedLogs} onViewLogs={() => setSelectedContentTab("logs")} />
 		</div>
 	);
 

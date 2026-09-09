@@ -162,7 +162,7 @@ export function OrganizationSelect({
 			</PopoverTrigger>
 			<PopoverContent
 				className={cn(
-					"w-[var(--radix-popover-trigger-width)] p-0",
+					"w-[max(20rem,var(--radix-popover-trigger-width))] max-w-[calc(100vw-2rem)] p-0",
 					contentClassName,
 				)}
 				align="start"
