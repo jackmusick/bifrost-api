@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { ArrowRight, Building2, Star } from "lucide-react";
+import { Building2, Star } from "lucide-react";
 import { getIcon } from "@/lib/icons";
 import { Button } from "@/components/ui/button";
 import type { HomeResource } from "@/services/home";
@@ -24,14 +24,14 @@ export function ResourceCard({
 }) {
 	const Icon = getIcon(resource.icon);
 	return (
-		<article className="flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card">
+		<article className="relative flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card transition-colors hover:border-primary/40 focus-within:border-primary">
 			<div className="flex items-start gap-3 p-3 sm:p-4 sm:pb-2">
 				<div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] bg-primary/10 text-primary">
 					{createElement(Icon, { className: "size-5" })}
 				</div>
 				<div className="min-w-0 flex-1">
 					<button
-						className="text-left text-sm font-semibold hover:underline focus-visible:outline-ring [overflow-wrap:anywhere]"
+						className="text-left text-sm font-semibold after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-ring [overflow-wrap:anywhere]"
 						onClick={() => onOpen(resource)}
 						disabled={busy}
 					>
@@ -48,7 +48,7 @@ export function ResourceCard({
 				<Button
 					variant="ghost"
 					size="icon"
-					className="-mr-2 -mt-2 size-11 shrink-0"
+					className="relative z-10 -mr-2 -mt-2 size-11 shrink-0"
 					aria-label={`${resource.pinned ? "Unpin" : "Pin"} ${resource.name}`}
 					aria-pressed={resource.pinned}
 					disabled={busy}
@@ -70,15 +70,6 @@ export function ResourceCard({
 				<Building2 className="size-3.5 shrink-0" />
 				<span className="truncate">{resource.organization_name}</span>
 			</p>
-			<Button
-				variant="ghost"
-				disabled={busy}
-				className="hidden h-11 justify-between sm:flex rounded-none border-t px-4 text-primary"
-				onClick={() => onOpen(resource)}
-			>
-				{resourceActions[resource.kind]}
-				<ArrowRight className="size-4" />
-			</Button>
 		</article>
 	);
 }

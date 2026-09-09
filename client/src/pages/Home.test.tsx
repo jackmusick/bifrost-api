@@ -210,14 +210,8 @@ describe("Home", () => {
 		).toBeInTheDocument();
 		expect(screen.getByText("Daily customer work")).toBeInTheDocument();
 		expect(screen.getByText("2 resources")).toBeInTheDocument();
-		expect(
-			screen
-				.getAllByText("Operations")
-				.map((node) => node.closest("button"))
-				.find(Boolean),
-		).toHaveAttribute("aria-pressed", "true");
 
-		await user.click(screen.getByRole("tab", { name: "Forms" }));
+		await user.click(screen.getByRole("button", { name: "Forms" }));
 		expect(screen.getByTestId("location-probe")).toHaveTextContent(
 			"type=form",
 		);
@@ -290,7 +284,9 @@ describe("Home", () => {
 		const { user } = renderHome();
 
 		await user.click(
-			screen.getAllByRole("button", { name: "Start form" })[0],
+			screen.getAllByRole("button", {
+				name: "Intake Form",
+			})[0],
 		);
 
 		await waitFor(() =>
@@ -307,7 +303,11 @@ describe("Home", () => {
 	it("starts an agent conversation before navigating", async () => {
 		const { user } = renderHome();
 
-		await user.click(screen.getAllByRole("button", { name: "Chat" })[0]);
+		await user.click(
+			screen.getAllByRole("button", {
+				name: "Triage Agent",
+			})[0],
+		);
 
 		await waitFor(() =>
 			expect(state.createConversation.mutateAsync).toHaveBeenCalledWith({
@@ -432,4 +432,48 @@ describe("Home", () => {
 		await user.click(screen.getByRole("button", { name: "Try again" }));
 		expect(refetch).toHaveBeenCalledOnce();
 	});
+});
+
+it("puts filtered catalog results ahead of shortcuts and keeps Dashboard admin-only", async () => {
+	const { user } = renderHome();
+	expect(
+		screen.queryByRole("link", { name: "Dashboard" }),
+	).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Agents" }));
+	expect(
+		screen.queryByRole("region", { name: "Pinned resources" }),
+	).not.toBeInTheDocument();
+	expect(
+		screen.getByRole("button", { name: "Triage Agent" }),
+	).toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "All" }));
+	expect(
+		screen.getByRole("region", { name: "Pinned resources" }),
+	).toBeInTheDocument();
+});
+it("opens and dismisses collection creation from sidebar navigation", async () => {
+	const { user } = renderHome(["/?newCollection=1"]);
+	expect(
+		screen.getByRole("dialog", { name: "New collection" }),
+	).toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Cancel" }));
+	expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	expect(screen.getByTestId("location-probe")).not.toHaveTextContent(
+		"newCollection",
+	);
+});
+
+it("switches catalog presentation and sorts recent launches", async () => {
+	const { user } = renderHome(["/?type=all&q= "]);
+	await user.click(screen.getByRole("combobox", { name: "Sort resources" }));
+	await user.click(screen.getByRole("option", { name: "Recently opened" }));
+	expect(screen.getByTestId("location-probe")).toHaveTextContent(
+		"sort=recent",
+	);
+	await user.click(screen.getByRole("button", { name: "List view" }));
+	expect(screen.getByRole("button", { name: "List view" })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	expect(screen.getByTestId("location-probe")).toHaveTextContent("view=list");
 });

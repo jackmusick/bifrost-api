@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Fragment, useEffect, useLayoutEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import {
-	LayoutDashboard,
 	Home,
 	Workflow,
 	History,
@@ -34,6 +33,8 @@ import { Logo } from "@/components/branding/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { term, useTerminology, type ProductTermKey } from "@/lib/terminology";
+import { SidebarCollections } from "./SidebarCollections";
+import { SidebarLink } from "./sidebarLinks";
 
 interface NavItem {
 	title: string;
@@ -52,37 +53,13 @@ interface NavSection {
 
 const navSections: NavSection[] = [
 	{
-		title: "Overview",
-		requiresPlatformAdmin: true,
-		items: [
-			{
-				title: "Dashboard",
-				href: "/dashboard",
-				icon: LayoutDashboard,
-				requiresPlatformAdmin: true,
-			},
-		],
-	},
-	{
-		title: "Hub",
+		title: "Workspace",
 		items: [
 			{ title: "Home", href: "/", icon: Home },
 			{
 				title: "Chat",
 				href: "/chat",
 				icon: MessageSquare,
-			},
-			{
-				title: "Apps",
-				termKey: "app",
-				href: "/apps",
-				icon: AppWindow,
-			},
-			{
-				title: "Forms",
-				termKey: "form",
-				href: "/forms",
-				icon: FileCode,
 			},
 			{
 				title: "History",
@@ -92,13 +69,29 @@ const navSections: NavSection[] = [
 		],
 	},
 	{
-		title: "Automation",
+		title: "Management",
+		requiresPlatformAdmin: true,
 		items: [
+			{
+				title: "Apps",
+				termKey: "app",
+				href: "/apps",
+				icon: AppWindow,
+				requiresPlatformAdmin: true,
+			},
+			{
+				title: "Forms",
+				termKey: "form",
+				href: "/forms",
+				icon: FileCode,
+				requiresPlatformAdmin: true,
+			},
 			{
 				title: "Agents",
 				termKey: "agent",
 				href: "/agents",
 				icon: Bot,
+				requiresPlatformAdmin: true,
 			},
 			{
 				title: "Workflows",
@@ -315,63 +308,63 @@ export function Sidebar({
 					}}
 				>
 					{visibleSections.map((section) => (
-						<div key={section.title} className="space-y-1">
-							{!isCollapsed && (
-								<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
-									{section.title}
-								</h3>
-							)}
-							{section.items.map((item) => {
-								const Icon = item.icon;
-								const itemTitle = item.termKey
-									? term(terminology, item.termKey, "plural")
-									: item.title;
-								return (
-									<div key={item.href}>
-										{item.dividerBefore && !isCollapsed && (
-											<div className="my-2 mx-3 border-t border-border" />
-										)}
-										{item.dividerBefore && isCollapsed && (
-											<div className="my-2 mx-2 border-t border-border" />
-										)}
-										<NavLink
-											to={item.href}
-											aria-label={itemTitle}
-											title={
-												isCollapsed
-													? itemTitle
-													: undefined
-											}
-											className={({ isActive }) =>
-												cn(
-													"flex min-h-10 items-center border-l-2 rounded-none text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
-													"hover:bg-accent hover:text-accent-foreground",
-													isActive
-														? "border-primary bg-primary/[0.07] text-primary"
-														: "border-transparent text-muted-foreground",
-													isCollapsed
-														? "justify-center w-10 h-10 mx-auto"
-														: "gap-3 px-3 py-2",
-												)
-											}
-										>
-											<Icon
-												className={cn(
-													isCollapsed
-														? "h-5 w-5 shrink-0"
-														: "h-4 w-4 shrink-0",
+						<Fragment key={section.title}>
+							<div className="space-y-1">
+								{!isCollapsed && (
+									<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
+										{section.title}
+									</h3>
+								)}
+								{section.items.map((item) => {
+									const itemTitle = item.termKey
+										? term(
+												terminology,
+												item.termKey,
+												"plural",
+											)
+										: item.title;
+									return (
+										<div key={item.href}>
+											{item.dividerBefore &&
+												!isCollapsed && (
+													<div className="my-2 mx-3 border-t border-border" />
 												)}
+											{item.dividerBefore &&
+												isCollapsed && (
+													<div className="my-2 mx-2 border-t border-border" />
+												)}
+											<SidebarLink
+												to={item.href}
+												label={itemTitle}
+												icon={item.icon}
+												isCollapsed={isCollapsed}
+												isActive={
+													item.href === "/"
+														? (location.pathname ===
+																"/" &&
+																!location.search) ||
+															location.pathname ===
+																"/dashboard"
+														: undefined
+												}
 											/>
-											{!isCollapsed && (
-												<span className="min-w-0 break-words">
-													{itemTitle}
-												</span>
-											)}
-										</NavLink>
-									</div>
-								);
-							})}
-						</div>
+										</div>
+									);
+								})}
+							</div>
+							{section.title === "Workspace" && (
+								<div className="space-y-1">
+									{!isCollapsed && (
+										<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
+											Collections
+										</h3>
+									)}
+									<SidebarCollections
+										isCollapsed={isCollapsed}
+									/>
+								</div>
+							)}
+						</Fragment>
 					))}
 				</nav>
 			</aside>
@@ -412,47 +405,61 @@ export function Sidebar({
 						className="flex-1 min-h-0 flex flex-col gap-4 p-4 overflow-y-auto"
 					>
 						{visibleSections.map((section) => (
-							<div key={section.title} className="space-y-1">
-								<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
-									{section.title}
-								</h3>
-								{section.items.map((item) => {
-									const Icon = item.icon;
-									const itemTitle = item.termKey
-										? term(
-												terminology,
-												item.termKey,
-												"plural",
-											)
-										: item.title;
-									return (
-										<div key={item.href}>
-											{item.dividerBefore && (
-												<div className="my-2 mx-3 border-t border-border" />
-											)}
-											<NavLink
-												to={item.href}
-												aria-label={itemTitle}
-												onClick={() =>
-													setIsMobileMenuOpen(false)
-												}
-												className={({ isActive }) =>
-													cn(
-														"flex min-h-11 items-center gap-3 border-l-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-														"hover:bg-accent hover:text-accent-foreground",
-														isActive
-															? "border-primary bg-primary/[0.07] text-primary"
-															: "border-transparent text-muted-foreground",
-													)
-												}
-											>
-												<Icon className="h-4 w-4 shrink-0" />
-												{itemTitle}
-											</NavLink>
-										</div>
-									);
-								})}
-							</div>
+							<Fragment key={section.title}>
+								<div className="space-y-1">
+									<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
+										{section.title}
+									</h3>
+									{section.items.map((item) => {
+										const itemTitle = item.termKey
+											? term(
+													terminology,
+													item.termKey,
+													"plural",
+												)
+											: item.title;
+										return (
+											<div key={item.href}>
+												{item.dividerBefore && (
+													<div className="my-2 mx-3 border-t border-border" />
+												)}
+												<SidebarLink
+													to={item.href}
+													label={itemTitle}
+													icon={item.icon}
+													onClick={() =>
+														setIsMobileMenuOpen(
+															false,
+														)
+													}
+													isActive={
+														item.href === "/"
+															? (location.pathname ===
+																	"/" &&
+																	!location.search) ||
+																location.pathname ===
+																	"/dashboard"
+															: undefined
+													}
+												/>
+											</div>
+										);
+									})}
+								</div>
+								{section.title === "Workspace" && (
+									<div className="space-y-1">
+										<h3 className="text-xs font-semibold text-muted-foreground mb-2 px-3 uppercase tracking-wider">
+											Collections
+										</h3>
+										<SidebarCollections
+											isCollapsed={false}
+											onNavigate={() =>
+												setIsMobileMenuOpen(false)
+											}
+										/>
+									</div>
+								)}
+							</Fragment>
 						))}
 					</nav>
 				</SheetContent>

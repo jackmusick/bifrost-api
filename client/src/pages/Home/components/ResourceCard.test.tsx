@@ -18,7 +18,7 @@ const app: HomeResource = {
 };
 
 describe("ResourceCard", () => {
-	it("opens resources from the title and primary action, and pins separately", async () => {
+	it("opens a resource and pins it without launching it", async () => {
 		const onOpen = vi.fn();
 		const onPin = vi.fn();
 		const { user } = renderWithProviders(
@@ -28,17 +28,16 @@ describe("ResourceCard", () => {
 		await user.click(
 			screen.getByRole("button", { name: "Dispatch Board" }),
 		);
-		await user.click(screen.getByRole("button", { name: "Open app" }));
 		await user.click(
 			screen.getByRole("button", { name: "Pin Dispatch Board" }),
 		);
 
-		expect(onOpen).toHaveBeenCalledTimes(2);
+		expect(onOpen).toHaveBeenCalledTimes(1);
 		expect(onOpen).toHaveBeenCalledWith(app);
 		expect(onPin).toHaveBeenCalledWith(app);
 	});
 
-	it("uses resource-specific action copy", () => {
+	it("identifies the resource type", () => {
 		renderWithProviders(
 			<ResourceCard
 				resource={{ ...app, kind: "form", name: "Intake" }}
@@ -46,8 +45,6 @@ describe("ResourceCard", () => {
 				onPin={vi.fn()}
 			/>,
 		);
-		expect(
-			screen.getByRole("button", { name: "Start form" }),
-		).toBeInTheDocument();
+		expect(screen.getByText("Form")).toBeInTheDocument();
 	});
 });

@@ -26,7 +26,28 @@ test.describe("Home collections (admin)", () => {
 				page.getByRole("heading", { name: "Home" }),
 			).toBeVisible({ timeout: 10000 });
 
-			await page.getByRole("button", { name: "New collection" }).click();
+			await page
+				.getByRole("link", { name: "Dashboard", exact: true })
+				.click();
+			await expect(
+				page.getByRole("heading", { name: "Dashboard", exact: true }),
+			).toBeVisible();
+			await page
+				.getByRole("navigation", { name: "Workspace views" })
+				.getByRole("link", { name: "Home", exact: true })
+				.click();
+			await page
+				.getByRole("button", { name: "Agents", exact: true })
+				.click();
+			await page
+				.getByRole("textbox", { name: "Search Home resources" })
+				.fill(AGENT_NAME);
+			await expect(
+				page.getByRole("button", { name: AGENT_NAME, exact: true }),
+			).toBeVisible();
+			await page
+				.getByRole("link", { name: "New collection", exact: true })
+				.click();
 			await expect(
 				page.getByRole("dialog", { name: "New collection" }),
 			).toBeVisible();
@@ -44,18 +65,14 @@ test.describe("Home collections (admin)", () => {
 				.check();
 			await page.getByRole("button", { name: "Save collection" }).click();
 
-			await expect(
-				page.getByRole("button", {
-					name: new RegExp(`${COLLECTION_NAME}.*1 items`),
-				}),
-			).toBeVisible({ timeout: 10000 });
 			await expect(page).toHaveURL(/collection=/);
 			await expect(
 				page.getByRole("heading", { name: COLLECTION_NAME }),
 			).toBeVisible();
 			await expect(
 				page.getByRole("button", {
-					name: new RegExp(`${AGENT_NAME}.*Agent`),
+					name: AGENT_NAME,
+					exact: true,
 				}),
 			).toBeVisible();
 
@@ -65,7 +82,8 @@ test.describe("Home collections (admin)", () => {
 			).toBeVisible({ timeout: 10000 });
 			await expect(
 				page.getByRole("button", {
-					name: new RegExp(`${AGENT_NAME}.*Agent`),
+					name: AGENT_NAME,
+					exact: true,
 				}),
 			).toBeVisible();
 
@@ -90,8 +108,8 @@ test.describe("Home collections (admin)", () => {
 			);
 			await page.getByRole("button", { name: "Confirm delete" }).click();
 			await expect(
-				page.getByRole("button", {
-					name: new RegExp(`${EDITED_COLLECTION_NAME}.*1 items`),
+				page.getByRole("link", {
+					name: EDITED_COLLECTION_NAME, exact: true,
 				}),
 			).toHaveCount(0, { timeout: 10000 });
 		} finally {

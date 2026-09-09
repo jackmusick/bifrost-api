@@ -1,17 +1,65 @@
 import userEvent from "@testing-library/user-event";
 import { within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
 import { TerminologyContext, mergeTerminology } from "@/lib/terminology";
+import type { HomeCollection } from "@/services/home";
 import { Sidebar } from "./Sidebar";
 
+const state = vi.hoisted(() => ({
+	isPlatformAdmin: true,
+	home: {
+		data: undefined as
+			{ resources: []; collections: HomeCollection[] } | undefined,
+	},
+	useQuery: vi.fn(),
+}));
+
 vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => ({ isPlatformAdmin: true }),
+	useAuth: () => ({ isPlatformAdmin: state.isPlatformAdmin }),
 }));
 
 vi.mock("@/components/branding/Logo", () => ({
 	Logo: () => <div aria-label="Logo" />,
 }));
+
+vi.mock("@/lib/api-client", () => ({
+	$api: {
+		useQuery: (...args: unknown[]) => state.useQuery(...args),
+	},
+}));
+
+const collections: HomeCollection[] = [
+	{
+		id: "col-1",
+		name: "Operations",
+		description: "Daily work",
+		icon: "briefcase-business",
+		shared: false,
+		organization_id: null,
+		organization_name: "",
+		resource_keys: ["app:dispatch"],
+		can_edit: true,
+	},
+	{
+		id: "col-2",
+		name: "Escalations",
+		description: "Higher-touch work",
+		icon: "shield-alert",
+		shared: true,
+		organization_id: "org-1",
+		organization_name: "Acme",
+		resource_keys: [],
+		can_edit: false,
+	},
+];
+
+beforeEach(() => {
+	state.isPlatformAdmin = true;
+	state.home = { data: { resources: [], collections } };
+	state.useQuery.mockReset();
+	state.useQuery.mockReturnValue(state.home);
+});
 
 describe("Sidebar terminology", () => {
 	it("renders branded product nouns in navigation", () => {
@@ -42,6 +90,9 @@ describe("Sidebar terminology", () => {
 			"href",
 			"/forms",
 		);
+		expect(
+			screen.queryByRole("link", { name: "Dashboard" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("preserves the desktop navigation scroll position across route changes", async () => {
@@ -67,6 +118,66 @@ describe("Sidebar terminology", () => {
 		await user.click(screen.getByRole("link", { name: "Users" }));
 
 		await waitFor(() => expect(nav.scrollTop).toBe(180));
+	});
+});
+
+describe("Sidebar structure", () => {
+	it("keeps launch destinations visible for ordinary users and hides admin management", () => {
+		state.isPlatformAdmin = false;
+
+		renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+		);
+
+		expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: "History" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: "Operations" }),
+		).toHaveAttribute("href", "/?collection=col-1");
+		expect(
+			screen.queryByRole("link", { name: "Apps" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: "Forms" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: "Agents" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: "Dashboard" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("renders collection shortcuts from the shared Home query and marks the selected collection", () => {
+		renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+			{ initialEntries: ["/?collection=col-2"] },
+		);
+
+		expect(state.useQuery).toHaveBeenCalledWith("get", "/api/home");
+		expect(
+			screen.getByRole("heading", { name: "Collections" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: "Operations" }),
+		).toHaveAttribute("href", "/?collection=col-1");
+		expect(
+			screen.getByRole("link", { name: "Escalations" }),
+		).toHaveAttribute("aria-current", "page");
+		expect(
+			screen.getByRole("link", { name: "New collection" }),
+		).toHaveAttribute("href", "/?newCollection=1");
 	});
 });
 

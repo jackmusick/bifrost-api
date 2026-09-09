@@ -5,6 +5,7 @@ import {
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { WorkspaceTabs } from "@/components/layout/WorkspaceTabs";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -82,6 +83,7 @@ export function Dashboard() {
 			<div className="shrink-0 space-y-6">
 				<ListPageHeader
 					title="Dashboard"
+					titleAccessory={<WorkspaceTabs />}
 					description="Platform overview and metrics"
 					actions={
 						<Button

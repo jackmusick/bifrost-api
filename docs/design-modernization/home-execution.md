@@ -46,3 +46,20 @@ Limits: this is targeted feature validation, not a fresh whole-platform or produ
 ## Deployment
 
 Apply migration `20260908_home_collections` before serving the new Home APIs. It has been applied to the debug stack. Keep this branch unmerged pending user review.
+
+
+## Home navigation follow-up — 2026-09-08
+
+The approved Home mock is implemented in the existing shell. Workspace navigation is Home, Chat, and History; accessible collections follow as shortcuts. Management links are separated for platform administrators, with the existing Data, Platform, and Reports destinations retained. Dashboard is available through an administrator-only Home/Dashboard route tab, with its protected route unchanged.
+
+Search and category counts stay above the desktop scroll region. Choosing a category, searching, or opening a collection brings the results first and resets the content scroll position. The unfiltered overview shows up to three pinned shortcuts (with View all for additional pins), collections, the complete paginated catalog, then recent work. Cards are the default; list view and sorting by name or recent launch remain available. Collection order is preserved unless explicitly sorted.
+
+Whole resource cards open their resource; favorite controls remain separate. Mobile retains full-width content and collection links close the navigation drawer. Existing resource APIs and V1 app runtime behavior are unchanged.
+
+
+Follow-up validation:
+- `npm --prefix client test -- src/pages/Home src/components/layout/WorkspaceTabs.test.tsx src/components/layout/Sidebar.test.tsx`: 29 tests passed.
+- `./test.sh client e2e e2e/home.admin.spec.ts`: setup and Home journey passed, including Dashboard navigation, category/search discovery, sidebar creation, persistence, editing, and deletion.
+- Full client ESLint and TypeScript checks passed before the final collection-heading spacing adjustment; final affected component tests and type/lint checks cover that adjustment.
+- Debug browser checks at 1440×1000 and 390×844 reported no page errors or horizontal mobile overflow. Category results begin at y=281 on desktop. Mobile collection navigation closes the drawer; sidebar collection creation opens and dismisses correctly.
+- Screenshots: `/tmp/bifrost-design-review/workspace-{desktop,filtered,mobile,mobile-filtered,mobile-collection}.png`.
