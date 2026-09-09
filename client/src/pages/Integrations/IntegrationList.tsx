@@ -105,30 +105,14 @@ function IntegrationCard({
 			data-testid="integration-card"
 			className="relative flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border border-border bg-card transition-colors hover:border-primary/40 focus-within:border-primary/50"
 		>
-			<div className="flex items-center justify-between px-4 pt-2">
-				<label className="relative z-10 flex size-11 items-center justify-center -ml-3">
-					<Checkbox
-						aria-label={`Select ${integration.name}`}
-						checked={selectedIds.has(integration.id)}
-						onCheckedChange={() => onToggleSelect(integration.id)}
-					/>
-				</label>
-				<div className="relative z-10 -mr-2">
-					<IntegrationActions
-						integration={integration}
-						onEdit={onEdit}
-						onDelete={onDelete}
-					/>
-				</div>
-			</div>
-			<div className="flex min-w-0 items-center gap-4 px-5 pb-5">
+			<div className="flex min-w-0 items-start gap-3 p-5">
 				<ResourceIcon
 					kind="integration"
 					id={integration.id}
 					logo={integration.logo_url ?? null}
 					cacheKey={integration.logo_version ?? undefined}
 				/>
-				<div className="min-w-0">
+				<div className="min-w-0 flex-1">
 					<h2 className="min-w-0 text-base font-semibold [overflow-wrap:anywhere]">
 						<Link
 							to={`/integrations/${integration.id}`}
@@ -142,6 +126,13 @@ function IntegrationCard({
 							{integration.description}
 						</p>
 					)}
+				</div>
+				<div className="relative z-10 -mt-2 -mr-3 shrink-0">
+					<IntegrationActions
+						integration={integration}
+						onEdit={onEdit}
+						onDelete={onDelete}
+					/>
 				</div>
 			</div>
 			<dl className="mx-5 grid gap-3 border-t border-border py-4 text-sm">
@@ -168,11 +159,21 @@ function IntegrationCard({
 					</dd>
 				</div>
 			</dl>
-			<div className="mt-auto border-t border-border px-5 py-3 text-sm text-muted-foreground">
-				{fields} configuration {fields === 1 ? "field" : "fields"}
-				{integration.list_entities_data_provider_id
-					? " · Entity mapping available"
-					: ""}
+			<div className="mt-auto flex items-center justify-between gap-3 border-t border-border px-5 py-2 text-sm text-muted-foreground">
+				<span className="min-w-0">
+					{fields} configuration {fields === 1 ? "field" : "fields"}
+					{integration.list_entities_data_provider_id
+						? " · Entity mapping available"
+						: ""}
+				</span>
+				<label className="relative z-10 flex min-h-11 shrink-0 cursor-pointer items-center gap-2">
+					<Checkbox
+						aria-label={`Select ${integration.name}`}
+						checked={selectedIds.has(integration.id)}
+						onCheckedChange={() => onToggleSelect(integration.id)}
+					/>
+					Select
+				</label>
 			</div>
 		</article>
 	);
