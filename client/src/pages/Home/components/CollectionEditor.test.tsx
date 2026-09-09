@@ -73,6 +73,11 @@ describe("CollectionEditor", () => {
 			expect.objectContaining({ shared: true, organization_id: "org-1", resource_keys: ["app:dispatch", "form:intake"] }),
 		);
 
+		await user.click(screen.getByRole("combobox", { name: /who is this for/i }));
+		await user.click(screen.getByRole("option", { name: /Only me/ }));
+		await user.click(screen.getByRole("button", { name: "Save collection" }));
+		expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ shared: false, organization_id: null }));
+
 		await user.click(screen.getByRole("button", { name: "Delete" }));
 		expect(screen.getByRole("alert")).toHaveTextContent("Delete this collection?");
 		await user.click(screen.getByRole("button", { name: "Confirm delete" }));

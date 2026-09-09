@@ -169,3 +169,11 @@ describe("OrganizationSelect", () => {
 		expect(ref.current).toBe(trigger);
 	});
 });
+
+ it("offers personal scope only when enabled and returns its explicit value", async () => {
+ const { PERSONAL_SCOPE } = await import("./OrganizationSelect");
+ const { user, onChange } = await renderSelect({ showPersonal: true });
+ await user.click(screen.getByRole("combobox"));
+ await user.click(screen.getByRole("option", { name: /Only me/ }));
+ expect(onChange).toHaveBeenCalledWith(PERSONAL_SCOPE);
+ });

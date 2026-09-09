@@ -7,7 +7,13 @@
  */
 
 import { useState, type ComponentProps } from "react";
-import { Building2, ChevronsUpDown, Globe, Star } from "lucide-react";
+import {
+	Building2,
+	ChevronsUpDown,
+	Globe,
+	Star,
+	UserRound,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +45,7 @@ export interface OrganizationSelectProps extends Pick<
 	| "aria-describedby"
 	| "aria-invalid"
 > {
-	/** Selected organization ID, null for global scope, or undefined for all */
+	/** Selected organization ID, null for global scope, undefined for all, or PERSONAL_SCOPE when supported */
 	value: string | null | undefined;
 	/** Callback when selection changes */
 	onChange: (value: string | null | undefined) => void;
@@ -51,6 +57,8 @@ export interface OrganizationSelectProps extends Pick<
 	showGlobal?: boolean;
 	/** Whether to show the "All organizations" option for filtering (default false) */
 	showAll?: boolean;
+	/** Offer personal scope for resources that support ownership. */
+	showPersonal?: boolean;
 	/** Placeholder text when nothing is selected */
 	placeholder?: string;
 	/** Custom className for the trigger button */
@@ -58,6 +66,8 @@ export interface OrganizationSelectProps extends Pick<
 	/** Custom className for the popover content (useful for z-index overrides) */
 	contentClassName?: string;
 }
+
+export const PERSONAL_SCOPE = "__PERSONAL__";
 
 const GLOBAL_VALUE = "__GLOBAL__";
 const ALL_VALUE = "__ALL__";
@@ -69,6 +79,7 @@ export function OrganizationSelect({
 	label,
 	showGlobal = true,
 	showAll = false,
+	showPersonal = false,
 	placeholder = "Select organization...",
 	triggerClassName,
 	contentClassName,
@@ -101,6 +112,14 @@ export function OrganizationSelect({
 	const renderTriggerContent = () => {
 		if (isLoading) {
 			return <span className="text-muted-foreground">Loading...</span>;
+		}
+		if (value === PERSONAL_SCOPE && showPersonal) {
+			return (
+				<span className="flex items-center gap-2">
+					<UserRound className="size-4 text-muted-foreground" />
+					Only me
+				</span>
+			);
 		}
 		if (value === undefined && showAll) {
 			return <span>All</span>;
@@ -160,11 +179,9 @@ export function OrganizationSelect({
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent variant="picker"
-				className={cn(
-					"p-0",
-					contentClassName,
-				)}
+			<PopoverContent
+				variant="picker"
+				className={cn("p-0", contentClassName)}
 				align="start"
 			>
 				<Command>
@@ -195,6 +212,31 @@ export function OrganizationSelect({
 							<CommandEmpty>No organizations found.</CommandEmpty>
 						)}
 
+						{showPersonal && (
+							<>
+								<CommandGroup>
+									<CommandItem
+										value={PERSONAL_SCOPE}
+										keywords={["personal", "only me"]}
+										data-checked={value === PERSONAL_SCOPE}
+										onSelect={() =>
+											handleSelect(PERSONAL_SCOPE)
+										}
+									>
+										<UserRound className="mr-2 size-4 text-muted-foreground" />
+										<div className="flex min-w-0 flex-1 flex-col">
+											<span className="font-medium">
+												Only me
+											</span>
+											<span className="text-xs text-muted-foreground">
+												Personal · visible only to you
+											</span>
+										</div>
+									</CommandItem>
+								</CommandGroup>
+								<CommandSeparator />
+							</>
+						)}
 						{showAll && (
 							<>
 								<CommandGroup>

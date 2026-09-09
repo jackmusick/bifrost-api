@@ -162,3 +162,13 @@ the execution preview. The remaining Cancel slot uses a 32px desktop control
 with reduced cell padding; smaller screens retain the 44px touch target. Space stays
 reserved after completion so the table does not shift. Day-group column spans
 were reduced to match the removed column.
+
+### Collection scope consistency
+
+CollectionEditor uses OrganizationSelect for audience selection, including the
+shared picker width, organization search, scope icons, and selected-state styling.
+OrganizationSelect now supports opt-in `showPersonal` with the exported
+`PERSONAL_SCOPE` value; existing organization-only callers are unaffected.
+CollectionEditor translates it back to `shared: false, organization_id: null`.
+Shared scope selection is still restricted to platform admins, and audience
+changes retain the existing resource compatibility filtering.

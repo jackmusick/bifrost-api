@@ -21,13 +21,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { useOrganizations } from "@/hooks/useOrganizations";
+	OrganizationSelect,
+	PERSONAL_SCOPE,
+} from "@/components/forms/OrganizationSelect";
 import type {
 	HomeCollection,
 	HomeCollectionWrite,
@@ -68,7 +64,6 @@ export function CollectionEditor({
 	const [selected, setSelected] = useState(collection?.resource_keys ?? []);
 	const [search, setSearch] = useState("");
 	const [confirmDelete, setConfirmDelete] = useState(false);
-	const { data: organizations } = useOrganizations({ enabled: isAdmin });
 	const available = resources.filter(
 		(resource) =>
 			audience === "personal" ||
@@ -160,9 +155,25 @@ export function CollectionEditor({
 								<Label htmlFor="collection-audience">
 									Who is this for?
 								</Label>
-								<Select
-									value={audience}
-									onValueChange={(value) => {
+								<OrganizationSelect
+									id="collection-audience"
+									label="Who is this for?"
+									showPersonal
+									value={
+										audience === "personal"
+											? PERSONAL_SCOPE
+											: audience === "global"
+												? null
+												: audience
+									}
+									disabled={busy}
+									onChange={(scope) => {
+										const value =
+											scope === PERSONAL_SCOPE
+												? "personal"
+												: scope == null
+													? "global"
+													: scope;
 										setAudience(value);
 										setSelected((keys) =>
 											keys.filter((key) => {
@@ -178,27 +189,7 @@ export function CollectionEditor({
 											}),
 										);
 									}}
-								>
-									<SelectTrigger id="collection-audience">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="personal">
-											Only me
-										</SelectItem>
-										<SelectItem value="global">
-											Shared across the platform
-										</SelectItem>
-										{organizations?.map((org) => (
-											<SelectItem
-												key={org.id}
-												value={org.id}
-											>
-												{org.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								/>
 								<p className="text-xs text-muted-foreground">
 									Shared collections are curated by
 									administrators. Members see only resources
