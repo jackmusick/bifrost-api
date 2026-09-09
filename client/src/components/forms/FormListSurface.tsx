@@ -11,6 +11,7 @@ import {
 	Trash2,
 } from "lucide-react";
 
+import { ResourceIcon } from "@/components/ResourceIcon";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,7 +202,21 @@ export function FormListSurface({
 										</DataTableCell>
 									)}
 									<DataTableCell className="font-medium">
-										{form.name}
+										<div className="flex min-w-0 items-center gap-2">
+											<ResourceIcon
+												kind="form"
+												id={form.id}
+												logo={form.logo_url ?? null}
+												cacheKey={
+													form.logo_version ??
+													undefined
+												}
+												size="table"
+											/>
+											<span className="min-w-0 [overflow-wrap:anywhere]">
+												{form.name}
+											</span>
+										</div>
 									</DataTableCell>
 									<DataTableCell className="max-w-xs truncate text-muted-foreground">
 										{form.description || (
@@ -378,12 +393,23 @@ export function FormListSurface({
 					>
 						<CardHeader className="pb-3">
 							<div className="flex flex-col items-start justify-between gap-2 sm:flex-row">
-								<CardTitle
-									className="min-w-0 [overflow-wrap:anywhere] text-base"
-									title={form.name}
-								>
-									{form.name}
-								</CardTitle>
+								<div className="flex min-w-0 items-start gap-3">
+									<ResourceIcon
+										kind="form"
+										id={form.id}
+										logo={form.logo_url ?? null}
+										cacheKey={
+											form.logo_version ?? undefined
+										}
+										size="card"
+									/>
+									<CardTitle
+										className="min-w-0 [overflow-wrap:anywhere] text-base"
+										title={form.name}
+									>
+										{form.name}
+									</CardTitle>
+								</div>
 								<Badge
 									variant={
 										form.is_active ? "outline" : "secondary"

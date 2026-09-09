@@ -16,11 +16,26 @@ from src.models.contracts.home import (
     HomeResource,
     HomeResponse,
 )
+from shared.logo_processing import is_logo_thumbnail_version
 from src.models.orm.home import HomeCollection, HomeResourcePreference
 from src.models.orm.organizations import Organization
 from src.repositories.agents import AgentRepository
 from src.repositories.applications import ApplicationRepository
 from src.repositories.forms import FormRepository
+
+
+def _logo_url(prefix: str, entity) -> str | None:
+    version = getattr(entity, "logo_thumbnail_version", None)
+    if is_logo_thumbnail_version(version):
+        return f"{prefix}/{entity.id}/logo?v={version}"
+    if getattr(entity, "logo_content_type", None):
+        return f"{prefix}/{entity.id}/logo"
+    return None
+
+
+def _logo_version(entity) -> str | None:
+    version = getattr(entity, "logo_thumbnail_version", None)
+    return version if is_logo_thumbnail_version(version) else None
 
 
 def can_edit_collection(collection: HomeCollection, user: UserPrincipal) -> bool:
@@ -103,6 +118,8 @@ async def catalog(db: AsyncSession, user: UserPrincipal) -> list[HomeResource]:
                     name=app.name,
                     description=app.description,
                     icon=app.icon or "app-window",
+                    logo_url=_logo_url("/api/applications", app),
+                    logo_version=_logo_version(app),
                     organization_id=app.organization_id,
                     organization_name=orgs.get(app.organization_id, "Global"),
                     href=f"/apps/{app.slug}",
@@ -117,6 +134,8 @@ async def catalog(db: AsyncSession, user: UserPrincipal) -> list[HomeResource]:
                 name=form.name,
                 description=form.description,
                 icon="file-input",
+                logo_url=_logo_url("/api/forms", form),
+                logo_version=_logo_version(form),
                 organization_id=form.organization_id,
                 organization_name=orgs.get(form.organization_id, "Global"),
                 href=f"/execute/{form.id}",
@@ -132,6 +151,8 @@ async def catalog(db: AsyncSession, user: UserPrincipal) -> list[HomeResource]:
                     name=agent.name,
                     description=agent.description,
                     icon="bot",
+                    logo_url=_logo_url("/api/agents", agent),
+                    logo_version=_logo_version(agent),
                     organization_id=agent.organization_id,
                     organization_name=orgs.get(agent.organization_id, "Global"),
                     href="/chat",

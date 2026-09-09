@@ -31,10 +31,9 @@ let mockDataProviders:
 	| undefined;
 
 vi.mock("@/services/integrations", async () => {
-	const actual =
-		await vi.importActual<typeof import("@/services/integrations")>(
-			"@/services/integrations",
-		);
+	const actual = await vi.importActual<
+		typeof import("@/services/integrations")
+	>("@/services/integrations");
 	return {
 		...actual,
 		useCreateIntegration: () => ({
@@ -110,15 +109,9 @@ describe("CreateIntegrationDialog — create mode", () => {
 			screen.getByLabelText(/integration name/i),
 			"Synthetic integration",
 		);
-		await user.type(
-			screen.getByLabelText(/default entity id/i),
-			"common",
-		);
+		await user.type(screen.getByLabelText(/default entity id/i), "common");
 		await user.click(screen.getByRole("button", { name: /add field/i }));
-		await user.type(
-			screen.getByLabelText(/field key/i),
-			"tenant_id",
-		);
+		await user.type(screen.getByLabelText(/field key/i), "tenant_id");
 
 		await user.click(
 			screen.getByRole("button", { name: /create integration/i }),
@@ -127,6 +120,7 @@ describe("CreateIntegrationDialog — create mode", () => {
 		await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 		expect(mockCreate.mock.calls[0]![0].body).toEqual({
 			name: "Synthetic integration",
+			description: null,
 			config_schema: [
 				{
 					key: "tenant_id",
@@ -188,7 +182,9 @@ describe("CreateIntegrationDialog — edit mode", () => {
 			screen.getByRole("heading", { name: /rename integration/i }),
 		).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: /rename anyway/i }));
+		await user.click(
+			screen.getByRole("button", { name: /rename anyway/i }),
+		);
 
 		await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
 		const payload = mockUpdate.mock.calls[0]![0];
@@ -332,24 +328,36 @@ describe("CreateIntegrationDialog — edit mode", () => {
 	});
 });
 
-
 describe("CreateIntegrationDialog — save recovery", () => {
 	it("blocks dismissal while saving and retains the draft after failure for retry", async () => {
 		let rejectSave!: (error: Error) => void;
-		mockCreate.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject; }));
+		mockCreate.mockImplementationOnce(
+			() =>
+				new Promise((_resolve, reject) => {
+					rejectSave = reject;
+				}),
+		);
 		const onOpenChange = vi.fn();
-		const { user } = renderWithProviders(<CreateIntegrationDialog open onOpenChange={onOpenChange} />);
+		const { user } = renderWithProviders(
+			<CreateIntegrationDialog open onOpenChange={onOpenChange} />,
+		);
 		const name = screen.getByLabelText(/integration name/i);
 		fireEvent.change(name, { target: { value: "Draft integration" } });
-		await user.click(screen.getByRole("button", { name: /create integration/i }));
+		await user.click(
+			screen.getByRole("button", { name: /create integration/i }),
+		);
 		expect(name).toBeDisabled();
 		await user.keyboard("{Escape}");
 		expect(onOpenChange).not.toHaveBeenCalled();
 		rejectSave(new Error("Synthetic save failure"));
-		expect(await screen.findByRole("alert")).toHaveTextContent("Your changes are preserved");
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Your changes are preserved",
+		);
 		expect(name).toHaveValue("Draft integration");
 		expect(name).toBeEnabled();
-		await user.click(screen.getByRole("button", { name: /create integration/i }));
+		await user.click(
+			screen.getByRole("button", { name: /create integration/i }),
+		);
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 		expect(mockCreate).toHaveBeenCalledTimes(2);
 	});
@@ -357,23 +365,57 @@ describe("CreateIntegrationDialog — save recovery", () => {
 
 describe("CreateIntegrationDialog — edit safeguards", () => {
 	it("requires field-removal confirmation after rename and sends an empty schema", async () => {
-		mockIntegration = { id: "int-1", name: "Original", config_schema: [{ key: "removed_key", type: "string", required: false }] };
-		const { user } = renderWithProviders(<CreateIntegrationDialog open onOpenChange={() => {}} editIntegrationId="int-1" />);
-		fireEvent.change(screen.getByLabelText(/integration name/i), { target: { value: "Renamed" } });
-		await user.click(screen.getByRole("button", { name: "Remove field 1" }));
-		await user.click(screen.getByRole("button", { name: "Update Integration" }));
+		mockIntegration = {
+			id: "int-1",
+			name: "Original",
+			config_schema: [
+				{ key: "removed_key", type: "string", required: false },
+			],
+		};
+		const { user } = renderWithProviders(
+			<CreateIntegrationDialog
+				open
+				onOpenChange={() => {}}
+				editIntegrationId="int-1"
+			/>,
+		);
+		fireEvent.change(screen.getByLabelText(/integration name/i), {
+			target: { value: "Renamed" },
+		});
+		await user.click(
+			screen.getByRole("button", { name: "Remove field 1" }),
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Update Integration" }),
+		);
 		await user.click(screen.getByRole("button", { name: "Rename Anyway" }));
 		expect(mockUpdate).not.toHaveBeenCalled();
-		expect(screen.getByRole("heading", { name: "Remove Configuration Fields?" })).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", {
+				name: "Remove Configuration Fields?",
+			}),
+		).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Delete Fields" }));
 		await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
 		expect(mockUpdate.mock.calls[0][0].body.config_schema).toEqual([]);
 	});
 
 	it("does not expose an empty edit form when loading has failed", () => {
-		renderWithProviders(<CreateIntegrationDialog open onOpenChange={() => {}} editIntegrationId="int-1" />);
-		expect(screen.getByRole("alert")).toHaveTextContent("Unable to load integration");
-		expect(screen.getByRole("button", { name: "Retry integration" })).toBeInTheDocument();
-		expect(screen.queryByLabelText(/integration name/i)).not.toBeInTheDocument();
+		renderWithProviders(
+			<CreateIntegrationDialog
+				open
+				onOpenChange={() => {}}
+				editIntegrationId="int-1"
+			/>,
+		);
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Unable to load integration",
+		);
+		expect(
+			screen.getByRole("button", { name: "Retry integration" }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByLabelText(/integration name/i),
+		).not.toBeInTheDocument();
 	});
 });

@@ -404,7 +404,7 @@ export function Config() {
 													<dt className="text-xs text-muted-foreground">
 														Value
 													</dt>
-													<dd className="mt-1 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+													<dd className="mt-1 line-clamp-2 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
 														{maskValue(
 															config.value,
 															config.type,
@@ -542,11 +542,13 @@ export function Config() {
 													{config.key}
 												</button>
 											</DataTableCell>
-											<DataTableCell className="min-w-28 max-w-44 font-mono text-xs [overflow-wrap:anywhere]">
-												{maskValue(
-													config.value,
-													config.type,
-												)}
+											<DataTableCell className="w-56 min-w-48 max-w-64 font-mono text-xs">
+												<span className="line-clamp-2 max-w-56 leading-5 [overflow-wrap:anywhere]">
+													{maskValue(
+														config.value,
+														config.type,
+													)}
+												</span>
 											</DataTableCell>
 											<DataTableCell className="min-w-28 max-w-40 [overflow-wrap:anywhere]">
 												{getTypeBadge(config.type)}

@@ -1,12 +1,5 @@
-import { createElement, useState } from "react";
-import {
-	AppWindow,
-	ArrowDown,
-	ArrowUp,
-	Bot,
-	FileInput,
-	Trash2,
-} from "lucide-react";
+import { useState } from "react";
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -29,7 +22,7 @@ import type {
 	HomeCollectionWrite,
 	HomeResource,
 } from "@/services/home";
-import { getIcon } from "@/lib/icons";
+import { ResourceIcon } from "@/components/ResourceIcon";
 import { CollectionIconPicker } from "./CollectionIconPicker";
 
 export function CollectionEditor({
@@ -378,11 +371,15 @@ export function CollectionEditor({
 
 function CollectionResourceIcon({ resource }: { resource?: HomeResource }) {
 	if (!resource) return null;
-	return createElement(
-		getIcon(
-			resource.icon,
-			{ app: AppWindow, form: FileInput, agent: Bot }[resource.kind],
-		),
-		{ className: "mx-1 size-5 shrink-0 text-primary", "aria-hidden": true },
+	return (
+		<ResourceIcon
+			kind={resource.kind}
+			id={resource.id}
+			icon={resource.icon}
+			logo={resource.logo_url ?? null}
+			cacheKey={resource.logo_version ?? undefined}
+			size="inline"
+			className="mx-1"
+		/>
 	);
 }

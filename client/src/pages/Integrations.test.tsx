@@ -99,6 +99,10 @@ function makeIntegration(
 	const { id, name, ...rest } = overrides;
 	return {
 		...rest,
+ mapping_count: overrides.mapping_count ?? 0,
+ connected_count: overrides.connected_count ?? 0,
+ needs_reconnection_count: overrides.needs_reconnection_count ?? 0,
+ connection_status_counts: overrides.connection_status_counts ?? {},
 		id,
 		name,
 		has_oauth_config: overrides.has_oauth_config ?? false,
@@ -161,7 +165,10 @@ describe("Integrations", () => {
 
 		expect(screen.getByText("Slack")).toBeInTheDocument();
 		expect(screen.getByText("Salesforce")).toBeInTheDocument();
-		expect(screen.getByText("Configured")).toBeInTheDocument();
+		expect(screen.getByText("OAuth configured")).toBeInTheDocument();
+		expect(screen.queryByRole("table")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("radio", { name: "Table view" }));
+		expect(screen.getByRole("table")).toBeInTheDocument();
 
 		await user.click(
 			screen.getByRole("checkbox", {

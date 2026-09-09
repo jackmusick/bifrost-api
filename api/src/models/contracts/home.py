@@ -14,6 +14,8 @@ class HomeResource(BaseModel):
     name: str
     description: str | None = None
     icon: str
+    logo_url: str | None = None
+    logo_version: str | None = None
     organization_id: UUID | None
     organization_name: str
     href: str

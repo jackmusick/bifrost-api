@@ -2478,6 +2478,28 @@ export interface paths {
         patch: operations["update_form_api_forms__form_id__patch"];
         trace?: never;
     };
+    "/api/forms/{form_id}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get form logo */
+        get: operations["get_form_logo_api_forms__form_id__logo_get"];
+        put?: never;
+        /**
+         * Upload form logo
+         * @description Upload a square logo for a form.
+         */
+        post: operations["upload_form_logo_api_forms__form_id__logo_post"];
+        /** Delete form logo */
+        delete: operations["delete_form_logo_api_forms__form_id__logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/forms/{form_id}/submissions": {
         parameters: {
             query?: never;
@@ -6763,6 +6785,28 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get integration logo */
+        get: operations["get_integration_logo_api_integrations__integration_id__logo_get"];
+        put?: never;
+        /**
+         * Upload integration logo
+         * @description Upload a square logo for an integration.
+         */
+        post: operations["upload_integration_logo_api_integrations__integration_id__logo_post"];
+        /** Delete integration logo */
+        delete: operations["delete_integration_logo_api_integrations__integration_id__logo_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -12942,6 +12986,22 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_form_logo_api_forms__form_id__logo_post */
+        Body_upload_form_logo_api_forms__form_id__logo_post: {
+            /**
+             * File
+             * @description Logo image (PNG/JPEG/SVG, ≤5MB)
+             */
+            file: string;
+        };
+        /** Body_upload_integration_logo_api_integrations__integration_id__logo_post */
+        Body_upload_integration_logo_api_integrations__integration_id__logo_post: {
+            /**
+             * File
+             * @description Logo image (PNG/JPEG/SVG, ≤5MB)
+             */
+            file: string;
+        };
         /** Body_upload_logo_api_branding_logo__logo_type__post */
         Body_upload_logo_api_branding_logo__logo_type__post: {
             /**
@@ -17803,6 +17863,12 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
+            /** Logo */
+            logo?: string | null;
+            /** Logo Url */
+            logo_url?: string | null;
+            /** Logo Version */
+            logo_version?: string | null;
             /**
              * Confirmation Markdown
              * @default ## Form submitted
@@ -18626,6 +18692,10 @@ export interface components {
             description?: string | null;
             /** Icon */
             icon: string;
+            /** Logo Url */
+            logo_url?: string | null;
+            /** Logo Version */
+            logo_version?: string | null;
             /** Organization Id */
             organization_id: string | null;
             /** Organization Name */
@@ -18777,6 +18847,11 @@ export interface components {
              */
             name: string;
             /**
+             * Description
+             * @description Optional integration description for admin UI cards
+             */
+            description?: string | null;
+            /**
              * Config Schema
              * @description Optional schema defining available configuration for this integration
              */
@@ -18816,6 +18891,11 @@ export interface components {
              */
             name: string;
             /**
+             * Description
+             * @description Optional integration description for admin UI cards
+             */
+            description?: string | null;
+            /**
              * List Entities Data Provider Id
              * @description Associated data provider ID for listing entities
              */
@@ -18853,6 +18933,46 @@ export interface components {
              * @default false
              */
             has_oauth_config: boolean;
+            /**
+             * Logo Url
+             * @description URL for the uploaded integration logo thumbnail/original
+             */
+            logo_url?: string | null;
+            /**
+             * Logo
+             * @description Inline data URI for the uploaded integration logo when included
+             */
+            logo?: string | null;
+            /**
+             * Logo Version
+             * @description Stable cache version for the generated logo thumbnail
+             */
+            logo_version?: string | null;
+            /**
+             * Mapping Count
+             * @description Number of organization/global mappings for this integration
+             * @default 0
+             */
+            mapping_count: number;
+            /**
+             * Connected Count
+             * @description Number of mappings with a completed OAuth token
+             * @default 0
+             */
+            connected_count: number;
+            /**
+             * Needs Reconnection Count
+             * @description Number of mappings with a failed OAuth token status
+             * @default 0
+             */
+            needs_reconnection_count: number;
+            /**
+             * Connection Status Counts
+             * @description Counts of mapped OAuth token statuses by status value
+             */
+            connection_status_counts?: {
+                [key: string]: number;
+            };
             /**
              * Is Deleted
              * @description Soft delete flag
@@ -19131,6 +19251,11 @@ export interface components {
              */
             name: string;
             /**
+             * Description
+             * @description Optional integration description for admin UI cards
+             */
+            description?: string | null;
+            /**
              * List Entities Data Provider Id
              * @description Associated data provider ID for listing entities
              */
@@ -19161,6 +19286,46 @@ export interface components {
              * @default false
              */
             has_oauth_config: boolean;
+            /**
+             * Logo Url
+             * @description URL for the uploaded integration logo thumbnail/original
+             */
+            logo_url?: string | null;
+            /**
+             * Logo
+             * @description Inline data URI for the uploaded integration logo when included
+             */
+            logo?: string | null;
+            /**
+             * Logo Version
+             * @description Stable cache version for the generated logo thumbnail
+             */
+            logo_version?: string | null;
+            /**
+             * Mapping Count
+             * @description Number of organization/global mappings for this integration
+             * @default 0
+             */
+            mapping_count: number;
+            /**
+             * Connected Count
+             * @description Number of mappings with a completed OAuth token
+             * @default 0
+             */
+            connected_count: number;
+            /**
+             * Needs Reconnection Count
+             * @description Number of mappings with a failed OAuth token status
+             * @default 0
+             */
+            needs_reconnection_count: number;
+            /**
+             * Connection Status Counts
+             * @description Counts of mapped OAuth token statuses by status value
+             */
+            connection_status_counts?: {
+                [key: string]: number;
+            };
             /**
              * Is Deleted
              * @description Soft delete flag
@@ -19241,6 +19406,11 @@ export interface components {
              * @description Integration name
              */
             name?: string | null;
+            /**
+             * Description
+             * @description Optional integration description for admin UI cards
+             */
+            description?: string | null;
             /**
              * List Entities Data Provider Id
              * @description Data provider ID for listing entities
@@ -32091,6 +32261,114 @@ export interface operations {
             };
         };
     };
+    get_form_logo_api_forms__form_id__logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/webp": unknown;
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/svg+xml": unknown;
+                };
+            };
+            /** @description No logo set */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_form_logo_api_forms__form_id__logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_form_logo_api_forms__form_id__logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_form_logo_api_forms__form_id__logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_form_api_forms__form_id__submissions_post: {
         parameters: {
             query?: never;
@@ -39788,6 +40066,114 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IntegrationResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_integration_logo_api_integrations__integration_id__logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/webp": unknown;
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/svg+xml": unknown;
+                };
+            };
+            /** @description No logo set */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_integration_logo_api_integrations__integration_id__logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_integration_logo_api_integrations__integration_id__logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_integration_logo_api_integrations__integration_id__logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

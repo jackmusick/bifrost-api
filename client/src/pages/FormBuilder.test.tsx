@@ -168,6 +168,42 @@ beforeEach(() => {
 });
 
 describe("FormBuilder header controls", () => {
+	it("shows the form logo editor for saved editable forms", () => {
+		renderWithProviders(<FormBuilder />, {
+			initialEntries: ["/forms/form-1"],
+		});
+
+		expect(
+			screen.getByRole("button", { name: "Edit form logo" }),
+		).toBeInTheDocument();
+	});
+
+	it("hides the form logo editor for solution-managed forms", () => {
+		mockUseForm.mockReturnValue({
+			data: {
+				id: "form-1",
+				name: "Customer Intake",
+				description: "Tell us what you need",
+				workflow_id: "wf-1",
+				launch_workflow_id: "launch-1",
+				launch_workflow_parameters: [],
+				form_schema: { fields: [] },
+				is_solution_managed: true,
+				access_level: "role_based",
+				organization_id: "org-1",
+				default_launch_params: {},
+			},
+		});
+
+		renderWithProviders(<FormBuilder />, {
+			initialEntries: ["/forms/form-1"],
+		});
+
+		expect(
+			screen.queryByRole("button", { name: "Edit form logo" }),
+		).not.toBeInTheDocument();
+	});
+
 	it("uses 44px controls for the builder actions", () => {
 		renderWithProviders(<FormBuilder />, {
 			initialEntries: ["/forms/form-1"],

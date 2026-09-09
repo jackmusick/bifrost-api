@@ -233,7 +233,10 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # WorkflowParameter gained optional python_type and json_schema fields
     # (2026-09-04). ADDITIVE: older clients ignore the richer tool-contract
     # metadata, so the fingerprint is refreshed without raising MIN_CLI_VERSION.
-    "8c98101e6e5e0b950748fdb76574c2e33afba66926a5daf7e6a7c548dcb38feb"
+    #
+    # IntegrationCreate/IntegrationUpdate gained optional description
+    # (2026-09-09). ADDITIVE: older clients omit it and keep existing behavior.
+    "ab0febdc63454f2a731b072c6306052853d8da53aabc7cbc04fa4b4ce0323b83"
 )
 
 

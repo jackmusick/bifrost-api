@@ -1,6 +1,6 @@
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getIcon } from "@/lib/icons";
+import { ResourceIcon } from "@/components/ResourceIcon";
 import type { HomeResource } from "@/services/home";
 import { resourceActions, resourceTypes } from "./ResourceCard";
 
@@ -20,14 +20,19 @@ export function ResourceList({
 			className="divide-y rounded-[var(--bf-radius-surface)] border bg-card"
 			aria-label="Resources"
 		>
-			{resources.map((resource) => {
-				const Icon = getIcon(resource.icon);
-				return (
+			{resources.map((resource) => (
 					<li
 						key={resource.key}
 						className="flex min-w-0 items-center gap-3 px-3 py-2 sm:px-4"
 					>
-						<Icon className="size-5 shrink-0 text-primary" />
+						<ResourceIcon
+							kind={resource.kind}
+							id={resource.id}
+							icon={resource.icon}
+							logo={resource.logo_url ?? null}
+							cacheKey={resource.logo_version ?? undefined}
+							size="table"
+						/>
 						<button
 							className="min-w-0 flex-1 py-1 text-left focus-visible:outline-ring"
 							onClick={() => onOpen(resource)}
@@ -70,8 +75,7 @@ export function ResourceList({
 							/>
 						</Button>
 					</li>
-				);
-			})}
+				))}
 		</ul>
 	);
 }

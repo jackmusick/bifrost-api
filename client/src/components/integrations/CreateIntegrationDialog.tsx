@@ -25,7 +25,9 @@ import { IntegrationReadError } from "./IntegrationReadError";
 import { IntegrationSchemaEditor } from "./IntegrationSchemaEditor";
 import { Combobox } from "@/components/ui/combobox";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Trash2 } from "lucide-react";
+import { LogoDropZone } from "@/components/LogoDropZone";
+import { bumpEntityLogo } from "@/components/entityLogoVersions";
+import { Loader2, Trash2, Plug } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
@@ -88,13 +90,9 @@ function CreateIntegrationForm({
 	// Initialize state from existing integration (or empty for new)
 	// This is safe because the parent only mounts this component once data is ready
 	const [name, setName] = useState(existingIntegration?.name || "");
-	const [description, setDescription] = useState(() => {
-		const integrationWithDesc =
-			existingIntegration as typeof existingIntegration & {
-				description?: string;
-			};
-		return integrationWithDesc?.description || "";
-	});
+	const [description, setDescription] = useState(
+		existingIntegration?.description || "",
+	);
 	const [dataProviderId, setDataProviderId] = useState<string | null>(
 		existingIntegration?.list_entities_data_provider_id || null,
 	);
@@ -194,6 +192,7 @@ function CreateIntegrationForm({
 					params: { path: { integration_id: editIntegrationId } },
 					body: {
 						name,
+						description: description.trim() || null,
 						list_entities_data_provider_id:
 							dataProviderId || undefined,
 						config_schema: configSchema,
@@ -205,6 +204,7 @@ function CreateIntegrationForm({
 				await createMutation.mutateAsync({
 					body: {
 						name,
+						description: description.trim() || null,
 						config_schema:
 							configSchema.length > 0 ? configSchema : undefined,
 						default_entity_id: defaultEntityId || undefined,
@@ -286,6 +286,48 @@ function CreateIntegrationForm({
 						disabled={isLoading}
 						className="min-w-0 space-y-4"
 					>
+						{editIntegrationId && (
+							<div className="flex items-center gap-4">
+								<LogoDropZone
+									uploadUrl={`/api/integrations/${editIntegrationId}/logo`}
+									deleteUrl={`/api/integrations/${editIntegrationId}/logo`}
+									previewUrl={
+										existingIntegration?.logo_url ??
+										`/api/integrations/${editIntegrationId}/logo`
+									}
+									fallback={<Plug className="size-8" />}
+									size={80}
+									ariaLabel="Upload integration logo"
+									onChange={() => {
+										bumpEntityLogo(
+											"integration",
+											editIntegrationId,
+										);
+										void queryClient.invalidateQueries({
+											queryKey: [
+												"get",
+												"/api/integrations",
+											],
+										});
+										void queryClient.invalidateQueries({
+											queryKey: [
+												"get",
+												"/api/integrations/{integration_id}",
+											],
+										});
+									}}
+								/>
+								<div>
+									<p className="text-sm font-medium">
+										Integration logo
+									</p>
+									<p className="text-sm text-muted-foreground">
+										PNG, JPEG, or SVG. Logo changes save
+										immediately.
+									</p>
+								</div>
+							</div>
+						)}
 						{/* Name */}
 						<div className="space-y-2">
 							<Label htmlFor="name">Integration Name *</Label>

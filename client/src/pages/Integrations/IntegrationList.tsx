@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
 import { Pencil, Trash2 } from "lucide-react";
-
+import { ResourceIcon } from "@/components/ResourceIcon";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
@@ -20,41 +19,54 @@ interface IntegrationListProps {
 	integrations: Integration[];
 	isDesktop: boolean;
 	selectedIds: Set<string>;
-	onToggleSelect: (integrationId: string) => void;
+	onToggleSelect: (id: string) => void;
 	onToggleSelectAll: () => void;
-	onOpen: (integrationId: string) => void;
-	onEdit: (integrationId: string) => void;
+	onOpen: (id: string) => void;
+	onEdit: (id: string) => void;
 	onDelete: (integration: Integration) => void;
 }
 
-function integrationOAuthStatus(integration: Integration) {
-	if (!integration.has_oauth_config) {
-		return { label: "Not configured", variant: "outline" as const };
-	}
-
-	return { label: "Configured", variant: "secondary" as const };
-}
-
-function integrationDataProviderLabel(integration: Integration) {
-	return integration.list_entities_data_provider_id || "None";
-}
-
-function integrationConfigSummary(integration: Integration) {
-	const fields = integration.config_schema ?? [];
-	return {
-		items: fields.slice(0, 2).map((field) => field.key),
-		overflow: Math.max(0, fields.length - 2),
-	};
+export function IntegrationConnectionStatus({
+	integration,
+}: {
+	integration: Integration;
+}) {
+	const connected = integration.connected_count ?? 0;
+	const reconnect = integration.needs_reconnection_count ?? 0;
+	if (!integration.has_oauth_config)
+		return <span className="text-muted-foreground">Not monitored</span>;
+	return (
+		<div className="flex flex-wrap gap-2">
+			{connected > 0 && (
+				<Badge
+					variant="outline"
+					className="text-[var(--bf-success)] border-[var(--bf-success)]/30"
+				>
+					{connected} connected
+				</Badge>
+			)}
+			{reconnect > 0 && (
+				<Badge
+					variant="outline"
+					className="text-[var(--bf-warning)] border-[var(--bf-warning)]/30"
+				>
+					{reconnect} {reconnect === 1 ? "needs" : "need"}{" "}
+					reconnection
+				</Badge>
+			)}
+			{connected === 0 && reconnect === 0 && (
+				<span className="text-muted-foreground">Not connected</span>
+			)}
+		</div>
+	);
 }
 
 function IntegrationActions({
 	integration,
 	onEdit,
 	onDelete,
-}: {
+}: Pick<IntegrationListProps, "onEdit" | "onDelete"> & {
 	integration: Integration;
-	onEdit: (integrationId: string) => void;
-	onDelete: (integration: Integration) => void;
 }) {
 	return (
 		<RecordActionsMenu label={`${integration.name} actions`}>
@@ -77,307 +89,221 @@ function IntegrationActions({
 	);
 }
 
-function IntegrationMobileCard({
+function IntegrationCard({
 	integration,
-	selected,
+	selectedIds,
 	onToggleSelect,
 	onEdit,
 	onDelete,
-}: {
-	integration: Integration;
-	selected: boolean;
-	onToggleSelect: (integrationId: string) => void;
-	onEdit: (integrationId: string) => void;
-	onDelete: (integration: Integration) => void;
-}) {
-	const oauth = integrationOAuthStatus(integration);
-	const config = integrationConfigSummary(integration);
-
+}: Pick<
+	IntegrationListProps,
+	"selectedIds" | "onToggleSelect" | "onEdit" | "onDelete"
+> & { integration: Integration }) {
+	const fields = integration.config_schema?.length ?? 0;
 	return (
-		<Card
+		<article
 			data-testid="integration-card"
-			className="min-w-0 border-border/70 bg-card"
+			className="relative flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border border-border bg-card transition-colors hover:border-primary/40 focus-within:border-primary/50"
 		>
-			<CardContent className="space-y-4 p-4">
-				<div className="flex min-w-0 items-start gap-3">
+			<div className="flex items-center justify-between px-4 pt-2">
+				<label className="relative z-10 flex size-11 items-center justify-center -ml-3">
 					<Checkbox
 						aria-label={`Select ${integration.name}`}
-						checked={selected}
+						checked={selectedIds.has(integration.id)}
 						onCheckedChange={() => onToggleSelect(integration.id)}
 					/>
-					<div className="min-w-0 flex-1 space-y-2">
-						<div className="min-w-0">
-							<h3 className="text-base font-semibold [overflow-wrap:anywhere]">
-								<Link
-									to={`/integrations/${integration.id}`}
-									className="inline-flex min-h-11 items-center rounded-[var(--bf-radius-control)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									{integration.name}
-								</Link>
-							</h3>
-						</div>
-						<div className="flex flex-wrap gap-2">
-							<Badge
-								variant="outline"
-								className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere]"
-							>
-								{integrationDataProviderLabel(integration)}
-							</Badge>
-							<Badge
-								variant={oauth.variant}
-								className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere]"
-							>
-								{oauth.label}
-							</Badge>
-						</div>
-					</div>
+				</label>
+				<div className="relative z-10 -mr-2">
 					<IntegrationActions
 						integration={integration}
 						onEdit={onEdit}
 						onDelete={onDelete}
 					/>
 				</div>
-
-				<div className="space-y-2 text-sm">
-					<div className="space-y-2">
-						<span className="text-muted-foreground">
-							Config fields
-						</span>
-						{config.items.length === 0 ? (
-							<span className="text-muted-foreground">None</span>
-						) : (
-							<div className="flex flex-wrap gap-1">
-								{config.items.map((field) => (
-									<Badge
-										key={field}
-										variant="secondary"
-										className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs"
-									>
-										{field}
-									</Badge>
-								))}
-								{config.overflow > 0 && (
-									<Badge
-										variant="secondary"
-										className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs"
-									>
-										+{config.overflow}
-									</Badge>
-								)}
-							</div>
-						)}
-					</div>
-				</div>
-			</CardContent>
-		</Card>
-	);
-}
-
-function IntegrationDesktopTable({
-	integrations,
-	selectedIds,
-	onToggleSelect,
-	onToggleSelectAll,
-	onOpen,
-	onEdit,
-	onDelete,
-}: IntegrationListProps) {
-	const allVisibleSelected =
-		integrations.length > 0 &&
-		integrations.every((integration) => selectedIds.has(integration.id));
-	const partiallySelected =
-		integrations.some((integration) => selectedIds.has(integration.id)) &&
-		!allVisibleSelected;
-
-	return (
-		<div className="min-h-0 flex-1">
-			<DataTable className="max-h-full [&_table]:table-fixed">
-				<DataTableHeader>
-					<DataTableRow>
-						<DataTableHead className="w-10">
-							<Checkbox
-								aria-label="Select all visible integrations"
-								checked={
-									allVisibleSelected
-										? true
-										: partiallySelected
-											? "indeterminate"
-											: false
-								}
-								onCheckedChange={onToggleSelectAll}
-							/>
-						</DataTableHead>
-						<DataTableHead className="whitespace-normal">
-							Name
-						</DataTableHead>
-						<DataTableHead className="w-[20%] whitespace-normal">
-							Data Provider
-						</DataTableHead>
-						<DataTableHead className="w-[22%] whitespace-normal">
-							Config Fields
-						</DataTableHead>
-						<DataTableHead className="w-[12%] whitespace-normal">
-							OAuth Status
-						</DataTableHead>
-						<DataTableHead className="w-16 text-right" />
-					</DataTableRow>
-				</DataTableHeader>
-				<DataTableBody>
-					{integrations.map((integration) => {
-						const oauth = integrationOAuthStatus(integration);
-						const config = integrationConfigSummary(integration);
-						return (
-							<DataTableRow
-								key={integration.id}
-								clickable
-								onClick={() => onOpen(integration.id)}
-							>
-								<DataTableCell>
-									<Checkbox
-										aria-label={`Select ${integration.name}`}
-										checked={selectedIds.has(
-											integration.id,
-										)}
-										onCheckedChange={() =>
-											onToggleSelect(integration.id)
-										}
-										onClick={(event) =>
-											event.stopPropagation()
-										}
-									/>
-								</DataTableCell>
-								<DataTableCell className="font-medium [overflow-wrap:anywhere]">
-									<Link
-										to={`/integrations/${integration.id}`}
-										onClick={(event) =>
-											event.stopPropagation()
-										}
-										className="rounded-[var(--bf-radius-control)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-									>
-										{integration.name}
-									</Link>
-								</DataTableCell>
-								<DataTableCell className="w-[20%] whitespace-normal">
-									{integration.list_entities_data_provider_id ? (
-										<Badge
-											variant="outline"
-											className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere]"
-										>
-											{
-												integration.list_entities_data_provider_id
-											}
-										</Badge>
-									) : (
-										<span className="text-sm text-muted-foreground">
-											None
-										</span>
-									)}
-								</DataTableCell>
-								<DataTableCell className="w-[22%] whitespace-normal">
-									{config.items.length > 0 ? (
-										<div className="flex flex-wrap gap-1">
-											{config.items.map((field) => (
-												<Badge
-													key={field}
-													variant="secondary"
-													className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs"
-												>
-													{field}
-												</Badge>
-											))}
-											{config.overflow > 0 && (
-												<Badge
-													variant="secondary"
-													className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs"
-												>
-													+{config.overflow}
-												</Badge>
-											)}
-										</div>
-									) : (
-										<span className="text-sm text-muted-foreground">
-											None
-										</span>
-									)}
-								</DataTableCell>
-								<DataTableCell className="w-[12%] whitespace-normal">
-									<Badge
-										variant={oauth.variant}
-										className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs"
-									>
-										{oauth.label}
-									</Badge>
-								</DataTableCell>
-								<DataTableCell
-									className="w-16 text-right"
-									onClick={(event) => event.stopPropagation()}
-								>
-									<IntegrationActions
-										integration={integration}
-										onEdit={onEdit}
-										onDelete={onDelete}
-									/>
-								</DataTableCell>
-							</DataTableRow>
-						);
-					})}
-				</DataTableBody>
-			</DataTable>
-		</div>
-	);
-}
-
-function IntegrationMobileList({
-	integrations,
-	selectedIds,
-	onToggleSelect,
-	onToggleSelectAll,
-	onEdit,
-	onDelete,
-}: IntegrationListProps) {
-	const allVisibleSelected =
-		integrations.length > 0 &&
-		integrations.every((integration) => selectedIds.has(integration.id));
-	const partiallySelected =
-		integrations.some((integration) => selectedIds.has(integration.id)) &&
-		!allVisibleSelected;
-
-	return (
-		<div className="min-w-0 space-y-3">
-			<label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-3 text-sm text-muted-foreground">
-				<Checkbox
-					aria-label="Select all visible integrations"
-					checked={
-						allVisibleSelected
-							? true
-							: partiallySelected
-								? "indeterminate"
-								: false
-					}
-					onCheckedChange={onToggleSelectAll}
-				/>
-				<span>Select all visible</span>
-			</label>
-			<div className="grid min-w-0 gap-3">
-				{integrations.map((integration) => (
-					<IntegrationMobileCard
-						key={integration.id}
-						integration={integration}
-						selected={selectedIds.has(integration.id)}
-						onToggleSelect={onToggleSelect}
-						onEdit={onEdit}
-						onDelete={onDelete}
-					/>
-				))}
 			</div>
-		</div>
+			<div className="flex min-w-0 items-center gap-4 px-5 pb-5">
+				<ResourceIcon
+					kind="integration"
+					id={integration.id}
+					logo={integration.logo_url ?? null}
+					cacheKey={integration.logo_version ?? undefined}
+				/>
+				<div className="min-w-0">
+					<h2 className="min-w-0 text-base font-semibold [overflow-wrap:anywhere]">
+						<Link
+							to={`/integrations/${integration.id}`}
+							className="after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none after:focus-visible:ring-2 after:focus-visible:ring-ring"
+						>
+							{integration.name}
+						</Link>
+					</h2>
+					{integration.description && (
+						<p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+							{integration.description}
+						</p>
+					)}
+				</div>
+			</div>
+			<dl className="mx-5 grid gap-3 border-t border-border py-4 text-sm">
+				<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+					<dt className="text-muted-foreground">Authentication</dt>
+					<dd>
+						{integration.has_oauth_config
+							? "OAuth configured"
+							: "No OAuth configuration"}
+					</dd>
+				</div>
+				<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+					<dt className="text-muted-foreground">
+						Organization mappings
+					</dt>
+					<dd>{integration.mapping_count ?? 0}</dd>
+				</div>
+				<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+					<dt className="text-muted-foreground">Connection status</dt>
+					<dd>
+						<IntegrationConnectionStatus
+							integration={integration}
+						/>
+					</dd>
+				</div>
+			</dl>
+			<div className="mt-auto border-t border-border px-5 py-3 text-sm text-muted-foreground">
+				{fields} configuration {fields === 1 ? "field" : "fields"}
+				{integration.list_entities_data_provider_id
+					? " · Entity mapping available"
+					: ""}
+			</div>
+		</article>
 	);
 }
 
 export function IntegrationList(props: IntegrationListProps) {
-	return props.isDesktop ? (
-		<IntegrationDesktopTable {...props} />
-	) : (
-		<IntegrationMobileList {...props} />
+	const {
+		integrations,
+		isDesktop,
+		selectedIds,
+		onToggleSelect,
+		onToggleSelectAll,
+		onOpen,
+		onEdit,
+		onDelete,
+	} = props;
+	const allSelected =
+		integrations.length > 0 &&
+		integrations.every((i) => selectedIds.has(i.id));
+	const someSelected = integrations.some((i) => selectedIds.has(i.id));
+	const selectAll = (
+		<Checkbox
+			aria-label="Select all visible integrations"
+			checked={
+				allSelected ? true : someSelected ? "indeterminate" : false
+			}
+			onCheckedChange={onToggleSelectAll}
+		/>
+	);
+	if (!isDesktop)
+		return (
+			<div className="min-w-0 space-y-3">
+				<label className="flex min-h-11 items-center gap-3 text-sm text-muted-foreground">
+					{selectAll}Select all visible
+				</label>
+				<div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-4">
+					{integrations.map((integration) => (
+						<IntegrationCard
+							key={integration.id}
+							integration={integration}
+							{...{
+								selectedIds,
+								onToggleSelect,
+								onEdit,
+								onDelete,
+							}}
+						/>
+					))}
+				</div>
+				<p className="py-2 text-sm text-muted-foreground">
+					{integrations.length}{" "}
+					{integrations.length === 1 ? "integration" : "integrations"}
+				</p>
+			</div>
+		);
+	return (
+		<DataTable className="max-h-full">
+			<DataTableHeader>
+				<DataTableRow>
+					<DataTableHead className="w-12">{selectAll}</DataTableHead>
+					<DataTableHead>Name</DataTableHead>
+					<DataTableHead>Authentication</DataTableHead>
+					<DataTableHead>Mappings</DataTableHead>
+					<DataTableHead>Connection status</DataTableHead>
+					<DataTableHead className="w-px text-right">
+						Actions
+					</DataTableHead>
+				</DataTableRow>
+			</DataTableHeader>
+			<DataTableBody>
+				{integrations.map((integration) => (
+					<DataTableRow
+						key={integration.id}
+						clickable
+						onClick={() => onOpen(integration.id)}
+					>
+						<DataTableCell onClick={(e) => e.stopPropagation()}>
+							<Checkbox
+								aria-label={`Select ${integration.name}`}
+								checked={selectedIds.has(integration.id)}
+								onCheckedChange={() =>
+									onToggleSelect(integration.id)
+								}
+							/>
+						</DataTableCell>
+						<DataTableCell>
+							<div className="flex items-center gap-3">
+								<ResourceIcon
+									kind="integration"
+									id={integration.id}
+									size="table"
+									logo={integration.logo_url ?? null}
+									cacheKey={
+										integration.logo_version ?? undefined
+									}
+								/>
+								<Link
+									onClick={(e) => e.stopPropagation()}
+									to={`/integrations/${integration.id}`}
+									className="font-medium hover:underline"
+								>
+									{integration.name}
+								</Link>
+							</div>
+						</DataTableCell>
+						<DataTableCell>
+							{integration.has_oauth_config
+								? "OAuth configured"
+								: "No OAuth configuration"}
+						</DataTableCell>
+						<DataTableCell>
+							{integration.mapping_count ?? 0}
+						</DataTableCell>
+						<DataTableCell>
+							<IntegrationConnectionStatus
+								integration={integration}
+							/>
+						</DataTableCell>
+						<DataTableCell
+							className="w-px text-right"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<IntegrationActions
+								integration={integration}
+								onEdit={onEdit}
+								onDelete={onDelete}
+							/>
+						</DataTableCell>
+					</DataTableRow>
+				))}
+			</DataTableBody>
+		</DataTable>
 	);
 }

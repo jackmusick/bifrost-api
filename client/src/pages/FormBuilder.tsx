@@ -25,6 +25,7 @@ import {
 import { assignRolesToForm } from "@/hooks/useRoles";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { FormInfoDialog } from "@/components/forms/FormInfoDialog";
+import { FormLogoEditor } from "@/components/forms/FormLogoEditor";
 import { FormShareDialog } from "@/components/forms/FormShareDialog";
 import type { FormInfoValues } from "@/components/forms/FormInfoDialog";
 import { FieldsPanelDnD } from "@/components/forms/FieldsPanelDnD";
@@ -492,9 +493,17 @@ export function FormBuilder() {
 
 			<div className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 				<div className="space-y-2">
-					<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-						{formName || (isEditing ? "Edit Form" : "New Form")}
-					</h1>
+					<div className="flex min-w-0 items-start gap-3">
+						{formId && !isSolutionManaged ? (
+							<FormLogoEditor
+								formId={formId}
+								logoUrl={existingForm?.logo_url ?? null}
+							/>
+						) : null}
+						<h1 className="min-w-0 font-display text-2xl font-semibold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">
+							{formName || (isEditing ? "Edit Form" : "New Form")}
+						</h1>
+					</div>
 					<div className="flex flex-wrap items-center gap-2">
 						{linkedWorkflow && (
 							<Badge

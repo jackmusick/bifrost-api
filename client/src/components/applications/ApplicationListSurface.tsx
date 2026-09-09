@@ -11,7 +11,7 @@ import {
 
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { EntityLogo } from "@/components/EntityLogo";
+import { ResourceIcon } from "@/components/ResourceIcon";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { Badge } from "@/components/ui/badge";
@@ -254,15 +254,11 @@ export function ApplicationListSurface({
 									)}
 									<DataTableCell className="min-w-0 font-medium">
 										<div className="flex min-w-0 flex-1 items-center gap-2">
-											<EntityLogo
-												entityType="app"
-												entityId={app.id}
+											<ResourceIcon
+												kind="app"
+												id={app.id}
 												logo={app.logo_url ?? null}
-												fallback={
-													<AppWindow className="h-3.5 w-3.5 text-muted-foreground" />
-												}
-												size={20}
-												className="h-5 w-5 shrink-0 rounded object-cover"
+												size="table"
 											/>
 											{renderName(app)}
 										</div>
@@ -402,15 +398,11 @@ export function ApplicationListSurface({
 						<div className="border-b px-4 py-3">
 							<div className="flex items-start justify-between gap-3">
 								<div className="flex min-w-0 flex-1 items-center gap-2">
-									<EntityLogo
-										entityType="app"
-										entityId={app.id}
+									<ResourceIcon
+										kind="app"
+										id={app.id}
 										logo={app.logo_url ?? null}
-										fallback={
-											<AppWindow className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-										}
-										size={20}
-										className="h-5 w-5 rounded object-cover shrink-0"
+										size="card"
 									/>
 									{renderName(app)}
 								</div>

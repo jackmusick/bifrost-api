@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { AgentMcpCopyButton } from "./AgentMcpCopyButton";
 
-import { EntityLogo } from "@/components/EntityLogo";
+import { ResourceIcon } from "@/components/ResourceIcon";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { Badge } from "@/components/ui/badge";
@@ -321,15 +321,11 @@ function AgentGridCard({
 			<div className="border-b px-4 pb-3 pt-3.5">
 				<div className="flex min-w-0 flex-col gap-2">
 					<div className="flex min-w-0 items-start gap-2">
-						<EntityLogo
-							entityType="agent"
-							entityId={agent.id}
+						<ResourceIcon
+							kind="agent"
+							id={agent.id}
 							logo={agent.logo_url ?? null}
-							fallback={
-								<Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-							}
-							size={20}
-							className="h-5 w-5 rounded shrink-0 object-cover"
+							size="card"
 						/>
 						<Link
 							to={`/agents/${agent.id}`}
@@ -565,15 +561,11 @@ function AgentTableRow({
 			)}
 			<DataTableCell>
 				<div className="flex items-center gap-2">
-					<EntityLogo
-						entityType="agent"
-						entityId={agent.id}
+					<ResourceIcon
+						kind="agent"
+						id={agent.id}
 						logo={agent.logo_url ?? null}
-						fallback={
-							<Bot className="h-3.5 w-3.5 text-muted-foreground" />
-						}
-						size={20}
-						className="h-5 w-5 shrink-0 rounded object-cover"
+						size="table"
 					/>
 					<Link
 						to={`/agents/${agent.id}`}

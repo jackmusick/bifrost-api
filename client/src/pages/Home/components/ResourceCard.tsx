@@ -1,6 +1,5 @@
-import { createElement } from "react";
-import { AppWindow, Bot, FileInput, Building2, Star } from "lucide-react";
-import { getIcon } from "@/lib/icons";
+import { Building2, Star } from "lucide-react";
+import { ResourceIcon } from "@/components/ResourceIcon";
 import { Button } from "@/components/ui/button";
 import type { HomeResource } from "@/services/home";
 
@@ -24,16 +23,17 @@ export function ResourceCard({
 	busy?: boolean;
 	compact?: boolean;
 }) {
-	const Icon = getIcon(
-		resource.icon,
-		{ app: AppWindow, form: FileInput, agent: Bot }[resource.kind],
-	);
 	return (
 		<article className="relative flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card transition-colors hover:border-primary/40 focus-within:border-primary">
 			<div className="flex items-start gap-3 p-3 sm:p-4 sm:pb-2">
-				<div className="flex size-12 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] bg-primary/10 text-primary">
-					{createElement(Icon, { className: "size-6" })}
-				</div>
+				<ResourceIcon
+					kind={resource.kind}
+					id={resource.id}
+					icon={resource.icon}
+					logo={resource.logo_url ?? null}
+					cacheKey={resource.logo_version ?? undefined}
+					size="card"
+				/>
 				<div className="min-w-0 flex-1">
 					<button
 						className="text-left text-sm font-semibold after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-ring [overflow-wrap:anywhere]"

@@ -146,6 +146,37 @@ async def test_catalog_uses_launchable_resource_repositories_and_preferences(
     )
 
 
+async def test_catalog_includes_resource_logo_metadata(db_session):
+    org = await _org(db_session, "Logo Org")
+    user = await _user(db_session, org, "Logo User")
+    app = await _launchable_app(db_session, "Logo App", org)
+    form = await _launchable_form(db_session, "Logo Form", org)
+    agent = await _launchable_agent(db_session, "Logo Agent", org)
+    app.logo_content_type = "image/png"
+    app.logo_thumbnail_version = "a" * 64
+    form.logo_content_type = "image/png"
+    form.logo_thumbnail_version = "b" * 64
+    agent.logo_content_type = "image/png"
+    agent.logo_thumbnail_version = "c" * 64
+    await db_session.flush()
+
+    response = await home.get_home(db_session, _principal(user))
+    by_key = {resource.key: resource for resource in response.resources}
+
+    assert by_key[f"app:{app.id}"].logo_url == (
+        f"/api/applications/{app.id}/logo?v={'a' * 64}"
+    )
+    assert by_key[f"app:{app.id}"].logo_version == "a" * 64
+    assert by_key[f"form:{form.id}"].logo_url == (
+        f"/api/forms/{form.id}/logo?v={'b' * 64}"
+    )
+    assert by_key[f"form:{form.id}"].logo_version == "b" * 64
+    assert by_key[f"agent:{agent.id}"].logo_url == (
+        f"/api/agents/{agent.id}/logo?v={'c' * 64}"
+    )
+    assert by_key[f"agent:{agent.id}"].logo_version == "c" * 64
+
+
 async def test_collection_membership_does_not_confer_resource_access(db_session):
     org1 = await _org(db_session, "Home Org 1")
     org2 = await _org(db_session, "Home Org 2")

@@ -359,6 +359,9 @@ class FormPublic(BaseModel):
     id: UUID
     name: str
     description: str | None = None
+    logo: str | None = None
+    logo_url: str | None = None
+    logo_version: str | None = None
     confirmation_markdown: str = DEFAULT_FORM_CONFIRMATION_MARKDOWN
     workflow_id: Annotated[str | None, WorkflowRef()] = None
     launch_workflow_id: Annotated[str | None, WorkflowRef()] = None
@@ -421,6 +424,9 @@ class FormPublic(BaseModel):
                 "id": data.id,
                 "name": data.name,
                 "description": data.description,
+                "logo": getattr(data, "logo", None),
+                "logo_url": getattr(data, "logo_url", None),
+                "logo_version": getattr(data, "logo_version", None),
                 "confirmation_markdown": getattr(
                     data,
                     "confirmation_markdown",
@@ -455,6 +461,9 @@ class FormPublic(BaseModel):
                 "id": data.id,
                 "name": data.name,
                 "description": data.description,
+                "logo": getattr(data, "logo", None),
+                "logo_url": getattr(data, "logo_url", None),
+                "logo_version": getattr(data, "logo_version", None),
                 "confirmation_markdown": getattr(
                     data,
                     "confirmation_markdown",

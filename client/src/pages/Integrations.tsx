@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Plus, RefreshCw, Upload, Download } from "lucide-react";
+import {
+	AlertTriangle,
+	Plus,
+	RefreshCw,
+	Upload,
+	Download,
+	LayoutGrid,
+	Table as TableIcon,
+} from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -79,6 +88,8 @@ export function Integrations() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const isDesktop = useIsDesktop();
+	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+	const showTable = isDesktop && viewMode === "table";
 
 	const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 	const [editIntegrationId, setEditIntegrationId] = useState<
@@ -100,6 +111,7 @@ export function Integrations() {
 
 	const filteredIntegrations = useSearch(integrations, searchTerm, [
 		"name",
+		"description",
 		"list_entities_data_provider_id",
 	]);
 
@@ -203,7 +215,7 @@ export function Integrations() {
 	const hasSearch = searchTerm.trim().length > 0;
 
 	return (
-		<PageWorkspace className="mx-auto max-w-7xl">
+		<PageWorkspace className="mx-auto w-full max-w-[1400px]">
 			<ListPageHeader
 				title="Integrations"
 				description="Configure integrations and map organizations to external entities"
@@ -239,6 +251,33 @@ export function Integrations() {
 					placeholder="Search integrations by name, OAuth provider, or data provider..."
 					className="w-full sm:flex-1"
 				/>
+				{isDesktop && (
+					<ToggleGroup
+						type="single"
+						aria-label="Integration layout"
+						value={viewMode}
+						onValueChange={(v) => {
+							if (v) setViewMode(v as "grid" | "table");
+						}}
+					>
+						<ToggleGroupItem
+							value="grid"
+							aria-label="Card view"
+							className="gap-2"
+						>
+							<LayoutGrid className="size-4" />
+							Cards
+						</ToggleGroupItem>
+						<ToggleGroupItem
+							value="table"
+							aria-label="Table view"
+							className="gap-2"
+						>
+							<TableIcon className="size-4" />
+							Table
+						</ToggleGroupItem>
+					</ToggleGroup>
+				)}
 				<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
 					{selectedCount > 0 && (
 						<span className="text-sm text-muted-foreground">
@@ -281,7 +320,7 @@ export function Integrations() {
 			<PageScrollArea
 				aria-label="Integrations list"
 				className={
-					isDesktop
+					showTable
 						? "lg:flex lg:flex-col lg:overflow-hidden"
 						: undefined
 				}
@@ -298,7 +337,7 @@ export function Integrations() {
 				) : filteredIntegrations.length > 0 ? (
 					<IntegrationList
 						integrations={filteredIntegrations}
-						isDesktop={isDesktop}
+						isDesktop={showTable}
 						selectedIds={selectedIds}
 						onToggleSelect={toggleSelect}
 						onToggleSelectAll={handleToggleSelectAll}

@@ -5,20 +5,22 @@ Manages integrations and their mappings to organizations with external entities.
 Integrations combine OAuth providers, data providers, and configuration schemas.
 """
 
+import asyncio
 import logging
 import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Any
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, select
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.log_safety import log_safe
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import defer, joinedload, selectinload
 
 from src.models import (
     ConfigSchemaItem,
@@ -51,10 +53,62 @@ from src.services.oauth_provider import (
     resolve_url_template,
 )
 from src.services.oauth_state import encode_state, remember_nonce
+from shared.logo_processing import (
+    LogoProcessingError,
+    is_logo_thumbnail_version,
+    process_logo,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/integrations", tags=["Integrations"])
+
+
+def _logo_data_url(data: bytes | None, content_type: str | None) -> str | None:
+    """Encode a binary logo as a data URL, or None if no logo is set."""
+    if not data:
+        return None
+    import base64
+
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{content_type or 'application/octet-stream'};base64,{encoded}"
+
+
+def _integration_logo_url(integration: Integration) -> str | None:
+    """Return a logo URL without hiding legacy images during thumbnail backfill."""
+    if is_logo_thumbnail_version(integration.logo_thumbnail_version):
+        return f"/api/integrations/{integration.id}/logo?v={integration.logo_thumbnail_version}"
+    if integration.logo_content_type:
+        return f"/api/integrations/{integration.id}/logo"
+    return None
+
+
+def _integration_to_response(
+    integration: Integration,
+    summary: tuple[int, int, dict[str, int]] | None = None,
+    include_inline_logo: bool = False,
+) -> IntegrationResponse:
+    mapping_count, connected_mapping_count, status_counts = summary or (0, 0, {})
+    response = IntegrationResponse.model_validate(integration)
+    response.logo_url = _integration_logo_url(integration)
+    response.logo = (
+        _logo_data_url(
+            integration.logo_thumbnail_data or integration.logo_data,
+            integration.logo_thumbnail_content_type or integration.logo_content_type,
+        )
+        if include_inline_logo
+        else None
+    )
+    response.logo_version = (
+        integration.logo_thumbnail_version
+        if is_logo_thumbnail_version(integration.logo_thumbnail_version)
+        else None
+    )
+    response.mapping_count = mapping_count
+    response.connected_count = connected_mapping_count
+    response.needs_reconnection_count = status_counts.get("failed", 0)
+    response.connection_status_counts = status_counts
+    return response
 
 
 # =============================================================================
@@ -104,11 +158,43 @@ class IntegrationsRepository:
         query = (
             select(Integration)
             .where(Integration.is_deleted.is_(False))
-            .options(selectinload(Integration.config_schema))
+            .options(
+                selectinload(Integration.config_schema),
+                defer(Integration.logo_data),
+                defer(Integration.logo_thumbnail_data),
+            )
             .order_by(Integration.name)
         )
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def get_list_connection_summaries(
+        self,
+    ) -> dict[UUID, tuple[int, int, dict[str, int]]]:
+        """Aggregate mapping/token status counts for integration list cards."""
+        result = await self.db.execute(
+            select(
+                IntegrationMapping.integration_id,
+                OAuthToken.status,
+                func.count(IntegrationMapping.id),
+            )
+            .outerjoin(OAuthToken, OAuthToken.id == IntegrationMapping.oauth_token_id)
+            .group_by(IntegrationMapping.integration_id, OAuthToken.status)
+        )
+        summaries: dict[UUID, tuple[int, int, dict[str, int]]] = {}
+        for integration_id, token_status, count in result.all():
+            mapping_count, connected_count, status_counts = summaries.get(
+                integration_id,
+                (0, 0, {}),
+            )
+            count_int = int(count or 0)
+            mapping_count += count_int
+            if token_status:
+                status_counts[token_status] = status_counts.get(token_status, 0) + count_int
+            if token_status == "completed":
+                connected_count += count_int
+            summaries[integration_id] = (mapping_count, connected_count, status_counts)
+        return summaries
 
     async def get_integration_by_id(self, integration_id: UUID) -> Integration | None:
         """Get integration by ID."""
@@ -162,6 +248,7 @@ class IntegrationsRepository:
         """Create a new integration with normalized config schema."""
         integration = Integration(
             name=request.name,
+            description=request.description,
             entity_id=request.entity_id,
             entity_id_name=request.entity_id_name,
             default_entity_id=request.default_entity_id,
@@ -198,6 +285,8 @@ class IntegrationsRepository:
 
         if request.name is not None:
             integration.name = request.name
+        if "description" in request.model_fields_set:
+            integration.description = request.description
         if request.list_entities_data_provider_id is not None:
             integration.list_entities_data_provider_id = (
                 request.list_entities_data_provider_id
@@ -702,7 +791,7 @@ async def create_integration(
     integration = await repo.create_integration(request)
     logger.info(f"Created integration: {log_safe(integration.name)}")
 
-    response = IntegrationResponse.model_validate(integration)
+    response = _integration_to_response(integration)
     await ctx.db.commit()
     return response
 
@@ -720,8 +809,9 @@ async def list_integrations(
     """List all integrations."""
     repo = IntegrationsRepository(ctx.db)
     integrations = await repo.list_integrations()
+    summaries = await repo.get_list_connection_summaries()
 
-    items = [IntegrationResponse.model_validate(i) for i in integrations]
+    items = [_integration_to_response(i, summaries.get(i.id)) for i in integrations]
     return IntegrationListResponse(items=items, total=len(items))
 
 
@@ -791,6 +881,7 @@ async def get_integration(
     return IntegrationDetailResponse(
         id=integration.id,
         name=integration.name,
+        description=integration.description,
         list_entities_data_provider_id=integration.list_entities_data_provider_id,
         config_schema=config_schema_items,
         config_defaults=config_defaults if config_defaults else None,
@@ -798,6 +889,35 @@ async def get_integration(
         entity_id_name=integration.entity_id_name,
         default_entity_id=integration.default_entity_id,
         has_oauth_config=integration.has_oauth_config,
+        logo_url=_integration_logo_url(integration),
+        logo=_logo_data_url(
+            integration.logo_thumbnail_data or integration.logo_data,
+            integration.logo_thumbnail_content_type or integration.logo_content_type,
+        ),
+        logo_version=(
+            integration.logo_thumbnail_version
+            if is_logo_thumbnail_version(integration.logo_thumbnail_version)
+            else None
+        ),
+        mapping_count=len(integration.mappings),
+        connected_count=sum(
+            1 for mapping in mapping_responses if mapping.connection_status == "completed"
+        ),
+        needs_reconnection_count=sum(
+            1 for mapping in mapping_responses if mapping.connection_status == "failed"
+        ),
+        connection_status_counts={
+            status_value: sum(
+                1
+                for mapping in mapping_responses
+                if mapping.connection_status == status_value
+            )
+            for status_value in {
+                mapping.connection_status
+                for mapping in mapping_responses
+                if mapping.connection_status
+            }
+        },
         is_deleted=integration.is_deleted,
         created_at=integration.created_at,
         updated_at=integration.updated_at,
@@ -827,7 +947,7 @@ async def get_integration_by_name(
             detail="Integration not found",
         )
 
-    return IntegrationResponse.model_validate(integration)
+    return _integration_to_response(integration)
 
 
 @router.put(
@@ -853,7 +973,7 @@ async def update_integration(
         )
 
     logger.info(f"Updated integration: {log_safe(integration.name)}")
-    return IntegrationResponse.model_validate(integration)
+    return _integration_to_response(integration)
 
 
 @router.delete(
@@ -878,6 +998,125 @@ async def delete_integration(
         )
 
     logger.info(f"Deleted integration: {log_safe(integration_id)}")
+
+
+# =============================================================================
+# Integration Logo Endpoints
+# =============================================================================
+
+
+@router.post(
+    "/{integration_id}/logo",
+    summary="Upload integration logo",
+)
+async def upload_integration_logo(
+    integration_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    file: UploadFile = File(..., description="Logo image (PNG/JPEG/SVG, ≤5MB)"),
+) -> dict:
+    """Upload a square logo for an integration."""
+    repo = IntegrationsRepository(ctx.db)
+    integration = await repo.get_integration_by_id(integration_id)
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration not found",
+        )
+
+    content = await file.read()
+    try:
+        processed = await asyncio.to_thread(process_logo, content, file.content_type or "")
+    except LogoProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    integration.logo_data = processed.original_data
+    integration.logo_content_type = processed.original_content_type
+    integration.logo_thumbnail_data = processed.thumbnail_data
+    integration.logo_thumbnail_content_type = processed.thumbnail_content_type
+    integration.logo_thumbnail_version = processed.thumbnail_version
+    await ctx.db.commit()
+    return {"ok": True}
+
+
+@router.get(
+    "/{integration_id}/logo",
+    summary="Get integration logo",
+    responses={
+        200: {
+            "content": {
+                "image/webp": {},
+                "image/png": {},
+                "image/jpeg": {},
+                "image/svg+xml": {},
+            }
+        },
+        404: {"description": "No logo set"},
+    },
+)
+async def get_integration_logo(
+    integration_id: UUID,
+    ctx: Context,
+) -> Response:
+    integration = (
+        await ctx.db.execute(select(Integration).where(Integration.id == integration_id))
+    ).scalar_one_or_none()
+    if integration is None or integration.is_deleted or not integration.logo_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Logo not set",
+        )
+
+    thumbnail_ready = bool(
+        integration.logo_thumbnail_data and integration.logo_thumbnail_version
+    )
+    headers = (
+        {
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "ETag": f'"{integration.logo_thumbnail_version}"',
+        }
+        if thumbnail_ready
+        else {"Cache-Control": "no-store"}
+    )
+    return Response(
+        content=integration.logo_thumbnail_data or integration.logo_data,
+        media_type=(
+            integration.logo_thumbnail_content_type
+            or integration.logo_content_type
+            or "application/octet-stream"
+        ),
+        headers=headers,
+    )
+
+
+@router.delete(
+    "/{integration_id}/logo",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete integration logo",
+)
+async def delete_integration_logo(
+    integration_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> Response:
+    repo = IntegrationsRepository(ctx.db)
+    integration = await repo.get_integration_by_id(integration_id)
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration not found",
+        )
+
+    integration.logo_data = None
+    integration.logo_content_type = None
+    integration.logo_thumbnail_data = None
+    integration.logo_thumbnail_content_type = None
+    integration.logo_thumbnail_version = None
+    await ctx.db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # =============================================================================
