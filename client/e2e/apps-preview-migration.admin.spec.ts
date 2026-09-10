@@ -179,103 +179,112 @@ test.describe("Apps Preview — auto-migration", () => {
 		);
 	});
 
-	test("[V1-01] legacy components execute workflows and preserve preview and published navigation — desktop", async ({
-		page,
-		api,
-	}) => {
-		const tracker = trackPageErrors(page);
+	test(
+		"[V1-01] legacy components execute workflows and preserve preview and published navigation — desktop",
+		{ tag: "@smoke" },
+		async ({ page, api }) => {
+			const tracker = trackPageErrors(page);
 
-		// --- Step 1: bundle-manifest reports migrated=true on first view.
-		// This is the server-side proof that auto_migrate_repo_prefix ran
-		// AND rewrote source. If the save-path hadn't migrated already,
-		// the preview endpoint would migrate now; either way `migrated`
-		// flips true on the first call that actually rewrites a file.
-		// After the first call the source is stable — migrator is
-		// idempotent — so we don't assert true on every call, just that
-		// the endpoint returns something valid.
-		const manifestResp = await api.get(
-			`/api/applications/${appId}/bundle-manifest?mode=draft`,
-		);
-		expect(manifestResp.ok(), await manifestResp.text()).toBe(true);
-		const manifest = await manifestResp.json();
-		expect(
-			manifest.entry,
-			`entry missing in manifest: ${JSON.stringify(manifest)}`,
-		).toBeTruthy();
+			// --- Step 1: bundle-manifest reports migrated=true on first view.
+			// This is the server-side proof that auto_migrate_repo_prefix ran
+			// AND rewrote source. If the save-path hadn't migrated already,
+			// the preview endpoint would migrate now; either way `migrated`
+			// flips true on the first call that actually rewrites a file.
+			// After the first call the source is stable — migrator is
+			// idempotent — so we don't assert true on every call, just that
+			// the endpoint returns something valid.
+			const manifestResp = await api.get(
+				`/api/applications/${appId}/bundle-manifest?mode=draft`,
+			);
+			expect(manifestResp.ok(), await manifestResp.text()).toBe(true);
+			const manifest = await manifestResp.json();
+			expect(
+				manifest.entry,
+				`entry missing in manifest: ${JSON.stringify(manifest)}`,
+			).toBeTruthy();
 
-		// --- Step 2: preview renders with zero console errors. This
-		// transitively asserts that every un-imported JSX reference
-		// (Outlet, LayoutDashboard, DemoWidget) got an import added by
-		// the migrator. A regression here shows up as "X is not defined"
-		// at runtime, exactly the class of bug the 2026-04-21 fix targets.
-		await page.goto(`/apps/${APP_SLUG}/preview`);
-		await expect(page.getByTestId("home-heading")).toHaveText("Home", {
-			timeout: 15_000,
-		});
-		await expect(page.getByTestId("home-badge")).toHaveText("BADGE");
-		await page
-			.getByLabel("Request message", { exact: true })
-			.fill("preview acceptance");
-		await page
-			.getByRole("button", { name: "Run legacy workflow", exact: true })
-			.click();
-		await expect(
-			page.getByLabel("Workflow result", { exact: true }),
-		).toHaveText("Legacy received: preview acceptance");
-		await expect(page.getByTestId("demo-widget")).toHaveText(
-			"widget:widget",
-		);
-		await expect(page.getByTestId("layout-heading")).toContainText(
-			"App Shell",
-		);
+			// --- Step 2: preview renders with zero console errors. This
+			// transitively asserts that every un-imported JSX reference
+			// (Outlet, LayoutDashboard, DemoWidget) got an import added by
+			// the migrator. A regression here shows up as "X is not defined"
+			// at runtime, exactly the class of bug the 2026-04-21 fix targets.
+			await page.goto(`/apps/${APP_SLUG}/preview`);
+			await expect(page.getByTestId("home-heading")).toHaveText("Home", {
+				timeout: 15_000,
+			});
+			await expect(page.getByTestId("home-badge")).toHaveText("BADGE");
+			await page
+				.getByLabel("Request message", { exact: true })
+				.fill("preview acceptance");
+			await page
+				.getByRole("button", {
+					name: "Run legacy workflow",
+					exact: true,
+				})
+				.click();
+			await expect(
+				page.getByLabel("Workflow result", { exact: true }),
+			).toHaveText("Legacy received: preview acceptance");
+			await expect(page.getByTestId("demo-widget")).toHaveText(
+				"widget:widget",
+			);
+			await expect(page.getByTestId("layout-heading")).toContainText(
+				"App Shell",
+			);
 
-		// --- Step 3: <Link> uses the platform wrapper that prepends the
-		// app base path. Clicking must land on /apps/<slug>/preview/other,
-		// NOT /other. A regression here means Link is coming from raw
-		// react-router-dom (no basename) instead of "bifrost" (wrapped).
-		await page.getByTestId("to-other").click();
-		await expect(page).toHaveURL(
-			new RegExp(`/apps/${APP_SLUG}/preview/other/?$`),
-		);
-		await expect(page.getByTestId("other-heading")).toHaveText("Other");
+			// --- Step 3: <Link> uses the platform wrapper that prepends the
+			// app base path. Clicking must land on /apps/<slug>/preview/other,
+			// NOT /other. A regression here means Link is coming from raw
+			// react-router-dom (no basename) instead of "bifrost" (wrapped).
+			await page.getByTestId("to-other").click();
+			await expect(page).toHaveURL(
+				new RegExp(`/apps/${APP_SLUG}/preview/other/?$`),
+			);
+			await expect(page.getByTestId("other-heading")).toHaveText("Other");
 
-		await page.getByTestId("to-home").click();
-		await expect(page).toHaveURL(
-			new RegExp(`/apps/${APP_SLUG}/preview/?$`),
-		);
-		await expect(page.getByTestId("home-heading")).toHaveText("Home");
+			await page.getByTestId("to-home").click();
+			await expect(page).toHaveURL(
+				new RegExp(`/apps/${APP_SLUG}/preview/?$`),
+			);
+			await expect(page.getByTestId("home-heading")).toHaveText("Home");
 
-		// Zero console errors across the full preview + nav flow.
-		expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);
+			// Zero console errors across the full preview + nav flow.
+			expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);
 
-		// --- Step 4: publish, live path renders the same way.
-		await publishAppAndWait(api, appId);
+			// --- Step 4: publish, live path renders the same way.
+			await publishAppAndWait(api, appId);
 
-		tracker.errors.length = 0;
+			tracker.errors.length = 0;
 
-		await page.goto(`/apps/${APP_SLUG}`);
-		await expect(page.getByTestId("home-heading")).toHaveText("Home", {
-			timeout: 15_000,
-		});
-		await page
-			.getByLabel("Request message", { exact: true })
-			.fill("published acceptance");
-		await page
-			.getByRole("button", { name: "Run legacy workflow", exact: true })
-			.click();
-		await expect(
-			page.getByLabel("Workflow result", { exact: true }),
-		).toHaveText("Legacy received: published acceptance");
-		await expect(page.getByTestId("demo-widget")).toHaveText(
-			"widget:widget",
-		);
+			await page.goto(`/apps/${APP_SLUG}`);
+			await expect(page.getByTestId("home-heading")).toHaveText("Home", {
+				timeout: 15_000,
+			});
+			await page
+				.getByLabel("Request message", { exact: true })
+				.fill("published acceptance");
+			await page
+				.getByRole("button", {
+					name: "Run legacy workflow",
+					exact: true,
+				})
+				.click();
+			await expect(
+				page.getByLabel("Workflow result", { exact: true }),
+			).toHaveText("Legacy received: published acceptance");
+			await expect(page.getByTestId("demo-widget")).toHaveText(
+				"widget:widget",
+			);
 
-		// Live mode uses /apps/<slug>/<page> (no /preview segment). Same
-		// contract: Link must go to /apps/<slug>/other.
-		await page.getByTestId("to-other").click();
-		await expect(page).toHaveURL(new RegExp(`/apps/${APP_SLUG}/other/?$`));
-		await expect(page.getByTestId("other-heading")).toHaveText("Other");
+			// Live mode uses /apps/<slug>/<page> (no /preview segment). Same
+			// contract: Link must go to /apps/<slug>/other.
+			await page.getByTestId("to-other").click();
+			await expect(page).toHaveURL(
+				new RegExp(`/apps/${APP_SLUG}/other/?$`),
+			);
+			await expect(page.getByTestId("other-heading")).toHaveText("Other");
 
-		expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);
-	});
+			expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);
+		},
+	);
 });

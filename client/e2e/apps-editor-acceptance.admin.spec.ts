@@ -214,41 +214,42 @@ for (const viewport of VIEWPORTS) {
 			}
 		});
 
-		test(`[APP-01] editor save/file switching persists the selected file after reload — ${viewport.name}`, async ({
-			page,
-			api,
-		}) => {
-			if (!app) throw new Error("Editor app fixture was not created");
-			await page.setViewportSize(viewport.size);
-			await routeMonacoAssets(page.context());
-			await page.goto(`/apps/${app.slug}/edit`);
-			await openFile(page, viewport, "index.tsx");
-			await prependEditorComment(
-				page,
-				"pages/index.tsx",
-				`home saved ${viewport.name}`,
-				editedHome,
-			);
-			await expect(page.getByText("(unsaved)")).toBeVisible();
-			await saveCurrentFile(page, app.id, "pages/index.tsx");
+		test(
+			`[APP-01] editor save/file switching persists the selected file after reload — ${viewport.name}`,
+			{ tag: viewport.name === "desktop" ? "@smoke" : [] },
+			async ({ page, api }) => {
+				if (!app) throw new Error("Editor app fixture was not created");
+				await page.setViewportSize(viewport.size);
+				await routeMonacoAssets(page.context());
+				await page.goto(`/apps/${app.slug}/edit`);
+				await openFile(page, viewport, "index.tsx");
+				await prependEditorComment(
+					page,
+					"pages/index.tsx",
+					`home saved ${viewport.name}`,
+					editedHome,
+				);
+				await expect(page.getByText("(unsaved)")).toBeVisible();
+				await saveCurrentFile(page, app.id, "pages/index.tsx");
 
-			await openFile(page, viewport, "_layout.tsx");
-			await expect(page.locator(".monaco-editor").first()).toContainText(
-				`layout original ${viewport.name}`,
-			);
+				await openFile(page, viewport, "_layout.tsx");
+				await expect(
+					page.locator(".monaco-editor").first(),
+				).toContainText(`layout original ${viewport.name}`);
 
-			await expect(
-				(await readAppFile(api, app.id, "pages/index.tsx")).source,
-			).toBe(editedHome);
-			await expect(
-				(await readAppFile(api, app.id, "_layout.tsx")).source,
-			).toBe(originalLayout);
+				await expect(
+					(await readAppFile(api, app.id, "pages/index.tsx")).source,
+				).toBe(editedHome);
+				await expect(
+					(await readAppFile(api, app.id, "_layout.tsx")).source,
+				).toBe(originalLayout);
 
-			await page.reload();
-			await openFile(page, viewport, "index.tsx");
-			await expect(page.locator(".monaco-editor").first()).toContainText(
-				`home saved ${viewport.name}`,
-			);
-		});
+				await page.reload();
+				await openFile(page, viewport, "index.tsx");
+				await expect(
+					page.locator(".monaco-editor").first(),
+				).toContainText(`home saved ${viewport.name}`);
+			},
+		);
 	});
 }

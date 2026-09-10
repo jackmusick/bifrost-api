@@ -88,7 +88,9 @@ test.describe("Agents Fleet Page (admin)", () => {
 			await card.getByRole("link", { name, exact: true }).click();
 			await expect(page).toHaveURL(new RegExp(`/agents/${agent.id}$`));
 			await expect(
-				page.getByRole("heading", { name, exact: true }),
+				page
+					.getByRole("heading", { level: 1 })
+					.getByText(name, { exact: true }),
 			).toBeVisible();
 
 			await page.goto("/agents");
@@ -111,7 +113,9 @@ test.describe("Agents Fleet Page (admin)", () => {
 				.click();
 			await expect(page).toHaveURL(new RegExp(`/agents/${agent.id}$`));
 			await expect(
-				page.getByRole("heading", { name, exact: true }),
+				page
+					.getByRole("heading", { level: 1 })
+					.getByText(name, { exact: true }),
 			).toBeVisible();
 
 			await page.goto("/agents");

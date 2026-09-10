@@ -24,6 +24,7 @@ unrun/missing work. A supplied missing results file is an error. Report checks:
 
 ```sh
 node --test client/e2e/support/acceptance-report.test.mjs
+node --test client/e2e/support/monaco-assets.test.mjs
 ```
 
 The result join uses exact file, title and project. A desktop pass cannot cover
@@ -52,6 +53,10 @@ no related tests exist anywhere. Record proof types explicitly. Do not declare
 the inventory complete until every route, settings tab and user action has
 been reconciled against the action inventory.
 
-The required `@smoke` gate and the existing full nightly browser suite retain
-their roles. New specs automatically join their audience's nightly project;
-only measured, reviewed critical journeys should be added to `@smoke`.
+The browser runner executes these fast harness checks before Playwright, so
+the existing browser CI gates also validate reporting and local asset delivery.
+
+The required `@smoke` gate includes FORM-01 desktop, EXEC-01, EXEC-02,
+APP-01 desktop, V1-01 and AGENT-01. Other new cases automatically join their
+audience's nightly project. Only measured, reviewed critical journeys should
+be added to `@smoke`; desktop tags do not silently include the mobile variants.

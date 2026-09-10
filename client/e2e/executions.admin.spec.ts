@@ -263,78 +263,85 @@ test.describe("Execution History", () => {
 		await expect(
 			page.getByText("View agent run history across the fleet"),
 		).toBeVisible({ timeout: 10_000 });
-		expect(
-			await page
-				.locator("main")
-				.evaluate(
-					(element) => element.scrollHeight <= element.clientHeight,
-				),
-		).toBe(true);
 		await expectNoHorizontalOverflow(page);
+		// Mobile uses natural page scrolling. Bounded main content is the
+		// desktop contract; wait for the responsive layout to settle there.
+		await page.setViewportSize({ width: 2048, height: 900 });
+		await expect
+			.poll(() =>
+				page
+					.locator("main")
+					.evaluate(
+						(element) =>
+							element.scrollHeight <= element.clientHeight,
+					),
+			)
+			.toBe(true);
 	});
 
-	test("[EXEC-01 desktop] completed execution survives browser back and shows Result/Input/Logs states", async ({
-		page,
-		api,
-	}) => {
-		const executionId = await startExecution(api, workflowId, {
-			message: "exec-01",
-		});
-		await waitForTerminalSuccess(api, executionId);
+	test(
+		"[EXEC-01 desktop] completed execution survives browser back and shows Result/Input/Logs states",
+		{ tag: "@smoke" },
+		async ({ page, api }) => {
+			const executionId = await startExecution(api, workflowId, {
+				message: "exec-01",
+			});
+			await waitForTerminalSuccess(api, executionId);
 
-		await page.setViewportSize({ width: 1440, height: 900 });
-		await openExecutionDetail(page, executionId);
-		await expect(
-			page.getByText("Completed", { exact: true }),
-		).toBeVisible();
+			await page.setViewportSize({ width: 1440, height: 900 });
+			await openExecutionDetail(page, executionId);
+			await expect(
+				page.getByText("Completed", { exact: true }),
+			).toBeVisible();
 
-		await expect(
-			page.getByRole("tab", { name: "Result", exact: true }),
-		).toHaveAttribute("aria-selected", "true");
-		await expect(
-			page.getByRole("heading", { name: "Result", exact: true }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("tabpanel", { name: "Result", exact: true }),
-		).toContainText("exec-01");
-		await expect(
-			page.getByRole("tabpanel", { name: "Result", exact: true }),
-		).toContainText(workflowMarker);
+			await expect(
+				page.getByRole("tab", { name: "Result", exact: true }),
+			).toHaveAttribute("aria-selected", "true");
+			await expect(
+				page.getByRole("heading", { name: "Result", exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("tabpanel", { name: "Result", exact: true }),
+			).toContainText("exec-01");
+			await expect(
+				page.getByRole("tabpanel", { name: "Result", exact: true }),
+			).toContainText(workflowMarker);
 
-		await page.getByRole("tab", { name: "Input", exact: true }).click();
-		await expect(
-			page.getByRole("tabpanel", { name: "Input", exact: true }),
-		).toContainText("exec-01");
+			await page.getByRole("tab", { name: "Input", exact: true }).click();
+			await expect(
+				page.getByRole("tabpanel", { name: "Input", exact: true }),
+			).toContainText("exec-01");
 
-		await page.getByRole("tab", { name: "Logs", exact: true }).click();
-		await expect(
-			page.getByRole("region", { name: "Execution log messages" }),
-		).toContainText("execution acceptance output exec-01");
+			await page.getByRole("tab", { name: "Logs", exact: true }).click();
+			await expect(
+				page.getByRole("region", { name: "Execution log messages" }),
+			).toContainText("execution acceptance output exec-01");
 
-		await page.getByRole("button", { name: "Back to history" }).click();
-		await page.waitForURL(/\/history$/);
-		const historyRow = page.getByRole("row").filter({
-			has: page
-				.getByRole("link", { name: workflowFunction, exact: true })
-				.and(page.locator(`a[href="/history/${executionId}"]`)),
-		});
-		await expect(historyRow).toBeVisible({ timeout: 10_000 });
-		await expect(
-			historyRow.getByText("Completed", { exact: true }),
-		).toBeVisible();
+			await page.getByRole("button", { name: "Back to history" }).click();
+			await page.waitForURL(/\/history$/);
+			const historyRow = page.getByRole("row").filter({
+				has: page
+					.getByRole("link", { name: workflowFunction, exact: true })
+					.and(page.locator(`a[href="/history/${executionId}"]`)),
+			});
+			await expect(historyRow).toBeVisible({ timeout: 10_000 });
+			await expect(
+				historyRow.getByText("Completed", { exact: true }),
+			).toBeVisible();
 
-		await page.goBack();
-		await page.waitForURL(new RegExp(`/history/${executionId}$`));
-		await expect(
-			page.getByRole("heading", { level: 1, name: workflowFunction }),
-		).toBeVisible({ timeout: 10_000 });
-		await expect(
-			page.getByText("Completed", { exact: true }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("tabpanel", { name: "Result", exact: true }),
-		).toContainText("exec-01");
-	});
+			await page.goBack();
+			await page.waitForURL(new RegExp(`/history/${executionId}$`));
+			await expect(
+				page.getByRole("heading", { level: 1, name: workflowFunction }),
+			).toBeVisible({ timeout: 10_000 });
+			await expect(
+				page.getByText("Completed", { exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("tabpanel", { name: "Result", exact: true }),
+			).toContainText("exec-01");
+		},
+	);
 
 	test("[EXEC-04 desktop] History log row opens drawer with Result/Input/Logs and full-page link for the same execution", async ({
 		page,
@@ -416,48 +423,53 @@ test.describe("Execution History", () => {
 		).toContainText("exec-04");
 	});
 
-	test("[EXEC-02 desktop] actual rerun creates a new execution with the expected output", async ({
-		page,
-		api,
-	}) => {
-		const originalExecutionId = await startExecution(api, workflowId, {
-			message: "exec-02",
-		});
-		await waitForTerminalSuccess(api, originalExecutionId);
+	test(
+		"[EXEC-02 desktop] actual rerun creates a new execution with the expected output",
+		{ tag: "@smoke" },
+		async ({ page, api }) => {
+			const originalExecutionId = await startExecution(api, workflowId, {
+				message: "exec-02",
+			});
+			await waitForTerminalSuccess(api, originalExecutionId);
 
-		await page.setViewportSize({ width: 1440, height: 900 });
-		await openExecutionDetail(page, originalExecutionId);
-		await page.getByRole("button", { name: "Rerun", exact: true }).click();
-		await expect(
-			page.getByRole("alertdialog", { name: "Rerun Workflow?" }),
-		).toBeVisible();
-		await page.getByRole("button", { name: "Yes, rerun workflow" }).click();
+			await page.setViewportSize({ width: 1440, height: 900 });
+			await openExecutionDetail(page, originalExecutionId);
+			await page
+				.getByRole("button", { name: "Rerun", exact: true })
+				.click();
+			await expect(
+				page.getByRole("alertdialog", { name: "Rerun Workflow?" }),
+			).toBeVisible();
+			await page
+				.getByRole("button", { name: "Yes, rerun workflow" })
+				.click();
 
-		await expect(page).toHaveURL(
-			(url) =>
-				/\/history\/[0-9a-f-]{36}$/.test(url.pathname) &&
-				!url.pathname.endsWith(originalExecutionId),
-			{ timeout: 10_000 },
-		);
-		const rerunExecutionId = page
-			.url()
-			.match(/\/history\/([0-9a-f-]{36})$/)?.[1];
-		expect(rerunExecutionId).toBeTruthy();
-		expect(rerunExecutionId).not.toBe(originalExecutionId);
+			await expect(page).toHaveURL(
+				(url) =>
+					/\/history\/[0-9a-f-]{36}$/.test(url.pathname) &&
+					!url.pathname.endsWith(originalExecutionId),
+				{ timeout: 10_000 },
+			);
+			const rerunExecutionId = page
+				.url()
+				.match(/\/history\/([0-9a-f-]{36})$/)?.[1];
+			expect(rerunExecutionId).toBeTruthy();
+			expect(rerunExecutionId).not.toBe(originalExecutionId);
 
-		await waitForTerminalSuccess(api, rerunExecutionId!);
-		await page.reload();
-		await openExecutionDetail(page, rerunExecutionId!);
-		await expect(
-			page.getByText("Completed", { exact: true }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("tabpanel", { name: "Result", exact: true }),
-		).toContainText("exec-02");
-		await expect(
-			page.getByRole("tabpanel", { name: "Result", exact: true }),
-		).toContainText(workflowMarker);
-	});
+			await waitForTerminalSuccess(api, rerunExecutionId!);
+			await page.reload();
+			await openExecutionDetail(page, rerunExecutionId!);
+			await expect(
+				page.getByText("Completed", { exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("tabpanel", { name: "Result", exact: true }),
+			).toContainText("exec-02");
+			await expect(
+				page.getByRole("tabpanel", { name: "Result", exact: true }),
+			).toContainText(workflowMarker);
+		},
+	);
 
 	test("[EXEC-03 mobile] cancellation of a running execution reaches a cancelled state", async ({
 		page,

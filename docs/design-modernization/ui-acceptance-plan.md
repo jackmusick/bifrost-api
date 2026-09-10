@@ -234,10 +234,9 @@ Keep the existing infrastructure:
 - Keep zero retries. Investigate failed runs with trace/video/screenshots and
   service logs; fix the product or test isolation rather than retry for green.
 
-This is several bounded implementation batches, not a one-afternoon test-count
-increase. Estimate subsequent batches using the first batch's measured test
-runtime, fixture effort and product defects discovered. Seeding review data is
-only one part of the work.
+Estimate subsequent batches using measured test runtime, fixture effort and
+product defects discovered. Seeding review data is only one part of the work;
+file counts alone are not a useful estimate.
 
 ## Report the user should receive
 

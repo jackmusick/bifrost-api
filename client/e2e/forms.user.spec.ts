@@ -346,16 +346,18 @@ test.describe("Form Acceptance for Org Users", () => {
 		await adminApi.dispose();
 	});
 
-	test("[FORM-01 desktop] member submits assigned form and sees workflow result", async ({
-		page,
-	}) => {
-		await submitAssignedFormAndVerifyResult(
-			page,
-			adminApi,
-			"desktop",
-			assignedFormId,
-		);
-	});
+	test(
+		"[FORM-01 desktop] member submits assigned form and sees workflow result",
+		{ tag: "@smoke" },
+		async ({ page }) => {
+			await submitAssignedFormAndVerifyResult(
+				page,
+				adminApi,
+				"desktop",
+				assignedFormId,
+			);
+		},
+	);
 
 	test("[FORM-01 mobile] member submits assigned form and sees workflow result", async ({
 		page,

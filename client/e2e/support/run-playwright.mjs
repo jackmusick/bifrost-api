@@ -1,6 +1,6 @@
 import http from "node:http";
 import net from "node:net";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { buildReport, markdown, validateLedger } from "./acceptance-report.mjs";
 import {
@@ -76,6 +76,19 @@ function createLocalOrigin(port) {
 		server.listen(port, "127.0.0.1", () => resolve(server));
 	});
 }
+
+// Run these fast checks in the same Node/container environment as browser CI.
+// This keeps report joins and worker-asset delivery covered by the existing gate.
+const harnessChecks = spawnSync(
+	process.execPath,
+	[
+		"--test",
+		"e2e/support/acceptance-report.test.mjs",
+		"e2e/support/monaco-assets.test.mjs",
+	],
+	{ stdio: "inherit" },
+);
+if (harnessChecks.status !== 0) process.exit(harnessChecks.status ?? 1);
 
 const servers = await Promise.all(localOrigins.map(createLocalOrigin));
 const runStartedAt = Date.now();
