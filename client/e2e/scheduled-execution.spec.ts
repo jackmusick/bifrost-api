@@ -20,7 +20,8 @@
  * platform_admin.
  */
 
-import { test, expect, type Page } from "./fixtures/api-fixture";
+import { test, expect } from "./fixtures/api-fixture";
+import type { Page } from "@playwright/test";
 
 // Unique suffix keeps workflow names distinct across parallel worktrees and
 // re-runs, so stale `Scheduled` rows from previous runs can't collide with a

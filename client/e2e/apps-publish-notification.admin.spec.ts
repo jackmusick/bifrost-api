@@ -36,10 +36,10 @@ test.describe("Application publish notifications", () => {
 		await expect(page.getByText("Application publish queued")).toBeVisible();
 
 		await page.getByRole("button", { name: "Notifications" }).click();
-		const notification = page
-			.getByText(`Publishing ${APP_NAME}`, { exact: true })
-			.first()
-			.locator("..");
+		const notification = page.getByRole("article", {
+			name: `Publishing ${APP_NAME}`,
+			exact: true,
+		});
 		await expect(notification).toBeVisible();
 		await expect(
 			notification.getByText("Completed", { exact: true }),

@@ -78,10 +78,10 @@ Concrete UI actions to accept:
 
 Existing evidence:
 
-- Real backend browser: `client/e2e/chat-attachments.admin.spec.ts` — `uploads a file with the selected profile and previews it`; `browses the persistent artifact library`. This covers upload and artifact browsing in the rendered app.
+- Intercepted browser UI: `client/e2e/chat-attachments.admin.spec.ts` — `uploads a file with the selected profile and previews it`; `browses the persistent artifact library`. The upload goes through the real attachment endpoint, but model profiles, chat runs/state, websocket responses, and artifact-library responses are intercepted. This proves UI wiring, not durable conversation or artifact-library persistence.
 - Real backend browser through another route: `client/e2e/agents-start-chat.admin.spec.ts` — `Start chat button creates a conversation and navigates to /chat` proves the agent detail start-chat handoff reaches Chat.
 - Component/mocked API: `client/src/pages/Chat.test.tsx`, `client/src/pages/ChatArtifacts.test.tsx`, `client/src/components/chat/*.test.tsx`, `client/src/services/chatAttachments.test.ts`, `client/src/services/chatModels.test.ts`, `client/src/services/chatRuns.test.ts`, `client/src/hooks/useChatStream.test.tsx`, `client/src/lib/chat-runtime.test.ts`, `client/src/lib/chat-utils.test.ts`, and `client/src/stores/chatStore.test.ts` cover local chat/composer/store/streaming behavior.
-- Backend/API: `api/tests/e2e/api/test_chat.py` includes `test_chat_agent` and `test_conversation`; `api/tests/e2e/api/test_agent_workflow_tool_execution.py` includes `test_chat_handler_executes_global_agent_workflow_in_caller_org`.
+- Backend/API: `api/tests/e2e/api/test_chat.py` includes conversation create/list/get/delete and attachment/artifact authorization tests; `api/tests/e2e/api/test_agent_workflow_tool_execution.py` includes `test_chat_handler_executes_global_agent_workflow_in_caller_org`.
 - Design ledger: `docs/design-modernization/chat-review.md` records composer/header/artifact evidence and brand-new conversation transition.
 
 Explicit gaps:
