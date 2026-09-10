@@ -17,9 +17,10 @@ export default defineConfig({
 		include: ["src/**/*.test.{ts,tsx}"],
 		// Exclude Playwright e2e specs so they don't accidentally run here
 		exclude: ["e2e/**", "node_modules/**", "dist/**"],
-		// happy-dom suites are CPU-heavy; leave capacity for each worker so
-		// interaction tests do not lose their entire timeout to contention.
-		maxWorkers: "50%",
+		// happy-dom suites are CPU-heavy, and this repository commonly runs
+		// several worktree test stacks at once. Keep an absolute cap so larger
+		// hosts do not turn that shared load into interaction-test timeouts.
+		maxWorkers: 2,
 		css: false,
 	},
 });

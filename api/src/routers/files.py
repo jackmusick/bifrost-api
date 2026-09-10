@@ -2276,6 +2276,11 @@ async def delete_file_editor(
             # Single file delete
             await storage.delete_file(path)
 
+        # File deletion also deactivates indexed entities. Commit those side
+        # effects before returning so a subsequent request cannot observe the
+        # deleted file's workflow, form, or agent as still active.
+        await db.commit()
+
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except FileNotFoundError:

@@ -23,9 +23,11 @@ Columns per row:
   rss_kb                  — /proc/1/status VmRSS (resident set size)
   vmpeak_kb               — /proc/1/status VmPeak (high-water mark)
   cgroup_bytes            — memory.current (what K8s OOM killer sees)
+  working_set_bytes       — anon + active_file (kubelet working-set proxy)
   anon_bytes              — memory.stat anon (anonymous pages, counts against limit)
   inactive_anon_bytes     — memory.stat inactive_anon (arena cache territory)
   active_anon_bytes       — memory.stat active_anon (in-use anonymous)
+  active_file_bytes       — memory.stat active_file (working file cache)
   heap_bytes              — sum of /proc/1/maps [heap] regions
   anon_mapping_bytes      — sum of /proc/1/maps anonymous regions (virtual)
   anon_mapping_count      — count of anon mappings (arena count proxy)
@@ -33,10 +35,12 @@ Columns per row:
 Heap/map fields are more expensive to read than /proc/1/status so they
 sample less often (every Nth tick, controlled by --maps-every).
 """
+
 from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import signal
 import subprocess
 import sys
@@ -74,7 +78,7 @@ def _read_cgroup():
                 break
         except OSError:
             continue
-    anon = inactive = active = 0
+    anon = inactive = active = active_file = 0
     for p in ('/sys/fs/cgroup/memory.stat',
               '/sys/fs/cgroup/memory/memory.stat'):
         try:
@@ -87,10 +91,12 @@ def _read_cgroup():
                         inactive = int(v)
                     elif k == 'active_anon':
                         active = int(v)
+                    elif k == 'active_file':
+                        active_file = int(v)
                 break
         except OSError:
             continue
-    return cur, anon, inactive, active
+    return cur, anon, inactive, active, active_file, anon + active_file
 
 def _read_maps():
     heap = anon_map = 0
@@ -114,12 +120,12 @@ def _read_maps():
     return heap, anon_map, count
 
 rss, vmpeak = _read_status()
-cg, anon, inactive, active = _read_cgroup()
+cg, anon, inactive, active, active_file, working_set = _read_cgroup()
 if os.environ.get('SAMPLE_MAPS') == '1':
     heap, amap, acount = _read_maps()
 else:
     heap = amap = acount = -1
-print(f'{rss},{vmpeak},{cg},{anon},{inactive},{active},{heap},{amap},{acount}')
+print(f'{rss},{vmpeak},{cg},{working_set},{anon},{inactive},{active},{active_file},{heap},{amap},{acount}')
 """
 
 
@@ -153,26 +159,28 @@ def _parse_args() -> argparse.Namespace:
 
 def _detect_container() -> str:
     """Find the test api container for the current worktree."""
-    # Same project-name derivation as test.sh: hash of worktree path.
+    # Same project-name derivation as test.sh: hash of the absolute worktree
+    # root. Selecting the first running test API can silently sample a different
+    # worktree when several isolated stacks are active.
     try:
+        repo_root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            text=True,
+        ).strip()
         out = subprocess.check_output(
             ["docker", "ps", "--format", "{{.Names}}"],
             text=True,
         )
     except subprocess.CalledProcessError:
-        sys.exit("Failed to list docker containers")
-    candidates = [n for n in out.splitlines() if n.endswith("-api-1") and "bifrost" in n]
-    if not candidates:
+        sys.exit("Failed to resolve the worktree or list Docker containers")
+    worktree_hash = hashlib.sha256(repo_root.encode()).hexdigest()[:8]
+    expected = f"bifrost-test-{worktree_hash}-api-1"
+    if expected not in out.splitlines():
         sys.exit(
-            "No bifrost api container found running. Start one with "
-            "`./test.sh stack up` or `./debug.sh` and pass --container."
+            f"No API container found for this worktree ({expected}). Start it "
+            "with `./test.sh stack up` or pass --container explicitly."
         )
-    # Prefer the bifrost-test-* one (backend e2e) over the bifrost-dev-*
-    # one, since backend e2e is the more comprehensive surface.
-    test_apis = [c for c in candidates if "-test-" in c]
-    if test_apis:
-        return test_apis[0]
-    return candidates[0]
+    return expected
 
 
 def main() -> int:
@@ -183,8 +191,10 @@ def main() -> int:
 
     print(f"Sampling container: {container}", file=sys.stderr)
     print(f"Writing to: {out_path}", file=sys.stderr)
-    print(f"Interval: {args.interval}s (maps every {args.maps_every} ticks)",
-          file=sys.stderr)
+    print(
+        f"Interval: {args.interval}s (maps every {args.maps_every} ticks)",
+        file=sys.stderr,
+    )
 
     stopping = False
 
@@ -196,9 +206,18 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _stop)
 
     fields = [
-        "ts_unix", "rss_kb", "vmpeak_kb", "cgroup_bytes",
-        "anon_bytes", "inactive_anon_bytes", "active_anon_bytes",
-        "heap_bytes", "anon_mapping_bytes", "anon_mapping_count",
+        "ts_unix",
+        "rss_kb",
+        "vmpeak_kb",
+        "cgroup_bytes",
+        "working_set_bytes",
+        "anon_bytes",
+        "inactive_anon_bytes",
+        "active_anon_bytes",
+        "active_file_bytes",
+        "heap_bytes",
+        "anon_mapping_bytes",
+        "anon_mapping_count",
     ]
 
     with out_path.open("w", newline="") as f:
@@ -207,6 +226,7 @@ def main() -> int:
         f.flush()
 
         tick = 0
+        consecutive_probe_failures = 0
         while not stopping:
             tick += 1
             now = time.time()
@@ -214,15 +234,14 @@ def main() -> int:
             env = ["-e", "SAMPLE_MAPS=1"] if sample_maps else []
             try:
                 proc = subprocess.run(
-                    ["docker", "exec", *env, container,
-                     "python3", "-c", _PROBE],
+                    ["docker", "exec", *env, container, "python3", "-c", _PROBE],
                     capture_output=True,
                     text=True,
                     timeout=5,
                 )
             except subprocess.TimeoutExpired:
                 # Container unresponsive — record the gap but keep going.
-                writer.writerow([f"{now:.3f}", -1, -1, -1, -1, -1, -1, -1, -1, -1])
+                writer.writerow([f"{now:.3f}", *([-1] * 11)])
                 f.flush()
                 time.sleep(args.interval)
                 continue
@@ -233,21 +252,30 @@ def main() -> int:
                 # to the new one once it's healthy — so we just record a
                 # gap and retry with a slightly longer sleep.
                 err = proc.stderr.strip()[:200]
-                if "is not running" in err or "No such container" in err:
-                    writer.writerow([f"{now:.3f}", -1, -1, -1, -1, -1, -1, -1, -1, -1])
-                    f.flush()
-                    # Back off to 3x the normal interval during reset —
-                    # typically ~10s before the new container accepts
-                    # exec. Without backoff we spam docker with failing
-                    # calls while the container is coming up.
-                    time.sleep(max(args.interval * 3, 2.0))
-                    continue
-                print(f"docker exec failed (rc={proc.returncode}): {err}",
-                      file=sys.stderr)
-                break
+                writer.writerow([f"{now:.3f}", *([-1] * 11)])
+                f.flush()
+                # Docker can return rc=128 with an empty stderr while Compose
+                # replaces a container. Treat every failed probe as a gap and
+                # reconnect by stable name; the caller controls when sampling
+                # stops and can distinguish a long outage from a memory sample.
+                consecutive_probe_failures += 1
+                if err and consecutive_probe_failures == 1:
+                    print(
+                        f"docker exec gap (rc={proc.returncode}): {err}",
+                        file=sys.stderr,
+                    )
+                time.sleep(max(args.interval * 3, 0.5))
+                continue
+
+            if consecutive_probe_failures:
+                print(
+                    f"docker exec resumed after {consecutive_probe_failures} failed probes",
+                    file=sys.stderr,
+                )
+                consecutive_probe_failures = 0
 
             parts = proc.stdout.strip().split(",")
-            if len(parts) != 9:
+            if len(parts) != 11:
                 print(f"unexpected probe output: {proc.stdout!r}", file=sys.stderr)
                 time.sleep(args.interval)
                 continue
