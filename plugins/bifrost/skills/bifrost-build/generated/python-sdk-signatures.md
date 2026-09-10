@@ -194,6 +194,8 @@ Event publishing operations (async).
 
 
 
+**`tables.bulk_upsert(table: str, documents: list[dict[str, Any]], scope: str | None = None, created_by: str | None = None, updated_by: str | None = None, conflict_retries: int = 2) -> BulkUpsertResult`**
+
 **`tables.count(table: str, where: dict[str, Any] | None = None, scope: str | None = None) -> int`**
 
 **`tables.create(name: str, description: str | None = None, table_schema: dict[str, Any] | None = None, scope: str | None = None, app: str | None = None) -> TableInfo`**
