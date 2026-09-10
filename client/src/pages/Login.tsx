@@ -52,7 +52,8 @@ export function Login() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const applicationName = useApplicationName();
-	const accountMessage = (location.state as { message?: string } | null)?.message;
+	const accountMessage = (location.state as { message?: string } | null)
+		?.message;
 	const {
 		login,
 		loginWithMfa,
@@ -472,7 +473,9 @@ export function Login() {
 					<CardContent>
 						{accountMessage && step === "credentials" && !error && (
 							<Alert role="status" className="mb-4">
-								<AlertDescription>{accountMessage}</AlertDescription>
+								<AlertDescription>
+									{accountMessage}
+								</AlertDescription>
 							</Alert>
 						)}
 						{error && (
@@ -626,13 +629,13 @@ export function Login() {
 										<Input
 											id="mfaCode"
 											type="text"
-											placeholder="Enter 6-digit code"
+											placeholder="Enter 6-digit code or recovery code"
 											value={mfaCode}
 											onChange={(e) =>
 												setMfaCode(e.target.value)
 											}
 											className="h-11 pl-10 font-mono text-center text-lg tracking-widest"
-											maxLength={8}
+											maxLength={9}
 											autoFocus
 										/>
 									</div>

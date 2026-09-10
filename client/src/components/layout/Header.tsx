@@ -198,7 +198,6 @@ export function Header({
 					aria-label="Workspace status"
 				>
 					<HeaderStatusIndicators isPlatformAdmin={isPlatformAdmin} />
-					{mobileHeader && <PasskeySetupBadge />}
 				</div>
 			)}
 		</header>

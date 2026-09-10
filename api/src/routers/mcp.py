@@ -523,7 +523,7 @@ async def list_mcp_tools(
     config_service = MCPConfigService(db)
     config = await config_service.get_config()
 
-    if not config.enabled:
+    if not config.enabled and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="External MCP access is disabled",
@@ -538,6 +538,7 @@ async def list_mcp_tools(
         user_id=current_user.user_id,
         org_id=current_user.organization_id,
         is_external=current_user.is_external,
+        for_configuration=current_user.is_superuser,
     )
 
     # Convert ToolInfo to MCPToolInfo for response

@@ -93,6 +93,8 @@ export interface RepoPrefill {
 	ref?: string | null;
 }
 
+type CreateSolutionIntent = "install" | "update" | "reactivate";
+
 export type CreateEditSolutionMode =
 	| {
 			kind: "create";
@@ -106,7 +108,7 @@ export type CreateEditSolutionMode =
 			/** Prefilled repo fields (a deep link) — implies the repo source. */
 			repo?: RepoPrefill;
 			organizationId?: string | null;
-			intent?: "install" | "update";
+			intent?: CreateSolutionIntent;
 	  }
 	| { kind: "edit"; solution: Solution };
 
@@ -639,13 +641,15 @@ function CreateDispatch({
 	onClose: () => void;
 	onSaved: (solution: Solution) => void;
 }) {
+	const intent = mode.intent ?? "install";
 	const initialSource: "repo" | "zip" | null =
-		mode.source ?? (mode.repo ? "repo" : mode.file ? "zip" : null);
+		intent === "reactivate"
+			? "zip"
+			: (mode.source ?? (mode.repo ? "repo" : mode.file ? "zip" : null));
 	const [source, setSource] = useState<"repo" | "zip" | null>(initialSource);
 
 	const orgId = mode.organizationId ?? null;
 	const lockOrganization = mode.organizationId !== undefined;
-	const intent = mode.intent ?? "install";
 
 	if (source === null) {
 		return <SourcePicker intent={intent} onPick={setSource} />;
@@ -677,7 +681,7 @@ function SourcePicker({
 	intent,
 	onPick,
 }: {
-	intent: "install" | "update";
+	intent: CreateSolutionIntent;
 	onPick: (s: "repo" | "zip") => void;
 }) {
 	const options: {
@@ -708,9 +712,11 @@ function SourcePicker({
 		<>
 			<DialogHeader>
 				<DialogTitle>
-					{intent === "update"
-						? "Update Solution"
-						: "Install Solution"}
+					{intent === "reactivate"
+						? "Reactivate Solution"
+						: intent === "update"
+							? "Update Solution"
+							: "Install Solution"}
 				</DialogTitle>
 				<DialogDescription>
 					Choose where this Solution comes from.
@@ -929,7 +935,7 @@ function CreateBody({
 	initialFile: File | null;
 	initialOrgId: string | null;
 	lockOrganization: boolean;
-	intent: "install" | "update";
+	intent: CreateSolutionIntent;
 	onClose: () => void;
 	onSaved: (solution: Solution) => void;
 }) {
@@ -1025,6 +1031,7 @@ function CreateBody({
 				force,
 				replaceSecrets,
 				password: backupPassword.trim() || undefined,
+				reactivate: intent === "reactivate",
 			});
 		},
 		onSuccess: async (created) => {
@@ -1100,16 +1107,20 @@ function CreateBody({
 				<DialogTitle>
 					{isUpgrade && existingInstall
 						? `Upgrade ${existingInstall.name} v${existingInstall.version ?? "?"} → v${preview?.version ?? "?"}`
-						: intent === "update"
-							? "Update Solution"
-							: "Install Solution"}
+						: intent === "reactivate"
+							? "Reactivate Solution"
+							: intent === "update"
+								? "Update Solution"
+								: "Install Solution"}
 				</DialogTitle>
 				<DialogDescription>
 					{isUpgrade
 						? "This package upgrades an existing install in place. Review the changes below."
-						: intent === "update"
-							? "Choose a package to update this install in place."
-							: "Choose a package and an organization, review what it creates, and set any required configuration values."}
+						: intent === "reactivate"
+							? "Choose the exported package for this inactive install. Confirming reactivates the existing install in place."
+							: intent === "update"
+								? "Choose a package to update this install in place."
+								: "Choose a package and an organization, review what it creates, and set any required configuration values."}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -1334,7 +1345,11 @@ function CreateBody({
 							{installMutation.isPending && (
 								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							)}
-							{isUpgrade ? "Upgrade" : "Install"}
+							{isUpgrade
+								? "Upgrade"
+								: intent === "reactivate"
+									? "Reactivate"
+									: "Install"}
 						</Button>
 					</>
 				)}
@@ -1409,7 +1424,7 @@ function RepoBody({
 	onSaved,
 }: {
 	initialRepo: RepoPrefill | null;
-	intent: "install" | "update";
+	intent: CreateSolutionIntent;
 	onClose: () => void;
 	onSaved: (solution: Solution) => void;
 }) {
@@ -1487,9 +1502,11 @@ function RepoBody({
 				<DialogTitle>
 					{isUpgrade && preview?.existing_install
 						? `Upgrade ${preview.existing_install.name} v${preview.existing_install.version ?? "?"} → v${preview?.version ?? "?"}`
-						: intent === "update"
-							? "Update from repository"
-							: "Install from a repository"}
+						: intent === "reactivate"
+							? "Reactivate from repository"
+							: intent === "update"
+								? "Update from repository"
+								: "Install from a repository"}
 				</DialogTitle>
 				<DialogDescription>
 					Point at a GitHub repository, resolve what it installs, and

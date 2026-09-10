@@ -113,3 +113,18 @@ test("whole-run failures remain visible even when all bound cases pass", () => {
 		/1 expected, 1 unexpected, 2 skipped, 0 flaky/,
 	);
 });
+
+test("rendered evidence distinguishes controlled setup from real platform journeys", () => {
+	const mixed = {
+		...ledger,
+		journeys: [
+			{
+				...ledger.journeys[0],
+				tests: [{ ...binding, proof: "mixed-setup-real-mutation" }],
+			},
+		],
+	};
+	const output = markdown(buildReport(mixed, result()));
+	assert.match(output, /Evidence type/);
+	assert.match(output, /mixed-setup-real-mutation/);
+});

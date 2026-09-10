@@ -85,3 +85,7 @@ The existing legacy-components browser matrix also passed all eight
 published/preview × 320/1440 × light/dark cases after the schema 5 change,
 covering loader/error retry, reduced motion, Dialog, CommandDialog, controlled
 input, Select, tabs and calendar layout.
+
+## Current debug fixture recheck — 2026-09-10
+
+Read-only browser review on the current source-mounted debug stack loaded the real sanitized V1 Portal fixture. Dashboard asserted the fictional ticket `Demo laptop docking issue`; Tickets, Assets and Backups asserted their known fictional ticket/device content. All four populated screens loaded with zero JavaScript page errors. Screenshots remain private under `/tmp/bifrost-final-v1-review/portal-*.png`; no production source or credentials were committed. Parent reviewed populated dashboard and 390px Backups. The inherited fixed 244px sidebar still leaves the mobile content unusably narrow. This is an existing app-owned layout limitation, not a claim of Portal mobile acceptance or every Portal action passing. Earlier transient blank login observations were followed by instrumented successful navigation; no code repair is attributed to those observations.

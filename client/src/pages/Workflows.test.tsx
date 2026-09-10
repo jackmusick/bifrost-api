@@ -55,7 +55,6 @@ vi.mock("@/components/workflows/WorkflowEditDialog", () => ({
 vi.mock("@/components/workflows/OrphanedWorkflowDialog", () => ({
 	OrphanedWorkflowDialog: () => null,
 }));
-vi.mock("@/components/search/SearchBox", () => ({ SearchBox: () => null }));
 vi.mock("@/components/forms/OrganizationSelect", () => ({
 	OrganizationSelect: () => null,
 }));
@@ -316,4 +315,16 @@ it("opens metadata for the selected workflow ID when names repeat", async () => 
 	await user.click(screen.getByRole("button", { name: "sync_tickets actions" }));
 	await user.click(screen.getByRole("menuitem", { name: "Open in editor" }));
 	expect(mockReadFile).toHaveBeenCalledWith("selected.py");
+});
+
+
+it("finds the edited display name and excludes unrelated workflows", async () => {
+ mockUseWorkflowsFiltered.mockReturnValue({
+  data: [makeWorkflow({ display_name: "Customer onboarding" }), makeWorkflow({ id: "wf-2", name: "archive_logs", display_name: "Archive logs" })],
+  isLoading: false, refetch: vi.fn(),
+ });
+ const { user } = await renderPage();
+ await user.type(screen.getByRole("textbox", { name: "Search by name, description, or category..." }), "Customer onboarding");
+ await vi.waitFor(() => expect(screen.queryByRole("button", { name: "archive_logs actions" })).not.toBeInTheDocument());
+ expect(screen.getByRole("button", { name: "sync_tickets actions" })).toBeInTheDocument();
 });

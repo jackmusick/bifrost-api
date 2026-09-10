@@ -240,3 +240,8 @@ describe("ChatMessage — assistant messages", () => {
 	});
 
 });
+
+ it("exposes assistant content separately from conversation navigation", () => {
+  renderWithProviders(<ChatMessage message={makeMessage({ content: "ok" })} />);
+  expect(screen.getByRole("article", { name: "Assistant message" })).toHaveTextContent("ok");
+ });

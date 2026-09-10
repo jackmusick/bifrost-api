@@ -5,17 +5,36 @@ test("integration cards preserve descriptions, uploaded logos and table navigati
 	api,
 }) => {
 	const name = `Integration visual review ${Date.now()}`;
-	const created = await api.post("/api/integrations", {
-		data: {
-			name,
-			description: "Customer directory connection",
-			config_schema: [],
-		},
-	});
-	expect(created.ok()).toBe(true);
-	const { id } = (await created.json()) as { id: string };
+	let id: string | undefined;
 	try {
 		await page.goto("/integrations");
+		await page
+			.getByRole("button", { name: "Create integration", exact: true })
+			.first()
+			.click();
+		const createDialog = page.getByRole("dialog", {
+			name: "Create Integration",
+			exact: true,
+		});
+		await createDialog
+			.getByLabel("Integration Name", { exact: false })
+			.fill(name);
+		await createDialog
+			.getByLabel("Description", { exact: true })
+			.fill("Customer directory connection");
+		const createdPromise = page.waitForResponse(
+			(response) =>
+				response.request().method() === "POST" &&
+				new URL(response.url()).pathname === "/api/integrations",
+		);
+		await createDialog
+			.getByRole("button", { name: "Create Integration", exact: true })
+			.click();
+		const created = await createdPromise;
+		expect(created.ok()).toBe(true);
+		id = (await created.json()).id;
+		await expect(createDialog).toBeHidden();
+
 		await page
 			.getByRole("button", { name: `${name} actions`, exact: true })
 			.click();
@@ -94,7 +113,30 @@ test("integration cards preserve descriptions, uploaded logos and table navigati
 		await expect(page.getByRole("table")).toBeVisible();
 		await page.getByRole("link", { name, exact: true }).click();
 		await expect(page).toHaveURL(new RegExp(`/integrations/${id}$`));
+		await page.goto("/integrations");
+		await page
+			.getByRole("button", { name: `${name} actions`, exact: true })
+			.click();
+		await page
+			.getByRole("menuitem", { name: "Delete", exact: true })
+			.click();
+		const confirmation = page.getByRole("alertdialog", {
+			name: "Delete Integration",
+			exact: true,
+		});
+		await confirmation
+			.getByRole("button", { name: "Delete Integration", exact: true })
+			.click();
+		await expect(confirmation).toBeHidden();
+		await page.reload();
+		await expect(
+			page.getByRole("button", { name: `${name} actions`, exact: true }),
+		).toBeHidden();
+		expect((await api.get(`/api/integrations/${id}`)).status()).toBe(404);
 	} finally {
-		expect((await api.delete(`/api/integrations/${id}`)).ok()).toBe(true);
+		if (id)
+			expect([200, 204, 404]).toContain(
+				(await api.delete(`/api/integrations/${id}`)).status(),
+			);
 	}
 });

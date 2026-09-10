@@ -394,6 +394,7 @@ client_ci_checks() {
 }
 
 repository_ci_checks() {
+    bash scripts/lib/test_stack_lock_test.sh
     echo "Checking GitHub Action pins..."
     python3 api/scripts/check_github_action_pins.py --verify-versions
 
@@ -603,6 +604,22 @@ cmd_pre_pr() {
 # =============================================================================
 # Dispatch
 # =============================================================================
+
+# All stack-mutating commands share one lock, including Playwright and lifecycle
+# resets. Pytest's inner runner lock alone cannot prevent a browser run resetting
+# its database, or two browser runs replacing each other's API containers.
+case "${1:-}:${2:-}" in
+    help:*|-h:*|--help:*|stack:status|client:unit) ;;
+    *)
+        exec {test_command_lock_fd}>"$LOG_DIR/test-stack.lock"
+        if ! flock -n "$test_command_lock_fd"; then
+            echo "ERROR: another test command owns this worktree's test stack." >&2
+            echo "Wait for it to finish before starting tests or changing the stack." >&2
+            exit 1
+        fi
+        ;;
+esac
+
 
 if [ $# -eq 0 ]; then
     cmd_unit

@@ -105,3 +105,148 @@ Four more original failures have targeted repairs; full-suite revalidation remai
 ```
 
 Client source TypeScript, changed-browser-spec TypeScript and scoped ESLint passed. These results close targeted repairs for nine of the original 22 failing cases across the first two subsets; 13 original failures and the serial-dependent skipped case still require repair/verification. Additional inventory gaps remain separate from these historical nightly failures.
+
+## Third repair iteration and runner isolation
+
+A consolidated 28-test iteration selected agent detail, logos, memory, policy/mapping, solution files, users, scheduling and the new real-chat journey. It finished with **20 passed, 7 failed, 1 serial-dependent test not run**, zero retries. Log: `/tmp/bifrost-nightly-repairs-fourth.log`.
+
+New passing historical repairs in that run: delegated activity navigation/mobile expansion, Overview bounded scrolling, app and agent logo upload/list rendering, memory settings/instructions plus real MCP memory save/remove, table policy reference insertion, solution-scoped Files navigation, and workflow scheduling from the execution form. The logo tests now name their list-row assertions accurately. The solution Files journey also opens the seeded folder and verifies its file, rather than merely finding a browser container.
+
+Five original nightly failures remained after these targeted passes: agent run-list short-height layout, per-mapping OAuth, policy manager, file policy reference, and invitation registration. The dependent OAuth popup case remains unverified. This iteration also exposed an unanchored Create-user selector matching the Created column and a missing streaming protocol in the local AI fixture used by the new chat test. Subsequent fixes are not counted as passing until their next run finishes.
+
+An earlier attempt (`/tmp/bifrost-nightly-repairs-third.log`) failed in setup with `ENOTFOUND api`, before its 20 product tests ran: an overlapping agent test command reset the same Docker stack. The conflicting runner was stopped. `test.sh` now acquires a shared stack lock before dispatch for browser, backend, lifecycle, quality and pre-PR commands; read-only status/help and host-only client unit tests remain available. `scripts/lib/test_stack_lock_test.sh` proves conflicting browser/backend/reset/pre-PR commands fail before mutating the stack, and the pre-PR repository checks include it. The existing pytest orphan-runner guard is retained.
+
+The app-logo callback now invalidates list/detail/Home logo metadata, because a cached `logo_url: null` suppresses the image endpoint even after a version bump. A component test verifies actual query invalidation while preserving an unsaved settings draft. The latest component run passed 30 tests across AppInfoDialog, AgentRunsTab and AgentDetailPage. The local AI fixture's JSON and SSE protocol checks passed two backend unit tests; real chat still needs its browser result.
+
+### Targeted repair closure and new persisted journeys
+
+Fifth iteration: **18 passed, 5 failed, zero skipped**, including repaired
+agent short-height scrolling, invitation registration and both per-mapping OAuth
+cases. Sixth iteration: **4 passed, 3 failed, zero skipped**, including both policy
+reference cases and the complete workflow API-key lifecycle.
+
+The eighth iteration (`/tmp/bifrost-acceptance-eighth.log`) selected the remaining
+policy manager case and the new chat/document journeys: **4 passed**, including
+setup; zero failures, skips or retries. The seventh run first established that
+real document creation worked, but exposed duplicate assertions across hidden
+card/table layouts and conversation previews. The corrected tests select table
+cells and a named assistant-message article, and match the built-in badge exactly.
+Document JSON is pasted through the browser clipboard into the labelled Monaco
+textbox, avoiding synthetic typing that inserted an extra closing brace.
+
+All 22 original nightly failures now have subsequent targeted passing evidence.
+This does not certify the combined suite or final candidate. The new local-provider
+chat, table/document lifecycle and workflow-key lifecycle are bound in the ledger
+(26 journeys total); `inventoryComplete` remains false. Parent reviewed the final
+chat screenshot: persisted user/assistant text and composer are visible without
+clipping at 1280×720. This is desktop chat evidence, not a mobile sign-off.
+
+The assistant-message component passed its targeted tests. New MCP settings unit
+coverage initially had two assertion failures and remains under repair. Account
+passkey, MCP settings, branding UI persistence and operational reports are pending
+parent execution; authored tests are not counted as passing coverage.
+
+### Settings and resources acceptance iteration
+
+`/tmp/bifrost-settings-resources-second.log`: **4 passed, 3 failed, zero skipped**
+(including setup). Passkey registration/reload/removal uses a test-owned account,
+Chromium virtual authenticator, real WebAuthn verification and persisted credential
+queries. Entity Management assigns/reassigns/unassigns a selected app and verifies
+an unselected app stays global. Both are now ledger-bound (28 journeys).
+
+Branding's actual UI color/terminology save/reload/reset also passed. Parent
+reviewed its desktop screenshot and the Entity Management screenshot. Branding
+showed a blue action despite the reset preview; this may be an unfinished color
+transition. A new assertion now requires the actual
+primary action to settle to the default theme color after reset. That strengthened
+assertion is pending, so this journey is not yet added to the ledger.
+
+Knowledge created its document (201 plus visible saved row), but Playwright's
+response-body capture did not finish; the revised test verifies persisted content
+through a separate API read. MCP fixture creation incorrectly used a nonexistent
+`mcp` agent channel and has been corrected to `chat`. Reports seeded a real
+execution and chat usage, then failed on the obsolete chart title “Executions Over
+Time”; the current control is the Execution time-window selector. These repairs
+remain pending browser verification.
+
+The MCP settings picker also exposed a product defect: admin configuration used
+the globally filtered runtime inventory. Its REST inventory now allows platform
+admins to inspect blocked tools and configure while MCP is disabled. Runtime
+callers retain filtering, including superusers outside configuration mode; a
+non-admin cannot request this bypass. All **33 tool-access unit tests** and **4
+settings-router boundary tests** passed. Live settings acceptance is still pending.
+
+New page-level units passed: MCP **4**, Usage Reports **3**, GitHub **3**. GitHub's
+browser journey is explicitly intercepted at `/api/github/*`; no live GitHub
+configuration or provider authentication is claimed. Source TypeScript/scoped
+frontend lint and strict TypeScript for the current settings/resource specs passed.
+
+### Settings/resource third run
+
+`/tmp/bifrost-settings-resources-third.log`: **5 passed, 5 failed, zero skipped**
+(including setup). Branding now also proves the actual primary action settles to
+the default color after reset; the earlier blue screenshot was transient. Files
+proves downloaded bytes and deletion, Home catalog proves app/form launch and
+search/type/org filtering, and SSO proves provider configuration/edit/removal and
+preferred-provider persistence without an external login. These four journeys are
+now bound: **32 ledger journeys**, with inventory completion still false.
+
+The remaining failures were an obsolete GitHub heading role, Knowledge rich-text
+paragraph serialization compared byte-for-byte against input, MCP Connect also
+matching Disconnect, MCP tool-description text matching another tool's identifier,
+and the dashboard time window being a radio control rather than a combobox. The
+fourth run verifies those corrected contracts and the new collection-authority
+journey. No new passes are assumed before that run completes.
+
+API Pyright/Ruff passed after the MCP inventory and fixture changes: zero errors
+or warnings. Local provider fixture unit tests passed **7/7**, including OAuth
+code exchange, refresh compatibility and existing chat response behavior.
+
+Files scope correction: the current explorer does not offer rename/move controls.
+The launch inventory's rename/move requirement is not a supported current UI action;
+API/editor rename contracts remain separately tested. The new explorer journey
+covers its actual download/delete actions without inventing new UI capabilities.
+
+### Settings/resources fifth iteration
+
+`/tmp/bifrost-settings-resources-fifth.log`: 5 passed (including setup), 3 failed. Knowledge document CRUD, Home collection ownership/access, populated operational reports, and GitHub settings with intercepted external responses passed. The ledger now binds 36 journeys; inventory remains incomplete. Remaining failures: MCP OAuth callback used stale API public URL, MCP picker exit animation left duplicate options during the next selection, and workflow metadata test attempted an unsupported GET-by-ID route. Repairs use Compose reconciliation, waiting for the dismissed picker, and the supported workflow inventory endpoint. No final full-suite claim.
+
+### Settings/resources sixth iteration
+
+`/tmp/bifrost-settings-resources-sixth.log`: all 4 tests passed including setup. Real MCP personal OAuth callback and disconnect, MCP settings save/reload/reset/restore, and workflow metadata persistence/search/navigation passed. API container reconciliation applied the test-only public URL; the previous browser run had retained its old environment. Ledger: 39 journeys with targeted passing evidence, not a full candidate gate.
+
+### Agent review persistence
+
+`/tmp/bifrost-agent-review-acceptance-first.log`: 2 passed including setup. A completed run from the local model fixture is flagged through the API; the real UI saves a review note, reloads it, marks the run good, verifies persisted verdict/note and an empty review queue after reload. This replaces the previous empty-queue smoke. Ledger now binds 40 targeted passing journeys.
+
+### V1 included controls matrix
+
+`/tmp/bifrost-v1-controls-first.log`: 6 passed including setup, existing real workflow/navigation journey, and four new viewport/theme cases. Each controls case exercises preview and published runtime with checkbox state, select state, dialog open/close and viewport bounds, bare-child CommandDialog selection, tab switching and table cells. At 320px no document horizontal overflow. Parent reviewed the mobile dark screenshot. Ledger: 41 targeted passing journeys (a matrix remains one journey). Backfill component validation: 18 passed in `/tmp/bifrost-backfill-component-validation.log`.
+
+### Resource management first iteration
+
+`/tmp/bifrost-resource-management-first.log`: 2 passed including setup, 2 failed. Integration create/edit/logo/card-selection/table-navigation/delete passed with API deletion and reload verification; ledger now binds 42 targeted passing journeys. Event source and MCP connection records were persisted, but ambiguous subscription button and obsolete organization-count assertions failed. Corrected selectors are under validation with solution lifecycle in `/tmp/bifrost-resource-management-second.log`; no passing claim yet.
+
+### Resource management third iteration
+
+`/tmp/bifrost-resource-management-third.log`: 2 passed including setup, 3 failed. Event source create/subscription/edit/reload/deactivate/delete passed; ledger now 43 targeted passing journeys. MCP matched global update text via an inexact Available locator. Workspace editor expected a bare filename although the current workspace tree includes scope in the accessible name; obsolete unsaved-label assertions also removed after source review. Solution Reactivate exposed a product contract defect: zip install omitted required reactivate query flag and returned inactive_install_exists. Product repair is in progress, not waived or hidden by a test change. Current fourth run excludes solution until that repair and includes new chat-instructions/pricing journeys.
+
+### Management/settings fourth iteration
+
+`/tmp/bifrost-management-settings-fourth.log`: 2 passed including setup, 3 failed. Chat instructions UI save/API persistence/reload passed with original prompt restoration; ledger 44 targeted passing journeys. Pricing fixture expected six decimals against existing Numeric(10,4) storage; adjusted to four-decimal exact values. MCP delete succeeded but final heading matched No MCP servers as well; exact heading now used. Global editor uses one unnamed Monaco model rather than app-editor path identities; test now observes that actual contract and still verifies both named files through API/reload. Solution reactivation fix passes 101 focused service/component/page tests and is selected for the fifth browser batch, along with the connected fixture idempotence/form journey.
+
+### Management batch fifth iteration
+
+`/tmp/bifrost-ui-acceptance-iterations/management-fifth.json`: 4 passed including setup, 2 failed. MCP management, AI pricing, and global workspace editor now have passing real-platform UI/API/reload evidence. Ledger: 47 journeys. Review-pack seed exposed invalid Python identifiers from hyphenated namespaces; solution reactivation still remains inactive and is under investigation. These are not passing evidence; full nightly and clean-candidate pre-PR remain pending.
+
+### Connected review and solution lifecycle closure
+
+Seventh management run: 3 passed including setup, 1 failed. Solution uninstall/reactivate/delete and the idempotent connected review pack now pass real-platform UI/API/reload evidence. The pack proves Home form -> integration mapping -> workflow result and webhook -> event delivery -> history result. Ledger: 49 journeys. MCP catalog retrieval works; the browser assertion incorrectly expected description on the public catalog DTO, which exposes schema/name/state but no description. The corrected case is running with form structure, account onboarding, and tuning apply. Protocol unit regression: 11 passed. Maintenance and Config page tests: 13 passed. No final candidate gates have passed yet.
+
+### Eighth/ninth closure runs
+
+`closure-eighth.json`: MCP catalog and mixed tuning Apply passed; the latter controls proposal/list responses but persists Apply through the real backend. `account-role-ninth.json`: password settings change and independent new-password sign-in passed; existing role-user assignment also passed. Ledger: 52 journeys. Account recovery sign-in exposed Login maxlength truncating formatted recovery codes. Role-form assignment needs browser response-status assertion instead of eagerly reading a discarded response body. Forms deletion fixture was invalid because the deleted field remained a required workflow input; valid target workflow fixture is now in place. No timeout/retry increases.
+
+### Targeted closure complete
+
+`final-closure-tenth.json`: 6 passed including setup, 1 failed (form deactivation expectation). `form-final-eleventh.json`: 2 passed including setup; the form remains visible as Disabled after deactivation, verified after reload. Ledger: 56 targeted passing journeys. Login recovery-code length and mobile header passkey prompt were repaired with component regressions. Public debug form/webhook execution and Home/execution 1440px/390px screenshots passed review. Source client tsc/lint and strict changed-e2e tsc passed; API quality passed with zero errors/warnings. Full candidate nightly and clean pre-PR gates remain required.

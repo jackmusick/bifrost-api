@@ -31,6 +31,7 @@ import {
 	publishAppAndWait,
 } from "./fixtures/api-fixture";
 import type { Page } from "@playwright/test";
+import { LEGACY_CONTROLS_TSX } from "./fixtures/legacy-controls";
 
 const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 const APP_SLUG = `e2e-migrate-${UNIQUE}`;
@@ -58,6 +59,7 @@ const LEGACY_LAYOUT_TSX = `export default function Layout() {
 // referenced in JSX, NOT imported).
 const LEGACY_INDEX_TSX = `import { useState } from "react";
 import { Link, Badge, Button, Input, Label, useWorkflowMutation } from "bifrost";
+import LegacyControls from "../components/LegacyControls";
 export default function Home() {
 	const [message, setMessage] = useState("");
 	const { execute, data, isLoading, errorMessage } = useWorkflowMutation("__WORKFLOW_ID__");
@@ -72,6 +74,7 @@ export default function Home() {
 			<output aria-label="Workflow result">{data?.message}</output>
 			{errorMessage && <p role="alert">{errorMessage}</p>}
 			<Link to="/other" data-testid="to-other">Go to Other</Link>
+            <LegacyControls />
 		</div>
 	);
 }
@@ -156,6 +159,10 @@ test.describe("Apps Preview — auto-migration", () => {
 		for (const [relPath, source] of [
 			[`apps/${APP_SLUG}/_layout.tsx`, LEGACY_LAYOUT_TSX],
 			[`apps/${APP_SLUG}/components/DemoWidget.tsx`, DEMO_WIDGET_TSX],
+			[
+				`apps/${APP_SLUG}/components/LegacyControls.tsx`,
+				LEGACY_CONTROLS_TSX,
+			],
 			[
 				`apps/${APP_SLUG}/pages/index.tsx`,
 				LEGACY_INDEX_TSX.replace("__WORKFLOW_ID__", workflow.id),
@@ -287,4 +294,91 @@ test.describe("Apps Preview — auto-migration", () => {
 			expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);
 		},
 	);
+	for (const viewport of [
+		{ name: "desktop", width: 1440, height: 1000 },
+		{ name: "mobile", width: 320, height: 812 },
+	]) {
+		for (const theme of ["light", "dark"] as const) {
+			test(`V1-CONTROLS-01 included controls work in preview and published app — ${viewport.name} ${theme}`, async ({
+				page,
+				api,
+			}) => {
+				await page.setViewportSize(viewport);
+				await page.addInitScript(
+					(value) => localStorage.setItem("theme", value),
+					theme,
+				);
+				const tracker = trackPageErrors(page);
+				await publishAppAndWait(api, appId);
+				for (const suffix of ["/preview", ""]) {
+					await page.goto(`/apps/${APP_SLUG}${suffix}`);
+					const controls = page.getByRole("region", {
+						name: "Legacy included controls",
+					});
+					await expect(controls).toBeVisible();
+					await controls
+						.getByRole("checkbox", { name: "Notify owner" })
+						.check();
+					await expect(
+						controls.getByLabel("Notification state"),
+					).toHaveText("Enabled");
+					await controls
+						.getByRole("combobox", { name: "Region" })
+						.click();
+					await page
+						.getByRole("option", { name: "West", exact: true })
+						.click();
+					await expect(
+						controls.getByLabel("Selected region"),
+					).toHaveText("west");
+					await controls
+						.getByRole("button", { name: "Open legacy dialog" })
+						.click();
+					const dialog = page.getByRole("dialog", {
+						name: "Legacy confirmation",
+					});
+					await expect(dialog).toBeVisible();
+					const bounds = await dialog.boundingBox();
+					expect(bounds).not.toBeNull();
+					expect(bounds!.x).toBeGreaterThanOrEqual(0);
+					expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
+						viewport.width + 1,
+					);
+					await dialog
+						.getByRole("button", { name: "Done", exact: true })
+						.click();
+					await expect(dialog).toBeHidden();
+					await controls
+						.getByRole("button", { name: "Open legacy commands" })
+						.click();
+					await page
+						.getByPlaceholder("Find legacy command")
+						.fill("Archive");
+					await page
+						.getByRole("option", { name: "Archive", exact: true })
+						.click();
+					await expect(
+						controls.getByLabel("Chosen command"),
+					).toHaveText("Archive");
+					await controls
+						.getByRole("tab", { name: "Records", exact: true })
+						.click();
+					await expect(
+						controls.getByRole("cell", { name: "Sample record" }),
+					).toBeVisible();
+					await expect(
+						controls.getByText("Legacy summary", { exact: true }),
+					).toBeHidden();
+					expect(
+						await page.evaluate(
+							() =>
+								document.documentElement.scrollWidth <=
+								window.innerWidth + 1,
+						),
+					).toBe(true);
+				}
+				expect(tracker.errors).toEqual([]);
+			});
+		}
+	}
 });

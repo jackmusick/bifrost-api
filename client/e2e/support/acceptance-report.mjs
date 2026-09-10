@@ -79,6 +79,7 @@ export function buildReport(ledger, result) {
 	});
 	return {
 		inventoryComplete: ledger.inventoryComplete,
+		inventoryScope: ledger.inventoryScope,
 		source: result?.config?.metadata ?? {},
 		startedAt: result?.stats?.startTime ?? null,
 		runErrors: result?.errors?.length ?? 0,
@@ -100,13 +101,14 @@ export function markdown(report) {
 		report.inventoryComplete
 			? "Inventory marked complete."
 			: "**Inventory is incomplete. These tracked journeys are not a platform coverage percentage.**",
+		...(report.inventoryScope ? [`Scope: ${report.inventoryScope}`] : []),
 		"A passed row covers only its listed cases. Dirty/unrecorded runs are iteration evidence, not release sign-off.",
 		"",
-		"| Journey | Area | Result | Cases |",
-		"| --- | --- | --- | --- |",
+		"| Journey | Area | Result | Cases | Evidence type |",
+		"| --- | --- | --- | --- | --- |",
 		...report.rows.map(
 			(row) =>
-				`| ${cell(row.id)}: ${cell(row.title)} | ${cell(row.area)} | ${row.status} | ${row.cases.map((c) => `${cell(c.variant ?? c.project)}: ${c.status}`).join("; ") || "—"} |`,
+				`| ${cell(row.id)}: ${cell(row.title)} | ${cell(row.area)} | ${row.status} | ${row.cases.map((c) => `${cell(c.variant ?? c.project)}: ${c.status}`).join("; ") || "—"} | ${[...new Set(row.cases.map((c) => cell(c.proof ?? "unspecified")))].join("; ") || "—"} |`,
 		),
 		"",
 	].join("\n");

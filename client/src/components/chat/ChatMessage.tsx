@@ -262,6 +262,8 @@ function ChatMessageView({
 	return (
 		<div
 			className="group px-4 py-3"
+			role="article"
+			aria-label="Assistant message"
 			aria-busy={isStreaming || undefined}
 		>
 			<div className="max-w-4xl">

@@ -1,3 +1,4 @@
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
 	PageWorkspace,
 	PageScrollArea,
@@ -68,6 +69,9 @@ import { parseSolutionFrom } from "@/lib/solution-back-nav";
 type Tab = "overview" | "runs" | "settings";
 
 export function AgentDetailPage() {
+	const shortDesktop = useMediaQuery(
+		"(min-width: 1024px) and (max-height: 700px)",
+	);
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
 	const terminology = useTerminology();
@@ -456,7 +460,7 @@ export function AgentDetailPage() {
 			{/* Tab body */}
 			<PageScrollArea
 				className={
-					tab === "runs"
+					tab === "runs" && !shortDesktop
 						? "lg:flex lg:flex-col lg:overflow-hidden"
 						: "space-y-6"
 				}

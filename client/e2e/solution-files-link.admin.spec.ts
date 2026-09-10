@@ -7,10 +7,6 @@
  *   - Clicking the chip renders the same read-only file browser used by the
  *     Files page, scoped to the Solution install.
  *
- * NOTE: This spec is written but is NOT in CI for this worktree (the
- * Playwright stack only has the debug stack at localhost:34212, not the test
- * stack). The unit contract is covered by the SolutionDetail + FilesExplorer
- * vitest suites. The Playwright spec is provided for manual/future CI use.
  */
 
 import { expect, type Page } from "@playwright/test";
@@ -97,18 +93,22 @@ async function deployWithSolutionsLocation(
 	solId: string,
 	slug: string,
 ) {
-	const deployR = await page.context().request.post(`/api/solutions/${solId}/deploy?force=true`, {
-		headers: await api.csrfHeader(),
-		multipart: {
-			file: {
-				name: "solution.zip",
-				mimeType: "application/zip",
-				buffer: minimalSolutionZip(slug),
+	const deployR = await page
+		.context()
+		.request.post(`/api/solutions/${solId}/deploy?force=true`, {
+			headers: await api.csrfHeader(),
+			multipart: {
+				file: {
+					name: "solution.zip",
+					mimeType: "application/zip",
+					buffer: minimalSolutionZip(slug),
+				},
 			},
-		},
-	});
+		});
 	if (deployR.status() !== 202) {
-		throw new Error(`deploy solution: ${deployR.status()} ${await deployR.text()}`);
+		throw new Error(
+			`deploy solution: ${deployR.status()} ${await deployR.text()}`,
+		);
 	}
 	const { deploy_job_id: deployJobId } = (await deployR.json()) as {
 		deploy_job_id: string;
@@ -117,9 +117,17 @@ async function deployWithSolutionsLocation(
 	await expect
 		.poll(
 			async () => {
-				const statusR = await api.get(`/api/solutions/deploy-jobs/${deployJobId}`);
-				expect(statusR.ok(), `poll deploy job: ${await statusR.text()}`).toBe(true);
-				const status = (await statusR.json()) as { status: string; error?: string };
+				const statusR = await api.get(
+					`/api/solutions/deploy-jobs/${deployJobId}`,
+				);
+				expect(
+					statusR.ok(),
+					`poll deploy job: ${await statusR.text()}`,
+				).toBe(true);
+				const status = (await statusR.json()) as {
+					status: string;
+					error?: string;
+				};
 				if (status.status === "failed") {
 					throw new Error(status.error || "solution deploy failed");
 				}
@@ -153,34 +161,50 @@ test.describe("Solution Files browser (admin)", () => {
 			await api.put("/api/files/policies/", {
 				data: {
 					policies: {
-						policies: [{ name: "allow_all", actions: ["read", "write", "delete", "list"] }],
+						policies: [
+							{
+								name: "allow_all",
+								actions: ["read", "write", "delete", "list"],
+							},
+						],
 					},
 				},
 				params: { location: "solutions" },
 			});
 
 			// Write a file into the solution scope.
-			const writeR = await api.post(`/api/files/write?solution=${solId}`, {
-				data: {
-					location: "solutions",
-					path: "data/hello.txt",
-					content: "hi",
-					mode: "cloud",
+			const writeR = await api.post(
+				`/api/files/write?solution=${solId}`,
+				{
+					data: {
+						location: "solutions",
+						path: "data/hello.txt",
+						content: "hi",
+						mode: "cloud",
+					},
 				},
-			});
+			);
 			expect(writeR.status()).toBe(204);
 
 			// The Solutions catalog card should expose a compact Files count in
 			// its responsive footer without needing a per-card entities fetch.
 			await page.goto("/solutions");
-			const card = page.getByTestId("install-card").filter({ hasText: slug.toUpperCase() });
+			const card = page
+				.getByTestId("install-card")
+				.filter({ hasText: slug.toUpperCase() });
 			await expect(card).toBeVisible({ timeout: 10000 });
-			await expect(card.getByTestId("solution-card-counts")).toBeVisible();
-			await expect(card.getByTestId("solution-count-files")).toContainText("1");
+			await expect(
+				card.getByTestId("solution-card-counts"),
+			).toBeVisible();
+			await expect(
+				card.getByTestId("solution-count-files"),
+			).toContainText("1");
 
 			// Navigate to the Solution detail page.
 			await page.goto(`/solutions/${solId}`);
-			await expect(page.getByTestId("solution-detail")).toBeVisible({ timeout: 15000 });
+			await expect(page.getByTestId("solution-detail")).toBeVisible({
+				timeout: 15000,
+			});
 
 			// Switch to the Contents tab.
 			await page.getByTestId("tab-contents").click();
@@ -196,19 +220,28 @@ test.describe("Solution Files browser (admin)", () => {
 
 			// The Files browser is embedded in-place and remains on the Solution page.
 			await expect(page).toHaveURL(new RegExp(`/solutions/${solId}`));
-			await expect(page.getByRole("tree")).toBeVisible({ timeout: 10000 });
+			await expect(
+				page.getByRole("navigation", { name: "File shares" }),
+			).toBeVisible({ timeout: 10000 });
 
 			// Select the declared "solutions" file location and confirm the
 			// solution-scoped file path is visible through the shared browser UI.
-			await page.getByRole("treeitem", { name: /solutions/i }).click();
+			await page
+				.getByRole("navigation", { name: "File shares" })
+				.getByRole("button", { name: /^solutions/ })
+				.click();
 
-			await expect(page.getByRole("cell", { name: "data" })).toBeVisible({
-				timeout: 10000,
-			});
+			await page
+				.getByRole("button", { name: "data", exact: true })
+				.click();
+			await expect(
+				page.getByRole("button", { name: "hello.txt", exact: true }),
+			).toBeVisible();
 		} finally {
-			await api
-				.delete(`/api/solutions/${solId}`, { params: { confirm: slug } })
-				.catch(() => {});
+			const removed = await api.delete(`/api/solutions/${solId}`, {
+				params: { confirm: slug },
+			});
+			expect(removed.ok()).toBe(true);
 		}
 	});
 });

@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -151,6 +152,7 @@ export function AppInfoDialog({
 	const [saveError, setSaveError] = useState(false);
 	const terminology = useTerminology();
 	const { isPlatformAdmin, user } = useAuth();
+	const queryClient = useQueryClient();
 
 	const { data: existingApp, isLoading: isLoadingApp, isFetching: isFetchingApp, refetch: refetchApp } = useApplication(
 		isEditing && open ? appSlug : undefined,
@@ -323,6 +325,16 @@ export function AppInfoDialog({
 		);
 	};
 
+	const refreshLogoMetadata = () => {
+		if (!existingApp) return;
+		bumpEntityLogo("app", existingApp.id);
+		void queryClient.invalidateQueries({ queryKey: ["get", "/api/applications"] });
+		void queryClient.invalidateQueries({
+			queryKey: ["get", "/api/applications/{slug}", { params: { path: { slug: existingApp.slug } } }],
+		});
+		void queryClient.invalidateQueries({ queryKey: ["get", "/api/home"] });
+	};
+
 	const isPending = saving || deleting || createApplication.isPending || updateApplication.isPending;
 	const selectedRoleIds = useWatch({ control: form.control, name: "role_ids" });
 
@@ -338,9 +350,7 @@ export function AppInfoDialog({
 								previewUrl={`/api/applications/${existingApp.id}/logo`}
 								fallback={<AppWindow className="h-6 w-6" />}
 								size={40}
-								onChange={() =>
-									bumpEntityLogo("app", existingApp.id)
-								}
+								onChange={refreshLogoMetadata}
 							/></div>
 						) : null}
 						<div className="min-w-0 flex-1">

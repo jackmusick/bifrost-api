@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+type EmbeddingConfig = {
+	connection_id: string | null;
+	model: string;
+	is_configured: boolean;
+};
+
 async function authenticatedJson(
 	page: Page,
 	path: string,
@@ -43,138 +49,207 @@ async function authenticatedJson(
 	);
 }
 
+async function expectOk(
+	result: Awaited<ReturnType<typeof authenticatedJson>>,
+	message: string,
+) {
+	expect(
+		result.status,
+		`${message}: ${JSON.stringify(result.body)}`,
+	).toBeLessThan(300);
+}
+
 test.describe("Private memory", () => {
 	test("enables and manages private memory", async ({ page }, testInfo) => {
-		await page.goto("/settings/ai");
+		await page.goto("/settings/ai-memory");
 		const currentUser = await authenticatedJson(page, "/api/auth/me");
-		const organizationId = (
-			currentUser.body as { organization_id: string }
-		).organization_id;
-		const existingMemories = await authenticatedJson(page, "/api/memory");
-		if (existingMemories.status === 200) {
-			for (const memory of (
-				existingMemories.body as { entries: Array<{ id: string }> }
-			).entries) {
-				await authenticatedJson(page, `/api/memory/${memory.id}`, {
-					method: "DELETE",
-				});
-			}
-		}
-		await authenticatedJson(page, "/api/admin/memory/settings", {
-			method: "PUT",
-			body: { enabled: false },
-		});
-		await authenticatedJson(page, "/api/admin/llm/embedding-config", {
-			method: "DELETE",
-		});
-		await authenticatedJson(page, "/api/admin/required-instructions", {
-			method: "PUT",
-			body: { instructions: "" },
-		});
-		await authenticatedJson(
+		const organizationId = (currentUser.body as { organization_id: string })
+			.organization_id;
+		const memoryTitle = `Acme onboarding ${Date.now()}`;
+		const memoryChecklist = `Northwind tenant checklist ${Date.now()}`;
+		const platformMemorySettings = await authenticatedJson(
 			page,
-			`/api/admin/required-instructions/organizations/${organizationId}`,
-			{ method: "PUT", body: { instructions: "" } },
+			"/api/admin/memory/settings",
 		);
-		const embedding = await authenticatedJson(
+		expect(platformMemorySettings.status).toBe(200);
+		const userMemorySettings = await authenticatedJson(
+			page,
+			"/api/memory/settings",
+		);
+		expect(userMemorySettings.status).toBe(200);
+		const embeddingConfig = await authenticatedJson(
 			page,
 			"/api/admin/llm/embedding-config",
-			{
-				method: "POST",
-				body: {
-					model: "fixture-embedding",
-					api_key: "fixture-key",
-					endpoint: "http://scheduler-fixtures:8080/v1",
-				},
-			},
 		);
-		expect(embedding.status).toBe(200);
+		expect(embeddingConfig.status).toBe(200);
+		const globalInstructions = await authenticatedJson(
+			page,
+			"/api/admin/required-instructions",
+		);
+		expect(globalInstructions.status).toBe(200);
+		const organizationInstructions = await authenticatedJson(
+			page,
+			`/api/admin/required-instructions/organizations/${organizationId}`,
+		);
+		expect(organizationInstructions.status).toBe(200);
 
-		const platformToggle = page.getByRole("switch", {
-			name: "Enable Memory",
-		});
-		await expect(platformToggle).toBeEnabled();
-		await expect(platformToggle).not.toBeChecked();
-		await platformToggle.click();
-		await expect(platformToggle).toBeChecked();
-		const platformToastClose = page
-			.getByRole("button", { name: "Close toast" })
-			.last();
-		await platformToastClose.click();
-		await expect(platformToastClose).toBeHidden();
-		await page
-			.getByText("Users can disable memory in their preferences.")
-			.scrollIntoViewIfNeeded();
-		await testInfo.attach("AI settings — Memory", {
-			body: await page.screenshot(),
-			contentType: "image/png",
-		});
-		const globalEditor = page.locator(
-			'[aria-label="Global Instructions editor"]',
-		);
-		await globalEditor.scrollIntoViewIfNeeded();
-		await globalEditor.fill(
-			"Confirm the customer and summarize any destructive action before execution.",
-		);
-		await page.getByRole("button", { name: "Save Instructions" }).click();
-		await expect(
-			page.getByText("Global Instructions saved"),
-		).toBeVisible();
-		await testInfo.attach("AI settings — Global instructions", {
-			body: await page.screenshot(),
-			contentType: "image/png",
-		});
-
-		await page.goto("/organizations");
-		await page
-			.getByRole("row")
-			.filter({ hasText: organizationId })
-			.click();
-		await page.getByRole("tab", { name: "Instructions" }).click();
-		const organizationEditor = page.locator(
-			'[aria-label="Organization Instructions editor"]',
-		);
-		await organizationEditor.fill(
-			"Use the organization onboarding runbook before provisioning access.",
-		);
-		await page.getByRole("button", { name: "Save Instructions" }).click();
-		await expect(
-			page.getByText("Organization Instructions saved"),
-		).toBeVisible();
-		await testInfo.attach("Organization instructions", {
-			body: await page.screenshot(),
-			contentType: "image/png",
-		});
-
-		const requiredInstructions = await authenticatedJson(page, "/mcp", {
-			method: "POST",
-			mcp: true,
-			body: {
-				jsonrpc: "2.0",
-				id: 2,
-				method: "tools/call",
-				params: {
-					name: "bifrost_get_required_instructions",
-					arguments: {},
-				},
-			},
-		});
-		expect(requiredInstructions.status).toBe(200);
-		const resolved = (
-			requiredInstructions.body as {
-				result: { structuredContent: { instructions: string[] } };
-			}
-		).result.structuredContent.instructions;
-		expect(resolved[0]).toContain("# Memory");
-		expect(resolved).toContain(
-			"# Global Instructions\n\nConfirm the customer and summarize any destructive action before execution.",
-		);
-		expect(resolved).toContain(
-			"# Organization Instructions\n\nUse the organization onboarding runbook before provisioning access.",
-		);
-
+		let fixtureConnectionId: string | null = null;
 		let memoryId: string | null = null;
 		try {
+			const fixtureConnection = await authenticatedJson(
+				page,
+				"/api/admin/ai/connections",
+				{
+					method: "POST",
+					body: {
+						name: `Memory E2E Fixture Embeddings ${Date.now()}`,
+						provider: "openai_compatible",
+						api_key: "fixture-key",
+						endpoint: "http://scheduler-fixtures:8080/v1",
+					},
+				},
+			);
+			expect(fixtureConnection.status).toBe(201);
+			fixtureConnectionId = (fixtureConnection.body as { id: string }).id;
+
+			await expectOk(
+				await authenticatedJson(page, "/api/admin/memory/settings", {
+					method: "PUT",
+					body: { enabled: false },
+				}),
+				"disable platform memory before test",
+			);
+			const clearEmbedding = await authenticatedJson(
+				page,
+				"/api/admin/llm/embedding-config",
+				{
+					method: "DELETE",
+				},
+			);
+			expect([204, 404]).toContain(clearEmbedding.status);
+			await expectOk(
+				await authenticatedJson(
+					page,
+					"/api/admin/required-instructions",
+					{
+						method: "PUT",
+						body: { instructions: "" },
+					},
+				),
+				"clear global instructions before test",
+			);
+			await expectOk(
+				await authenticatedJson(
+					page,
+					`/api/admin/required-instructions/organizations/${organizationId}`,
+					{ method: "PUT", body: { instructions: "" } },
+				),
+				"clear organization instructions before test",
+			);
+			const embedding = await authenticatedJson(
+				page,
+				"/api/admin/llm/embedding-config",
+				{
+					method: "POST",
+					body: {
+						connection_id: fixtureConnectionId,
+						model: "fixture-embedding",
+						confirm_reindex: true,
+					},
+				},
+			);
+			expect(embedding.status).toBe(200);
+			expect((embedding.body as { saved: boolean }).saved).toBe(true);
+
+			const platformToggle = page.getByRole("switch", {
+				name: "Enable Memory",
+			});
+			await expect(platformToggle).toBeEnabled();
+			await expect(platformToggle).not.toBeChecked();
+			await platformToggle.click();
+			await expect(platformToggle).toBeChecked();
+			const platformToastClose = page
+				.getByRole("button", { name: "Close toast" })
+				.last();
+			await platformToastClose.click();
+			await expect(platformToastClose).toBeHidden();
+			await page
+				.getByText("Users can disable memory in their preferences.")
+				.scrollIntoViewIfNeeded();
+			await testInfo.attach("AI settings — Memory", {
+				body: await page.screenshot(),
+				contentType: "image/png",
+			});
+
+			await page.goto("/settings/ai-instructions");
+			const globalEditor = page.locator(
+				'[aria-label="Global Instructions editor"]',
+			);
+			await globalEditor.scrollIntoViewIfNeeded();
+			await globalEditor.fill(
+				"Confirm the customer and summarize any destructive action before execution.",
+			);
+			await page
+				.getByRole("button", { name: "Save Instructions" })
+				.click();
+			await expect(
+				page.getByText("Global Instructions saved"),
+			).toBeVisible();
+			await testInfo.attach("AI settings — Global instructions", {
+				body: await page.screenshot(),
+				contentType: "image/png",
+			});
+
+			await page.goto("/organizations");
+			await page
+				.getByRole("row")
+				.filter({ hasText: organizationId })
+				.click();
+			await page.getByRole("tab", { name: "Instructions" }).click();
+			const organizationEditor = page.locator(
+				'[aria-label="Organization Instructions editor"]',
+			);
+			await organizationEditor.fill(
+				"Use the organization onboarding runbook before provisioning access.",
+			);
+			await page
+				.getByRole("button", { name: "Save Instructions" })
+				.click();
+			await expect(
+				page.getByText("Organization Instructions saved"),
+			).toBeVisible();
+			await testInfo.attach("Organization instructions", {
+				body: await page.screenshot(),
+				contentType: "image/png",
+			});
+
+			const requiredInstructions = await authenticatedJson(page, "/mcp", {
+				method: "POST",
+				mcp: true,
+				body: {
+					jsonrpc: "2.0",
+					id: 2,
+					method: "tools/call",
+					params: {
+						name: "bifrost_get_required_instructions",
+						arguments: {},
+					},
+				},
+			});
+			expect(requiredInstructions.status).toBe(200);
+			const resolved = (
+				requiredInstructions.body as {
+					result: { structuredContent: { instructions: string[] } };
+				}
+			).result.structuredContent.instructions;
+			expect(resolved[0]).toContain("# Memory");
+			expect(resolved).toContain(
+				"# Global Instructions\n\nConfirm the customer and summarize any destructive action before execution.",
+			);
+			expect(resolved).toContain(
+				"# Organization Instructions\n\nUse the organization onboarding runbook before provisioning access.",
+			);
+
 			const userDefault = await authenticatedJson(
 				page,
 				"/api/memory/settings",
@@ -222,9 +297,6 @@ test.describe("Private memory", () => {
 			await expect(
 				page.getByText("Saved Memories", { exact: true }),
 			).toBeVisible();
-			await expect(
-				page.getByText("Nothing has been remembered yet."),
-			).toBeVisible();
 			const saved = await authenticatedJson(page, "/mcp", {
 				method: "POST",
 				mcp: true,
@@ -235,8 +307,7 @@ test.describe("Private memory", () => {
 					params: {
 						name: "bifrost_save_memory",
 						arguments: {
-							content:
-								"# Acme onboarding\n\nUse the **Northwind tenant checklist** before provisioning access.",
+							content: `# ${memoryTitle}\n\nUse the **${memoryChecklist}** before provisioning access.`,
 							metadata: { customer: "acme" },
 						},
 					},
@@ -250,10 +321,8 @@ test.describe("Private memory", () => {
 			).result.structuredContent.id;
 
 			await page.reload();
-			await expect(page.getByText("Acme onboarding")).toBeVisible();
-			await expect(
-				page.getByText("Northwind tenant checklist"),
-			).toBeVisible();
+			await expect(page.getByText(memoryTitle)).toBeVisible();
+			await expect(page.getByText(memoryChecklist)).toBeVisible();
 			await page
 				.getByText("Saved Memories", { exact: true })
 				.scrollIntoViewIfNeeded();
@@ -262,38 +331,121 @@ test.describe("Private memory", () => {
 				contentType: "image/png",
 			});
 
-			await page.getByRole("button", { name: "Remove memory" }).click();
+			const savedMemory = page
+				.getByRole("textbox", { name: "Saved memory" })
+				.filter({ hasText: memoryTitle });
+			await savedMemory
+				.locator(
+					"xpath=ancestor::div[contains(@class, 'space-y-3')][1]",
+				)
+				.getByRole("button", { name: "Remove memory" })
+				.click();
 			await page.getByRole("button", { name: /^Remove$/ }).click();
-			await expect(
-				page.getByText("Nothing has been remembered yet."),
-			).toBeVisible();
+			await expect(page.getByText(memoryTitle)).toBeHidden();
 			memoryId = null;
 		} finally {
 			if (memoryId) {
-				await authenticatedJson(page, `/api/memory/${memoryId}`, {
-					method: "DELETE",
-				});
+				const deleteMemory = await authenticatedJson(
+					page,
+					`/api/memory/${memoryId}`,
+					{ method: "DELETE" },
+				);
+				expect([200, 404]).toContain(deleteMemory.status);
 			}
-			await authenticatedJson(page, "/api/memory/settings", {
-				method: "PUT",
-				body: { enabled: false },
-			});
-			await authenticatedJson(page, "/api/admin/memory/settings", {
-				method: "PUT",
-				body: { enabled: false },
-			});
-			await authenticatedJson(page, "/api/admin/llm/embedding-config", {
-				method: "DELETE",
-			});
-			await authenticatedJson(page, "/api/admin/required-instructions", {
-				method: "PUT",
-				body: { instructions: "" },
-			});
-			await authenticatedJson(
-				page,
-				`/api/admin/required-instructions/organizations/${organizationId}`,
-				{ method: "PUT", body: { instructions: "" } },
+			await expectOk(
+				await authenticatedJson(page, "/api/memory/settings", {
+					method: "PUT",
+					body: {
+						enabled: (
+							userMemorySettings.body as { user_enabled: boolean }
+						).user_enabled,
+					},
+				}),
+				"restore user memory setting",
 			);
+			await expectOk(
+				await authenticatedJson(page, "/api/admin/memory/settings", {
+					method: "PUT",
+					body: {
+						enabled: (
+							platformMemorySettings.body as { enabled: boolean }
+						).enabled,
+					},
+				}),
+				"restore platform memory setting",
+			);
+			await expectOk(
+				await authenticatedJson(
+					page,
+					"/api/admin/required-instructions",
+					{
+						method: "PUT",
+						body: {
+							instructions: (
+								globalInstructions.body as {
+									instructions: string;
+								}
+							).instructions,
+						},
+					},
+				),
+				"restore global instructions",
+			);
+			await expectOk(
+				await authenticatedJson(
+					page,
+					`/api/admin/required-instructions/organizations/${organizationId}`,
+					{
+						method: "PUT",
+						body: {
+							instructions: (
+								organizationInstructions.body as {
+									instructions: string;
+								}
+							).instructions,
+						},
+					},
+				),
+				"restore organization instructions",
+			);
+			const previousEmbedding = embeddingConfig.body as EmbeddingConfig;
+			if (
+				previousEmbedding.is_configured &&
+				previousEmbedding.connection_id
+			) {
+				await expectOk(
+					await authenticatedJson(
+						page,
+						"/api/admin/llm/embedding-config",
+						{
+							method: "POST",
+							body: {
+								connection_id: previousEmbedding.connection_id,
+								model: previousEmbedding.model,
+								confirm_reindex: true,
+							},
+						},
+					),
+					"restore embedding config",
+				);
+			} else {
+				const clearRestoredEmbedding = await authenticatedJson(
+					page,
+					"/api/admin/llm/embedding-config",
+					{ method: "DELETE" },
+				);
+				expect([204, 404]).toContain(clearRestoredEmbedding.status);
+			}
+			if (fixtureConnectionId) {
+				await expectOk(
+					await authenticatedJson(
+						page,
+						`/api/admin/ai/connections/${fixtureConnectionId}`,
+						{ method: "DELETE" },
+					),
+					"delete fixture embedding connection",
+				);
+			}
 		}
 	});
 });

@@ -1,229 +1,63 @@
 # Resources Acceptance Inventory
 
-Scope: Entity Management, MCP Servers, Integrations, and Event Sources/Events. This is a source-and-test inventory only. No suites were run for this pass.
+Scope: Integrations, Entity Management, MCP, and Event Sources/Events. This is a source-and-test inventory only. This pass did not run any suites and does not mark the resource inventory globally complete.
 
-## Entity Management
+Status language is intentionally narrow:
 
-Primary UI sources:
-
-- `client/src/pages/EntityManagement.tsx`
-- `client/src/components/entity-management/EntityCard.tsx`
-- `client/src/components/entity-management/EntityListToolbar.tsx`
-- `client/src/components/entity-management/EntityAssignmentPanel.tsx`
-- `client/src/components/entity-management/EntityAssignmentSheet.tsx`
-- `client/src/components/entity-management/deleteEntities.ts`
-- `client/src/components/editor/WorkflowDeactivationDialog.tsx`
-
-Concrete actions in source:
-
-- Load and normalize workflows, forms, agents, apps, organizations and roles.
-- Search, type/org/access/usage filter, clear filters, sort by name/date/type, reverse sort.
-- Select individual records, select all visible non-managed records, clear selection.
-- Show dependency relationships and enter/clear relationship-filter mode.
-- Open the dependency graph dialog.
-- Change organization scope by button/drop target or drag/drop, with review confirmation.
-- Change access to authenticated, clear roles, or assign a role, with review confirmation.
-- Delete one entity or a bulk selection.
-- Resolve workflow delete conflicts by force deactivation or replacement mapping.
-- Exclude solution-managed records from selection, drag, assignment and deletion while keeping dependency viewing available.
-
-Existing browser evidence:
-
-- `docs/design-modernization/entity-management-review.md` records UI-verified acceptance for bulk delete recovery, workflow dependency resolution, managed records, assignment recovery, full-page filters/collection recovery, relationship graph, compact assignment sheet, drag-to-organization, and restricted-access gating.
-- The recorded browser fixtures are intercepted/synthetic for mutations. They prove UI control state, request sequencing, retry behavior, focus/viewport behavior and absence of protected reads in restricted sessions; they do not prove real backend persistence through the browser.
-
-Existing component evidence:
-
-- `client/src/components/entity-management/EntityCard.test.tsx`: dependency action remains direct; managed records keep dependencies and lose destructive menu.
-- `client/src/components/entity-management/EntityAssignmentPanel.test.tsx`: assignment review snapshot, duplicate-submit guard, failure retry, keyboard access assignment.
-- `client/src/components/entity-management/DropTargets.test.tsx`: button and drag selections route to review and block while busy.
-- `client/src/components/entity-management/EntityListToolbar.test.tsx`: mixed/hidden selections, sort controls and search recovery.
-- `client/src/components/entity-management/EntityCollectionStatus.test.tsx`: missing versus cached collection failures and retry.
-- `client/src/components/entity-management/FilterPopover.test.tsx`, `RelationshipFilterBanner.test.tsx`, `DependencyGraphDialog.test.tsx`, `DeleteConfirmDialog.test.tsx`: filter independence, relationship recovery, graph sizing, delete confirmation/pending behavior.
-
-Backend/API evidence:
-
-- Entity Management dispatches to existing workflow/form/agent/application update and delete endpoints rather than a page-specific API. Relevant backend behavioral coverage is split across those resource suites and manifest/role-sync tests, for example `api/tests/e2e/platform/test_git_sync_local.py` role assignment/access-level/org-scope cases and `api/tests/unit/test_sync_ops.py`.
-
-Explicit gaps:
-
-- No committed Playwright spec exercises the Entity Management page with real create/assign/delete persistence against live services.
-- Backend authorization is not proven by the Entity Management UI fixtures; the review ledger explicitly treats restricted-access browser proof as UI gating.
-- Drag/drop and workflow conflict recovery are covered by synthetic browser fixtures and component tests, not by committed `client/e2e` tests.
-
-## MCP Servers And Connections
-
-Primary UI sources:
-
-- `client/src/pages/MCPServers.tsx`
-- `client/src/pages/MCPServerDetail.tsx`
-- `client/src/pages/MCPConnectionEdit.tsx`
-- `client/src/components/mcp/MCPServerForm.tsx`
-- `client/src/pages/mcp/components/NewConnectionDialog.tsx`
-- `client/src/pages/mcp/components/ServerConnectionList.tsx`
-- `client/src/pages/mcp/components/ServerSettingsSummary.tsx`
-- `client/src/pages/mcp/components/ConnectionToolCatalog.tsx`
-
-Concrete actions in source:
-
-- List server templates, search by name/URL, refresh server list and connection counts.
-- Open New Server, discover OAuth metadata, switch to manual override, choose OAuth flow, submit server creation.
-- Navigate to server detail, switch Connections/Server settings/Manifest tabs.
-- Refresh server detail and connection list.
-- Delete server with cascade warning and retry after failure.
-- Create a per-org connection with initial client credentials.
-- Edit connection credentials, availability flags, OAuth/client-credentials activation, tool catalog enablement, catalog refresh, disconnect and delete.
-
-Existing browser evidence:
-
-- `docs/design-modernization/mcp-list-acceptance.md` records UI-verified `/mcp-servers` list, create, discovery and manual-override behavior across themes/widths.
-- `docs/design-modernization/mcp-connection-acceptance.md` records UI-verified connection editor read recovery, credential masking/editing, save/partial failure, catalog refresh, disconnect, activation, OAuth start and delete.
-- `docs/design-modernization/PROGRESS.md` records MCP server detail evidence for tabs, metadata bounds, manifest explanation, initial/cached read recovery, navigation and delete retry.
-- These browser runs used intercepted mutations, synthetic URLs and stubbed authorization windows. They prove UI behavior and payloads, not real OAuth exchange or real server/connection persistence through the browser.
-
-Existing component evidence:
-
-- `client/src/components/mcp/MCPServerForm.test.tsx`: draft retention and pending lock on failure, client-credentials discovery with manual overrides, failed-discovery guidance and labelled OAuth fields.
-- `client/src/pages/mcp/components/NewConnectionDialog.test.tsx`: organization lookup failure/empty states and disabled create.
-- `client/src/pages/mcp/components/ConnectionToolCatalog.tsx` has behavior covered through connection editor browser evidence; no direct sibling test was found in this pass.
-
-Backend/API evidence:
-
-- `api/tests/e2e/mcp/test_mcp_parity.py`: MCP tool DTO signature parity and REST-backed CRUD roundtrips for roles, configs, organizations, integrations/mappings and workflows.
-- `api/tests/e2e/mcp/test_mcp_tool_access_matrix.py`: agent-scoped MCP HTTP tool visibility/execution for platform admin, org user, unauthorized user, provider org user and cross-org denial.
-- `api/tests/e2e/mcp/test_mcp_scoped_lookups.py` and `api/tests/unit/services/mcp_server/test_tool_access.py`: scoped lookup and tool-access service behavior.
-- These tests cover the MCP protocol/tool layer. They are not UI server-template lifecycle tests.
-
-Explicit gaps:
-
-- No committed `client/e2e` spec was found for creating/editing/deleting MCP server templates or connections through the real UI.
-- Real OAuth consent, token exchange, callback completion and remote catalog discovery remain outside current UI acceptance.
-- The server detail Manifest tab states per-server export is future enhancement; import from manifest on the list is disabled in source.
+- **Passed per nightly acceptance audit** means the parent-reported nightly audit marked that committed browser spec as passing.
+- **Pending first run** means the committed/current browser spec exists but this pass has no passing runtime result for it.
+- **Missing proof** means this pass found source/API support or lower-level evidence, but no current committed browser proof for that exact action.
 
 ## Integrations
 
-Primary UI sources:
+| Action | Current component/backend evidence | Current browser evidence | Explicit missing proof |
+| --- | --- | --- | --- |
+| List/search integrations and switch card/table views | `client/src/pages/Integrations.tsx` reads `useIntegrations()`, filters with `useSearch`, renders grid/table controls, and opens detail via `handleOpenIntegration`. Backend list/detail routes are `api/src/routers/integrations.py` `GET /api/integrations` and `GET /api/integrations/{integration_id}`. | `client/e2e/integration-cards.admin.spec.ts` goes to `/integrations`, creates an owned integration, verifies the card, toggles selection mode, switches to `Table view`, and follows the integration link to `/integrations/{id}`. Parent reports the enhanced integration CRUD browser journey now passes. | Other list filters/import/export are not proven by this spec. |
+| Create integration from the list UI | `client/src/pages/Integrations.tsx` opens `CreateIntegrationDialog`; `client/src/components/integrations/CreateIntegrationDialog.tsx` submits `useCreateIntegration()` with name, description, schema/default fields. Backend create is `api/src/routers/integrations.py` `POST /api/integrations`. | `client/e2e/integration-cards.admin.spec.ts` clicks `Create integration`, fills `Integration Name` and `Description`, waits for `POST /api/integrations`, captures the returned id, and asserts the response is ok. Parent reports this targeted browser journey now passes. | No proof here for schema-field creation, default entity id, provider selection, or retry/error paths. |
+| Edit integration description and logo | `CreateIntegrationDialog.tsx` edit mode uses `useIntegration()`/`useUpdateIntegration()`; `LogoDropZone` updates image state. Backend update/logo routes are `PATCH /api/integrations/{integration_id}` and `POST /api/integrations/{integration_id}/logo` in `api/src/routers/integrations.py`. | `integration-cards.admin.spec.ts` opens the integration actions menu, chooses `Edit`, changes `Description`, uploads an SVG through `input[type=file]`, saves, reloads, verifies updated description, and checks the card `img.naturalWidth`. Parent reports this targeted browser journey now passes. | No proof for removed schema field confirmation, data-provider change confirmation, or logo delete. |
+| Delete integration from list UI | `client/src/pages/Integrations.tsx` opens delete confirmation and calls `useDeleteIntegration()`; `client/src/components/integrations/IntegrationDeleteDialog.tsx` protects pending delete and retains errors. Backend delete is `DELETE /api/integrations/{integration_id}`. | `integration-cards.admin.spec.ts` opens the integration actions menu, chooses `Delete`, confirms `Delete Integration`, reloads, hides the action button, and asserts `GET /api/integrations/{id}` returns 404. Parent reports this targeted browser journey now passes. | No passing proof here for failed delete retry. |
+| Create/edit organization mappings through detail UI | `client/src/components/integrations/IntegrationMappingsTab.tsx` owns mapping rows and manual entity ID edits. Backend mapping routes include `POST /api/integrations/{integration_id}/mappings`, batch mapping update, and detail read in `api/src/routers/integrations.py`. | `client/e2e/integration-mapping-acceptance.admin.spec.ts` seeds integration/orgs/mapping with `api-fixture`, opens `/integrations/{id}`, uses `Mappings`, edits and creates manual entity IDs via UI, reloads, searches mappings, and verifies `GET /api/integrations/{id}` has both persisted mappings. | This proves manual mapping persistence, not auto-match suggestions, provider entity picker, per-mapping config dialog, or partial batch retry. |
+| Per-mapping OAuth authorize button | `IntegrationMappingsTab.tsx` renders OAuth connect/refresh/disconnect controls; backend authorize/disconnect/refresh routes are in `api/src/routers/integrations.py`, with additional coverage in `api/tests/e2e/oauth/test_per_mapping_connect.py`. | `client/e2e/per-mapping-oauth.admin.spec.ts` verifies a mapping table row renders and the `Connect` action opens an authorize URL. Parent audit says related personal MCP callback/settings/entity passed, but no new integration OAuth pass was asserted for this document. | Real external OAuth consent/token exchange and callback completion are missing for integrations. |
+| Defaults, overrides, integration tests, SDK generation, import/export | Components exist: `IntegrationDefaultsDialog.tsx`, `OrgConfigDialog.tsx`, `ConfigOverridesTab.tsx`, `IntegrationTestPanel.tsx`, and SDK/import/export entry points in the integration UI; backend routes for configs, tests, SDK and import/export are in `api/src/routers/integrations.py` plus export/import routers. | Design-modernization docs record intercepted browser evidence, and component tests cover several dialogs, but this pass found no current committed browser spec proving these actions against live persistence. | Missing committed browser proof for real defaults/overrides lifecycle, integration test execution, SDK generation lifecycle, and import/export. |
 
-- `client/src/pages/Integrations.tsx`
-- `client/src/pages/Integrations/IntegrationList.tsx`
-- `client/src/pages/IntegrationDetail.tsx`
-- `client/src/components/integrations/CreateIntegrationDialog.tsx`
-- `client/src/components/integrations/IntegrationDeleteDialog.tsx`
-- `client/src/components/integrations/IntegrationOverview.tsx`
-- `client/src/components/integrations/IntegrationMappingsTab.tsx`
-- `client/src/components/integrations/IntegrationDefaultsDialog.tsx`
-- `client/src/components/integrations/OrgConfigDialog.tsx`
-- `client/src/components/integrations/ConfigOverridesTab.tsx`
-- `client/src/components/integrations/EntitySelector.tsx`
-- `client/src/components/integrations/EntityIdSourcePicker.tsx`
-- `client/src/components/integrations/IntegrationTestPanel.tsx`
+## Entity Management
 
-Concrete actions in source:
+| Action | Current component/backend evidence | Current browser evidence | Explicit missing proof |
+| --- | --- | --- | --- |
+| List/search entity inventory | `client/src/pages/EntityManagement.tsx` is the route source; `EntityListToolbar.tsx` and `EntityCard.tsx` provide search/filter/list controls. Backend data is assembled from existing workflows/forms/agents/apps/orgs/roles endpoints rather than a page-specific entity-management API. | `client/e2e/entity-management-acceptance.admin.spec.ts` opens `/entity-management`, asserts heading `Entity Management`, searches with textbox `Search entities`, and finds `Select E2E Entity Managed App ...`. Passed per nightly acceptance audit. | Current passing proof is for app entities in an assignment path only; no browser proof here for every entity type's list row/card rendering. |
+| Select one app entity while preserving another | `EntityCard.tsx` exposes `Select {name}` checkboxes. Backend app create/read/delete are the existing applications routes used by the spec. | `entity-management-acceptance.admin.spec.ts` seeds two apps through `/api/applications`, selects only the managed app, verifies `1 selected`, and repeatedly asserts the untouched app remains `organization_id: null` through `GET /api/applications/{slug}`. Passed per nightly acceptance audit. | No committed browser proof here for select-all, bulk mixed selections, or solution-managed selection blocking. |
+| Assign, reassign, and unassign organization scope | `EntityAssignmentPanel.tsx`/`EntityAssignmentSheet.tsx` and related dialogs route selected entities to organization assignment. Backend persistence uses the underlying application update contract. | `entity-management-acceptance.admin.spec.ts` creates two orgs, applies org one, reloads, applies org two, then applies `Global`; each step polls `GET /api/applications/{slug}` for the expected `organization_id`. Passed per nightly acceptance audit. | This proves app organization scope only. Missing real browser proof for role assignment, access-level changes, form/agent/workflow/table/app mixed updates, drag/drop assignment, and assignment failure recovery against live endpoints. |
+| Delete entities and resolve dependencies | Source files include `deleteEntities.ts`, `DeleteConfirmDialog.tsx`, and `WorkflowDeactivationDialog.tsx`; backend deletes are the individual resource endpoints. | No current committed browser spec in this pass deletes through Entity Management. Existing design docs describe synthetic/intercepted browser evidence. | Missing real browser proof for single/bulk entity delete, workflow dependency force deactivation, replacement mapping, and solution-managed delete blocking. |
+| Dependency graph and relationship filtering | `DependencyGraphDialog.tsx`, `RelationshipFilterBanner.tsx`, and Entity Management source support relationship viewing/filtering. Backend dependency route is `api/src/routers/dependencies.py`. | No current committed browser spec in this pass opens the dependency graph or relationship filter on live data. | Missing real browser proof for graph opening, focus return, relationship filter mode, and backend authorization from this UI. |
 
-- List integrations, search, switch card/table layout, select visible integrations, export selected/all, import, refresh.
-- Create integration, edit integration, confirm removed schema fields, delete integration.
-- Open detail, edit shell metadata/schema/provider settings, delete integration from detail.
-- Configure default integration values.
-- Configure organization-specific mapping values and configuration overrides.
-- Search mappings, choose provider entity, enter manual entity ID, auto-match, accept/reject suggestions, accept all, clear suggestions.
-- Create/update/delete mappings, connect/refresh/disconnect per-mapping OAuth, configure default OAuth, refresh/reconnect default OAuth.
-- Run integration test requests and generate SDK scaffolding/config.
+## MCP
 
-Existing browser evidence:
+| Action | Current component/backend evidence | Current browser evidence | Explicit missing proof |
+| --- | --- | --- | --- |
+| List/search MCP server templates | `client/src/pages/MCPServers.tsx` calls `GET /api/mcp-servers` and `GET /api/mcp-connections`, renders heading `MCP Servers`, search `Search by name or URL...`, rows/cards, connection counts, and `New Server`. Backend list/detail/create/delete/discover are in `api/src/routers/mcp_servers.py`. | `client/e2e/mcp-management-acceptance.admin.spec.ts` opens `/mcp-servers`, asserts heading, creates a server, later returns to the list and verifies the deleted server row count is 0. Parent reports this auth-free MCP management journey now passes. | Search filtering, inactive filters, connection-count read failures, and manifest import remain unproven here. |
+| Create auth-free MCP server template | `MCPServerForm.tsx` submits `POST /api/mcp-servers`; if no token URL/discovery metadata is supplied, the server is auth-free. Backend `create_mcp_server` is `api/src/routers/mcp_servers.py`. | `mcp-management-acceptance.admin.spec.ts` clicks `New Server`, fills `Display name` and `Server URL`, clicks `Create Server`, lands on `/mcp-servers/{id}`, and verifies API `GET /api/mcp-servers/{id}` has `oauth_provider_id: null`, `discovery_metadata: null`, and `is_active: true`. Parent reports this journey now passes. | Discovery/manual OAuth server creation is not covered by this auth-free journey. |
+| Create org MCP connection | `client/src/pages/MCPServerDetail.tsx` opens `NewConnectionDialog`; backend create/read/update/delete are in `api/src/routers/mcp_connections.py`. | `mcp-management-acceptance.admin.spec.ts` selects `Organization`, fills `Client ID` and `Client Secret`, clicks `Create`, lands on `/mcp-servers/{serverId}/connections/{connectionId}/edit`, and verifies the edit heading. Parent reports this journey now passes. | Duplicate org handling, empty org states, and failed create retry remain unproven here. |
+| Edit connection metadata and availability | `client/src/pages/MCPConnectionEdit.tsx` owns `Client ID`, `Server URL override`, `Available in user chat`, `Available to autonomous agents`, tool catalog, save and delete controls. Backend update is `PATCH /api/mcp-connections/{connection_id}`. | `mcp-management-acceptance.admin.spec.ts` edits client id/url override, enables both availability switches, saves, verifies API state, reloads, and checks field/switch persistence plus `No tools cached`. Parent reports this auth-free management journey now passes. `client/e2e/mcp-catalog-acceptance.admin.spec.ts` contains the service OAuth Activate/Refresh catalog/reload/disconnect path; after the assertion repair, parent reports this browser journey now passes. | Credential rotation masking, partial save failure, and per-tool enable/disable remain gaps. Service OAuth catalog refresh now has targeted browser proof against the local scheduler fixture, not an external provider. |
+| Delete MCP connection and server | `MCPConnectionEdit.tsx` exposes `Delete connection`; `MCPServerDetail.tsx` exposes `Delete server`; backend deletes are `DELETE /api/mcp-connections/{connection_id}` and `DELETE /api/mcp-servers/{server_id}`. | `mcp-management-acceptance.admin.spec.ts` deletes the connection, verifies `GET /api/mcp-connections/{id}` is 404, deletes the server, verifies list URL and `GET /api/mcp-servers/{id}` is 404. Parent reports this journey now passes. | Delete failure retry and soft-delete variants remain unproven here. |
+| Platform MCP settings | `client/src/pages/settings` MCP settings UI calls `/api/mcp/config` and `/api/mcp/tools`; backend config/tool routes are the MCP config routers. | `client/e2e/mcp-settings-acceptance.admin.spec.ts` reads previous config, selects allowed/blocked real tools, saves, reloads, verifies `/api/mcp/config`, resets defaults, reloads, and restores previous config. Passed per nightly acceptance audit. | This does not prove MCP server-template lifecycle; it proves platform-level MCP tool exposure configuration. |
+| Personal delegated MCP connection/callback | User settings connections UI exposes `Connect`/`Disconnect`; backend personal routes are under `/api/me/mcp-connections` in `api/src/routers/mcp_connections.py`, and callback handling is in the MCP OAuth routers. | `client/e2e/mcp-personal-connection-acceptance.admin.spec.ts` seeds a scheduler-fixture MCP server/connection through API, opens `/user-settings/connections`, clicks `Connect`, completes the real Bifrost MCP OAuth callback via popup, verifies `/api/me/mcp-connections`, reloads, disconnects, and verifies credential removal. Passed per nightly acceptance audit. | This uses the local scheduler fixture provider, not a third-party provider; external vendor consent/token behavior remains unproven. |
 
-- `docs/design-modernization/integrations-list-acceptance.md`: UI-verified `/integrations` list, create/edit/import dialogs, selection/read/delete behavior with intercepted mutations.
-- `docs/design-modernization/integration-detail-review.md`: UI-verified detail route covering header, mapping layout, overview, provider/read/match/save/retry, partial batch retry, defaults/config editing, overrides, org config recovery, OAuth picker/callback and protected-route gating.
-- `docs/design-modernization/list-action-audit.md`: shared overflow action parity for integration list and mapping secondary actions.
-- Committed Playwright:
-  - `client/e2e/integration-cards.admin.spec.ts`: real description/logo/table navigation coverage on the list.
-  - `client/e2e/integration-mapping-acceptance.admin.spec.ts`: `[MAPPING-01] add and edit organization mappings persist after reload and search`; seeds integration/orgs through `api-fixture`, edits mappings through UI, reloads and asserts `/api/integrations/{id}` persistence.
-  - `client/e2e/per-mapping-oauth.admin.spec.ts`: mapping table renders and Connect button opens authorize URL.
+## Events
 
-Existing component evidence:
-
-- `client/src/components/integrations/CreateIntegrationDialog.test.tsx`: create payload/retry, edit confirmation, data-provider read retry, save recovery and field-removal confirmation.
-- `IntegrationMappingsTab.test.tsx`: row rendering, entity selector, auto-match controls, search, manual input-on-blur, configure dialog entry, unlink/disable states, OAuth connect/refresh/disconnect controls.
-- `IntegrationDefaultsDialog.test.tsx`, `OrgConfigDialog.test.tsx`, `ConfigOverridesTab.test.tsx`, `ConfigFieldInput.test.tsx`, `OverrideValueEditor.test.tsx`: config field types, defaults, override save/delete, invalid JSON and reset behavior.
-- `IntegrationOverview.test.tsx`, `IntegrationTestPanel.test.tsx`, `IntegrationTestResult.test.tsx`, `EntitySelector.test.tsx`, `EntityIdSourcePicker.test.tsx`, `AutoMatchControls.test.tsx`, `MatchSuggestionBadge.test.tsx`: overview OAuth actions, test panel, entity selection and matching behaviors.
-
-Backend/API evidence:
-
-- `api/tests/e2e/api/test_integrations.py`: CRUD, mappings CRUD, SDK data, OAuth authorize URL behavior, integration config defaults/overrides/SDK precedence/secrets and authorization denials.
-- `api/tests/e2e/oauth/test_per_mapping_connect.py`: per-mapping authorize, disconnect, refresh, empty entity IDs and entity-id-source backfill/clear behavior.
-- `api/tests/e2e/platform/test_cli_integrations.py` and `test_cli_integrations_external.py`: CLI integration surfaces and external-user global secret/token restrictions.
-- `api/tests/e2e/mcp/test_mcp_parity.py`: MCP integration and mapping roundtrip through REST bridge.
-- `api/tests/e2e/platform/test_git_sync_local.py`: integration manifest import, schema/config preservation, mapping identity and cross-instance reconciliation.
-
-Explicit gaps:
-
-- Real external OAuth consent/token exchange is not proven by UI tests.
-- Most rich detail-route UI recovery evidence is in design-modernization browser ledgers with intercepted mutations, not committed Playwright specs.
-- `GenerateSDKDialog` has component coverage for generation ordering/success, but no committed browser lifecycle spec was found.
-
-## Event Sources And Events
-
-Primary UI sources:
-
-- `client/src/pages/Events.tsx`
-- `client/src/pages/events/EventSourceCard.tsx`
-- `client/src/components/events/EventSourceActions.tsx`
-- `client/src/components/events/EventSourceDetail.tsx`
-- `client/src/components/events/CreateEventSourceDialog.tsx`
-- `client/src/components/events/EditEventSourceDialog.tsx`
-- `client/src/components/events/SubscriptionsTable.tsx`
-- `client/src/components/events/CreateSubscriptionDialog.tsx`
-- `client/src/components/events/EditSubscriptionDialog.tsx`
-- `client/src/components/events/EventsTable.tsx`
-- `client/src/components/events/EventDetailDialog.tsx`
-- `client/src/components/events/DeliveriesTable.tsx`
-- `client/src/components/events/DynamicConfigForm.tsx`
-
-Concrete actions in source:
-
-- List event sources, search, filter by status tab, filter by organization scope, refresh.
-- Create webhook, schedule, topic and Microsoft Graph event sources.
-- Edit source metadata/config, schedule cron/timezone/overlap, webhook rate limits and dynamic provider config.
-- Toggle source active state from list or detail.
-- Delete source from list or detail.
-- Open source detail, copy webhook URL, refresh source/events, resubscribe Graph provider source.
-- Manage subscriptions: add, edit, toggle active, delete.
-- Browse events, search event types, open deep-linked event inspector.
-- Inspect metadata/deliveries, retry failed deliveries, send not-delivered deliveries and copy delivery errors.
-
-Existing browser evidence:
-
-- `docs/design-modernization/events-acceptance.md` records UI-verified list/detail/inspector routes: list shell/read/delete recovery, shared source actions, source creation for schedule/webhook/topic/Graph schema, source activation, detail delete/copy/resubscribe, live events, subscriptions, edit dialogs, dynamic Graph context and event inspector delivery recovery.
-- Committed Playwright:
-  - `client/e2e/event-delivery-acceptance.admin.spec.ts`: `[EVENT-01 desktop] local webhook event shows successful workflow delivery and execution outcome`; real local webhook event, delivery and execution outcome path.
-  - `client/e2e/event-source-graph.admin.spec.ts`: Graph tenant/user loading after visible retry and Graph context/resubscribe UI.
-- Design-led browser evidence uses intercepted writes for source mutations and provider operations; committed delivery acceptance supplies stronger real end-to-end evidence for local webhook delivery.
-
-Existing component/page evidence:
-
-- `client/src/pages/Events.test.tsx`: mobile/desktop list shells, detail routing, cached read retry and delete failure retry.
-- `CreateEventSourceDialog.test.tsx`: validation, webhook payload, rate limit controls, organization context, schedule branch, topic branch, source switching and metadata recovery.
-- `EditEventSourceDialog.test.tsx`: prefill/update, overlap policy, rate-limit fields, cron validation race and save retry.
-- `EventSourceDetail.test.tsx`: populated metadata, active toggle, delete confirmation, non-admin controls hidden, Graph identity/resubscribe and read recovery.
-- `SubscriptionsTable.test.tsx`, `CreateSubscriptionDialog.test.tsx`, `EditSubscriptionDialog.test.tsx`: subscription create/edit/toggle/delete/retry behavior and input mapping.
-- `EventsTable.test.tsx`, `EventDetailDialog.test.tsx`, `DeliveriesTable.test.tsx`: events empty/populated/search/deep-link/read recovery, inspector metadata/delivery recovery, retry/send permissions and per-row failure recovery.
-- `DynamicConfigForm.test.tsx`: static/dynamic fields, organization context, dependent values, field associations and retry.
-
-Backend/API evidence:
-
-- `api/tests/e2e/api/test_builtin_events.py`: workflow, delivery retry-exhausted and integration built-in events run subscribers.
-- `api/tests/unit/test_bifrost_events_sdk.py`: SDK event emit endpoint/scope/error behavior.
-- `api/tests/unit/routers/test_events_webhook_creation.py`: provider subscription starts after webhook source commit and failed provider subscription removes provisional source.
-- `api/tests/e2e/platform/test_git_sync_local.py`: event source manifest import, topic event type, organization updates, event subscription natural-key import and full-manifest import order.
-
-Explicit gaps:
-
-- Real Microsoft Graph/provider subscription lifecycle and remote webhook provider behavior are not proven; browser evidence stubs/intercepts those operations.
-- Most source create/edit/delete activation UI paths are accepted via design browser fixtures and component tests, not committed Playwright specs.
-- Event inspector authorization and permanently deleted event restoration are explicitly outside the recorded UI acceptance.
+| Action | Current component/backend evidence | Current browser evidence | Explicit missing proof |
+| --- | --- | --- | --- |
+| List/search event sources and open detail | `client/src/pages/Events.tsx` calls `useEventSources()`, renders heading `Event Sources`, search `Search event sources...`, status tabs, organization filter, source rows/cards and detail routing. Backend list/detail are `GET /api/events/sources` and `GET /api/events/sources/{source_id}` in `api/src/routers/events.py`. | `client/e2e/event-source-management-acceptance.admin.spec.ts` opens `/event-sources`, creates a source, searches by name, opens the detail link, and extracts the detail id. Parent reports this event source CRUD journey now passes. `client/e2e/event-delivery-acceptance.admin.spec.ts` also searches and opens a source detail after seeding API state. | Organization/status filtering is not proven by the CRUD spec. |
+| Create generic webhook source through UI | `CreateEventSourceDialog.tsx` uses labels `Name`, `Webhook Adapter`, `Generic Webhook`, `Advanced`, `Max events`, `Per (seconds)` and submits `POST /api/events/sources`; backend `create_source` creates `EventSource` and `WebhookSource` and calls the generic adapter. | `event-source-management-acceptance.admin.spec.ts` creates a generic webhook source through UI, then verifies `GET /api/events/sources/{id}` has the name, active state, `adapter_name: generic`, and rate-limit settings. Parent reports this journey now passes. | Schedule source creation, topic source creation, Microsoft Graph source creation, and organization scope selection remain unproven here. |
+| Add workflow subscription through UI | `SubscriptionsTable.tsx` opens `CreateSubscriptionDialog.tsx`; the dialog uses `Select a workflow...`, nested `WorkflowSelectorDialog.tsx`, `Event Type Filter (optional)`, and `Add Subscription`. Backend `create_subscription` is `POST /api/events/sources/{source_id}/subscriptions`. | `event-source-management-acceptance.admin.spec.ts` seeds a workflow via `/api/files/editor/content` and `/api/workflows/register`, picks it through `Select Workflow`, adds an event-type filter, checks the row, and verifies `GET /api/events/sources/{id}/subscriptions`. Parent reports this journey now passes. | Agent-targeted subscriptions, input mapping, subscription edit/toggle/delete, and failure retry remain unproven in this spec. |
+| Edit source metadata and webhook rate limits | `EditEventSourceDialog.tsx` uses `Name`, `Max events`, `Per (seconds)`, `Enabled`, and `Save Changes`; backend `PATCH /api/events/sources/{source_id}` updates base fields and webhook rate-limit fields. | `event-source-management-acceptance.admin.spec.ts` edits the name/rate limits, disables rate limiting, verifies API state, reloads, and checks heading/subscription/event-type persistence. Parent reports this journey now passes. | Dynamic provider config edits, schedule cron/timezone/overlap edits, and failed save retry remain unproven here. |
+| Deactivate and delete source through UI | `EventSourceDetail.tsx` exposes switch `Source active` and per-source actions; delete calls `DELETE /api/events/sources/{source_id}` and retains provider-managed sources on provider cleanup failure. | `event-source-management-acceptance.admin.spec.ts` toggles `Source active`, verifies API `is_active: false`, deletes from the detail actions menu, verifies return to `/event-sources`, filtered absence, and 404. Parent reports this journey now passes. | List-row activation/delete, provider cleanup failure retention, and solution-managed 409 behavior remain unproven here. |
+| Deliver a local webhook event to a workflow and inspect outcome | `EventsTable.tsx`, `EventDetailDialog.tsx`, and `DeliveriesTable.tsx` render source events, event inspector, deliveries and execution links. Backend webhook/event/delivery routes are in `api/src/routers/events.py`, including source events, event detail, deliveries, retry/send routes. | `client/e2e/event-delivery-acceptance.admin.spec.ts` creates a generic webhook source and subscription through API, posts `/api/hooks/{sourceId}`, waits for successful delivery, then verifies the UI event row, inspector payload, delivery success, and linked execution result. | This proves delivery/inspection for a local generic webhook path, not source management through UI. |
+| Microsoft Graph/provider source behavior | `CreateEventSourceDialog.tsx` dynamic config and `EventSourceDetail.tsx` Graph resubscribe controls support Microsoft Graph; backend `resubscribe_source` and provider subscribe/unsubscribe paths are in `api/src/routers/events.py`. | `client/e2e/event-source-graph.admin.spec.ts` stubs dynamic values and source data to verify Graph tenant/user retry UI and Graph context/resubscribe UI. | Real Microsoft Graph provider subscription lifecycle, callback validation against Microsoft, renewal, and remote webhook delivery remain unproven. |
+| Event inspector authorization/deleted-event recovery | Components have recovery states in `EventDetailDialog.tsx` and `DeliveriesTable.tsx`; backend has `GET /api/events/{event_id}`, delivery list, retry and send routes. | Design-modernization event docs record intercepted browser matrices, but this pass found no current committed live browser spec for inspector authorization or deleted-event restoration. | Missing real browser proof for 403/404 inspector paths and restoration/recovery after permanent deletion. |
 
 ## Cross-Cutting Notes
 
-- Existing design-modernization acceptance documents record many browser handle IDs and parent screenshot reviews, but most are not committed tests. They are useful evidence for the modernization effort, yet they should not be treated as durable CI coverage.
-- Committed browser coverage is strongest for Integration mapping persistence and local webhook event delivery.
-- MCP server/connection and Entity Management lifecycle actions have good component/backend coverage plus design-led UI fixture evidence, but lack committed real-UI persistence specs.
-- Backend/API coverage is broad for integrations, events, MCP tool access and manifest sync. It does not automatically prove that every current UI action wires the correct accessible control to a live persisted mutation.
+- The current strongest real browser persistence coverage in this resource group is targeted: integration CRUD and mapping, entity app-scope assignment, auth-free MCP management, MCP service catalog refresh, MCP settings/personal callback, event-source CRUD, and local webhook delivery.
+- The enhanced integration cards, auth-free MCP management, MCP service catalog activation/refresh, and event-source management browser journeys are now targeted passing evidence per parent report. External provider compatibility remains unproven.
+- Design-modernization review docs remain useful UI evidence, especially for responsive layout and intercepted recovery states, but they are not substituted here for committed browser proof of real persistence.
+- Backend/API evidence confirms the route contracts exist for many actions. It does not prove that every current UI control successfully drives those routes unless a browser spec above exercises that action.

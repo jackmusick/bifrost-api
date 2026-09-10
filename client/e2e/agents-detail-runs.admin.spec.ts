@@ -448,7 +448,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			await expect(page).toHaveURL(
 				new RegExp(`/agents/${agent.id}/runs/${grandchildId}$`),
 			);
-			const contextualBack = page.getByTestId("run-context-back");
+			const contextualBack = page.getByRole("link", {
+				name: "Back to Service Desk Triage run",
+				exact: true,
+			});
 			await expect(contextualBack).toHaveText(
 				"Back to Service Desk Triage run",
 			);
@@ -517,6 +520,16 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const mobileOpenRun = activity.getByRole("link", {
 				name: "Open Troubleshooting Specialist run",
 			});
+			// Expansion survives navigation and reload. Verify persistence before
+			// exercising the mobile collapse/reopen controls.
+			const mobileHideDetails = activity.getByRole("button", {
+				name: "Hide details for Troubleshooting Specialist",
+			});
+			await expect(mobileHideDetails).toHaveAttribute(
+				"aria-expanded",
+				"true",
+			);
+			await mobileHideDetails.click();
 			const mobileShowDetails = activity.getByRole("button", {
 				name: "Show details for Troubleshooting Specialist",
 			});
@@ -748,7 +761,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const main = page.locator("main");
 			const heading = page.getByRole("heading", { name: agent.name });
 			const tabs = page.getByRole("tablist");
-			const activityHeading = page.getByText(/Activity — last 7 days/i);
+			const contentRegion = page.getByRole("region", {
+				name: "Page content",
+				exact: true,
+			});
 			const recentRegion = page.getByRole("region", {
 				name: "Recent activity",
 			});
@@ -767,7 +783,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			});
 			expect(await main.evaluate((element) => element.scrollTop)).toBe(0);
 
-			const desktopMetrics = await recentRegion.evaluate((element) => ({
+			const desktopMetrics = await contentRegion.evaluate((element) => ({
 				overflowY: getComputedStyle(element).overflowY,
 				clientHeight: element.clientHeight,
 				scrollHeight: element.scrollHeight,
@@ -780,18 +796,17 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const contextBefore = await Promise.all([
 				heading.boundingBox(),
 				tabs.boundingBox(),
-				activityHeading.boundingBox(),
 			]);
 			if (contextBefore.some((bounds) => bounds === null)) {
 				throw new Error("Expected Overview context to be visible");
 			}
 
-			await recentRegion.evaluate((element) => {
+			await contentRegion.evaluate((element) => {
 				element.scrollTop = element.scrollHeight;
 			});
 			await expect
 				.poll(() =>
-					recentRegion.evaluate((element) => element.scrollTop),
+					contentRegion.evaluate((element) => element.scrollTop),
 				)
 				.toBeGreaterThan(0);
 			expect(await main.evaluate((element) => element.scrollTop)).toBe(0);
@@ -799,7 +814,6 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const contextAfter = await Promise.all([
 				heading.boundingBox(),
 				tabs.boundingBox(),
-				activityHeading.boundingBox(),
 			]);
 			for (let index = 0; index < contextBefore.length; index += 1) {
 				expect(
@@ -840,12 +854,26 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 							fallbackMetrics.clientHeight,
 					),
 				).toBeLessThanOrEqual(1);
+				const scrollOwner =
+					viewport.width >= 1024 ? contentRegion : main;
 				expect(
-					await main.evaluate(
+					await scrollOwner.evaluate(
 						(element) =>
 							element.scrollHeight - element.clientHeight,
 					),
 				).toBeGreaterThan(0);
+				await scrollOwner.evaluate((element) => {
+					element.scrollTop = element.scrollHeight;
+				});
+				await expect
+					.poll(() =>
+						scrollOwner.evaluate((element) => element.scrollTop),
+					)
+					.toBeGreaterThan(0);
+				if (viewport.width >= 1024) {
+					await expect(heading).toBeInViewport();
+					await expect(tabs).toBeInViewport();
+				}
 				expect(
 					await main.evaluate(
 						(element) => element.scrollWidth - element.clientWidth,
@@ -980,7 +1008,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			for (let index = 0; index < 6; index += 1) {
 				await addCapturedDataFilter.click();
 			}
-			const filterRegion = page.locator(".agent-runs-filter-region");
+			const filterRegion = page.getByRole("region", {
+				name: "Run filter controls",
+				exact: true,
+			});
 			const filterMetrics = await filterRegion.evaluate((element) => ({
 				overflowY: getComputedStyle(element).overflowY,
 				clientHeight: element.clientHeight,
@@ -1007,10 +1038,28 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				)
 				.toBeGreaterThan(0);
 
-			for (const viewport of [
-				{ width: 390, height: 844 },
-				{ width: 1440, height: 650 },
-			]) {
+			// Short desktop scrolls the workspace as one pane so filters cannot
+			// reduce a run to an unreadable sliver. Header and tabs remain fixed.
+			await page.setViewportSize({ width: 1440, height: 650 });
+			const contentRegion = page.getByRole("region", {
+				name: "Page content",
+				exact: true,
+			});
+			await expect
+				.poll(() =>
+					contentRegion.evaluate(
+						(element) =>
+							element.scrollHeight - element.clientHeight,
+					),
+				)
+				.toBeGreaterThan(0);
+			const lastRunTitle = page.getByText(/Mock run 24:/).first();
+			await lastRunTitle.scrollIntoViewIfNeeded();
+			await expect(lastRunTitle).toBeInViewport();
+			await expect(heading).toBeInViewport();
+			await expect(tabs).toBeInViewport();
+
+			for (const viewport of [{ width: 390, height: 844 }]) {
 				await page.setViewportSize(viewport);
 				await page.reload();
 				await expect(runRegion).toBeVisible();

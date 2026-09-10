@@ -296,6 +296,45 @@ function collisionError(message: string): Error & { status: number } {
 }
 
 describe("CreateEditSolution — install collision prompt", () => {
+	it("passes explicit reactivate intent to zip installs", async () => {
+		vi.mocked(previewInstall).mockResolvedValue(makePreview());
+		vi.mocked(installSolution).mockResolvedValue(
+			makeSolution({ status: "active" } as Partial<Solution>) as Solution,
+		);
+		const file = new File(["zip"], "solution.zip", {
+			type: "application/zip",
+		});
+		const { user } = renderWithProviders(
+			<CreateEditSolution
+				mode={{
+					kind: "create",
+					file,
+					organizationId: "org-1",
+					intent: "reactivate",
+				}}
+				open
+				onClose={vi.fn()}
+				onSaved={vi.fn()}
+			/>,
+		);
+
+		expect(
+			await screen.findByText("Reactivate Solution"),
+		).toBeInTheDocument();
+		const reactivateButton = await screen.findByRole("button", {
+			name: "Reactivate",
+		});
+		await waitFor(() => expect(reactivateButton).toBeEnabled());
+		await user.click(reactivateButton);
+
+		await waitFor(() => expect(installSolution).toHaveBeenCalledOnce());
+		expect(vi.mocked(installSolution).mock.calls[0][0]).toMatchObject({
+			file,
+			organizationId: "org-1",
+			reactivate: true,
+		});
+	});
+
 	it("prompts to replace secrets on a 409 collision, then re-installs with replaceSecrets", async () => {
 		vi.mocked(previewInstall).mockResolvedValue(makePreview());
 		// First install attempt collides; the confirmed retry succeeds.

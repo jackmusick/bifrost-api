@@ -3072,7 +3072,10 @@ export function SolutionDetail() {
 							mode={{
 								kind: "create",
 								organizationId: sol.organization_id ?? null,
-								intent: "update",
+								intent:
+									sol.status === "inactive"
+										? "reactivate"
+										: "update",
 							}}
 							open
 							onClose={() => setUpdateOpen(false)}

@@ -23,6 +23,13 @@ const FIXTURE_PNG = {
 
 const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
+async function uploadLogo(page: import("@playwright/test").Page, name: string) {
+	const uploadZone = page.getByRole("group", { name });
+	await expect(uploadZone).toBeVisible();
+	await uploadZone.locator('input[type="file"]').setInputFiles(FIXTURE_PNG);
+	await expect(page.getByText("Image updated")).toBeVisible();
+}
+
 test.describe("Entity logos", () => {
 	test.describe("App logo", () => {
 		const APP_SLUG = `e2e-logo-${UNIQUE}`;
@@ -48,10 +55,12 @@ test.describe("Entity logos", () => {
 		});
 
 		test.afterAll(async ({ api }) => {
-			if (appId) await api.delete(`/api/applications/${appId}`);
+			if (!appId) return;
+			const resp = await api.delete(`/api/applications/${appId}`);
+			expect(resp.ok(), await resp.text()).toBe(true);
 		});
 
-		test("uploads via the app settings dialog and renders on the card", async ({
+		test("uploads via the app settings dialog and renders on the list row", async ({
 			page,
 		}) => {
 			await page.goto(`/apps/${APP_SLUG}/edit`);
@@ -60,23 +69,17 @@ test.describe("Entity logos", () => {
 				page.getByRole("heading", { name: /edit application/i }),
 			).toBeVisible();
 
-			// The hidden file input lives inside the logo drop zone.
-			const fileInput = page.locator(
-				'[data-testid="logo-drop-zone"] input[type="file"]',
-			);
-			await fileInput.setInputFiles(FIXTURE_PNG);
-
-			// Confirmation toast appears
-			await expect(page.getByText("Image updated")).toBeVisible();
+			await uploadLogo(page, "Upload image (click or drag)");
 
 			// Close the dialog and navigate to the apps list
 			await page.keyboard.press("Escape");
 			await page.goto("/apps");
+			await page.getByRole("radio", { name: "Table view" }).click();
 
-			const card = page.getByRole("button", {
+			const row = page.getByRole("row", {
 				name: new RegExp(APP_NAME),
 			});
-			const logo = card.getByTestId("entity-logo");
+			const logo = row.locator("img");
 			await expect(logo).toBeVisible();
 			await expect(logo).toHaveAttribute(
 				"src",
@@ -106,28 +109,30 @@ test.describe("Entity logos", () => {
 		});
 
 		test.afterAll(async ({ api }) => {
-			if (agentId) await api.delete(`/api/agents/${agentId}`);
+			if (!agentId) return;
+			const resp = await api.delete(`/api/agents/${agentId}`);
+			expect(resp.ok(), await resp.text()).toBe(true);
 		});
 
-		test("uploads via the drop zone and renders on the fleet card", async ({
+		test("uploads via the drop zone and renders on the fleet row", async ({
 			page,
 		}) => {
 			await page.goto(`/agents/${agentId}`);
 
-			// Wait for the drop zone to be present (it only renders once agent data loads).
-			await page.waitForSelector('[data-testid="logo-drop-zone"]');
-
-			// The hidden file input lives inside the drop zone.
-			const fileInput = page.locator(
-				'[data-testid="logo-drop-zone"] input[type="file"]',
-			);
-			await fileInput.setInputFiles(FIXTURE_PNG);
-
-			await expect(page.getByText("Image updated")).toBeVisible();
+			await page.getByRole("button", { name: "Edit agent logo" }).click();
+			await expect(
+				page.getByRole("heading", { name: "Agent logo" }),
+			).toBeVisible();
+			await uploadLogo(page, "Upload agent logo");
+			await page.getByRole("button", { name: "Done" }).click();
 
 			const perAgentStatsRequests: string[] = [];
 			page.on("request", (request) => {
-				if (/\/api\/agents\/[0-9a-f-]+\/stats$/.test(new URL(request.url()).pathname)) {
+				if (
+					/\/api\/agents\/[0-9a-f-]+\/stats$/.test(
+						new URL(request.url()).pathname,
+					)
+				) {
 					perAgentStatsRequests.push(request.url());
 				}
 			});
@@ -140,12 +145,13 @@ test.describe("Entity logos", () => {
 			});
 
 			await page.goto("/agents");
+			await page.getByRole("button", { name: "Table view" }).click();
 			await listWithStats;
 
-			const card = page.getByRole("link", {
+			const row = page.getByRole("row", {
 				name: new RegExp(AGENT_NAME),
 			});
-			const logo = card.getByTestId("entity-logo");
+			const logo = row.locator("img");
 			await expect(logo).toBeVisible();
 			await expect(logo).toHaveAttribute(
 				"src",

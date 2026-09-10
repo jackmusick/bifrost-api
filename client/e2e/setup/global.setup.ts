@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { createTestUsers, authenticateInBrowser } from "./auth-helpers";
+import { seedLocalAIDefaults } from "./ai-fixtures";
 import {
 	USERS,
 	AUTH_STATE_DIR,
@@ -91,6 +92,8 @@ setup(
 			try {
 				// Authenticate in browser
 				await authenticateInBrowser(page, userCredentials);
+				if (userKey === "platform_admin")
+					await seedLocalAIDefaults(context);
 
 				// Save storage state
 				const statePath = path.resolve(

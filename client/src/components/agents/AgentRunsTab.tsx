@@ -1,3 +1,4 @@
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 /**
  * Runs tab for an agent's detail page.
  *
@@ -55,6 +56,9 @@ export interface AgentRunsTabProps {
 }
 
 export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
+	const shortDesktop = useMediaQuery(
+		"(min-width: 1024px) and (max-height: 700px)",
+	);
 	const [searchParams, setSearchParams] = useSearchParams();
 	const summaryFilter = searchParams.get("summary");
 	const [query, setQuery] = useState("");
@@ -169,7 +173,9 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 	}
 
 	return (
-		<div className="agent-runs-tab flex min-w-0 flex-col gap-4 lg:h-full lg:min-h-0">
+		<div
+			className={`agent-runs-tab flex min-w-0 flex-col gap-4 ${shortDesktop ? "" : "lg:h-full lg:min-h-0"}`}
+		>
 			{/* Search + filter bar */}
 			<div className="flex shrink-0 flex-wrap items-center gap-3">
 				<div className="relative min-w-0 flex-[1_1_15rem] max-w-md">
@@ -247,7 +253,11 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 				) : null}
 			</div>
 
-			<div className="agent-runs-filter-region shrink-0">
+			<div
+				className={`agent-runs-filter-region shrink-0 ${shortDesktop ? "" : "lg:max-h-[40%] lg:overflow-auto"}`}
+				role="region"
+				aria-label="Run filter controls"
+			>
 				<CapturedDataFilter
 					agentId={agentId}
 					value={metadataConditions}
@@ -291,7 +301,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 			)}
 			{/* Run list */}
 			<div
-				className="agent-runs-scroll-region flex flex-col gap-2 lg:min-h-0 lg:flex-1 lg:overflow-auto [&>*]:shrink-0"
+				className={`agent-runs-scroll-region flex flex-col gap-2 [&>*]:shrink-0 ${shortDesktop ? "" : "lg:min-h-0 lg:flex-1 lg:overflow-auto"}`}
 				role="region"
 				aria-label="Run history"
 			>

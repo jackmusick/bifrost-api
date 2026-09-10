@@ -5,6 +5,9 @@ import {
 	DataTable,
 	DataTableBody,
 	DataTableCell,
+	DataTableFooter,
+	DataTableHead,
+	DataTableHeader,
 	DataTableRow,
 } from "./data-table";
 
@@ -126,5 +129,39 @@ describe("DataTableRow row action guard", () => {
 		fireEvent.click(screen.getByText("Plain cell"));
 
 		expect(onClick).not.toHaveBeenCalled();
+	});
+});
+
+describe("DataTable footer placement", () => {
+	it("keeps the footer outside the scrollable table body", () => {
+		renderWithProviders(
+			<DataTable aria-label="Records">
+				<DataTableHeader>
+					<DataTableRow>
+						<DataTableHead>Name</DataTableHead>
+					</DataTableRow>
+				</DataTableHeader>
+				<DataTableBody>
+					<DataTableRow>
+						<DataTableCell>Visible row</DataTableCell>
+					</DataTableRow>
+				</DataTableBody>
+				<DataTableFooter>
+					<DataTableRow>
+						<DataTableCell>Persistent footer</DataTableCell>
+					</DataTableRow>
+				</DataTableFooter>
+			</DataTable>,
+		);
+
+		const root = screen.getByLabelText("Records");
+		const scrollBody = root.firstElementChild;
+		const footerShell = root.lastElementChild;
+
+		expect(scrollBody).not.toBe(footerShell);
+		expect(scrollBody).toHaveClass("overflow-auto");
+		expect(scrollBody).toHaveTextContent("Visible row");
+		expect(scrollBody).not.toHaveTextContent("Persistent footer");
+		expect(footerShell).toHaveTextContent("Persistent footer");
 	});
 });

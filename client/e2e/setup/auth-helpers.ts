@@ -268,8 +268,6 @@ export async function authenticateInBrowser(
 	// Debug: capture what's on the page
 	console.log(`Page title: ${await page.title()}`);
 	console.log(`Page URL: ${page.url()}`);
-	const bodyText = await page.locator("body").textContent();
-	console.log(`Page body (first 500 chars): ${bodyText?.substring(0, 500)}`);
 
 	// Take screenshot for debugging
 	const screenshotPath = path.join(RESULTS_DIR, "login-debug.png");
@@ -285,10 +283,6 @@ export async function authenticateInBrowser(
 	await expect(mfaInput).toBeVisible();
 
 	// Debug: Check for error messages after login attempt
-	const bodyTextAfterLogin = await page.locator("body").textContent();
-	console.log(
-		`Page body after login click (first 500 chars): ${bodyTextAfterLogin?.substring(0, 500)}`,
-	);
 	console.log(`Current URL after login click: ${page.url()}`);
 
 	// Check for error messages (alert, toast, or inline)
@@ -312,7 +306,6 @@ export async function authenticateInBrowser(
 
 	console.log("MFA input found, entering TOTP code...");
 	const totpCode = generateTOTP(credentials.totpSecret);
-	console.log(`Generated TOTP code: ${totpCode.substring(0, 3)}***`);
 	await mfaInput.fill(totpCode);
 	await page.getByRole("button", { name: /verify|submit|continue/i }).click();
 	console.log("Clicked MFA verify button");

@@ -190,6 +190,7 @@ export function Workflows() {
 	// Apply search filter (type filtering is now done server-side)
 	const filteredWorkflows = useSearch(categoryFilteredWorkflows, searchTerm, [
 		"name",
+		"display_name",
 		"description",
 		"category",
 		(w) => w.parameters?.map((p) => p.name).join(" ") || "",

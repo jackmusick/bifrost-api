@@ -16,6 +16,7 @@
  */
 
 import { test, expect } from "./fixtures/api-fixture";
+import { routeMonacoAssets } from "./fixtures/monaco-assets";
 
 const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 const TABLE_NAME = `e2e_mgr_table_${UNIQUE}`.replace(/[^a-z0-9_]/g, "_");
@@ -23,6 +24,10 @@ const RULE_NAME = `e2e-mgr-rule-${UNIQUE}`;
 let tableId: string;
 
 test.describe("Policy rules manager", () => {
+	test.beforeEach(async ({ page }) => {
+		await routeMonacoAssets(page.context());
+	});
+
 	test.beforeAll(async ({ api }) => {
 		// Create the table we'll edit policies on.
 		const res = await api.post("/api/tables", {
@@ -34,10 +39,30 @@ test.describe("Policy rules manager", () => {
 	});
 
 	test.afterAll(async ({ api }) => {
-		// Best-effort cleanup.
-		await api.delete(`/api/policy-rules/table/${RULE_NAME}`).catch(() => {});
 		if (tableId) {
-			await api.delete(`/api/tables/${tableId}`).catch(() => {});
+			const tableCleanup = await api.delete(`/api/tables/${tableId}`);
+			expect(
+				[200, 204, 404],
+				`delete table fixture ${tableId}: ${tableCleanup.status()} ${await tableCleanup.text()}`,
+			).toContain(tableCleanup.status());
+		}
+		const ruleCleanup = await api.delete(
+			`/api/policy-rules/table/${RULE_NAME}`,
+		);
+		expect(
+			[200, 204, 404],
+			`delete policy rule fixture ${RULE_NAME}: ${ruleCleanup.status()} ${await ruleCleanup.text()}`,
+		).toContain(ruleCleanup.status());
+	});
+
+	test.afterEach(async ({ api }) => {
+		if (tableId) {
+			const tableCleanup = await api.delete(`/api/tables/${tableId}`);
+			expect(
+				[200, 204, 404],
+				`delete table fixture ${tableId}: ${tableCleanup.status()} ${await tableCleanup.text()}`,
+			).toContain(tableCleanup.status());
+			tableId = "";
 		}
 	});
 
@@ -51,15 +76,21 @@ test.describe("Policy rules manager", () => {
 			page.getByRole("heading", { name: /tables/i }).first(),
 		).toBeVisible({ timeout: 15000 });
 
-		// Open the table edit dialog from the matching table row.
-		const tableRow = page.getByRole("row").filter({ hasText: TABLE_NAME });
-		await expect(tableRow).toBeVisible({ timeout: 10000 });
-		await tableRow.getByRole("button", { name: /edit table/i }).click();
+		// Open the table edit dialog from the matching table actions menu.
+		await expect(page.getByText(TABLE_NAME)).toBeVisible({
+			timeout: 10000,
+		});
+		await page
+			.getByRole("button", { name: `${TABLE_NAME} actions` })
+			.click();
+		await page.getByRole("menuitem", { name: "Edit" }).click();
 		const tableDialog = page.getByRole("dialog", { name: /edit table/i });
 		await expect(tableDialog).toBeVisible({ timeout: 10000 });
 
 		// Click "Manage rules…" inside the policy editor.
-		const manageBtn = tableDialog.getByTestId("manage-rules-btn");
+		const manageBtn = tableDialog.getByRole("button", {
+			name: "Manage rules…",
+		});
 		await expect(manageBtn).toBeVisible({ timeout: 5000 });
 		await manageBtn.click();
 
@@ -68,13 +99,19 @@ test.describe("Policy rules manager", () => {
 			name: /table policy rules/i,
 		});
 		await expect(managerDialog).toBeVisible({ timeout: 5000 });
+		const ruleSurface = () =>
+			managerDialog.locator("article").filter({
+				has: page.getByRole("heading", { name: RULE_NAME }),
+			});
+		const ruleActions = () =>
+			managerDialog.getByRole("button", {
+				name: `${RULE_NAME} actions`,
+			});
 
 		// ----------------------------------------------------------------
 		// 1. Create a new rule
 		// ----------------------------------------------------------------
-		await managerDialog
-			.getByTestId("policy-rules-create-btn")
-			.click();
+		await managerDialog.getByRole("button", { name: "New rule" }).click();
 
 		const createDialog = page.getByRole("dialog", {
 			name: /create policy rule/i,
@@ -82,23 +119,21 @@ test.describe("Policy rules manager", () => {
 		await expect(createDialog).toBeVisible({ timeout: 5000 });
 
 		await createDialog.getByLabel("Name").fill(RULE_NAME);
-		await createDialog.getByLabel("Description").fill("E2E manager test rule");
+		await createDialog
+			.getByLabel("Description")
+			.fill("E2E manager test rule");
 
 		// Leave the body as the default seed (valid JSON).
 		await createDialog.getByRole("button", { name: "Create" }).click();
 
 		// Rule should now appear in the manager table.
-		await expect(
-			managerDialog.getByText(RULE_NAME),
-		).toBeVisible({ timeout: 10000 });
+		await expect(ruleSurface()).toBeVisible({ timeout: 10000 });
 
 		// ----------------------------------------------------------------
 		// 2. Edit the rule description
 		// ----------------------------------------------------------------
-		const createdRuleRow = managerDialog
-			.getByTestId("policy-rule-row")
-			.filter({ hasText: RULE_NAME });
-		await createdRuleRow.getByTestId("policy-rule-edit-btn").click();
+		await ruleActions().click();
+		await page.getByRole("menuitem", { name: "Edit" }).click();
 
 		const editDialog = page.getByRole("dialog", {
 			name: new RegExp(`edit.*${RULE_NAME}`, "i"),
@@ -115,16 +150,22 @@ test.describe("Policy rules manager", () => {
 		await editDialog.getByRole("button", { name: "Save" }).click();
 
 		// The manager should still be open with the rule listed.
-		await expect(
-			managerDialog.getByText(RULE_NAME),
-		).toBeVisible({ timeout: 10000 });
+		await expect(ruleSurface()).toBeVisible({ timeout: 10000 });
 
 		// ----------------------------------------------------------------
 		// 3. Built-in admin_bypass rule should show the built-in badge
 		// ----------------------------------------------------------------
-		const builtinBadge = managerDialog.getByTestId("builtin-badge").first();
 		// The admin_bypass rule is seeded on startup — confirm it's present.
-		await expect(builtinBadge).toBeVisible({ timeout: 5000 });
+		await expect(
+			managerDialog
+				.locator("article")
+				.filter({
+					has: page.getByRole("heading", {
+						name: "admin_bypass",
+					}),
+				})
+				.getByText("built-in", { exact: true }),
+		).toBeVisible({ timeout: 5000 });
 
 		// ----------------------------------------------------------------
 		// 4. Wire a $ref in the table policy and attempt to delete → 409 blast radius
@@ -137,16 +178,20 @@ test.describe("Policy rules manager", () => {
 				},
 			},
 		});
-		expect(attachRes.ok(), `attach table policy: ${await attachRes.text()}`).toBe(
-			true,
-		);
+		expect(
+			attachRes.ok(),
+			`attach table policy: ${await attachRes.text()}`,
+		).toBe(true);
 
 		// Now try to delete the rule — expect the blast-radius dialog.
-		await createdRuleRow.getByTestId("policy-rule-delete-btn").click();
+		await ruleActions().click();
+		await page.getByRole("menuitem", { name: "Delete" }).click();
 		// Confirm the delete in the alert dialog.
 		await page.getByRole("button", { name: "Delete" }).click();
 
-		const blastDialog = page.getByTestId("blast-radius-dialog");
+		const blastDialog = page.getByRole("alertdialog", {
+			name: "Rule is in use",
+		});
 		await expect(blastDialog).toBeVisible({ timeout: 10000 });
 		await expect(blastDialog).toContainText(TABLE_NAME);
 		await blastDialog.getByRole("button", { name: "Close" }).click();
