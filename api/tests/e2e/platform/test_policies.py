@@ -29,9 +29,12 @@ def _set_policies(e2e_client, headers, table_id, policies):
     assert r.status_code == 200, r.text
 
 
-def _insert(e2e_client, headers, table_id, data):
+def _insert(e2e_client, headers, table_id, data, doc_id=None):
+    body = {"data": data}
+    if doc_id is not None:
+        body["id"] = doc_id
     return e2e_client.post(
-        f"/api/tables/{table_id}/documents", headers=headers, json={"data": data}
+        f"/api/tables/{table_id}/documents", headers=headers, json=body
     )
 
 
@@ -146,6 +149,69 @@ class TestPoliciesMatrix:
         # Admin queries — sees both
         admin_q = _query(e2e_client, platform_admin.headers, table_id).json()["documents"]
         assert len(admin_q) == 2
+
+    def test_own_row_policy_filters_document_id_keyset_query(
+        self, e2e_client, platform_admin, alice_user, bob_user
+    ):
+        table_id = _create_table(
+            e2e_client,
+            platform_admin.headers,
+            f"own_keyset_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(
+            e2e_client,
+            platform_admin.headers,
+            table_id,
+            {
+                "policies": [
+                    {
+                        "name": "admin_bypass",
+                        "actions": ["read", "create", "update", "delete"],
+                        "when": {"user": "is_platform_admin"},
+                    },
+                    {
+                        "name": "own_row_full",
+                        "actions": ["read", "create", "update", "delete"],
+                        "when": {
+                            "eq": [
+                                {"row": "created_by"},
+                                {"user": "user_id"},
+                            ]
+                        },
+                    },
+                ]
+            },
+        )
+        assert _insert(
+            e2e_client,
+            alice_user.headers,
+            table_id,
+            {"who": "alice"},
+            "tenant|001",
+        ).status_code == 201
+        assert _insert(
+            e2e_client,
+            bob_user.headers,
+            table_id,
+            {"who": "bob"},
+            "tenant|002",
+        ).status_code == 201
+
+        response = e2e_client.post(
+            f"/api/tables/{table_id}/documents/query",
+            headers=alice_user.headers,
+            json={
+                "document_id_prefix": "tenant|",
+                "after_document_id": "tenant|000",
+                "skip_count": True,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == -1
+        assert [doc["id"] for doc in response.json()["documents"]] == [
+            "tenant|001"
+        ]
 
     def test_state_locked_update(self, e2e_client, platform_admin, alice_user):
         """Owner can update while status=open; cannot once status=done (pre-update semantics)."""

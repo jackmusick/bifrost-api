@@ -490,6 +490,22 @@ class DocumentRepository:
         """
         base_query = select(Document).where(Document.table_id == self.table.id)
 
+        document_id_pagination = (
+            query_params.after_document_id is not None
+            or query_params.document_id_prefix is not None
+        )
+        if query_params.document_id_prefix is not None:
+            prefix = query_params.document_id_prefix
+            # The lower bound seeks into the existing ``(table_id, id)``
+            # btree. Keep the startswith predicate for the exact prefix
+            # boundary: synthesizing a textual upper bound is incorrect under
+            # locale-aware PostgreSQL collations (for example, ``|`` and ``}``
+            # do not necessarily sort by code point).
+            base_query = base_query.where(Document.id >= prefix)
+            base_query = base_query.where(Document.id.startswith(prefix, autoescape=True))
+        if query_params.after_document_id is not None:
+            base_query = base_query.where(Document.id > query_params.after_document_id)
+
         # Apply where filters using JSON-native operators
         if query_params.where:
             base_query = _build_document_filters(base_query, query_params.where)
@@ -510,7 +526,9 @@ class DocumentRepository:
         # (e.g. rows inserted in the same transaction share `created_at`).
         # Without a tiebreaker, Postgres returns tied rows in arbitrary order
         # and the same id can appear on adjacent pages — or be skipped entirely.
-        if query_params.order_by:
+        if document_id_pagination:
+            base_query = base_query.order_by(Document.id)
+        elif query_params.order_by:
             # Order by JSONB field
             order_expr = Document.data[query_params.order_by].astext
             if query_params.order_dir == "desc":

@@ -15368,6 +15368,16 @@ export interface components {
              * @default false
              */
             skip_count: boolean;
+            /**
+             * After Document Id
+             * @description Return documents whose actual document ID is greater than this exclusive cursor, ordered by document ID.
+             */
+            after_document_id?: string | null;
+            /**
+             * Document Id Prefix
+             * @description Return only documents whose actual document ID starts with this prefix, ordered by document ID.
+             */
+            document_id_prefix?: string | null;
         };
         /**
          * DocumentSection

@@ -214,7 +214,7 @@ Event publishing operations (async).
 
 **`tables.list(scope: str | None = None, app: str | None = None) -> list[TableInfo]`**
 
-**`tables.query(table: str, where: dict[str, Any] | None = None, order_by: str | None = None, order_dir: str = 'asc', limit: int = 100, offset: int = 0, scope: str | None = None) -> DocumentList`**
+**`tables.query(table: str, where: dict[str, Any] | None = None, order_by: str | None = None, order_dir: str = 'asc', limit: int = 100, offset: int = 0, scope: str | None = None, after_document_id: str | None = None, document_id_prefix: str | None = None, skip_count: bool = False) -> DocumentList`**
 
 **`tables.update(table: str, doc_id: str, data: dict[str, Any], scope: str | None = None, updated_by: str | None = None) -> DocumentData | None`**
 
