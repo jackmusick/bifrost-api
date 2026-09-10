@@ -1,3 +1,4 @@
+import { ExecutionDetails } from "./ExecutionDetails";
 /**
  * Tests for admin-only controls in ExecutionDetails.
  */
@@ -145,7 +146,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { ExecutionDetails } = await import("./ExecutionDetails");
 	return renderWithProviders(
 		<ExecutionDetails executionId={execution.execution_id} />,
 	);
@@ -316,8 +316,6 @@ describe("ExecutionDetails — navigation fetch gating", () => {
 			isFetching: false,
 			refetch: vi.fn(),
 		});
-
-		const { ExecutionDetails } = await import("./ExecutionDetails");
 		renderWithProviders(
 			<ExecutionDetails executionId={execution.execution_id} />,
 			{
@@ -347,8 +345,6 @@ describe("ExecutionDetails — navigation fetch gating", () => {
 			executionQueryKey,
 			{ ...execution, status: "Running", completed_at: null },
 		);
-
-		const { ExecutionDetails } = await import("./ExecutionDetails");
 		renderWithProviders(
 			<ExecutionDetails executionId={execution.execution_id} />,
 			{
@@ -379,8 +375,6 @@ describe("ExecutionDetails — navigation fetch gating", () => {
 			...execution,
 			status: "Success",
 		});
-
-		const { ExecutionDetails } = await import("./ExecutionDetails");
 		renderWithProviders(
 			<ExecutionDetails executionId={execution.execution_id} />,
 			{
@@ -475,7 +469,6 @@ describe("ExecutionDetails — embedded metrics", () => {
 			isLoading: false,
 			error: null,
 		});
-		const { ExecutionDetails } = await import("./ExecutionDetails");
 		const { user } = renderWithProviders(
 			<ExecutionDetails executionId={execution.execution_id} embedded />,
 		);

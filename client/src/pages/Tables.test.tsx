@@ -1,3 +1,4 @@
+import { Tables } from "./Tables";
 /**
  * Tests for the Tables list page.
  */
@@ -52,7 +53,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Tables } = await import("./Tables");
 	return renderWithProviders(<Tables />);
 }
 

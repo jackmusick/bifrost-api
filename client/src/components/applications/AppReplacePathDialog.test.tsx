@@ -1,3 +1,4 @@
+import { AppReplacePathDialog } from "./AppReplacePathDialog";
 /**
  * Component tests for AppReplacePathDialog.
  *
@@ -65,9 +66,7 @@ function makeApp(overrides: Partial<ApplicationPublic> = {}): ApplicationPublic 
 }
 
 async function renderDialog(app: ApplicationPublic = makeApp()) {
-	// Dynamic import so the vi.mock() calls above land before the component
-	// resolves its dependencies.
-	const { AppReplacePathDialog } = await import("./AppReplacePathDialog");
+
 	const onClose = vi.fn();
 	const onSuccess = vi.fn();
 	const utils = renderWithProviders(

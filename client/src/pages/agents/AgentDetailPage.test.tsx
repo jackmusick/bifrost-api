@@ -1,3 +1,4 @@
+import { AgentDetailPage } from "./AgentDetailPage";
 /**
  * Tests for AgentDetailPage.
  *
@@ -94,7 +95,6 @@ beforeEach(() => {
 // -----------------------------------------------------------------------------
 
 async function renderAtRoute(path: string) {
-	const { AgentDetailPage } = await import("./AgentDetailPage");
 	function LocationProbe() {
 		const loc = useLocation();
 		return <div data-testid="location">{loc.pathname}</div>;

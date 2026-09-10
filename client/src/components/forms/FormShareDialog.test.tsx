@@ -86,22 +86,9 @@ beforeEach(() => {
 });
 
 describe("FormShareDialog", () => {
-	it("shows the private link and requires capability confirmation before publishing", async () => {
+	it("shows the private link before publishing", async () => {
 		mockAuthFetch
 			.mockResolvedValueOnce(jsonResponse(unpublished))
-			.mockResolvedValueOnce(jsonResponse(review))
-			.mockResolvedValueOnce(jsonResponse(form))
-			.mockResolvedValueOnce(jsonResponse({ ok: true }))
-			.mockResolvedValueOnce(
-				jsonResponse({
-					...unpublished,
-					status: "published",
-					public_key: "public-key",
-					allowed_origins: ["https://example.com"],
-					approved_fingerprint: "sha256:reviewed",
-					iframe_path: "/embed/forms/public/public-key",
-				}),
-			)
 			.mockResolvedValueOnce(jsonResponse(review))
 			.mockResolvedValueOnce(jsonResponse(form));
 
@@ -129,14 +116,43 @@ describe("FormShareDialog", () => {
 		expect(await navigator.clipboard.readText()).toBe(
 			"http://localhost:3000/execute/form-1",
 		);
+	});
+
+	it("requires capability confirmation before publishing", async () => {
+		mockAuthFetch
+			.mockResolvedValueOnce(jsonResponse(unpublished))
+			.mockResolvedValueOnce(jsonResponse(review))
+			.mockResolvedValueOnce(jsonResponse(form))
+			.mockResolvedValueOnce(jsonResponse({ ok: true }))
+			.mockResolvedValueOnce(
+				jsonResponse({
+					...unpublished,
+					status: "published",
+					public_key: "public-key",
+					allowed_origins: ["https://example.com"],
+					approved_fingerprint: "sha256:reviewed",
+					iframe_path: "/embed/forms/public/public-key",
+				}),
+			)
+			.mockResolvedValueOnce(jsonResponse(review))
+			.mockResolvedValueOnce(jsonResponse(form));
+
+		const { user } = renderWithProviders(
+			<FormShareDialog
+				formId="form-1"
+				formName="Customer intake"
+				open
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		await screen.findByLabelText("Private form link");
 		await user.click(screen.getByRole("tab", { name: "Website Embed" }));
 		await user.click(
 			screen.getByRole("button", { name: /Website Restrictions/ }),
 		);
-		await user.type(
-			screen.getByLabelText("Allowed Website Origins"),
-			"https://example.com",
-		);
+		await user.click(screen.getByLabelText("Allowed Website Origins"));
+		await user.paste("https://example.com");
 		await user.click(screen.getByRole("switch", { name: "Not Published" }));
 
 		expect(
@@ -171,13 +187,40 @@ describe("FormShareDialog", () => {
 				}),
 			);
 		});
-		const embedCode = await screen.findByLabelText("Embed Code");
-		expect(embedCode).toHaveTextContent(
+		expect(await screen.findByLabelText("Embed Code")).toHaveTextContent(
 			"/embed/forms/public/public-key?theme=light&header=true&background=solid",
 		);
 		expect(screen.getByText("Shown")).toBeInTheDocument();
 		expect(screen.getByText("Solid")).toBeInTheDocument();
+	});
 
+	it("updates embed display options and confirms unpublishing", async () => {
+		mockAuthFetch
+			.mockResolvedValueOnce(
+				jsonResponse({
+					...unpublished,
+					status: "published",
+					public_key: "public-key",
+					allowed_origins: ["https://example.com"],
+					approved_fingerprint: "sha256:reviewed",
+					iframe_path: "/embed/forms/public/public-key",
+				}),
+			)
+			.mockResolvedValueOnce(jsonResponse(review))
+			.mockResolvedValueOnce(jsonResponse(form));
+
+		const { user } = renderWithProviders(
+			<FormShareDialog
+				formId="form-1"
+				formName="Customer intake"
+				open
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		await screen.findByLabelText("Private form link");
+		await user.click(screen.getByRole("tab", { name: "Website Embed" }));
+		const embedCode = await screen.findByLabelText("Embed Code");
 		await user.click(screen.getByRole("combobox", { name: "Theme" }));
 		await user.click(screen.getByRole("option", { name: "Dark" }));
 		await user.click(screen.getByRole("switch", { name: "Show Header" }));

@@ -1,3 +1,4 @@
+import { Forms } from "./Forms";
 /**
  * Tests for the Forms page — focused on the SolutionManagedBadge affordance:
  * managed forms show the shared admin-only badge and hide Edit/Delete;
@@ -77,7 +78,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Forms } = await import("./Forms");
 	return renderWithProviders(
 		<>
 			<Forms />

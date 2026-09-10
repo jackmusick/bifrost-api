@@ -1,3 +1,4 @@
+import { Config } from "./Config";
 /**
  * Tests for the Config list page.
  */
@@ -93,7 +94,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Config } = await import("./Config");
 	return renderWithProviders(<Config />);
 }
 

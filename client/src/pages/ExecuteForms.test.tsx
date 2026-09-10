@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 
+import { ExecuteForms } from "./ExecuteForms";
 const mockNavigate = vi.fn();
 const mockUseAuth = vi.fn();
 const mockUseForms = vi.fn();
@@ -51,7 +52,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { ExecuteForms } = await import("./ExecuteForms");
 	return renderWithProviders(<ExecuteForms />);
 }
 

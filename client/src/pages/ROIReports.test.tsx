@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, within } from "@/test-utils";
+import { ROIReports } from "./ROIReports";
 
 const mockUseAuth = vi.fn();
 const mockUseMediaQuery = vi.fn();
@@ -130,8 +131,7 @@ function makeTrends() {
 	};
 }
 
-async function renderPage() {
-	const { ROIReports } = await import("./ROIReports");
+function renderPage() {
 	return renderWithProviders(<ROIReports />);
 }
 

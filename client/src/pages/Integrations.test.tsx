@@ -3,6 +3,7 @@ import { waitFor } from "@testing-library/react";
 import { renderWithProviders, screen } from "@/test-utils";
 import type { Integration } from "@/services/integrations";
 
+import { Integrations } from "./Integrations";
 const mockIsDesktop = vi.fn(() => true);
 vi.mock("@/hooks/useMediaQuery", () => ({
 	useIsDesktop: () => mockIsDesktop(),
@@ -89,7 +90,6 @@ vi.mock("@/components/ImportDialog", () => ({
 }));
 
 async function renderPage() {
-	const { Integrations } = await import("./Integrations");
 	return renderWithProviders(<Integrations />);
 }
 

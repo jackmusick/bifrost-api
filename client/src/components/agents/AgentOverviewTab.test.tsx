@@ -1,3 +1,4 @@
+import { AgentOverviewTab } from "./AgentOverviewTab";
 /**
  * Tests for AgentOverviewTab.
  *
@@ -121,7 +122,7 @@ beforeEach(() => {
 });
 
 async function renderTab(agentId = "agent-1") {
-	const { AgentOverviewTab } = await import("./AgentOverviewTab");
+
 	return renderWithProviders(<AgentOverviewTab agentId={agentId} />);
 }
 
@@ -169,7 +170,7 @@ describe("AgentOverviewTab", () => {
 	});
 
 	it("keeps the overview as the origin when a recent run is opened", async () => {
-		const { AgentOverviewTab } = await import("./AgentOverviewTab");
+
 		const { user } = renderWithProviders(
 			<Routes>
 				<Route

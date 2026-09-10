@@ -1,3 +1,4 @@
+import { AgentRunDetailPage } from "./AgentRunDetailPage";
 /**
  * Tests for AgentRunDetailPage.
  *
@@ -189,7 +190,6 @@ beforeEach(() => {
 });
 
 async function renderPage(path = "/agents/agent-1/runs/run-1") {
-	const { AgentRunDetailPage } = await import("./AgentRunDetailPage");
 	return renderWithProviders(
 		<Routes>
 			<Route
@@ -240,7 +240,6 @@ describe("AgentRunDetailPage — header + summary", () => {
 	});
 
 	it("returns to the exact in-app origin from the contextual breadcrumb", async () => {
-		const { AgentRunDetailPage } = await import("./AgentRunDetailPage");
 		const { user } = renderWithProviders(
 			<Routes>
 				<Route

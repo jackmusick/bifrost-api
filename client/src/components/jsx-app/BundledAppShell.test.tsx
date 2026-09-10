@@ -1,3 +1,4 @@
+import { BundledAppShell } from "./BundledAppShell";
 /**
  * Component tests for BundledAppShell.
  *
@@ -126,7 +127,7 @@ async function renderShell({
 	appName?: string | null;
 	appLogo?: string | null;
 } = {}) {
-	const { BundledAppShell } = await import("./BundledAppShell");
+
 	return renderWithProviders(
 		<BundledAppShell
 			appId="app-1"
@@ -296,7 +297,7 @@ describe("BundledAppShell — app_model render branch", () => {
 	it("drops the v2 mount when navigating to an inline_v1 app in the same shell", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		localStorage.setItem("bifrost_access_token", "tok-xyz");
-		const { BundledAppShell } = await import("./BundledAppShell");
+
 
 		// First app: standalone_v2 → same-document container.
 		mockManifestOk({
@@ -324,7 +325,7 @@ describe("BundledAppShell — app_model render branch", () => {
 	it("does not render a v2 app with the new appId while the new manifest is still pending (Codex #10)", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		localStorage.setItem("bifrost_access_token", "tok-xyz");
-		const { BundledAppShell } = await import("./BundledAppShell");
+
 
 		// App A: standalone_v2, resolves immediately.
 		mockManifestOk({

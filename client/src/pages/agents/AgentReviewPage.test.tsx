@@ -1,3 +1,4 @@
+import { AgentReviewPage } from "./AgentReviewPage";
 /**
  * Tests for AgentReviewPage (review flipbook).
  *
@@ -134,7 +135,6 @@ beforeEach(() => {
 });
 
 async function renderPage(path = "/agents/agent-1/review") {
-	const { AgentReviewPage } = await import("./AgentReviewPage");
 	function LocationProbe() {
 		const loc = useLocation();
 		return (

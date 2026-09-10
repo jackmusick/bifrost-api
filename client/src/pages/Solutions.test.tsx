@@ -1,3 +1,4 @@
+import { Solutions } from "./Solutions";
 /**
  * Tests for the Solutions list page — card/table rendering, search + org
  * filtering, and the CreateEditSolution install flow (dialog dropzone,
@@ -87,7 +88,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Solutions } = await import("./Solutions");
 	return renderWithProviders(<Solutions />);
 }
 

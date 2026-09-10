@@ -1,3 +1,4 @@
+import { AgentSelectorDialog } from "./AgentSelectorDialog";
 /**
  * Component tests for AgentSelectorDialog.
  *
@@ -70,7 +71,7 @@ async function renderDialog(
 		onOpenChange: (v: boolean) => void;
 	}> = {},
 ) {
-	const { AgentSelectorDialog } = await import("./AgentSelectorDialog");
+
 	const onSelect = overrides.onSelect ?? vi.fn();
 	const onOpenChange = overrides.onOpenChange ?? vi.fn();
 	const utils = renderWithProviders(
@@ -204,7 +205,7 @@ describe("AgentSelectorDialog — selection", () => {
 });
 
 it("uses the current selection when a previously closed dialog opens", async () => {
-	const { AgentSelectorDialog } = await import("./AgentSelectorDialog");
+
 	const onSelect = vi.fn();
 	const props = {
 		onSelect,

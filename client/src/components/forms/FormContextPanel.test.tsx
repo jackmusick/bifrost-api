@@ -1,3 +1,4 @@
+import { FormContextPanel } from "./FormContextPanel";
 /**
  * Component tests for FormContextPanel.
  *
@@ -26,7 +27,7 @@ vi.mock("@/components/ui/variables-tree-view", () => ({
 }));
 
 async function renderPanel() {
-	const { FormContextPanel } = await import("./FormContextPanel");
+
 	return renderWithProviders(<FormContextPanel />);
 }
 

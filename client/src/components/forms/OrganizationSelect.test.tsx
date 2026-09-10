@@ -1,3 +1,4 @@
+import { OrganizationSelect } from "./OrganizationSelect";
 /**
  * Component tests for OrganizationSelect.
  *
@@ -36,7 +37,7 @@ beforeEach(() => {
 });
 
 async function renderSelect(overrides: Record<string, unknown> = {}) {
-	const { OrganizationSelect } = await import("./OrganizationSelect");
+
 	const onChange = vi.fn();
 	const utils = renderWithProviders(
 		<OrganizationSelect value={null} onChange={onChange} {...overrides} />,

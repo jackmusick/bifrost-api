@@ -1,3 +1,4 @@
+import { TableDetail } from "./TableDetail";
 /**
  * Tests for TableDetail's solution-aware back-link. When the page is reached
  * from a Solution detail view (`?from=solution:{id}`) the back affordance
@@ -48,7 +49,6 @@ beforeEach(() => {
 });
 
 async function renderAtRoute(path: string) {
-	const { TableDetail } = await import("./TableDetail");
 	return renderWithProviders(
 		<Routes>
 			<Route path="/tables/:tableId" element={<TableDetail />} />

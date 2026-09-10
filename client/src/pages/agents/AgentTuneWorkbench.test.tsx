@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
+import { AgentTuneWorkbench } from "./AgentTuneWorkbench";
 const mockUseAgent = vi.fn();
 const mockUseAgentRuns = vi.fn();
 const mockUseAgentStats = vi.fn();
@@ -103,7 +104,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { AgentTuneWorkbench } = await import("./AgentTuneWorkbench");
 	return renderWithProviders(
 		<Routes>
 			<Route path="/agents/:id/tune" element={<AgentTuneWorkbench />} />
@@ -326,7 +326,6 @@ function LocationProbe() {
 }
 
 async function renderPageWithProbe() {
-	const { AgentTuneWorkbench } = await import("./AgentTuneWorkbench");
 	return renderWithProviders(
 		<Routes>
 			<Route

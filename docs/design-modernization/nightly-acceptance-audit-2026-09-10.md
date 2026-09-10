@@ -309,3 +309,11 @@ The subsequent 155-test nightly finished **154 passed, 1 failed, zero skipped/re
 Parent reviewed fresh Home and execution screenshots at 1440×1000 and 390×844 and exercised the connected debug form/webhook review pack successfully. The final selector repair requires targeted empty-list validation and a new clean-candidate gate/nightly; the passing pre-PR result above belongs only to `a04e17003`.
 
 Targeted empty-list validation passed: `./test.sh client e2e event-source-management-acceptance.admin.spec.ts` completed setup and the full lifecycle (2/2, no retries). The new clean-candidate pre-PR/nightly gates remain required.
+
+### Component import boundary audit
+
+Pre-PR on `d486d6f8c` passed client type/lint checks, then stopped with 2,852 component tests passed and three failures: ROIReports first-test import timeout and subsequent duplicate rendering, plus FormShareDialog's combined private-link/publication/options/unpublish test exceeding five seconds under full-suite load. The affected files passed isolated (15 tests), confirming that full-suite conditions exposed the issue.
+
+ROIReports now imports at test-file setup. An audit found 26 additional page/component tests with the same unnecessary first-render dynamic import and no reset/doMock requirement; their tested-component imports are now static too. Existing mocks, test assertions, and timeouts remain. FormShareDialog's long case is split into three independently seeded contracts; URL input uses paste because per-character typing is not the behavior under test. All existing assertions are preserved.
+
+The repaired report/sharing/shared-component group passed 126 tests; the 16 page files passed 203 tests. The next clean candidate must still pass complete pre-PR and nightly gates. No product source changed in these harness repairs.

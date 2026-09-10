@@ -1,3 +1,4 @@
+import { AgentSettingsTab } from "./AgentSettingsTab";
 /**
  * Tests for AgentSettingsTab.
  *
@@ -121,7 +122,7 @@ async function renderTab(
 		onCreated: (id: string) => void;
 	}> = {},
 ) {
-	const { AgentSettingsTab } = await import("./AgentSettingsTab");
+
 	return renderWithProviders(
 		<AgentSettingsTab
 			mode={props.mode ?? "edit"}

@@ -1,3 +1,4 @@
+import { AgentRunsTab } from "./AgentRunsTab";
 /**
  * Tests for AgentRunsTab.
  *
@@ -103,7 +104,7 @@ beforeEach(() => {
 });
 
 async function renderTab(agentId = "agent-1") {
-	const { AgentRunsTab } = await import("./AgentRunsTab");
+
 	return renderWithProviders(<AgentRunsTab agentId={agentId} />);
 }
 

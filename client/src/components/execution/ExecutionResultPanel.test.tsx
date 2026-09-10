@@ -1,3 +1,4 @@
+import { ExecutionResultPanel } from "./ExecutionResultPanel";
 /**
  * Component tests for ExecutionResultPanel.
  *
@@ -39,7 +40,7 @@ async function renderPanel(
 		>[0]
 	>,
 ) {
-	const { ExecutionResultPanel } = await import("./ExecutionResultPanel");
+
 	return renderWithProviders(<ExecutionResultPanel {...props} />);
 }
 

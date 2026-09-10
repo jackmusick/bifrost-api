@@ -1,3 +1,4 @@
+import { FleetPage } from "./FleetPage";
 /**
  * Tests for FleetPage.
  *
@@ -105,7 +106,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { FleetPage } = await import("./FleetPage");
 	return renderWithProviders(<FleetPage />);
 }
 

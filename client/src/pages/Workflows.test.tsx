@@ -1,3 +1,4 @@
+import { Workflows } from "./Workflows";
 /**
  * Tests for the Workflows page — focused on the SolutionManagedBadge
  * affordance: managed workflows show the shared admin-only badge and hide the
@@ -89,7 +90,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Workflows } = await import("./Workflows");
 	return renderWithProviders(<Workflows />);
 }
 

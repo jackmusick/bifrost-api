@@ -8,6 +8,7 @@ import {
 	waitFor,
 	within,
 } from "@/test-utils";
+import { AppCodeEditorPage } from "./AppCodeEditorPage";
 
 const mockUseApplication = vi.fn();
 const mockUseCreateApplication = vi.fn();
@@ -101,7 +102,6 @@ beforeEach(() => {
 
 describe("AppCodeEditorPage publish flow", () => {
 	it("queues once and closes the dialog for WebSocket notification progress", async () => {
-		const { AppCodeEditorPage } = await import("./AppCodeEditorPage");
 		const { user } = renderWithProviders(<AppCodeEditorPage />);
 
 		expect(
@@ -142,8 +142,6 @@ describe("AppCodeEditorPage create form", () => {
 			data: undefined,
 			isLoading: false,
 		});
-
-		const { AppCodeEditorPage } = await import("./AppCodeEditorPage");
 		renderWithProviders(<AppCodeEditorPage />);
 
 		expect(
@@ -168,7 +166,6 @@ describe("AppCodeEditorPage read recovery", () => {
 			isFetching: false,
 			refetch,
 		});
-		const { AppCodeEditorPage } = await import("./AppCodeEditorPage");
 		const { user } = renderWithProviders(<AppCodeEditorPage />);
 		expect(
 			screen.getByRole("heading", { name: "Application unavailable" }),
@@ -192,7 +189,6 @@ describe("AppCodeEditorPage creation", () => {
 		mockUseCreateApplication
 			.mockRejectedValueOnce(new Error("Synthetic create failure"))
 			.mockResolvedValueOnce({ slug: "custom-portal" });
-		const { AppCodeEditorPage } = await import("./AppCodeEditorPage");
 		const { user } = renderWithProviders(<AppCodeEditorPage />);
 		await user.type(
 			screen.getByLabelText("Name", { exact: true }),
@@ -240,7 +236,6 @@ it("keeps publish message and inline failure available for retry", async () => {
 	mockMutateAsync.mockRejectedValueOnce(
 		new Error("Temporary publish failure"),
 	);
-	const { AppCodeEditorPage } = await import("./AppCodeEditorPage");
 	const { user } = renderWithProviders(<AppCodeEditorPage />);
 	await user.click(screen.getByRole("button", { name: "Publish" }));
 	const dialog = screen.getByRole("dialog");

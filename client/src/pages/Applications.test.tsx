@@ -1,3 +1,4 @@
+import { Applications } from "./Applications";
 /**
  * Tests for the Applications page — focused on the SolutionManagedBadge
  * affordance: managed apps show the shared admin-only badge and hide
@@ -74,7 +75,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Applications } = await import("./Applications");
 	return renderWithProviders(
 		<>
 			<Applications />

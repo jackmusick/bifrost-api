@@ -1,3 +1,4 @@
+import { SolutionCaptureDialog } from "./SolutionCaptureDialog";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
 
@@ -19,7 +20,7 @@ vi.mock("@/services/solutions", () => ({
 }));
 
 async function renderDialog() {
-	const { SolutionCaptureDialog } = await import("./SolutionCaptureDialog");
+
 	return renderWithProviders(
 		<SolutionCaptureDialog
 			open
