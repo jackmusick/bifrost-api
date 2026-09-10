@@ -1,12 +1,8 @@
-"""
-Worker process entry point for isolated execution.
+"""Shared execution core for isolated worker processes.
 
-This module runs in a separate process and:
-1. Receives execution context from its parent (legacy entry points use Redis)
-2. Runs the workflow/script
-3. Writes logs to Redis Stream (already handled by engine)
-4. Returns a result with resource metrics
-5. Exits cleanly (or gets killed on timeout)
+The forked worker adapter supplies an execution context to ``run_execution``,
+which loads and runs the workflow or script and returns its result with
+resource metrics. Logs are written to Redis Stream by the execution engine.
 
 The worker imports minimal dependencies to keep memory footprint low.
 
@@ -17,11 +13,8 @@ modules from Redis cache instead of the filesystem.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import resource
-import signal
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -111,33 +104,7 @@ def _capture_metrics(start_rss: int, start_utime: float, start_stime: float) -> 
     )
 
 
-def _setup_signal_handlers():
-    """Set up signal handlers for graceful shutdown."""
-    def handle_sigterm(signum, frame):
-        logger.info("Worker received SIGTERM, initiating graceful shutdown")
-        # Raise SystemExit to trigger cleanup
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, handle_sigterm)
-
-
-async def _read_execution_context(redis_client, execution_id: str) -> dict[str, Any] | None:
-    """Read execution context from Redis."""
-    key = f"bifrost:exec:{execution_id}:context"
-    data = await redis_client.get(key)
-    if data:
-        return json.loads(data)
-    return None
-
-
-async def _write_execution_result(redis_client, execution_id: str, result: dict[str, Any]):
-    """Write execution result to Redis."""
-    key = f"bifrost:exec:{execution_id}:result"
-    # Set with 1 hour TTL (parent should read quickly, but safety margin)
-    await redis_client.setex(key, 3600, json.dumps(result, default=str))
-
-
-async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
+async def run_execution(execution_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
     """
     Run the actual execution.
 
@@ -376,93 +343,3 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
         # Always clear the solution import root before any final cleanup in this
         # execution process. Current pool children are one-shot.
         clear_solution_context()
-
-
-async def worker_main(execution_id: str):
-    """
-    Main entry point for worker process.
-
-    Called by the pool manager when spawning a new worker.
-    """
-    import redis.asyncio as redis
-    from src.config import get_settings
-
-    settings = get_settings()
-
-    # Set up signal handlers
-    _setup_signal_handlers()
-
-    logger.info(f"Worker starting for execution: {execution_id}")
-
-    # Note: No workspace directory needed - modules are loaded from Redis via virtual imports
-    # The virtual import hook is installed below before any workspace imports
-
-    # Connect to Redis
-    redis_client = redis.from_url(
-        settings.redis_url,
-        decode_responses=True,
-        socket_timeout=5.0,
-    )
-
-    try:
-        # Read context from Redis
-        context_data = await _read_execution_context(redis_client, execution_id)
-        if not context_data:
-            logger.error(f"No context found for execution: {execution_id}")
-            await _write_execution_result(redis_client, execution_id, {
-                "status": "Failed",
-                "error_message": "Execution context not found in Redis",
-                "error_type": "ContextNotFound",
-                "duration_ms": 0,
-                "metrics": None,
-            })
-            return
-
-        # Run the execution
-        result = await _run_execution(execution_id, context_data)
-
-        # Write result to Redis
-        await _write_execution_result(redis_client, execution_id, result)
-
-        # Log metrics
-        metrics = result.get("metrics")
-        if metrics:
-            logger.info(
-                f"Worker completed execution: {execution_id}, "
-                f"status: {result.get('status')}, "
-                f"memory: {metrics['peak_memory_bytes'] / 1024 / 1024:.1f}MB, "
-                f"cpu: {metrics['cpu_total_seconds']:.3f}s"
-            )
-        else:
-            logger.info(f"Worker completed execution: {execution_id}, status: {result.get('status')}")
-
-    except Exception as e:
-        logger.exception(f"Worker failed for execution {execution_id}: {e}")
-        try:
-            await _write_execution_result(redis_client, execution_id, {
-                "status": "Failed",
-                "error_message": str(e),
-                "error_type": type(e).__name__,
-                "duration_ms": 0,
-                "metrics": None,
-            })
-        except Exception:
-            pass  # Best effort
-    finally:
-        await redis_client.aclose()
-
-
-def run_in_worker(execution_id: str):
-    """
-    Synchronous entry point for multiprocessing.
-
-    This is called when the process is spawned.
-    """
-    # Configure logging for worker process
-    logging.basicConfig(
-        level=logging.INFO,
-        format=f"[Worker:{execution_id[:8]}] %(levelname)s - %(message)s"
-    )
-
-    # Run the async worker
-    asyncio.run(worker_main(execution_id))

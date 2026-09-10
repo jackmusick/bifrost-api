@@ -4,7 +4,7 @@ Per-execution import root namespaces module RESOLUTION, but Python caches
 imported modules in ``sys.modules`` by bare name (``modules.foo``). Without
 eviction, after Solution A's execution imports ``modules.foo`` from
 ``_solutions/A/...``, a reused worker running Solution B would get A's cached
-``modules.foo`` instead of B's. ``_clear_workspace_modules`` must evict a
+``modules.foo`` instead of B's. ``clear_workspace_modules`` must evict a
 solution-rooted module when the active solution differs from the one that
 loaded it.
 """
@@ -64,7 +64,7 @@ def _clean_sys_modules():
 
 def test_switching_solution_evicts_other_solutions_module(_clean_sys_modules, monkeypatch):
     import src.core.module_cache_sync as mcs
-    import src.services.execution.simple_worker as sw
+    from src.services.execution.workspace_modules import clear_workspace_modules
 
     sid_b = str(uuid.uuid4())
 
@@ -87,7 +87,7 @@ def test_switching_solution_evicts_other_solutions_module(_clean_sys_modules, mo
     # Now Solution B is the active execution.
     mcs.set_solution_context(sid_b, global_repo_access=False)
     try:
-        sw._clear_workspace_modules()
+        clear_workspace_modules()
     finally:
         mcs._solution_ctx.value = None
 
@@ -99,7 +99,7 @@ def test_switching_solution_evicts_other_solutions_module(_clean_sys_modules, mo
 
 def test_same_solution_keeps_its_module(_clean_sys_modules, monkeypatch):
     import src.core.module_cache_sync as mcs
-    import src.services.execution.simple_worker as sw
+    from src.services.execution.workspace_modules import clear_workspace_modules
 
     sid = str(uuid.uuid4())
     storage_path = f"_solutions/{sid}/modules/foo.py"
@@ -117,7 +117,7 @@ def test_same_solution_keeps_its_module(_clean_sys_modules, monkeypatch):
 
     mcs.set_solution_context(sid, global_repo_access=False)
     try:
-        sw._clear_workspace_modules()
+        clear_workspace_modules()
     finally:
         mcs._solution_ctx.value = None
 
@@ -125,57 +125,29 @@ def test_same_solution_keeps_its_module(_clean_sys_modules, monkeypatch):
     assert "modules.foo" in sys.modules
 
 
-async def test_execute_async_sets_solution_context_before_clearing_modules(monkeypatch):
-    """Codex #9: the persistent-worker path must activate the execution's
-    Solution context BEFORE evicting workspace modules, or the cross-solution
-    eviction runs blind and a prior install's same-name module survives. Assert
-    set_solution_context runs before _clear_workspace_modules, with the context's
-    own solution_id."""
+async def test_execute_async_delegates_once_to_shared_execution_core(monkeypatch):
+    """The fork adapter delegates once; the shared core owns execution setup."""
     import src.services.execution.simple_worker as sw
-    import src.core.module_cache_sync as mcs
 
-    sid = str(uuid.uuid4())
-    calls: list[tuple[str, object]] = []
+    calls: list[tuple[str, dict[str, object]]] = []
 
-    context = {"solution_id": sid, "solution_global_repo_access": False}
-
-    def _fake_set_ctx(solution_id, global_repo_access=False):
-        calls.append(("set_context", solution_id))
-
-    def _fake_clear():
-        calls.append(("clear_modules", None))
-
-    def _fake_clear_ctx():
-        calls.append(("clear_context", None))
+    context: dict[str, object] = {"solution_id": str(uuid.uuid4())}
 
     async def _fake_run(_eid, _ctx):
-        calls.append(("run", None))
+        calls.append((_eid, _ctx))
         return {"status": "Success", "result": {}, "metrics": {}}
 
-    monkeypatch.setattr(mcs, "set_solution_context", _fake_set_ctx)
-    monkeypatch.setattr(mcs, "clear_solution_context", _fake_clear_ctx)
-    monkeypatch.setattr(sw, "_clear_workspace_modules", _fake_clear)
     monkeypatch.setattr(sw, "_get_pss_bytes", lambda: 0)
-    # _run_execution is imported inside the function from worker; patch there.
     import src.services.execution.worker as worker_mod
-    monkeypatch.setattr(worker_mod, "_run_execution", _fake_run)
+    monkeypatch.setattr(worker_mod, "run_execution", _fake_run)
 
     await sw._execute_async("exec-1", "worker-1", context)
 
-    order = [name for name, _ in calls]
-    assert order.index("set_context") < order.index("clear_modules"), (
-        f"context must be set before clearing modules; got {order}"
-    )
-    assert order.index("clear_modules") < order.index("clear_context")
-    assert order.index("clear_context") < order.index("run"), (
-        f"eviction-only context must be clear before credential bootstrap; got {order}"
-    )
-    # The context activated is THIS execution's install.
-    assert ("set_context", sid) in calls
+    assert calls == [("exec-1", context)]
 
 
 async def test_run_execution_refreshes_modules_and_clears_context_on_failure(monkeypatch):
-    """The shared boundary refreshes modules even when simple_worker is bypassed."""
+    """The shared core refreshes modules and cleans up when refresh fails."""
     import src.core.module_cache_sync as mcs
     import src.services.execution.worker as worker
 
@@ -209,7 +181,7 @@ async def test_run_execution_refreshes_modules_and_clears_context_on_failure(mon
 
     monkeypatch.setattr(worker, "_clear_workspace_modules", _fail_refresh)
 
-    result = await worker._run_execution(
+    result = await worker.run_execution(
         "exec-direct",
         {
             "solution_id": sid,

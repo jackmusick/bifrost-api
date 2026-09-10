@@ -51,7 +51,7 @@ def _grant_workspace_e2e_policy(e2e_client, platform_admin):
 def engine_creds():
     """Populate ``~/.bifrost/credentials.json`` with an engine token.
 
-    Mirrors what ``_run_execution`` does at the top of every workflow
+    Mirrors what ``run_execution`` does at the top of every workflow
     invocation in the worker (`api/src/services/execution/worker.py:134`).
     Without this, the CLI has nothing to authenticate with.
 

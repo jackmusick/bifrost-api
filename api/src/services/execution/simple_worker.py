@@ -7,8 +7,6 @@ TemplateProcess via os.fork) use to run an execution:
 - install_requirements(): called once at pool startup to pip-install
   user requirements. All forked children inherit the resulting
   filesystem, so installing once in the parent is sufficient.
-- _clear_workspace_modules(): called before each execution so workflow
-  code changes are picked up from Redis.
 - _execute_sync() / _execute_async(): run a single execution using context
   assembled by the parent consumer and delivered over a private pipe.
 - _get_process_rss() / _get_pss_bytes() / _capture_resource_metrics():
@@ -32,10 +30,6 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-
-from src.services.execution.workspace_modules import (
-    clear_workspace_modules as _clear_workspace_modules,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -241,36 +235,15 @@ async def _execute_async(
     """
     start_time = datetime.now(timezone.utc)
 
-    # Activate THIS execution's Solution import root, THEN evict workspace
-    # modules — in that order. The cross-solution eviction in
-    # _clear_workspace_modules keys off the active install (get_solution_context);
-    # if it ran with no context (as the template_process fork path did), a prior
-    # install's same-name module could survive the hash check and shadow this
-    # install's file, breaking multi-install isolation (Codex #9). This context is
-    # temporary: _run_execution activates it again after credential bootstrap.
-    from src.core.module_cache_sync import clear_solution_context, set_solution_context
-
-    _exec_solution_id = context.get("solution_id")
-    if _exec_solution_id:
-        set_solution_context(
-            _exec_solution_id,
-            global_repo_access=bool(context.get("solution_global_repo_access", False)),
-        )
+    # Run the execution using the shared core, which owns Solution context and
+    # workspace-module freshness.
     try:
-        _clear_workspace_modules()
-    finally:
-        # Credential backend imports must run without Solution namespace probing;
-        # otherwise their own API credential lookup can recursively import them.
-        clear_solution_context()
-    # 2. Run the execution using existing worker logic
-    # This reuses the shared _run_execution() from worker.py
-    try:
-        from src.services.execution.worker import _run_execution
+        from src.services.execution.worker import run_execution
 
         # Capture baseline PSS before execution so we can measure the delta
         baseline_pss = _get_pss_bytes()
 
-        result = await _run_execution(execution_id, context)
+        result = await run_execution(execution_id, context)
 
         # Calculate duration
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
