@@ -12,7 +12,14 @@ from typing import Any
 from urllib.parse import urlencode
 
 from .client import get_client, raise_for_status_with_detail
-from .models import TableInfo, DocumentData, DocumentList, BatchResult, BatchDeleteResult
+from .models import (
+    TableInfo,
+    DocumentData,
+    DocumentList,
+    BatchResult,
+    BatchDeleteResult,
+    BulkUpsertResult,
+)
 from ._context import resolve_scope, _execution_context
 
 
@@ -508,6 +515,70 @@ class tables:
             created_by=created_by,
             updated_by=updated_by,
         )
+
+    @staticmethod
+    async def bulk_upsert(
+        table: str,
+        documents: list[dict[str, Any]],
+        scope: str | None = None,
+        created_by: str | None = None,
+        updated_by: str | None = None,
+        conflict_retries: int = 2,
+    ) -> BulkUpsertResult:
+        """
+        Bulk upsert explicit-id documents with full replacement semantics.
+
+        This privileged ingestion method uses the count-only
+        ``POST /documents/bulk-upsert`` route. Each document must have
+        ``id`` and ``data`` keys. The server enforces a maximum of 1000 rows
+        per request and rejects duplicate IDs.
+
+        Args:
+            table: Table name or UUID.
+            documents: List of dicts, each with "id" (str) and "data" (dict).
+            scope: Organization scope.
+            created_by: Override attribution on inserted rows.
+            updated_by: Override attribution on inserted and updated rows.
+            conflict_retries: Number of bounded retries when the server detects
+                a concurrent insert between policy preflight and the guarded
+                upsert statement.
+
+        Returns:
+            BulkUpsertResult: Count of rows inserted or updated.
+        """
+        ctx = _current_context()
+        if created_by is None and ctx is not None and getattr(ctx, "user_id", None) is not None:
+            created_by = str(ctx.user_id)
+        if updated_by is None and ctx is not None and getattr(ctx, "user_id", None) is not None:
+            updated_by = str(ctx.user_id)
+        effective_scope = resolve_scope(scope)
+
+        items: list[dict[str, Any]] = []
+        for doc in documents:
+            item: dict[str, Any] = {"id": doc["id"], "data": doc["data"]}
+            if created_by is not None:
+                item["created_by"] = created_by
+            if updated_by is not None:
+                item["updated_by"] = updated_by
+            items.append(item)
+
+        client = get_client()
+        url = f"/api/tables/{table}/documents/bulk-upsert{_scope_query(effective_scope)}"
+        body = {"documents": items}
+        attempts = max(0, conflict_retries) + 1
+        ensured_table = False
+        response = None
+        for attempt in range(attempts):
+            response = await client.post(url, json=body)
+            if response.status_code == 404 and not _has_solution_context() and not ensured_table:
+                await _ensure_table_exists(table, effective_scope)
+                ensured_table = True
+                response = await client.post(url, json=body)
+            if response.status_code != 409 or attempt == attempts - 1:
+                break
+        assert response is not None
+        raise_for_status_with_detail(response)
+        return BulkUpsertResult.model_validate(response.json())
 
     @staticmethod
     async def _batch_write(

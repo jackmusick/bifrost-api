@@ -518,6 +518,7 @@
 | POST | `/api/tables/{table_id}/documents` |
 | POST | `/api/tables/{table_id}/documents/batch` |
 | POST | `/api/tables/{table_id}/documents/batch-delete` |
+| POST | `/api/tables/{table_id}/documents/bulk-upsert` |
 | GET | `/api/tables/{table_id}/documents/count` |
 | POST | `/api/tables/{table_id}/documents/query` |
 | POST | `/api/tables/{table_id}/documents/upsert` |
