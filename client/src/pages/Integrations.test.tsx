@@ -99,10 +99,10 @@ function makeIntegration(
 	const { id, name, ...rest } = overrides;
 	return {
 		...rest,
- mapping_count: overrides.mapping_count ?? 0,
- connected_count: overrides.connected_count ?? 0,
- needs_reconnection_count: overrides.needs_reconnection_count ?? 0,
- connection_status_counts: overrides.connection_status_counts ?? {},
+		mapping_count: overrides.mapping_count ?? 0,
+		connected_count: overrides.connected_count ?? 0,
+		needs_reconnection_count: overrides.needs_reconnection_count ?? 0,
+		connection_status_counts: overrides.connection_status_counts ?? {},
 		id,
 		name,
 		has_oauth_config: overrides.has_oauth_config ?? false,
@@ -231,6 +231,9 @@ describe("Integrations", () => {
 		const { user } = await renderPage();
 
 		expect(screen.getByTestId("integration-card")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("checkbox", { name: /select slack/i }),
+		).not.toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Slack" })).toHaveAttribute(
 			"href",
 			"/integrations/int-1",
@@ -261,6 +264,57 @@ describe("Integrations", () => {
 		await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
 		expect(mockToastSuccess).toHaveBeenCalledWith(
 			"Integration deleted successfully",
+		);
+	});
+
+	it("uses explicit card selection mode before exporting selected integrations", async () => {
+		mockIsDesktop.mockReturnValue(false);
+		mockUseIntegrations.mockReturnValue({
+			data: {
+				items: [
+					makeIntegration({ id: "int-1", name: "Slack" }),
+					makeIntegration({ id: "int-2", name: "Salesforce" }),
+				],
+				total: 2,
+			},
+			isLoading: false,
+			isFetching: false,
+			isError: false,
+			refetch: vi.fn(),
+		});
+
+		const { user } = await renderPage();
+
+		expect(
+			screen.queryByRole("checkbox", { name: /select slack/i }),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /^select$/i }));
+
+		const slackCard = screen.getByRole("button", { name: "Select Slack" });
+		expect(
+			screen.queryByRole("link", { name: "Slack" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Slack actions" }),
+		).not.toBeInTheDocument();
+		await user.click(slackCard);
+		expect(
+			screen.getByRole("button", { name: "Deselect Slack" }),
+		).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /export \(1\)/i }));
+		expect(mockExportEntities).toHaveBeenCalledWith("integrations", [
+			"int-1",
+		]);
+
+		await user.click(screen.getByRole("button", { name: /^done$/i }));
+		expect(
+			screen.queryByRole("button", { name: "Deselect Slack" }),
+		).not.toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Slack" })).toHaveAttribute(
+			"href",
+			"/integrations/int-1",
 		);
 	});
 

@@ -170,7 +170,7 @@ describe("AuditLogPage policy filters", () => {
 			),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("button", { name: "Return to Dashboard" }),
+			screen.getByRole("button", { name: "Go to Home" }),
 		).toBeVisible();
 	});
 

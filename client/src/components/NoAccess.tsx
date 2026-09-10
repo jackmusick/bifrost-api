@@ -28,7 +28,7 @@ export function NoAccess({
 				<CardContent className="flex flex-col items-center justify-center px-4 py-6 text-center sm:px-6 sm:py-8">
 					<ShieldAlert className="h-16 w-16 text-destructive" />
 					<h1 className="mt-6 text-pretty text-2xl font-bold tracking-tight [overflow-wrap:anywhere]">
-						Access Denied
+						You don’t have access
 					</h1>
 					<p className="mt-4 text-balance text-muted-foreground [overflow-wrap:anywhere]">
 						{message}
@@ -39,7 +39,7 @@ export function NoAccess({
 							className="h-11 w-full"
 						>
 							<Home className="h-4 w-4" />
-							Return to Dashboard
+							Go to Home
 						</Button>
 						<Button
 							onClick={logout}

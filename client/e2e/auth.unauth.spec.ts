@@ -72,12 +72,26 @@ test.describe("Login Flow", () => {
 	});
 
 	test("should redirect unauthenticated users to login", async ({ page }) => {
-		// Try to access protected route
-		await page.goto("/workflows");
-
-		// Should redirect to login
-		await page.waitForURL(/\/login/, { timeout: 5000 });
+		await page.addInitScript(() => {
+			const observer = new MutationObserver(() => {
+				if (
+					/Access Denied|You don’t have access/.test(
+						document.body?.textContent ?? "",
+					)
+				) {
+					sessionStorage.setItem("test-access-denial-seen", "true");
+				}
+			});
+			observer.observe(document, { subtree: true, childList: true });
+		});
+		await page.goto("/event-sources");
+		await page.waitForURL(/\/login/);
 		await expect(page.getByLabel("Email")).toBeVisible();
+		expect(
+			await page.evaluate(() =>
+				sessionStorage.getItem("test-access-denial-seen"),
+			),
+		).toBeNull();
 	});
 
 	test(

@@ -19,12 +19,17 @@ export function ProtectedRoute({
 	requirePlatformAdmin = false,
 	requireOrgUser = false,
 }: ProtectedRouteProps) {
-	const { isPlatformAdmin, isOrgUser, isLoading, hasRole } = useAuth();
+	const { isAuthenticated, isPlatformAdmin, isOrgUser, isLoading, hasRole } =
+		useAuth();
 
 	// Wait for auth to load
 	if (isLoading) {
 		return <PageLoader message="Loading access…" size="sm" />;
 	}
+
+	// Authentication recovery belongs to AuthProvider, not the role-denied view.
+	if (!isAuthenticated)
+		return <PageLoader message="Opening sign in…" size="sm" />;
 
 	// Check for PlatformAdmin requirement
 	if (requirePlatformAdmin && !isPlatformAdmin) {

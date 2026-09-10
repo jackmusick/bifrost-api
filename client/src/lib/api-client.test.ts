@@ -304,3 +304,73 @@ describe("apiClient (openapi-fetch middleware) transient 5xx retry", () => {
 		});
 	});
 });
+
+describe.each(["authFetch", "apiClient"] as const)(
+	"%s session versus route denial",
+	(kind) => {
+		let fetchMock: ReturnType<typeof vi.fn>;
+		let token: string;
+		beforeEach(() => {
+			token = buildFakeToken();
+			localStorage.setItem(ACCESS_TOKEN_KEY, token);
+			window.history.replaceState(null, "", "/login");
+			fetchMock = vi.fn();
+			vi.stubGlobal("fetch", fetchMock);
+		});
+		afterEach(() => {
+			vi.unstubAllGlobals();
+			localStorage.clear();
+			sessionStorage.clear();
+			window.history.replaceState(null, "", "/");
+		});
+		const call = async () =>
+			kind === "authFetch"
+				? authFetch("http://localhost/api/version")
+				: (
+						await apiClient.GET("/api/version", {
+							fetch: fetchMock,
+						} as never)
+					).response;
+		it("keeps a valid session when one route returns 401", async () => {
+			fetchMock
+				.mockResolvedValueOnce(mockResponse(401))
+				.mockResolvedValueOnce(mockJsonResponse(200, { id: "user" }));
+			expect((await call()).status).toBe(401);
+			expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBe(token);
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			expect(fetchMock.mock.calls[1][0]).toBe("/auth/me");
+		});
+		it("leaves 403 permission failures to the page", async () => {
+			fetchMock.mockResolvedValueOnce(mockResponse(403));
+			expect((await call()).status).toBe(403);
+			expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBe(token);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+		it("does not sign out when session verification is unavailable", async () => {
+			fetchMock
+				.mockResolvedValueOnce(mockResponse(401))
+				.mockRejectedValueOnce(new TypeError("Network unavailable"));
+			expect((await call()).status).toBe(401);
+			expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBe(token);
+		});
+		it("refreshes and retries when identity also rejects the token", async () => {
+			fetchMock
+				.mockResolvedValueOnce(mockResponse(401))
+				.mockResolvedValueOnce(mockResponse(401))
+				.mockResolvedValueOnce(
+					mockJsonResponse(200, { access_token: token }),
+				)
+				.mockResolvedValueOnce(
+					mockJsonResponse(200, { version: "1.0" }),
+				);
+			expect((await call()).status).toBe(200);
+			expect(fetchMock.mock.calls[2][0]).toBe("/api/auth/refresh");
+			expect(fetchMock).toHaveBeenCalledTimes(4);
+		});
+		it("clears a session rejected by both identity and refresh", async () => {
+			fetchMock.mockImplementation(async () => mockResponse(401));
+			expect((await call()).status).toBe(401);
+			expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBeNull();
+		});
+	},
+);

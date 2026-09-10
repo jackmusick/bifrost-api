@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 const auth = {
+	isAuthenticated: true,
 	isLoading: false,
 	isPlatformAdmin: true,
 	isOrgUser: false,
@@ -20,6 +21,7 @@ vi.mock("./Sidebar", () => ({
 vi.mock("@/components/NoAccess", () => ({ NoAccess: () => <p>No access</p> }));
 import { PageShell } from "./PageShell";
 beforeEach(() => {
+	auth.isAuthenticated = true;
 	auth.isLoading = false;
 	auth.isPlatformAdmin = true;
 	auth.isOrgUser = false;
@@ -56,4 +58,14 @@ describe("PageShell access contract", () => {
 		expect(screen.getByRole("banner")).toBeVisible();
 		expect(screen.getByText("Page content")).toBeVisible();
 	});
+});
+
+it("does not show permission denial while signed out", () => {
+	auth.isAuthenticated = false;
+	auth.isPlatformAdmin = false;
+	renderWithProviders(<PageShell />);
+	expect(
+		screen.getByRole("status", { name: "Opening sign in…" }),
+	).toBeVisible();
+	expect(screen.queryByText("No access")).not.toBeInTheDocument();
 });

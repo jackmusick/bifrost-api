@@ -9,6 +9,7 @@ import {
 	Download,
 	LayoutGrid,
 	Table as TableIcon,
+	CheckSquare,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,7 @@ export function Integrations() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [isCardSelectMode, setIsCardSelectMode] = useState(false);
 	const [isImportOpen, setIsImportOpen] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
 
@@ -198,6 +200,10 @@ export function Integrations() {
 		});
 	};
 
+	const handleDoneSelectingCards = () => {
+		setIsCardSelectMode(false);
+	};
+
 	const handleExport = async () => {
 		const ids = selectedIds.size > 0 ? Array.from(selectedIds) : [];
 		setIsExporting(true);
@@ -213,6 +219,7 @@ export function Integrations() {
 
 	const selectedCount = selectedIds.size;
 	const hasSearch = searchTerm.trim().length > 0;
+	const showCardSelectionControls = !showTable && isCardSelectMode;
 
 	return (
 		<PageWorkspace className="mx-auto w-full max-w-[1400px]">
@@ -279,10 +286,40 @@ export function Integrations() {
 					</ToggleGroup>
 				)}
 				<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-					{selectedCount > 0 && (
+					{showCardSelectionControls && (
+						<>
+							<span className="text-sm text-muted-foreground">
+								{selectedCount} selected
+							</span>
+							<Button
+								type="button"
+								variant="outline"
+								size="lg"
+								onClick={handleToggleSelectAll}
+								disabled={filteredIntegrations.length === 0}
+							>
+								Select all
+							</Button>
+						</>
+					)}
+					{!showCardSelectionControls && selectedCount > 0 && (
 						<span className="text-sm text-muted-foreground">
 							{selectedCount} selected
 						</span>
+					)}
+					{!showTable && !isCardSelectMode && (
+						<Button
+							type="button"
+							variant="outline"
+							size="lg"
+							onClick={() => setIsCardSelectMode(true)}
+						>
+							<CheckSquare
+								aria-hidden="true"
+								className="mr-1 size-4"
+							/>
+							Select
+						</Button>
 					)}
 					<Button
 						type="button"
@@ -296,6 +333,16 @@ export function Integrations() {
 							? `Export (${selectedCount})`
 							: "Export All"}
 					</Button>
+					{showCardSelectionControls && (
+						<Button
+							type="button"
+							variant="default"
+							size="lg"
+							onClick={handleDoneSelectingCards}
+						>
+							Done
+						</Button>
+					)}
 					<Button
 						type="button"
 						variant="outline"
@@ -338,6 +385,7 @@ export function Integrations() {
 					<IntegrationList
 						integrations={filteredIntegrations}
 						isDesktop={showTable}
+						isCardSelectMode={showCardSelectionControls}
 						selectedIds={selectedIds}
 						onToggleSelect={toggleSelect}
 						onToggleSelectAll={handleToggleSelectAll}

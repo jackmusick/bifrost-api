@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 
 const auth = {
+	isAuthenticated: true,
 	isLoading: false,
 	isPlatformAdmin: false,
 	isOrgUser: false,
@@ -14,6 +15,7 @@ vi.mock("@/components/NoAccess", () => ({ NoAccess: () => <p>No access</p> }));
 import { ProtectedRoute } from "./ProtectedRoute";
 
 beforeEach(() => {
+	auth.isAuthenticated = true;
 	auth.isLoading = false;
 	auth.isPlatformAdmin = false;
 	auth.isOrgUser = false;
@@ -68,4 +70,18 @@ describe("ProtectedRoute", () => {
 		).toBeInTheDocument();
 		expect(screen.queryByText("Private content")).not.toBeInTheDocument();
 	});
+});
+
+it("does not show permission denial while signed out", () => {
+	auth.isAuthenticated = false;
+	auth.isPlatformAdmin = false;
+	renderWithProviders(
+		<ProtectedRoute requirePlatformAdmin>
+			<p>Private content</p>
+		</ProtectedRoute>,
+	);
+	expect(
+		screen.getByRole("status", { name: "Opening sign in…" }),
+	).toBeVisible();
+	expect(screen.queryByText("No access")).not.toBeInTheDocument();
 });

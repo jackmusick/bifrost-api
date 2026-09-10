@@ -27,15 +27,13 @@ test("integration cards preserve descriptions, uploaded logos and table navigati
 		await dialog
 			.getByLabel("Description", { exact: true })
 			.fill("Updated customer directory connection");
-		await dialog
-			.locator("input[type=file]")
-			.setInputFiles({
-				name: "review-logo.svg",
-				mimeType: "image/svg+xml",
-				buffer: Buffer.from(
-					'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#2fd4d4"/><circle cx="32" cy="32" r="16" fill="#08090b"/></svg>',
-				),
-			});
+		await dialog.locator("input[type=file]").setInputFiles({
+			name: "review-logo.svg",
+			mimeType: "image/svg+xml",
+			buffer: Buffer.from(
+				'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#2fd4d4"/><circle cx="32" cy="32" r="16" fill="#08090b"/></svg>',
+			),
+		});
 		await expect(
 			page.getByText("Image updated", { exact: true }),
 		).toBeVisible();
@@ -59,6 +57,37 @@ test("integration cards preserve descriptions, uploaded logos and table navigati
 					.evaluate((img: HTMLImageElement) => img.naturalWidth),
 			)
 			.toBeGreaterThan(0);
+		await page.getByRole("button", { name: "Select", exact: true }).click();
+		await expect(
+			page.getByRole("link", { name, exact: true }),
+		).not.toBeVisible();
+		const selectableCard = page.getByRole("button", {
+			name: `Select ${name}`,
+			exact: true,
+		});
+		await selectableCard.getByText(name, { exact: true }).click();
+		await expect(
+			page.getByRole("button", {
+				name: `Deselect ${name}`,
+				exact: true,
+			}),
+		).toHaveAttribute("aria-pressed", "true");
+		await page
+			.getByRole("button", { name: `Deselect ${name}`, exact: true })
+			.focus();
+		await page.keyboard.press("Space");
+		await expect(selectableCard).toHaveAttribute("aria-pressed", "false");
+		await page.keyboard.press("Enter");
+		await expect(
+			page.getByRole("button", {
+				name: `Deselect ${name}`,
+				exact: true,
+			}),
+		).toHaveAttribute("aria-pressed", "true");
+		await page.getByRole("button", { name: "Done", exact: true }).click();
+		await expect(
+			page.getByRole("link", { name, exact: true }),
+		).toBeVisible();
 		await page
 			.getByRole("radio", { name: "Table view", exact: true })
 			.click();

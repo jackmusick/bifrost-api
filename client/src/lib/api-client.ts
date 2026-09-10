@@ -37,13 +37,7 @@ const TRANSIENT_5XX = new Set([502, 503, 504]);
 // Retry only methods that are safe to replay. POST/PATCH may have already
 // taken effect server-side even when the response was a 5xx; auto-retrying
 // would create duplicate resources.
-const IDEMPOTENT_METHODS = new Set([
-	"GET",
-	"PUT",
-	"DELETE",
-	"HEAD",
-	"OPTIONS",
-]);
+const IDEMPOTENT_METHODS = new Set(["GET", "PUT", "DELETE", "HEAD", "OPTIONS"]);
 
 // Backoff schedule (ms) between retry attempts. Up to 3 retries on top of
 // the initial attempt, totaling ~3s of additional latency in the worst case.
@@ -373,25 +367,9 @@ baseClient.use({
 			throw new RateLimitError(retryAfter);
 		}
 
-		// Handle 401 Unauthorized - attempt token refresh and retry
-		if (response.status === 401) {
-			// Skip retry for auth endpoints to prevent infinite loops
-			const url = request.url;
-			if (AUTH_ENDPOINTS.some((ep) => url.includes(ep))) {
-				handleAuthFailure();
-				return response;
-			}
+		if (response.status === 401)
+			return handleAuthResponse(request, response);
 
-			// Attempt token refresh via cookie
-			const refreshed = await refreshAccessToken();
-			if (refreshed) {
-				// Retry original request with current credentials
-				return retryRequestWithFreshAuth(request);
-			}
-
-			// Refresh failed - redirect to login
-			handleAuthFailure();
-		}
 		// 403 Forbidden = permission issue, don't redirect (user is authenticated)
 		// Let the calling code handle displaying an appropriate error message
 
@@ -454,16 +432,32 @@ async function handleAuthResponse(
 		throw new RateLimitError(retryAfter);
 	}
 
-	// Handle 401 Unauthorized - attempt token refresh and retry
 	if (response.status === 401) {
-		const url = request.url;
-		if (!AUTH_ENDPOINTS.some((ep) => url.includes(ep))) {
-			const refreshed = await refreshAccessToken();
-			if (refreshed) {
-				// Retry original request with current credentials
-				return retryRequestWithFreshAuth(request);
-			}
+		const pathname = new URL(request.url, window.location.origin).pathname;
+		// Login failures and embed capabilities belong to their own callers.
+		if (
+			isEmbedSession() ||
+			AUTH_ENDPOINTS.some((ep) => pathname.startsWith(ep))
+		)
+			return response;
+
+		// A resource can reject otherwise valid credentials. Confirm the session
+		// through the identity endpoint before rotating tokens or leaving the page.
+		try {
+			const headers = new Headers();
+			const token = getActiveToken();
+			if (token) headers.set("Authorization", `Bearer ${token}`);
+			const session = await fetch("/auth/me", {
+				headers,
+				credentials: "same-origin",
+			});
+			if (session.status !== 401) return response;
+		} catch {
+			// An unavailable identity service is not proof that the session ended.
+			return response;
 		}
+		const refreshed = await refreshAccessToken();
+		if (refreshed) return retryRequestWithFreshAuth(request);
 		handleAuthFailure();
 	}
 

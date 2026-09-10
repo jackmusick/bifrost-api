@@ -136,7 +136,7 @@ export function AuditLogPage() {
 					</AlertDescription>
 				</Alert>
 				<Button onClick={() => navigate("/")} className="mt-4">
-					Return to Dashboard
+					Go to Home
 				</Button>
 			</div>
 		);
