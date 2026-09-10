@@ -165,7 +165,13 @@ export function OrganizationSelect({
 			<PopoverTrigger asChild>
 				<Button
 					{...triggerProps}
-					aria-label={triggerProps["aria-label"] ?? label}
+					aria-label={
+						triggerProps["aria-label"] ??
+						label ??
+						(triggerProps["aria-labelledby"]
+							? undefined
+							: "Organization scope")
+					}
 					variant="outline"
 					role="combobox"
 					aria-expanded={open}

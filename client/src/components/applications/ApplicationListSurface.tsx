@@ -397,7 +397,7 @@ export function ApplicationListSurface({
 					>
 						<div className="border-b px-4 py-3">
 							<div className="flex items-start justify-between gap-3">
-								<div className="flex min-w-0 flex-1 items-center gap-2">
+								<div className="flex min-w-0 flex-1 items-start gap-3">
 									<ResourceIcon
 										kind="app"
 										id={app.id}

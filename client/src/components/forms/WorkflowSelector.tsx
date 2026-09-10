@@ -467,6 +467,7 @@ function ComboboxWorkflowSelector({
 					type="button"
 					variant="outline"
 					role="combobox"
+					aria-label={placeholder}
 					aria-expanded={open}
 					disabled={disabled}
 					className={cn(
@@ -501,10 +502,7 @@ function ComboboxWorkflowSelector({
 					</div>
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent variant="picker"
-				className="p-0"
-				align="start"
-			>
+			<PopoverContent variant="picker" className="p-0" align="start">
 				<Command>
 					<CommandInput
 						placeholder="Search workflows..."
