@@ -54,12 +54,15 @@ class _DeployResult:
         return self._payload
 
 
-def wait_for_deploy(e2e_client, post_resp, headers, *, timeout_s: float = 30.0):
+def wait_for_deploy(e2e_client, post_resp, headers, *, timeout_s: float = 60.0):
     """Given a deploy POST response, return a terminal-state shim.
 
     A synchronous error (non-202 — git-connected, pending-capture block,
     downgrade gate) is returned unchanged. A 202 is polled to a terminal job
     status, then mapped onto the old response shape via :class:`_DeployResult`.
+    Match installation's observation window: scheduler dispatch, fresh-process
+    startup and artifact writes are part of the asynchronous deploy contract.
+    This is a terminal-state check, not a 30-second deployment latency assertion.
     """
     import time as _time
 

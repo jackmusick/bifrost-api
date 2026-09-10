@@ -317,3 +317,13 @@ Pre-PR on `d486d6f8c` passed client type/lint checks, then stopped with 2,852 co
 ROIReports now imports at test-file setup. An audit found 26 additional page/component tests with the same unnecessary first-render dynamic import and no reset/doMock requirement; their tested-component imports are now static too. Existing mocks, test assertions, and timeouts remain. FormShareDialog's long case is split into three independently seeded contracts; URL input uses paste because per-character typing is not the behavior under test. All existing assertions are preserved.
 
 The repaired report/sharing/shared-component group passed 126 tests; the 16 page files passed 203 tests. The next clean candidate must still pass complete pre-PR and nightly gates. No product source changed in these harness repairs.
+
+### Deployment observation deadline
+
+`03701ea27` passed all 2,857 component tests, 5,983 standard-lane backend unit tests, and static checks. The backend live suite completed with 1,820 passed and three deployment-wait failures after 66 minutes. All three were the helper's 30-second terminal-state deadline, not failed jobs: app table resolution, app-removal redeploy, and vendored workflow deployment.
+
+Read-only inspection of the durable job records confirmed successful completion for the corresponding job IDs, with approximately 31, 41, and 33 seconds from enqueue to completion. The tests observed one artifact-write phase and two still-queued legacy deployment projections at their deadlines. The stack remained healthy. No global repository scan or accidental Node build was found; these fixtures use prebuilt app output. A fresh-process registry import alone took 9.24 seconds on the shared host, and asynchronous jobs include process startup and artifact work.
+
+The user explicitly approved aligning deployment observation to the existing 60-second installation deadline, provided real issues are not masked. This changes only how long the test observes a real job: terminal failures still fail immediately, all result/persistence assertions remain, and no retries are added. This is functional acceptance, not a claim that deployments meet a 30-second latency target. The next candidate still requires full pre-PR and nightly verification.
+
+The three failing cases passed isolated before the change (112.72 seconds total) and after the approved helper change (112.44 seconds total). Their table-resolution, app-removal, and vendored-workflow result assertions all remain intact.
