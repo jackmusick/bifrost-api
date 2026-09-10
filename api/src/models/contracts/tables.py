@@ -398,6 +398,24 @@ class DocumentQuery(BaseModel):
         default=False,
         description="Skip the total count query (returns total=-1). Use for faster paginated fetches after the first page.",
     )
+    after_document_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "Return documents whose actual document ID is greater than this "
+            "exclusive cursor, ordered by document ID. Use an empty string "
+            "to begin an unbounded document-ID scan."
+        ),
+    )
+    document_id_prefix: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Return only documents whose actual document ID starts with this "
+            "prefix, ordered by document ID."
+        ),
+    )
 
     @field_validator("order_by")
     @classmethod
@@ -408,6 +426,25 @@ class DocumentQuery(BaseModel):
             if not v.replace(".", "").replace("_", "").isalnum():
                 raise ValueError("order_by must be alphanumeric with dots and underscores")
         return v
+
+    @model_validator(mode="after")
+    def validate_document_id_pagination(self) -> "DocumentQuery":
+        """Keep document-ID keyset pagination unambiguous and index-friendly."""
+        if self.after_document_id is None and self.document_id_prefix is None:
+            return self
+        if self.order_by is not None:
+            raise ValueError(
+                "order_by cannot be combined with document-ID pagination"
+            )
+        if self.order_dir != "asc":
+            raise ValueError(
+                "document-ID pagination only supports ascending order"
+            )
+        if self.offset != 0:
+            raise ValueError(
+                "offset cannot be combined with document-ID pagination"
+            )
+        return self
 
 
 class DocumentListResponse(BaseModel):

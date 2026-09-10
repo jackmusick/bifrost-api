@@ -241,6 +241,82 @@ class TestDocumentRepositoryIntegration:
         assert len(documents) == 3
 
     @pytest.mark.asyncio
+    async def test_query_documents_by_actual_id_cursor_and_prefix(
+        self, db_session: AsyncSession, test_table, test_user_email
+    ):
+        """Document-ID pagination must not read or sort by ``data.id``."""
+        doc_repo = DocumentRepository(db_session, test_table)
+        await doc_repo.insert(
+            {"id": "json-z", "label": "first"},
+            created_by=test_user_email,
+            doc_id="tenant-a|001",
+        )
+        await doc_repo.insert(
+            {"id": "json-a", "label": "second"},
+            created_by=test_user_email,
+            doc_id="tenant-a|002",
+        )
+        await doc_repo.insert(
+            {"id": "json-m", "label": "other tenant"},
+            created_by=test_user_email,
+            doc_id="tenant-b|001",
+        )
+
+        from src.models.contracts.tables import DocumentQuery
+
+        first_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix="tenant-a|",
+                limit=1,
+                skip_count=True,
+            )
+        )
+        assert [doc.id for doc in first_page] == ["tenant-a|001"]
+        assert total == -1
+
+        unbounded_page, _ = await doc_repo.query(
+            DocumentQuery(after_document_id="", limit=10, skip_count=True)
+        )
+        assert [doc.id for doc in unbounded_page] == [
+            "tenant-a|001",
+            "tenant-a|002",
+            "tenant-b|001",
+        ]
+
+        second_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix="tenant-a|",
+                after_document_id=first_page[-1].id,
+                limit=10,
+                skip_count=True,
+            )
+        )
+        assert [doc.id for doc in second_page] == ["tenant-a|002"]
+        assert total == -1
+
+        legacy_json_query, _ = await doc_repo.query(
+            DocumentQuery(where={"id": "json-a"}, order_by="id")
+        )
+        assert [doc.id for doc in legacy_json_query] == ["tenant-a|002"]
+
+    @pytest.mark.parametrize(
+        "kwargs, message",
+        [
+            ({"order_by": "name"}, "order_by"),
+            ({"order_dir": "desc"}, "ascending"),
+            ({"offset": 1}, "offset"),
+        ],
+    )
+    def test_document_id_pagination_rejects_incompatible_pagination(
+        self, kwargs, message
+    ):
+        from pydantic import ValidationError
+        from src.models.contracts.tables import DocumentQuery
+
+        with pytest.raises(ValidationError, match=message):
+            DocumentQuery(after_document_id="cursor", **kwargs)
+
+    @pytest.mark.asyncio
     async def test_count_documents(self, db_session: AsyncSession, test_table, test_user_email):
         """Test counting documents."""
         doc_repo = DocumentRepository(db_session, test_table)

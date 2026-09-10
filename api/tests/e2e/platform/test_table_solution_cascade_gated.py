@@ -95,11 +95,12 @@ def _query_labels(
     *,
     solution_id: str,
     scope: str,
+    query: dict | None = None,
 ) -> list[str]:
     response = e2e_client.post(
         f"/api/tables/{table_name}/documents/query?solution={solution_id}&scope={scope}",
         headers=headers,
-        json={"where": {}, "order_by": "label"},
+        json=query or {"where": {}, "order_by": "label"},
     )
     assert response.status_code == 200, response.text
     return [row["data"]["label"] for row in response.json()["documents"]]
@@ -139,7 +140,12 @@ async def test_open_solution_reads_own_then_org_then_global_tables_by_name(
     _insert_row(e2e_client, headers, global_shadow_id, "row", "global-shadow")
 
     assert _query_labels(
-        e2e_client, headers, own_name, solution_id=solution_id, scope=org1["id"]
+        e2e_client,
+        headers,
+        own_name,
+        solution_id=solution_id,
+        scope=org1["id"],
+        query={"document_id_prefix": "row", "skip_count": True},
     ) == ["own"]
 
     org_name = f"open_org_{uuid.uuid4().hex[:8]}"
