@@ -708,7 +708,21 @@
 			"tests": [
 				{
 					"spec": "solution-lifecycle.admin.spec.ts",
-					"title": "uninstalls, reactivates, and permanently deletes a solution through the UI",
+					"title": "uninstalls a solution and reveals it with Show Inactive",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "solution-lifecycle.admin.spec.ts",
+					"title": "reactivates an inactive solution from an uploaded package",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "solution-lifecycle.admin.spec.ts",
+					"title": "permanently deletes a solution with slug confirmation",
 					"project": "platform-admin",
 					"variant": "desktop",
 					"proof": "real-platform"

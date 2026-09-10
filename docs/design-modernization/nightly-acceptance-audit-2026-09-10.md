@@ -261,3 +261,15 @@ Full nightly on `43a1a3fab44a886b6615e308bc7374cffbdaa1f5` selected 153 tests: *
 - **EVENT-MGMT-01:** an empty source list renders equivalent header and empty-state create actions. The test now intentionally selects the first/header action rather than assuming the accessible name is unique.
 
 `./test.sh client e2e --screenshots --workers=1 e2e/account-onboarding-acceptance.admin.spec.ts e2e/agents-detail-runs.admin.spec.ts e2e/event-source-management-acceptance.admin.spec.ts` passed **11/11** after the repairs. This is targeted evidence; the final complete nightly and pre-PR gate remain required on the repaired candidate.
+
+
+### Repaired candidate full-run follow-up
+
+Nightly on `df3d94891323c8f7fcfcbeb39e153ee130fbc3e8` selected 153 tests: **150 passed, 3 failed, 0 skipped, 0 retries**. All three original failures passed. This run exposed two overlong test flows and an imprecise redirect assertion under substantial shared-host contention.
+
+- Solution lifecycle is now three independently seeded browser actions (uninstall/filter, reactivate, permanent delete). Each retains the standard 30-second action limit; setup has a separate 30-second fixture budget. The ledger requires all three for SOLUTION-LIFECYCLE-01.
+- The global editor helper no longer performs a second full navigation immediately after the test's reload. Save, switch, reload, and both persisted file contents remain checked.
+- The login redirect test now requires `/workflows` exactly with a web-first assertion. Its former optional regex matched `/login` too, and waiting for a document load could race route navigation.
+- The Sidebar integration fixture now supplies a populated read-only collection. Empty shared collections intentionally remain hidden; SidebarCollections tests preserve that contract.
+
+Focused browser verification of solution lifecycle, workspace editor, and authentication passed after these repairs. Sidebar/SidebarCollections component tests passed 8/8, and strict TypeScript checking passed. The full Vitest attempt was interrupted after revealing the sidebar fixture defect during severe shared-host load; it is not counted as passing. The mandatory clean-candidate pre-PR gate and complete nightly remain required.

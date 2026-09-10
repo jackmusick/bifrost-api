@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { type APIRequestContext } from "@playwright/test";
-import { test, expect, type AuthedApi } from "./fixtures/api-fixture";
+import { test as base, expect, type AuthedApi } from "./fixtures/api-fixture";
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
 	let c = n;
@@ -155,98 +155,116 @@ async function expectPersistedStatus(
 		.toBe(status);
 }
 
-test.describe("Solution lifecycle UI (admin)", () => {
-	test.use({ viewport: { width: 1440, height: 900 } });
+type LifecycleSolution = {
+	solutionId: string;
+	slug: string;
+	solutionName: string;
+};
+const test = base.extend<{
+	solution: LifecycleSolution;
+	solutionStatus: "active" | "inactive";
+}>({
+	solutionStatus: ["active", { option: true }],
+	solution: [
+		async ({ api, request, solutionStatus }, use) => {
+			const slug = `e2e-lifecycle-${crypto.randomUUID()}`;
+			const solutionName = slug.toUpperCase();
+			const response = await api.post("/api/solutions", {
+				data: {
+					slug,
+					name: solutionName,
+					organization_id: null,
+					global_repo_access: false,
+				},
+			});
+			expect(response.ok(), "create owned solution").toBe(true);
+			const { id: solutionId } = (await response.json()) as {
+				id: string;
+			};
+			try {
+				await deploySolution(api, request, solutionId, slug);
+				await expectPersistedStatus(api, solutionId, "active");
+				if (solutionStatus === "inactive") {
+					const uninstall = await api.post(
+						`/api/solutions/${solutionId}/uninstall`,
+					);
+					expect(uninstall.ok(), "seed inactive solution").toBe(true);
+					await expectPersistedStatus(api, solutionId, "inactive");
+				}
+				await use({ solutionId, slug, solutionName });
+			} finally {
+				const removed = await api.delete(
+					`/api/solutions/${solutionId}`,
+					{ params: { confirm: slug } },
+				);
+				expect([200, 204, 404], "remove owned solution").toContain(
+					removed.status(),
+				);
+			}
+		},
+		{ timeout: 30000 },
+	],
+});
+test.use({ viewport: { width: 1440, height: 900 } });
 
-	const slug = `e2e-lifecycle-${Date.now()}`;
-	const solutionName = slug.toUpperCase();
-	let solutionId = "";
+test("uninstalls a solution and reveals it with Show Inactive", async ({
+	page,
+	api,
+	solution: { solutionId, slug, solutionName },
+}) => {
+	await page.goto(`/solutions/${solutionId}`);
+	await expect(page.getByRole("heading", { name: solutionName })).toBeVisible(
+		{
+			timeout: 15000,
+		},
+	);
+	await expect(
+		page.getByRole("button", { name: "Update", exact: true }),
+	).toBeVisible();
+	await expect(page.getByText("Inactive", { exact: true })).not.toBeVisible();
 
-	test.beforeAll(async ({ api, request }) => {
-		const createResponse = await api.post("/api/solutions", {
-			data: {
-				slug,
-				name: solutionName,
-				organization_id: null,
-				global_repo_access: false,
-			},
-		});
-		expect(
-			createResponse.ok(),
-			`create solution: ${await createResponse.text()}`,
-		).toBe(true);
-		solutionId = ((await createResponse.json()) as { id: string }).id;
+	await page.getByRole("button", { name: "More solution actions" }).click();
+	await page.getByRole("menuitem", { name: "Uninstall" }).click();
+	await expectPersistedStatus(api, solutionId, "inactive");
 
-		await deploySolution(api, request, solutionId, slug);
-		await expectPersistedStatus(api, solutionId, "active");
-	});
+	await page.reload();
+	await expect(page.getByRole("heading", { name: solutionName })).toBeVisible(
+		{
+			timeout: 15000,
+		},
+	);
+	await expect(page.getByText("Inactive", { exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Reactivate" }),
+	).toBeVisible();
+	await page.getByRole("button", { name: "More solution actions" }).click();
+	await expect(
+		page.getByRole("menuitem", { name: "Uninstall" }),
+	).not.toBeVisible();
+	await expect(
+		page.getByRole("menuitem", { name: "Delete permanently" }),
+	).toBeVisible();
+	await page.keyboard.press("Escape");
 
-	test.afterAll(async ({ api }) => {
-		if (!solutionId) return;
-		const response = await api.delete(`/api/solutions/${solutionId}`, {
-			params: { confirm: slug },
-		});
-		expect([200, 204, 404], "remove owned lifecycle solution").toContain(
-			response.status(),
-		);
-	});
-
-	test("uninstalls, reactivates, and permanently deletes a solution through the UI", async ({
+	await page.goto("/solutions");
+	await expect(
+		page.getByRole("heading", { name: "Solutions", exact: true }),
+	).toBeVisible({ timeout: 10000 });
+	await expect(
+		page.getByRole("link", { name: new RegExp(slug, "i") }),
+	).not.toBeVisible();
+	await page.getByRole("switch", { name: "Show Inactive" }).click();
+	await expect(
+		page.getByRole("link", { name: new RegExp(slug, "i") }),
+	).toBeVisible();
+});
+test.describe("Inactive solution", () => {
+	test.use({ solutionStatus: "inactive" });
+	test("reactivates an inactive solution from an uploaded package", async ({
 		page,
 		api,
+		solution: { solutionId, slug, solutionName },
 	}) => {
-		await page.goto(`/solutions/${solutionId}`);
-		await expect(
-			page.getByRole("heading", { name: solutionName }),
-		).toBeVisible({
-			timeout: 15000,
-		});
-		await expect(
-			page.getByRole("button", { name: "Update", exact: true }),
-		).toBeVisible();
-		await expect(
-			page.getByText("Inactive", { exact: true }),
-		).not.toBeVisible();
-
-		await page
-			.getByRole("button", { name: "More solution actions" })
-			.click();
-		await page.getByRole("menuitem", { name: "Uninstall" }).click();
-		await expectPersistedStatus(api, solutionId, "inactive");
-
-		await page.reload();
-		await expect(
-			page.getByRole("heading", { name: solutionName }),
-		).toBeVisible({
-			timeout: 15000,
-		});
-		await expect(page.getByText("Inactive", { exact: true })).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: "Reactivate" }),
-		).toBeVisible();
-		await page
-			.getByRole("button", { name: "More solution actions" })
-			.click();
-		await expect(
-			page.getByRole("menuitem", { name: "Uninstall" }),
-		).not.toBeVisible();
-		await expect(
-			page.getByRole("menuitem", { name: "Delete permanently" }),
-		).toBeVisible();
-		await page.keyboard.press("Escape");
-
-		await page.goto("/solutions");
-		await expect(
-			page.getByRole("heading", { name: "Solutions", exact: true }),
-		).toBeVisible({ timeout: 10000 });
-		await expect(
-			page.getByRole("link", { name: new RegExp(slug, "i") }),
-		).not.toBeVisible();
-		await page.getByRole("switch", { name: "Show Inactive" }).click();
-		await expect(
-			page.getByRole("link", { name: new RegExp(slug, "i") }),
-		).toBeVisible();
-
 		await page.goto(`/solutions/${solutionId}`);
 		await page.getByRole("button", { name: "Reactivate" }).click();
 		await expect(
@@ -290,37 +308,39 @@ test.describe("Solution lifecycle UI (admin)", () => {
 		await expect(
 			page.getByText("Inactive", { exact: true }),
 		).not.toBeVisible();
-
-		await page
-			.getByRole("button", { name: "More solution actions" })
-			.click();
-		await page
-			.getByRole("menuitem", { name: "Delete permanently" })
-			.click();
-		await expect(
-			page.getByRole("dialog", {
-				name: `Permanently delete ${solutionName}?`,
-			}),
-		).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: "Delete permanently" }),
-		).toBeDisabled();
-		await page
-			.getByRole("textbox", {
-				name: "Type the Solution slug to confirm",
-			})
-			.fill(slug);
-		await expect(
-			page.getByRole("button", { name: "Delete permanently" }),
-		).toBeEnabled();
-		await page.getByRole("button", { name: "Delete permanently" }).click();
-		await expect(page).toHaveURL(/\/solutions$/);
-
-		await expect
-			.poll(async () =>
-				(await api.get(`/api/solutions/${solutionId}`)).status(),
-			)
-			.toBe(404);
-		solutionId = "";
 	});
+});
+test("permanently deletes a solution with slug confirmation", async ({
+	page,
+	api,
+	solution: { solutionId, slug, solutionName },
+}) => {
+	await page.goto(`/solutions/${solutionId}`);
+
+	await page.getByRole("button", { name: "More solution actions" }).click();
+	await page.getByRole("menuitem", { name: "Delete permanently" }).click();
+	await expect(
+		page.getByRole("dialog", {
+			name: `Permanently delete ${solutionName}?`,
+		}),
+	).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Delete permanently" }),
+	).toBeDisabled();
+	await page
+		.getByRole("textbox", {
+			name: "Type the Solution slug to confirm",
+		})
+		.fill(slug);
+	await expect(
+		page.getByRole("button", { name: "Delete permanently" }),
+	).toBeEnabled();
+	await page.getByRole("button", { name: "Delete permanently" }).click();
+	await expect(page).toHaveURL(/\/solutions$/);
+
+	await expect
+		.poll(async () =>
+			(await api.get(`/api/solutions/${solutionId}`)).status(),
+		)
+		.toBe(404);
 });

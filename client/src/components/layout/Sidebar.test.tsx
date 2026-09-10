@@ -49,7 +49,7 @@ const collections: HomeCollection[] = [
 		shared: true,
 		organization_id: "org-1",
 		organization_name: "Acme",
-		resource_keys: [],
+		resource_keys: ["form:escalation"],
 		can_edit: false,
 	},
 ];

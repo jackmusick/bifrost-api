@@ -142,7 +142,7 @@ test.describe("Login Flow", () => {
 		await page.goto("/workflows");
 
 		// Should redirect to login
-		await page.waitForURL(/\/login/, { timeout: 5000 });
+		await expect(page).toHaveURL(/\/login(?:\?|$)/);
 
 		// Login
 		await page.getByLabel("Email").fill(user.email);
@@ -161,8 +161,7 @@ test.describe("Login Flow", () => {
 			.click();
 
 		// Should redirect back to workflows (the original destination)
-		// Note: This depends on the app preserving the redirect state
-		await page.waitForURL(/\/(workflows)?/, { timeout: 15000 });
+		await expect(page).toHaveURL(/\/workflows$/);
 	});
 });
 

@@ -43,7 +43,6 @@ async function deleteEditorPath(api: AuthedApi, path: string) {
 }
 
 async function openGlobalEditor(page: Page) {
-	await page.goto("/");
 	await page.getByRole("button", { name: "Shell (Cmd+/)" }).click();
 	await expect(
 		page.getByRole("dialog", { name: "Code editor" }),
@@ -161,6 +160,7 @@ test.describe("Workspace editor acceptance (admin)", () => {
 		await writeEditorFile(api, betaPath, betaOriginal);
 
 		try {
+			await page.goto("/");
 			await openGlobalEditor(page);
 			await openWorkspaceFile(page, folderName, "alpha.txt");
 			await expectEditorContent(page, alphaPath, alphaOriginal);
