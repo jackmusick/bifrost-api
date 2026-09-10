@@ -1469,6 +1469,10 @@ async def create_delivery(
     db.add(delivery)
     await db.flush()
 
+    # Agent runs are created in a separate transaction and reference this
+    # delivery by foreign key, so the delivery must be durable before queueing.
+    await db.commit()
+
     # Queue the execution
     processor = EventProcessor(db)
     try:

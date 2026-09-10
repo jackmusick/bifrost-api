@@ -38,10 +38,10 @@ async def emit_event(
             triggered_by=triggered_by,
         )
         if count > 0:
-            # Queue deliveries in the same transaction as emit so that
-            # delivery.execution_id is persisted; otherwise the subsequent
-            # update_delivery_from_execution lookup fails and a sweeper
-            # eventually marks the delivery FAILED with a phantom timeout.
+            # Agent runs are created in a separate transaction and reference
+            # event deliveries by foreign key. Commit the event and deliveries
+            # before queueing so that transaction can see them.
+            await db.commit()
             await processor.queue_event_deliveries(event_id)
         await db.commit()
         return event_id, count
