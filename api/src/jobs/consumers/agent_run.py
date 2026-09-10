@@ -24,7 +24,6 @@ from src.models.contracts.agents import ChatStreamChunk
 from src.models.enums import MessageRole
 from src.models.orm.agents import Agent, Conversation
 from src.models.orm.agent_runs import AgentRun
-from src.services.agent_executor import AgentExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -653,6 +652,8 @@ class AgentRunConsumer(BaseConsumer):
             if chat_agent is not None and chat_agent.max_run_timeout
             else DEFAULT_RUN_TIMEOUT
         )
+        from src.services.agent_executor import AgentExecutor
+
         executor = AgentExecutor(self._session_factory)
         current_task = asyncio.current_task()
         if current_task is None:

@@ -372,7 +372,7 @@ async def test_chat_run_publishes_stream_chunks_and_terminal_completion(
                 )
             ),
         ),
-        patch("src.jobs.consumers.agent_run.AgentExecutor", return_value=fake_executor),
+        patch("src.services.agent_executor.AgentExecutor", return_value=fake_executor),
         patch("src.jobs.consumers.agent_run.publish_chat_run_event", publish_chat),
         patch("src.jobs.consumers.agent_run.publish_agent_run_update", publish_run),
     ):
@@ -517,7 +517,7 @@ async def test_chat_run_interruption_persists_partial_output_and_terminal_event(
                 )
             ),
         ),
-        patch("src.jobs.consumers.agent_run.AgentExecutor", return_value=fake_executor),
+        patch("src.services.agent_executor.AgentExecutor", return_value=fake_executor),
         patch("src.jobs.consumers.agent_run.DEFAULT_RUN_TIMEOUT", 0.001),
         patch("src.jobs.consumers.agent_run.publish_chat_run_event", publish_chat),
         patch("src.jobs.consumers.agent_run.publish_agent_run_update", publish_run),

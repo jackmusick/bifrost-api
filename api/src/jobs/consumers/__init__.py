@@ -1,10 +1,5 @@
-# RabbitMQ message consumers
-from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
-from src.jobs.consumers.package_install import PackageInstallConsumer
-from src.jobs.consumers.agent_run import AgentRunConsumer
+"""RabbitMQ consumer modules.
 
-__all__ = [
-    "WorkflowExecutionConsumer",
-    "PackageInstallConsumer",
-    "AgentRunConsumer",
-]
+Consumers are imported from their defining modules so importing one consumer
+does not eagerly load every worker runtime and its optional dependencies.
+"""
