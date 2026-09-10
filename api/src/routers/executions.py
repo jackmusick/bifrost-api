@@ -45,7 +45,10 @@ from src.core.pubsub import publish_execution_update, publish_history_update
 from src.core.redis_client import get_redis_client
 from src.models import Execution as ExecutionModel
 from src.models import ExecutionLog as ExecutionLogORM
-from src.repositories.execution_logs import ExecutionLogRepository
+from src.repositories.execution_logs import (
+    ExecutionLogRepository,
+    decode_execution_log_cursor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -870,14 +873,25 @@ async def list_logs(
     continuation_token: str | None = Query(None, description="Pagination token"),
 ) -> LogsListResponse:
     """List logs across all executions (admin only)."""
-    # Parse continuation token as offset
+    # Parse continuation token: keyset cursor, with legacy numeric-offset
+    # fallback for tokens minted before the keyset change.
     offset = 0
+    cursor = None
     if continuation_token:
-        try:
-            offset = int(continuation_token)
-        except ValueError as e:
-            # Malformed continuation token — start from beginning
-            logger.debug(f"invalid continuation_token {log_safe(continuation_token)!r}, starting from offset 0: {log_safe(e)}")
+        cursor = decode_execution_log_cursor(continuation_token)
+        if cursor is None:
+            try:
+                offset = int(continuation_token)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="continuation_token is invalid",
+                ) from exc
+            if offset < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="continuation_token is invalid",
+                )
 
     # Parse levels
     level_list = None
@@ -905,6 +919,7 @@ async def list_logs(
         end_date=parsed_end,
         limit=limit,
         offset=offset,
+        cursor=cursor,
     )
 
     return LogsListResponse(

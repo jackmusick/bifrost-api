@@ -333,3 +333,11 @@ The three failing cases passed isolated before the change (112.72 seconds total)
 After merging current main (`668b2676a`) into the review branch, candidate `f776b813e` passed frontend type/lint checks but its component gate finished 2,853 passed and four failed. Knowledge, AIModelSettings, and CollectionEditor interaction tests exceeded their five-second limits; the timed-out collection test continued into the next test and contaminated its audience assertion. Host load was approximately 58 on eight CPUs.
 
 The affected files passed 17/17 with `VITEST_MAX_WORKERS=1`. Their source and assertions were left unchanged. The local client-check Compose service now forwards Vitest's existing optional worker override, allowing the full pre-PR suite to run serially on this contended host while retaining the configured default elsewhere. This does not alter timeouts, retries, selected tests, or CI's default concurrency. The next full pre-PR command is `VITEST_MAX_WORKERS=1 ./test.sh pre-pr`; final nightly remains required on the same clean commit.
+
+### Stable log pagination
+
+Candidate `7851f67af` passed all 2,857 component tests with the serial worker override, API quality checks, and 5,984 standard-lane backend unit tests. Its live backend suite finished 1,822 passed and one failed: log pagination repeated an ID across pages. All three deployment cases passed with the approved observation deadline.
+
+The log list used timestamp-only ordering and numeric offsets, which cannot maintain a stable position across equal timestamps or newly arriving rows. It now orders by timestamp and row ID and issues a cursor containing both; legacy numeric offsets remain accepted. Cursor decoding preserves the timestamp instant and rejects malformed row identities. The live regression owns five equal-timestamp rows, inserts newer and same-timestamp rows between requests, and proves every original row appears exactly once across the remaining pages.
+
+`./test.sh tests/unit/repositories/test_execution_logs_list.py tests/e2e/test_execution_logs_list_endpoint.py -v` passed 35 tests. The repair still requires full clean-candidate pre-PR and nightly verification.

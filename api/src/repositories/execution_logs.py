@@ -5,17 +5,52 @@ PostgreSQL-based repository for execution log entries.
 Replaces the Azure Table Storage implementation.
 """
 
+import base64
+import binascii
+import json
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from src.models import ExecutionLog
 from src.models.orm.executions import Execution
 from src.models.orm.organizations import Organization
+
+
+def encode_execution_log_cursor(timestamp: datetime, log_id: int) -> str:
+    """Encode the last emitted log row for stable keyset pagination."""
+    payload = {
+        "v": 1,
+        "t": timestamp.isoformat(),
+        "i": log_id,
+    }
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+
+
+def decode_execution_log_cursor(token: str) -> tuple[datetime, int] | None:
+    """Decode a keyset cursor; return None for legacy numeric offset tokens."""
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(token.encode()))
+        if not isinstance(payload, dict) or payload.get("v") != 1:
+            return None
+        timestamp = datetime.fromisoformat(payload["t"])
+        log_id = payload["i"]
+        if timestamp.tzinfo is None or type(log_id) is not int or not 0 < log_id <= 2147483647:
+            return None
+        return timestamp.astimezone(timezone.utc), log_id
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        binascii.Error,
+    ):
+        return None
 
 
 class ExecutionLogRepository:
@@ -227,6 +262,7 @@ class ExecutionLogRepository:
         end_date: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
+        cursor: tuple[datetime, int] | None = None,
         workflow_id: UUID | None = None,
         global_only: bool = False,
     ) -> tuple[list[dict[str, Any]], str | None]:
@@ -243,11 +279,13 @@ class ExecutionLogRepository:
             start_date: Filter logs from this date
             end_date: Filter logs until this date
             limit: Maximum number of logs to return
-            offset: Number of logs to skip
+            offset: Number of logs to skip for legacy numeric tokens
+            cursor: Stable keyset cursor as (timestamp, log id)
 
         Returns:
             Tuple of (logs_list, next_continuation_token).
-            Token is the next offset as string, or None if no more results.
+            Token is a keyset cursor for the last returned row, or None if no
+            more results.
         """
         # Build query with joins
         query = (
@@ -257,7 +295,7 @@ class ExecutionLogRepository:
             .options(
                 joinedload(ExecutionLog.execution).joinedload(Execution.organization)
             )
-            .order_by(ExecutionLog.timestamp.desc())
+            .order_by(desc(ExecutionLog.timestamp), desc(ExecutionLog.id))
         )
 
         # Apply filters
@@ -285,8 +323,22 @@ class ExecutionLogRepository:
         if end_date:
             query = query.where(ExecutionLog.timestamp <= end_date)
 
+        if cursor is not None:
+            cursor_timestamp, cursor_id = cursor
+            query = query.where(
+                or_(
+                    ExecutionLog.timestamp < cursor_timestamp,
+                    and_(
+                        ExecutionLog.timestamp == cursor_timestamp,
+                        ExecutionLog.id < cursor_id,
+                    ),
+                )
+            )
+        elif offset:
+            query = query.offset(offset)
+
         # Fetch limit+1 to check if there are more results
-        query = query.offset(offset).limit(limit + 1)
+        query = query.limit(limit + 1)
 
         result = await self.session.execute(query)
         logs = result.scalars().unique().all()
@@ -296,8 +348,14 @@ class ExecutionLogRepository:
         if has_more:
             logs = list(logs)[:limit]
 
-        # Calculate next token
-        next_token = str(offset + limit) if has_more else None
+        # Calculate next token from the last emitted row. A keyset token is
+        # stable when new logs arrive before the next page and when multiple
+        # rows share the same timestamp.
+        next_token = (
+            encode_execution_log_cursor(logs[-1].timestamp, logs[-1].id)
+            if has_more and logs
+            else None
+        )
 
         # Convert to dicts with joined data
         return [
