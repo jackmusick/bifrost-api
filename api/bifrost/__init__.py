@@ -120,6 +120,7 @@ from .models import (
     DocumentList,
     BatchResult,
     BatchDeleteResult,
+    BulkUpsertResult,
 )
 
 # ExecutionContext lives in bifrost/ — available in both CLI and platform
@@ -278,6 +279,7 @@ __all__ = [
     'DocumentList',
     'BatchResult',
     'BatchDeleteResult',
+    'BulkUpsertResult',
     # Decorators
     'workflow',
     'data_provider',

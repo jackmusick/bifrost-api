@@ -380,3 +380,9 @@ class BatchDeleteResult(BaseModel):
 
     deleted_ids: list[str]
     count: int
+
+
+class BulkUpsertResult(BaseModel):
+    """Count-only result for privileged table bulk upsert."""
+
+    count: int

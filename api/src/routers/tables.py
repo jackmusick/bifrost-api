@@ -42,6 +42,8 @@ from src.models.contracts.tables import (
     DocumentBatchCreateResponse,
     DocumentBatchDeleteRequest,
     DocumentBatchDeleteResponse,
+    DocumentBulkUpsertRequest,
+    DocumentBulkUpsertResponse,
     DocumentCountResponse,
     DocumentCreate,
     DocumentListResponse,
@@ -321,6 +323,22 @@ class DocumentRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_many_for_update(self, doc_ids: list[str]) -> dict[str, Document]:
+        """Get existing documents by ID and lock them for a bulk write."""
+        if not doc_ids:
+            return {}
+        query = (
+            select(Document)
+            .where(
+                Document.id.in_(doc_ids),
+                Document.table_id == self.table.id,
+            )
+            .order_by(Document.id)
+            .with_for_update()
+        )
+        result = await self.session.execute(query)
+        return {doc.id: doc for doc in result.scalars().all()}
+
     async def update(
         self,
         doc_id: str,
@@ -395,6 +413,58 @@ class DocumentRepository:
         doc = await self.get(doc_id)
         assert doc is not None  # we just upserted it
         return doc, inserted
+
+    async def bulk_upsert(
+        self,
+        rows: list[tuple[str, dict[str, Any], str | None, str | None]],
+        *,
+        update_ids: set[str],
+    ) -> int:
+        """Set-based upsert for privileged ingestion.
+
+        ``rows`` contains ``(id, data, created_by, updated_by)`` tuples. On
+        conflict the JSONB ``data`` column is replaced; insert-only fields such
+        as ``created_by`` and ``created_at`` are preserved for existing rows.
+        Only IDs present in ``update_ids`` may take the update branch; a row
+        inserted concurrently after the policy preflight returns no row so the
+        caller can roll back and report a race.
+        """
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        now = datetime.now(timezone.utc)
+        values = [
+            {
+                "id": doc_id,
+                "table_id": self.table.id,
+                "data": data,
+                "created_by": created_by,
+                "updated_by": updated_by if updated_by is not None else created_by,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for doc_id, data, created_by, updated_by in sorted(
+                rows, key=lambda row: row[0]
+            )
+        ]
+        insert_stmt = pg_insert(Document).values(values)
+        stmt = (
+            insert_stmt
+            .on_conflict_do_update(
+                index_elements=["table_id", "id"],
+                set_={
+                    "data": insert_stmt.excluded.data,
+                    "updated_by": insert_stmt.excluded.updated_by,
+                    "updated_at": now,
+                },
+                where=(
+                    (Document.table_id == self.table.id)
+                    & (Document.id.in_(update_ids))
+                ),
+            )
+            .returning(Document.id)
+        )
+        result = await self.session.execute(stmt)
+        return len(result.all())
 
     async def delete(self, doc_id: str) -> bool:
         """Delete a document."""
@@ -1123,6 +1193,95 @@ async def upsert_document(
         new_row=_row_from_doc(doc),
     )
     return DocumentPublic.model_validate(doc)
+
+
+@router.post(
+    "/{table_id}/documents/bulk-upsert",
+    response_model=DocumentBulkUpsertResponse,
+    summary="Bulk upsert documents by explicit id",
+)
+async def bulk_upsert_documents(
+    table_id: str,
+    body: DocumentBulkUpsertRequest,
+    ctx: Context,
+    _user: CurrentSuperuser,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
+) -> DocumentBulkUpsertResponse:
+    """Set-based privileged ingestion path for explicit-id full replacements.
+
+    This route enforces normal table resolution, solution ownership, and table
+    row policies before issuing one guarded upsert statement. It intentionally
+    skips per-row realtime publishing; callers that need progress events
+    publish them separately.
+    """
+    table = await get_table_or_404(ctx, table_id, scope=scope)
+    await _assert_solution_write_targets_owned_table(ctx, table)
+
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for item in body.documents:
+        if item.id in seen and item.id not in duplicates:
+            duplicates.append(item.id)
+        seen.add(item.id)
+    if duplicates:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"duplicate_ids": duplicates},
+        )
+
+    rows: list[tuple[str, dict[str, Any], str | None, str | None]] = []
+    for item in body.documents:
+        created_by, updated_by = _resolve_attribution(
+            ctx.user, item.created_by, item.updated_by
+        )
+        rows.append((item.id, item.data, created_by, updated_by))
+    repo = DocumentRepository(ctx.db, table)
+    existing = await repo.get_many_for_update([item.id for item in body.documents])
+
+    policies = await load_resolved_table_policies(table, ctx.db)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+        table.solution_id,
+    )
+    denied: list[int] = []
+    for index, item in enumerate(body.documents):
+        existing_doc = existing.get(item.id)
+        if existing_doc is not None:
+            if not evaluate_action(
+                "update", policies, _row_from_doc(existing_doc), ctx.user
+            ):
+                denied.append(index)
+            continue
+        created_by, updated_by = rows[index][2], rows[index][3]
+        candidate_row: dict[str, Any] = {
+            **item.data,
+            "id": item.id,
+            "created_by": created_by,
+            "updated_by": updated_by,
+        }
+        if not evaluate_action("create", policies, candidate_row, ctx.user):
+            denied.append(index)
+    if denied:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"denied_row_indices": denied},
+        )
+
+    count = await repo.bulk_upsert(rows, update_ids=set(existing))
+    if count != len(rows):
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bulk upsert conflicted with a concurrent insert; retry the request",
+        )
+    await ctx.db.commit()
+    return DocumentBulkUpsertResponse(count=count)
 
 
 @router.get(

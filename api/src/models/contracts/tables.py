@@ -215,6 +215,32 @@ class DocumentBatchCreate(BaseModel):
     )
 
 
+class DocumentBulkUpsertItem(BaseModel):
+    """A single explicit-id document for the privileged bulk upsert endpoint."""
+
+    id: str = Field(..., min_length=1, max_length=255, description="Document ID to upsert")
+    data: dict[str, Any] = Field(..., description="Replacement document data")
+    created_by: str | None = Field(
+        default=None,
+        description="Override attribution for inserted rows. Platform-admin callers only.",
+    )
+    updated_by: str | None = Field(
+        default=None,
+        description="Override attribution for inserted and updated rows. Platform-admin callers only.",
+    )
+
+
+class DocumentBulkUpsertRequest(BaseModel):
+    """Input for set-based, explicit-id bulk upsert."""
+
+    documents: list[DocumentBulkUpsertItem] = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Documents to upsert. Maximum 1000 rows per request.",
+    )
+
+
 class DocumentBatchCreateResponse(BaseModel):
     """Response for a batch insert or upsert."""
 
@@ -234,6 +260,12 @@ class DocumentBatchUpsertResponse(BaseModel):
 
     upserted: int
     errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DocumentBulkUpsertResponse(BaseModel):
+    """Count-only response for privileged bulk upsert."""
+
+    count: int
 
 
 class DocumentBatchDeleteRequest(BaseModel):
