@@ -702,7 +702,9 @@ async def create_integration(
     integration = await repo.create_integration(request)
     logger.info(f"Created integration: {log_safe(integration.name)}")
 
-    return IntegrationResponse.model_validate(integration)
+    response = IntegrationResponse.model_validate(integration)
+    await ctx.db.commit()
+    return response
 
 
 @router.get(
