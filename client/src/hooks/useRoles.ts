@@ -16,8 +16,8 @@ type AssignUsersToRoleRequest =
 type AssignFormsToRoleRequest =
 	components["schemas"]["AssignFormsToRoleRequest"];
 
-export function useRoles() {
-	return $api.useQuery("get", "/api/roles", {});
+export function useRoles(options: { enabled?: boolean } = {}) {
+	return $api.useQuery("get", "/api/roles", {}, options);
 }
 
 export interface RolesPageParams {
@@ -190,18 +190,20 @@ export function useAssignUsersToRole(options: { toast?: boolean } = {}) {
 				queryKey: ["get", "/api/roles/{role_id}/users"],
 			});
 			invalidateRoleList(queryClient);
-			if (options.toast !== false) toast.success("Users assigned", {
-				description: `${userIds.length} user(s) assigned to role`,
-			});
+			if (options.toast !== false)
+				toast.success("Users assigned", {
+					description: `${userIds.length} user(s) assigned to role`,
+				});
 		},
 		onError: (error) => {
 			const message =
 				typeof error === "object" && error && "detail" in error
 					? String(error.detail)
 					: "Failed to assign users";
-			if (options.toast !== false) toast.error("Failed to assign users", {
-				description: message,
-			});
+			if (options.toast !== false)
+				toast.error("Failed to assign users", {
+					description: message,
+				});
 		},
 	});
 }
@@ -219,18 +221,20 @@ export function useRemoveUserFromRole(options: { toast?: boolean } = {}) {
 					{ params: { path: { role_id: roleId } } },
 				],
 			});
-			if (options.toast !== false) toast.success("User removed", {
-				description: "User has been removed from the role",
-			});
+			if (options.toast !== false)
+				toast.success("User removed", {
+					description: "User has been removed from the role",
+				});
 		},
 		onError: (error) => {
 			const message =
 				typeof error === "object" && error && "detail" in error
 					? String(error.detail)
 					: "Failed to remove user";
-			if (options.toast !== false) toast.error("Failed to remove user", {
-				description: message,
-			});
+			if (options.toast !== false)
+				toast.error("Failed to remove user", {
+					description: message,
+				});
 		},
 	});
 }

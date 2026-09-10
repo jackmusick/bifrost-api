@@ -205,14 +205,6 @@ export function AgentSettingsTab({
 		dataUpdatedAt: toolsUpdated,
 		refetch: refetchTools,
 	} = useToolsGrouped({ include_inactive: true });
-	const {
-		data: roles,
-		isError: rolesError,
-		isLoading: rolesLoading,
-		isFetching: rolesFetching,
-		dataUpdatedAt: rolesUpdated,
-		refetch: refetchRoles,
-	} = useRoles();
 	const [toolsOpen, setToolsOpen] = useState(false);
 	const toolsTriggerRef = useRef<HTMLButtonElement>(null);
 	const delegatesTriggerRef = useRef<HTMLButtonElement>(null);
@@ -316,6 +308,15 @@ export function AgentSettingsTab({
 		control: form.control,
 		name: "access_level",
 	});
+	const shouldLoadRoles = accessLevel === "role_based";
+	const {
+		data: roles,
+		isError: rolesError,
+		isLoading: rolesLoading,
+		isFetching: rolesFetching,
+		dataUpdatedAt: rolesUpdated,
+		refetch: refetchRoles,
+	} = useRoles({ enabled: shouldLoadRoles });
 	const systemTools = useWatch({
 		control: form.control,
 		name: "system_tools",
@@ -467,13 +468,22 @@ export function AgentSettingsTab({
 				)}
 				{agentsError ||
 				toolsError ||
-				rolesError ||
+				(shouldLoadRoles && rolesError) ||
 				agentsLoading ||
 				toolsLoading ||
-				rolesLoading ||
+				(shouldLoadRoles && rolesLoading) ||
 				knowledgeError ||
 				knowledgeLoading ? (
-					<div className={agentsError || toolsError || rolesError || knowledgeError ? "space-y-3 px-5 pt-5" : "sr-only"}>
+					<div
+						className={
+							agentsError ||
+							toolsError ||
+							(shouldLoadRoles && rolesError) ||
+							knowledgeError
+								? "space-y-3 px-5 pt-5"
+								: "sr-only"
+						}
+					>
 						<SettingsResourceNotice
 							resource="available agents"
 							failed={agentsError}
@@ -490,14 +500,16 @@ export function AgentSettingsTab({
 							pending={toolsFetching}
 							onRetry={() => void refetchTools()}
 						/>
-						<SettingsResourceNotice
-							resource="available roles"
-							failed={rolesError}
-							loading={rolesLoading}
-							cached={!!rolesUpdated}
-							pending={rolesFetching}
-							onRetry={() => void refetchRoles()}
-						/>
+						{shouldLoadRoles ? (
+							<SettingsResourceNotice
+								resource="available roles"
+								failed={rolesError}
+								loading={rolesLoading}
+								cached={!!rolesUpdated}
+								pending={rolesFetching}
+								onRetry={() => void refetchRoles()}
+							/>
+						) : null}
 						<SettingsResourceNotice
 							resource="knowledge namespaces"
 							failed={knowledgeError}
@@ -874,7 +886,9 @@ export function AgentSettingsTab({
 											onChange={field.onChange}
 											onBlur={field.onBlur}
 											ariaLabel="System prompt"
-											readOnly={pending || isSolutionManaged}
+											readOnly={
+												pending || isSolutionManaged
+											}
 											className="min-w-0"
 											editorClassName="min-h-[200px] max-h-[28rem]"
 											placeholder="You are a helpful assistant…"

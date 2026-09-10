@@ -64,8 +64,9 @@ vi.mock("@/hooks/useOrganizations", () => ({
 	useOrganizations: () => ({ data: [], isLoading: false }),
 }));
 
+const mockRolesQuery = vi.fn();
 vi.mock("@/hooks/useRoles", () => ({
-	useRoles: () => ({ data: [] }),
+	useRoles: (options?: { enabled?: boolean }) => mockRolesQuery(options),
 }));
 vi.mock("@/hooks/useKnowledge", () => ({
 	useKnowledgeNamespaces: () => ({ data: [] }),
@@ -101,6 +102,15 @@ beforeEach(() => {
 	mockUpdateMutation.mockResolvedValue({});
 	mockToolsGrouped.mockReturnValue({
 		data: { system: [], workflow: [] },
+	});
+	mockRolesQuery.mockReset();
+	mockRolesQuery.mockReturnValue({
+		data: [],
+		isError: false,
+		isLoading: false,
+		isFetching: false,
+		dataUpdatedAt: 0,
+		refetch: vi.fn(),
 	});
 });
 
@@ -263,7 +273,9 @@ describe("AgentSettingsTab — create mode", () => {
 			expect(mockCreateMutation).toHaveBeenCalledTimes(1);
 		});
 		expect(mockCreateMutation.mock.calls[0][0].body.name).toBe("Sales Bot");
-		expect(mockCreateMutation.mock.calls[0][0].body.access_level).toBe("private");
+		expect(mockCreateMutation.mock.calls[0][0].body.access_level).toBe(
+			"private",
+		);
 		expect(
 			mockCreateMutation.mock.calls[0][0].body.llm_profile_id,
 		).toBeNull();
@@ -415,32 +427,93 @@ it("retains edited values after a failed save and retries the same draft", async
 	);
 });
 
+it("does not request or alert on roles for a private member agent", async () => {
+	mockRolesQuery.mockReturnValue({
+		data: undefined,
+		isError: true,
+		isLoading: false,
+		isFetching: false,
+		dataUpdatedAt: 0,
+		refetch: vi.fn(),
+	});
+
+	await renderTab({
+		mode: "edit",
+		agent: {
+			...existingAgent,
+			access_level: "private",
+			role_ids: [],
+		},
+	});
+
+	expect(mockRolesQuery).toHaveBeenCalledWith({ enabled: false });
+	expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
+	expect(
+		screen.queryByText(/Could not load available roles/i),
+	).not.toBeInTheDocument();
+});
+
+it("still exposes role loading failures when an admin edits role-based access", async () => {
+	mockAuth.mockReturnValue({
+		isPlatformAdmin: true,
+		user: { organizationId: "org-1" },
+	});
+	mockRolesQuery.mockReturnValue({
+		data: undefined,
+		isError: true,
+		isLoading: false,
+		isFetching: false,
+		dataUpdatedAt: 0,
+		refetch: vi.fn(),
+	});
+	await renderTab({ mode: "edit", agent: existingAgent });
+	expect(mockRolesQuery).toHaveBeenCalledWith({ enabled: true });
+	expect(screen.getByText(/Could not load available roles/i)).toBeVisible();
+	expect(
+		screen.getByRole("button", { name: "Retry available roles" }),
+	).toBeEnabled();
+});
+
 it("renders solution-managed settings as read-only", async () => {
 	await renderTab({
 		mode: "edit",
 		agent: { ...existingAgent, is_solution_managed: true },
 	});
 	expect(screen.getByLabelText("Name")).toBeDisabled();
-	expect(screen.getByLabelText("System prompt")).toHaveAttribute("contenteditable", "false");
+	expect(screen.getByLabelText("System prompt")).toHaveAttribute(
+		"contenteditable",
+		"false",
+	);
 	expect(screen.getByRole("combobox", { name: "Tools" })).toBeDisabled();
 	expect(screen.getByTestId("save-agent-button")).toBeDisabled();
 	expect(screen.getByTestId("solution-managed-banner")).toBeVisible();
 });
 
- it("uses private scope for regular users and hides sharing controls", async () => {
- await renderTab({ mode: "create", agent: null });
- expect(screen.getByRole("combobox", { name: "Scope" })).toHaveTextContent("Only me");
- expect(screen.queryByRole("combobox", { name: "Access level" })).not.toBeInTheDocument();
- expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
- });
- it("lets admins select private scope and restore sharing controls", async () => {
- mockAuth.mockReturnValue({ isPlatformAdmin: true, user: { organizationId: "org-1" } });
- const { user } = await renderTab({ mode: "create", agent: null });
- await user.click(screen.getByRole("combobox", { name: "Scope" }));
- await user.click(screen.getByRole("option", { name: /Only me/ }));
- expect(screen.queryByRole("combobox", { name: "Access level" })).not.toBeInTheDocument();
- expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
- await user.click(screen.getByRole("combobox", { name: "Scope" }));
- await user.click(screen.getByRole("option", { name: /Global/ }));
- expect(screen.getByRole("combobox", { name: "Access level" })).toBeInTheDocument();
- });
+it("uses private scope for regular users and hides sharing controls", async () => {
+	await renderTab({ mode: "create", agent: null });
+	expect(screen.getByRole("combobox", { name: "Scope" })).toHaveTextContent(
+		"Only me",
+	);
+	expect(
+		screen.queryByRole("combobox", { name: "Access level" }),
+	).not.toBeInTheDocument();
+	expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
+});
+it("lets admins select private scope and restore sharing controls", async () => {
+	mockAuth.mockReturnValue({
+		isPlatformAdmin: true,
+		user: { organizationId: "org-1" },
+	});
+	const { user } = await renderTab({ mode: "create", agent: null });
+	await user.click(screen.getByRole("combobox", { name: "Scope" }));
+	await user.click(screen.getByRole("option", { name: /Only me/ }));
+	expect(
+		screen.queryByRole("combobox", { name: "Access level" }),
+	).not.toBeInTheDocument();
+	expect(screen.queryByText("Assigned roles")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("combobox", { name: "Scope" }));
+	await user.click(screen.getByRole("option", { name: /Global/ }));
+	expect(
+		screen.getByRole("combobox", { name: "Access level" }),
+	).toBeInTheDocument();
+});

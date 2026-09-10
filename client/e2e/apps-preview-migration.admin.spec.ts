@@ -35,6 +35,8 @@ import type { Page } from "@playwright/test";
 const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 const APP_SLUG = `e2e-migrate-${UNIQUE}`;
 const APP_NAME = `E2E Migrate ${UNIQUE}`;
+const WORKFLOW_FN = `legacy_acceptance_${UNIQUE.replaceAll("-", "_")}`;
+const WORKFLOW_PATH = `${WORKFLOW_FN}.py`;
 
 // Legacy app shape: every reference is un-imported, relying on the old
 // scope-injection runtime. This is what the migrator is meant to fix.
@@ -54,13 +56,21 @@ const LEGACY_LAYOUT_TSX = `export default function Layout() {
 // Home page: uses platform-wrapped Link (must prepend base path), Badge
 // (shadcn component from platform), and DemoWidget (user component — only
 // referenced in JSX, NOT imported).
-const LEGACY_INDEX_TSX = `import { Link, Badge } from "bifrost";
+const LEGACY_INDEX_TSX = `import { useState } from "react";
+import { Link, Badge, Button, Input, Label, useWorkflowMutation } from "bifrost";
 export default function Home() {
+	const [message, setMessage] = useState("");
+	const { execute, data, isLoading, errorMessage } = useWorkflowMutation("__WORKFLOW_ID__");
 	return (
 		<div>
 			<h1 data-testid="home-heading">Home</h1>
 			<Badge data-testid="home-badge">BADGE</Badge>
 			<DemoWidget label="widget" />
+			<Label htmlFor="legacy-message">Request message</Label>
+			<Input id="legacy-message" value={message} onChange={(event) => setMessage(event.target.value)} />
+			<Button disabled={isLoading} onClick={() => execute({ message }).catch(() => {})}>Run legacy workflow</Button>
+			<output aria-label="Workflow result">{data?.message}</output>
+			{errorMessage && <p role="alert">{errorMessage}</p>}
 			<Link to="/other" data-testid="to-other">Go to Other</Link>
 		</div>
 	);
@@ -109,6 +119,20 @@ test.describe("Apps Preview — auto-migration", () => {
 	let appId: string;
 
 	test.beforeAll(async ({ api }) => {
+		const write = await api.put("/api/files/editor/content", {
+			data: {
+				path: WORKFLOW_PATH,
+				content: `from bifrost import workflow\n\n@workflow(name="${WORKFLOW_FN}")\nasync def ${WORKFLOW_FN}(message: str):\n    return {"message": "Legacy received: " + message}\n`,
+				encoding: "utf-8",
+			},
+		});
+		expect(write.ok(), await write.text()).toBe(true);
+		const registration = await api.post("/api/workflows/register", {
+			data: { path: WORKFLOW_PATH, function_name: WORKFLOW_FN },
+		});
+		expect(registration.ok(), await registration.text()).toBe(true);
+		const workflow = (await registration.json()) as { id: string };
+		expect(workflow.id).toBeTruthy();
 		const createResp = await api.post("/api/applications", {
 			data: {
 				name: APP_NAME,
@@ -132,7 +156,10 @@ test.describe("Apps Preview — auto-migration", () => {
 		for (const [relPath, source] of [
 			[`apps/${APP_SLUG}/_layout.tsx`, LEGACY_LAYOUT_TSX],
 			[`apps/${APP_SLUG}/components/DemoWidget.tsx`, DEMO_WIDGET_TSX],
-			[`apps/${APP_SLUG}/pages/index.tsx`, LEGACY_INDEX_TSX],
+			[
+				`apps/${APP_SLUG}/pages/index.tsx`,
+				LEGACY_INDEX_TSX.replace("__WORKFLOW_ID__", workflow.id),
+			],
 			[`apps/${APP_SLUG}/pages/other.tsx`, LEGACY_OTHER_TSX],
 		] as const) {
 			const writeResp = await api.post("/api/files/write", {
@@ -147,9 +174,12 @@ test.describe("Apps Preview — auto-migration", () => {
 
 	test.afterAll(async ({ api }) => {
 		if (appId) await api.delete(`/api/applications/${appId}`);
+		await api.delete(
+			`/api/files/editor?path=${encodeURIComponent(WORKFLOW_PATH)}`,
+		);
 	});
 
-	test("migrates legacy source, renders preview cleanly, Link uses app base path", async ({
+	test("[V1-01] legacy components execute workflows and preserve preview and published navigation — desktop", async ({
 		page,
 		api,
 	}) => {
@@ -168,7 +198,10 @@ test.describe("Apps Preview — auto-migration", () => {
 		);
 		expect(manifestResp.ok(), await manifestResp.text()).toBe(true);
 		const manifest = await manifestResp.json();
-		expect(manifest.entry, `entry missing in manifest: ${JSON.stringify(manifest)}`).toBeTruthy();
+		expect(
+			manifest.entry,
+			`entry missing in manifest: ${JSON.stringify(manifest)}`,
+		).toBeTruthy();
 
 		// --- Step 2: preview renders with zero console errors. This
 		// transitively asserts that every un-imported JSX reference
@@ -180,8 +213,21 @@ test.describe("Apps Preview — auto-migration", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("home-badge")).toHaveText("BADGE");
-		await expect(page.getByTestId("demo-widget")).toHaveText("widget:widget");
-		await expect(page.getByTestId("layout-heading")).toContainText("App Shell");
+		await page
+			.getByLabel("Request message", { exact: true })
+			.fill("preview acceptance");
+		await page
+			.getByRole("button", { name: "Run legacy workflow", exact: true })
+			.click();
+		await expect(
+			page.getByLabel("Workflow result", { exact: true }),
+		).toHaveText("Legacy received: preview acceptance");
+		await expect(page.getByTestId("demo-widget")).toHaveText(
+			"widget:widget",
+		);
+		await expect(page.getByTestId("layout-heading")).toContainText(
+			"App Shell",
+		);
 
 		// --- Step 3: <Link> uses the platform wrapper that prepends the
 		// app base path. Clicking must land on /apps/<slug>/preview/other,
@@ -211,14 +257,23 @@ test.describe("Apps Preview — auto-migration", () => {
 		await expect(page.getByTestId("home-heading")).toHaveText("Home", {
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("demo-widget")).toHaveText("widget:widget");
+		await page
+			.getByLabel("Request message", { exact: true })
+			.fill("published acceptance");
+		await page
+			.getByRole("button", { name: "Run legacy workflow", exact: true })
+			.click();
+		await expect(
+			page.getByLabel("Workflow result", { exact: true }),
+		).toHaveText("Legacy received: published acceptance");
+		await expect(page.getByTestId("demo-widget")).toHaveText(
+			"widget:widget",
+		);
 
 		// Live mode uses /apps/<slug>/<page> (no /preview segment). Same
 		// contract: Link must go to /apps/<slug>/other.
 		await page.getByTestId("to-other").click();
-		await expect(page).toHaveURL(
-			new RegExp(`/apps/${APP_SLUG}/other/?$`),
-		);
+		await expect(page).toHaveURL(new RegExp(`/apps/${APP_SLUG}/other/?$`));
 		await expect(page.getByTestId("other-heading")).toHaveText("Other");
 
 		expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);

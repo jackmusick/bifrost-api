@@ -1,0 +1,274 @@
+{
+	"inventoryComplete": false,
+	"scope": "Initial implementation batch and selected next journeys; full action inventory remains in progress. Empty tests means required proof has not been bound, not a claim that no related tests exist.",
+	"journeys": [
+		{
+			"id": "FORM-01",
+			"area": "Forms",
+			"title": "Assigned member submits a form and receives its workflow result",
+			"tests": [
+				{
+					"spec": "forms.user.spec.ts",
+					"title": "[FORM-01 desktop] member submits assigned form and sees workflow result",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "forms.user.spec.ts",
+					"title": "[FORM-01 mobile] member submits assigned form and sees workflow result",
+					"project": "org-user",
+					"variant": "mobile",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-02",
+			"area": "Forms",
+			"title": "Designer saves and reopens form name and description",
+			"tests": [
+				{
+					"spec": "forms-acceptance.admin.spec.ts",
+					"title": "[FORM-02 desktop] designer saves and reopens form metadata",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-01",
+			"area": "Executions",
+			"title": "Completed result persists through browser back navigation",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-01 desktop] completed execution survives browser back and shows Result/Input/Logs states",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-02",
+			"area": "Executions",
+			"title": "Rerun creates a new execution with the intended input and result",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-02 desktop] actual rerun creates a new execution with the expected output",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-03",
+			"area": "Executions",
+			"title": "Cancel running work and observe persisted cancelled status",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-03 mobile] cancellation of a running execution reaches a cancelled state",
+					"project": "platform-admin",
+					"variant": "mobile",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "APP-01",
+			"area": "Apps",
+			"title": "Editor saves the correct file across file switches and reload",
+			"tests": [
+				{
+					"spec": "apps-editor-acceptance.admin.spec.ts",
+					"title": "[APP-01] editor save/file switching persists the selected file after reload \u2014 desktop",
+					"sourceTitle": "[APP-01] editor save/file switching persists the selected file after reload \u2014 ${viewport.name}",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "apps-editor-acceptance.admin.spec.ts",
+					"title": "[APP-01] editor save/file switching persists the selected file after reload \u2014 mobile",
+					"sourceTitle": "[APP-01] editor save/file switching persists the selected file after reload \u2014 ${viewport.name}",
+					"project": "platform-admin",
+					"variant": "mobile",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "V1-01",
+			"area": "V1 compatibility",
+			"title": "Legacy components invoke a workflow in preview and published app, with wrapped navigation",
+			"tests": [
+				{
+					"spec": "apps-preview-migration.admin.spec.ts",
+					"title": "[V1-01] legacy components execute workflows and preserve preview and published navigation \u2014 desktop",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-01",
+			"area": "Agents",
+			"title": "Create a private agent as a member and reopen its settings",
+			"tests": [
+				{
+					"spec": "agent-create-acceptance.user.spec.ts",
+					"title": "[AGENT-01 desktop] member creates private agent and reopens persisted settings",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EVENT-01",
+			"area": "Event sources",
+			"title": "Open a delivered local webhook event and follow its workflow result",
+			"tests": [
+				{
+					"spec": "event-delivery-acceptance.admin.spec.ts",
+					"title": "[EVENT-01 desktop] local webhook event shows successful workflow delivery and execution outcome",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "MAPPING-01",
+			"area": "Integrations",
+			"title": "Create and edit an organization mapping through the UI and reload",
+			"tests": [
+				{
+					"spec": "integration-mapping-acceptance.admin.spec.ts",
+					"title": "[MAPPING-01] add and edit organization mappings persist after reload and search",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "ORG-01",
+			"area": "Organizations",
+			"title": "Create an organization through the UI and reopen it",
+			"tests": [
+				{
+					"spec": "organizations.admin.spec.ts",
+					"title": "[ORG-01 desktop] creates, edits, reloads, and disables an organization",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "USER-01",
+			"area": "Users",
+			"title": "Bulk move selected users and verify their persisted organizations",
+			"tests": [
+				{
+					"spec": "users.bulk.spec.ts",
+					"title": "[USER-01] bulk move persists selected users after reload and leaves unselected users",
+					"project": "chromium",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-03",
+			"area": "Forms",
+			"title": "Designer adds a configured field and preserves it after reload",
+			"tests": [
+				{
+					"spec": "form-fields-acceptance.admin.spec.ts",
+					"title": "[FORM-03 desktop] designer adds and persists a configured form field",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-04",
+			"area": "Executions",
+			"title": "History log row opens a drawer with result/input/logs and a link to the same full execution",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-04 desktop] History log row opens drawer with Result/Input/Logs and full-page link for the same execution",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-ACCESS-01",
+			"title": "Unassigned form is absent and its direct route denies access",
+			"area": "Forms",
+			"tests": [
+				{
+					"spec": "forms.user.spec.ts",
+					"title": "[FORM-ACCESS-01 desktop] member cannot see or open an unassigned role-based form",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-BROWSE-01",
+			"title": "Admin searches and opens a seeded form, then opens the creation designer",
+			"area": "Forms",
+			"tests": [
+				{
+					"spec": "forms.admin.spec.ts",
+					"title": "[FORM-BROWSE-01 desktop] admin searches and opens a seeded form",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-BROWSE-01",
+			"area": "Agents",
+			"title": "Fleet search and both views open the intended agent",
+			"tests": [
+				{
+					"spec": "agents-fleet.admin.spec.ts",
+					"title": "[AGENT-BROWSE-01 desktop] search finds a seeded agent and grid and table open the same detail",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-FILTER-01",
+			"area": "Agents",
+			"title": "Inactive agents stay hidden until Show Inactive is enabled",
+			"tests": [
+				{
+					"spec": "agents-fleet.admin.spec.ts",
+					"title": "[AGENT-FILTER-01 desktop] inactive agents appear only when requested",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		}
+	]
+}

@@ -1,202 +1,177 @@
-/**
- * Form Management Tests (Admin)
- *
- * Tests form CRUD operations from the platform admin perspective.
- * These tests run as platform_admin with full system access.
- *
- * Mirrors: api/tests/e2e/api/test_forms.py
- */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { test, expect, type AuthedApi } from "./fixtures/api-fixture";
 
-import { test, expect } from "@playwright/test";
+const UNIQUE = `${Date.now()}_${Math.floor(Math.random() * 10_000)}`;
+const WORKFLOW_PATH = `e2e_admin_form_browse_${UNIQUE}.py`;
+const WORKFLOW_FN = `e2e_admin_form_browse_${UNIQUE}`;
+const FORM_NAME = `Admin browse form ${UNIQUE}`;
+const FORM_DESCRIPTION = `Searchable admin form fixture ${UNIQUE}`;
 
-test.describe("Form Listing", () => {
-	test("should display forms page", async ({ page }) => {
-		await page.goto("/forms");
+const WORKFLOW_SOURCE = `from bifrost import workflow
 
-		// Should see forms heading
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-	});
+@workflow(name="${WORKFLOW_FN}")
+async def ${WORKFLOW_FN}(summary: str):
+    return {"summary": summary}
+`;
 
-	test("should show create form button for admin", async ({ page }) => {
-		await page.goto("/forms");
+type ApiResponse = Pick<Awaited<ReturnType<AuthedApi["get"]>>, "ok" | "text">;
 
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
+async function expectOk(response: ApiResponse) {
+	expect(response.ok(), await response.text()).toBe(true);
+}
 
-		// Admin should see create button
-		await expect(
-			page.getByRole("button", { name: /create|new|add/i }).first(),
-		).toBeVisible();
-	});
+async function expectDeleted(
+	response: Awaited<ReturnType<AuthedApi["delete"]>>,
+) {
+	expect([200, 204, 404]).toContain(response.status());
+}
 
-	test("should list existing forms", async ({ page }) => {
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Wait for loading to resolve to either a populated list or its empty state.
-		await expect(
-			page
-				.getByRole("button", { name: "Launch", exact: true })
-				.first()
-				.or(page.getByRole("heading", { name: /no forms found/i })),
-		).toBeVisible();
-	});
-});
-
-test.describe("Form Creation", () => {
-	test("should open create form dialog/page", async ({ page }) => {
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Click create button
-		const createButton = page
-			.getByRole("button", { name: /create|new|add/i })
-			.first();
-		await createButton.click();
-
-		// Should show form creation UI
-		await expect(
-			page
-				.getByLabel(/name/i)
-				.or(page.getByPlaceholder(/name/i))
-				.or(page.getByRole("textbox", { name: /name/i })),
-		).toBeVisible({ timeout: 5000 });
-	});
-});
-
-test.describe("Form Details", () => {
-	test("should show form details when clicked", async ({ page }) => {
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Find a form row/card
-		const formItem = page
-			.locator(
-				"table tbody tr, [data-testid='form-card'], [data-testid='form-row']",
-			)
-			.first();
-
-		if (await formItem.isVisible().catch(() => false)) {
-			await formItem.click();
-
-			// Check for detail content
-			const hasDetails =
-				page.url().includes("/forms/") ||
-				(await page
-					.getByText(/fields|schema|settings/i)
-					.isVisible()
-					.catch(() => false));
-
-			expect(hasDetails).toBe(true);
-		}
-	});
-
-	test("should show form fields configuration", async ({ page }) => {
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Find a form to view
-		const formItem = page
-			.locator(
-				"table tbody tr, [data-testid='form-card'], [data-testid='form-row']",
-			)
-			.first();
-
-		if (await formItem.isVisible().catch(() => false)) {
-			await formItem.click();
-
-			// Look for fields section
-			await expect(
-				page.getByText(/fields|inputs|parameters/i),
-			).toBeVisible({ timeout: 5000 });
-		}
-	});
-});
-
-test.describe("Form Editing", () => {
-	test("should show edit button for forms", async ({ page }) => {
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Look for edit buttons
-		const editButton = page
-			.getByRole("button", { name: /edit/i })
-			.or(page.locator("[data-testid='edit-form']"))
-			.first();
-
-		// Either we have edit buttons or no forms
-		const hasButton = await editButton.isVisible().catch(() => false);
-		const hasEmptyState = await page
-			.getByText(/no forms/i)
-			.isVisible()
-			.catch(() => false);
-
-		expect(hasButton || hasEmptyState).toBe(true);
-	});
-});
-
-test.describe("Form Access Control", () => {
-	test("should show role assignment for forms", async ({ page }) => {
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Find a form
-		const formItem = page
-			.locator(
-				"table tbody tr, [data-testid='form-card'], [data-testid='form-row']",
-			)
-			.first();
-
-		if (await formItem.isVisible().catch(() => false)) {
-			await formItem.click();
-
-			// Look for access/permissions section
-			const hasAccessSection = await page
-				.getByText(/access|permissions|roles/i)
-				.isVisible({ timeout: 5000 })
-				.catch(() => false);
-
-			// Access control UI should be present (implementation may vary)
-			expect(hasAccessSection || page.url().includes("/forms/")).toBe(
-				true,
+async function cleanupFixtures(
+	api: AuthedApi,
+	formId?: string,
+): Promise<Error[]> {
+	const errors: Error[] = [];
+	const collect = async (label: string, action: () => Promise<void>) => {
+		try {
+			await action();
+		} catch (error) {
+			errors.push(
+				error instanceof Error
+					? new Error(`${label}: ${error.message}`)
+					: new Error(`${label}: ${String(error)}`),
 			);
 		}
+	};
+
+	if (formId) {
+		await collect("delete form", async () => {
+			await expectDeleted(await api.delete(`/api/forms/${formId}`));
+		});
+	}
+	await collect("delete workflow source", async () => {
+		await expectDeleted(
+			await api.delete(
+				`/api/files/editor?path=${encodeURIComponent(WORKFLOW_PATH)}`,
+			),
+		);
 	});
+
+	return errors;
+}
+
+test("[FORM-BROWSE-01 desktop] admin searches and opens a seeded form", async ({
+	page,
+	api,
+}) => {
+	const credentials = JSON.parse(
+		readFileSync(resolve("e2e/.auth/credentials.json"), "utf8"),
+	) as { org1_user: { organizationId: string } };
+	const organizationId = credentials.org1_user.organizationId;
+	let formId: string | undefined;
+	let originalError: unknown;
+	let cleanupErrors: Error[] = [];
+
+	try {
+		const write = await api.put("/api/files/editor/content", {
+			data: {
+				path: WORKFLOW_PATH,
+				content: WORKFLOW_SOURCE,
+				encoding: "utf-8",
+			},
+		});
+		await expectOk(write);
+
+		const registration = await api.post("/api/workflows/register", {
+			data: {
+				path: WORKFLOW_PATH,
+				function_name: WORKFLOW_FN,
+				organization_id: organizationId,
+			},
+		});
+		await expectOk(registration);
+
+		const workflows = await api.get("/api/workflows", {
+			params: { scope: organizationId },
+		});
+		await expectOk(workflows);
+		const workflow = (
+			(await workflows.json()) as Array<{ id: string; name: string }>
+		).find((item) => item.name === WORKFLOW_FN);
+		expect(workflow).toBeTruthy();
+
+		const created = await api.post("/api/forms", {
+			data: {
+				name: FORM_NAME,
+				description: FORM_DESCRIPTION,
+				workflow_id: workflow!.id,
+				organization_id: organizationId,
+				form_schema: {
+					fields: [
+						{
+							name: "summary",
+							label: "Summary",
+							type: "text",
+							required: true,
+						},
+					],
+				},
+				access_level: "authenticated",
+			},
+		});
+		await expectOk(created);
+		formId = ((await created.json()) as { id: string }).id;
+
+		const seeded = await api.get(`/api/forms/${formId}`);
+		await expectOk(seeded);
+
+		await page.goto("/forms");
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({ timeout: 10000 });
+		await expect(
+			page.getByRole("button", { name: "Create Form" }),
+		).toBeVisible();
+
+		await page.getByRole("radio", { name: "Table view" }).click();
+		await page
+			.getByPlaceholder(
+				"Search forms by name, description, or workflow...",
+			)
+			.fill(FORM_NAME);
+
+		const row = page.getByRole("row").filter({ hasText: FORM_NAME });
+		await expect(row).toBeVisible();
+		await expect(row.getByText(FORM_DESCRIPTION)).toBeVisible();
+		await row.click();
+		await expect(page).toHaveURL(new RegExp(`/forms/${formId}/edit$`));
+		await expect(
+			page.getByRole("heading", { name: FORM_NAME }),
+		).toBeVisible({
+			timeout: 10000,
+		});
+		await expect(page.getByText("Summary", { exact: true })).toBeVisible();
+
+		await page.goto("/forms");
+		await page.getByRole("button", { name: "Create Form" }).click();
+		await expect(page).toHaveURL(/\/forms\/new$/);
+		await expect(
+			page.getByRole("heading", {
+				name: "Form Information",
+				exact: true,
+			}),
+		).toBeVisible({ timeout: 10000 });
+		await expect(
+			page.getByRole("textbox", { name: "Form Name *", exact: true }),
+		).toBeEditable();
+	} catch (error) {
+		originalError = error;
+	} finally {
+		cleanupErrors = await cleanupFixtures(api, formId);
+	}
+
+	if (originalError) throw originalError;
+	if (cleanupErrors.length > 0) {
+		throw new Error(cleanupErrors.map((error) => error.message).join("\n"));
+	}
 });

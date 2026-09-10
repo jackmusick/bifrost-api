@@ -5,6 +5,57 @@ implementation backlog, not a passing test report. No suites were run for this
 audit. Existing browser evidence below describes assertions in source, not a
 claim that the entire file or area is complete.
 
+Implementation has started. The executable bindings are now in
+`client/e2e/acceptance-ledger.json`; the runner emits
+`client/playwright-results/acceptance.md` with the revision, whole-run outcome,
+and individual desktop/mobile cases. Read that generated report for current
+results. The original findings below describe the starting point, not the
+current contents of specs that have since been strengthened.
+
+### First implementation batch
+
+Eighteen named journeys now have test bindings: assigned form submission on
+desktop/mobile, forbidden form access, form browsing, metadata and field edits,
+execution back navigation, rerun, cancellation and the log drawer, app editor
+file persistence on desktop/mobile, V1 component/workflow compatibility,
+private member agent creation, deterministic fleet browsing and inactive filtering, organization lifecycle, bulk user movement,
+integration mappings and real webhook delivery inspection. Binding a journey
+does not imply it passed; the generated report is the evidence.
+
+Tests use real Bifrost APIs, storage and workers. The editor's pinned third-party
+Monaco assets are supplied locally in the browser runner, including worker
+delivery. The V1 fixture exercises input/button/workflow hooks and preview plus
+published navigation; it is not full Covi Portal compatibility proof.
+
+A passing agent save test's screenshot exposed an irrelevant roles-load warning
+for a member-owned private agent. The repair enables role fetching only for
+role-based access; component tests cover both private suppression and retention
+of genuine role-loading errors. The browser journey also checks that reopening
+the private agent does not show this warning.
+
+### Follow-up source audit
+
+The parallel source review found reusable coverage and these remaining gaps.
+These are source findings, not results of running the listed suites:
+
+| Area | Existing evidence to reuse | Remaining behavior to prove |
+| --- | --- | --- |
+| Home | `home.admin.spec.ts` creates, edits, reloads and deletes a collection through the UI | Member/private authority, favorites and each resource launch type |
+| Auth and permissions | Real MFA login and protected redirects in `auth.unauth.spec.ts` | Replace loose/conditional assertions in `permissions.user.spec.ts`; verify identity expiry separately from a route-specific denial |
+| Agents | Real private creation; `agents-start-chat.admin.spec.ts` opens a conversation URL | Deterministic fleet search/view switching; assert persisted conversation state after launch |
+| Chat | `chat-attachments.admin.spec.ts` exercises UI using intercepted chat/model/artifact responses | Real Bifrost conversation/message persistence with only the external provider controlled |
+| Config | Scroll checks and specialized AI configuration UI tests | Generic typed-value create/edit/reload/delete |
+| Tables | Policy editors and real SDK data access in synthetic apps | Table and record CRUD through the management UI |
+| Files | `files-explorer.admin.spec.ts` creates a share, uploads, previews and tests access | Rename/move/delete through the explorer |
+| Roles | `roles.detail.admin.spec.ts` assigns/unassigns users and navigates to their detail | Role entity create/edit/delete and remaining assignment tabs |
+| Integrations/events | Card/logo edits, real mapping edits and webhook delivery inspection | UI source/subscription creation, configuration, auto-map and lifecycle actions; controlled external connection checks |
+| Entity management | Entity logo tests concern apps and agents, not this workspace | Actual assign/reassign/unassign actions on `/entity-management` |
+| MCP | Instructions and authenticated MCP API calls | Server/connection management through the UI |
+| Settings | AI model/profile UI interception; controlled preferred-SSO flow | Persisted settings changes, reset/revoke operations and remaining tabs |
+
+The complete route/action inventory and launch gate remain outstanding. This
+batch is not a platform-wide coverage percentage.
+
 ## Intended outcome
 
 Every supported page has an explicit inventory of user actions. Important

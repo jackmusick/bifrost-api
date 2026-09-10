@@ -478,6 +478,11 @@ client_e2e() {
     if [ "$screenshots_all" = true ]; then
         env_args=(-e PLAYWRIGHT_SCREENSHOT_ALL=1)
     fi
+    # Preserve the candidate identity in browser reports, including scoped runs.
+    # Dirty runs are useful iteration evidence, never clean-release evidence.
+    local source_dirty=false
+    if [ -n "$(git status --porcelain)" ]; then source_dirty=true; fi
+    env_args+=(-e "TEST_SOURCE_REVISION=$(git rev-parse HEAD)" -e "TEST_SOURCE_DIRTY=$source_dirty")
 
     if [ ${#passthrough[@]} -gt 0 ]; then
         docker compose -f "$COMPOSE_FILE" --profile client run --rm --no-deps "${env_args[@]}" \
