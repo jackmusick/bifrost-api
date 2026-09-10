@@ -299,3 +299,13 @@ The repaired backend unit/contract lane passed **5,981 tests**, with no skips (2
 The first complete live backend run selected 1,824 tests and finished **1,821 passed, 2 failed, 1 skipped** in 41 minutes. Both failures exposed missing `description` in MCP integration create/update signatures and DTO forwarding; those tools are repaired with focused wrapper coverage. The skipped CLI round-trip test expected obsolete token stdout; it was deleted. Current successful login/storage mechanics remain in `test_cli_login_ephemeral.py`, live token issuance/MFA in `test_auth.py`, and real CLI MFA-refusal/env-token transport in `test_cli_ephemeral_login.py`. The default MFA requirement is now an assertion rather than a conditional skip, and token-bearing failure output was removed.
 
 Focused MCP parity, wrapper, and CLI live verification passed **69/69**. These are iteration results; the final clean-commit pre-PR and complete nightly gates remain required.
+
+### Clean candidate gate and final empty-state selector repair
+
+`a04e170037101656ceaf3bdea0d9e61433120fe3` passed the complete clean-current-main pre-PR gate: 2,855 component tests, 5,983 standard-lane backend unit tests, 1,823 backend live-service tests, 14 zero-retry browser smoke tests, static checks, and production builds. The unit lane excludes 21 slow cases by its standard marker; there were no test skips in these completed lanes.
+
+The subsequent 155-test nightly finished **154 passed, 1 failed, zero skipped/retried**. The remaining event-source lifecycle failure was an ambiguous page-heading selector: the empty state adds `No Event Sources`, which also matches a substring query for `Event Sources`. The assertion now targets the exact level-one page heading. Empty-state creation and every lifecycle/persistence assertion remain intact. Earlier solution, editor, auth, and animated-layout repairs passed in full-suite order.
+
+Parent reviewed fresh Home and execution screenshots at 1440×1000 and 390×844 and exercised the connected debug form/webhook review pack successfully. The final selector repair requires targeted empty-list validation and a new clean-candidate gate/nightly; the passing pre-PR result above belongs only to `a04e17003`.
+
+Targeted empty-list validation passed: `./test.sh client e2e event-source-management-acceptance.admin.spec.ts` completed setup and the full lifecycle (2/2, no retries). The new clean-candidate pre-PR/nightly gates remain required.

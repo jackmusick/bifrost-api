@@ -110,7 +110,7 @@ test("[EVENT-MGMT-01 desktop] creates, edits, persists, deactivates, and deletes
 
 	await page.goto("/event-sources");
 	await expect(
-		page.getByRole("heading", { name: "Event Sources" }),
+		page.getByRole("heading", { level: 1, name: "Event Sources", exact: true }),
 	).toBeVisible({ timeout: 10_000 });
 	// The header action precedes the equivalent empty-state action on an empty list.
 	await page

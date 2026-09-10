@@ -50,9 +50,6 @@ The accepted denominator covers primary local lifecycle paths for Home, Dashboar
 
 Remaining required work is finite:
 
-1. Final form deactivation UI case must pass with the corrected disabled-card expectation.
-2. Push after source/doc ownership checks are satisfied.
-3. Clean current-main/pre-PR run.
-4. Nightly run.
-5. Parent visual review.
-6. Any promoted provider-specific callback, secure-runner, external model, download, passkey, or exhaustive permutation work must be explicitly scoped because it is outside the local acceptance denominator.
+1. Resolve any final-candidate gate findings and pass clean current-main pre-PR plus nightly on the exact resulting commit. Candidate evidence and repair dispositions are recorded in `nightly-acceptance-audit-2026-09-10.md` and the generated Playwright acceptance report.
+2. Push after both final gates pass; do not merge. Form deactivation and parent desktop/mobile visual review are complete.
+3. Any promoted provider-specific callback, secure-runner, external model, download, passkey, or exhaustive permutation work must be explicitly scoped because it is outside the local acceptance denominator.
