@@ -905,6 +905,11 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 		try {
 			await page.setViewportSize({ width: 1440, height: 900 });
 			await page.goto(`/agents/${agent.id}?tab=runs`);
+			// Check containment during the entrance animation, not only after it settles.
+			await page.addStyleTag({
+				content:
+					".route-ready-reveal { animation-duration: 10s; animation-delay: -5s; animation-play-state: paused; }",
+			});
 
 			const main = page.locator("main");
 			const heading = page.getByRole("heading", { name: agent.name });

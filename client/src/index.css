@@ -319,14 +319,14 @@
 		}
 	}
 
+	/* A transformed route wrapper can propagate nested scroller overflow to
+	 * the page during the reveal. Opacity keeps scroll ownership stable. */
 	@keyframes routeReadyReveal {
 		from {
 			opacity: 0;
-			transform: translateY(4px);
 		}
 		to {
 			opacity: 1;
-			transform: translateY(0);
 		}
 	}
 

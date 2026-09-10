@@ -112,7 +112,11 @@ test("[EVENT-MGMT-01 desktop] creates, edits, persists, deactivates, and deletes
 	await expect(
 		page.getByRole("heading", { name: "Event Sources" }),
 	).toBeVisible({ timeout: 10_000 });
-	await page.getByRole("button", { name: "Create event source" }).click();
+	// The header action precedes the equivalent empty-state action on an empty list.
+	await page
+		.getByRole("button", { name: "Create event source" })
+		.first()
+		.click();
 
 	const createDialog = page.getByRole("dialog", {
 		name: "Create Event Source",
@@ -196,7 +200,9 @@ test("[EVENT-MGMT-01 desktop] creates, edits, persists, deactivates, and deletes
 	).toBeVisible({
 		timeout: 10_000,
 	});
-	await expect(page.getByRole("cell", { name: eventType, exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("cell", { name: eventType, exact: true }),
+	).toBeVisible();
 
 	const subscriptions = await readSubscriptions(api, sourceId!);
 	expect(subscriptions.total).toBe(1);
@@ -242,7 +248,9 @@ test("[EVENT-MGMT-01 desktop] creates, edits, persists, deactivates, and deletes
 			exact: true,
 		}),
 	).toBeVisible();
-	await expect(page.getByRole("cell", { name: eventType, exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("cell", { name: eventType, exact: true }),
+	).toBeVisible();
 
 	await page.getByRole("switch", { name: "Source active" }).click();
 	await expect(page.getByText("Inactive", { exact: true })).toBeVisible({

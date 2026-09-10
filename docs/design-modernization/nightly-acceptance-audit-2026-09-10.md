@@ -250,3 +250,14 @@ Seventh management run: 3 passed including setup, 1 failed. Solution uninstall/r
 ### Targeted closure complete
 
 `final-closure-tenth.json`: 6 passed including setup, 1 failed (form deactivation expectation). `form-final-eleventh.json`: 2 passed including setup; the form remains visible as Disabled after deactivation, verified after reload. Ledger: 56 targeted passing journeys. Login recovery-code length and mobile header passkey prompt were repaired with component regressions. Public debug form/webhook execution and Home/execution 1440px/390px screenshots passed review. Source client tsc/lint and strict changed-e2e tsc passed; API quality passed with zero errors/warnings. Full candidate nightly and clean pre-PR gates remain required.
+
+
+## Clean-candidate nightly and repairs
+
+Full nightly on `43a1a3fab44a886b6615e308bc7374cffbdaa1f5` selected 153 tests: **150 passed, 3 failed, 0 skipped, 0 retries**. Private artifacts are preserved under `/tmp/bifrost-ui-acceptance-iterations/nightly-clean-43a1a3f`.
+
+- **SECURITY-03:** cookie-only bootstrap exposed competing refresh paths in AuthProvider and the API client. A deterministic component regression demonstrated two concurrent refresh requests before the repair. AuthProvider now shares the existing API/SDK refresh lock; the regression and API-client suite pass (22 tests). The browser test retains cookie-only bootstrap rather than bypassing the problem with injected local storage.
+- **Agent desktop overflow:** browser measurements captured 4,133px of outer overflow during the route transform, despite correctly bounded inner scroll containers. The route reveal now uses opacity only. The Runs browser test holds the entrance animation mid-flight to exercise containment; Overview and Runs desktop/mobile scroll checks pass.
+- **EVENT-MGMT-01:** an empty source list renders equivalent header and empty-state create actions. The test now intentionally selects the first/header action rather than assuming the accessible name is unique.
+
+`./test.sh client e2e --screenshots --workers=1 e2e/account-onboarding-acceptance.admin.spec.ts e2e/agents-detail-runs.admin.spec.ts e2e/event-source-management-acceptance.admin.spec.ts` passed **11/11** after the repairs. This is targeted evidence; the final complete nightly and pre-PR gate remain required on the repaired candidate.
