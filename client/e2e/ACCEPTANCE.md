@@ -14,6 +14,12 @@ persistence and provider-boundary simulations.
 Run selected specs through the normal isolated test stack from the repository
 root. Coordinate one stack command at a time:
 
+The browser lane always builds the production client from this worktree, even
+when `BIFROST_SKIP_BUILD=1` is used for backend images. The client image tag is
+shared across worktrees; trusting an existing tag can otherwise test a different
+UI while the report records the current source revision. Docker build cache
+keeps unchanged-client builds cheap.
+
 ```sh
 ./test.sh client e2e --screenshots e2e/executions.admin.spec.ts --workers=1
 node client/e2e/support/acceptance-report.mjs client/playwright-results/results.json

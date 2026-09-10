@@ -269,6 +269,76 @@
 					"proof": "real-platform"
 				}
 			]
+		},
+		{
+			"id": "CONFIG-01",
+			"area": "Configuration",
+			"title": "Admin creates, edits, reloads and deletes an organization-scoped configuration",
+			"tests": [
+				{
+					"spec": "config-acceptance.admin.spec.ts",
+					"title": "[CONFIG-01] admin creates edits reloads and deletes org-scoped configuration",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "ROLE-01",
+			"area": "Roles",
+			"title": "Admin creates, edits, reloads and deletes a role",
+			"tests": [
+				{
+					"spec": "role-lifecycle-acceptance.admin.spec.ts",
+					"title": "ROLE-01 creates, edits, reloads, and deletes a role",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "HOME-01",
+			"area": "Home",
+			"title": "Pin state survives reload and an agent launches a real conversation",
+			"tests": [
+				{
+					"spec": "home-launch-acceptance.admin.spec.ts",
+					"title": "HOME-01 persists favorite state and opens a known agent resource",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AUTH-RECOVERY-01",
+			"area": "Authentication and permissions",
+			"title": "Member recovers from a denied admin route without losing their session",
+			"tests": [
+				{
+					"spec": "permissions.user.spec.ts",
+					"title": "denies /config in place, then returns to a non-admin Home",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "PROFILE-01",
+			"area": "Account settings",
+			"title": "Member saves display name and sees the persisted value after reload",
+			"tests": [
+				{
+					"spec": "profile-acceptance.user.spec.ts",
+					"title": "PROFILE-01 member edits display name and reloads saved profile",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
 		}
 	]
 }

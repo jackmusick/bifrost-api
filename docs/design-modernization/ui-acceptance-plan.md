@@ -33,6 +33,56 @@ role-based access; component tests cover both private suppression and retention
 of genuine role-loading errors. The browser journey also checks that reopening
 the private agent does not show this warning.
 
+### Second implementation batch and route reconciliation
+
+Five additional journeys are bound: Home pin/unpin persistence and agent launch,
+role lifecycle, organization-scoped string configuration lifecycle, member
+recovery from an admin-route denial, and account display-name persistence.
+The ledger now lists 23 journeys, not 23 complete platform areas. Consult the
+run report for validation; bindings alone are not passing evidence.
+
+Iteration verification on 2026-09-10: the five new journeys passed together
+with setup (6 expected, 0 unexpected, 0 skipped, 0 flaky) using:
+
+```sh
+./test.sh client e2e --screenshots e2e/config-acceptance.admin.spec.ts e2e/home-launch-acceptance.admin.spec.ts e2e/role-lifecycle-acceptance.admin.spec.ts e2e/permissions.user.spec.ts e2e/profile-acceptance.user.spec.ts --workers=2
+./test.sh client unit src/lib/api-client.test.ts src/components/ProtectedRoute.test.tsx src/components/NoAccess.test.tsx
+```
+
+The second command passed 28 tests. Explicit strict TypeScript compilation and
+ESLint passed for all five browser specs; the 10 report/Monaco harness tests
+passed. Member Home and saved-profile desktop screenshots were reviewed. This
+is dirty-worktree iteration evidence, not a clean release-candidate gate. The
+full nightly and pre-PR suites remain outstanding.
+
+The old permissions spec included a placeholder that asserted only a visible
+`main` element while claiming organization isolation. It now proves exact
+in-place `/config` denial and return to member Home without reauthentication.
+Cross-organization data isolation still requires separate evidence.
+
+Detailed action inventories extend the initial backlog:
+
+- [Core experiences](core-acceptance-inventory.md): Home, chat, execution, apps,
+  agents, forms and workflows.
+- [Administration and data](admin-data-acceptance-inventory.md): configuration,
+  files, tables, knowledge, organizations, users, roles, solutions and reports.
+- [Connected resources](resources-acceptance-inventory.md): integrations,
+  entity management, MCP and events.
+- [Settings](settings-acceptance-inventory.md): each platform and account panel.
+- [Access and shell](access-shell-acceptance-inventory.md): public/authentication
+  routes, embedded forms, callbacks and shared navigation controls.
+
+These inventories distinguish committed automated assertions from historical
+browser review notes and from intercepted APIs. They identify implementation
+work; they are not themselves acceptance proof. Final action-by-action reconciliation remains required before declaring the
+inventory complete.
+
+The browser harness now always builds its production client, including when
+backend skip-build is requested. Reusing a global client image tag rendered an
+older worktree UI while the report recorded the current source SHA. That run
+is rejected as candidate evidence. Normal browser runs rebuild from source;
+Docker caching preserves fast unchanged builds.
+
 ### Follow-up source audit
 
 The parallel source review found reusable coverage and these remaining gaps.
