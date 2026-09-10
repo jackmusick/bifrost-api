@@ -1,10 +1,16 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function expectTouchTarget(locator: Locator) {
-	const box = await locator.boundingBox();
-	expect(box).not.toBeNull();
-	expect(box!.width).toBeGreaterThanOrEqual(44);
-	expect(box!.height).toBeGreaterThanOrEqual(44);
+	// Route and dialog reveals can scale the target while it is already visible.
+	// Require the real 44px target after layout settles, without a fixed sleep.
+	await expect
+		.poll(async () => {
+			const box = await locator.boundingBox();
+			return box ? Math.min(box.width, box.height) : 0;
+		})
+		.toBeGreaterThanOrEqual(44);
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -441,7 +447,10 @@ test.describe("Chat attachments and model profiles", () => {
 			async (route) => {
 				await route.fulfill({
 					contentType: "video/mp4",
-					body: Buffer.from("00000018667479706d703432", "hex"),
+					// A real decodable clip: a header-only MP4 races the video error event.
+					body: readFileSync(
+						resolve("e2e/fixtures/artifact-preview.mp4"),
+					),
 				});
 			},
 		);

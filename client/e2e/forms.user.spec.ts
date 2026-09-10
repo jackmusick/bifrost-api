@@ -159,6 +159,11 @@ async function submitAssignedFormAndVerifyResult(
 }
 
 test.describe("Form Acceptance for Org Users", () => {
+	// These cases share one registered workflow and role assignment. With
+	// fullyParallel inheritance, beforeAll reruns for each case in a worker
+	// while module-level names are reused, racing cleanup and registration.
+	// Keep this fixture group together; other spec files still run in parallel.
+	test.describe.configure({ mode: "default" });
 	let adminApi: APIRequestContext;
 	let assignedRoleId: string;
 	let forbiddenRoleId: string;

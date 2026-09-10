@@ -85,3 +85,23 @@ Explicit TypeScript compilation of every `client/e2e/**/*.ts` now passes after
 the three type fixes; ESLint passed for all eight modified browser/helper files.
 These are targeted iteration results. All remaining failures are still owned,
 and the full nightly must pass again on the final clean candidate.
+
+## Second verified repair subset
+
+Four more original failures have targeted repairs; full-suite revalidation remains pending:
+
+- Short desktop document pages previously compressed records to roughly 30px with filters open. At desktop heights up to 700px, the bounded content workspace now scrolls filters, records and pagination together; the header/search remain fixed. Taller desktops retain the independent records pane. Eight width/height/filter combinations now assert wheel scrolling and a readable last-record value in the viewport. The 1100×600 filtered screenshot was reviewed directly.
+- Member form cases share a registered workflow fixture. Keep that group in default mode so fully-parallel test scheduling does not register it repeatedly within the same worker. All three cases passed together with two workers.
+- Artifact touch targets retain the 44px minimum and wait for settled geometry. The video fixture now serves a real, tiny synthetic MP4 instead of invalid header bytes that triggered the native player error. This remains intercepted artifact UI evidence, not real chat persistence.
+- The member budget test now seeds and cleans up a private agent owned by that member. The former admin-owned agent allowed running, but not editing, so Settings was correctly absent.
+
+```sh
+./test.sh client e2e --screenshots e2e/desktop-scroll.admin.spec.ts e2e/forms.user.spec.ts e2e/chat-attachments.admin.spec.ts e2e/agents-owner-budget-hidden.user.spec.ts --workers=2
+# 19 passed, zero skipped/flaky/failed; includes setup.
+./test.sh client e2e e2e/desktop-scroll.admin.spec.ts --grep 'document records accept wheel scrolling' --workers=2
+# 9 passed including setup, after adding explicit readable-record screenshot/assertion.
+./test.sh client unit src/pages/TableDetail.test.tsx src/components/tables/DocumentRecordList.test.tsx
+# 1 file / 7 passed: only TableDetail.test.tsx exists and matched this command.
+```
+
+Client source TypeScript, changed-browser-spec TypeScript and scoped ESLint passed. These results close targeted repairs for nine of the original 22 failing cases across the first two subsets; 13 original failures and the serial-dependent skipped case still require repair/verification. Additional inventory gaps remain separate from these historical nightly failures.

@@ -12,6 +12,7 @@ import { TableFilterSidebar } from "@/components/tables/TableFilterSidebar";
 import { DocumentRecordList } from "@/components/tables/DocumentRecordList";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { DocumentPublic } from "@/services/tables";
 import { parseSolutionFrom } from "@/lib/solution-back-nav";
 import { TableDetailHeader } from "./table-detail/TableDetailHeader";
@@ -25,6 +26,11 @@ export function TableDetail() {
 }
 
 function TableDetailSession({ tableId }: { tableId: string }) {
+	// Short desktop windows need one useful content scroller instead of a
+	// records pane squeezed between the page controls and wrapping pagination.
+	const shortDesktop = useMediaQuery(
+		"(min-width: 1024px) and (max-height: 700px)",
+	);
 	const { search } = useLocation();
 	const fromSolution = parseSolutionFrom(search);
 	const backTo = fromSolution ? `/solutions/${fromSolution}` : "/tables";
@@ -178,8 +184,16 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 						: ""}
 				</Button>
 			</div>
-			<PageScrollArea className="lg:flex lg:flex-col lg:overflow-hidden">
-				<div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:h-full lg:min-h-0">
+			<PageScrollArea
+				className={
+					shortDesktop
+						? undefined
+						: "lg:flex lg:flex-col lg:overflow-hidden"
+				}
+			>
+				<div
+					className={`flex min-w-0 flex-col gap-6 lg:flex-row ${shortDesktop ? "lg:items-start" : "lg:h-full lg:min-h-0"}`}
+				>
 					<div
 						id="document-filters"
 						hidden={!sidebarOpen}
