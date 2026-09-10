@@ -1,5 +1,8 @@
 # Connected review fixtures and frontend confidence
 
+For the source-audited page/capability backlog, assertion standards, delivery
+batches and proposed coverage report, see [UI acceptance coverage](ui-acceptance-plan.md).
+
 ## Current inventory
 
 Read from the isolated design-review debug API on 2026-09-09:
