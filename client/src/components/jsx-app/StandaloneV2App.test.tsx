@@ -142,16 +142,21 @@ describe("StandaloneV2App", () => {
 		expect(stylesheet.href).not.toContain("?");
 	});
 
-	it("shows a loading skeleton while the standalone bundle is bootstrapping", async () => {
+	it("shows opening status while the standalone bundle is bootstrapping", async () => {
 		localStorage.setItem("bifrost_access_token", "tok-1");
 		render(<StandaloneV2App {...props("booting")} />);
 
 		expect(
-			screen.getByRole("status", { name: "Loading application..." }),
+			screen.getByRole("status", { name: "Loading application…" }),
 		).toBeInTheDocument();
 
-		await finishModuleLoad("booting", vi.fn(() => vi.fn()));
-		await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+		await finishModuleLoad(
+			"booting",
+			vi.fn(() => vi.fn()),
+		);
+		await waitFor(() =>
+			expect(screen.queryByRole("status")).not.toBeInTheDocument(),
+		);
 	});
 
 	it("passes isolated bootstrap to mount and calls its teardown", async () => {

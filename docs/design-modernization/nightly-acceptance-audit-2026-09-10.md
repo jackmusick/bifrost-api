@@ -273,3 +273,12 @@ Nightly on `df3d94891323c8f7fcfcbeb39e153ee130fbc3e8` selected 153 tests: **150 
 - The Sidebar integration fixture now supplies a populated read-only collection. Empty shared collections intentionally remain hidden; SidebarCollections tests preserve that contract.
 
 Focused browser verification of solution lifecycle, workspace editor, and authentication passed after these repairs. Sidebar/SidebarCollections component tests passed 8/8, and strict TypeScript checking passed. The full Vitest attempt was interrupted after revealing the sidebar fixture defect during severe shared-host load; it is not counted as passing. The mandatory clean-candidate pre-PR gate and complete nightly remain required.
+
+
+### Pre-PR component gate follow-up
+
+Pre-PR on `4c623809a` passed client TypeScript/lint, then stopped at Vitest: **2,852 passed, 3 failed across 487 files**. Backend and browser gate stages had not run.
+
+- StandaloneV2App's opening-state test expected ASCII `...` while the shared opening status uses `…`. Its status assertion and test name now match the actual opening experience.
+- UsageReports dynamically imported the page inside the first five-second test. During the complete suite that import timed out, then its late render contaminated the next test. Static module import moves transformation/import into test-file setup; retry and cached-content assertions are unchanged. The original UsageReports file passed isolated, while the stale loading label reproduced.
+- Both repaired files passed their targeted 20-test run. Final pre-PR and complete nightly are still required on the next clean candidate.

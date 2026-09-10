@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders, screen } from "@/test-utils";
+import { UsageReports } from "./UsageReports";
 
 const mockUseAuth = vi.fn();
 const mockUseOrganizations = vi.fn();
@@ -75,7 +76,9 @@ vi.mock("@/components/reports/UsageCharts", () => ({
 }));
 
 vi.mock("@/components/reports/UsageTables", () => ({
-	WorkflowTable: (props: { workflows?: Array<{ workflow_name: string }> }) => {
+	WorkflowTable: (props: {
+		workflows?: Array<{ workflow_name: string }>;
+	}) => {
 		mockWorkflowTable(props);
 		return (
 			<section aria-label="workflow usage">
@@ -125,7 +128,9 @@ vi.mock("@/components/reports/UsageTables", () => ({
 	},
 	KnowledgeStorageTable: (props: unknown) => {
 		mockKnowledgeStorageTable(props);
-		return <section aria-label="knowledge storage">Knowledge storage</section>;
+		return (
+			<section aria-label="knowledge storage">Knowledge storage</section>
+		);
 	},
 }));
 
@@ -194,8 +199,7 @@ function makeUsageReport() {
 	};
 }
 
-async function renderPage() {
-	const { UsageReports } = await import("./UsageReports");
+function renderPage() {
 	return renderWithProviders(<UsageReports />);
 }
 
