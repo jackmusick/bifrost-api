@@ -105,7 +105,6 @@ def main() -> int:
     time.sleep(max(0.2, args.interval * 2))
 
     output_lines: list[str] = []
-    test_status = 1
     try:
         test = subprocess.Popen(
             ["./test.sh", _TEST_PATH, "-s", "-q"],

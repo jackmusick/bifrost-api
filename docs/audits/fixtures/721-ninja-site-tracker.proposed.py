@@ -82,6 +82,7 @@ async def _retry(coro_factory, *, attempts=4, base_delay=1.0):
                 raise
             await asyncio.sleep(delay)
             delay *= 2
+    raise ValueError("attempts must be at least 1")
 
 
 # ---------------------------------------------------------------- time helpers
