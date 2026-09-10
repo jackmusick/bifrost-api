@@ -399,12 +399,11 @@ repository_ci_checks() {
     python3 api/scripts/check_github_action_pins.py --verify-versions
 
     echo "Checking generated Codex skill mirrors..."
-    scripts/sync-codex-skills.sh
-    if ! git diff --quiet -- plugins/bifrost/skills .codex/skills; then
-        echo "ERROR: Codex skill mirrors were stale and have been regenerated." >&2
-        echo "Commit the generated changes, then rerun ./test.sh pre-pr." >&2
-        return 1
-    fi
+    # scripts/check_skill_mirrors.py encapsulates the previous host gate:
+    # scripts/sync-codex-skills.sh, then
+    # git diff --quiet -- plugins/bifrost/skills .codex/skills.
+    # It also enforces the public plugin skill-name namespace contract.
+    python3 scripts/check_skill_mirrors.py
 }
 
 build_local_api_candidate() {

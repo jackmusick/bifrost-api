@@ -75,6 +75,21 @@ def test_react_is_emitted_as_default_import_not_named() -> None:
     assert "{ React" not in out  # never named
 
 
+def test_additional_react_runtime_exports_route_to_react() -> None:
+    src = (
+        'import { createContext, createElement, useDebugValue, '
+        'useInsertionEffect, useSyncExternalStore } from "bifrost";'
+    )
+    out = rewrite_v2_imports(src, LUCIDE)
+    assert (
+        'import { createContext, createElement, useDebugValue, '
+        'useInsertionEffect, useSyncExternalStore } from "react";'
+    ) in out
+    assert 'from "bifrost"' not in out
+    assert 'from "lucide-react"' not in out
+    assert 'from "@/components/ui' not in out
+
+
 def test_react_alone_is_a_bare_default_import() -> None:
     out = rewrite_v2_imports('import { React, Button } from "bifrost";', LUCIDE)
     assert 'import React from "react";' in out

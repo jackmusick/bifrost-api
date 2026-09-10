@@ -94,10 +94,7 @@ jobs:
       # likely needed anyway.
       - name: Codex skill mirrors in sync
         run: |
-          chmod +x scripts/sync-codex-skills.sh
-          ./scripts/sync-codex-skills.sh
-          git diff --exit-code -- plugins/bifrost/skills .codex/skills \
-            || { echo "::error::Codex skill mirrors are stale — run scripts/sync-codex-skills.sh and commit."; exit 1; }
+          python3 scripts/check_skill_mirrors.py
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

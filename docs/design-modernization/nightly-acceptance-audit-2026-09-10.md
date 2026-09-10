@@ -282,3 +282,20 @@ Pre-PR on `4c623809a` passed client TypeScript/lint, then stopped at Vitest: **2
 - StandaloneV2App's opening-state test expected ASCII `...` while the shared opening status uses `…`. Its status assertion and test name now match the actual opening experience.
 - UsageReports dynamically imported the page inside the first five-second test. During the complete suite that import timed out, then its late render contaminated the next test. Static module import moves transformation/import into test-file setup; retry and cached-content assertions are unchanged. The original UsageReports file passed isolated, while the stale loading label reproduced.
 - Both repaired files passed their targeted 20-test run. Final pre-PR and complete nightly are still required on the next clean candidate.
+
+
+### Backend contract and live-service closure
+
+Pre-PR reached backend unit checks after all 2,855 component tests passed. Backend unit findings were repaired:
+
+- Integration manifest golden includes the intentional nullable description field.
+- Five newly exposed React exports route to `react` during V1-to-V2 migration and have platform reference sections; a rewrite regression preserves that import boundary.
+- HomeCollection is explicitly classified as an owner/shared identity record. Existing unit/live Home tests enforce owner/admin/audience boundaries and prove collection membership grants no resource access.
+- CLI/OpenAPI generated appendices include the new description, logo, and Home endpoints; mirrors are synchronized.
+- Mirror parity and public namespace checks moved from skipped Docker pytest cases to `scripts/check_skill_mirrors.py`, enforced by local pre-PR and CI. The non-enforcing, always-true git staleness test was removed; manifest coverage and hard generated freshness remain.
+
+The repaired backend unit/contract lane passed **5,981 tests**, with no skips (21 slow cases remain excluded by the standard unit marker).
+
+The first complete live backend run selected 1,824 tests and finished **1,821 passed, 2 failed, 1 skipped** in 41 minutes. Both failures exposed missing `description` in MCP integration create/update signatures and DTO forwarding; those tools are repaired with focused wrapper coverage. The skipped CLI round-trip test expected obsolete token stdout; it was deleted. Current successful login/storage mechanics remain in `test_cli_login_ephemeral.py`, live token issuance/MFA in `test_auth.py`, and real CLI MFA-refusal/env-token transport in `test_cli_ephemeral_login.py`. The default MFA requirement is now an assertion rather than a conditional skip, and token-bearing failure output was removed.
+
+Focused MCP parity, wrapper, and CLI live verification passed **69/69**. These are iteration results; the final clean-commit pre-PR and complete nightly gates remain required.

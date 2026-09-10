@@ -389,7 +389,7 @@ model without classifying it fails CI.
 | EventSource         | None               | Admin-only         | Resolved when event arrives to find trigger    |
 | CustomClaim         | None               | Admin-only         | Resolved during table policy evaluation         |
 
-### Identity (9) — NOT org-resolved, NOT subject to cascade
+### Identity — NOT org-resolved, NOT subject to cascade
 
 | Entity                 | Why exempt                                                                  |
 | ---------------------- | --------------------------------------------------------------------------- |
@@ -402,6 +402,7 @@ model without classifying it fails CI.
 | KnowledgeNamespaceRole | RBAC junction; consumed by KnowledgeRepository, not resolved as an entity   |
 | Event                  | Event record post-receipt (telemetry)                                       |
 | AuditLog               | Write-only from execution path; no cascade lookup ever                      |
+| HomeCollection         | Owner/shared launcher record; ID-based edits and audience checks in `shared.home`; references never grant access |
 
 Three additional entities are identity but do NOT carry an
 `organization_id` column themselves: `Organization` (it IS the org),

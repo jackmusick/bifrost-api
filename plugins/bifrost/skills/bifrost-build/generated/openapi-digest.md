@@ -227,6 +227,9 @@
 | DELETE | `/api/forms/{form_id}/embed-secrets/{secret_id}` |
 | PATCH | `/api/forms/{form_id}/embed-secrets/{secret_id}` |
 | POST | `/api/forms/{form_id}/fields/{field_name}/options` |
+| DELETE | `/api/forms/{form_id}/logo` |
+| GET | `/api/forms/{form_id}/logo` |
+| POST | `/api/forms/{form_id}/logo` |
 | DELETE | `/api/forms/{form_id}/publication` |
 | GET | `/api/forms/{form_id}/publication` |
 | PUT | `/api/forms/{form_id}/publication` |
@@ -254,6 +257,11 @@
 | GET | `/api/github/status` |
 | POST | `/api/github/sync` |
 | POST | `/api/github/validate` |
+| GET | `/api/home` |
+| POST | `/api/home/collections` |
+| DELETE | `/api/home/collections/{collection_id}` |
+| PUT | `/api/home/collections/{collection_id}` |
+| PUT | `/api/home/preferences/{resource_key}` |
 | GET | `/api/hooks/health` |
 | GET | `/api/integrations` |
 | POST | `/api/integrations` |
@@ -264,6 +272,9 @@
 | GET | `/api/integrations/{integration_id}/config` |
 | PUT | `/api/integrations/{integration_id}/config` |
 | POST | `/api/integrations/{integration_id}/generate-sdk` |
+| DELETE | `/api/integrations/{integration_id}/logo` |
+| GET | `/api/integrations/{integration_id}/logo` |
+| POST | `/api/integrations/{integration_id}/logo` |
 | GET | `/api/integrations/{integration_id}/mappings` |
 | POST | `/api/integrations/{integration_id}/mappings` |
 | POST | `/api/integrations/{integration_id}/mappings/batch` |
