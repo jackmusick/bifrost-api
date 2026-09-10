@@ -436,6 +436,10 @@ services:
   # complete Vitest suite against the same source snapshot.
   client-check-runner:
     image: bifrost-test-client-check:latest
+    environment:
+      # Respect Vitest's worker override on shared development hosts while
+      # retaining the configured default when no override is supplied.
+      VITEST_MAX_WORKERS: ${VITEST_MAX_WORKERS:-}
     build:
       context: ./client
       dockerfile: Dockerfile

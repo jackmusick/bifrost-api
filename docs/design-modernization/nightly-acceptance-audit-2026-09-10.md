@@ -327,3 +327,9 @@ Read-only inspection of the durable job records confirmed successful completion 
 The user explicitly approved aligning deployment observation to the existing 60-second installation deadline, provided real issues are not masked. This changes only how long the test observes a real job: terminal failures still fail immediately, all result/persistence assertions remain, and no retries are added. This is functional acceptance, not a claim that deployments meet a 30-second latency target. The next candidate still requires full pre-PR and nightly verification.
 
 The three failing cases passed isolated before the change (112.72 seconds total) and after the approved helper change (112.44 seconds total). Their table-resolution, app-removal, and vendored-workflow result assertions all remain intact.
+
+### Shared-host component concurrency
+
+After merging current main (`668b2676a`) into the review branch, candidate `f776b813e` passed frontend type/lint checks but its component gate finished 2,853 passed and four failed. Knowledge, AIModelSettings, and CollectionEditor interaction tests exceeded their five-second limits; the timed-out collection test continued into the next test and contaminated its audience assertion. Host load was approximately 58 on eight CPUs.
+
+The affected files passed 17/17 with `VITEST_MAX_WORKERS=1`. Their source and assertions were left unchanged. The local client-check Compose service now forwards Vitest's existing optional worker override, allowing the full pre-PR suite to run serially on this contended host while retaining the configured default elsewhere. This does not alter timeouts, retries, selected tests, or CI's default concurrency. The next full pre-PR command is `VITEST_MAX_WORKERS=1 ./test.sh pre-pr`; final nightly remains required on the same clean commit.
