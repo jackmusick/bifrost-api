@@ -31,6 +31,9 @@ from typing import Any
 # This must happen before any workspace imports (e.g., from shared import ...)
 # The hook intercepts imports and loads modules from Redis cache.
 from src.services.execution.virtual_import import install_virtual_import_hook
+from src.services.execution.workspace_modules import (
+    clear_workspace_modules as _clear_workspace_modules,
+)
 
 install_virtual_import_hook()
 
@@ -175,6 +178,12 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
         )
 
     try:
+        # The shared execution boundary owns cache freshness so direct callers
+        # and alternate worker paths cannot inherit stale workspace imports.
+        # This must run after Solution context activation because resolution is
+        # scoped to the active install.
+        _clear_workspace_modules()
+
         # Reconstruct Organization
         org = None
         org_data = context_data.get("organization")

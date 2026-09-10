@@ -33,6 +33,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from src.services.execution.workspace_modules import (
+    clear_workspace_modules as _clear_workspace_modules,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -177,109 +181,6 @@ def install_requirements() -> RequirementsInstallResult:
             logger.warning(f"[pool] Error installing '{pkg}': {e}")
 
     return result
-
-
-def _clear_workspace_modules() -> None:
-    """
-    Clear workspace modules from sys.modules only if their content changed.
-
-    Called before each execution. For each workspace module already loaded,
-    checks the content hash against Redis. If unchanged, the module stays
-    in sys.modules and the next `import` is a no-op. If changed (or if the
-    hash check fails), the module is evicted so it gets re-fetched.
-
-    This avoids re-exec'ing large unchanged modules on every execution.
-    """
-    from src.services.execution.virtual_import import VirtualModuleLoader, NamespacePackageLoader
-    from src.core.module_cache_sync import get_module_sync
-
-    # Find workspace modules currently loaded
-    workspace_modules = [
-        (name, module) for name, module in sys.modules.items()
-        if module is not None and (
-            (hasattr(module, '__loader__') and isinstance(
-                module.__loader__, (VirtualModuleLoader, NamespacePackageLoader)
-            ))
-        )
-    ]
-
-    # Check each module's hash — only clear if content changed
-    modules_to_clear: list[str] = []
-    modules_kept = 0
-
-    for name, module in workspace_modules:
-        cached_hash = getattr(module, '__content_hash__', None)
-
-        if not cached_hash:
-            # No hash stored — could be a namespace package or exec_from_db module.
-            # Namespace packages are kept if any child modules are kept (decided later).
-            # For now, check if this is a namespace package (has __path__ but no __file__).
-            if isinstance(getattr(module, '__loader__', None), NamespacePackageLoader):
-                # Defer — we'll keep it if any children survive
-                continue
-            # exec_from_db module with no hash — always clear
-            modules_to_clear.append(name)
-            continue
-
-        # Look up current hash using the exact file path loaded by the virtual loader.
-        file_path = getattr(module, "__file__", None)
-        if not file_path:
-            # Can't map to a file path — clear to be safe
-            modules_to_clear.append(name)
-            continue
-
-        cached = get_module_sync(file_path)
-        if not cached:
-            # Module removed from cache — clear
-            modules_to_clear.append(name)
-            continue
-
-        loaded_storage_path = getattr(module, "__storage_path__", file_path)
-        if cached.get("storage_path", cached.get("path")) != loaded_storage_path:
-            # The same logical import now resolves from a different Solution or
-            # from a different Solution/global scope. Equal bytes are not enough
-            # to reuse a module object whose mutable globals belong to another
-            # execution boundary.
-            modules_to_clear.append(name)
-            continue
-
-        if cached.get("hash") != cached_hash:
-            # Content changed — clear
-            modules_to_clear.append(name)
-        else:
-            # Unchanged — keep it
-            modules_kept += 1
-
-    # If ANY workspace module changed, clear ALL workspace modules.
-    # Reason: kept modules may hold stale references to cleared modules
-    # via `from X import Y` bindings captured at import time.
-    if modules_to_clear:
-        modules_to_clear = [name for name, _ in workspace_modules]
-        modules_kept = 0
-
-    # Clear namespace packages only if ALL their children were cleared
-    cleared_set = set(modules_to_clear)
-    for name, module in workspace_modules:
-        if not isinstance(getattr(module, '__loader__', None), NamespacePackageLoader):
-            continue
-        # Check if any child module survived (not in cleared_set and still in sys.modules)
-        prefix = name + "."
-        has_surviving_child = any(
-            n.startswith(prefix) and n not in cleared_set
-            for n in sys.modules
-        )
-        if not has_surviving_child:
-            modules_to_clear.append(name)
-
-    for name in modules_to_clear:
-        if name in sys.modules:
-            del sys.modules[name]
-
-    if modules_to_clear or modules_kept:
-        logger.debug(
-            f"Workspace modules: cleared={len(modules_to_clear)} kept={modules_kept}"
-            + (f" (cleared: {modules_to_clear})" if modules_to_clear else "")
-        )
 
 
 def _execute_sync(

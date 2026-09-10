@@ -172,3 +172,60 @@ async def test_execute_async_sets_solution_context_before_clearing_modules(monke
     )
     # The context activated is THIS execution's install.
     assert ("set_context", sid) in calls
+
+
+async def test_run_execution_refreshes_modules_and_clears_context_on_failure(monkeypatch):
+    """The shared boundary refreshes modules even when simple_worker is bypassed."""
+    import src.core.module_cache_sync as mcs
+    import src.services.execution.worker as worker
+
+    sid = str(uuid.uuid4())
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(worker, "_set_process_engine_credentials", lambda _ctx: True)
+    monkeypatch.setattr(worker, "_get_resource_usage", lambda: (0, 0.0, 0.0))
+    monkeypatch.setattr(worker, "_capture_metrics", lambda *_args: types.SimpleNamespace(
+        peak_memory_bytes=0,
+        cpu_user_seconds=0.0,
+        cpu_system_seconds=0.0,
+        cpu_total_seconds=0.0,
+    ))
+    monkeypatch.setattr(
+        mcs,
+        "set_solution_context",
+        lambda solution_id, global_repo_access=False: calls.append(
+            ("set_context", solution_id)
+        ),
+    )
+    monkeypatch.setattr(
+        mcs,
+        "clear_solution_context",
+        lambda: calls.append(("clear_context", None)),
+    )
+
+    def _fail_refresh():
+        calls.append(("clear_modules", None))
+        raise RuntimeError("refresh failed")
+
+    monkeypatch.setattr(worker, "_clear_workspace_modules", _fail_refresh)
+
+    result = await worker._run_execution(
+        "exec-direct",
+        {
+            "solution_id": sid,
+            "solution_global_repo_access": False,
+            "caller": {
+                "user_id": str(uuid.uuid4()),
+                "email": "user@example.com",
+                "name": "User",
+            },
+        },
+    )
+
+    assert result["status"] == "Failed"
+    assert result["error_type"] == "RuntimeError"
+    assert calls == [
+        ("set_context", sid),
+        ("clear_modules", None),
+        ("clear_context", None),
+    ]
