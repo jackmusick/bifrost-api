@@ -22,7 +22,7 @@
 }
 
 .home-search::after {
-	padding: 2px;
+	padding: 1px;
 	mask:
 		linear-gradient(#000 0 0) content-box,
 		linear-gradient(#000 0 0);
@@ -30,11 +30,11 @@
 }
 
 .home-search:focus-within::before {
-	opacity: 0.24;
+	opacity: 0.10;
 }
 
 .home-search:focus-within::after {
-	opacity: 1;
+	opacity: 0.45;
 }
 
 @media (prefers-reduced-motion: reduce) {

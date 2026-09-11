@@ -52,8 +52,8 @@ export function InputDisplayToolbar({
 				<div className="ml-auto flex flex-wrap gap-2">
 					<Button
 						type="button"
-						variant="outline"
-						className="min-h-11 h-auto px-3 py-2 text-sm whitespace-normal"
+						variant="ghost"
+						className="min-h-11 sm:min-h-8 h-auto px-2 py-1 text-sm whitespace-normal"
 						disabled={result.status === "pending"}
 						onClick={copy}
 					>
@@ -73,8 +73,8 @@ export function InputDisplayToolbar({
 					{showToggle && (
 						<Button
 							type="button"
-							variant="outline"
-							className="min-h-11 h-auto px-3 py-2 text-sm whitespace-normal"
+							variant="ghost"
+							className="min-h-11 sm:min-h-8 h-auto px-2 py-1 text-sm whitespace-normal"
 							onClick={() =>
 								onViewChange(
 									view === "tree" ? "pretty" : "tree",

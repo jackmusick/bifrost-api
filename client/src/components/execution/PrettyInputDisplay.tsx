@@ -337,7 +337,13 @@ export function PrettyInputDisplay({
 					}
 					onViewChange={setView}
 				/>
-				<div className="rounded-lg ring-1 ring-foreground/5 p-3 bg-muted/50">
+				<div
+					className={
+						context === "result"
+							? "min-w-0 py-2"
+							: "rounded-lg ring-1 ring-foreground/5 p-3 bg-muted/50"
+					}
+				>
 					<VariablesTreeView
 						data={inputData as Record<string, unknown>}
 					/>
@@ -405,15 +411,30 @@ export function PrettyInputDisplay({
 		<div className="min-w-0 space-y-2">
 			{toggleBar}
 
-			<div className="divide-y divide-border/60 overflow-hidden rounded-lg ring-1 ring-foreground/5 bg-muted/50">
+			<div
+				className={cn(
+					"divide-y divide-border/60 min-w-0",
+					context !== "result" &&
+						"overflow-hidden rounded-lg ring-1 ring-foreground/5 bg-muted/50",
+				)}
+			>
 				{entries.map(([key, value]) => {
 					const friendlyLabel = snakeCaseToTitleCase(key);
-					const badge = badgeFor(value);
+					const badge =
+						context === "result" && Array.isArray(value)
+							? `${value.length} items`
+							: context === "result"
+								? undefined
+								: badgeFor(value);
 
 					return (
 						<div
 							key={key}
-							className="flex items-start gap-4 px-3 py-2.5 hover:bg-muted/50 transition-colors"
+							className={cn(
+								"flex items-start gap-4 py-3",
+								context !== "result" &&
+									"px-3 hover:bg-muted/50 transition-colors",
+							)}
 						>
 							<div className="flex-1 min-w-0">
 								<div className="flex flex-wrap items-center gap-2 mb-0.5">
@@ -429,7 +450,13 @@ export function PrettyInputDisplay({
 										</Badge>
 									)}
 								</div>
-								<div className="text-sm text-muted-foreground break-words">
+								<div
+									className={cn(
+										"text-sm break-words",
+										context !== "result" &&
+											"text-muted-foreground",
+									)}
+								>
 									<ValueContent value={value} depth={0} />
 								</div>
 							</div>

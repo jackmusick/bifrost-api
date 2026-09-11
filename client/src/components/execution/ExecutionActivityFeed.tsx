@@ -7,10 +7,13 @@ import type { ExecutionLogEntry } from "@/lib/executionLogs";
 export function ExecutionActivityFeed({
 	logs,
 	onViewLogs,
+	active = true,
 }: {
 	logs: ExecutionLogEntry[];
+	active?: boolean;
 	onViewLogs: () => void;
 }) {
+	const [initialCount] = useState(logs.length);
 	const viewport = useRef<HTMLDivElement>(null);
 	const following = useRef(true);
 	const [paused, setPaused] = useState(false);
@@ -23,8 +26,11 @@ export function ExecutionActivityFeed({
 		<section className="min-w-0" aria-label="Live activity">
 			<div className="mb-3 flex items-center justify-between gap-3">
 				<h3 className="text-sm font-semibold">
-					Activity from this workflow
+					{active ? "Activity from this workflow" : "Run activity"}
 				</h3>
+				<span className="mr-auto hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground sm:inline">
+					{logs.length} {logs.length === 1 ? "message" : "messages"}
+				</span>
 				<Button
 					type="button"
 					variant="ghost"
@@ -61,8 +67,13 @@ export function ExecutionActivityFeed({
 							<li
 								key={log.sequence ?? log.id ?? index}
 								className="execution-live-row grid gap-1 px-2 py-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
+								data-arriving={
+									active && index >= initialCount
+										? "true"
+										: undefined
+								}
 								data-latest={
-									index === logs.length - 1
+									active && index === logs.length - 1
 										? "true"
 										: undefined
 								}
@@ -85,6 +96,21 @@ export function ExecutionActivityFeed({
 										{formatActivityTime(log.timestamp)}
 									</time>
 								)}
+								{log.data &&
+									Object.keys(log.data).length > 0 && (
+										<details className="min-w-0 sm:col-span-2">
+											<summary className="cursor-pointer text-xs text-muted-foreground">
+												Message details
+											</summary>
+											<pre className="mt-2 overflow-auto whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">
+												{JSON.stringify(
+													log.data,
+													null,
+													2,
+												)}
+											</pre>
+										</details>
+									)}
 							</li>
 						);
 					})}

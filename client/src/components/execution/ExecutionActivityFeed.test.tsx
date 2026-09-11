@@ -60,3 +60,24 @@ describe("ExecutionActivityFeed", () => {
 		expect(onViewLogs).toHaveBeenCalledOnce();
 	});
 });
+
+it("retains message context and removes active emphasis when complete", async () => {
+	const { user } = renderWithProviders(
+		<ExecutionActivityFeed
+			active={false}
+			logs={[
+				{
+					sequence: 1,
+					message: "Account checked",
+					data: { account: "Example" },
+				},
+			]}
+			onViewLogs={() => {}}
+		/>,
+	);
+	await user.click(screen.getByText("Message details"));
+	expect(screen.getByText(/"account": "Example"/)).toBeVisible();
+	expect(
+		screen.getByText("Account checked").closest("li"),
+	).not.toHaveAttribute("data-latest");
+});

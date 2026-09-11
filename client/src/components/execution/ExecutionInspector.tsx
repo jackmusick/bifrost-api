@@ -43,9 +43,9 @@ export function ExecutionInspector({
 			<Tabs
 				value={currentTab}
 				onValueChange={handleTabChange}
-				className="min-w-0"
+				className="min-w-0 gap-1"
 			>
-				<div className="mb-4 min-w-0">
+				<div className="min-w-0">
 					<TabsList
 						variant="line"
 						aria-label="Execution content tabs"

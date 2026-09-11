@@ -542,14 +542,10 @@ export function ExecutionDetails({
 							: "This run is active. The result will appear here when it completes."}
 				</p>
 			)}
-			<ExecutionActivityFeed
-				logs={mergedLogs}
-				onViewLogs={() => setSelectedContentTab("logs")}
-			/>
 		</div>
 	);
 
-	const resultContent =
+	const resultBody =
 		isComplete &&
 		(execution.result != null || executionStatus === "Success") ? (
 			<ExecutionResultPanel
@@ -562,9 +558,21 @@ export function ExecutionDetails({
 			<p className="py-4 text-sm text-muted-foreground">
 				This run did not return a result.
 			</p>
-		) : (
+		) : executionStatus === "Running" && mergedLogs.length > 0 ? null : (
 			runningResult
 		);
+
+	const resultContent = (
+		<div className="space-y-5">
+			{resultBody}
+			<ExecutionActivityFeed
+				key={executionId}
+				logs={mergedLogs}
+				active={isActive}
+				onViewLogs={() => setSelectedContentTab("logs")}
+			/>
+		</div>
+	);
 
 	const inputContent = (
 		<PrettyInputDisplay
@@ -655,8 +663,8 @@ export function ExecutionDetails({
 			<>
 				{isPlatformAdmin && isComplete && (
 					<Button
-						variant="ghost"
-						size="icon-lg"
+						variant="outline"
+						size="sm"
 						onClick={() => setShowRerunDialog(true)}
 						disabled={isRerunning}
 						title="Rerun"
@@ -667,6 +675,7 @@ export function ExecutionDetails({
 						) : (
 							<RefreshCw className="h-3.5 w-3.5" />
 						)}
+						Rerun
 					</Button>
 				)}
 				{(execution.status === "Running" ||
@@ -686,8 +695,13 @@ export function ExecutionDetails({
 
 		return (
 			<div className="h-full">
-				{actionsContainer &&
-					createPortal(actionButtons, actionsContainer)}
+				{actionsContainer ? (
+					createPortal(actionButtons, actionsContainer)
+				) : (
+					<div className="mb-3 flex justify-end gap-2">
+						{actionButtons}
+					</div>
+				)}
 
 				<div className="space-y-4">
 					{refreshError}

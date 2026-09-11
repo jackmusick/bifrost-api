@@ -536,3 +536,52 @@ it("keeps the embedded run identity and status visible without workspace actions
 		screen.queryByRole("button", { name: "Copy execution ID" }),
 	).not.toBeInTheDocument();
 });
+
+describe("Execution review continuity", () => {
+	it("keeps readable activity in Result after the run completes", async () => {
+		const logs = [
+			{ sequence: 1, message: "Verified ownership", level: "info" },
+		];
+		mockUseExecution.mockReturnValue({
+			data: {
+				...execution,
+				status: "Running",
+				completed_at: null,
+				result: null,
+				logs,
+			},
+			isLoading: false,
+			error: null,
+		});
+		const { rerender } = await renderPage();
+		expect(screen.getByText("Verified ownership")).toBeInTheDocument();
+		mockUseExecution.mockReturnValue({
+			data: { ...execution, logs },
+			isLoading: false,
+			error: null,
+		});
+		rerender(<ExecutionDetails executionId={execution.execution_id} />);
+		expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		expect(screen.getByText("Verified ownership")).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "Run activity" }),
+		).toBeInTheDocument();
+	});
+
+	it("offers a labeled rerun in embedded mode without a portal target", async () => {
+		mockAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			hasRole: () => false,
+		});
+		const { user } = renderWithProviders(
+			<ExecutionDetails executionId={execution.execution_id} embedded />,
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Rerun execution" }),
+		);
+		expect(screen.getByRole("dialog")).toHaveTextContent("Rerun dialog");
+	});
+});
