@@ -155,30 +155,32 @@ describe("Sidebar structure", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("renders collection shortcuts outside the Home catalog", () => {
-		renderWithProviders(
-			<Sidebar
-				isMobileMenuOpen={false}
-				setIsMobileMenuOpen={vi.fn()}
-				isCollapsed={false}
-			/>,
-			{ initialEntries: ["/history"] },
-		);
-
-		expect(state.useQuery).toHaveBeenCalledWith("get", "/api/home");
-		expect(
-			screen.getByRole("heading", { name: "Collections" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("link", { name: "Operations" }),
-		).toHaveAttribute("href", "/?collection=col-1");
-		expect(
-			screen.getByRole("link", { name: "Escalations" }),
-		).toHaveAttribute("href", "/?collection=col-2");
-		expect(
-			screen.getByRole("link", { name: "New collection" }),
-		).toHaveAttribute("href", "/?newCollection=1");
-	});
+	it.each(["/", "/history", "/workflows"])(
+		"keeps collections out of desktop and mobile navigation on %s",
+		(route) => {
+			renderWithProviders(
+				<Sidebar
+					isMobileMenuOpen
+					setIsMobileMenuOpen={vi.fn()}
+					isCollapsed={false}
+				/>,
+				{ initialEntries: [route] },
+			);
+			expect(state.useQuery).not.toHaveBeenCalledWith("get", "/api/home");
+			expect(
+				screen.queryByRole("heading", { name: "Collections" }),
+			).not.toBeInTheDocument();
+			for (const name of [
+				"Operations",
+				"Escalations",
+				"New collection",
+			]) {
+				expect(
+					screen.queryByRole("link", { name }),
+				).not.toBeInTheDocument();
+			}
+		},
+	);
 });
 
 describe("Sidebar mobile navigation", () => {

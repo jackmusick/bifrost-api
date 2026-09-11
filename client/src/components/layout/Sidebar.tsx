@@ -33,7 +33,6 @@ import { Logo } from "@/components/branding/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { term, useTerminology, type ProductTermKey } from "@/lib/terminology";
-import { SidebarCollections } from "./SidebarCollections";
 import { SidebarLink } from "./sidebarLinks";
 
 interface NavItem {
@@ -352,12 +351,6 @@ export function Sidebar({
 									);
 								})}
 							</div>
-							{section.title === "Workspace" &&
-								location.pathname !== "/" && (
-									<SidebarCollections
-										isCollapsed={isCollapsed}
-									/>
-								)}
 						</Fragment>
 					))}
 				</nav>
@@ -440,15 +433,6 @@ export function Sidebar({
 										);
 									})}
 								</div>
-								{section.title === "Workspace" &&
-									location.pathname !== "/" && (
-										<SidebarCollections
-											isCollapsed={false}
-											onNavigate={() =>
-												setIsMobileMenuOpen(false)
-											}
-										/>
-									)}
 							</Fragment>
 						))}
 					</nav>

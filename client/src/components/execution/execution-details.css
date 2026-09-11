@@ -42,6 +42,10 @@
 	border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 
+.execution-live-row:first-child {
+	border-top: 0;
+}
+
 .execution-live-row[data-latest="true"] {
 	border-radius: var(--bf-radius-surface);
 	background: linear-gradient(
@@ -49,11 +53,6 @@
 		color-mix(in srgb, var(--primary) 20%, transparent),
 		transparent
 	);
-	box-shadow: inset 2px 0 0 var(--primary);
-}
-
-.execution-live-row[data-warning="true"] {
-	color: var(--bf-warning);
 }
 
 @media (prefers-reduced-motion: reduce) {

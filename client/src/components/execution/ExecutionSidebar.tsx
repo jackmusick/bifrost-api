@@ -1,3 +1,5 @@
+import { Braces, Gauge, Info, Workflow, type LucideIcon } from "lucide-react";
+import { ExecutionSectionHeading } from "./ExecutionSectionHeading";
 import { type ReactNode } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ExecutionAiUsage } from "./ExecutionAiUsage";
@@ -56,35 +58,30 @@ interface ExecutionSidebarProps {
 
 /**
  * Inspector section idiom shared with the result/logs panels: a compact
- * small-caps header (with optional muted description and trailing action),
+ * icon heading (with optional muted description and trailing action),
  * then content that carries a single step-1 surface.
  */
 function InspectorSection({
 	title,
+	icon = Info,
 	description,
 	action,
 	children,
 }: {
 	title: string;
+	icon?: LucideIcon;
 	description?: string;
 	action?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
 		<section>
-			<div className="mb-1.5 flex items-start justify-between gap-2">
-				<div className="min-w-0">
-					<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-						{title}
-					</h4>
-					{description && (
-						<p className="mt-0.5 text-xs text-muted-foreground/80">
-							{description}
-						</p>
-					)}
-				</div>
-				{action}
-			</div>
+			<ExecutionSectionHeading
+				title={title}
+				icon={icon}
+				description={description}
+				action={action}
+			/>
 			{children}
 		</section>
 	);
@@ -157,6 +154,7 @@ export function ExecutionSidebar({
 				<motion.div {...revealMotion}>
 					<InspectorSection
 						title="Execution Context"
+						icon={Workflow}
 						description="The context object available to this workflow (admin only)"
 						action={<ExecutionContextHelp />}
 					>
@@ -176,6 +174,7 @@ export function ExecutionSidebar({
 				<motion.div {...revealMotion}>
 					<InspectorSection
 						title="Runtime Variables"
+						icon={Braces}
 						description="Variables captured from script namespace (admin only)"
 					>
 						<div className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-muted/50 p-3">
@@ -256,6 +255,7 @@ export function ExecutionSidebar({
 					<motion.div {...revealMotion}>
 						<InspectorSection
 							title="Usage"
+							icon={Gauge}
 							description="Execution metrics and costs"
 						>
 							<div className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-muted/50 p-3 space-y-3">

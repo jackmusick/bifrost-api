@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Activity, ArrowDown, AlertTriangle } from "lucide-react";
+import { Activity, ArrowDown, AlertTriangle, CircleAlert } from "lucide-react";
+import { ExecutionSectionHeading } from "./ExecutionSectionHeading";
+import { LogEntryRow, logSeverity } from "./LogEntryRow";
 import { Button } from "@/components/ui/button";
 import type { ExecutionLogEntry } from "@/lib/executionLogs";
 
@@ -29,42 +31,37 @@ export function ExecutionActivityFeed({
 			}
 			aria-label="Run Activity"
 		>
-			<div className="mb-4 flex items-center justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-3">
-					<Activity
-						className="size-5 shrink-0 text-primary"
-						aria-hidden="true"
-					/>
-					<div className="min-w-0">
-						<h3 className="font-display text-lg font-semibold leading-tight">
-							Run Activity
-						</h3>
-						<p className="mt-1 text-xs tabular-nums text-muted-foreground">
-							{logs.length}{" "}
-							{logs.length === 1 ? "message" : "messages"}
-							{active
-								? " · Run in progress"
-								: " · Recorded during this run"}
-						</p>
-					</div>
-				</div>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					className="shrink-0 px-2 text-xs"
-					onClick={onViewLogs}
-				>
-					Open logs
-				</Button>
-			</div>
+			<ExecutionSectionHeading
+				title="Run Activity"
+				icon={Activity}
+				description={
+					<>
+						{logs.length}{" "}
+						{logs.length === 1 ? "message" : "messages"} ·{" "}
+						{active
+							? "Run in progress"
+							: "Recorded during this run"}
+					</>
+				}
+				action={
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="px-2 text-xs"
+						onClick={onViewLogs}
+					>
+						Open logs
+					</Button>
+				}
+			/>
 			<div
 				ref={viewport}
 				role="log"
 				aria-label="Workflow messages"
 				aria-live="off"
 				tabIndex={0}
-				className="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--bf-radius-surface)] border border-border bg-muted/30 px-2 focus-visible:outline-ring sm:px-3"
+				className="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--bf-radius-surface)] border border-border bg-muted/30 focus-visible:outline-ring"
 				onScroll={(event) => {
 					const element = event.currentTarget;
 					following.current =
@@ -77,11 +74,18 @@ export function ExecutionActivityFeed({
 			>
 				<ol className="space-y-0">
 					{logs.map((log, index) => {
-						const warning = /warn|error|critical/i.test(
-							log.level ?? "",
-						);
+						const severity = logSeverity(log.level);
+						const warning =
+							severity.label === "Warning" ||
+							severity.label === "Error";
+						const SeverityIcon =
+							severity.label === "Error"
+								? CircleAlert
+								: AlertTriangle;
 						return (
-							<li
+							<LogEntryRow
+								as="li"
+								level={log.level}
 								key={log.sequence ?? log.id ?? index}
 								className="execution-live-row grid gap-1 px-2 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
 								data-arriving={
@@ -97,10 +101,16 @@ export function ExecutionActivityFeed({
 								data-warning={warning ? "true" : undefined}
 							>
 								<p className="min-w-0 flex-1 whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]">
+									{!warning && (
+										<span className="sr-only">
+											{severity.label}:{" "}
+										</span>
+									)}
 									{warning && (
-										<AlertTriangle
-											aria-label={log.level}
-											className="mr-1.5 inline size-3.5 align-[-0.125em] text-warning"
+										<SeverityIcon
+											aria-label={severity.label}
+											className="mr-1.5 inline size-3.5 align-[-0.125em]"
+											style={{ color: severity.color }}
 										/>
 									)}
 									{log.message}
@@ -128,7 +138,7 @@ export function ExecutionActivityFeed({
 											</pre>
 										</details>
 									)}
-							</li>
+							</LogEntryRow>
 						);
 					})}
 				</ol>

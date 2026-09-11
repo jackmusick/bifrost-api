@@ -81,3 +81,25 @@ it("retains message context and removes active emphasis when complete", async ()
 		screen.getByText("Account checked").closest("li"),
 	).not.toHaveAttribute("data-latest");
 });
+
+it("distinguishes warnings from errors without relying on color", () => {
+	renderWithProviders(
+		<ExecutionActivityFeed
+			logs={[
+				{ sequence: 1, level: "WARNING", message: "Approval needed" },
+				{ sequence: 2, level: "ERROR", message: "Connection failed" },
+			]}
+			onViewLogs={() => {}}
+		/>,
+	);
+	expect(screen.getByLabelText("Warning")).toBeInTheDocument();
+	expect(screen.getByLabelText("Error")).toBeInTheDocument();
+	expect(screen.getByText("Approval needed").closest("li")).toHaveAttribute(
+		"data-severity",
+		"warning",
+	);
+	expect(screen.getByText("Connection failed").closest("li")).toHaveAttribute(
+		"data-severity",
+		"error",
+	);
+});

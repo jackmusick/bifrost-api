@@ -39,3 +39,9 @@ Home combines accessible apps, forms, and chat-enabled agents, with personal pin
 Execution is result-first. The full page and preview share Result, Input, Logs in that order, defaulting to Result. Logs are optional supporting detail, with wrapping messages and secondary timestamps; never reserve a blank log column. Never infer workflow steps or percent completion from plain logs. Use an indeterminate brand-aware activity trace while running, respect reduced motion, and preserve manual inspector choices when results arrive. On desktop, selected content scrolls within the available height; on mobile, use full-width sections. History preview must preserve table scroll bounds and keep shared pagination visible.
 
 See [Home and execution experience](docs/design-modernization/home-execution.md) for behavior, verification, and rollout details.
+
+### Execution section headings and log severity
+
+Run Activity, Execution Context, Runtime Variables, and Usage use the shared ExecutionSectionHeading: title case, foreground display text, a primary-colored Lucide icon, and an optional muted description. Uppercase metadata labels are not section headings.
+
+Readable activity and detailed logs share LogEntryRow severity framing. A 3px leading stripe uses semantic info, warning, danger, or muted-debug tokens, independent of custom branding. Preserve text/icon severity cues as well as color. The newest-message highlight indicates recency and must not override severity. Keep filtering, traceback grouping, copying, and follow-scroll behavior in the detailed log panel.

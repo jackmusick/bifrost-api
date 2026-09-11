@@ -197,11 +197,11 @@ private owner. Existing non-admin publishing restrictions remain in place.
 
 ### Empty collections and lookup loading
 
-Home and SidebarCollections share `isVisibleCollection`: a collection is visible
+Home uses `isVisibleCollection`: a collection is visible
 when it has accessible resources or the viewer can edit it. Managers retain empty
 collections so they can populate them. Readers do not see shared collections with
-no usable resources. The sidebar component owns its heading and returns nothing
-when no visible collections exist. Home retains a single Create a collection CTA
+no usable resources. Collections are available only through Home tabs.
+Home retains a single Create a collection CTA
 in its empty state; no show-empty toggle is needed.
 
 Removed visible stacks of lookup-loading text above agent and user edit forms.
@@ -211,7 +211,7 @@ form no longer adds top padding for loading-only notices.
 
 ## Unified catalog and execution refinement (September 10)
 
-The approved desktop/mobile concept replaces Home's pinned section, collection cards, and category previews with one paginated catalog. Collection navigation filters the same resources; overflow collections remain reachable through More. Pins appear once, first in the default ordering. Search ranks exact/prefix/title matches before description matches and uses pins as a tie-breaker. Explicit name, recent, and collection ordering remain available. Type and organization filters retain existing access semantics; collections do not grant access. Sidebar collection shortcuts remain outside Home, where they are useful for returning to a collection, and are omitted on Home to avoid duplicate navigation.
+The approved desktop/mobile concept replaces Home's pinned section, collection cards, and category previews with one paginated catalog. Collection navigation filters the same resources; overflow collections remain reachable through More. Pins appear once, first in the default ordering. Search ranks exact/prefix/title matches before description matches and uses pins as a tie-breaker. Explicit name, recent, and collection ordering remain available. Type and organization filters retain existing access semantics; collections do not grant access. Collections appear only as Home tabs; sidebar shortcuts are removed on all routes.
 
 Resource cards use larger title hierarchy, existing uploaded logos and library icons, and distinct app/form/agent icon tones in both themes. Cards remain whole-card launch targets with a separate accessible pin action. On mobile the catalog uses two columns with wrapping names, descriptions and organization identity. The Dashboard remains accessible to administrators.
 
@@ -231,4 +231,4 @@ PrettyInputDisplay applies the same framed surface, branded field labels, quiet 
 
 Collection tabs expose Edit and Delete only for editable collections through a context menu (right-click, Shift+F10, or touch long-press). Delete opens the existing confirmation flow. Desktop native dragging and Move left/right reorder the personal view; All remains fixed first. Selecting an overflow collection appends it to the visible tabs so its actions remain reachable.
 
-Order is stored per account in this browser, shared between Home tabs and sidebar shortcuts. Reordering a filtered scope preserves other collections' positions. It does not change shared collection ownership, content, grants, or other users' layouts, and does not yet sync between browsers/devices.
+Collections appear only as Home tabs; no sidebar shortcuts are rendered on any route. Order is stored per account in this browser. Reordering a filtered scope preserves other collections' positions. It does not change shared collection ownership, content, grants, or other users' layouts, and does not yet sync between browsers/devices.

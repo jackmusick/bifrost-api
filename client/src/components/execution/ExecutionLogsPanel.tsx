@@ -1,3 +1,4 @@
+import { LogEntryRow } from "./LogEntryRow";
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { ArrowDown, Check, Copy, Download, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -212,7 +213,8 @@ export function ExecutionLogsPanel({
 	const renderItem = (item: LogRenderItem, index: number) => {
 		if (item.kind === "traceback") {
 			return (
-				<div
+				<LogEntryRow
+					level="traceback"
 					key={index}
 					className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-border/50 px-3 py-3 font-mono text-xs last:border-0 @3xl:grid-cols-[auto_78px_minmax(0,1fr)] @3xl:py-2 hover:bg-muted/40"
 					data-testid="log-traceback-block"
@@ -228,7 +230,7 @@ export function ExecutionLogsPanel({
 					<pre className="col-span-full min-w-0 whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere] @3xl:col-span-1">
 						{item.lines.join("\n")}
 					</pre>
-				</div>
+				</LogEntryRow>
 			);
 		}
 
@@ -239,7 +241,8 @@ export function ExecutionLogsPanel({
 		const data = "data" in log ? log.data : undefined;
 
 		return (
-			<div
+			<LogEntryRow
+				level={log.level}
 				key={index}
 				className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-border/50 px-3 py-3 font-mono text-xs last:border-0 @3xl:grid-cols-[auto_78px_minmax(0,1fr)] @3xl:py-2 hover:bg-muted/40"
 			>
@@ -267,7 +270,7 @@ export function ExecutionLogsPanel({
 						</pre>
 					</details>
 				)}
-			</div>
+			</LogEntryRow>
 		);
 	};
 
@@ -275,7 +278,7 @@ export function ExecutionLogsPanel({
 		<div
 			ref={logsContainerRef}
 			onScroll={handleLogsScroll}
-			className="min-h-0 min-w-0 overflow-y-auto py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+			className="min-h-0 min-w-0 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
 			aria-label="Execution log messages"
 			role="region"
 			tabIndex={0}
@@ -396,16 +399,17 @@ export function ExecutionLogsPanel({
 							/>
 							{query && (
 								<span className="absolute inset-y-0 right-1 z-20 flex items-center">
-<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									className="size-8"
-									onClick={() => setQuery("")}
-									aria-label="Clear log search"
-								>
-									<X className="size-4" />
-								</Button></span>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										className="size-8"
+										onClick={() => setQuery("")}
+										aria-label="Clear log search"
+									>
+										<X className="size-4" />
+									</Button>
+								</span>
 							)}
 						</div>
 						<Select
