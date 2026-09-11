@@ -220,6 +220,11 @@ def execution_context_key(execution_id: str) -> str:
     return f"bifrost:exec:{execution_id}:context"
 
 
+def active_execution_key(execution_id: str) -> str:
+    """Compact parent-owned lease for an actively running execution."""
+    return f"bifrost:exec:{execution_id}:active"
+
+
 def execution_result_key(execution_id: str) -> str:
     """
     Key for execution result (written by worker process).
@@ -358,6 +363,7 @@ TTL_ROLES = 600  # 10 minutes
 TTL_ORGS = 3600  # 1 hour
 TTL_PENDING = 3600  # 1 hour (safety for orphaned changes)
 TTL_PENDING_EXECUTION = 3600  # 1 hour (safety for orphaned pending executions)
+TTL_ACTIVE_EXECUTION = 3600  # 1 hour (recreated while the child is active)
 
 # Embed TTLs
 TTL_EMBED_EXECUTION = 86400  # 24 hours (embed session → execution link)

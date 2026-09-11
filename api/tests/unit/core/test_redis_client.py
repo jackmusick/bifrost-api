@@ -122,6 +122,43 @@ class TestRedisClient:
         mock_redis.aclose.assert_called_once()
         assert client._redis is None
 
+    async def test_get_active_execution_returns_compact_lease(self, mock_redis):
+        """Active execution metadata is read from its dedicated lease key."""
+        from src.core.cache.keys import active_execution_key
+        from src.core.redis_client import RedisClient
+
+        lease = {
+            "execution_id": "exec-1",
+            "workflow_id": "workflow-1",
+            "workflow_name": "scan",
+            "org_id": "org-1",
+            "user_id": "user-1",
+            "user_name": "Operator",
+            "user_email": "operator@example.com",
+            "sync": False,
+            "event": None,
+        }
+        mock_redis.get.return_value = json.dumps(lease)
+        client = RedisClient()
+        client._redis = mock_redis
+
+        result = await client.get_active_execution("exec-1")
+
+        assert result == lease
+        mock_redis.get.assert_awaited_once_with(active_execution_key("exec-1"))
+
+    async def test_get_active_execution_returns_none_when_lease_is_missing(
+        self, mock_redis
+    ):
+        """Missing active leases are a normal recovery condition."""
+        from src.core.redis_client import RedisClient
+
+        mock_redis.get.return_value = None
+        client = RedisClient()
+        client._redis = mock_redis
+
+        assert await client.get_active_execution("exec-1") is None
+
     async def test_set_workflow_metadata_cache_serializes_decimal(self, mock_redis):
         """Workflow metadata cache should coerce Decimal values to JSON numbers."""
         from src.core.redis_client import RedisClient, WORKFLOW_METADATA_CACHE_PREFIX

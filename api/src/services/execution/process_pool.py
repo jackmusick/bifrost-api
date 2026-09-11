@@ -47,8 +47,10 @@ import psutil
 import redis.asyncio as redis
 
 from src.config import get_settings
-from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
+from src.core.cache.keys import TTL_ACTIVE_EXECUTION, active_execution_key
+from src.core.redis_client import ActiveExecution
 from src.models.contracts.notifications import NotificationCategory, NotificationCreate, NotificationStatus
+from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
 from src.services.execution.simple_worker import install_requirements, RequirementsInstallResult
 from src.services.notification_service import get_notification_service
 from src.services.execution.template_process import TemplateProcess
@@ -56,6 +58,7 @@ from src.services.execution.template_process import TemplateProcess
 logger = logging.getLogger(__name__)
 
 _CLEAN_EXIT_RESULT_GRACE = timedelta(seconds=2)
+_ACTIVE_EXECUTION_REFRESH_SECONDS = 10 * 60
 
 
 async def _notify_requirements_failures(result: RequirementsInstallResult) -> None:
@@ -151,11 +154,13 @@ class ExecutionInfo:
         execution_id: Unique identifier for the execution
         started_at: When the execution started
         timeout_seconds: Execution timeout in seconds
+        active_execution: Compact metadata kept alive by the parent process
     """
 
     execution_id: str
     started_at: datetime
     timeout_seconds: int
+    active_execution: ActiveExecution
 
     @property
     def elapsed_seconds(self) -> float:
@@ -166,6 +171,10 @@ class ExecutionInfo:
     def is_timed_out(self) -> bool:
         """Check if execution has exceeded its timeout. 0 = no timeout."""
         return self.timeout_seconds > 0 and self.elapsed_seconds > self.timeout_seconds
+
+    def attach_transport_metadata(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Attach parent-owned metadata required after Redis loss."""
+        return {**result, "sync": self.active_execution["sync"]}
 
 
 @dataclass
@@ -298,7 +307,7 @@ class ProcessPoolManager:
         await pool.start()
 
         # Route execution
-        await pool.route_execution(execution_id, context)
+        await pool.route_execution(execution_id, context, active_execution)
 
         # Shutdown
         await pool.stop()
@@ -342,6 +351,7 @@ class ProcessPoolManager:
         self._shutdown = False
         self._started = False
         self._started_at: datetime | None = None
+        self._last_active_execution_refresh: float | None = None
         self._requirements_installed: int = 0
         self._requirements_total: int = 0
 
@@ -512,6 +522,7 @@ class ProcessPoolManager:
         self._started = True
         self._shutdown = False
         self._started_at = datetime.now(timezone.utc)
+        self._last_active_execution_refresh = time.monotonic()
 
         # Install requirements once (shared filesystem — all child processes inherit)
         install_result = await asyncio.to_thread(install_requirements)
@@ -667,6 +678,7 @@ class ProcessPoolManager:
         self,
         execution_id: str,
         context: dict[str, Any],
+        active_execution: ActiveExecution,
     ) -> None:
         """
         Fork a one-shot worker for this execution.
@@ -679,6 +691,7 @@ class ProcessPoolManager:
         Args:
             execution_id: Unique identifier for the execution
             context: Execution context sent to the child and retained in Redis
+            active_execution: Compact completion metadata retained by the parent
         """
         # Write context to Redis
         await self._write_context_to_redis(execution_id, context)
@@ -702,13 +715,14 @@ class ProcessPoolManager:
         # a restart could otherwise begin during the Redis write above and
         # retire the child just before this route sends it work.
         async with self._restart_lock:
-            await self._dispatch_to_child(execution_id, context, timeout)
+            await self._dispatch_to_child(execution_id, context, timeout, active_execution)
 
     async def _dispatch_to_child(
         self,
         execution_id: str,
         context: dict[str, Any],
         timeout: int,
+        active_execution: ActiveExecution,
     ) -> None:
         """Claim or fork one child and send its sole execution."""
         # Wait until a result frees a slot when every child is busy.
@@ -722,8 +736,18 @@ class ProcessPoolManager:
             execution_id=execution_id,
             started_at=datetime.now(timezone.utc),
             timeout_seconds=timeout,
+            active_execution=active_execution,
         )
         handle.result_reported = False
+
+        try:
+            await self._write_active_execution_lease(handle.current_execution)
+        except Exception as exc:  # noqa: BLE001 - execution must still be dispatched
+            logger.warning(
+                "Could not write active execution lease for %s: %s",
+                execution_id,
+                exc,
+            )
 
         self._register_result_reader(handle)
 
@@ -737,6 +761,18 @@ class ProcessPoolManager:
             self._unregister_result_reader(handle)
             self.processes.pop(handle.id, None)
             await self._notify_slot_free()
+            try:
+                r = await self._get_redis()
+                await r.delete(
+                    active_execution_key(execution_id),
+                    f"bifrost:exec:{execution_id}:context",
+                )
+            except Exception as cleanup_exc:  # noqa: BLE001 - preserve dispatch error
+                logger.warning(
+                    "Could not clean up failed dispatch %s: %s",
+                    execution_id,
+                    cleanup_exc,
+                )
             raise
 
         logger.info(
@@ -759,6 +795,51 @@ class ProcessPoolManager:
         r = await self._get_redis()
         context_key = f"bifrost:exec:{execution_id}:context"
         await r.setex(context_key, 3600, json.dumps(context, default=str))
+
+    async def _write_active_execution_lease(self, execution: ExecutionInfo) -> None:
+        """Create or recreate the compact Redis lease for one live execution."""
+        r = await self._get_redis()
+        await r.setex(
+            active_execution_key(execution.execution_id),
+            TTL_ACTIVE_EXECUTION,
+            json.dumps(execution.active_execution),
+        )
+
+    async def _refresh_active_execution_leases(self) -> None:
+        """Recreate all live execution leases with one Redis round trip."""
+        executions = [
+            handle.current_execution
+            for handle in self.processes.values()
+            if (
+                handle.state == ProcessState.BUSY
+                and not handle.result_reported
+                and handle.current_execution is not None
+            )
+        ]
+        if not executions:
+            return
+
+        r = await self._get_redis()
+        pipeline = r.pipeline(transaction=False)
+        for execution in executions:
+            pipeline.setex(
+                active_execution_key(execution.execution_id),
+                TTL_ACTIVE_EXECUTION,
+                json.dumps(execution.active_execution),
+            )
+        await pipeline.execute()
+
+    async def _refresh_active_execution_leases_if_due(self, now: float) -> None:
+        """Refresh live leases at a sparse cadence independent of pool heartbeat."""
+        last_refresh = self._last_active_execution_refresh
+        if (
+            last_refresh is not None
+            and now - last_refresh < _ACTIVE_EXECUTION_REFRESH_SECONDS
+        ):
+            return
+
+        await self._refresh_active_execution_leases()
+        self._last_active_execution_refresh = now
 
     async def _monitor_loop(self) -> None:
         """
@@ -895,14 +976,14 @@ class ProcessPoolManager:
             return
         handle.result_reported = True
         try:
-            await self.on_result({
+            await self.on_result(exec_info.attach_transport_metadata({
                 "type": "result",
                 "execution_id": exec_info.execution_id,
                 "success": False,
                 "error": f"Execution timed out after {exec_info.timeout_seconds}s",
                 "error_type": "TimeoutError",
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
-            })
+            }))
         except Exception as e:
             logger.exception(f"Error reporting timeout: {e}")
 
@@ -1123,14 +1204,14 @@ class ProcessPoolManager:
             return
         handle.result_reported = True
         try:
-            await self.on_result({
+            await self.on_result(exec_info.attach_transport_metadata({
                 "type": "result",
                 "execution_id": exec_info.execution_id,
                 "success": False,
                 "error": "Execution was cancelled",
                 "error_type": "CancelledError",
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
-            })
+            }))
         except Exception as e:
             logger.exception(f"Error reporting cancellation: {e}")
 
@@ -1258,14 +1339,14 @@ class ProcessPoolManager:
             return
         handle.result_reported = True
         try:
-            await self.on_result({
+            await self.on_result(exec_info.attach_transport_metadata({
                 "type": "result",
                 "execution_id": exec_info.execution_id,
                 "success": False,
                 "error": "Execution orphaned — process was killed but result was never reported",
                 "error_type": "OrphanedExecution",
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
-            })
+            }))
         except Exception as e:
             logger.exception(f"Error reporting orphan: {e}")
 
@@ -1284,14 +1365,14 @@ class ProcessPoolManager:
             return
         handle.result_reported = True
         try:
-            await self.on_result({
+            await self.on_result(exec_info.attach_transport_metadata({
                 "type": "result",
                 "execution_id": exec_info.execution_id,
                 "success": False,
                 "error": "Worker process crashed unexpectedly",
                 "error_type": "ProcessCrashError",
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
-            })
+            }))
         except Exception as e:
             logger.exception(f"Error reporting crash: {e}")
 
@@ -1368,6 +1449,12 @@ class ProcessPoolManager:
         self._unregister_result_reader(handle)
         handle.result_reported = True
 
+        execution = handle.current_execution
+        if execution is None:
+            logger.error("Result received without an active execution on %s", handle.id)
+            return
+        result = execution.attach_transport_metadata(result)
+
         # Clear current execution
         handle.current_execution = None
         handle.executions_completed += 1
@@ -1402,6 +1489,8 @@ class ProcessPoolManager:
 
         while not self._shutdown:
             try:
+                await self._refresh_active_execution_leases_if_due(time.monotonic())
+
                 # Refresh registration
                 await self._refresh_registration()
 
