@@ -289,7 +289,7 @@ export function Timeline({
 					role="region"
 					aria-label="Activity calls"
 				>
-					<ol aria-label="Run activity" className="space-y-1 pb-2">
+					<ol aria-label="Run activity" className="space-y-1 pb-2 [--tree-indent:1rem] sm:[--tree-indent:2rem]">
 						{activity.map((item) => (
 							<ActivityTreeRow
 								key={`${item.id}:${bulkExpansionRequest?.token ?? 0}`}
@@ -561,9 +561,10 @@ function ActivityTreeRow({
 			className={cn(
 				"relative scroll-mt-24 outline-none [overflow-wrap:anywhere]",
 				rowDepth > 0 &&
-					"before:pointer-events-none before:absolute before:inset-y-0 before:start-0 before:z-10 before:w-px before:bg-border/70 last:before:bottom-auto last:before:h-[30px] after:pointer-events-none after:absolute after:start-0 after:top-[30px] after:z-10 after:h-px after:w-3 after:bg-border/70",
+					"before:pointer-events-none before:absolute before:inset-y-0 before:start-[var(--row-indent)] before:z-10 before:w-px before:bg-border/70 last:before:bottom-auto last:before:h-[30px] after:pointer-events-none after:absolute after:start-[var(--row-indent)] after:top-[30px] after:z-10 after:h-px after:w-3 after:bg-border/70",
 				selected && "before:opacity-0 after:opacity-0",
 			)}
+			style={{ "--row-indent": `calc(var(--tree-indent) * ${Math.min(rowDepth, 3)})` } as React.CSSProperties}
 			data-activity-id={item.id}
 			data-activity-kind={item.kind}
 			data-highlighted={highlighted ? "true" : "false"}
@@ -571,10 +572,10 @@ function ActivityTreeRow({
 			<div
 				className={cn(
 					"relative min-w-0 rounded-[var(--bf-radius-control)] px-2 py-3 transition-colors motion-reduce:transition-none",
-					rowDepth > 0 && "ps-4",
+					rowDepth > 0 && "ps-[calc(var(--row-indent)_+_1rem)]",
 					(joinedRows || rowDepth > 0) && "rounded-none",
 					selected
-						? "bg-[var(--bf-info-soft)]/55 hover:bg-[var(--bf-info-soft)]/55"
+						? "z-20 tree-row-selected"
 						: "hover:bg-muted/35",
 					highlighted && "ring-2 ring-inset ring-[var(--bf-info)]/45",
 				)}
@@ -697,12 +698,7 @@ function ActivityTreeRow({
 				</div>
 			) : null}
 			{open && childActivity.length ? (
-				<ol
-					className={cn(
-						"space-y-0",
-						rowDepth === 0 ? "ms-6" : "ms-8",
-					)}
-				>
+				<ol className="space-y-0">
 					{childActivity.map((childItem) => (
 						<ActivityTreeRow
 							key={`${childItem.id}:${bulkExpansionRequest?.token ?? 0}`}

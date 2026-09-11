@@ -138,7 +138,7 @@ export function ResourceTreeTable({
 								"before:absolute before:left-[var(--row-indent)] before:top-0 before:h-full before:w-px before:bg-border after:absolute after:left-[var(--row-indent)] after:top-7 after:h-px after:w-4 after:bg-border",
 							row.depth > 0 && row.branchLast && "before:h-7",
 							selectedIds.has(row.entity.key) && !isEntityManaged(row.entity)
-								? "bg-[var(--bf-info-soft)]/55 hover:bg-[var(--bf-info-soft)]/55 before:opacity-0 after:opacity-0"
+								? "tree-row-selected before:opacity-0 after:opacity-0"
 								: "hover:bg-muted/20",
 						)}
 						style={{

@@ -221,3 +221,20 @@ Verification:
 - `npm run tsc` and `npx eslint src/components/agents/Timeline.tsx src/components/agents/Timeline.test.tsx e2e/agents-detail-runs.admin.spec.ts` passed.
 - Live workflow and delegated-agent inspector actions were checked and screenshotted at 1440px and 390px. No page errors or horizontal overflow occurred.
 - Full suites and pre-PR were not rerun for this debug iteration.
+
+
+## Unified full-width tree selection
+
+Activity now matches Entity Management: every selected row fills the list width,
+regardless of nesting depth. Tree indentation is applied to row contents rather
+than nested list margins. Both features share `tree-row-selected`, which provides
+an opaque theme-derived tint and stable hover treatment; ancestor connectors
+cannot show through the selected surface. Indentation is narrower on mobile and
+bounded for deep nesting. DESIGN.md records this as the shared convention.
+
+Verification:
+- `./test.sh client unit -- Timeline.test.tsx ResourceTreeTable.test.tsx`: 2 files / 28 tests passed.
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts --grep 'groups run activity'`: journey plus setup passed with zero retries, checking selected nested rows against both outer list edges, stable hover, navigation, and mobile inspection.
+- `npm run tsc` and `npx eslint src/components/agents/Timeline.tsx src/components/entity-management/ResourceTreeTable.tsx e2e/agents-detail-runs.admin.spec.ts` passed.
+- Live desktop/mobile inspection covered both Activity and Entity Management; Activity selection's left edge matched the outer list at 295px on desktop. Response tabs retained zero vertical overflow. Entity selection remained flush to its full list width.
+- Scoped design detection and `git diff --check` passed. Full suites and pre-PR were not rerun.

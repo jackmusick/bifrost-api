@@ -628,12 +628,15 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				.toBe(selectedColor);
 			const treeGeometry = await nestedDelegation.evaluate((element) => ({
 				row: element.firstElementChild?.getBoundingClientRect().left,
-				guide: element.parentElement?.getBoundingClientRect().left,
+				guide: element.closest('[aria-label="Run activity"]')?.getBoundingClientRect().left,
+				rowRight: element.firstElementChild?.getBoundingClientRect().right,
+				listRight: element.closest('[aria-label="Run activity"]')?.getBoundingClientRect().right,
 				branchWidth: parseFloat(
 					getComputedStyle(element, "::after").width,
 				),
 			}));
 			expect(treeGeometry.row).toBe(treeGeometry.guide);
+			expect(treeGeometry.rowRight).toBe(treeGeometry.listRight);
 			expect(treeGeometry.branchWidth).toBeGreaterThan(0);
 			await expect.poll(() => nestedDelegation.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("0");
 			const detailTabs = selectedDetails.getByRole("tablist");

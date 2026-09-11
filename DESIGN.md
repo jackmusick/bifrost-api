@@ -55,8 +55,11 @@ Overview above. Closing shrinks the list and restores focus. Highlight backgroun
 meet the header and inspector divider without an inset gutter. Reduced motion
 must still reveal the header after the new height is applied.
 Nested activity uses branch connectors with an elbow for each child and a stem
-that stops at the last sibling. Selected backgrounds reach the nearest branch
-guide and persist on hover; pointer feedback must not replace selection feedback.
+that stops at the last sibling. Activity and Entity Management use full-width
+row selection, from the container edge to the inspector divider, regardless of
+depth. Indent contents rather than selection surfaces. Use `tree-row-selected`
+for the shared opaque selection tint so ancestor guides cannot show through it.
+Selection persists on hover; pointer feedback must not replace selection feedback.
 
 Entity Management uses a contained resource directory with expandable relationships,
 not table columns. Resource identity leads; scope, type, and access remain visible

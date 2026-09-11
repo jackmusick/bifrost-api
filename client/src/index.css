@@ -101,6 +101,16 @@
 	}
 }
 
+/* Tree selection covers the whole row; nesting belongs to its contents.
+   An opaque mixed surface prevents ancestor connectors showing through it. */
+@utility tree-row-selected {
+	background-color: color-mix(in oklab, var(--bf-info-soft) 55%, var(--card));
+
+	&:hover {
+		background-color: color-mix(in oklab, var(--bf-info-soft) 55%, var(--card));
+	}
+}
+
 @utility no-scrollbar {
 	-ms-overflow-style: none;
 	scrollbar-width: none;
