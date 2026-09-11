@@ -13,6 +13,7 @@ import { ExternalLink, ListTree, Sparkles, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import {
 	Sheet,
 	SheetContent,
@@ -280,7 +281,10 @@ function RunReviewSheetHeader({
 							Run review
 						</div>
 						<SheetTitle className="text-pretty break-words text-lg leading-6 sm:text-xl">
-							{title}
+							<MarkdownContent
+								content={title}
+								variant="preview"
+							/>
 						</SheetTitle>
 					</div>
 					<Button

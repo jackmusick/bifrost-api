@@ -1,3 +1,4 @@
+import { StrictMode, useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import { renderWithProviders, screen } from "@/test-utils";
@@ -5,6 +6,58 @@ import { renderWithProviders, screen } from "@/test-utils";
 import { DidNarrative } from "./DidNarrative";
 
 describe("DidNarrative", () => {
+	it("preserves the action link while its preview updates the parent", async () => {
+		const activate = vi.fn();
+		function PreviewHarness() {
+			const [preview, setPreview] = useState<string | null>(null);
+			return (
+				<div aria-label={preview ?? "No preview"}>
+					<DidNarrative
+						text="Used [send_email]."
+						activityReferences={{
+							send_email: [
+								{ activityId: "sent", label: "Sent email" },
+							],
+						}}
+						onReferencePreview={setPreview}
+						onReferenceActivate={activate}
+					/>
+				</div>
+			);
+		}
+		const { user } = renderWithProviders(
+			<StrictMode>
+				<PreviewHarness />
+			</StrictMode>,
+		);
+		const link = screen.getByRole("link", {
+			name: "Show Sent email in Activity",
+		});
+		await user.hover(link);
+		expect(
+			screen.getByRole("link", { name: "Show Sent email in Activity" }),
+		).toBe(link);
+		await user.click(link);
+		expect(activate).toHaveBeenCalledWith("sent");
+	});
+	it("formats prose while preserving real links and code containing marker-like text", () => {
+		renderWithProviders(
+			<DidNarrative
+				text={
+					"### Outcome\n\n**Reviewed** [send_email]. Read [guide](https://example.com) and keep `[literal_code]`."
+				}
+			/>,
+		);
+		expect(
+			screen.getByRole("heading", { name: "Outcome" }),
+		).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "guide" })).toHaveAttribute(
+			"href",
+			"https://example.com",
+		);
+		expect(screen.getByText("[literal_code]")).toBeInTheDocument();
+		expect(screen.getByText("Send email")).toBeInTheDocument();
+	});
 	it("replaces machine markers with quiet human-readable references", () => {
 		renderWithProviders(
 			<DidNarrative text="I used [ai_ticketing_get_ticket_details] to fetch the ticket." />,

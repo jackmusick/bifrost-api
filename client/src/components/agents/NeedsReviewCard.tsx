@@ -8,6 +8,7 @@
 import { ThumbsDown, ChevronRight, Clock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/utils";
 import type { components } from "@/lib/v1";
@@ -56,11 +57,13 @@ export function NeedsReviewCard({
 					>
 						Flagged
 					</Badge>
-					<div
-						className="min-w-0 flex-1 break-words text-sm font-medium leading-6"
-						title={run.asked ?? undefined}
-					>
-						{run.asked || (
+					<div className="min-w-0 flex-1 break-words text-sm font-medium leading-6">
+						{run.asked ? (
+							<MarkdownContent
+								content={run.asked}
+								variant="preview"
+							/>
+						) : (
 							<span className="text-muted-foreground">—</span>
 						)}
 					</div>
@@ -73,11 +76,8 @@ export function NeedsReviewCard({
 						“{run.verdict_note}”
 					</div>
 				) : run.did ? (
-					<div
-						className="break-words text-sm leading-6 text-muted-foreground"
-						title={run.did}
-					>
-						{run.did}
+					<div className="break-words text-sm leading-6 text-muted-foreground">
+						<MarkdownContent content={run.did} variant="preview" />
 					</div>
 				) : null}
 				<div className="flex items-center gap-1 text-[11px] text-muted-foreground">

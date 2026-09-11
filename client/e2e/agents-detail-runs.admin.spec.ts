@@ -136,7 +136,7 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 		agent_name: agentName,
 		asked,
 		did,
-		answered: "Work completed successfully.",
+		answered: "### Outcome\n\nWork **completed** successfully.",
 		input: { ticket_id: 428950, request: asked },
 		output: { ticket_id: 428950, completed: true },
 		steps,
@@ -344,6 +344,19 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			await page.goto(`/agents/${agent.id}/runs/${parentId}`);
 			const activity = page.locator('[data-slot="run-activity"]');
 			await expect(activity).toBeVisible();
+			const answerHeading = page.getByRole("heading", {
+				name: "Outcome",
+				exact: true,
+			});
+			await expect(answerHeading).toBeVisible();
+			expect(
+				await answerHeading.evaluate((element) =>
+					parseFloat(getComputedStyle(element).fontSize),
+				),
+			).toBeLessThanOrEqual(14);
+			await expect(
+				page.getByText("### Outcome", { exact: true }),
+			).toHaveCount(0);
 			await expect(
 				activity.getByText("Looked up ticket details", { exact: true }),
 			).toBeVisible();

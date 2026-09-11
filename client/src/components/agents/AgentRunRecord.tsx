@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { formatDate, formatDuration } from "@/lib/utils";
 import type { AgentRunNavigationState } from "@/lib/agent-run-navigation";
 import type { components } from "@/lib/v1";
@@ -50,7 +51,11 @@ export function RunStatusBadge({ status }: { status: string }) {
 				</Badge>
 			);
 		default:
-			return <Badge variant="outline" className="min-w-24">{status}</Badge>;
+			return (
+				<Badge variant="outline" className="min-w-24">
+					{status}
+				</Badge>
+			);
 	}
 }
 
@@ -97,9 +102,16 @@ export function AgentRunRecord({
 			>
 				{run.agent_name ?? "Agent"}
 			</Link>
-			<p className="text-sm [overflow-wrap:anywhere]">
-				{run.asked || run.did || "No summary available."}
-			</p>
+			<div className="text-sm [overflow-wrap:anywhere]">
+				{run.asked || run.did ? (
+					<MarkdownContent
+						content={run.asked || run.did || ""}
+						variant="preview"
+					/>
+				) : (
+					"No summary available."
+				)}
+			</div>
 			<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
 				<dt className="text-muted-foreground">Started</dt>
 				<dd>

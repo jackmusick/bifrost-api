@@ -1,3 +1,4 @@
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 /**
  * Shared run review panel.
  *
@@ -233,11 +234,16 @@ export function RunReviewPanel({
 				>
 					<div
 						className={cn(
-							"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 whitespace-pre-wrap break-words",
+							"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 break-words",
 							compact ? "text-xs" : "text-sm",
 						)}
 					>
-						{run.asked || (
+						{run.asked ? (
+							<MarkdownContent
+								content={run.asked}
+								className={compact ? "text-xs" : undefined}
+							/>
+						) : (
 							<SummaryPlaceholder
 								status={run.summary_status}
 								runStatus={run.status}
@@ -317,12 +323,15 @@ export function RunReviewPanel({
 					>
 						<div
 							className={cn(
-								"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 whitespace-pre-wrap break-words",
+								"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 break-words",
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
 							{run.answered ? (
-								run.answered
+								<MarkdownContent
+									content={run.answered}
+									className={compact ? "text-xs" : undefined}
+								/>
 							) : run.did ? (
 								// Older summaries have no separate answer and
 								// may still contain executor markers. Reuse the

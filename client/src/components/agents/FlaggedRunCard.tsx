@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import { getLocationHref } from "@/lib/agent-run-navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentRun } from "@/services/agentRuns";
 import type { components } from "@/lib/v1";
@@ -48,7 +49,14 @@ export function FlaggedRunCard({ run }: FlaggedRunCardProps) {
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="font-medium text-foreground [overflow-wrap:anywhere]">
-						{title}
+						{run.asked || run.did ? (
+							<MarkdownContent
+								content={title}
+								variant="preview"
+							/>
+						) : (
+							title
+						)}
 					</div>
 					{run.verdict_note ? (
 						<div

@@ -178,3 +178,16 @@ If an origin flush triggered by Close fails, sharing selects Website Embed, open
 Inputs use a 44px mobile target and the `--bf-control-height` density token on desktop (40px comfortable, 32px compact). Keep the canonical outlined surface and 6px control radius when changing sizing. A size change must not restore legacy filled/pill styling. Page-local overrides should express an actual density or composition requirement.
 
 List action consistency: use the record name as a native navigation link, with one named overflow-menu trigger for secondary actions such as Edit and Delete. Keep that same interaction model in desktop rows and mobile records. Avoid a separate arrow/Open button that duplicates the name or row navigation. Selection remains independent of navigation. Menus must stop row-click propagation, expose keyboard-accessible actions, and return focus on dismissal; destructive actions still require their existing confirmation. Task-specific primary actions need an explicit reason to be inline. Review this pattern across sibling pages as well as checking width and touch targets.
+
+### Markdown in product fields
+
+Use `MarkdownContent` from `@/components/common/MarkdownContent` for generated or user-authored Markdown displayed in a field. Its default compact mode inherits the product typography: every Markdown heading renders as a restrained, body-sized section heading; paragraphs, lists, tables, links and code retain their meaning with consistent spacing. It does not apply document-sized typography or add a card around the field.
+
+```tsx
+<MarkdownContent content={run.answered} />
+<MarkdownContent content={run.asked} variant="preview" />
+```
+
+Use `preview` inside list rows, titles and clickable cards. It renders inline text and emphasis without nested block layouts or interactive links, so row navigation and truncation keep working. It parses the original Markdown before rendering; do not slice Markdown source before passing it in.
+
+Agent action narratives use `DidNarrative`, which composes the same renderer with verified action references. Its extension processes parsed text, preserving ordinary Markdown links and literal code. Keep editable text, raw logs, JSON/code inspection, and copied source as their original values. Chat's streaming/code-block presentation remains a separate specialized surface.

@@ -1,5 +1,4 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import {
 	Sheet,
 	SheetContent,
@@ -494,7 +493,12 @@ function ActivityTreeRow({
 							</span>
 							{caption ? (
 								<span className="mt-0.5 line-clamp-2 break-words text-xs leading-5 text-muted-foreground">
-									{caption}
+									{caption && (
+										<MarkdownContent
+											content={caption}
+											variant="preview"
+										/>
+									)}
 								</span>
 							) : null}
 						</span>
@@ -728,9 +732,13 @@ function ActivityDetailPanel({
 					<TabsContent value="overview" className="mt-0 min-w-0">
 						<div className="grid gap-5">
 							<OverviewBlock label="Task">
-								{child?.asked ??
-									item.task ??
-									"No task summary recorded."}
+								<MarkdownContent
+									content={
+										child?.asked ??
+										item.task ??
+										"No task summary recorded."
+									}
+								/>
 							</OverviewBlock>
 							<OverviewBlock label="Outcome">
 								<DidNarrative
@@ -1259,24 +1267,7 @@ function DetailBlock({ detail }: { detail: DetailRender }) {
 			</div>
 		);
 	}
-	return (
-		<div className="min-w-0 space-y-4 break-words text-sm leading-7 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs">
-			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
-				components={{
-					table: ({ children }) => (
-						<div className="overflow-x-auto rounded-md border border-border">
-							<table className="w-full text-left text-sm [&_th]:bg-muted/40 [&_th]:px-3 [&_th]:py-2 [&_th]:font-medium [&_td]:border-t [&_td]:border-border [&_td]:px-3 [&_td]:py-2">
-								{children}
-							</table>
-						</div>
-					),
-				}}
-			>
-				{detail.value}
-			</ReactMarkdown>
-		</div>
-	);
+	return <MarkdownContent content={detail.value} />;
 }
 
 function asVariableRecord(value: unknown): Record<string, unknown> {

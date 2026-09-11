@@ -36,6 +36,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
@@ -574,7 +575,14 @@ function FlipbookCard({
 								: ""}
 						</div>
 						<CardTitle className="mt-1 text-base">
-							{run.did || run.asked || "Agent run"}
+							{run.did || run.asked ? (
+								<MarkdownContent
+									content={run.did || run.asked || ""}
+									variant="preview"
+								/>
+							) : (
+								"Agent run"
+							)}
 						</CardTitle>
 					</div>
 					<Button asChild variant="ghost" size="sm">
@@ -626,7 +634,6 @@ function ProgressDots({
 					type="button"
 					aria-current={i === idx ? "step" : undefined}
 					aria-label={`Go to run ${i + 1}`}
-					title={r.did ?? r.asked ?? `Run ${i + 1}`}
 					onClick={() => onJump(i)}
 					className={cn(
 						"flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

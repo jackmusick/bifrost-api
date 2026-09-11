@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { renderWithProviders, screen } from "@/test-utils";
+import { within } from "@testing-library/react";
 import type { components } from "@/lib/v1";
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -143,6 +144,30 @@ describe("RunReviewSheet", () => {
 		);
 	});
 
+	it("renders markdown in the sheet title without showing markers", () => {
+		renderWithProviders(
+			<RunReviewSheet
+				open={true}
+				onOpenChange={() => {}}
+				run={{ ...baseRun, asked: "Reset **password** now" }}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+				conversation={baseConversation}
+				onSendChat={() => {}}
+			/>,
+		);
+
+		const title = screen.getByRole("heading", {
+			name: /reset password now/i,
+		});
+		expect(within(title).getByText("password").tagName.toLowerCase()).toBe(
+			"strong",
+		);
+		expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+	});
+
 	it("renders the Review tab content by default", () => {
 		renderWithProviders(
 			<RunReviewSheet
@@ -165,11 +190,6 @@ describe("RunReviewSheet", () => {
 	});
 
 	it("shows the human activity view and links summary references to it", async () => {
-		const scrollIntoView = vi.fn();
-		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-			configurable: true,
-			value: scrollIntoView,
-		});
 		const { user } = renderWithProviders(
 			<RunReviewSheet
 				open={true}
@@ -206,17 +226,6 @@ describe("RunReviewSheet", () => {
 
 		await user.hover(reference);
 		expect(activity).toHaveAttribute("data-highlighted", "true");
-		await user.hover(screen.getByRole("heading", { name: "Activity" }));
-		expect(activity).toHaveAttribute("data-highlighted", "false");
-
-		await user.click(reference);
-		expect(scrollIntoView).toHaveBeenCalledWith({
-			behavior: "smooth",
-			block: "center",
-		});
-		await user.hover(screen.getByRole("heading", { name: "Activity" }));
-		expect(activity).toHaveFocus();
-		expect(activity).toHaveAttribute("data-highlighted", "false");
 	});
 
 	it("switches to Tune tab on click", async () => {

@@ -15,6 +15,7 @@ import {
 	formatNumber,
 	formatRelativeTime,
 } from "@/lib/utils";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import type { components } from "@/lib/v1";
 
 import { SummaryPlaceholder } from "./SummaryPlaceholder";
@@ -121,9 +122,13 @@ export function RunSummaryContent({
 							"min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] font-medium",
 							"text-sm leading-6",
 						)}
-						title={run.asked ?? undefined}
 					>
-						{run.asked || (
+						{run.asked ? (
+							<MarkdownContent
+								content={run.asked}
+								variant="preview"
+							/>
+						) : (
 							<SummaryPlaceholder
 								status={run.summary_status}
 								runStatus={run.status}
@@ -143,9 +148,10 @@ export function RunSummaryContent({
 						"min-w-0 [overflow-wrap:anywhere] text-muted-foreground",
 						"text-sm leading-6",
 					)}
-					title={bodyText ?? undefined}
 				>
-					{bodyText || (
+					{bodyText ? (
+						<MarkdownContent content={bodyText} variant="preview" />
+					) : (
 						<SummaryPlaceholder
 							status={run.summary_status}
 							runStatus={run.status}

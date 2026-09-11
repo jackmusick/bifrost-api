@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Bot, Clock, RefreshCw } from "lucide-react";
 
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAgents } from "@/hooks/useAgents";
@@ -612,9 +613,19 @@ export function AgentRunsPanel() {
 											/>
 										</span>
 									</div>
-									<p className="mt-1 truncate text-xs text-muted-foreground sm:hidden">
-										{run.asked || run.did || "—"}
-									</p>
+									<div className="mt-1 truncate text-xs text-muted-foreground sm:hidden">
+										{run.asked || run.did ? (
+											<MarkdownContent
+												content={
+													run.asked || run.did || ""
+												}
+												variant="preview"
+												className="truncate"
+											/>
+										) : (
+											"—"
+										)}
+									</div>
 									<div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden text-xs text-muted-foreground xl:hidden">
 										<span className="inline-flex min-w-0 items-center gap-1">
 											<Clock className="h-3 w-3 shrink-0" />
@@ -634,7 +645,15 @@ export function AgentRunsPanel() {
 									</div>
 								</DataTableCell>
 								<DataTableCell className="hidden max-w-md truncate sm:table-cell">
-									{run.asked || run.did || "—"}
+									{run.asked || run.did ? (
+										<MarkdownContent
+											content={run.asked || run.did || ""}
+											variant="preview"
+											className="truncate"
+										/>
+									) : (
+										"—"
+									)}
 								</DataTableCell>
 								<DataTableCell className="w-28 whitespace-nowrap px-2 sm:px-4">
 									<RunStatusBadge status={run.status} />
