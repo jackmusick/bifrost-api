@@ -217,6 +217,7 @@ async def test_tables_query_forwards_document_id_pagination_and_skip_count(monke
         scope="global",
         after_document_id="tenant|drive|item-001",
         document_id_prefix="tenant|",
+        document_ids=["tenant|drive|item-001", "tenant|drive|item-002"],
         skip_count=True,
         limit=500,
     )
@@ -232,6 +233,7 @@ async def test_tables_query_forwards_document_id_pagination_and_skip_count(monke
             "offset": 0,
             "after_document_id": "tenant|drive|item-001",
             "document_id_prefix": "tenant|",
+            "document_ids": ["tenant|drive|item-001", "tenant|drive|item-002"],
             "skip_count": True,
         },
     )

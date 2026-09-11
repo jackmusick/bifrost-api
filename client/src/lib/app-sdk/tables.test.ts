@@ -74,9 +74,16 @@ describe("tables web SDK", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await tables.query("t1", { where: { x: { eq: 1 } } });
+    await tables.query("t1", {
+      document_ids: ["doc-1", "doc-2"],
+      where: { x: { eq: 1 } },
+    });
     const url = fetchMock.mock.calls[0][0];
     expect(url).toMatch(/\/api\/tables\/t1\/documents\/query$/);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({
+      document_ids: ["doc-1", "doc-2"],
+      where: { x: { eq: 1 } },
+    });
   });
 
   it("delete returns true on 204", async () => {
