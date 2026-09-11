@@ -211,6 +211,73 @@ class TestAsyncExecution:
         assert result is not None, "Async execution did not complete within timeout"
         assert result.get("status") == "Success", f"Execution failed: {result}"
 
+    def test_running_execution_completes_after_redis_tracking_loss(
+        self, e2e_client, platform_admin, async_workflow
+    ):
+        """Deleting both Redis tracking records must not orphan the DB row."""
+        import redis
+
+        from src.config import get_settings
+        from src.core.cache.keys import active_execution_key, execution_pending_key
+
+        response = e2e_client.post(
+            "/api/workflows/execute",
+            headers=platform_admin.headers,
+            json={
+                "workflow_id": async_workflow["id"],
+                "input_data": {"delay_seconds": 5},
+            },
+        )
+        assert response.status_code in [200, 202], response.text
+        execution_id = response.json().get("execution_id") or response.json().get(
+            "executionId"
+        )
+        assert execution_id
+
+        redis_client = redis.Redis.from_url(
+            get_settings().redis_url,
+            decode_responses=True,
+        )
+        try:
+            def check_running_with_lease():
+                detail = e2e_client.get(
+                    f"/api/executions/{execution_id}",
+                    headers=platform_admin.headers,
+                )
+                if (
+                    detail.status_code == 200
+                    and detail.json().get("status") == "Running"
+                    and redis_client.exists(active_execution_key(execution_id))
+                ):
+                    return detail.json()
+                return None
+
+            running = poll_until(check_running_with_lease, max_wait=10.0)
+            assert running is not None, "Execution never reached Running with a lease"
+
+            redis_client.delete(
+                active_execution_key(execution_id),
+                execution_pending_key(execution_id),
+            )
+
+            def check_completed():
+                detail = e2e_client.get(
+                    f"/api/executions/{execution_id}",
+                    headers=platform_admin.headers,
+                )
+                if detail.status_code == 200 and detail.json().get("status") in {
+                    "Success",
+                    "Failed",
+                }:
+                    return detail.json()
+                return None
+
+            completed = poll_until(check_completed, max_wait=15.0)
+            assert completed is not None, "Execution remained orphaned in Running"
+            assert completed["status"] == "Success", completed
+        finally:
+            redis_client.close()
+
 
 @pytest.mark.e2e
 class TestExecutionAccess:

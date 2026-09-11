@@ -3,13 +3,13 @@ Workflow Execution Consumer
 
 Processes async workflow executions from RabbitMQ queue.
 
-Architecture (Redis-first):
+Architecture (PostgreSQL-durable with Redis acceleration):
 1. API stores pending execution in Redis, publishes to RabbitMQ
 2. Consumer reads pending execution from Redis
-3. Consumer creates PostgreSQL record when starting
-4. Consumer routes execution to ProcessPoolManager
-5. ProcessPoolManager executes in worker process, returns result via callback
-6. Consumer handles result: updates DB, flushes logs, cleans up Redis
+3. Consumer creates the durable PostgreSQL execution row when starting
+4. Consumer routes execution with a compact, parent-owned Redis lease
+5. ProcessPoolManager refreshes that lease while its child remains active
+6. Consumer records the result from the lease or reconstructs it from PostgreSQL
 
 For sync execution requests (sync=True in message):
 - Pushes result to Redis after completion
@@ -26,12 +26,17 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
 from src.core.pubsub import publish_execution_update, publish_history_update
-from src.core.redis_client import get_redis_client
+from src.core.redis_client import ActiveExecution, get_redis_client
 from src.jobs.rabbitmq import BaseConsumer
 from src.models.enums import ExecutionStatus
+from src.models.orm import Execution, User
 from src.repositories.executions import create_execution, update_execution
 
 logger = logging.getLogger(__name__)
@@ -58,7 +63,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         "sync": false (optional, if true pushes result to Redis for API)
     }
 
-    Full execution context is read from Redis pending execution.
+    Full execution context is read from the initial Redis pending execution.
     """
 
     def __init__(self):
@@ -124,6 +129,82 @@ class WorkflowExecutionConsumer(BaseConsumer):
         except Exception as e:
             logger.error(f"Failed to process result for {execution_id}: {e}")
             raise
+
+    async def _load_completion_metadata(
+        self,
+        execution_id: str,
+        session: AsyncSession | None = None,
+    ) -> tuple[ActiveExecution | None, bool]:
+        """Load compact metadata, rebuilding it from PostgreSQL if Redis lost it.
+
+        Returns the metadata and whether PostgreSQL recovery was required. The
+        recovery bit lets callers reconcile event delivery defensively because
+        the durable execution row does not retain the triggering event payload.
+        """
+        try:
+            active = await self._redis_client.get_active_execution(execution_id)
+        except Exception as exc:  # noqa: BLE001 - PostgreSQL is the fallback
+            logger.warning(
+                "Could not read active execution lease for %s: %s",
+                execution_id,
+                exc,
+            )
+            active = None
+
+        if active is not None:
+            return active, False
+
+        if session is None:
+            from src.core.database import get_session_factory
+
+            session_factory = get_session_factory()
+            async with session_factory() as recovery_session:
+                return await self._load_completion_metadata_from_database(
+                    execution_id, recovery_session
+                )
+
+        return await self._load_completion_metadata_from_database(
+            execution_id, session
+        )
+
+    async def _load_completion_metadata_from_database(
+        self,
+        execution_id: str,
+        session: AsyncSession,
+    ) -> tuple[ActiveExecution | None, bool]:
+        """Reconstruct terminal bookkeeping metadata from its durable row."""
+
+        row = (
+            await session.execute(
+                select(Execution, User.email)
+                .outerjoin(User, Execution.executed_by == User.id)
+                .where(Execution.id == UUID(execution_id))
+            )
+        ).one_or_none()
+        if row is None:
+            return None, True
+
+        execution, user_email = row
+        return (
+            ActiveExecution(
+                execution_id=str(execution.id),
+                workflow_id=(
+                    str(execution.workflow_id) if execution.workflow_id else None
+                ),
+                workflow_name=execution.workflow_name,
+                org_id=(
+                    str(execution.organization_id)
+                    if execution.organization_id
+                    else None
+                ),
+                user_id=(str(execution.executed_by) if execution.executed_by else None),
+                user_name=execution.executed_by_name,
+                user_email=user_email,
+                sync=False,
+                event=None,
+            ),
+            True,
+        )
 
     async def _record_completion_metrics(
         self,
@@ -205,19 +286,23 @@ class WorkflowExecutionConsumer(BaseConsumer):
         workflow_result = result.get("result")
         duration_ms = result.get("duration_ms", 0)
 
-        # Redis read — no DB connection held
-        pending = await self._redis_client.get_pending_execution(execution_id)
-        if not pending:
-            logger.warning(f"No pending record found for result: {execution_id}")
+        metadata, recovered_from_database = await self._load_completion_metadata(
+            execution_id
+        )
+        if metadata is None:
+            logger.error(
+                "No active lease or durable execution row found for result: %s",
+                execution_id,
+            )
             return
-        pending_read_ms = (time.perf_counter() - completion_started) * 1000
+        metadata_read_ms = (time.perf_counter() - completion_started) * 1000
 
-        workflow_id = pending.get("workflow_id")
-        workflow_name = pending.get("workflow_name", "unknown")
-        org_id = pending.get("org_id")
-        user_id = pending.get("user_id")
-        user_name = pending.get("user_name")
-        is_sync = pending.get("sync", False)
+        workflow_id = metadata.get("workflow_id")
+        workflow_name = metadata.get("workflow_name", "unknown")
+        org_id = metadata.get("org_id")
+        user_id = metadata.get("user_id")
+        user_name = metadata.get("user_name")
+        is_sync = result["sync"]
 
         status_str = result.get("status", "Success")
         status = (
@@ -250,7 +335,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             )
             execution_update_ms = (time.perf_counter() - completion_started) * 1000
 
-            if pending.get("event") is not None:
+            if metadata.get("event") is not None or recovered_from_database:
                 try:
                     from src.services.events.processor import update_delivery_from_execution
                     await update_delivery_from_execution(
@@ -353,11 +438,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
         await self._redis_client.delete_pending_execution(execution_id)
 
         logger.debug(
-            "Completion timing %s: pending=%.1fms execution_update=%.1fms "
+            "Completion timing %s: metadata=%.1fms execution_update=%.1fms "
             "changes=%.1fms logs=%.1fms durable=%.1fms result_ready=%.1fms "
             "metrics=%.1fms total=%.1fms",
             execution_id[:8],
-            pending_read_ms,
+            metadata_read_ms,
             execution_update_ms,
             changes_flushed_ms,
             logs_flushed_ms,
@@ -395,19 +480,23 @@ class WorkflowExecutionConsumer(BaseConsumer):
         error_type = result.get("error_type", "ExecutionError")
         duration_ms = result.get("duration_ms", 0)
 
-        # Redis read — no DB connection held
-        pending = await self._redis_client.get_pending_execution(execution_id)
-        if not pending:
-            logger.warning(f"No pending record found for failed result: {execution_id}")
+        metadata, recovered_from_database = await self._load_completion_metadata(
+            execution_id
+        )
+        if metadata is None:
+            logger.error(
+                "No active lease or durable execution row found for failed result: %s",
+                execution_id,
+            )
             return
 
-        workflow_id = pending.get("workflow_id")
-        workflow_name = pending.get("workflow_name", "unknown")
-        org_id = pending.get("org_id")
-        user_id = pending.get("user_id")
-        user_email = pending.get("user_email")
-        user_name = pending.get("user_name")
-        is_sync = pending.get("sync", False)
+        workflow_id = metadata.get("workflow_id")
+        workflow_name = metadata.get("workflow_name", "unknown")
+        org_id = metadata.get("org_id")
+        user_id = metadata.get("user_id")
+        user_email = metadata.get("user_email")
+        user_name = metadata.get("user_name")
+        is_sync = result["sync"]
 
         if error_type == "TimeoutError":
             status = ExecutionStatus.TIMEOUT
@@ -428,7 +517,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 session=session,
             )
 
-            if pending.get("event") is not None:
+            if metadata.get("event") is not None or recovered_from_database:
                 try:
                     from src.services.events.processor import update_delivery_from_execution
                     await update_delivery_from_execution(
@@ -541,7 +630,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             error_type=error_type,
             error_message=error,
             status=status.value,
-            trigger_event=pending.get("event"),
+            trigger_event=metadata.get("event"),
         )
 
     async def process_message(self, message_data: dict[str, Any]) -> None:
@@ -762,17 +851,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     return
             metadata_ready_ms = (time.perf_counter() - dispatch_started) * 1000
 
-            # Store additional context in pending record for result handler
-            # (needed when pool reports results asynchronously)
-            await self._redis_client.update_pending_execution(
-                execution_id=execution_id,
-                updates={
-                    "workflow_name": workflow_name,
-                    "workflow_id": workflow_id,
-                    "org_id": org_id,  # Resolved scope for result handlers
-                },
-            )
-
             # Create PostgreSQL record with RUNNING status
             await create_execution(
                 execution_id=execution_id,
@@ -877,6 +955,24 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await self._pool.route_execution(
                 execution_id=execution_id,
                 context=context_data,
+                active_execution=ActiveExecution(
+                    execution_id=execution_id,
+                    workflow_id=str(workflow_id) if workflow_id else None,
+                    workflow_name=workflow_name,
+                    org_id=str(org_id) if org_id else None,
+                    user_id=str(user_id) if user_id else None,
+                    user_name=user_name,
+                    user_email=user_email,
+                    sync=is_sync,
+                    event=(
+                        {
+                            "id": event_data.get("id"),
+                            "type": event_data.get("type"),
+                        }
+                        if event_data
+                        else None
+                    ),
+                ),
             )
             logger.debug(
                 "Dispatch timing %s: pending=%.1fms metadata=%.1fms "

@@ -339,12 +339,15 @@ class TestExecutionCleanup:
 
     @pytest.mark.asyncio
     async def test_cleanup_execution_cache(self, mock_redis):
-        """cleanup_execution_cache deletes pending changes and logs."""
+        """Cleanup removes buffered data and the active execution lease."""
         with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
             await cleanup_execution_cache("exec-123")
 
-            # pending changes + logs stream
-            assert mock_redis.delete.call_count == 2
+            mock_redis.delete.assert_awaited_once_with(
+                "bifrost:pending:exec-123",
+                "bifrost:logs:exec-123",
+                "bifrost:exec:exec-123:active",
+            )
 
     @pytest.mark.asyncio
     async def test_cleanup_execution_cache_handles_error(self, mock_redis):
