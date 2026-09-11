@@ -1,10 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	Building2,
 	Calendar,
 	ChevronRight,
 	Globe,
-	Network,
 	Shield,
 	Trash2,
 } from "lucide-react";
@@ -15,45 +14,48 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import {
+	useDependencyGraph,
+	type EntityType as DependencyEntityType,
+	type DependencyGraph,
+} from "@/hooks/useDependencyGraph";
 import { cn, formatDateShort } from "@/lib/utils";
-import type { DependencyGraph } from "@/hooks/useDependencyGraph";
 
 import type { EntityType, EntityWithScope, Organization, Role } from "./types";
-import { ENTITY_CONFIG, isEntityManaged, formatEntityAccess } from "./types";
+import { ENTITY_CONFIG, formatEntityAccess, isEntityManaged } from "./types";
 
 interface ResourceTreeTableProps {
 	entities: EntityWithScope[];
+	allEntities: EntityWithScope[];
 	organizations: Organization[];
 	roles: Role[];
 	selectedIds: Set<string>;
 	allSelected: boolean;
 	someSelected: boolean;
 	onSelectAll: (selected: boolean) => void;
-	onSelect: (entityId: string, selected: boolean) => void;
-	onShowRelationships: (
-		entityId: string,
-		entityType: EntityType,
-		entityName: string,
-	) => void;
+	onSelect: (entityKey: string, selected: boolean) => void;
+	onVisibleKeysChange?: (entityKeys: string[]) => void;
 	onDelete: (
 		entityId: string,
 		entityName: string,
 		entityType: EntityType,
 	) => void;
-	graphData?: DependencyGraph | null;
-	focusedEntityId?: string | null;
 }
 
 interface ResourceRow {
 	entity: EntityWithScope;
 	depth: number;
-	relationship?: string;
+	caption?: string;
+	isLoading?: boolean;
+	isError?: boolean;
+	onRetry?: () => void;
 	expandable: boolean;
 	expanded: boolean;
 }
 
 export function ResourceTreeTable({
 	entities,
+	allEntities,
 	organizations,
 	roles,
 	selectedIds,
@@ -61,25 +63,46 @@ export function ResourceTreeTable({
 	someSelected,
 	onSelectAll,
 	onSelect,
-	onShowRelationships,
+	onVisibleKeysChange,
 	onDelete,
-	graphData,
-	focusedEntityId,
 }: ResourceTreeTableProps) {
-	const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-	const rows = useResourceRows(
-		entities,
-		graphData,
-		focusedEntityId,
-		expandedIds,
+	const [expandedKey, setExpandedKey] = useState<string | null>(null);
+	const expandedEntity = allEntities.find((entity) => entity.key === expandedKey);
+	const {
+		data: graphData,
+		isLoading,
+		isError,
+		isFetching,
+		refetch,
+	} = useDependencyGraph(
+		expandedEntity?.entityType as DependencyEntityType | undefined,
+		expandedEntity?.id,
+		3,
 	);
-	const toggleExpanded = (entityId: string) => {
-		setExpandedIds((current) => {
-			const next = new Set(current);
-			if (next.has(entityId)) next.delete(entityId);
-			else next.add(entityId);
-			return next;
-		});
+	const rows = useResourceRows({
+		rootEntities: entities,
+		allEntities,
+		expandedKey,
+		graphData: graphData ?? null,
+		isLoading: isLoading || isFetching,
+		isError,
+		onRetry: () => void refetch(),
+	});
+	const visibleKeys = useMemo(
+		() => Array.from(new Set(rows.map((row) => row.entity.key))),
+		[rows],
+	);
+	const visibleKeySignature = visibleKeys.join("\u0000");
+
+	useEffect(() => {
+		onVisibleKeysChange?.(visibleKeys);
+		// visibleKeySignature intentionally gates updates so callers receive
+		// row visibility changes without a parent/child render loop.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [onVisibleKeysChange, visibleKeySignature]);
+
+	const toggleExpanded = (entityKey: string) => {
+		setExpandedKey((current) => (current === entityKey ? null : entityKey));
 	};
 
 	return (
@@ -88,7 +111,7 @@ export function ResourceTreeTable({
 				<table className="w-full table-fixed text-sm">
 					<thead className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						<tr>
-							<th className="w-12 px-4 py-3">
+							<th className="w-10 px-3 py-2">
 								<Checkbox
 									aria-label="Select all visible entities"
 									checked={
@@ -102,10 +125,10 @@ export function ResourceTreeTable({
 									}
 								/>
 							</th>
-							<th className="w-[52%] px-4 py-3">Resource</th>
-							<th className="w-[18%] px-4 py-3">Scope</th>
-							<th className="w-[18%] px-4 py-3">Access</th>
-							<th className="w-16 px-4 py-3 text-right">
+							<th className="w-[54%] px-3 py-2">Resource</th>
+							<th className="w-[18%] px-3 py-2">Scope</th>
+							<th className="w-[18%] px-3 py-2">Access</th>
+							<th className="w-12 px-3 py-2 text-right">
 								<span className="sr-only">Actions</span>
 							</th>
 						</tr>
@@ -113,7 +136,7 @@ export function ResourceTreeTable({
 					<tbody>
 						{rows.map((row) => (
 							<ResourceTableRow
-								key={`${row.entity.entityType}:${row.entity.id}`}
+								key={`${row.entity.key}:${row.depth}:${row.caption ?? "root"}`}
 								row={row}
 								organizationName={organizationName(
 									row.entity,
@@ -123,7 +146,6 @@ export function ResourceTreeTable({
 								selected={selectedIds.has(row.entity.key)}
 								onToggleExpanded={toggleExpanded}
 								onSelect={onSelect}
-								onShowRelationships={onShowRelationships}
 								onDelete={onDelete}
 							/>
 						))}
@@ -131,10 +153,10 @@ export function ResourceTreeTable({
 				</table>
 			</div>
 
-			<div className="grid gap-3 lg:hidden">
+			<div className="grid gap-2 lg:hidden">
 				{rows.map((row) => (
 					<ResourceMobileCard
-						key={`${row.entity.entityType}:${row.entity.id}`}
+						key={`${row.entity.key}:${row.depth}:${row.caption ?? "root"}`}
 						row={row}
 						organizationName={organizationName(
 							row.entity,
@@ -144,7 +166,6 @@ export function ResourceTreeTable({
 						selected={selectedIds.has(row.entity.key)}
 						onToggleExpanded={toggleExpanded}
 						onSelect={onSelect}
-						onShowRelationships={onShowRelationships}
 						onDelete={onDelete}
 					/>
 				))}
@@ -160,19 +181,18 @@ function ResourceTableRow({
 	selected,
 	onToggleExpanded,
 	onSelect,
-	onShowRelationships,
 	onDelete,
 }: {
 	row: ResourceRow;
 	organizationName: string;
 	accessName: string;
 	selected: boolean;
-	onToggleExpanded: (entityId: string) => void;
-	onSelect: (entityId: string, selected: boolean) => void;
-	onShowRelationships: ResourceTreeTableProps["onShowRelationships"];
+	onToggleExpanded: (entityKey: string) => void;
+	onSelect: (entityKey: string, selected: boolean) => void;
 	onDelete: ResourceTreeTableProps["onDelete"];
 }) {
-	const { entity, depth, relationship, expandable, expanded } = row;
+	const { entity, depth, caption, expandable, expanded, isLoading, isError } =
+		row;
 	const managed = isEntityManaged(entity);
 	const config = ENTITY_CONFIG[entity.entityType];
 	const Icon = config.icon;
@@ -180,11 +200,11 @@ function ResourceTableRow({
 	return (
 		<tr
 			className={cn(
-				"border-b border-border/70 last:border-b-0",
+				"border-b border-border/60 last:border-b-0",
 				selected && !managed ? "bg-accent" : "hover:bg-muted/20",
 			)}
 		>
-			<td className="px-4 py-4 align-top">
+			<td className="px-3 py-2 align-middle">
 				<Checkbox
 					aria-label={`Select ${entity.name}`}
 					checked={selected && !managed}
@@ -194,42 +214,43 @@ function ResourceTableRow({
 					}
 				/>
 			</td>
-			<td className="min-w-0 px-4 py-4 align-top">
+			<td className="min-w-0 px-3 py-2 align-middle">
 				<div
-					className="flex min-w-0 items-start gap-2"
-					style={{ paddingLeft: `${depth * 1.25}rem` }}
+					className="flex min-w-0 items-center gap-2"
+					style={{ paddingLeft: `${depth * 1.1}rem` }}
 				>
 					<ExpandButton
 						entityName={entity.name}
 						expandable={expandable}
 						expanded={expanded}
+						loading={isLoading}
 						onClick={() => onToggleExpanded(entity.key)}
 					/>
-					<div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background">
+					<div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background">
 						<Icon className="size-4 text-muted-foreground" />
 					</div>
 					<ResourceLabel
 						entity={entity}
-						relationship={relationship}
+						caption={
+								isError
+									? "Could not load related resources"
+									: caption
+						}
+						onRetry={row.onRetry}
 					/>
 				</div>
 			</td>
-			<td className="px-4 py-4 align-top text-sm">
+			<td className="px-3 py-2 align-middle text-sm">
 				<ScopeText
 					entity={entity}
 					organizationName={organizationName}
 				/>
 			</td>
-			<td className="px-4 py-4 align-top text-sm">
+			<td className="px-3 py-2 align-middle text-sm">
 				<AccessText name={accessName} />
 			</td>
-			<td className="px-4 py-3 align-top">
-				<RowActions
-					entity={entity}
-					managed={managed}
-					onShowRelationships={onShowRelationships}
-					onDelete={onDelete}
-				/>
+			<td className="px-3 py-2 align-middle">
+				<RowActions entity={entity} managed={managed} onDelete={onDelete} />
 			</td>
 		</tr>
 	);
@@ -242,19 +263,18 @@ function ResourceMobileCard({
 	selected,
 	onToggleExpanded,
 	onSelect,
-	onShowRelationships,
 	onDelete,
 }: {
 	row: ResourceRow;
 	organizationName: string;
 	accessName: string;
 	selected: boolean;
-	onToggleExpanded: (entityId: string) => void;
-	onSelect: (entityId: string, selected: boolean) => void;
-	onShowRelationships: ResourceTreeTableProps["onShowRelationships"];
+	onToggleExpanded: (entityKey: string) => void;
+	onSelect: (entityKey: string, selected: boolean) => void;
 	onDelete: ResourceTreeTableProps["onDelete"];
 }) {
-	const { entity, depth, relationship, expandable, expanded } = row;
+	const { entity, depth, caption, expandable, expanded, isLoading, isError } =
+		row;
 	const managed = isEntityManaged(entity);
 	const config = ENTITY_CONFIG[entity.entityType];
 	const Icon = config.icon;
@@ -267,7 +287,7 @@ function ResourceMobileCard({
 			)}
 			style={{ marginLeft: `${Math.min(depth, 2) * 0.75}rem` }}
 		>
-			<CardContent className="space-y-4 p-[var(--bf-surface-pad)]">
+			<CardContent className="space-y-3 p-3">
 				<div className="flex min-w-0 items-start gap-2">
 					<Checkbox
 						aria-label={`Select ${entity.name}`}
@@ -281,23 +301,24 @@ function ResourceMobileCard({
 						entityName={entity.name}
 						expandable={expandable}
 						expanded={expanded}
+						loading={isLoading}
 						onClick={() => onToggleExpanded(entity.key)}
 					/>
 					<Icon className="mt-1 size-4 shrink-0 text-muted-foreground" />
 					<div className="min-w-0 flex-1">
 						<ResourceLabel
 							entity={entity}
-							relationship={relationship}
+							caption={
+									isError
+										? "Could not load related resources"
+										: caption
+							}
+							onRetry={row.onRetry}
 						/>
 					</div>
-					<RowActions
-						entity={entity}
-						managed={managed}
-						onShowRelationships={onShowRelationships}
-						onDelete={onDelete}
-					/>
+					<RowActions entity={entity} managed={managed} onDelete={onDelete} />
 				</div>
-				<div className="grid gap-3 text-sm sm:grid-cols-2">
+				<div className="grid gap-2 text-sm sm:grid-cols-2">
 					<ScopeText
 						entity={entity}
 						organizationName={organizationName}
@@ -317,11 +338,13 @@ function ExpandButton({
 	entityName,
 	expandable,
 	expanded,
+	loading,
 	onClick,
 }: {
 	entityName: string;
 	expandable: boolean;
 	expanded: boolean;
+	loading?: boolean;
 	onClick: () => void;
 }) {
 	return (
@@ -329,10 +352,9 @@ function ExpandButton({
 			type="button"
 			variant="ghost"
 			size="icon-sm"
-			className={cn("mt-1 size-7 shrink-0", !expandable && "invisible")}
+			className="size-7 shrink-0"
 			aria-label={`${expanded ? "Collapse" : "Expand"} ${entityName}`}
-			aria-expanded={expandable ? expanded : undefined}
-			disabled={!expandable}
+			aria-expanded={expanded}
 			onClick={onClick}
 		>
 			<ChevronRight
@@ -340,6 +362,8 @@ function ExpandButton({
 				className={cn(
 					"size-4 transition-transform",
 					expanded && "rotate-90",
+					loading && "animate-pulse",
+					!expandable && !expanded && "opacity-45",
 				)}
 			/>
 		</Button>
@@ -348,27 +372,42 @@ function ExpandButton({
 
 function ResourceLabel({
 	entity,
-	relationship,
+	caption,
+	onRetry,
 }: {
 	entity: EntityWithScope;
-	relationship?: string;
+	caption?: string;
+	onRetry?: () => void;
 }) {
 	const config = ENTITY_CONFIG[entity.entityType];
 	return (
-		<div className="min-w-0 space-y-1">
+		<div className="min-w-0">
 			<div className="flex min-w-0 flex-wrap items-center gap-2">
-				<p className="min-w-0 font-medium text-foreground [overflow-wrap:anywhere]">
+				<p className="min-w-0 font-medium leading-5 text-foreground [overflow-wrap:anywhere]">
 					{entity.name}
 				</p>
-				<Badge variant="outline" className={config.color}>
+				<Badge variant="outline" className={cn("h-5 px-1.5", config.color)}>
 					{config.label}
 				</Badge>
 				{isEntityManaged(entity) ? (
-					<Badge variant="outline">Solution managed</Badge>
+					<Badge variant="outline" className="h-5 px-1.5">
+						Solution managed
+					</Badge>
 				) : null}
 			</div>
-			<p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-				{relationship ?? resourceUsageText(entity)}
+			<p className="flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+				<span>{caption ?? resourceUsageText(entity)}</span>
+				{onRetry ? (
+					<Button
+						type="button"
+						variant="link"
+						size="sm"
+						className="h-auto p-0 text-xs"
+						onClick={onRetry}
+					>
+						Retry
+					</Button>
+				) : null}
 			</p>
 		</div>
 	);
@@ -377,47 +416,26 @@ function ResourceLabel({
 function RowActions({
 	entity,
 	managed,
-	onShowRelationships,
 	onDelete,
 }: {
 	entity: EntityWithScope;
 	managed: boolean;
-	onShowRelationships: ResourceTreeTableProps["onShowRelationships"];
 	onDelete: ResourceTreeTableProps["onDelete"];
 }) {
 	const config = ENTITY_CONFIG[entity.entityType];
-	return (
-		<div className="flex justify-end gap-1">
-			<Button
-				variant="ghost"
-				size="icon-lg"
-				aria-label={`Focus relationships for ${entity.name}`}
-				title="Focus relationships"
-				onClick={() =>
-					onShowRelationships(
-						entity.id,
-						entity.entityType,
-						entity.name,
-					)
+	return !managed ? (
+		<RecordActionsMenu label={`More actions for ${entity.name}`}>
+			<DropdownMenuItem
+				variant="destructive"
+				onSelect={() =>
+					onDelete(entity.id, entity.name, entity.entityType)
 				}
 			>
-				<Network aria-hidden="true" className="size-4" />
-			</Button>
-			{!managed ? (
-				<RecordActionsMenu label={`More actions for ${entity.name}`}>
-					<DropdownMenuItem
-						variant="destructive"
-						onSelect={() =>
-							onDelete(entity.id, entity.name, entity.entityType)
-						}
-					>
-						<Trash2 aria-hidden="true" className="size-4" />
-						Delete {config.label.toLowerCase()}
-					</DropdownMenuItem>
-				</RecordActionsMenu>
-			) : null}
-		</div>
-	);
+				<Trash2 aria-hidden="true" className="size-4" />
+				Delete {config.label.toLowerCase()}
+			</DropdownMenuItem>
+		</RecordActionsMenu>
+	) : null;
 }
 
 function ScopeText({
@@ -485,90 +503,113 @@ function resourceUsageText(entity: EntityWithScope) {
 		: `Uses ${entity.usedByCount} workflow${entity.usedByCount === 1 ? "" : "s"}`;
 }
 
-function useResourceRows(
-	entities: EntityWithScope[],
-	graphData?: DependencyGraph | null,
-	focusedEntityId?: string | null,
-	expandedIds: Set<string> = new Set(),
-): ResourceRow[] {
+function useResourceRows({
+	rootEntities,
+	allEntities,
+	expandedKey,
+	graphData,
+	isLoading,
+	isError,
+	onRetry,
+}: {
+	rootEntities: EntityWithScope[];
+	allEntities: EntityWithScope[];
+	expandedKey: string | null;
+	graphData: DependencyGraph | null;
+	isLoading: boolean;
+	isError: boolean;
+	onRetry?: () => void;
+}): ResourceRow[] {
 	return useMemo(() => {
-		if (!graphData?.edges?.length || !focusedEntityId) {
-			return entities.map((entity) => ({
-				entity,
-				depth: 0,
-				expandable: false,
-				expanded: false,
-			}));
-		}
-
-		const byNodeId = new Map<string, EntityWithScope>();
-		for (const entity of entities) {
-			byNodeId.set(`${entity.entityType}:${entity.id}`, entity);
-		}
-
-		const neighbors = new Map<string, { id: string; caption: string }[]>();
-		for (const edge of graphData.edges) {
-			if (!byNodeId.has(edge.source) || !byNodeId.has(edge.target))
-				continue;
-			const source = byNodeId.get(edge.source);
-			const target = byNodeId.get(edge.target);
-			if (!source || !target) continue;
-			const outgoing = neighbors.get(edge.source) ?? [];
-			outgoing.push({
-				id: edge.target,
-				caption: relationshipCaption(
-					edge.relationship,
-					source.name,
-					"out",
-				),
-			});
-			neighbors.set(edge.source, outgoing);
-			const incoming = neighbors.get(edge.target) ?? [];
-			incoming.push({
-				id: edge.source,
-				caption: relationshipCaption(
-					edge.relationship,
-					target.name,
-					"in",
-				),
-			});
-			neighbors.set(edge.target, incoming);
-		}
-
-		const rootKey = graphData.root_id;
-		const seen = new Set<string>();
 		const rows: ResourceRow[] = [];
-
-		const visit = (
-			nodeId: string,
-			depth: number,
-			relationship?: string,
-		) => {
-			if (seen.has(nodeId)) return;
-			const entity = byNodeId.get(nodeId);
-			if (!entity) return;
-			seen.add(nodeId);
-			const childEdges = (neighbors.get(nodeId) ?? []).filter(
-				(child) => !seen.has(child.id),
-			);
-			const expanded = !expandedIds.has(entity.key);
+		const byKey = new Map(allEntities.map((entity) => [entity.key, entity]));
+		for (const entity of rootEntities) {
+			const expanded = expandedKey === entity.key;
+			const childRows =
+				expanded && !isLoading && !isError && graphData
+					? relatedRows(entity, graphData, byKey)
+					: [];
 			rows.push({
 				entity,
-				depth,
-				relationship,
-				expandable: childEdges.length > 0,
+				depth: 0,
+				caption: expanded
+					? isLoading
+						? "Loading related resources..."
+						: isError
+							? "Could not load related resources"
+							: graphData && childRows.length === 0
+								? "No related resources"
+								: undefined
+					: undefined,
+				expandable: true,
 				expanded,
+				isLoading: expanded && isLoading,
+				isError: expanded && isError,
+				onRetry: expanded && isError ? onRetry : undefined,
 			});
-			if (expanded) {
-				for (const child of childEdges) {
-					visit(child.id, depth + 1, child.caption);
-				}
+			if (!expanded || isLoading || isError || !graphData) continue;
+			for (const child of childRows) {
+				rows.push(child);
 			}
-		};
-
-		visit(rootKey, 0);
+		}
 		return rows;
-	}, [entities, graphData, focusedEntityId, expandedIds]);
+	}, [
+		rootEntities,
+		allEntities,
+		expandedKey,
+		graphData,
+		isLoading,
+		isError,
+		onRetry,
+	]);
+}
+
+function relatedRows(
+	root: EntityWithScope,
+	graphData: DependencyGraph,
+	byKey: Map<string, EntityWithScope>,
+) {
+	const neighbors = new Map<string, { key: string; caption: string }[]>();
+	for (const edge of graphData.edges ?? []) {
+		const source = byKey.get(edge.source);
+		const target = byKey.get(edge.target);
+		if (!source || !target) continue;
+		const outgoing = neighbors.get(edge.source) ?? [];
+		outgoing.push({
+			key: edge.target,
+			caption: relationshipCaption(edge.relationship, source.name, "out"),
+		});
+		neighbors.set(edge.source, outgoing);
+		const incoming = neighbors.get(edge.target) ?? [];
+		incoming.push({
+			key: edge.source,
+			caption: relationshipCaption(edge.relationship, target.name, "in"),
+		});
+		neighbors.set(edge.target, incoming);
+	}
+
+	const rows: ResourceRow[] = [];
+	const seen = new Set([root.key]);
+	const visit = (key: string, depth: number, caption: string) => {
+		if (seen.has(key)) return;
+		const entity = byKey.get(key);
+		if (!entity) return;
+		seen.add(key);
+		rows.push({
+			entity,
+			depth,
+			caption,
+			expandable: false,
+			expanded: false,
+		});
+		for (const child of neighbors.get(key) ?? []) {
+			visit(child.key, depth + 1, child.caption);
+		}
+	};
+	for (const child of neighbors.get(root.key) ?? []) {
+		visit(child.key, 1, child.caption);
+	}
+	return rows;
 }
 
 function relationshipCaption(

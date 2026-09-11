@@ -1,3 +1,13 @@
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+	Sheet,
+	SheetContent,
+	SheetHeader,
+	SheetTitle,
+} from "@/components/ui/sheet";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useExecution } from "@/hooks/useExecutions";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 /**
@@ -89,6 +99,12 @@ export function Timeline({
 		() => buildRunActivity(steps, childRunIds, childRuns),
 		[steps, childRunIds, childRuns],
 	);
+	const compactInspector = useMediaQuery("(max-width: 767px)");
+	const inspectionTrigger = useRef<HTMLElement | null>(null);
+	// Navigation restoration is one-shot; bulk expansion remounts rows.
+	const [restoredActivity, setRestoredActivity] = useState<string | null>(
+		null,
+	);
 	const [selectedActivityId, setSelectedActivityId] = useState<string | null>(
 		null,
 	);
@@ -132,6 +148,11 @@ export function Timeline({
 		item: RunActivityItem,
 		sourceRunId?: string,
 	) => {
+		inspectionTrigger.current =
+			document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null;
+		if (item.id === restoreActivityId) setRestoredActivity(item.id);
 		setSelectedActivityId(item.id);
 		setSelectedSnapshot({ item, sourceRunId });
 	};
@@ -186,9 +207,9 @@ export function Timeline({
 				</div>
 			) : null}
 			<div className="min-w-0 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70">
-				<div className="hidden grid-cols-[minmax(0,1fr)_5rem_6rem_4rem] gap-3 border-b bg-muted/35 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+				<div className="hidden grid-cols-[minmax(0,1fr)_6rem_4rem] gap-3 border-b bg-muted/35 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
 					<div>Name</div>
-					<div>Type</div>
+
 					<div>Status</div>
 					<div>Duration</div>
 				</div>
@@ -212,20 +233,47 @@ export function Timeline({
 							onDelegationExpandedChange={
 								onDelegationExpandedChange
 							}
-							restoreActivityId={restoreActivityId}
+							restoreActivityId={
+								restoredActivity === restoreActivityId
+									? null
+									: restoreActivityId
+							}
 							onOpenChildRun={onOpenChildRun}
 							childRunOrigin={childRunOrigin}
 						/>
 					))}
 				</ol>
 			</div>
-			{selectedActivity ? (
-				<ActivityDetailPanel
-					item={selectedActivity}
-					childRunOrigin={childRunOrigin}
-					onOpenChildRun={onOpenChildRun}
-				/>
-			) : null}
+			<Sheet
+				modal={compactInspector}
+				open={!!selectedActivity}
+				onOpenChange={(open) => {
+					if (!open) setSelectedActivityId(null);
+				}}
+			>
+				{selectedActivity && (
+					<SheetContent
+						aria-describedby={undefined}
+						className="w-full overflow-hidden sm:max-w-xl"
+						onInteractOutside={(event) => {
+							if (!compactInspector) event.preventDefault();
+						}}
+						onCloseAutoFocus={(event) => {
+							event.preventDefault();
+							if (inspectionTrigger.current?.isConnected)
+								inspectionTrigger.current.focus({
+									preventScroll: true,
+								});
+						}}
+					>
+						<ActivityDetailPanel
+							item={selectedActivity}
+							childRunOrigin={childRunOrigin}
+							onOpenChildRun={onOpenChildRun}
+						/>
+					</SheetContent>
+				)}
+			</Sheet>
 		</div>
 	);
 }
@@ -384,13 +432,13 @@ function ActivityTreeRow({
 		>
 			<div
 				className={cn(
-					"grid min-w-0 grid-cols-[auto_auto_1fr] gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_5rem_6rem_4rem] md:gap-3",
+					"grid min-w-0 grid-cols-[auto_1fr] gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_6rem_4rem] md:gap-3",
 					selected && "bg-[var(--bf-info-soft)]/55",
 					highlighted && "ring-2 ring-inset ring-[var(--bf-info)]/45",
 				)}
 			>
 				<div
-					className="col-span-3 flex min-w-0 items-start gap-2 md:col-span-1"
+					className="col-span-2 flex min-w-0 items-start gap-2 md:col-span-1"
 					style={{ paddingLeft: `${rowDepth * 1.5}rem` }}
 				>
 					<button
@@ -424,6 +472,7 @@ function ActivityTreeRow({
 					</button>
 					<button
 						type="button"
+						aria-description={rowType}
 						onClick={() => onSelect(item, sourceRunId)}
 						className="flex min-w-0 flex-1 items-start gap-3 rounded-[var(--bf-radius-control)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					>
@@ -437,7 +486,7 @@ function ActivityTreeRow({
 										: "border-[var(--bf-success)]/25 bg-[var(--bf-success-soft)] text-[var(--bf-success)]",
 							)}
 						>
-							<Icon className="size-4" />
+							<Icon className="size-4" aria-hidden="true" />
 						</span>
 						<span className="min-w-0">
 							<span className="block break-words text-sm font-medium leading-5">
@@ -450,9 +499,6 @@ function ActivityTreeRow({
 							) : null}
 						</span>
 					</button>
-				</div>
-				<div className="flex items-start pt-1 pl-11 text-xs text-muted-foreground md:pl-0">
-					{rowType}
 				</div>
 				<div className="flex items-start pt-1">
 					{status ? (
@@ -553,7 +599,12 @@ function ActivityDetailPanel({
 		},
 	);
 	const child = rawChild as unknown as AgentRunDetailResponse | undefined;
-	const title = child?.agent_name ?? item.agentName ?? item.title;
+	const { data: execution } = useExecution(item.executionId ?? undefined);
+	const title =
+		execution?.workflow_name ??
+		child?.agent_name ??
+		item.agentName ??
+		item.title;
 	const childAgentId = child?.agent_id ?? item.childAgentId;
 	const childActivity = useMemo(
 		() =>
@@ -571,36 +622,30 @@ function ActivityDetailPanel({
 		[childActivity],
 	);
 	const inputDetail = activityInputDetail(item, child);
-	const outputDetail = activityOutputDetail(item, child);
+	const outputDetail =
+		execution?.result !== undefined && execution.result !== null
+			? renderDetail(execution.result)
+			: activityOutputDetail(item, child);
 	const usage = child?.ai_usage ?? [];
 	const hasUsage = usage.length > 0 || !!child?.ai_totals;
 	const overviewOutcome = child?.did ?? child?.answered ?? item.description;
+	const isDelegation = item.kind === "delegation";
 	const tabs = [
-		["overview", "Overview", true],
+		["overview", "Overview", isDelegation],
+		["output", item.kind === "response" ? "Response" : "Result", true],
 		["input", "Input", !!inputDetail],
-		["output", "Output", !!outputDetail || !!child],
 		["usage", "Usage", hasUsage],
 	] as const;
 
 	return (
 		<section
-			className="min-w-0 rounded-[var(--bf-radius-feature)] border border-border/70 bg-background/65 p-4"
+			className="flex min-h-0 flex-1 flex-col"
 			aria-label="Selected call details"
 		>
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-				<div className="min-w-0">
-					<p className="text-xs text-muted-foreground">
-						Selected call
-					</p>
-					<h3 className="mt-1 break-words text-lg font-semibold leading-7">
-						{title}
-					</h3>
-					{item.task || item.description ? (
-						<p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
-							{item.task ?? item.description}
-						</p>
-					) : null}
-				</div>
+			<SheetHeader className="border-b border-border">
+				<SheetTitle>{title}</SheetTitle>
+			</SheetHeader>
+			<div className="min-h-0 flex-1 overflow-y-auto p-5">
 				<div className="flex shrink-0 flex-wrap items-center gap-2">
 					{item.executionId ? (
 						<Link
@@ -630,97 +675,100 @@ function ActivityDetailPanel({
 						</Link>
 					) : null}
 				</div>
-			</div>
-			{isError ? (
-				<div
-					role="alert"
-					className="mt-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
-				>
-					<p>
-						Could not {child ? "refresh" : "load"} selected
-						delegated run details.
-						{child
-							? " Previously loaded details are still shown."
-							: ""}
-					</p>
-					<Button
-						className="mt-2 min-h-11"
-						variant="outline"
-						disabled={isFetching}
-						onClick={() => void refetch()}
+				{isError ? (
+					<div
+						role="alert"
+						className="mt-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
 					>
-						Retry delegated run
-					</Button>
-				</div>
-			) : null}
-			{isLoading ? (
-				<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-					<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-					Loading selected delegated run…
-				</div>
-			) : null}
-			<Tabs
-				key={item.id}
-				defaultValue="overview"
-				className="mt-4 min-w-0 gap-4"
-			>
-				<TabsList
-					variant="line"
-					className="flex min-h-11 max-w-full justify-start overflow-x-auto"
-					aria-label="Selected call detail sections"
-				>
-					{tabs.map(([value, label, enabled]) => (
-						<TabsTrigger
-							key={value}
-							value={value}
-							disabled={!enabled}
-							className="min-h-11 shrink-0 px-2 sm:px-3"
+						<p>
+							Could not {child ? "refresh" : "load"} selected
+							delegated run details.
+							{child
+								? " Previously loaded details are still shown."
+								: ""}
+						</p>
+						<Button
+							className="mt-2 min-h-11"
+							variant="outline"
+							disabled={isFetching}
+							onClick={() => void refetch()}
 						>
-							{label}
-						</TabsTrigger>
-					))}
-				</TabsList>
-				<TabsContent value="overview" className="mt-0 min-w-0">
-					<div className="grid gap-5">
-						<OverviewBlock label="Task">
-							{child?.asked ??
-								item.task ??
-								"No task summary recorded."}
-						</OverviewBlock>
-						<OverviewBlock label="Outcome">
-							<DidNarrative
-								text={overviewOutcome}
-								activityReferences={childActivityReferences}
-								fallback={<>No outcome summary recorded.</>}
-							/>
-						</OverviewBlock>
+							Retry delegated run
+						</Button>
 					</div>
-				</TabsContent>
-				<TabsContent value="input" className="mt-0 min-w-0">
-					{inputDetail ? <DetailBlock detail={inputDetail} /> : null}
-				</TabsContent>
-				<TabsContent value="output" className="mt-0 min-w-0">
-					{outputDetail ? (
-						<DetailBlock detail={outputDetail} />
-					) : (
-						<p className="text-sm text-muted-foreground">
-							No output recorded.
-						</p>
-					)}
-				</TabsContent>
-				<TabsContent value="usage" className="mt-0 min-w-0">
-					{hasUsage ? (
-						<SelectedUsage
-							usage={usage}
-							totals={child?.ai_totals ?? null}
-						/>
-					) : (
-						<p className="text-sm text-muted-foreground">
-							No usage recorded for this selected call.
-						</p>
-					)}
-				</TabsContent>
-			</Tabs>
+				) : null}
+				{isLoading ? (
+					<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+						<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+						Loading selected delegated run…
+					</div>
+				) : null}
+				<Tabs
+					key={item.id}
+					defaultValue={isDelegation ? "overview" : "output"}
+					className="mt-4 min-w-0 gap-4"
+				>
+					<TabsList
+						variant="line"
+						className="flex min-h-11 max-w-full justify-start overflow-x-auto"
+						aria-label="Selected call detail sections"
+					>
+						{tabs
+							.filter(([, , enabled]) => enabled)
+							.map(([value, label]) => (
+								<TabsTrigger
+									key={value}
+									value={value}
+									className="min-h-11 shrink-0 px-2 sm:px-3"
+								>
+									{label}
+								</TabsTrigger>
+							))}
+					</TabsList>
+					<TabsContent value="overview" className="mt-0 min-w-0">
+						<div className="grid gap-5">
+							<OverviewBlock label="Task">
+								{child?.asked ??
+									item.task ??
+									"No task summary recorded."}
+							</OverviewBlock>
+							<OverviewBlock label="Outcome">
+								<DidNarrative
+									text={overviewOutcome}
+									activityReferences={childActivityReferences}
+									fallback={<>No outcome summary recorded.</>}
+								/>
+							</OverviewBlock>
+						</div>
+					</TabsContent>
+					<TabsContent value="input" className="mt-0 min-w-0">
+						{inputDetail ? (
+							<DetailBlock detail={inputDetail} />
+						) : null}
+					</TabsContent>
+					<TabsContent value="output" className="mt-0 min-w-0">
+						{outputDetail ? (
+							<DetailBlock detail={outputDetail} />
+						) : (
+							<p className="text-sm text-muted-foreground">
+								No output recorded.
+							</p>
+						)}
+					</TabsContent>
+					<TabsContent value="usage" className="mt-0 min-w-0">
+						{hasUsage ? (
+							<SelectedUsage
+								usage={usage}
+								totals={child?.ai_totals ?? null}
+							/>
+						) : (
+							<p className="text-sm text-muted-foreground">
+								No usage recorded for this selected call.
+							</p>
+						)}
+					</TabsContent>
+				</Tabs>
+			</div>
 		</section>
 	);
 }
@@ -1198,7 +1246,7 @@ function TimelineRow({
 function DetailBlock({ detail }: { detail: DetailRender }) {
 	if (detail.kind === "json") {
 		return (
-			<div className="max-h-[320px] overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/60 p-2.5">
+			<div className="min-w-0">
 				<VariablesTreeView data={asVariableRecord(detail.value)} />
 			</div>
 		);
@@ -1206,14 +1254,27 @@ function DetailBlock({ detail }: { detail: DetailRender }) {
 	const parsed = tryParseJson(detail.value);
 	if (parsed !== UNPARSEABLE) {
 		return (
-			<div className="max-h-[320px] overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/60 p-2.5">
+			<div className="min-w-0">
 				<VariablesTreeView data={asVariableRecord(parsed)} />
 			</div>
 		);
 	}
 	return (
-		<div className="max-h-[320px] overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/60 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words">
-			{detail.value}
+		<div className="min-w-0 space-y-4 break-words text-sm leading-7 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs">
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				components={{
+					table: ({ children }) => (
+						<div className="overflow-x-auto rounded-md border border-border">
+							<table className="w-full text-left text-sm [&_th]:bg-muted/40 [&_th]:px-3 [&_th]:py-2 [&_th]:font-medium [&_td]:border-t [&_td]:border-border [&_td]:px-3 [&_td]:py-2">
+								{children}
+							</table>
+						</div>
+					),
+				}}
+			>
+				{detail.value}
+			</ReactMarkdown>
 		</div>
 	);
 }

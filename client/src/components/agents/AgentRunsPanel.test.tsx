@@ -6,6 +6,23 @@ import { renderWithProviders, screen } from "@/test-utils";
 const mockIsDesktop = vi.hoisted(() => vi.fn(() => true));
 vi.mock("@/hooks/useMediaQuery", () => ({
 	useIsDesktop: () => mockIsDesktop(),
+	useMediaQuery: () => mockIsDesktop(),
+}));
+
+const mockUseAuth = vi.hoisted(() => vi.fn(() => ({ isPlatformAdmin: true })));
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => mockUseAuth(),
+}));
+
+const mockUseAgents = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useAgents", () => ({
+	useAgents: (scope: unknown, options: unknown) =>
+		mockUseAgents(scope, options),
+}));
+
+const mockUseOrganizations = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useOrganizations", () => ({
+	useOrganizations: () => mockUseOrganizations(),
 }));
 
 const mockUseInfiniteAgentRuns = vi.hoisted(() => vi.fn());
@@ -52,11 +69,29 @@ const secondPageRun = {
 
 beforeEach(() => {
 	mockIsDesktop.mockReturnValue(true);
+	mockUseAuth.mockReturnValue({ isPlatformAdmin: true });
+	mockUseAgents.mockReturnValue({
+		data: [
+			{ id: "agent-1", name: "Service Desk Triage" },
+			{ id: "agent-2", name: "Renewal Watch" },
+		],
+	});
+	mockUseOrganizations.mockReturnValue({
+		data: [{ id: "org-1", name: "Acme" }],
+		isLoading: false,
+		isFetching: false,
+		error: null,
+		refetch: vi.fn(),
+	});
 	mockUseInfiniteAgentRuns.mockReturnValue({
 		data: { pages: [{ items: [run], total: 1 }] },
 		isLoading: false,
+		isFetching: false,
+		isError: false,
+		isFetchNextPageError: false,
 		hasNextPage: false,
 		isFetchingNextPage: false,
+		refetch: vi.fn(),
 		fetchNextPage: vi.fn(),
 	});
 	mockUseRerunAgentRun.mockReturnValue({
@@ -66,6 +101,14 @@ beforeEach(() => {
 });
 
 describe("AgentRunsPanel", () => {
+	it("keeps the shared pagination summary for a single page", () => {
+		renderWithProviders(<AgentRunsPanel />);
+		expect(
+			screen.getByRole("navigation", { name: "Agent run pages" }),
+		).toHaveTextContent("1 run on this page · Page 1");
+		expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+	});
 	it("uses the same 25-run Previous and Next pagination as workflows", async () => {
 		mockUseInfiniteAgentRuns.mockReturnValue({
 			data: {
@@ -92,17 +135,48 @@ describe("AgentRunsPanel", () => {
 		expect(
 			screen.queryByRole("row", { name: /428976/ }),
 		).not.toBeInTheDocument();
-		expect(screen.getByText("Page 1")).toBeInTheDocument();
+		expect(
+			screen.getByText(/1 run on this page · Page 1/),
+		).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Next" }));
 		expect(
 			screen.queryByRole("row", { name: /428950/ }),
 		).not.toBeInTheDocument();
 		expect(screen.getByRole("row", { name: /428976/ })).toBeInTheDocument();
-		expect(screen.getByText("Page 2")).toBeInTheDocument();
+		expect(
+			screen.getByText(/1 run on this page · Page 2/),
+		).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Previous" }));
 		expect(screen.getByRole("row", { name: /428950/ })).toBeInTheDocument();
+	});
+
+	it("passes supported filters to the agent-runs API wrapper", async () => {
+		const { user } = renderWithProviders(
+			<Routes>
+				<Route path="/history" element={<AgentRunsPanel />} />
+			</Routes>,
+			{
+				initialEntries: [
+					"/history?type=agents&agent=agent-2&status=failed&q=acme",
+				],
+			},
+		);
+
+		expect(mockUseInfiniteAgentRuns).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				pageSize: 25,
+				agentId: "agent-2",
+				status: "failed",
+				q: "acme",
+			}),
+		);
+
+		await user.click(screen.getByRole("button", { name: "Clear filters" }));
+		expect(mockUseInfiniteAgentRuns).toHaveBeenLastCalledWith({
+			pageSize: 25,
+		});
 	});
 
 	it("constrains the table and progressively collapses secondary columns", () => {
@@ -113,7 +187,7 @@ describe("AgentRunsPanel", () => {
 			{ initialEntries: ["/history?type=agents"] },
 		);
 
-		const table = screen.getByRole("table");
+		const table = screen.getAllByRole("table")[0];
 		expect(table.parentElement?.parentElement).toHaveClass(
 			"min-h-0",
 			"min-w-0",

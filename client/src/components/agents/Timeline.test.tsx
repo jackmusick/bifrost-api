@@ -4,6 +4,10 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import type { components } from "@/lib/v1";
 import { renderWithProviders, screen } from "@/test-utils";
 
+vi.mock("@/hooks/useExecutions", () => ({
+	useExecution: () => ({ data: undefined }),
+}));
+
 const mockUseAgentRun = vi.hoisted(() => vi.fn());
 
 vi.mock("@/services/agentRuns", () => ({
@@ -244,20 +248,37 @@ describe("Timeline activity view", () => {
 				steps={[
 					step(
 						"llm_response",
-						{ content: "Triage complete.", tool_calls: [] },
+						{
+							content:
+								"## Triage complete\n\nThe **device** is online.\n\n| Check | Result |\n| --- | --- |\n| Reachable | Yes |",
+							tool_calls: [],
+						},
 						1,
 					),
 				]}
 			/>,
 		);
 		expect(screen.getByText("Final response")).toBeInTheDocument();
-		expect(screen.queryByText("Triage complete.")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("heading", { name: "Triage complete" }),
+		).not.toBeInTheDocument();
 		await user.click(
 			screen.getByRole("button", { name: "Final response" }),
 		);
-		expect(screen.getByRole("tabpanel")).toHaveTextContent(
-			"Triage complete.",
-		);
+		expect(
+			screen.getByRole("heading", { name: "Triage complete" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("cell", { name: "Reachable" }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText("No task summary recorded."),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Final response" }),
+		).toHaveFocus();
 	});
 
 	it("loads and expands delegated work inline", async () => {
@@ -450,6 +471,9 @@ describe("Timeline activity view", () => {
 		expect(
 			screen.getByRole("region", { name: "Selected call details" }),
 		).not.toHaveTextContent("Troubleshooting Specialist");
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		await user.click(screen.getByRole("button", { name: "Collapse all" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	});
 
 	it("expands recursively and selects grandchild activity without replacing the main summary", async () => {
@@ -577,7 +601,7 @@ describe("Timeline activity view", () => {
 		await user.click(
 			screen.getByRole("button", { name: /looked up device details/i }),
 		);
-		await user.click(screen.getByRole("tab", { name: "Output" }));
+		await user.click(screen.getByRole("tab", { name: "Result" }));
 		expect(screen.getByRole("tabpanel")).toHaveTextContent("online");
 		source = childRun({
 			steps: [
@@ -628,7 +652,7 @@ describe("Timeline activity view", () => {
 		await user.click(
 			screen.getByRole("button", { name: /looked up ticket details/i }),
 		);
-		await user.click(screen.getByRole("tab", { name: "Output" }));
+		await user.click(screen.getByRole("tab", { name: "Result" }));
 		expect(screen.getByRole("tabpanel")).toHaveTextContent("open");
 
 		rerender(<Timeline steps={[call, updatedResult]} />);
@@ -793,7 +817,7 @@ describe("Timeline activity view", () => {
 		);
 		await user.click(screen.getByRole("tab", { name: "Input" }));
 		expect(screen.getByText("ticket_id:")).toBeInTheDocument();
-		await user.click(screen.getByRole("tab", { name: "Output" }));
+		await user.click(screen.getByRole("tab", { name: "Result" }));
 		expect(screen.getByText("status:")).toBeInTheDocument();
 	});
 });

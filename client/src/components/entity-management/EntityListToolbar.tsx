@@ -72,7 +72,7 @@ export function EntityListToolbar({
 	return (
 		<section
 			aria-label="Entity list controls"
-			className="mb-3 shrink-0 space-y-2 rounded-[var(--bf-radius-surface)] border bg-card p-3"
+			className="mb-2 shrink-0 space-y-2"
 		>
 			<div className="grid gap-2 lg:grid-cols-[minmax(18rem,1fr)_auto_auto_auto] lg:items-center">
 				<div className="flex items-center gap-2">
@@ -165,7 +165,7 @@ export function EntityListToolbar({
 			</div>
 
 			{selectionSummary || busy ? (
-				<div className="flex flex-col gap-2 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 px-3 py-2 text-sm lg:flex-row lg:items-center lg:justify-between">
+				<div className="flex flex-col gap-2 border-y border-border/70 bg-muted/20 px-3 py-2 text-sm lg:flex-row lg:items-center lg:justify-between">
 					<p
 						role="status"
 						className="min-w-0 flex-1 basis-full text-muted-foreground"

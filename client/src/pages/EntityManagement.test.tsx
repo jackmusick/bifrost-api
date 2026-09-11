@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -35,7 +35,19 @@ vi.mock("@/hooks/useWorkflows", () => ({
 
 vi.mock("@/hooks/useForms", () => ({
 	useForms: () => ({
-		data: [],
+		data: [
+			{
+				id: "form-1",
+				name: "Service request intake",
+				organization_id: null,
+				access_level: "authenticated",
+				created_at: "2026-01-01T00:00:00Z",
+				dependency_count: 1,
+				is_active: true,
+				is_solution_managed: false,
+				solution_id: null,
+			},
+		],
 		isLoading: false,
 		isError: false,
 		isFetching: false,
@@ -119,10 +131,21 @@ vi.mock("@/hooks/useDependencyGraph", () => ({
 								name: "Create service request",
 								org_id: null,
 							},
+							{
+								id: "form:form-1",
+								type: "form",
+								name: "Service request intake",
+								org_id: null,
+							},
 						],
 						edges: [
 							{
 								source: "app:app-1",
+								target: "workflow:workflow-1",
+								relationship: "uses",
+							},
+							{
+								source: "form:form-1",
 								target: "workflow:workflow-1",
 								relationship: "uses",
 							},
@@ -140,24 +163,47 @@ vi.mock("@/hooks/useAssignEntityRole", () => ({
 	useAssignEntityRole: () => vi.fn(),
 }));
 
-it("clears search and filters when focusing relationships from a search result", async () => {
+it("expands related resources inline from a search result", async () => {
 	const user = userEvent.setup();
 	render(<EntityManagement />);
 
-	await user.type(screen.getByRole("textbox", { name: "Search entities" }), "Covi");
+	await user.type(
+		screen.getByRole("textbox", { name: "Search entities" }),
+		"Covi",
+	);
 	expect(screen.getAllByText("Covi Portal").length).toBeGreaterThan(0);
-	expect(screen.queryByText("Create service request")).not.toBeInTheDocument();
+	expect(
+		screen.queryByText("Create service request"),
+	).not.toBeInTheDocument();
 
 	await user.click(
 		screen.getAllByRole("button", {
-			name: "Focus relationships for Covi Portal",
+			name: "Expand Covi Portal",
 		})[0],
 	);
 
-	await waitFor(() =>
-		expect(
-			screen.getByRole("textbox", { name: "Search entities" }),
-		).toHaveValue(""),
+	expect(
+		screen.getByRole("textbox", { name: "Search entities" }),
+	).toHaveValue("Covi");
+	expect(
+		screen.getAllByText("Create service request").length,
+	).toBeGreaterThan(0);
+	expect(
+		screen.getAllByText("Service request intake").length,
+	).toBeGreaterThan(0);
+
+	await user.click(
+		screen.getAllByRole("checkbox", {
+			name: "Select all visible entities",
+		})[0],
 	);
-	expect(screen.getAllByText("Create service request").length).toBeGreaterThan(0);
+	expect(screen.getByText("3 selected")).toBeInTheDocument();
+	await user.clear(screen.getByRole("textbox", { name: "Search entities" }));
+	await user.type(
+		screen.getByRole("textbox", { name: "Search entities" }),
+		"No matching resource",
+	);
+	expect(screen.getByRole("status")).toHaveTextContent(
+		"3 selected (3 outside this view)",
+	);
 });

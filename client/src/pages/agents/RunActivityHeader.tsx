@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { Code2, ListTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -5,12 +6,19 @@ import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 export function RunActivityHeader({
 	advanced,
 	onChange,
+	className,
 }: {
 	advanced: boolean;
 	onChange: (value: boolean) => void;
+	className?: string;
 }) {
 	return (
-		<CardHeader className="flex w-full min-w-0 flex-col gap-3 border-b px-5 pb-4 sm:flex-row sm:items-start sm:justify-between">
+		<CardHeader
+			className={cn(
+				"flex w-full min-w-0 flex-col gap-3 border-b px-5 pb-4 sm:flex-row sm:items-start sm:justify-between",
+				className,
+			)}
+		>
 			<div className="min-w-0 space-y-1">
 				<CardTitle className="flex items-center gap-2 text-sm">
 					<ListTree

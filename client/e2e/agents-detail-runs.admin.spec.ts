@@ -321,6 +321,26 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 
 		try {
 			await page.setViewportSize({ width: 1440, height: 1000 });
+
+			await page.goto("/history?type=agents");
+			await page
+				.getByRole("combobox", { name: "Agent", exact: true })
+				.click();
+			await page
+				.getByRole("option", { name: agent.name, exact: true })
+				.click();
+			await expect(
+				page.getByRole("navigation", { name: "Agent run pages" }),
+			).toBeVisible();
+			await page
+				.getByRole("combobox", { name: "Run status", exact: true })
+				.click();
+			await page
+				.getByRole("option", { name: "Completed", exact: true })
+				.click();
+			await expect(
+				page.getByRole("navigation", { name: "Agent run pages" }),
+			).toContainText("Page 1");
 			await page.goto(`/agents/${agent.id}/runs/${parentId}`);
 			const activity = page.locator('[data-slot="run-activity"]');
 			await expect(activity).toBeVisible();
@@ -359,7 +379,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				"false",
 			);
 
-			const selectedDetails = activity.getByRole("region", {
+			const selectedDetails = page.getByRole("region", {
 				name: "Selected call details",
 			});
 			await ticketAction
@@ -378,7 +398,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			await expect(
 				selectedDetails.getByText("ticket_id:", { exact: true }),
 			).toBeVisible();
-			await selectedDetails.getByRole("tab", { name: "Output" }).click();
+			await selectedDetails.getByRole("tab", { name: "Result" }).click();
 			await expect(
 				selectedDetails.getByText("status:", { exact: true }),
 			).toBeVisible();
@@ -407,12 +427,9 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					exact: true,
 				}),
 			).not.toBeVisible();
-			await expect(page.getByText("Run ID", { exact: true })).toHaveCount(
-				0,
-			);
 			await expect(
-				page.getByText("gpt-5.2", { exact: true }),
-			).toHaveCount(0);
+				page.getByText("Run ID", { exact: true }),
+			).not.toBeVisible();
 
 			await delegatedActivity
 				.getByRole("button", {
@@ -482,12 +499,16 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				new RegExp(`/agents/${agent.id}/runs/${parentId}$`),
 			);
 			await expect(
-				activity.getByRole("region", { name: "Selected call details" }),
+				page.getByRole("region", { name: "Selected call details" }),
 			).toContainText("Asset Resolver");
 			await expect(
-				activity.getByRole("region", { name: "Selected call details" }),
+				page.getByRole("region", { name: "Selected call details" }),
 			).toContainText("Matched the requester to ELIJAH-LT.");
 			await expect(nestedDelegation).toBeInViewport();
+			await page
+				.getByRole("dialog")
+				.getByRole("button", { name: "Close", exact: true })
+				.click();
 
 			await page
 				.getByRole("button", { name: "Advanced", exact: true })
@@ -509,9 +530,16 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			).toBeVisible();
 			await expect(
 				page.getByText("Run ID", { exact: true }),
+			).not.toBeVisible();
+			await page.getByText("Metadata", { exact: true }).click();
+			await expect(
+				page.getByText("Run ID", { exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByText("gpt-5.2", { exact: true }),
+				page
+					.getByText("Metadata", { exact: true })
+					.locator("..")
+					.getByText("gpt-5.2", { exact: true }),
 			).toBeVisible();
 
 			await page.setViewportSize({ width: 390, height: 844 });
@@ -522,33 +550,30 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					(element) => element.scrollWidth - element.clientWidth,
 				),
 			).toBeLessThanOrEqual(1);
-			const mobileDetails = activity.getByRole("region", {
+			const mobileDetails = page.getByRole("region", {
 				name: "Selected call details",
 			});
 			await expect(mobileDetails).toContainText("Asset Resolver");
 			const mobileOpenRun = mobileDetails.getByRole("link", {
 				name: "Open run",
 			});
-			const mobileHideDetails = activity.getByRole("button", {
-				name: /hide details for troubleshooting specialist/i,
-			});
-			await expect(mobileHideDetails).toHaveAttribute(
-				"aria-expanded",
-				"true",
-			);
+
+			await expect(mobileOpenRun).toBeVisible();
+			const mobileOpenRunBox = await mobileOpenRun.boundingBox();
+			expect(mobileOpenRunBox?.height).toBeGreaterThanOrEqual(44);
+			await page
+				.getByRole("dialog")
+				.getByRole("button", { name: "Close", exact: true })
+				.click();
 			await activity
 				.getByRole("button", { name: "Collapse all" })
 				.click();
-			const mobileShowDetails = activity.getByRole("button", {
-				name: /show details for troubleshooting specialist/i,
-			});
-			await expect(mobileOpenRun).toBeVisible();
-			await expect(mobileShowDetails).toBeVisible();
-			const mobileOpenRunBox = await mobileOpenRun.boundingBox();
-			const mobileShowDetailsBox = await mobileShowDetails.boundingBox();
-			expect(mobileOpenRunBox?.height).toBeGreaterThanOrEqual(44);
-			expect(mobileOpenRunBox?.height).toBeLessThanOrEqual(60);
-			expect(mobileShowDetailsBox?.height).toBeGreaterThanOrEqual(28);
+			await expect(
+				activity.getByRole("button", {
+					name: /show details for troubleshooting specialist/i,
+				}),
+			).toBeVisible();
+
 			await activity.getByRole("button", { name: "Expand all" }).click();
 			await expect(
 				activity.getByRole("button", {

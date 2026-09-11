@@ -24,10 +24,6 @@ import { useAgents, useUpdateAgent } from "@/hooks/useAgents";
 import { useApplications, useUpdateApplication } from "@/hooks/useApplications";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useRoles } from "@/hooks/useRoles";
-import {
-	useDependencyGraph,
-	type EntityType as DependencyEntityType,
-} from "@/hooks/useDependencyGraph";
 import { WorkflowDeactivationDialog } from "@/components/editor/WorkflowDeactivationDialog";
 import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -35,11 +31,9 @@ import type { components } from "@/lib/v1";
 
 import {
 	FilterPopover,
-	RelationshipFilterBanner,
 	DeleteConfirmDialog,
 	normalizeEntities,
 	type EntityType,
-	type RelationshipFilter,
 	type SortOption,
 	type ApplicationPublic,
 } from "@/components/entity-management";
@@ -53,12 +47,10 @@ export function EntityManagement() {
 	const [usageFilter, setUsageFilter] = useState<string>("all");
 	const [sortBy, setSortBy] = useState<SortOption>("name");
 	const [sortAsc, setSortAsc] = useState(true);
+	const [visibleEntityKeys, setVisibleEntityKeys] = useState<string[]>([]);
 	const [isUpdating, setIsUpdating] = useState(false);
 	const [updatingMessage, setUpdatingMessage] = useState("Updating...");
 
-	// Relationship filter state
-	const [relationshipFilter, setRelationshipFilter] =
-		useState<RelationshipFilter | null>(null);
 	const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
 
 	// Confirm delete state (for non-workflow entities: forms, agents, apps)
@@ -131,21 +123,6 @@ export function EntityManagement() {
 		isFetching: fetchingRoles,
 		refetch: refetchRoles,
 	} = useRoles();
-
-	// Fetch dependency graph when relationship filter is active
-	const {
-		data: graphData,
-		isLoading: loadingGraph,
-		isError: graphError,
-		isFetching: fetchingGraph,
-		refetch: refetchGraph,
-	} = useDependencyGraph(
-		relationshipFilter
-			? (relationshipFilter.entityType as DependencyEntityType)
-			: undefined,
-		relationshipFilter?.entityId,
-		3, // Fixed depth of 3 for relationship filtering
-	);
 
 	// Update mutations
 	const assignEntityRole = useAssignEntityRole();
@@ -222,55 +199,33 @@ export function EntityManagement() {
 		[workflows, forms, agents, appsResponse],
 	);
 
-	// Extract related entity IDs from graph data
-	const relatedEntityIds = useMemo(() => {
-		if (!relationshipFilter || !graphData?.nodes) return null;
-
-		const ids = new Set<string>();
-		ids.add(graphData.root_id);
-		for (const node of graphData.nodes) {
-			ids.add(node.id);
-		}
-		return ids;
-	}, [relationshipFilter, graphData]);
-
 	// Apply filters
 	const filteredEntities = useMemo(() => {
 		let result = allEntities;
 
-		if (relationshipFilter) {
-			// Relationship mode: only filter by related IDs + search
-			result = relatedEntityIds
-				? result.filter((e) => relatedEntityIds.has(e.key))
-				: [];
-		} else {
-			// Normal mode: apply all standard filters
-			if (typeFilter !== "all") {
-				result = result.filter((e) => e.entityType === typeFilter);
-			}
+		if (typeFilter !== "all") {
+			result = result.filter((e) => e.entityType === typeFilter);
+		}
 
-			if (orgFilter !== "all") {
-				if (orgFilter === "global") {
-					result = result.filter((e) => !e.organizationId);
-				} else {
-					result = result.filter(
-						(e) => e.organizationId === orgFilter,
-					);
-				}
+		if (orgFilter !== "all") {
+			if (orgFilter === "global") {
+				result = result.filter((e) => !e.organizationId);
+			} else {
+				result = result.filter((e) => e.organizationId === orgFilter);
 			}
+		}
 
-			if (accessFilter !== "all") {
-				result = result.filter((e) => e.accessLevel === accessFilter);
-			}
+		if (accessFilter !== "all") {
+			result = result.filter((e) => e.accessLevel === accessFilter);
+		}
 
-			if (usageFilter !== "all") {
-				if (usageFilter === "unused") {
-					result = result.filter((e) => e.usedByCount === 0);
-				} else if (usageFilter === "in_use") {
-					result = result.filter(
-						(e) => e.usedByCount !== null && e.usedByCount > 0,
-					);
-				}
+		if (usageFilter !== "all") {
+			if (usageFilter === "unused") {
+				result = result.filter((e) => e.usedByCount === 0);
+			} else if (usageFilter === "in_use") {
+				result = result.filter(
+					(e) => e.usedByCount !== null && e.usedByCount > 0,
+				);
 			}
 		}
 
@@ -298,8 +253,6 @@ export function EntityManagement() {
 		return result;
 	}, [
 		allEntities,
-		relationshipFilter,
-		relatedEntityIds,
 		typeFilter,
 		orgFilter,
 		accessFilter,
@@ -315,6 +268,55 @@ export function EntityManagement() {
 		(accessFilter !== "all" ? 1 : 0) +
 		(usageFilter !== "all" ? 1 : 0);
 
+	const entitiesByKey = useMemo(
+		() => new Map(allEntities.map((entity) => [entity.key, entity])),
+		[allEntities],
+	);
+	const rootVisibleKeys = useMemo(
+		() => filteredEntities.map((entity) => entity.key),
+		[filteredEntities],
+	);
+	const effectiveVisibleKeys = useMemo(
+		() =>
+			filteredEntities.length === 0
+				? []
+				: visibleEntityKeys.length > 0
+					? visibleEntityKeys
+					: rootVisibleKeys,
+		[filteredEntities.length, visibleEntityKeys, rootVisibleKeys],
+	);
+	const visibleKeySet = useMemo(
+		() => new Set(effectiveVisibleKeys),
+		[effectiveVisibleKeys],
+	);
+	const visibleSelectableKeys = useMemo(
+		() =>
+			effectiveVisibleKeys.filter((key) => {
+				const entity = entitiesByKey.get(key);
+				return entity && !isEntityManaged(entity);
+			}),
+		[effectiveVisibleKeys, entitiesByKey],
+	);
+
+	const allSelected =
+		visibleSelectableKeys.length > 0 &&
+		visibleSelectableKeys.every((key) => selectedIds.has(key));
+	const someSelected =
+		visibleSelectableKeys.some((key) => selectedIds.has(key)) &&
+		!allSelected;
+	const hiddenSelectedCount = [...selectedIds].filter(
+		(key) => !visibleKeySet.has(key),
+	).length;
+
+	const handleVisibleKeysChange = useCallback((entityKeys: string[]) => {
+		setVisibleEntityKeys((previous) =>
+			previous.length === entityKeys.length &&
+			previous.every((key, index) => key === entityKeys[index])
+				? previous
+				: entityKeys,
+		);
+	}, []);
+
 	const handleClearFilters = () => {
 		setTypeFilter("all");
 		setOrgFilter("all");
@@ -325,7 +327,6 @@ export function EntityManagement() {
 	const handleRefresh = () => {
 		void refetchOrganizations();
 		void refetchRoles();
-		if (relationshipFilter) void refetchGraph();
 		refetchWorkflows();
 		refetchForms();
 		refetchAgents();
@@ -345,38 +346,15 @@ export function EntityManagement() {
 	};
 
 	const handleSelectAll = (selected: boolean) => {
-		if (selected) {
-			setSelectedIds(
-				new Set(
-					filteredEntities
-						.filter((e) => !isEntityManaged(e))
-						.map((e) => e.key),
-				),
-			);
-		} else {
-			setSelectedIds(new Set());
-		}
+		setSelectedIds((previous) => {
+			const next = new Set(previous);
+			for (const key of visibleSelectableKeys) {
+				if (selected) next.add(key);
+				else next.delete(key);
+			}
+			return next;
+		});
 	};
-
-	const handleShowRelationships = useCallback(
-		(entityId: string, entityType: EntityType, entityName: string) => {
-			setSearchTerm("");
-			setTypeFilter("all");
-			setOrgFilter("all");
-			setAccessFilter("all");
-			setUsageFilter("all");
-			setRelationshipFilter({
-				entityId,
-				entityType,
-				entityName,
-			});
-		},
-		[],
-	);
-
-	const handleClearRelationshipFilter = useCallback(() => {
-		setRelationshipFilter(null);
-	}, []);
 
 	// Delete workflow handlers
 	const handleDeleteWorkflow = useCallback(
@@ -588,14 +566,6 @@ export function EntityManagement() {
 		refetchWorkflows,
 	]);
 
-	const allSelected =
-		filteredEntities.some((e) => !isEntityManaged(e)) &&
-		filteredEntities
-			.filter((e) => !isEntityManaged(e))
-			.every((e) => selectedIds.has(e.key));
-	const someSelected =
-		filteredEntities.some((e) => selectedIds.has(e.key)) && !allSelected;
-
 	const handleOrgDrop = useCallback(
 		async (entityIds: string[], orgId: string | null) => {
 			const failedNames: string[] = [];
@@ -802,34 +772,15 @@ export function EntityManagement() {
 			<EntityCollectionStatus collections={collections} />
 
 			<div className="flex min-h-0 min-w-0 flex-col xl:flex-1">
-				{/* Relationship Filter Banner */}
-				{relationshipFilter && (
-					<RelationshipFilterBanner
-						entityName={relationshipFilter.entityName}
-						isError={graphError}
-						isFetching={fetchingGraph}
-						hasData={!!graphData}
-						onRetry={() => void refetchGraph()}
-						onClear={handleClearRelationshipFilter}
-					/>
-				)}
-
 				<EntityListToolbar
 					search={searchTerm}
 					onSearch={setSearchTerm}
 					allSelected={allSelected}
 					someSelected={someSelected}
 					onSelectAll={handleSelectAll}
-					visibleCount={filteredEntities.length}
+					visibleCount={effectiveVisibleKeys.length}
 					selectedCount={selectedIds.size}
-					hiddenSelectedCount={
-						[...selectedIds].filter(
-							(id) =>
-								!filteredEntities.some(
-									(entity) => entity.key === id,
-								),
-						).length
-					}
+					hiddenSelectedCount={hiddenSelectedCount}
 					onClearSelection={() => setSelectedIds(new Set())}
 					onDelete={handleBulkDelete}
 					onEditSelection={() => setIsEditDrawerOpen(true)}
@@ -840,38 +791,34 @@ export function EntityManagement() {
 					ascending={sortAsc}
 					onToggleDirection={() => setSortAsc((value) => !value)}
 					filters={
-						!relationshipFilter && (
-							<FilterPopover
-								typeFilter={typeFilter}
-								setTypeFilter={setTypeFilter}
-								orgFilter={orgFilter}
-								setOrgFilter={setOrgFilter}
-								accessFilter={accessFilter}
-								setAccessFilter={setAccessFilter}
-								usageFilter={usageFilter}
-								setUsageFilter={setUsageFilter}
-								organizations={organizations ?? []}
-								activeFilterCount={activeFilterCount}
-								onClearFilters={handleClearFilters}
-							/>
-						)
+						<FilterPopover
+							typeFilter={typeFilter}
+							setTypeFilter={setTypeFilter}
+							orgFilter={orgFilter}
+							setOrgFilter={setOrgFilter}
+							accessFilter={accessFilter}
+							setAccessFilter={setAccessFilter}
+							usageFilter={usageFilter}
+							setUsageFilter={setUsageFilter}
+							organizations={organizations ?? []}
+							activeFilterCount={activeFilterCount}
+							onClearFilters={handleClearFilters}
+						/>
 					}
 				/>
 
 				{/* Entity List */}
 				<div className="min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-					{(isLoading && allEntities.length === 0) ||
-					(relationshipFilter && loadingGraph) ? (
+					{isLoading && allEntities.length === 0 ? (
 						<div className="space-y-2">
 							{[...Array(5)].map((_, i) => (
 								<Skeleton key={i} className="h-16 w-full" />
 							))}
 						</div>
-					) : relationshipFilter &&
-					  graphError &&
-					  !graphData ? null : filteredEntities.length > 0 ? (
+					) : filteredEntities.length > 0 ? (
 						<ResourceTreeTable
 							entities={filteredEntities}
+							allEntities={allEntities}
 							organizations={organizations ?? []}
 							roles={roles ?? []}
 							selectedIds={selectedIds}
@@ -879,30 +826,22 @@ export function EntityManagement() {
 							someSelected={someSelected}
 							onSelectAll={handleSelectAll}
 							onSelect={handleSelectEntity}
-							onShowRelationships={handleShowRelationships}
+							onVisibleKeysChange={handleVisibleKeysChange}
 							onDelete={handleDeleteEntity}
-							graphData={graphData ?? null}
-							focusedEntityId={relationshipFilter?.entityId}
 						/>
 					) : incompleteEntityData || isLoading ? null : (
 						<Card>
 							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
 								<Filter className="h-12 w-12 text-muted-foreground" />
 								<h3 className="mt-4 text-lg font-semibold">
-									{relationshipFilter
-										? "No related entities found"
-										: searchTerm || activeFilterCount > 0
-											? "No entities match your filters"
-											: "No entities found"}
+									{searchTerm || activeFilterCount > 0
+										? "No entities match your filters"
+										: "No entities found"}
 								</h3>
 								<p className="mt-2 text-sm text-muted-foreground">
-									{relationshipFilter
-										? searchTerm
-											? "No related entities match your search"
-											: "No related entities are available in this list"
-										: searchTerm || activeFilterCount > 0
-											? "Try adjusting your filters"
-											: "Create workflows, forms, or agents to manage them here"}
+									{searchTerm || activeFilterCount > 0
+										? "Try adjusting your filters"
+										: "Create workflows, forms, or agents to manage them here"}
 								</p>
 							</CardContent>
 						</Card>

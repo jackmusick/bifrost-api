@@ -24,13 +24,6 @@ export interface EntityWithScope {
 	original: WorkflowMetadata | FormPublic | AgentSummary | ApplicationPublic;
 }
 
-// Relationship filter state
-export interface RelationshipFilter {
-	entityId: string;
-	entityType: EntityType;
-	entityName: string;
-}
-
 // Sort options
 export type SortOption = "name" | "date" | "type";
 

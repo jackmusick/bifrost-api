@@ -465,7 +465,7 @@ export function AgentRunDetailPage() {
 	// Header title: `asked` is the user-facing TL;DR (capped ~100 chars by
 	// the summarizer prompt). `did` is a multi-sentence narrative under v3+
 	// and too long for a title; only fall back to it when `asked` is empty.
-	const headerSummary = run.asked || run.did || "Agent run";
+	const headerSummary = run.agent_name || agent?.name || "Agent run";
 	const parentRunHref = parentRun?.agent_id
 		? `/agents/${parentRun.agent_id}/runs/${parentRun.id}`
 		: null;
@@ -538,15 +538,6 @@ export function AgentRunDetailPage() {
 									<span>·</span>
 									<span>
 										{formatDuration(run.duration_ms)}
-									</span>
-								</>
-							) : null}
-							{advancedView ? (
-								<>
-									<span>·</span>
-									<span>
-										{run.iterations_used} iter ·{" "}
-										{formatNumber(run.tokens_used)} tok
 									</span>
 								</>
 							) : null}
@@ -624,12 +615,13 @@ export function AgentRunDetailPage() {
 							) : null}
 						</fieldset>
 
-						<Card data-slot="run-activity">
+						<section data-slot="run-activity" className="min-w-0">
 							<RunActivityHeader
+								className="px-0"
 								advanced={advancedView}
 								onChange={setAdvancedView}
 							/>
-							<CardContent className="min-w-0">
+							<div className="min-w-0 pt-4">
 								<div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 [&>*]:min-w-0">
 									<Timeline
 										steps={run.steps ?? []}
@@ -697,8 +689,8 @@ export function AgentRunDetailPage() {
 										</details>
 									) : null}
 								</div>
-							</CardContent>
-						</Card>
+							</div>
+						</section>
 
 						{/* Per-flag conversation (only when verdict=down) */}
 						{isFlagged ? (
@@ -752,27 +744,32 @@ export function AgentRunDetailPage() {
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
-									{advancedView ? (
+								<details>
+									<summary className="min-h-11 cursor-pointer text-sm text-muted-foreground">
+										Metadata
+									</summary>
+									<dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
 										<MetaRow label="Run ID">
 											<span className="font-mono text-[11px] break-all">
 												{run.id}
 											</span>
 										</MetaRow>
-									) : null}
-									{run.started_at ? (
-										<MetaRow label="Started">
-											{new Date(
-												run.started_at,
-											).toLocaleString()}
+
+										{run.started_at ? (
+											<MetaRow label="Started">
+												{new Date(
+													run.started_at,
+												).toLocaleString()}
+											</MetaRow>
+										) : null}
+										<MetaRow label="Duration">
+											{run.duration_ms != null
+												? formatDuration(
+														run.duration_ms,
+													)
+												: "—"}
 										</MetaRow>
-									) : null}
-									<MetaRow label="Duration">
-										{run.duration_ms != null
-											? formatDuration(run.duration_ms)
-											: "—"}
-									</MetaRow>
-									{advancedView ? (
+
 										<>
 											<MetaRow label="Iterations">
 												{run.iterations_used}
@@ -786,24 +783,23 @@ export function AgentRunDetailPage() {
 												</span>
 											</MetaRow>
 										</>
-									) : null}
-									<MetaRow label="Trigger">
-										{run.trigger_type}
-									</MetaRow>
-									{run.caller_email ? (
-										<MetaRow label="Caller">
-											{run.caller_name ??
-												run.caller_email}
+
+										<MetaRow label="Trigger">
+											{run.trigger_type}
 										</MetaRow>
-									) : null}
-								</dl>
+										{run.caller_email ? (
+											<MetaRow label="Caller">
+												{run.caller_name ??
+													run.caller_email}
+											</MetaRow>
+										) : null}
+									</dl>
+								</details>
 							</CardContent>
 						</Card>
 
 						{/* AI usage */}
-						{advancedView &&
-						run.ai_usage &&
-						run.ai_usage.length > 0 ? (
+						{run.ai_usage && run.ai_usage.length > 0 ? (
 							<RunAIUsageCard
 								usage={run.ai_usage}
 								totals={run.ai_totals ?? null}

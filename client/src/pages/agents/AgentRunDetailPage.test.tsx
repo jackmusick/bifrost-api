@@ -206,12 +206,11 @@ async function renderPage(path = "/agents/agent-1/runs/run-1") {
 // -----------------------------------------------------------------------------
 
 describe("AgentRunDetailPage — header + summary", () => {
-	it("renders the run summary in the header", async () => {
-		// Header uses `asked` as the TL;DR title (not `did` — that's prose
-		// under v3+ and too long for a heading).
+	it("uses a concise agent heading while preserving the run summary", async () => {
+		// The request remains in the summary; the heading identifies the agent.
 		await renderPage();
 		const heading = screen.getByRole("heading", {
-			name: /reset password please/i,
+			name: "Triage",
 		});
 		expect(heading).toBeVisible();
 	});
@@ -382,7 +381,7 @@ describe("AgentRunDetailPage — header + summary", () => {
 		await user.click(
 			screen.getByRole("button", { name: /looked up ticket/i }),
 		);
-		await user.click(screen.getByRole("tab", { name: "Output" }));
+		await user.click(screen.getByRole("tab", { name: "Result" }));
 		expect(screen.getByText("ticket_id:")).toBeInTheDocument();
 		expect(screen.getByText("428950")).toBeInTheDocument();
 
@@ -485,18 +484,18 @@ describe("AgentRunDetailPage — verdict actions", () => {
 });
 
 describe("AgentRunDetailPage — sidebar metadata", () => {
-	it("keeps technical metadata in Advanced while retaining operational context", async () => {
+	it("keeps metadata disclosure independent of activity Advanced mode", async () => {
 		const { user } = await renderPage();
-		expect(screen.queryByText(/run-1/)).not.toBeInTheDocument();
-		expect(screen.queryByText(/claude-opus-4-7/)).not.toBeInTheDocument();
-		expect(screen.getByText(/test/)).toBeInTheDocument();
-		expect(screen.getByText(/alice/i)).toBeInTheDocument();
-
+		const metadata = screen.getByText("Metadata").closest("details")!;
+		expect(metadata).not.toHaveAttribute("open");
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
-		expect(screen.getByText(/run-1/)).toBeInTheDocument();
-		expect(screen.getByText(/claude-opus-4-7/)).toBeInTheDocument();
+		expect(metadata).not.toHaveAttribute("open");
+		await user.click(screen.getByText("Metadata"));
+		expect(metadata).toHaveAttribute("open");
 		expect(screen.getByText("Iterations")).toBeInTheDocument();
 		expect(screen.getByText("Tokens")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Activity" }));
+		expect(metadata).toHaveAttribute("open");
 	});
 });
 
@@ -622,7 +621,7 @@ describe("AgentRunDetailPage — AI usage card", () => {
 			isLoading: false,
 		});
 		const { user } = await renderPage();
-		expect(screen.queryByTestId("ai-usage-card")).not.toBeInTheDocument();
+		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
 		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 	});

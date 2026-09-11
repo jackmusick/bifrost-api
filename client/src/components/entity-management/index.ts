@@ -12,7 +12,6 @@ export {
 export type {
 	EntityType,
 	EntityWithScope,
-	RelationshipFilter,
 	SortOption,
 	WorkflowMetadata,
 	FormPublic,
@@ -21,5 +20,3 @@ export type {
 	Organization,
 	Role,
 } from "./types";
-
-export { RelationshipFilterBanner } from "./RelationshipFilterBanner";
