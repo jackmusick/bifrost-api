@@ -28,7 +28,7 @@ const entities = [
 const organizations = [{ id: "org-1", name: "Northwind" }] as Organization[];
 const roles = [{ id: "role-1", name: "Service Desk" }] as Role[];
 
-it("renders scope before the flexible name column and type as its own column", () => {
+it("renders compact resource rows with type, scope, and access metadata", () => {
 	dependencyGraph.mockReturnValue({
 		data: null,
 		isLoading: false,
@@ -38,25 +38,19 @@ it("renders scope before the flexible name column and type as its own column", (
 	});
 	renderTable({ entities: entities.slice(0, 1), allEntities: entities });
 
-	const headers = screen.getAllByRole("columnheader");
-	expect(headers.map((header) => header.textContent?.trim())).toEqual([
-		"",
-		"Scope",
-		"Name",
-		"Type",
-		"Access",
-		"Actions",
-	]);
-	const rowCells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-	expect(rowCells[1]).toHaveTextContent("Northwind");
-	expect(rowCells[2]).toHaveTextContent("Covi Portal");
-	expect(rowCells[3]).toHaveTextContent("App");
-	expect(rowCells[4]).toHaveTextContent("Service Desk");
+	expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
+	const items = resourceItems();
+	expect(items).toHaveLength(1);
+	expect(items[0]).toHaveTextContent("Covi Portal");
+	expect(items[0]).toHaveTextContent("App");
+	expect(items[0]).toHaveTextContent("Northwind");
+	expect(items[0]).toHaveTextContent("Service Desk");
 });
 
 it("loads relationships from the expanded row and preserves the root list", async () => {
 	const user = userEvent.setup();
 	const onVisibleKeysChange = vi.fn();
+	const onConnectedKeysChange = vi.fn();
 	dependencyGraph.mockReturnValue({
 		data: {
 			root_id: "app:app-1",
@@ -84,21 +78,28 @@ it("loads relationships from the expanded row and preserves the root list", asyn
 		entities: entities.slice(0, 1),
 		allEntities: entities,
 		onVisibleKeysChange,
+		onConnectedKeysChange,
 	});
 	expect(onVisibleKeysChange).toHaveBeenLastCalledWith(["app:app-1"]);
+	expect(onConnectedKeysChange).toHaveBeenLastCalledWith([]);
 	await user.click(
 		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
 	);
 
 	expect(dependencyGraph).toHaveBeenLastCalledWith("app", "app-1");
-	const rows = screen.getAllByRole("row");
-	expect(rows).toHaveLength(4);
-	expect(rows[1]).toHaveTextContent("Covi Portal");
-	expect(rows[2]).toHaveTextContent("Create service request");
-	expect(rows[2]).toHaveTextContent("Used by Covi Portal");
-	expect(rows[3]).toHaveTextContent("Service request form");
-	expect(rows[3]).toHaveTextContent("Uses Create service request");
+	const items = resourceItems();
+	expect(items).toHaveLength(3);
+	expect(items[0]).toHaveTextContent("Covi Portal");
+	expect(items[1]).toHaveTextContent("Create service request");
+	expect(items[1]).toHaveTextContent("Used by Covi Portal");
+	expect(items[2]).toHaveTextContent("Service request form");
+	expect(items[2]).toHaveTextContent("Uses Create service request");
 	expect(onVisibleKeysChange).toHaveBeenLastCalledWith([
+		"app:app-1",
+		"workflow:workflow-1",
+		"form:form-1",
+	]);
+	expect(onConnectedKeysChange).toHaveBeenLastCalledWith([
 		"app:app-1",
 		"workflow:workflow-1",
 		"form:form-1",
@@ -106,8 +107,48 @@ it("loads relationships from the expanded row and preserves the root list", asyn
 	await user.click(
 		screen.getAllByRole("button", { name: "Collapse Covi Portal" })[0],
 	);
-	expect(screen.getAllByRole("row")).toHaveLength(2);
+	expect(resourceItems()).toHaveLength(1);
 	expect(onVisibleKeysChange).toHaveBeenLastCalledWith(["app:app-1"]);
+	expect(onConnectedKeysChange).toHaveBeenLastCalledWith([]);
+});
+
+it("reports only the expanded graph for connected selection", async () => {
+	const user = userEvent.setup();
+	const onConnectedKeysChange = vi.fn();
+	dependencyGraph.mockReturnValue({
+		data: {
+			root_id: "app:app-1",
+			nodes: [],
+			edges: [
+				{
+					source: "app:app-1",
+					target: "workflow:workflow-1",
+					relationship: "uses",
+				},
+			],
+		},
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+
+	renderTable({
+		entities: [entities[0], entities[3]],
+		allEntities: entities,
+		onConnectedKeysChange,
+	});
+	await user.click(
+		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
+	);
+
+	expect(onConnectedKeysChange).toHaveBeenLastCalledWith([
+		"app:app-1",
+		"workflow:workflow-1",
+	]);
+	expect(onConnectedKeysChange).not.toHaveBeenCalledWith(
+		expect.arrayContaining(["agent:agent-1"]),
+	);
 });
 
 it("keeps composite selection distinct and routes delete actions with actual ids", async () => {
@@ -146,13 +187,15 @@ it("keeps composite selection distinct and routes delete actions with actual ids
 		onSelect,
 		onDelete,
 	});
-	const rows = screen.getAllByRole("row");
-	expect(within(rows[1]).getByRole("checkbox")).not.toBeChecked();
-	expect(within(rows[2]).getByRole("checkbox")).toBeChecked();
-	await user.click(within(rows[1]).getByRole("checkbox"));
+	const items = resourceItems();
+	expect(within(items[0]).getByRole("checkbox")).not.toBeChecked();
+	expect(within(items[1]).getByRole("checkbox")).toBeChecked();
+	await user.click(within(items[0]).getByRole("checkbox"));
 	expect(onSelect).toHaveBeenCalledWith("app:shared", true);
 	await user.click(
-		within(rows[1]).getByRole("button", { name: "More actions for Portal" }),
+		within(items[0]).getByRole("button", {
+			name: "More actions for Portal",
+		}),
 	);
 	await user.click(screen.getByRole("menuitem", { name: "Delete app" }));
 	expect(onDelete).toHaveBeenCalledWith("shared", "Portal", "app");
@@ -168,11 +211,16 @@ it("shows loading and error states inline on the expanded row", async () => {
 		isFetching: false,
 		refetch,
 	});
-	const { rerender } = renderTable({ entities: entities.slice(0, 1), allEntities: entities });
+	const { rerender } = renderTable({
+		entities: entities.slice(0, 1),
+		allEntities: entities,
+	});
 	await user.click(
 		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
 	);
-	expect(screen.getAllByRole("button", { name: "Collapse Covi Portal" })[0]).toHaveAttribute("aria-expanded", "true");
+	expect(
+		screen.getAllByRole("button", { name: "Collapse Covi Portal" })[0],
+	).toHaveAttribute("aria-expanded", "true");
 	dependencyGraph.mockReturnValue({
 		data: null,
 		isLoading: false,
@@ -181,7 +229,9 @@ it("shows loading and error states inline on the expanded row", async () => {
 		refetch,
 	});
 	rerender(table({ entities: entities.slice(0, 1), allEntities: entities }));
-	expect(screen.getAllByRole("row")[1]).toHaveTextContent("Could not load related resources");
+	expect(resourceItems()[0]).toHaveTextContent(
+		"Could not load related resources",
+	);
 	await user.click(screen.getAllByRole("button", { name: "Retry" })[0]);
 	expect(refetch).toHaveBeenCalled();
 });
@@ -203,9 +253,7 @@ it("shows an inline empty relationships state when expansion has no children", a
 	await user.click(
 		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
 	);
-	expect(screen.getAllByRole("row")[1]).toHaveTextContent(
-		"No related resources",
-	);
+	expect(resourceItems()[0]).toHaveTextContent("No related resources");
 });
 
 it("renders expansion controls from relationship availability instead of directional counts", () => {
@@ -236,7 +284,15 @@ it("renders expansion controls from relationship availability instead of directi
 				0,
 				true,
 			),
-			entity("app-empty", "Zero linked app", "app", null, "authenticated", null, false),
+			entity(
+				"app-empty",
+				"Zero linked app",
+				"app",
+				null,
+				"authenticated",
+				null,
+				false,
+			),
 		],
 		allEntities: [
 			entity(
@@ -257,15 +313,25 @@ it("renders expansion controls from relationship availability instead of directi
 				0,
 				true,
 			),
-			entity("app-empty", "Zero linked app", "app", null, "authenticated", null, false),
-	],
+			entity(
+				"app-empty",
+				"Zero linked app",
+				"app",
+				null,
+				"authenticated",
+				null,
+				false,
+			),
+		],
 	});
 
 	expect(
-		screen.getAllByRole("button", { name: "Expand Workflow launcher form" }).length,
+		screen.getAllByRole("button", { name: "Expand Workflow launcher form" })
+			.length,
 	).toBeGreaterThan(0);
 	expect(
-		screen.getAllByRole("button", { name: "Expand Inbound workflow" }).length,
+		screen.getAllByRole("button", { name: "Expand Inbound workflow" })
+			.length,
 	).toBeGreaterThan(0);
 	expect(
 		screen.queryByRole("button", { name: "Expand Zero linked app" }),
@@ -276,6 +342,12 @@ function renderTable(overrides: Partial<TableProps> = {}) {
 	return render(table(overrides));
 }
 
+function resourceItems() {
+	return within(screen.getByRole("list", { name: "Resources" })).getAllByRole(
+		"listitem",
+	);
+}
+
 function table(overrides: Partial<TableProps> = {}) {
 	const props: TableProps = {
 		entities,
@@ -284,6 +356,7 @@ function table(overrides: Partial<TableProps> = {}) {
 		onSelect: vi.fn(),
 		onDelete: vi.fn(),
 		onVisibleKeysChange: vi.fn(),
+		onConnectedKeysChange: vi.fn(),
 		...overrides,
 	};
 	return (
@@ -298,6 +371,7 @@ function table(overrides: Partial<TableProps> = {}) {
 			onSelectAll={vi.fn()}
 			onSelect={props.onSelect}
 			onVisibleKeysChange={props.onVisibleKeysChange}
+			onConnectedKeysChange={props.onConnectedKeysChange}
 			onDelete={props.onDelete}
 		/>
 	);
@@ -309,6 +383,7 @@ interface TableProps {
 	selectedIds: Set<string>;
 	onSelect: (entityKey: string, selected: boolean) => void;
 	onVisibleKeysChange: (entityKeys: string[]) => void;
+	onConnectedKeysChange: (entityKeys: string[]) => void;
 	onDelete: (
 		entityId: string,
 		entityName: string,

@@ -391,7 +391,12 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			).toBeVisible();
 			await expect(
 				page.getByText("gpt-5.2", { exact: true }),
+			).toHaveCount(0);
+			await page.getByRole("button", { name: /ai usage/i }).click();
+			await expect(
+				page.getByText("gpt-5.2", { exact: true }),
 			).toBeVisible();
+			await page.getByRole("button", { name: /ai usage/i }).click();
 
 			const ticketReference = page.getByRole("link", {
 				name: "Show Looked up ticket details in Activity",
@@ -595,15 +600,14 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					exact: true,
 				}),
 			).toBeVisible();
-			const runTabs = page.getByRole("tablist", { name: "Run sections" });
-			await runTabs.getByRole("tab", { name: "Overview" }).click();
+			await page.getByRole("button", { name: "Show overview" }).click();
 			await expect(
 				page.getByRole("button", { name: "Copy run ID" }),
 			).toBeVisible();
 			await expect(
 				page.getByText("AI Usage", { exact: true }),
 			).toBeVisible();
-			await runTabs.getByRole("tab", { name: /Activity/ }).click();
+			await page.getByRole("button", { name: "Focus activity" }).click();
 			await expect(page).toHaveURL(
 				new RegExp(
 					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,

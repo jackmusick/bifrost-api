@@ -1,5 +1,5 @@
 import { useId, useRef, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Pencil, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -43,15 +43,9 @@ export function EntityListToolbar({
 	someSelected,
 	onSelectAll,
 	visibleCount,
-	selectedCount,
-	hiddenSelectedCount,
-	onClearSelection,
-	onDelete,
-	onEditSelection,
 	busy,
 	busyMessage,
 	filters,
-	assignmentAction,
 	sortBy,
 	onSortBy,
 	ascending,
@@ -60,25 +54,16 @@ export function EntityListToolbar({
 	const input = useRef<HTMLInputElement>(null);
 	const sortId = useId();
 	const selectAllId = useId();
-	const selectionSummary =
-		selectedCount > 0
-			? `${selectedCount} selected${
-					hiddenSelectedCount > 0
-						? ` (${hiddenSelectedCount} outside this view)`
-						: ""
-				}`
-			: null;
-
 	return (
 		<section
 			aria-label="Entity list controls"
-			className="mb-2 shrink-0 space-y-2"
+			className="shrink-0 border-b border-border bg-card p-3"
 		>
 			<div className="grid gap-2 lg:grid-cols-[minmax(18rem,1fr)_auto_auto_auto] lg:items-center">
 				<div className="flex items-center gap-2">
 					<label
 						htmlFor={selectAllId}
-						className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background lg:hidden"
+						className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background"
 					>
 						<Checkbox
 							id={selectAllId}
@@ -164,56 +149,10 @@ export function EntityListToolbar({
 				</div>
 			</div>
 
-			{selectionSummary || busy ? (
-				<div className="flex flex-col gap-2 border-y border-border/70 bg-muted/20 px-3 py-2 text-sm lg:flex-row lg:items-center lg:justify-between">
-					<p
-						role="status"
-						className="min-w-0 flex-1 basis-full text-muted-foreground"
-					>
-						{busy ? busyMessage : selectionSummary}
-					</p>
-					{selectedCount > 0 ? (
-						<div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:items-center">
-							{assignmentAction}
-							{onEditSelection ? (
-								<Button
-									type="button"
-									size="lg"
-									className="w-full sm:w-auto"
-									disabled={busy}
-									onClick={onEditSelection}
-								>
-									<Pencil
-										aria-hidden="true"
-										className="size-4"
-									/>
-									Edit selected
-								</Button>
-							) : null}
-							<Button
-								type="button"
-								variant="outline"
-								size="lg"
-								className="w-full sm:w-auto"
-								disabled={busy}
-								onClick={onClearSelection}
-							>
-								Clear selection
-							</Button>
-							<Button
-								type="button"
-								variant="outline"
-								size="lg"
-								className="w-full text-destructive sm:w-auto"
-								disabled={busy}
-								onClick={onDelete}
-							>
-								<Trash2 aria-hidden="true" className="size-4" />
-								Delete selected
-							</Button>
-						</div>
-					) : null}
-				</div>
+			{busy ? (
+				<p role="status" className="sr-only">
+					{busyMessage}
+				</p>
 			) : null}
 		</section>
 	);

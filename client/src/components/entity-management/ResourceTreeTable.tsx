@@ -1,25 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-	Building2,
-	Calendar,
-	ChevronRight,
-	Globe,
-	Shield,
-	Trash2,
-} from "lucide-react";
+import { Building2, ChevronRight, Globe, Shield, Trash2 } from "lucide-react";
 
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent } from "@/components/ui/card";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
 	useDependencyGraph,
 	type EntityType as DependencyEntityType,
 	type DependencyGraph,
 } from "@/hooks/useDependencyGraph";
-import { cn, formatDateShort } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 import type { EntityType, EntityWithScope, Organization, Role } from "./types";
 import { ENTITY_CONFIG, formatEntityAccess, isEntityManaged } from "./types";
@@ -35,6 +27,7 @@ interface ResourceTreeTableProps {
 	onSelectAll: (selected: boolean) => void;
 	onSelect: (entityKey: string, selected: boolean) => void;
 	onVisibleKeysChange?: (entityKeys: string[]) => void;
+	onConnectedKeysChange?: (entityKeys: string[]) => void;
 	onDelete: (
 		entityId: string,
 		entityName: string,
@@ -59,15 +52,15 @@ export function ResourceTreeTable({
 	organizations,
 	roles,
 	selectedIds,
-	allSelected,
-	someSelected,
-	onSelectAll,
 	onSelect,
 	onVisibleKeysChange,
+	onConnectedKeysChange,
 	onDelete,
 }: ResourceTreeTableProps) {
 	const [expandedKey, setExpandedKey] = useState<string | null>(null);
-	const expandedEntity = allEntities.find((entity) => entity.key === expandedKey);
+	const expandedEntity = allEntities.find(
+		(entity) => entity.key === expandedKey,
+	);
 	const {
 		data: graphData,
 		isLoading,
@@ -92,90 +85,79 @@ export function ResourceTreeTable({
 		() => Array.from(new Set(rows.map((row) => row.entity.key))),
 		[rows],
 	);
+	const connectedKeys = useMemo(
+		() =>
+			expandedKey
+				? Array.from(
+						new Set(
+							rows
+								.filter(
+									(row) =>
+										row.entity.key === expandedKey ||
+										row.depth > 0,
+								)
+								.map((row) => row.entity.key),
+						),
+					)
+				: [],
+		[expandedKey, rows],
+	);
 	const visibleKeySignature = visibleKeys.join("\u0000");
+	const connectedKeySignature = connectedKeys.join("\u0000");
 
 	useEffect(() => {
 		onVisibleKeysChange?.(visibleKeys);
-		// visibleKeySignature intentionally gates updates so callers receive
+		// connectedKeySignature intentionally gates updates so callers receive
 		// row visibility changes without a parent/child render loop.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [onVisibleKeysChange, visibleKeySignature]);
+	useEffect(() => {
+		onConnectedKeysChange?.(connectedKeys);
+		// visibleKeySignature intentionally gates updates so callers receive
+		// expanded graph selection changes without a parent/child render loop.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [connectedKeySignature, onConnectedKeysChange]);
 
 	const toggleExpanded = (entityKey: string) => {
 		setExpandedKey((current) => (current === entityKey ? null : entityKey));
 	};
 
 	return (
-		<>
-			<div className="hidden min-w-0 overflow-hidden rounded-[var(--bf-radius-surface)] border border-border bg-card lg:block">
-				<table className="w-full text-sm">
-					<thead className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-						<tr>
-							<th className="w-10 px-3 py-2">
-								<Checkbox
-									aria-label="Select all visible entities"
-									checked={
-										someSelected
-											? "indeterminate"
-											: allSelected
-									}
-									disabled={entities.length === 0}
-									onCheckedChange={(value) =>
-										onSelectAll(value === true)
-									}
-								/>
-							</th>
-							<th className="w-px whitespace-nowrap px-3 py-2">Scope</th>
-							<th className="w-full px-3 py-2">Name</th>
-							<th className="w-px whitespace-nowrap px-3 py-2">Type</th>
-							<th className="w-px whitespace-nowrap px-3 py-2">Access</th>
-							<th className="w-px whitespace-nowrap px-3 py-2 text-right">
-								<span className="sr-only">Actions</span>
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map((row) => (
-							<ResourceTableRow
-								key={`${row.entity.key}:${row.depth}:${row.caption ?? "root"}`}
-								row={row}
-								organizationName={organizationName(
-									row.entity,
-									organizations,
-								)}
-								accessName={accessName(row.entity, roles)}
-								selected={selectedIds.has(row.entity.key)}
-								onToggleExpanded={toggleExpanded}
-								onSelect={onSelect}
-								onDelete={onDelete}
-							/>
-						))}
-					</tbody>
-				</table>
-			</div>
-
-			<div className="grid gap-2 lg:hidden">
+		<div className="min-w-0">
+			<ul aria-label="Resources" className="min-w-0">
 				{rows.map((row) => (
-					<ResourceMobileCard
+					<li
 						key={`${row.entity.key}:${row.depth}:${row.caption ?? "root"}`}
-						row={row}
-						organizationName={organizationName(
-							row.entity,
-							organizations,
+						className={cn(
+							"border-b border-border/70 last:border-b-0",
+							row.depth > 0 && "border-l border-border",
 						)}
-						accessName={accessName(row.entity, roles)}
-						selected={selectedIds.has(row.entity.key)}
-						onToggleExpanded={toggleExpanded}
-						onSelect={onSelect}
-						onDelete={onDelete}
-					/>
+						style={{
+							marginLeft: row.depth
+								? `${Math.min(row.depth, 2) * 1}rem`
+								: undefined,
+						}}
+					>
+						<ResourceDirectoryRow
+							row={row}
+							organizationName={organizationName(
+								row.entity,
+								organizations,
+							)}
+							accessName={accessName(row.entity, roles)}
+							selected={selectedIds.has(row.entity.key)}
+							onToggleExpanded={toggleExpanded}
+							onSelect={onSelect}
+							onDelete={onDelete}
+						/>
+					</li>
 				))}
-			</div>
-		</>
+			</ul>
+		</div>
 	);
 }
 
-function ResourceTableRow({
+function ResourceDirectoryRow({
 	row,
 	organizationName,
 	accessName,
@@ -192,20 +174,19 @@ function ResourceTableRow({
 	onSelect: (entityKey: string, selected: boolean) => void;
 	onDelete: ResourceTreeTableProps["onDelete"];
 }) {
-	const { entity, depth, caption, expandable, expanded, isLoading, isError } =
-		row;
+	const { entity, caption, expandable, expanded, isLoading, isError } = row;
 	const managed = isEntityManaged(entity);
 	const config = ENTITY_CONFIG[entity.entityType];
 	const Icon = config.icon;
 
 	return (
-		<tr
+		<div
 			className={cn(
-				"border-b border-border/60 last:border-b-0",
-				selected && !managed ? "bg-accent" : "hover:bg-muted/20",
+				"flex min-w-0 items-start gap-2 px-3 py-3 text-sm transition-colors hover:bg-muted/20 sm:gap-3",
+				selected && !managed && "bg-accent",
 			)}
 		>
-			<td className="px-3 py-2 align-middle">
+			<div className="pt-2">
 				<Checkbox
 					aria-label={`Select ${entity.name}`}
 					checked={selected && !managed}
@@ -214,128 +195,42 @@ function ResourceTableRow({
 						onSelect(entity.key, value === true)
 					}
 				/>
-			</td>
-			<td className="whitespace-nowrap px-3 py-2 align-middle text-sm">
-				<ScopeText
+			</div>
+			<ExpandButton
+				entityName={entity.name}
+				expandable={expandable}
+				expanded={expanded}
+				loading={isLoading}
+				onClick={() => onToggleExpanded(entity.key)}
+			/>
+			<div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background text-muted-foreground">
+				<Icon className="size-4" />
+			</div>
+			<div className="min-w-0 flex-1">
+				<ResourceLabel
 					entity={entity}
-					organizationName={organizationName}
+					caption={
+						isError ? "Could not load related resources" : caption
+					}
+					onRetry={row.onRetry}
 				/>
-			</td>
-			<td className="min-w-0 px-3 py-2 align-middle">
-				<div
-					className="flex min-w-0 items-center gap-2"
-					style={{ paddingLeft: `${depth * 1.1}rem` }}
-				>
-					<ExpandButton
-						entityName={entity.name}
-						expandable={expandable}
-						expanded={expanded}
-						loading={isLoading}
-						onClick={() => onToggleExpanded(entity.key)}
-					/>
-					<div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background">
-						<Icon className="size-4 text-muted-foreground" />
-					</div>
-					<ResourceLabel
-						entity={entity}
-						caption={
-							isError
-								? "Could not load related resources"
-								: caption
-						}
-						onRetry={row.onRetry}
-					/>
-				</div>
-			</td>
-			<td className="whitespace-nowrap px-3 py-2 align-middle text-sm">
-				<TypeBadge entity={entity} />
-			</td>
-			<td className="whitespace-nowrap px-3 py-2 align-middle text-sm">
-				<AccessText name={accessName} />
-			</td>
-			<td className="whitespace-nowrap px-3 py-2 align-middle">
-				<RowActions entity={entity} managed={managed} onDelete={onDelete} />
-			</td>
-		</tr>
-	);
-}
-
-function ResourceMobileCard({
-	row,
-	organizationName,
-	accessName,
-	selected,
-	onToggleExpanded,
-	onSelect,
-	onDelete,
-}: {
-	row: ResourceRow;
-	organizationName: string;
-	accessName: string;
-	selected: boolean;
-	onToggleExpanded: (entityKey: string) => void;
-	onSelect: (entityKey: string, selected: boolean) => void;
-	onDelete: ResourceTreeTableProps["onDelete"];
-}) {
-	const { entity, depth, caption, expandable, expanded, isLoading, isError } =
-		row;
-	const managed = isEntityManaged(entity);
-	const config = ENTITY_CONFIG[entity.entityType];
-	const Icon = config.icon;
-
-	return (
-		<Card
-			className={cn(
-				"overflow-hidden",
-				selected && !managed && "border-primary bg-accent",
-			)}
-			style={{ marginLeft: `${Math.min(depth, 2) * 0.75}rem` }}
-		>
-			<CardContent className="space-y-3 p-3">
-				<div className="flex min-w-0 items-start gap-2">
-					<Checkbox
-						aria-label={`Select ${entity.name}`}
-						checked={selected && !managed}
-						disabled={managed}
-						onCheckedChange={(value) =>
-							onSelect(entity.key, value === true)
-						}
-					/>
-					<ExpandButton
-						entityName={entity.name}
-						expandable={expandable}
-						expanded={expanded}
-						loading={isLoading}
-						onClick={() => onToggleExpanded(entity.key)}
-					/>
-					<Icon className="mt-1 size-4 shrink-0 text-muted-foreground" />
-					<div className="min-w-0 flex-1">
-						<ResourceLabel
-							entity={entity}
-							caption={
-								isError
-									? "Could not load related resources"
-									: caption
-							}
-							onRetry={row.onRetry}
-						/>
-					</div>
-					<RowActions entity={entity} managed={managed} onDelete={onDelete} />
-				</div>
-				<div className="grid gap-2 text-sm sm:grid-cols-2">
+				<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs leading-5 text-muted-foreground">
 					<TypeBadge entity={entity} />
 					<ScopeText
 						entity={entity}
 						organizationName={organizationName}
 					/>
 					<AccessText name={accessName} />
-					<span className="flex items-center gap-2 text-muted-foreground">
-						<Calendar className="size-4 shrink-0" />
-						{formatDateShort(entity.createdAt)}
-					</span>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+			<div className="pt-1">
+				<RowActions
+					entity={entity}
+					managed={managed}
+					onDelete={onDelete}
+				/>
+			</div>
+		</div>
 	);
 }
 
@@ -535,7 +430,9 @@ function useResourceRows({
 }): ResourceRow[] {
 	return useMemo(() => {
 		const rows: ResourceRow[] = [];
-		const byKey = new Map(allEntities.map((entity) => [entity.key, entity]));
+		const byKey = new Map(
+			allEntities.map((entity) => [entity.key, entity]),
+		);
 		for (const entity of rootEntities) {
 			const expanded = expandedKey === entity.key;
 			const childRows =

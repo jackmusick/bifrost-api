@@ -2,8 +2,6 @@ import {
 	PageWorkspace,
 	PageScrollArea,
 } from "@/components/layout/PageWorkspace";
-import { RunAIUsageCard } from "./RunAIUsageCard";
-import { SummaryRegenerationControl } from "@/components/agents/SummaryRegenerationControl";
 /**
  * AgentRunDetailPage — full-page detail view for a single agent run.
  *
@@ -16,7 +14,7 @@ import { SummaryRegenerationControl } from "@/components/agents/SummaryRegenerat
 
 import { useAgentRunStepStore } from "@/stores/agentRunStepStore";
 import { AgentActivityWorkspace } from "./AgentActivityWorkspace";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AgentRunOverviewFooter } from "./AgentRunOverviewFooter";
 import { copyToClipboard } from "@/lib/clipboard";
 import { RunActionFeedback } from "./RunActionFeedback";
 import { FleetReadError } from "./FleetReadError";
@@ -31,10 +29,8 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
 	AlertCircle,
 	ArrowLeft,
-	Bot,
 	CheckCircle,
 	Copy,
-	ListTree,
 	Clock,
 	Loader2,
 	RefreshCw,
@@ -598,234 +594,144 @@ export function AgentRunDetailPage() {
 				/>
 			</div>
 
-			<Tabs
-				value={activeTab}
-				onValueChange={changeTab}
-				className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:flex-1"
+			<PageScrollArea
+				className={
+					activeTab === "activity"
+						? "flex flex-col lg:min-h-0 lg:flex-1"
+						: "space-y-4 lg:min-h-0 lg:flex-1"
+				}
 			>
-				<TabsList
-					aria-label="Run sections"
-					className="shrink-0 self-start"
-				>
-					<TabsTrigger value="overview">Overview</TabsTrigger>
-					<TabsTrigger value="activity" title="Agent iterations">
-						<ListTree className="size-4" />
-						Activity ({run.iterations_used})
-					</TabsTrigger>
-				</TabsList>
-				<TabsContent
-					key={activeTab}
-					value={activeTab}
-					className="m-0 flex min-w-0 flex-col lg:min-h-0 lg:flex-1"
-				>
-					{activeTab === "activity" ? (
-						<AgentActivityWorkspace
-							run={run}
-
-							childRunIds={run.child_run_ids ?? []}
-							childRuns={run.child_runs ?? []}
-							runStatus={run.status}
-							highlightedActivityId={previewedActivityId}
-							expandedDelegationIds={
-								runId
-									? expandedDelegationsByRun.get(runId)
-									: undefined
-							}
-							onDelegationExpandedChange={
-								handleDelegationExpandedChange
-							}
-							restoreActivityId={
-								runId ? restoreActivityByRun.get(runId) : null
-							}
-							onOpenChildRun={handleOpenChildRun}
-							childRunOrigin={currentRunOrigin ?? undefined}
+				{activeTab !== "activity" ? (
+					<div className="space-y-4" data-testid="run-overview">
+						<RunActionFeedback
+							pending={savingVerdict}
+							failed={verdictFailure?.runId === runId}
+							onRetry={() => {
+								if (verdictFailure)
+									handleVerdict(verdictFailure.verdict);
+							}}
 						/>
-					) : (
-						<PageScrollArea className="space-y-6">
-							<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-								<div className="lg:col-span-2 flex min-w-0 flex-col gap-4">
-									<RunActionFeedback
-										pending={savingVerdict}
-										failed={verdictFailure?.runId === runId}
-										onRetry={() => {
-											if (verdictFailure)
-												handleVerdict(
-													verdictFailure.verdict,
-												);
-										}}
-									/>
-									<fieldset
-										disabled={savingVerdict}
-										className="min-w-0"
-										aria-label="Run review"
-									>
-										<Card className="min-w-0 overflow-hidden">
-											<RunReviewPanel
-												run={run}
-												variant="page"
-												verdict={verdict}
-												note={note}
-												onVerdict={handleVerdict}
-												onNote={setNote}
-												onActivityReferencePreview={
-													setPreviewedActivityId
-												}
-												onActivityReferenceActivate={
-													handleActivityReferenceActivate
+						<fieldset
+							disabled={savingVerdict}
+							className="min-w-0"
+							aria-label="Run review"
+						>
+							<Card className="min-w-0 gap-0 overflow-hidden py-0">
+								<RunReviewPanel
+									run={run}
+									variant="page"
+									verdict={verdict}
+									note={note}
+									onVerdict={handleVerdict}
+									onNote={setNote}
+									onActivityReferencePreview={
+										setPreviewedActivityId
+									}
+									onActivityReferenceActivate={
+										handleActivityReferenceActivate
+									}
+								/>
+								<AgentRunOverviewFooter
+									run={run}
+									agentName={
+										agent?.name ?? run.agent_name ?? null
+									}
+									showRegen={showRegen}
+									isPlatformAdmin={isPlatformAdmin}
+								/>
+							</Card>
+							{verdict && note !== (run.verdict_note ?? "") ? (
+								<Button
+									className="mt-3"
+									onClick={() => handleVerdict(verdict)}
+								>
+									Save review note
+								</Button>
+							) : null}
+						</fieldset>
+
+						{isFlagged ? (
+							<Card data-testid="flag-conversation-card">
+								<CardHeader className="pb-2">
+									<CardTitle className="flex items-center gap-2 text-sm">
+										<Sparkles className="h-4 w-4" />
+										Tuning conversation
+									</CardTitle>
+								</CardHeader>
+								<CardContent className="p-0">
+									{conversationError ? (
+										<div className="px-4 pb-3">
+											<FleetReadError
+												resource="tuning conversation"
+												cached={!!conversation}
+												pending={conversationFetching}
+												onRetry={() =>
+													void refetchConversation()
 												}
 											/>
-										</Card>
-										{verdict &&
-										note !== (run.verdict_note ?? "") ? (
-											<Button
-												className="mt-3"
-												onClick={() =>
-													handleVerdict(verdict)
+										</div>
+									) : null}
+									{conversationLoading ? (
+										<div className="p-4">
+											<Skeleton className="h-40 w-full" />
+										</div>
+									) : conversationError &&
+									  !conversation ? null : (
+										<div className="flex h-[420px] flex-col">
+											<FlagConversation
+												conversation={
+													conversation ?? null
 												}
-											>
-												Save review note
-											</Button>
-										) : null}
-									</fieldset>
+												onSend={handleSendChat}
+												pending={sendMessage.isPending}
+											/>
+										</div>
+									)}
+								</CardContent>
+							</Card>
+						) : null}
+					</div>
+				) : null}
 
-									{/* Per-flag conversation (only when verdict=down) */}
-									{isFlagged ? (
-										<Card data-testid="flag-conversation-card">
-											<CardHeader className="pb-2">
-												<CardTitle className="flex items-center gap-2 text-sm">
-													<Sparkles className="h-4 w-4" />
-													Tuning conversation
-												</CardTitle>
-											</CardHeader>
-											<CardContent className="p-0">
-												{conversationError ? (
-													<div className="px-4 pb-3">
-														<FleetReadError
-															resource="tuning conversation"
-															cached={
-																!!conversation
-															}
-															pending={
-																conversationFetching
-															}
-															onRetry={() =>
-																void refetchConversation()
-															}
-														/>
-													</div>
-												) : null}
-												{conversationLoading ? (
-													<div className="p-4">
-														<Skeleton className="h-40 w-full" />
-													</div>
-												) : conversationError &&
-												  !conversation ? null : (
-													<div className="flex h-[420px] flex-col">
-														<FlagConversation
-															conversation={
-																conversation ??
-																null
-															}
-															onSend={
-																handleSendChat
-															}
-															pending={
-																sendMessage.isPending
-															}
-														/>
-													</div>
-												)}
-											</CardContent>
-										</Card>
-									) : null}
-								</div>
-
-								{/* Sidebar */}
-								<div className="flex min-w-0 flex-col gap-4">
-									{/* AI usage */}
-									{(run.ai_usage?.length ?? 0) > 0 ||
-									run.llm_model ||
-									run.tokens_used > 0 ? (
-										<RunAIUsageCard
-											usage={run.ai_usage ?? []}
-											reported={{
-												model: run.llm_model ?? null,
-												tokens: run.tokens_used,
-											}}
-											totals={run.ai_totals ?? null}
-										/>
-									) : null}
-
-									{/* Admin regeneration for summaries without an active status banner. */}
-									{showRegen ? (
-										<Card>
-											<CardContent className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
-												<div>
-													<div className="font-medium">
-														Summary
-													</div>
-													<div className="text-muted-foreground">
-														Re-run the summarizer
-													</div>
-												</div>
-												<SummaryRegenerationControl
-													runId={run.id}
-													allowed={isPlatformAdmin}
-													testId="regen-summary-button"
-												/>
-											</CardContent>
-										</Card>
-									) : null}
-
-									{/* Agent card */}
-									<Card>
-										<CardHeader className="pb-2">
-											<CardTitle className="text-sm">
-												Agent
-											</CardTitle>
-										</CardHeader>
-										<CardContent>
-											{run.agent_id ? (
-												<Link
-													to={`/agents/${run.agent_id}`}
-													className="flex items-start gap-2 text-sm hover:underline"
-												>
-													<Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-													<div className="min-w-0">
-														<div className="truncate font-medium">
-															{agent?.name ??
-																run.agent_name ??
-																"Agent"}
-														</div>
-														{agent?.description ? (
-															<div className="text-xs text-muted-foreground line-clamp-2">
-																{
-																	agent.description
-																}
-															</div>
-														) : null}
-													</div>
-												</Link>
-											) : (
-												<div className="space-y-1 text-sm">
-													<p className="font-medium [overflow-wrap:anywhere]">
-														{run.agent_name ??
-															"Deleted agent"}
-													</p>
-													<p className="text-xs text-muted-foreground">
-														This agent is no longer
-														available.
-													</p>
-												</div>
-											)}
-										</CardContent>
-									</Card>
-								</div>
-							</div>
-						</PageScrollArea>
-					)}
-				</TabsContent>
-			</Tabs>
+				<div
+					className={
+						activeTab === "activity"
+							? "flex min-w-0 flex-col lg:min-h-0 lg:flex-1"
+							: "flex min-w-0 flex-col lg:h-[520px]"
+					}
+				>
+					<Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+						<CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-0">
+							<AgentActivityWorkspace
+								run={run}
+								focused={activeTab === "activity"}
+								onFocusedChange={(focused) =>
+									changeTab(focused ? "activity" : "overview")
+								}
+								childRunIds={run.child_run_ids ?? []}
+								childRuns={run.child_runs ?? []}
+								runStatus={run.status}
+								highlightedActivityId={previewedActivityId}
+								expandedDelegationIds={
+									runId
+										? expandedDelegationsByRun.get(runId)
+										: undefined
+								}
+								onDelegationExpandedChange={
+									handleDelegationExpandedChange
+								}
+								restoreActivityId={
+									runId
+										? restoreActivityByRun.get(runId)
+										: null
+								}
+								onOpenChildRun={handleOpenChildRun}
+								childRunOrigin={currentRunOrigin ?? undefined}
+							/>
+						</CardContent>
+					</Card>
+				</div>
+			</PageScrollArea>
 		</PageWorkspace>
 	);
 }

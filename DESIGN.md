@@ -42,6 +42,20 @@ See [Home and execution experience](docs/design-modernization/home-execution.md)
 
 ### Execution section headings and log severity
 
+Agent run Overview and Activity share a centered reading width. Overview preserves
+the asked/done/answered narrative in one surface. AI Usage is a compact footer
+disclosure with summary metrics; expanded usage and run metadata use the full
+surface width rather than a separate sidebar. Activity sits below Overview in a
+contained workspace with its own header, bounded desktop scrolling, and an attached
+animated call inspector. Focus activity temporarily prioritizes that workspace;
+Show overview restores the narrative. Mobile inspection uses a full-width pane.
+
+Entity Management uses a contained resource directory with expandable relationships,
+not table columns. Resource identity leads; scope, type, and access remain visible
+as wrapping metadata. Selection and bulk editing belong to the same workspace.
+Keep managed-resource restrictions, explicit change modes, and partial-failure
+feedback intact when changing the presentation.
+
 Run Activity, Execution Context, Runtime Variables, and Usage use the shared ExecutionSectionHeading: title case, foreground display text, a primary-colored Lucide icon, and an optional muted description. Uppercase metadata labels are not section headings.
 
 Readable activity and detailed logs share LogEntryRow severity framing. A 3px leading stripe uses semantic info, warning, danger, or muted-debug tokens, independent of custom branding. Preserve text/icon severity cues as well as color. The newest-message highlight indicates recency and must not override severity. Keep filtering, traceback grouping, copying, and follow-scroll behavior in the detailed log panel.

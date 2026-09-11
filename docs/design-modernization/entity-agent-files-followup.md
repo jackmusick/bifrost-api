@@ -76,3 +76,29 @@ The attached inspector animates its width, opacity and gap on opening and closin
 Entity Management retains its current visual structure in this pass. Its first presentation waits for initial resource, scope and relationship data; it uses the existing neutral PageLoader rather than skeleton strips. Refreshes preserve cached availability and existing rows, and failed queries retain visible retry feedback.
 
 Scoped verification: 70 component tests passed across Timeline, Activity workspace, full run details, the review Sheet, Entity Management and the dependency service. Desktop and mobile screenshots were reviewed in one batch and one confirmation; neither produced page errors or horizontal overflow. A runtime observer confirmed changing inspector widths during both entrance and exit. `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts e2e/entity-management-acceptance.admin.spec.ts` passed all eight journeys plus setup (zero retries). `npm run tsc` and `npm run lint` passed; lint retains the existing review-seed console warning. The complete suites and pre-PR gate were not rerun. This remains an unmerged debug review iteration.
+
+## Approved contained-workspace direction — 2026-09-11
+
+The interactive Execution and Entity Management mockups were approved before this
+implementation. Agent Overview now leads with the complete review narrative in a
+single surface. AI Usage and Run metadata are compact footer disclosures opening
+across that surface's full width. Activity follows directly below, with a shared
+header, bounded desktop call list, and an animated inspector attached to the same
+frame. Focus activity makes room for investigation without discarding Overview.
+
+Entity Management uses compact resource rows rather than table columns. Icons and
+names lead, with wrapping scope/access metadata and inline related resources.
+Bulk selection and the editor share the directory's frame; mobile retains a
+full-width editor. Existing permission checks, managed-resource restrictions,
+change previews, and partial-failure handling remain part of the workflow.
+
+Scoped verification:
+
+- `./test.sh client unit -- Timeline.test.tsx AgentRunOverviewFooter.test.tsx AgentRunDetailPage.test.tsx AgentActivityWorkspace.test.tsx RunAIUsageCard.test.tsx RunReviewSheet.test.tsx ChatRunActivity.test.tsx ResourceTreeTable.test.tsx EntityManagement.test.tsx EntityListToolbar.test.tsx EntityAssignmentPanel.test.tsx`: 11 files / 89 tests passed.
+- After the final selection-state correction, `./test.sh client unit -- EntityManagement.test.tsx EntityListToolbar.test.tsx ResourceTreeTable.test.tsx EntityAssignmentPanel.test.tsx`: 4 files / 17 tests passed. Clearing selection closes the editor and selecting another resource does not reopen it.
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts e2e/entity-management-acceptance.admin.spec.ts`: all eight journeys plus setup passed with zero retries. After restoring desktop Select all, `./test.sh client e2e e2e/entity-management-acceptance.admin.spec.ts` passed the real assignment journey plus setup again. Both runs built the production client.
+- Live debug review covered Overview, usage disclosure, nested activity inspection, connected resources, and bulk editing at 1440px and 390px. Escape closes the resource editor and restores focus. A 1100×650 desktop check confirmed the Activity call list scrolls within the remaining viewport. Dark and light usage surfaces were inspected. No page errors or document horizontal overflow occurred.
+- The scoped design detector and `git diff --check` passed.
+- `npm run tsc` and `npm run lint` passed. Lint retains the existing console warning in `e2e/support/seed-review-pack.ts`; there are no lint errors.
+
+This is an unmerged debug iteration. The complete suites and pre-PR gate were not rerun.

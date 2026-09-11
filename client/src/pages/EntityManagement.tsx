@@ -5,9 +5,10 @@ import { EntityListToolbar } from "@/components/entity-management/EntityListTool
 import { useAssignEntityRole } from "@/hooks/useAssignEntityRole";
 import { EntityAssignmentPanel } from "@/components/entity-management/EntityAssignmentPanel";
 import { ResourceTreeTable } from "@/components/entity-management/ResourceTreeTable";
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
-import { RefreshCw, Filter } from "lucide-react";
+import { RefreshCw, Filter, GitBranch, Pencil, Trash2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageLoader } from "@/components/PageLoader";
@@ -24,6 +25,7 @@ import { useAgents, useUpdateAgent } from "@/hooks/useAgents";
 import { useApplications, useUpdateApplication } from "@/hooks/useApplications";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useRoles } from "@/hooks/useRoles";
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { WorkflowDeactivationDialog } from "@/components/editor/WorkflowDeactivationDialog";
 import { authFetch } from "@/lib/api-client";
 import { useDependencyAvailability } from "@/services/dependencies";
@@ -35,6 +37,9 @@ import {
 	DeleteConfirmDialog,
 	normalizeEntities,
 	type EntityType,
+	type EntityWithScope,
+	type Organization,
+	type Role,
 	type SortOption,
 	type ApplicationPublic,
 } from "@/components/entity-management";
@@ -49,10 +54,17 @@ export function EntityManagement() {
 	const [sortBy, setSortBy] = useState<SortOption>("name");
 	const [sortAsc, setSortAsc] = useState(true);
 	const [visibleEntityKeys, setVisibleEntityKeys] = useState<string[]>([]);
+	const [connectedEntityKeys, setConnectedEntityKeys] = useState<string[]>(
+		[],
+	);
 	const [isUpdating, setIsUpdating] = useState(false);
 	const [updatingMessage, setUpdatingMessage] = useState("Updating...");
 
 	const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+	const editReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+	const desktopEditorRef = useRef<HTMLElement | null>(null);
+	const reduceMotion = useReducedMotion();
+	const isDesktop = useIsDesktop();
 
 	// Confirm delete state (for non-workflow entities: forms, agents, apps)
 	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -371,9 +383,40 @@ export function EntityManagement() {
 	const hiddenSelectedCount = [...selectedIds].filter(
 		(key) => !visibleKeySet.has(key),
 	).length;
+	const connectedSelectableKeys = useMemo(
+		() =>
+			connectedEntityKeys.filter((key) => {
+				const entity = entitiesByKey.get(key);
+				return entity && !isEntityManaged(entity);
+			}),
+		[connectedEntityKeys, entitiesByKey],
+	);
+	const selectionSummary =
+		selectedIds.size > 0
+			? `${selectedIds.size} selected${
+					hiddenSelectedCount > 0
+						? ` (${hiddenSelectedCount} outside this view)`
+						: ""
+				}`
+			: "No resources selected";
+
+	useEffect(() => {
+		if (!isDesktop || !isEditDrawerOpen || selectedIds.size === 0) return;
+		window.requestAnimationFrame(() => {
+			desktopEditorRef.current?.focus({ preventScroll: true });
+		});
+	}, [isDesktop, isEditDrawerOpen, selectedIds.size]);
 
 	const handleVisibleKeysChange = useCallback((entityKeys: string[]) => {
 		setVisibleEntityKeys((previous) =>
+			previous.length === entityKeys.length &&
+			previous.every((key, index) => key === entityKeys[index])
+				? previous
+				: entityKeys,
+		);
+	}, []);
+	const handleConnectedKeysChange = useCallback((entityKeys: string[]) => {
+		setConnectedEntityKeys((previous) =>
 			previous.length === entityKeys.length &&
 			previous.every((key, index) => key === entityKeys[index])
 				? previous
@@ -399,27 +442,42 @@ export function EntityManagement() {
 	};
 
 	const handleSelectEntity = (entityId: string, selected: boolean) => {
-		setSelectedIds((prev) => {
-			const next = new Set(prev);
-			if (selected) {
-				next.add(entityId);
-			} else {
-				next.delete(entityId);
-			}
-			return next;
-		});
+		const next = new Set(selectedIds);
+		if (selected) next.add(entityId);
+		else next.delete(entityId);
+		setSelectedIds(next);
+		if (!next.size) setIsEditDrawerOpen(false);
 	};
 
 	const handleSelectAll = (selected: boolean) => {
+		const next = new Set(selectedIds);
+		for (const key of visibleSelectableKeys) {
+			if (selected) next.add(key);
+			else next.delete(key);
+		}
+		setSelectedIds(next);
+		if (!next.size) setIsEditDrawerOpen(false);
+	};
+	const clearSelection = () => {
+		setSelectedIds(new Set());
+		setIsEditDrawerOpen(false);
+	};
+	const handleSelectConnected = () => {
 		setSelectedIds((previous) => {
 			const next = new Set(previous);
-			for (const key of visibleSelectableKeys) {
-				if (selected) next.add(key);
-				else next.delete(key);
-			}
+			for (const key of connectedSelectableKeys) next.add(key);
 			return next;
 		});
 	};
+	const closeEditor = useCallback(() => {
+		setIsEditDrawerOpen(false);
+		window.requestAnimationFrame(() => {
+			editReturnFocusRef.current?.focus({ preventScroll: true });
+		});
+	}, []);
+	const openEditor = useCallback(() => {
+		setIsEditDrawerOpen(true);
+	}, []);
 
 	// Delete workflow handlers
 	const handleDeleteWorkflow = useCallback(
@@ -488,6 +546,7 @@ export function EntityManagement() {
 				}
 			}
 			if (deleted.length) {
+				setIsEditDrawerOpen(false);
 				void refetchWorkflows();
 				setSelectedIds(
 					(previous) =>
@@ -598,6 +657,7 @@ export function EntityManagement() {
 				setDeleteDialogOpen(true);
 			}
 			if (result.deletedIds.length) {
+				setIsEditDrawerOpen(false);
 				toast.success(
 					`Deleted ${result.deletedIds.length} of ${confirmDeleteEntities.length} entities`,
 				);
@@ -822,7 +882,7 @@ export function EntityManagement() {
 	);
 
 	return (
-		<div className="mx-auto flex min-h-full w-full max-w-[1600px] min-w-0 flex-col gap-6 xl:h-full xl:min-h-0">
+		<div className="mx-auto flex min-h-full w-full max-w-[1180px] min-w-0 flex-col gap-6 xl:h-full xl:min-h-0">
 			<ListPageHeader
 				title="Entity Management"
 				description="Find connected resources. Manage scope and access together."
@@ -838,7 +898,10 @@ export function EntityManagement() {
 				collections={collectionsWithRelationships}
 			/>
 
-			<div className="flex min-h-0 min-w-0 flex-col xl:flex-1">
+			<section
+				aria-label="Resource directory"
+				className="flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border border-border bg-card xl:min-h-0 xl:flex-1 xl:overflow-hidden"
+			>
 				<EntityListToolbar
 					search={searchTerm}
 					onSearch={setSearchTerm}
@@ -848,9 +911,9 @@ export function EntityManagement() {
 					visibleCount={effectiveVisibleKeys.length}
 					selectedCount={selectedIds.size}
 					hiddenSelectedCount={hiddenSelectedCount}
-					onClearSelection={() => setSelectedIds(new Set())}
+					onClearSelection={clearSelection}
 					onDelete={handleBulkDelete}
-					onEditSelection={() => setIsEditDrawerOpen(true)}
+					onEditSelection={openEditor}
 					busy={isUpdating}
 					busyMessage={updatingMessage}
 					sortBy={sortBy}
@@ -858,67 +921,191 @@ export function EntityManagement() {
 					ascending={sortAsc}
 					onToggleDirection={() => setSortAsc((value) => !value)}
 					filters={
-						<FilterPopover
-							typeFilter={typeFilter}
-							setTypeFilter={setTypeFilter}
-							orgFilter={orgFilter}
-							setOrgFilter={setOrgFilter}
-							accessFilter={accessFilter}
-							setAccessFilter={setAccessFilter}
-							usageFilter={usageFilter}
-							setUsageFilter={setUsageFilter}
-							organizations={organizations ?? []}
-							activeFilterCount={activeFilterCount}
-							onClearFilters={handleClearFilters}
-						/>
+						<>
+							<FilterPopover
+								typeFilter={typeFilter}
+								setTypeFilter={setTypeFilter}
+								orgFilter={orgFilter}
+								setOrgFilter={setOrgFilter}
+								accessFilter={accessFilter}
+								setAccessFilter={setAccessFilter}
+								usageFilter={usageFilter}
+								setUsageFilter={setUsageFilter}
+								organizations={organizations ?? []}
+								activeFilterCount={activeFilterCount}
+								onClearFilters={handleClearFilters}
+							/>
+							<Button
+								type="button"
+								variant="outline"
+								size="lg"
+								disabled={
+									isUpdating ||
+									connectedSelectableKeys.length === 0
+								}
+								onClick={handleSelectConnected}
+							>
+								<GitBranch
+									aria-hidden="true"
+									className="size-4"
+								/>
+								Select connected
+							</Button>
+						</>
 					}
 				/>
 
-				{/* Entity List */}
-				<div className="min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-					{isInitialEntityListLoading ? (
-						<PageLoader message="Loading entities…" size="sm" />
-					) : filteredEntities.length > 0 ? (
-						<ResourceTreeTable
-							entities={filteredEntities}
-							allEntities={allEntities}
-							organizations={organizations ?? []}
-							roles={roles ?? []}
-							selectedIds={selectedIds}
-							allSelected={allSelected}
-							someSelected={someSelected}
-							onSelectAll={handleSelectAll}
-							onSelect={handleSelectEntity}
-							onVisibleKeysChange={handleVisibleKeysChange}
-							onDelete={handleDeleteEntity}
-						/>
-					) : incompleteEntityData || isLoading ? null : (
-						<Card>
-							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-								<Filter className="h-12 w-12 text-muted-foreground" />
-								<h3 className="mt-4 text-lg font-semibold">
-									{searchTerm || activeFilterCount > 0
-										? "No entities match your filters"
-										: "No entities found"}
-								</h3>
-								<p className="mt-2 text-sm text-muted-foreground">
-									{searchTerm || activeFilterCount > 0
-										? "Try adjusting your filters"
-										: "Create workflows, forms, or agents to manage them here"}
-								</p>
-							</CardContent>
-						</Card>
-					)}
+				<div className="relative min-w-0 xl:flex xl:min-h-0 xl:flex-1 xl:overflow-hidden">
+					<div className="min-w-0 xl:flex-1 xl:overflow-y-auto">
+						{isInitialEntityListLoading ? (
+							<PageLoader message="Loading entities…" size="sm" />
+						) : filteredEntities.length > 0 ? (
+							<ResourceTreeTable
+								entities={filteredEntities}
+								allEntities={allEntities}
+								organizations={organizations ?? []}
+								roles={roles ?? []}
+								selectedIds={selectedIds}
+								allSelected={allSelected}
+								someSelected={someSelected}
+								onSelectAll={handleSelectAll}
+								onSelect={handleSelectEntity}
+								onVisibleKeysChange={handleVisibleKeysChange}
+								onConnectedKeysChange={
+									handleConnectedKeysChange
+								}
+								onDelete={handleDeleteEntity}
+							/>
+						) : incompleteEntityData || isLoading ? null : (
+							<Card className="m-3">
+								<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+									<Filter className="h-12 w-12 text-muted-foreground" />
+									<h3 className="mt-4 text-lg font-semibold">
+										{searchTerm || activeFilterCount > 0
+											? "No entities match your filters"
+											: "No entities found"}
+									</h3>
+									<p className="mt-2 text-sm text-muted-foreground">
+										{searchTerm || activeFilterCount > 0
+											? "Try adjusting your filters"
+											: "Create workflows, forms, or agents to manage them here"}
+									</p>
+								</CardContent>
+							</Card>
+						)}
+					</div>
+
+					{isDesktop ? (
+						<AnimatePresence initial={false}>
+							{isEditDrawerOpen && selectedIds.size > 0 ? (
+								<motion.aside
+									key="entity-bulk-editor"
+									role="dialog"
+									aria-modal="false"
+									tabIndex={-1}
+									ref={desktopEditorRef}
+									aria-label={`Edit ${selectedIds.size} ${
+										selectedIds.size === 1
+											? "resource"
+											: "resources"
+									}`}
+									className="hidden min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card xl:flex"
+									initial={
+										reduceMotion
+											? false
+											: { width: 0, opacity: 0 }
+									}
+									animate={{ width: 416, opacity: 1 }}
+									exit={{ width: 0, opacity: 0 }}
+									transition={
+										reduceMotion
+											? { duration: 0 }
+											: {
+													duration: 0.2,
+													ease: "easeInOut",
+												}
+									}
+									onKeyDown={(event) => {
+										if (event.key === "Escape") {
+											event.stopPropagation();
+											closeEditor();
+										}
+									}}
+								>
+									<BulkEditInspector
+										selectedCount={selectedIds.size}
+										entities={allEntities}
+										selectedIds={selectedIds}
+										organizations={organizations ?? []}
+										roles={roles ?? []}
+										disabled={isUpdating}
+										onOrganization={handleOrgDrop}
+										onAccess={handleRoleDrop}
+										onClose={closeEditor}
+									/>
+								</motion.aside>
+							) : null}
+						</AnimatePresence>
+					) : null}
 				</div>
-			</div>
+
+				<footer className="flex min-h-14 shrink-0 flex-col gap-2 border-t border-border bg-muted/20 px-3 py-2 text-sm sm:flex-row sm:items-center">
+					<p
+						role="status"
+						className="min-w-0 flex-1 text-muted-foreground"
+					>
+						{isUpdating ? updatingMessage : selectionSummary}
+					</p>
+					{selectedIds.size > 0 ? (
+						<div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:items-center">
+							<Button
+								type="button"
+								size="lg"
+								className="w-full sm:w-auto"
+								disabled={isUpdating}
+								onClick={openEditor}
+								ref={editReturnFocusRef}
+							>
+								<Pencil aria-hidden="true" className="size-4" />
+								Edit selected
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="lg"
+								className="w-full sm:w-auto"
+								disabled={isUpdating}
+								onClick={clearSelection}
+							>
+								Clear
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="lg"
+								className="w-full text-destructive sm:w-auto"
+								disabled={isUpdating}
+								onClick={handleBulkDelete}
+							>
+								<Trash2 aria-hidden="true" className="size-4" />
+								Delete selected
+							</Button>
+						</div>
+					) : null}
+				</footer>
+			</section>
 
 			<Sheet
-				open={isEditDrawerOpen}
+				open={!isDesktop && isEditDrawerOpen && selectedIds.size > 0}
 				onOpenChange={(open) => {
-					if (!isUpdating) setIsEditDrawerOpen(open);
+					if (open) {
+						openEditor();
+					} else if (!isUpdating) {
+						closeEditor();
+					}
 				}}
 			>
-				<SheetContent className="flex w-full flex-col overflow-hidden sm:max-w-xl">
+				<SheetContent className="flex w-full flex-col overflow-hidden xl:hidden sm:max-w-xl">
 					<SheetHeader className="border-b border-border">
 						<SheetTitle>
 							Edit {selectedIds.size}{" "}
@@ -930,6 +1117,7 @@ export function EntityManagement() {
 					</SheetHeader>
 					<div className="min-h-0 flex-1 overflow-y-auto p-6">
 						<EntityAssignmentPanel
+							hideInstructions
 							entities={allEntities}
 							selectedIds={selectedIds}
 							organizations={organizations ?? []}
@@ -983,5 +1171,68 @@ export function EntityManagement() {
 				}}
 			/>
 		</div>
+	);
+}
+
+function BulkEditInspector({
+	selectedCount,
+	entities,
+	selectedIds,
+	organizations,
+	roles,
+	disabled,
+	onOrganization,
+	onAccess,
+	onClose,
+}: {
+	selectedCount: number;
+	entities: EntityWithScope[];
+	selectedIds: Set<string>;
+	organizations: Organization[];
+	roles: Role[];
+	disabled: boolean;
+	onOrganization: (
+		ids: string[],
+		organizationId: string | null,
+	) => Promise<void>;
+	onAccess: (ids: string[], roleOrAccessLevel: string) => Promise<void>;
+	onClose: () => void;
+}) {
+	return (
+		<>
+			<header className="flex shrink-0 items-start gap-3 border-b border-border bg-card px-4 py-3">
+				<div className="min-w-0 flex-1">
+					<h2 className="text-sm font-semibold">
+						Edit {selectedCount}{" "}
+						{selectedCount === 1 ? "resource" : "resources"}
+					</h2>
+					<p className="text-xs text-muted-foreground">
+						Only selected resources will change.
+					</p>
+				</div>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					aria-label="Close"
+					disabled={disabled}
+					onClick={onClose}
+				>
+					<X aria-hidden="true" className="size-4" />
+				</Button>
+			</header>
+			<div className="min-h-0 flex-1 overflow-y-auto bg-card p-4">
+				<EntityAssignmentPanel
+					hideInstructions
+					entities={entities}
+					selectedIds={selectedIds}
+					organizations={organizations}
+					roles={roles}
+					disabled={disabled}
+					onOrganization={onOrganization}
+					onAccess={onAccess}
+				/>
+			</div>
+		</>
 	);
 }

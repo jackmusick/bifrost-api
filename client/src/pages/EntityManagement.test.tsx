@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, expect, it, vi } from "vitest";
+import type { ComponentProps, ReactNode } from "react";
 
 import { EntityManagement } from "./EntityManagement";
 
@@ -13,10 +14,45 @@ const sourceState = vi.hoisted(() => ({
 		this.formsLoading = false;
 	},
 }));
+const mediaState = vi.hoisted(() => ({
+	desktop: true,
+	reset() {
+		this.desktop = true;
+	},
+}));
+
+vi.mock("framer-motion", () => {
+	return {
+		AnimatePresence: ({ children }: { children: ReactNode }) => (
+			<>{children}</>
+		),
+		motion: {
+			aside: ({
+				children,
+				initial: _initial,
+				animate: _animate,
+				exit: _exit,
+				transition: _transition,
+				...props
+			}: ComponentProps<"aside"> & {
+				initial?: unknown;
+				animate?: unknown;
+				exit?: unknown;
+				transition?: unknown;
+			}) => <aside {...props}>{children}</aside>,
+		},
+		useReducedMotion: () => false,
+	};
+});
 
 vi.mock("@/lib/api-client", () => ({
 	authFetch: (...args: unknown[]) => authFetch(...args),
 	apiClient: { POST: (...args: unknown[]) => apiPost(...args) },
+}));
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+	useIsDesktop: () => mediaState.desktop,
+	useMediaQuery: () => mediaState.desktop,
 }));
 
 vi.mock("sonner", () => ({
@@ -90,6 +126,17 @@ vi.mock("@/hooks/useApplications", () => ({
 					id: "app-1",
 					name: "Covi Portal",
 					slug: "covi-portal",
+					organization_id: null,
+					access_level: "authenticated",
+					role_ids: [],
+					created_at: "2026-01-01T00:00:00Z",
+					is_solution_managed: false,
+					solution_id: null,
+				},
+				{
+					id: "app-2",
+					name: "Unrelated Portal",
+					slug: "unrelated-portal",
 					organization_id: null,
 					access_level: "authenticated",
 					role_ids: [],
@@ -182,6 +229,7 @@ beforeEach(() => {
 	authFetch.mockReset();
 	apiPost.mockReset();
 	sourceState.reset();
+	mediaState.reset();
 });
 
 function relationshipAvailability(overrides: Record<string, boolean> = {}) {
@@ -189,6 +237,7 @@ function relationshipAvailability(overrides: Record<string, boolean> = {}) {
 		data: {
 			has_relationships: {
 				"app:app-1": true,
+				"app:app-2": false,
 				"workflow:workflow-1": true,
 				"form:form-1": true,
 				...overrides,
@@ -257,6 +306,71 @@ it("expands related resources inline from a search result", async () => {
 	expect(screen.getByRole("status")).toHaveTextContent(
 		"3 selected (3 outside this view)",
 	);
+});
+
+it("selects only the expanded connected graph from the directory action", async () => {
+	const user = userEvent.setup();
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	apiPost.mockResolvedValue(relationshipAvailability());
+	render(
+		<QueryClientProvider client={queryClient}>
+			<EntityManagement />
+		</QueryClientProvider>,
+	);
+
+	await screen.findByText("Unrelated Portal");
+	const selectConnected = screen.getByRole("button", {
+		name: "Select connected",
+	});
+	expect(selectConnected).toBeDisabled();
+
+	await user.click(
+		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
+	);
+	expect(selectConnected).toBeEnabled();
+	await user.click(selectConnected);
+
+	expect(screen.getByRole("status")).toHaveTextContent("3 selected");
+	expect(
+		screen.getByRole("checkbox", { name: "Select Unrelated Portal" }),
+	).not.toBeChecked();
+});
+
+it("unmounts the desktop bulk editor when closed and restores footer focus", async () => {
+	const user = userEvent.setup();
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	apiPost.mockResolvedValue(relationshipAvailability());
+	render(
+		<QueryClientProvider client={queryClient}>
+			<EntityManagement />
+		</QueryClientProvider>,
+	);
+
+	await screen.findByText("Covi Portal");
+	await user.click(
+		screen.getByRole("checkbox", { name: "Select Covi Portal" }),
+	);
+	const edit = screen.getByRole("button", { name: "Edit selected" });
+	await user.click(edit);
+	expect(
+		screen.getByRole("dialog", { name: "Edit 1 resource" }),
+	).toBeVisible();
+
+	await user.click(screen.getByRole("button", { name: "Close" }));
+	expect(
+		screen.queryByRole("dialog", { name: "Edit 1 resource" }),
+	).not.toBeInTheDocument();
+	expect(edit).toHaveFocus();
+	await user.click(edit);
+	await user.click(screen.getByRole("button", { name: "Clear" }));
+	await user.click(
+		screen.getByRole("checkbox", { name: "Select Covi Portal" }),
+	);
+	expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("waits for initial relationship availability before rendering resources", () => {

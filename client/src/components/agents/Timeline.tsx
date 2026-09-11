@@ -73,6 +73,7 @@ const EMPTY_CHILD_RUN_IDS: string[] = [];
 const EMPTY_CHILD_RUNS: AgentRunChildResponse[] = [];
 
 export interface TimelineProps {
+	toolbarLeading?: ReactNode;
 	toolbarActions?: ReactNode;
 	inspector?: "sheet" | "inline";
 	steps: AgentRunStepResponse[] | null | undefined;
@@ -94,6 +95,7 @@ export interface TimelineProps {
 }
 
 export function Timeline({
+	toolbarLeading,
 	toolbarActions,
 	inspector = "sheet",
 	steps,
@@ -175,7 +177,10 @@ export function Timeline({
 	if (!activity.length) {
 		return (
 			<div>
-				<div className="flex justify-end">{toolbarActions}</div>
+				<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+					{toolbarLeading}
+					{toolbarActions}
+				</div>
 				<div className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center">
 					<p className="text-sm font-medium leading-6">
 						No activity to summarize
@@ -196,7 +201,8 @@ export function Timeline({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 flex-col gap-3",
+				"flex min-w-0 flex-col",
+				!inlineInspector && "gap-3",
 				inlineInspector && "min-h-0 flex-1",
 			)}
 			onKeyDown={(event) => {
@@ -211,38 +217,48 @@ export function Timeline({
 				}
 			}}
 		>
-			{(expandableActivityIds.length > 0 || toolbarActions) && (
-				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
-					{expandableActivityIds.length ? (
-						<div className="flex flex-wrap items-center gap-2">
-							<Button
-								type="button"
-								variant="ghost"
-								className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground"
-								onClick={() => {
-									setBulkExpansionRequest((current) => ({
-										expanded: true,
-										token: (current?.token ?? 0) + 1,
-									}));
-								}}
-							>
-								Expand all
-							</Button>
-							<Button
-								type="button"
-								variant="ghost"
-								className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground"
-								onClick={() => {
-									setBulkExpansionRequest((current) => ({
-										expanded: false,
-										token: (current?.token ?? 0) + 1,
-									}));
-								}}
-							>
-								Collapse all
-							</Button>
-						</div>
-					) : null}
+			{(toolbarLeading ||
+				expandableActivityIds.length > 0 ||
+				toolbarActions) && (
+				<div
+					className={cn(
+						"flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60",
+						inlineInspector ? "px-4 py-3" : "pb-2",
+					)}
+				>
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						{toolbarLeading}
+						{expandableActivityIds.length ? (
+							<>
+								<Button
+									type="button"
+									variant="ghost"
+									className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground"
+									onClick={() => {
+										setBulkExpansionRequest((current) => ({
+											expanded: true,
+											token: (current?.token ?? 0) + 1,
+										}));
+									}}
+								>
+									Expand all
+								</Button>
+								<Button
+									type="button"
+									variant="ghost"
+									className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground"
+									onClick={() => {
+										setBulkExpansionRequest((current) => ({
+											expanded: false,
+											token: (current?.token ?? 0) + 1,
+										}));
+									}}
+								>
+									Collapse all
+								</Button>
+							</>
+						) : null}
+					</div>
 					{toolbarActions}
 				</div>
 			)}
@@ -257,7 +273,7 @@ export function Timeline({
 						"min-w-0 flex-1",
 						inlineInspector &&
 							"min-h-0 overflow-y-auto overflow-x-hidden",
-						"max-w-2xl",
+						!inlineInspector && "max-w-2xl",
 					)}
 					role="region"
 					aria-label="Activity calls"
@@ -303,14 +319,14 @@ export function Timeline({
 								animate={{
 									width: "52%",
 									opacity: 1,
-									marginLeft: 24,
+									marginLeft: 0,
 								}}
 								exit={{ width: 0, opacity: 0, marginLeft: 0 }}
 								transition={{
 									duration: reducedMotion ? 0 : 0.24,
 									ease: [0.22, 1, 0.36, 1],
 								}}
-								className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-[var(--bf-radius-feature)] bg-card"
+								className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/20"
 								aria-label="Call inspector"
 							>
 								<div className="flex min-h-0 min-w-80 flex-1 flex-col">

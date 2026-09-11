@@ -372,7 +372,6 @@ describe("AgentRunDetailPage — header + summary", () => {
 			isLoading: false,
 		});
 		const { user } = await renderPage();
-		await user.click(screen.getByRole("tab", { name: /activity/i }));
 
 		expect(screen.getByText("Looked up ticket")).toBeInTheDocument();
 		expect(screen.getByText("Ticket: 428950")).toBeInTheDocument();
@@ -422,9 +421,10 @@ describe("AgentRunDetailPage — header + summary", () => {
 		});
 		await user.hover(reference);
 		await user.click(reference);
-		expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-			/Activity/,
-		);
+		expect(screen.queryByTestId("run-overview")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Show overview" }),
+		).toBeInTheDocument();
 		const activity = container.querySelector('[data-activity-id="step-1"]');
 		expect(activity).toHaveAttribute("data-highlighted", "false");
 		expect(scrollIntoView).toHaveBeenCalledWith({
@@ -487,7 +487,9 @@ describe("AgentRunDetailPage — sidebar metadata", () => {
 			screen.getByRole("button", { name: "Copy run ID" }),
 		).toBeInTheDocument();
 		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
-		await user.click(screen.getByRole("tab", { name: /activity/i }));
+		await user.click(
+			screen.getByRole("button", { name: "Focus activity" }),
+		);
 		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
 		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
@@ -616,11 +618,15 @@ describe("AgentRunDetailPage — AI usage card", () => {
 			isLoading: false,
 		});
 		const { user } = await renderPage();
+		await user.click(screen.getByRole("button", { name: /ai usage/i }));
 		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 		expect(screen.getByText("claude-opus-4-7")).toBeInTheDocument();
-		await user.click(screen.getByRole("tab", { name: /activity/i }));
+		await user.click(
+			screen.getByRole("button", { name: "Focus activity" }),
+		);
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
-		await user.click(screen.getByRole("tab", { name: "Overview" }));
+		await user.click(screen.getByRole("button", { name: "Show overview" }));
+		await user.click(screen.getByRole("button", { name: /ai usage/i }));
 		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 	});
 
@@ -648,9 +654,10 @@ describe("AgentRunDetailPage — AI usage card", () => {
 			}),
 			isLoading: false,
 		});
-		await renderPage();
-		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
+		const { user } = await renderPage();
 		expect(screen.getByText("AI Usage")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /ai usage/i }));
+		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 		expect(screen.getByText("gpt-5.2")).toBeInTheDocument();
 		expect(screen.getByText("5,000")).toBeInTheDocument();
 	});

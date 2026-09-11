@@ -1,32 +1,70 @@
 import { useState, type ComponentProps } from "react";
-import { Code2 } from "lucide-react";
+import { Code2, ListTree, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Timeline, AdvancedTimeline } from "@/components/agents/Timeline";
 import { RunPayloads } from "@/components/agents/RunReviewPanel";
+import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 type Run = components["schemas"]["AgentRunDetailResponse"];
 export function AgentActivityWorkspace({
 	run,
+	focused = false,
+	onFocusedChange,
 	...timelineProps
-}: { run: Run } & Omit<ComponentProps<typeof Timeline>, "steps">) {
+}: {
+	run: Run;
+	focused?: boolean;
+	onFocusedChange?: (focused: boolean) => void;
+} & Omit<ComponentProps<typeof Timeline>, "steps">) {
 	const [advanced, setAdvanced] = useState(false);
+	const heading = (
+		<div className="flex min-w-0 items-center gap-2">
+			<h2 className="flex items-center gap-2 text-sm font-medium">
+				<ListTree aria-hidden="true" className="size-4 text-primary" />
+				Activity
+			</h2>
+			<span className="text-xs text-muted-foreground">
+				{run.iterations_used} iterations
+			</span>
+		</div>
+	);
 	const advancedControl = (
-		<Button
-			variant={advanced ? "secondary" : "ghost"}
-			aria-pressed={advanced}
-			onClick={() => setAdvanced(!advanced)}
-			className="ml-auto min-h-11 shrink-0 text-xs"
-		>
-			<Code2 className="size-4" />
-			Advanced
-		</Button>
+		<div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+			{onFocusedChange ? (
+				<Button
+					variant="ghost"
+					aria-pressed={focused}
+					onClick={() => onFocusedChange(!focused)}
+					className="min-h-11 shrink-0 text-xs"
+				>
+					{focused ? (
+						<Minimize2 className="size-4" />
+					) : (
+						<Maximize2 className="size-4" />
+					)}
+					{focused ? "Show overview" : "Focus activity"}
+				</Button>
+			) : null}
+			<Button
+				variant={advanced ? "secondary" : "ghost"}
+				aria-pressed={advanced}
+				onClick={() => setAdvanced(!advanced)}
+				className="min-h-11 shrink-0 text-xs"
+			>
+				<Code2 className="size-4" />
+				Advanced
+			</Button>
+		</div>
 	);
 	return (
 		<section
 			data-slot="run-activity"
 			aria-label="Agent activity workspace"
-			className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1"
+			className={cn(
+				"flex min-w-0 flex-col lg:min-h-0 lg:flex-1",
+				advanced && "gap-3",
+			)}
 		>
 			{advanced ? (
 				<div
@@ -34,7 +72,8 @@ export function AgentActivityWorkspace({
 					role="region"
 					aria-label="Advanced activity"
 				>
-					<div className="flex justify-end border-b border-border/60 pb-2">
+					<div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+						{heading}
 						{advancedControl}
 					</div>
 					<RunPayloads input={run.input} output={run.output} />
@@ -48,6 +87,7 @@ export function AgentActivityWorkspace({
 					{...timelineProps}
 					steps={run.steps ?? []}
 					inspector="inline"
+					toolbarLeading={heading}
 					toolbarActions={advancedControl}
 				/>
 			)}

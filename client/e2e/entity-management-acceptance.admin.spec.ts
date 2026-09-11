@@ -106,7 +106,11 @@ async function cleanupOrganization(
 }
 
 function resourceRow(page: Page, name: string): Locator {
-	return page.getByRole("row").filter({ hasText: name }).first();
+	return page
+		.getByRole("list", { name: "Resources" })
+		.getByRole("listitem")
+		.filter({ hasText: name })
+		.first();
 }
 
 async function openEntityManagement(page: Page) {
@@ -117,6 +121,9 @@ async function openEntityManagement(page: Page) {
 }
 
 async function filterToSeededApps(page: Page) {
+	await expect(
+		page.getByRole("checkbox", { name: "Select all visible entities" }),
+	).toBeVisible();
 	await page.getByRole("textbox", { name: "Search entities" }).fill(UNIQUE);
 	await expect(
 		page.getByRole("checkbox", { name: `Select ${SELECTED_APP_ONE_NAME}` }),
@@ -147,24 +154,24 @@ async function applySelectedScope(
 	previousScope = "Global",
 ) {
 	await page.getByRole("button", { name: "Edit selected" }).click();
-	const drawer = page.getByRole("dialog", { name: /Edit 2 resources/ });
-	await expect(drawer).toBeVisible();
+	const inspector = page.getByRole("dialog", { name: /Edit 2 resources/ });
+	await expect(inspector).toBeVisible();
 	await chooseScope(page, organizationName);
-	await expect(drawer.getByText(SELECTED_APP_ONE_NAME)).toBeVisible();
-	await expect(drawer.getByText(SELECTED_APP_TWO_NAME)).toBeVisible();
-	await expect(drawer.getByText(UNSELECTED_APP_NAME)).toHaveCount(0);
-	await expect(drawer).toContainText(
+	await expect(inspector.getByText(SELECTED_APP_ONE_NAME)).toBeVisible();
+	await expect(inspector.getByText(SELECTED_APP_TWO_NAME)).toBeVisible();
+	await expect(inspector.getByText(UNSELECTED_APP_NAME)).toHaveCount(0);
+	await expect(inspector).toContainText(
 		`Scope: ${previousScope} -> ${organizationName}`,
 	);
-	await drawer.getByRole("button", { name: "Apply changes" }).click();
+	await inspector.getByRole("button", { name: "Apply changes" }).click();
 	await expect(
-		drawer.getByRole("button", { name: "Apply changes" }),
+		inspector.getByRole("button", { name: "Apply changes" }),
 	).toBeDisabled();
 	await expect(
-		drawer.getByRole("combobox", { name: "Organization change mode" }),
+		inspector.getByRole("combobox", { name: "Organization change mode" }),
 	).toContainText("No change");
-	await drawer.getByRole("button", { name: "Close", exact: true }).click();
-	await expect(drawer).not.toBeVisible();
+	await inspector.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(inspector).not.toBeVisible();
 	await expect(resourceRow(page, SELECTED_APP_ONE_NAME)).toContainText(
 		organizationName,
 	);

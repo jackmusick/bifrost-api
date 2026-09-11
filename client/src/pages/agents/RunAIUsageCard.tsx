@@ -10,10 +10,12 @@ export function RunAIUsageCard({
 	usage,
 	totals,
 	reported,
+	presentation = "card",
 }: {
 	usage: NonNullable<Run["ai_usage"]>;
 	totals: Run["ai_totals"] | null;
 	reported?: { model: string | null; tokens: number };
+	presentation?: "card" | "embedded";
 }) {
 	const grouped = useMemo(() => {
 		const rows = new Map<
@@ -42,8 +44,8 @@ export function RunAIUsageCard({
 		}
 		return [...rows.values()];
 	}, [usage]);
-	return (
-		<Card data-testid="ai-usage-card">
+	const content = (
+		<>
 			<CardHeader className="pb-2">
 				<CardTitle className="flex items-center gap-2 text-sm">
 					<Sparkles className="h-4 w-4 text-primary" />
@@ -99,8 +101,19 @@ export function RunAIUsageCard({
 					</div>
 				) : null}
 			</CardContent>
-		</Card>
+		</>
 	);
+	if (presentation === "embedded") {
+		return (
+			<div
+				data-testid="ai-usage-card"
+				className="[&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
+			>
+				{content}
+			</div>
+		);
+	}
+	return <Card data-testid="ai-usage-card">{content}</Card>;
 }
 
 function UsageMetrics({
