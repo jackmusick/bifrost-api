@@ -26,6 +26,7 @@ import type {
 import { HomeBrowse } from "./Home/components/HomeBrowse";
 import { CollectionNavigation } from "./Home/components/CollectionNavigation";
 import { CollectionEditor } from "./Home/components/CollectionEditor";
+import "./Home/home-search.css";
 
 const NO_RESOURCES: HomeResource[] = [];
 
@@ -281,7 +282,7 @@ export function Home() {
 					}
 				/>
 				<div className="flex flex-col gap-3">
-					<div className="relative min-w-0 flex-1">
+					<div className="home-search relative min-w-0 flex-1">
 						<Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
 						<Input
 							className="h-12 pl-10 sm:h-14"
