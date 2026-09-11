@@ -160,6 +160,7 @@ class AgentRepository(OrgScopedRepository[Agent]):
             .options(
                 selectinload(self.model.tools),
                 selectinload(self.model.delegated_agents),
+                selectinload(self.model.delegated_agents).selectinload(Agent.roles),
                 selectinload(self.model.roles),
                 selectinload(self.model.owner),
                 selectinload(self.model.mcp_connections),

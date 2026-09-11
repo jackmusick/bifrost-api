@@ -100,7 +100,11 @@ def _is_uuid_workflow_ref(identifier: str) -> bool:
     return True
 
 
-def _convert_workflow_orm_to_schema(workflow: WorkflowORM, used_by_count: int = 0) -> WorkflowMetadata:
+def _convert_workflow_orm_to_schema(
+    workflow: WorkflowORM,
+    used_by_count: int = 0,
+    role_ids: list[UUID] | None = None,
+) -> WorkflowMetadata:
     """Convert ORM model to Pydantic schema for API response."""
     from typing import Literal
     from src.models.contracts.workflows import ExecutableType
@@ -131,6 +135,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM, used_by_count: int = 
         is_solution_managed=workflow.solution_id is not None,
         solution_id=workflow.solution_id,
         access_level=workflow.access_level or "role_based",
+        role_ids=[str(role_id) for role_id in (role_ids or [])],
         parameters=parameters,
         execution_mode=execution_mode,
         timeout_seconds=workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800,
@@ -186,6 +191,22 @@ def _extract_workflows_from_props(obj: Any, workflow_ids: set[str]) -> None:
     elif isinstance(obj, list):
         for item in obj:
             _extract_workflows_from_props(item, workflow_ids)
+
+
+async def _get_workflow_role_ids(db: DbSession, workflow_ids: list[UUID]) -> dict[UUID, list[UUID]]:
+    """Return assigned role IDs keyed by workflow ID for a workflow batch."""
+    if not workflow_ids:
+        return {}
+
+    result = await db.execute(
+        select(WorkflowRole.workflow_id, WorkflowRole.role_id)
+        .where(WorkflowRole.workflow_id.in_(workflow_ids))
+        .order_by(WorkflowRole.workflow_id, WorkflowRole.role_id)
+    )
+    role_ids_by_workflow: dict[UUID, list[UUID]] = {}
+    for workflow_id, role_id in result.all():
+        role_ids_by_workflow.setdefault(workflow_id, []).append(role_id)
+    return role_ids_by_workflow
 
 
 async def _get_form_workflow_ids(db: DbSession, form_id: UUID) -> set[UUID]:
@@ -480,15 +501,21 @@ async def list_workflows(
         # form_fields (data_provider_id), and agent_tools.
         workflow_ids = [w.id for w in workflows]
         used_by_counts: dict[UUID, int] = {}
+        role_ids_by_workflow: dict[UUID, list[UUID]] = {}
         if workflow_ids:
             used_by_counts = await _compute_used_by_counts(db, workflow_ids)
+            role_ids_by_workflow = await _get_workflow_role_ids(db, workflow_ids)
 
         # Convert ORM models to Pydantic schemas
         workflow_list = []
         for w in workflows:
             try:
                 workflow_list.append(
-                    _convert_workflow_orm_to_schema(w, used_by_count=used_by_counts.get(w.id, 0))
+                    _convert_workflow_orm_to_schema(
+                        w,
+                        used_by_count=used_by_counts.get(w.id, 0),
+                        role_ids=role_ids_by_workflow.get(w.id, []),
+                    )
                 )
             except Exception as e:
                 logger.error(f"Failed to convert workflow '{w.name}': {e}")
@@ -1671,7 +1698,8 @@ async def update_workflow(
             logger.warning(f"Failed to refresh MCP workflow tools: {e}")
 
         logger.info(f"Updated workflow '{log_safe(workflow.name)}' organization_id={log_safe(workflow.organization_id)}, access_level={log_safe(workflow.access_level)}")
-        return _convert_workflow_orm_to_schema(workflow)
+        role_ids = (await _get_workflow_role_ids(db, [workflow.id])).get(workflow.id, [])
+        return _convert_workflow_orm_to_schema(workflow, role_ids=role_ids)
 
     except HTTPException:
         raise

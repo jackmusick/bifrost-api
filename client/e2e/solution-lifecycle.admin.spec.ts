@@ -166,7 +166,7 @@ const test = base.extend<{
 }>({
 	solutionStatus: ["active", { option: true }],
 	solution: [
-		async ({ api, request, solutionStatus }, use) => {
+		async ({ api, request, solutionStatus }, provideSolution) => {
 			const slug = `e2e-lifecycle-${crypto.randomUUID()}`;
 			const solutionName = slug.toUpperCase();
 			const response = await api.post("/api/solutions", {
@@ -191,7 +191,7 @@ const test = base.extend<{
 					expect(uninstall.ok(), "seed inactive solution").toBe(true);
 					await expectPersistedStatus(api, solutionId, "inactive");
 				}
-				await use({ solutionId, slug, solutionName });
+				await provideSolution({ solutionId, slug, solutionName });
 			} finally {
 				const removed = await api.delete(
 					`/api/solutions/${solutionId}`,

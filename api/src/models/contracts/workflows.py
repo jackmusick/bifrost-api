@@ -81,6 +81,7 @@ class WorkflowMetadata(BaseModel):
 
     # Access control
     access_level: str = Field(default="role_based", description="Access level: 'authenticated' (any signed-in user except externals), 'everyone' (any signed-in user incl. externals), or 'role_based' (specific roles required)")
+    role_ids: list[str] = Field(default_factory=list, description="List of role IDs assigned to this workflow")
 
     # Optional fields with defaults
     category: str = Field(default="General", description="Category for organization")

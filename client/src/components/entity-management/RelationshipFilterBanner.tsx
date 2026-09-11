@@ -9,7 +9,6 @@ interface RelationshipFilterBannerProps {
 	isFetching: boolean;
 	hasData: boolean;
 	onRetry: () => void;
-	onViewGraph: () => void;
 	onClear: () => void;
 }
 
@@ -19,7 +18,6 @@ export function RelationshipFilterBanner({
 	isFetching,
 	hasData,
 	onRetry,
-	onViewGraph,
 	onClear,
 }: RelationshipFilterBannerProps) {
 	const toneClass = isError
@@ -30,48 +28,26 @@ export function RelationshipFilterBanner({
 		<section
 			aria-label="Relationship filter"
 			className={cn(
-				"mb-4 shrink-0 space-y-4 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)]",
+				"mb-3 shrink-0 rounded-[var(--bf-radius-surface)] border px-3 py-2",
 				toneClass,
 			)}
 		>
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-				<div className="flex min-w-0 items-start gap-3">
-					<div
-						className={cn(
-							"mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)]",
-							isError
-								? "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
-								: "bg-background text-[var(--bf-info)]",
-						)}
-					>
-						<Network aria-hidden="true" className="size-4" />
-					</div>
-					<div className="min-w-0 space-y-1">
-						<p className="text-sm font-medium leading-6 [overflow-wrap:anywhere]">
-							Related to{" "}
-							<strong className="text-foreground">{entityName}</strong>
-						</p>
-						<p className="text-sm text-muted-foreground">
-							View relationships in the graph or clear the filter to return to
-							the full list.
-						</p>
-					</div>
+			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+				<div className="flex min-w-0 items-center gap-2">
+					<Network aria-hidden="true" className="size-4 shrink-0" />
+					<p className="min-w-0 text-sm [overflow-wrap:anywhere]">
+						All resources <span className="px-1 text-muted-foreground">/</span>{" "}
+						<strong className="font-medium text-foreground">
+							{entityName}
+						</strong>
+					</p>
 				</div>
 
 				<div className="flex flex-wrap gap-2">
 					<Button
 						type="button"
-						variant="outline"
-						size="lg"
-						className="w-full sm:w-auto"
-						onClick={onViewGraph}
-					>
-						View graph
-					</Button>
-					<Button
-						type="button"
 						variant="ghost"
-						size="lg"
+						size="sm"
 						className="w-full sm:w-auto"
 						onClick={onClear}
 					>

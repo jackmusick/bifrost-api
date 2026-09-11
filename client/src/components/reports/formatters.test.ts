@@ -34,6 +34,7 @@ describe("report formatters", () => {
 	});
 
 	it("formats currency and numeric values", () => {
+		expect(formatCurrency(0.00128)).toBe("$0.00128");
 		expect(formatCurrency("1234.5")).toBe("$1,234.50");
 		expect(formatCurrency(undefined)).toBe("$0.00");
 		expect(formatCurrency("not-a-number")).toBe("$0.00");

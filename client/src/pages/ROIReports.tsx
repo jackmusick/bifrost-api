@@ -536,8 +536,8 @@ export function ROIReports() {
 	};
 
 	return (
-		<PageWorkspace className="min-w-0 ">
-			<div className="shrink-0 space-y-6">
+		<PageWorkspace className="mx-auto w-full max-w-[1440px] min-w-0">
+			<div className="shrink-0 space-y-4">
 				<ListPageHeader
 					title="ROI Reports"
 					description="Workflow automation value and time savings analytics"
@@ -575,33 +575,28 @@ export function ROIReports() {
 				)}
 
 				{/* Date Range Picker and Organization Filter */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Report Period</CardTitle>
-						<CardDescription>
-							Select a date range for the ROI report
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="flex min-w-0 flex-wrap items-center gap-4">
-							<DateRangePicker
-								dateRange={dateRange}
-								onDateRangeChange={setDateRange}
-							/>
-							{isPlatformAdmin && (
-								<div className="w-full sm:ml-auto sm:w-64">
-									<OrganizationSelect
-										value={filterOrgId}
-										onChange={setFilterOrgId}
-										showAll={true}
-										showGlobal={true}
-										placeholder="All organizations"
-									/>
-								</div>
-							)}
-						</div>
-					</CardContent>
-				</Card>
+				<section
+					aria-label="Report filters"
+					className="flex min-w-0 flex-wrap items-center gap-3 border-b pb-4"
+				>
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+						<DateRangePicker
+							dateRange={dateRange}
+							onDateRangeChange={setDateRange}
+						/>
+						{isPlatformAdmin && (
+							<div className="w-full sm:ml-auto sm:w-56">
+								<OrganizationSelect
+									value={filterOrgId}
+									onChange={setFilterOrgId}
+									showAll={true}
+									showGlobal={true}
+									placeholder="All organizations"
+								/>
+							</div>
+						)}
+					</div>
+				</section>
 			</div>
 
 			{/* Error Alert */}

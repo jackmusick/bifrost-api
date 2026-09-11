@@ -582,12 +582,8 @@ export function AgentRunDetailPage() {
 				/>
 			</div>
 
-			{/* Two-column layout */}
 			<PageScrollArea className="space-y-6">
 				<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-					{/* Main column. ``min-w-0`` is essential — without it long
-				    JSON strings inside the panel push past the column width
-				    and into the sidebar. */}
 					<div className="lg:col-span-2 flex min-w-0 flex-col gap-4">
 						<RunActionFeedback
 							pending={savingVerdict}

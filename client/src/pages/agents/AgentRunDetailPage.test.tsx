@@ -379,10 +379,10 @@ describe("AgentRunDetailPage — header + summary", () => {
 		expect(screen.getByText(/result from get_ticket/i)).not.toBeVisible();
 		expect(screen.getByText("Looked up ticket")).toBeInTheDocument();
 		expect(screen.getByText("Raw input")).toBeInTheDocument();
-		await user.click(screen.getByText("Details", { exact: true }));
-		expect(
-			screen.getByText("get_ticket", { exact: true }),
-		).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: /looked up ticket/i }),
+		);
+		await user.click(screen.getByRole("tab", { name: "Output" }));
 		expect(screen.getByText("ticket_id:")).toBeInTheDocument();
 		expect(screen.getByText("428950")).toBeInTheDocument();
 

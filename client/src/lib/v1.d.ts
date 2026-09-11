@@ -11786,6 +11786,11 @@ export interface components {
             /** Is Active */
             is_active: boolean;
             access_level: components["schemas"]["AgentAccessLevel"];
+            /**
+             * Role Ids
+             * @description List of role IDs assigned to this agent
+             */
+            role_ids?: string[];
             /** Organization Id */
             organization_id?: string | null;
             /** Owner User Id */
@@ -27569,6 +27574,11 @@ export interface components {
              * @default role_based
              */
             access_level: string;
+            /**
+             * Role Ids
+             * @description List of role IDs assigned to this workflow
+             */
+            role_ids?: string[];
             /**
              * Category
              * @description Category for organization

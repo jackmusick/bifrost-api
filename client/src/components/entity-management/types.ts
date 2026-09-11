@@ -12,11 +12,13 @@ export type Role = components["schemas"]["RolePublic"];
 export type EntityType = "workflow" | "form" | "agent" | "app";
 
 export interface EntityWithScope {
+	key: string;
 	id: string;
 	name: string;
 	entityType: EntityType;
 	organizationId: string | null;
 	accessLevel: string | null;
+	roleIds: string[];
 	createdAt: string;
 	usedByCount: number | null; // null means count not available for this entity type
 	original: WorkflowMetadata | FormPublic | AgentSummary | ApplicationPublic;
@@ -43,11 +45,13 @@ export function normalizeEntities(
 
 	for (const w of workflows) {
 		entities.push({
+			key: entityKey("workflow", w.id),
 			id: w.id,
 			name: w.name,
 			entityType: "workflow",
 			organizationId: w.organization_id ?? null,
 			accessLevel: w.access_level ?? null,
+			roleIds: w.role_ids ?? [],
 			createdAt: w.created_at,
 			usedByCount: w.used_by_count ?? 0,
 			original: w,
@@ -57,11 +61,13 @@ export function normalizeEntities(
 	for (const f of forms) {
 		if (!f.is_active) continue;
 		entities.push({
+			key: entityKey("form", f.id),
 			id: f.id,
 			name: f.name,
 			entityType: "form",
 			organizationId: f.organization_id ?? null,
 			accessLevel: f.access_level ?? null,
+			roleIds: f.role_ids ?? [],
 			createdAt: f.created_at ?? new Date().toISOString(),
 			usedByCount: f.dependency_count ?? null,
 			original: f,
@@ -71,6 +77,7 @@ export function normalizeEntities(
 	for (const a of agents) {
 		if (!a.is_active || !a.id) continue;
 		entities.push({
+			key: entityKey("agent", a.id),
 			id: a.id,
 			name: a.name,
 			entityType: "agent",
@@ -79,6 +86,7 @@ export function normalizeEntities(
 				null,
 			accessLevel:
 				(a as { access_level?: string | null }).access_level ?? null,
+			roleIds: a.role_ids ?? [],
 			createdAt: a.created_at,
 			usedByCount: a.dependency_count ?? null,
 			original: a,
@@ -87,11 +95,13 @@ export function normalizeEntities(
 
 	for (const app of apps) {
 		entities.push({
+			key: entityKey("app", app.id),
 			id: app.id,
 			name: app.name,
 			entityType: "app",
 			organizationId: app.organization_id ?? null,
 			accessLevel: app.access_level ?? null,
+			roleIds: app.role_ids ?? [],
 			createdAt: app.created_at ?? new Date().toISOString(),
 			usedByCount: null,
 			original: app,
@@ -99,6 +109,10 @@ export function normalizeEntities(
 	}
 
 	return entities;
+}
+
+export function entityKey(entityType: EntityType, id: string) {
+	return `${entityType}:${id}`;
 }
 
 // Entity type icons and colors
@@ -134,4 +148,17 @@ export function isEntityManaged(entity: EntityWithScope): boolean {
 			source.is_solution_managed === true) ||
 		("solution_id" in source && !!source.solution_id)
 	);
+}
+
+export function formatEntityAccess(accessLevel: string | null) {
+	switch (accessLevel) {
+		case "authenticated":
+			return "Everyone except external users";
+		case "role_based":
+			return "Restricted to roles";
+		case "private":
+			return "Private";
+		default:
+			return "Not set";
+	}
 }

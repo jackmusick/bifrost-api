@@ -1,7 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ChevronLeft, Menu, Plus, Upload } from "lucide-react";
+import {
+	ChevronLeft,
+	Menu,
+	Plus,
+	Upload,
+	ShieldCheck,
+	HardDrive,
+} from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +36,7 @@ import {
 import { NewShareDialog } from "./NewShareDialog";
 import { PoliciesView } from "./PoliciesView";
 import { PolicyEditorModal } from "./PolicyEditorModal";
+import { SharesOverview } from "./SharesOverview";
 import { ShareTree, type ShareTreeAction } from "./ShareTree";
 import { TestAccessModal } from "./TestAccessModal";
 import { useFileUpload } from "./useFileUpload";
@@ -57,12 +65,14 @@ export function FilesExplorer({
 }: FilesExplorerProps = {}) {
 	const { isPlatformAdmin } = useAuth();
 	const explorerRef = useRef<HTMLDivElement>(null);
+	const detailTriggerRef = useRef<HTMLElement | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<FileDeleteTarget | null>(
 		null,
 	);
 	const queryClient = useQueryClient();
 	function refreshFiles() {
 		void queryClient.invalidateQueries({ queryKey: ["file-structure"] });
+		void queryClient.invalidateQueries({ queryKey: ["file-shares"] });
 		setRefreshKey((key) => key + 1);
 	}
 	const { data: organizations = [] } = useOrganizations({
@@ -119,10 +129,19 @@ export function FilesExplorer({
 	}, [install, selectorScope, organizations]);
 	const segments = prefix ? prefix.replace(/\/$/, "").split("/") : [];
 
+	function openDetails() {
+		detailTriggerRef.current =
+			document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null;
+		setDetailOpen(true);
+	}
+
 	function resetTo(nextLocation: string | null, nextPrefix: string) {
 		setLocation(nextLocation);
 		setPrefix(nextPrefix);
 		setSelectedFile(null);
+		setDetailOpen(false);
 	}
 
 	function handleScopeChange(next: string | null | undefined) {
@@ -176,6 +195,7 @@ export function FilesExplorer({
 	) {
 		if (action === "effective") {
 			handleSelect(loc, treePrefix);
+			openDetails();
 		} else if (action === "test") {
 			openTest(loc, treePrefix);
 		} else if (action === "newPolicy") {
@@ -192,7 +212,7 @@ export function FilesExplorer({
 		if (readOnly && (action === "policy" || action === "delete")) return;
 		if (action === "preview") {
 			setSelectedFile(path);
-			if (!isWide) setDetailOpen(true);
+			openDetails();
 		} else if (action === "test") {
 			openTest(location, path);
 		} else if (action === "policy") {
@@ -204,7 +224,7 @@ export function FilesExplorer({
 
 	function selectFile(path: string) {
 		setSelectedFile(path);
-		if (!isWide) setDetailOpen(true);
+		openDetails();
 	}
 
 	const tree = (
@@ -241,14 +261,7 @@ export function FilesExplorer({
 			}
 		/>
 	);
-	const detail = isWide ? (
-		<div className="flex h-full min-h-0 flex-col" data-testid="detail-pane">
-			<div className="min-h-0 flex-1 overflow-hidden border-b">
-				{preview}
-			</div>
-			<div className="min-h-0 flex-1 overflow-hidden">{access}</div>
-		</div>
-	) : (
+	const detail = (
 		<Tabs
 			key={selectedFile ?? "access"}
 			defaultValue={selectedFile ? "preview" : "access"}
@@ -398,16 +411,32 @@ export function FilesExplorer({
 									</TabsTrigger>
 								</TabsList>
 							</Tabs>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								className="min-h-11 flex-1 sm:flex-none"
-								onClick={() => setNewShareOpen(true)}
-							>
-								<Plus className="h-4 w-4" /> New Share
-							</Button>
+							{view === "browse" && location === null && (
+								<Button
+									type="button"
+									size="sm"
+									variant="outline"
+									className="min-h-11 flex-1 sm:flex-none"
+									onClick={() => setNewShareOpen(true)}
+								>
+									<Plus className="h-4 w-4" /> New Share
+								</Button>
+							)}
 						</>
+					)}
+					{view === "browse" && location !== null && (
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-11"
+							onClick={() => {
+								setSelectedFile(null);
+								openDetails();
+							}}
+						>
+							<ShieldCheck className="size-4" />
+							Folder access
+						</Button>
 					)}
 					{canUpload && (
 						<>
@@ -475,48 +504,85 @@ export function FilesExplorer({
 					/>
 				</div>
 			) : (
-				<div className="grid min-h-0 flex-1 gap-3 overflow-hidden min-[1440px]:grid-cols-[16rem_minmax(0,1fr)_20rem]">
-					{isWide && <div className={PANE}>{tree}</div>}
+				<div className="grid min-h-0 flex-1 gap-3 overflow-hidden min-[1440px]:grid-cols-[16rem_minmax(0,1fr)]">
+					{isWide && (
+						<div className={PANE}>
+							<div className="flex items-center gap-2 border-b px-4 py-4 text-sm font-semibold">
+								<HardDrive className="size-4 text-primary" />
+								Shares
+							</div>
+							{tree}
+						</div>
+					)}
 					{/* No PANE here: FolderListing's DataTable is its own card —
 					    wrapping it in PANE would nest a card in a card. */}
 					<div className="flex min-h-0 flex-col overflow-hidden">
-						<FolderListing
-							key={`listing-${scope}-${location}-${prefix}`}
-							scope={scope}
-							location={location}
-							prefix={prefix}
-							readOnly={readOnly}
-							managedBySolution={solutionReadOnly}
-							solutionId={install}
-							onOpenFolder={(next) => resetTo(location, next)}
-							onSelectFile={selectFile}
-							onRowAction={handleRowAction}
-							onFolderAction={(action, folderPrefix) =>
-								location !== null &&
-								handleTreeAction(action, location, folderPrefix)
-							}
-							onUploaded={refreshFiles}
-						/>
+						<>
+							{location === null ? (
+								<SharesOverview
+									scope={scope}
+									readOnly={solutionReadOnly}
+									onSelect={handleSelect}
+								/>
+							) : (
+								<FolderListing
+									key={`listing-${scope}-${location}-${prefix}`}
+									scope={scope}
+									location={location}
+									prefix={prefix}
+									readOnly={readOnly}
+									managedBySolution={solutionReadOnly}
+									solutionId={install}
+									onOpenFolder={(next) =>
+										resetTo(location, next)
+									}
+									onSelectFile={selectFile}
+									onRowAction={handleRowAction}
+									onFolderAction={(action, folderPrefix) =>
+										location !== null &&
+										handleTreeAction(
+											action,
+											location,
+											folderPrefix,
+										)
+									}
+									onUploaded={refreshFiles}
+								/>
+							)}
+						</>
 					</div>
-					{isWide && <div className={PANE}>{detail}</div>}
 				</div>
 			)}
 
-			{!isWide && (
+			{
 				<Sheet open={detailOpen} onOpenChange={setDetailOpen}>
 					<SheetContent
 						side="right"
-						className="w-full p-0 sm:max-w-md"
+						className="w-full p-0 sm:max-w-xl"
+						onCloseAutoFocus={(event) => {
+							event.preventDefault();
+							const opener = detailTriggerRef.current;
+							if (opener?.isConnected && opener !== document.body)
+								opener.focus({ preventScroll: true });
+							else
+								explorerRef.current?.focus({
+									preventScroll: true,
+								});
+						}}
 					>
 						<SheetHeader className="min-h-20 px-4 py-5">
-							<SheetTitle>Details</SheetTitle>
+							<SheetTitle className="break-all">
+								{selectedFile?.split("/").pop() ??
+									location ??
+									"Details"}
+							</SheetTitle>
 						</SheetHeader>
 						<div className="flex min-h-0 flex-1 flex-col">
 							{detail}
 						</div>
 					</SheetContent>
 				</Sheet>
-			)}
+			}
 
 			{deleteTarget && (
 				<DeleteConfirmation

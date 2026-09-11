@@ -306,6 +306,14 @@ class TestRegisterWorkflowAccess:
             assert roles_resp.status_code == 200, roles_resp.text
             assert role["id"] in roles_resp.json().get("role_ids", [])
 
+            list_resp = e2e_client.get(
+                "/api/workflows",
+                headers=platform_admin.headers,
+            )
+            assert list_resp.status_code == 200, list_resp.text
+            listed = next(item for item in list_resp.json() if item["id"] == wf_id)
+            assert listed["role_ids"] == [role["id"]]
+
             # Cleanup workflow
             e2e_client.delete(
                 f"/api/workflows/{wf_id}",

@@ -36,6 +36,9 @@ export function formatCurrency(value: string | number | undefined): string {
 	return numValue.toLocaleString("en-US", {
 		style: "currency",
 		currency: "USD",
+		minimumFractionDigits: 2,
+		maximumFractionDigits:
+			numValue !== 0 && Math.abs(numValue) < 0.01 ? 6 : 2,
 	});
 }
 

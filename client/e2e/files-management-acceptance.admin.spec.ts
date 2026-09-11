@@ -110,6 +110,10 @@ test.describe("Files management acceptance (admin)", () => {
 			timeout: 15_000,
 		});
 		expect(await fileExists(api)).toBe(true);
+		await page
+			.getByRole("dialog")
+			.getByRole("button", { name: "Close", exact: true })
+			.click();
 
 		const downloadPromise = page.waitForEvent("download");
 		await openFileAction(page, "Download");

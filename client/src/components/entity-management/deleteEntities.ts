@@ -6,6 +6,7 @@ import type { DeleteConfirmEntity } from "./DeleteConfirmDialog";
 /** Preserve partial success so retry never repeats an already completed delete. */
 export async function deleteEntities(entities: DeleteConfirmEntity[]) {
 	const deletedIds: string[] = [];
+	const deletedKeys: string[] = [];
 	const failures: { entity: DeleteConfirmEntity; message: string }[] = [];
 	const conflictIds: string[] = [];
 	const pendingDeactivations: components["schemas"]["PendingDeactivation"][] =
@@ -41,8 +42,10 @@ export async function deleteEntities(entities: DeleteConfirmEntity[]) {
 				availableReplacements.push(
 					...(conflict.available_replacements ?? []),
 				);
-			} else if (response.ok) deletedIds.push(entity.id);
-			else
+			} else if (response.ok) {
+				deletedIds.push(entity.id);
+				deletedKeys.push(`${entity.entityType}:${entity.id}`);
+			} else
 				throw new Error(
 					getErrorMessage(
 						await response
@@ -68,6 +71,7 @@ export async function deleteEntities(entities: DeleteConfirmEntity[]) {
 	}
 	return {
 		deletedIds,
+		deletedKeys,
 		failures,
 		conflictIds,
 		pendingDeactivations,

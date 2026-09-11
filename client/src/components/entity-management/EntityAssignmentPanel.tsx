@@ -1,26 +1,23 @@
-import { isEntityManaged } from "./types";
-import { useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Building2, Shield } from "lucide-react";
 
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 
-import { OrgDropTarget, RoleDropTarget } from "./DropTargets";
+import { isEntityManaged, formatEntityAccess } from "./types";
 import type { EntityWithScope, Organization, Role } from "./types";
 
-interface Assignment {
-	kind: "organization" | "access";
-	target: string | null;
-	name: string;
-	entities: EntityWithScope[];
-}
+const NO_CHANGE = "__no_change__";
+const ACCESS_AUTHENTICATED = "authenticated";
+const ACCESS_CLEAR_ROLES = "clear-roles";
 
 interface EntityAssignmentPanelProps {
 	hideInstructions?: boolean;
@@ -36,6 +33,11 @@ interface EntityAssignmentPanelProps {
 	onAccess: (ids: string[], roleOrAccessLevel: string) => Promise<void>;
 }
 
+type ChangeDraft = {
+	organizationId: string | null | typeof NO_CHANGE;
+	accessTarget: string;
+};
+
 export function EntityAssignmentPanel({
 	entities,
 	hideInstructions = false,
@@ -46,58 +48,51 @@ export function EntityAssignmentPanel({
 	onOrganization,
 	onAccess,
 }: EntityAssignmentPanelProps) {
-	const [assignment, setAssignment] = useState<Assignment | null>(null);
+	const [draft, setDraft] = useState<ChangeDraft>({
+		organizationId: NO_CHANGE,
+		accessTarget: NO_CHANGE,
+	});
+	const [submitSnapshot, setSubmitSnapshot] = useState<
+		EntityWithScope[] | null
+	>(null);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const submitting = useRef(false);
-	const errorRef = useRef<HTMLParagraphElement>(null);
-	useEffect(() => {
-		if (error) {
-			errorRef.current?.focus();
-			errorRef.current?.scrollIntoView({ block: "nearest" });
-		}
-	}, [error]);
-	const origin = useRef<HTMLElement | null>(null);
 
-	const selected = entities
-		.filter(
-			(entity) => selectedIds.has(entity.id) && !isEntityManaged(entity),
-		)
-		.map((entity) => entity.id);
-
-	const choose = (
-		kind: Assignment["kind"],
-		ids: string[],
-		target: string | null,
-		name: string,
-	) => {
-		if (disabled || submitting.current) return;
-		const snapshot = entities.filter(
-			(entity) => ids.includes(entity.id) && !isEntityManaged(entity),
-		);
-		if (!snapshot.length) return;
-		origin.current =
-			document.activeElement instanceof HTMLElement
-				? document.activeElement
-				: null;
-		setError(null);
-		setAssignment({ kind, target, name, entities: snapshot });
-	};
+	const selected = useMemo(
+		() =>
+			entities.filter(
+				(entity) =>
+					selectedIds.has(entity.key) && !isEntityManaged(entity),
+			),
+		[entities, selectedIds],
+	);
+	const reviewEntities = submitSnapshot ?? selected;
+	const hasDraft =
+		draft.organizationId !== NO_CHANGE || draft.accessTarget !== NO_CHANGE;
+	const canApply = selected.length > 0 && hasDraft && !disabled && !pending;
 
 	const confirm = async () => {
-		if (!assignment || disabled || submitting.current) return;
+		if (!canApply || submitting.current) return;
 		submitting.current = true;
 		setPending(true);
 		setError(null);
-
+		const snapshot = selected;
+		setSubmitSnapshot(snapshot);
 		try {
-			const ids = assignment.entities.map((entity) => entity.id);
-			if (assignment.kind === "organization") {
-				await onOrganization(ids, assignment.target);
-			} else {
-				await onAccess(ids, assignment.target!);
+			if (draft.organizationId !== NO_CHANGE) {
+				await onOrganization(
+					snapshot.map((entity) => entity.key),
+					draft.organizationId,
+				);
 			}
-			setAssignment(null);
+			if (draft.accessTarget !== NO_CHANGE) {
+				await onAccess(
+					snapshot.map((entity) => entity.key),
+					draft.accessTarget,
+				);
+			}
+			setDraft({ organizationId: NO_CHANGE, accessTarget: NO_CHANGE });
 		} catch (cause) {
 			setError(
 				cause instanceof Error
@@ -107,227 +102,289 @@ export function EntityAssignmentPanel({
 		} finally {
 			submitting.current = false;
 			setPending(false);
+			setSubmitSnapshot(null);
 		}
 	};
 
 	return (
 		<section
 			aria-label="Entity assignment"
-			className="flex min-w-0 flex-col gap-4 lg:min-h-0"
+			className="flex min-w-0 flex-col gap-5"
 		>
-			{!hideInstructions && (
+			{!hideInstructions ? (
 				<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-					Select entities, then choose an organization or access
-					setting. You can also drag entities to a destination. Review
-					changes before applying them.
+					Choose scope, access, or both. Review the exact changes
+					before applying them.
 				</p>
-			)}
+			) : null}
 
-			<div className="grid gap-4 xl:grid-cols-2">
-				<AssignmentGroup
-					title="Organizations"
-					icon={
-						<Building2
-							aria-hidden="true"
-							className="size-5 text-muted-foreground"
+			<div className="grid gap-4">
+				<div className="grid gap-2">
+					<Label className="flex items-center gap-2">
+						<Building2 className="size-4 text-muted-foreground" />
+						Organization
+					</Label>
+					<div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+						<Select
+							value={
+								draft.organizationId === NO_CHANGE
+									? NO_CHANGE
+									: "change"
+							}
+							onValueChange={(value) =>
+								setDraft((current) => ({
+									...current,
+									organizationId:
+										value === NO_CHANGE ? NO_CHANGE : null,
+								}))
+							}
+							disabled={disabled || pending}
+						>
+							<SelectTrigger
+								aria-label="Organization change mode"
+								className="min-h-11 w-full"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={NO_CHANGE}>
+									No change
+								</SelectItem>
+								<SelectItem value="change">
+									Set scope
+								</SelectItem>
+							</SelectContent>
+						</Select>
+						<OrganizationSelect
+							value={
+								draft.organizationId === NO_CHANGE
+									? null
+									: draft.organizationId
+							}
+							onChange={(value) =>
+								setDraft((current) => ({
+									...current,
+									organizationId: value ?? null,
+								}))
+							}
+							disabled={
+								disabled ||
+								pending ||
+								draft.organizationId === NO_CHANGE
+							}
+							showGlobal
+							placeholder="Select organization..."
 						/>
-					}
-					description="Move the selected entities to a different organization."
-				>
-					<div className="space-y-3">
-						{[null, ...organizations].map((organization) => (
-							<OrgDropTarget
-								key={organization?.id ?? "global"}
-								organization={organization}
-								selectedIds={selected}
-								disabled={disabled || pending}
-								onDrop={(ids, target) =>
-									choose(
-										"organization",
-										ids,
-										target,
-										organization?.name ?? "Global",
-									)
-								}
-							/>
-						))}
 					</div>
-				</AssignmentGroup>
+				</div>
 
-				<AssignmentGroup
-					title="Access"
-					icon={
-						<Shield
-							aria-hidden="true"
-							className="size-5 text-muted-foreground"
-						/>
-					}
-					description="Apply a role, remove roles, or leave entities authenticated only."
-				>
-					<div className="space-y-3">
-						{(
-							["authenticated", "clear-roles", ...roles] as const
-						).map((role) => (
-							<RoleDropTarget
-								key={typeof role === "string" ? role : role.id}
-								role={role}
-								selectedIds={selected}
-								disabled={disabled || pending}
-								onDrop={(ids, target) =>
-									choose(
-										"access",
-										ids,
-										target,
-										role === "authenticated"
-											? "Everyone except external users"
-											: role === "clear-roles"
-												? "Clear roles"
-												: role.name,
-									)
-								}
-							/>
-						))}
-					</div>
-				</AssignmentGroup>
+				<div className="grid gap-2">
+					<Label className="flex items-center gap-2">
+						<Shield className="size-4 text-muted-foreground" />
+						Access
+					</Label>
+					<Select
+						value={draft.accessTarget}
+						onValueChange={(value) =>
+							setDraft((current) => ({
+								...current,
+								accessTarget: value,
+							}))
+						}
+						disabled={disabled || pending}
+					>
+						<SelectTrigger
+							aria-label="Access change"
+							className="min-h-11 w-full"
+						>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value={NO_CHANGE}>No change</SelectItem>
+							<SelectItem value={ACCESS_AUTHENTICATED}>
+								Everyone except external users
+							</SelectItem>
+							<SelectItem value={ACCESS_CLEAR_ROLES}>
+								Restricted to roles, clear roles
+							</SelectItem>
+							{roles.map((role) => (
+								<SelectItem key={role.id} value={role.id}>
+									Add role: {role.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
 			</div>
 
-			<Dialog
-				open={!!assignment}
-				onOpenChange={(open) => {
-					if (!open && !submitting.current) setAssignment(null);
-				}}
-			>
-				<DialogContent
-					className="max-h-[90dvh] max-w-2xl gap-5 overflow-y-auto"
-					showCloseButton={!pending}
-					onCloseAutoFocus={(event) => {
-						if (origin.current?.isConnected) {
-							event.preventDefault();
-							origin.current.focus();
-						}
-					}}
-				>
-					<DialogHeader className="gap-2">
-						<DialogTitle>
-							{assignment?.kind === "organization"
-								? "Change organization"
-								: "Change access"}
-						</DialogTitle>
-						<DialogDescription className="[overflow-wrap:anywhere]">
-							Apply {assignment?.name} to{" "}
-							{assignment?.entities.length}{" "}
-							{assignment?.entities.length === 1
-								? "entity"
-								: "entities"}
-							.
-						</DialogDescription>
-					</DialogHeader>
-
-					{assignment?.target === "clear-roles" ? (
-						<div className="rounded-[var(--bf-radius-surface)] border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-							This removes all role assignments and sets access to
-							role-based.
-						</div>
-					) : null}
-
-					<ul
-						aria-label="Entities to update"
-						tabIndex={0}
-						className="max-h-60 space-y-2 overflow-y-auto rounded-[var(--bf-radius-surface)] border border-border bg-card p-[var(--bf-surface-pad)] text-sm focus-visible:outline-2 focus-visible:outline-ring"
-					>
-						{assignment?.entities.map((entity) => (
+			<div className="grid gap-3 border-t border-border pt-5">
+				<div>
+					<h3 className="text-sm font-semibold">Review changes</h3>
+					<p className="text-sm text-muted-foreground">
+						Compare current and new settings for each selected
+						resource.
+					</p>
+				</div>
+				<ul aria-label="Entities to update" className="space-y-2">
+					{reviewEntities.length ? (
+						reviewEntities.map((entity) => (
 							<li
 								key={`${entity.entityType}:${entity.id}`}
-								className="flex min-w-0 flex-col items-start gap-1 [overflow-wrap:anywhere] sm:flex-row sm:gap-2"
+								className="grid gap-2 rounded-[var(--bf-radius-surface)] border border-border bg-card p-3 text-sm"
 							>
-								<span className="min-w-0 font-medium text-foreground">
-									{entity.name}
-								</span>
-								<span className="shrink-0 text-xs text-muted-foreground">
-									{entity.entityType}
-								</span>
+								<div className="flex min-w-0 flex-wrap items-center gap-2">
+									<span className="min-w-0 font-medium [overflow-wrap:anywhere]">
+										{entity.name}
+									</span>
+									<span className="text-xs capitalize text-muted-foreground">
+										{entity.entityType}
+									</span>
+								</div>
+								<ChangeLine
+									label="Scope"
+									current={scopeName(
+										entity.organizationId,
+										organizations,
+									)}
+									proposed={
+										draft.organizationId === NO_CHANGE
+											? null
+											: scopeName(
+													draft.organizationId,
+													organizations,
+												)
+									}
+								/>
+								<ChangeLine
+									label="Access"
+									current={accessName(entity, roles)}
+									proposed={
+										draft.accessTarget === NO_CHANGE
+											? null
+											: proposedAccessName(
+													entity,
+													draft.accessTarget,
+													roles,
+												)
+									}
+								/>
 							</li>
-						))}
-					</ul>
+						))
+					) : (
+						<li className="rounded-[var(--bf-radius-surface)] border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+							Select resources to review changes.
+						</li>
+					)}
+				</ul>
+			</div>
 
-					{error ? (
-						<p
-							ref={errorRef}
-							tabIndex={-1}
-							role="alert"
-							className="text-sm text-[var(--bf-danger)] [overflow-wrap:anywhere]"
-						>
-							{error}
-						</p>
-					) : null}
+			{error ? (
+				<p role="alert" className="text-sm text-[var(--bf-danger)]">
+					{error}
+				</p>
+			) : null}
 
-					{pending ? (
-						<p
-							role="status"
-							className="text-sm text-muted-foreground"
-						>
-							Applying changes…
-						</p>
-					) : null}
-
-					<DialogFooter className="gap-2">
-						<Button
-							type="button"
-							variant="outline"
-							size="lg"
-							className="w-full sm:w-auto"
-							disabled={pending}
-							onClick={() => setAssignment(null)}
-						>
-							Cancel
-						</Button>
-						<Button
-							type="button"
-							size="lg"
-							className="w-full sm:w-auto"
-							disabled={disabled || pending}
-							onClick={() => void confirm()}
-						>
-							{pending
-								? "Applying…"
-								: error
-									? "Retry changes"
-									: "Apply changes"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<Button
+					type="button"
+					variant="outline"
+					disabled={disabled || pending || !hasDraft}
+					onClick={() =>
+						setDraft({
+							organizationId: NO_CHANGE,
+							accessTarget: NO_CHANGE,
+						})
+					}
+				>
+					Reset
+				</Button>
+				<Button
+					type="button"
+					disabled={!canApply}
+					onClick={() => void confirm()}
+				>
+					{pending ? "Applying..." : "Apply changes"}
+				</Button>
+			</div>
 		</section>
 	);
 }
 
-function AssignmentGroup({
-	title,
-	icon,
-	description,
-	children,
+function ChangeLine({
+	label,
+	current,
+	proposed,
 }: {
-	title: string;
-	icon: React.ReactNode;
-	description: string;
-	children: React.ReactNode;
+	label: string;
+	current: string;
+	proposed: string | null;
 }) {
+	const changed = proposed !== null && proposed !== current;
 	return (
-		<section className="rounded-[var(--bf-radius-surface)] border border-border bg-card p-[var(--bf-surface-pad)]">
-			<div className="space-y-3">
-				<div className="flex items-start gap-3">
-					{icon}
-					<div className="min-w-0 space-y-1">
-						<h2 className="text-base font-semibold leading-snug">
-							{title}
-						</h2>
-						<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-							{description}
-						</p>
-					</div>
-				</div>
-				{children}
-			</div>
-		</section>
+		<p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+			<span className="font-medium text-foreground">{label}:</span>{" "}
+			{proposed === null ? (
+				<>No change ({current})</>
+			) : changed ? (
+				<>
+					{current} <span aria-hidden="true">-&gt;</span> {proposed}
+				</>
+			) : (
+				<>No change ({current})</>
+			)}
+		</p>
 	);
+}
+
+function scopeName(
+	organizationId: string | null,
+	organizations: Organization[],
+) {
+	if (!organizationId) return "Global";
+	return (
+		organizations.find((organization) => organization.id === organizationId)
+			?.name ?? "Unknown organization"
+	);
+}
+
+function accessName(entity: EntityWithScope, roles: Role[]) {
+	if (entity.accessLevel === "role_based" && entity.roleIds.length > 0) {
+		return roleNames(entity.roleIds, roles);
+	}
+	return formatEntityAccess(entity.accessLevel);
+}
+
+function accessTargetName(target: string, roles: Role[]) {
+	if (target === ACCESS_AUTHENTICATED) {
+		return "Everyone except external users";
+	}
+	if (target === ACCESS_CLEAR_ROLES) {
+		return "Restricted to roles, no roles";
+	}
+	return roles.find((role) => role.id === target)?.name ?? "Unknown role";
+}
+
+function proposedAccessName(
+	entity: EntityWithScope,
+	target: string,
+	roles: Role[],
+) {
+	if (target === ACCESS_AUTHENTICATED || target === ACCESS_CLEAR_ROLES) {
+		return accessTargetName(target, roles);
+	}
+	const roleName = accessTargetName(target, roles);
+	const currentRoleNames =
+		entity.accessLevel === "role_based" && entity.roleIds.length > 0
+			? roleNames(entity.roleIds, roles)
+			: "";
+	return currentRoleNames
+		? `${currentRoleNames}, add ${roleName}`
+		: `Add role ${roleName}`;
+}
+
+function roleNames(roleIds: string[], roles: Role[]) {
+	const names = roleIds.map(
+		(roleId) => roles.find((role) => role.id === roleId)?.name ?? roleId,
+	);
+	return names.join(", ");
 }

@@ -8,13 +8,6 @@ import { useState, useMemo } from "react";
 import { format, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { AlertCircle, Sparkles } from "lucide-react";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -114,8 +107,8 @@ export function UsageReports() {
 	const showConversationTable = source === "chat" || source === "all";
 
 	return (
-		<PageWorkspace className="min-w-0 ">
-			<div className="shrink-0 space-y-6">
+		<PageWorkspace className="mx-auto w-full max-w-[1440px] min-w-0">
+			<div className="shrink-0 space-y-4">
 				<ListPageHeader
 					title="Usage Reports"
 					description="AI usage and resource consumption analytics"
@@ -153,54 +146,45 @@ export function UsageReports() {
 				)}
 
 				{/* Filters: Date Range, Source Tabs, and Organization */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Report Period</CardTitle>
-						<CardDescription>
-							Select a date range and source for the usage report
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
+				<section
+					aria-label="Report filters"
+					className="flex min-w-0 flex-wrap items-center gap-3 border-b pb-4"
+				>
+					<div className="w-full sm:w-auto sm:max-w-sm">
 						<DateRangePicker
 							dateRange={dateRange}
 							onDateRangeChange={setDateRange}
 						/>
+					</div>
 
-						<div className="flex min-w-0 flex-wrap items-center gap-4">
-							<Label className="text-sm font-medium">
-								Source:
-							</Label>
-							<Tabs
-								value={source}
-								onValueChange={(v) =>
-									setSource(v as UsageSource)
-								}
-							>
-								<TabsList>
-									<TabsTrigger value="all">All</TabsTrigger>
-									<TabsTrigger value="executions">
-										Executions
-									</TabsTrigger>
-									<TabsTrigger value="chat">Chat</TabsTrigger>
-									<TabsTrigger value="agents">
-										Agents
-									</TabsTrigger>
-								</TabsList>
-							</Tabs>
-							{isPlatformAdmin && (
-								<div className="w-full sm:ml-auto sm:w-64">
-									<OrganizationSelect
-										value={filterOrgId}
-										onChange={setFilterOrgId}
-										showAll={true}
-										showGlobal={true}
-										placeholder="All organizations"
-									/>
-								</div>
-							)}
-						</div>
-					</CardContent>
-				</Card>
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+						<Label className="text-sm font-medium">Source:</Label>
+						<Tabs
+							value={source}
+							onValueChange={(v) => setSource(v as UsageSource)}
+						>
+							<TabsList>
+								<TabsTrigger value="all">All</TabsTrigger>
+								<TabsTrigger value="executions">
+									Executions
+								</TabsTrigger>
+								<TabsTrigger value="chat">Chat</TabsTrigger>
+								<TabsTrigger value="agents">Agents</TabsTrigger>
+							</TabsList>
+						</Tabs>
+						{isPlatformAdmin && (
+							<div className="w-full sm:ml-auto sm:w-56">
+								<OrganizationSelect
+									value={filterOrgId}
+									onChange={setFilterOrgId}
+									showAll={true}
+									showGlobal={true}
+									placeholder="All organizations"
+								/>
+							</div>
+						)}
+					</div>
+				</section>
 			</div>
 
 			{/* Error Alert */}

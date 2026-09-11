@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 /**
  * Timeline has two deliberately different projections of a run:
  *
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
  * - AdvancedTimeline: the exact step sequence with raw payload disclosure.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
 	AlertCircle,
@@ -16,18 +17,16 @@ import {
 	Check,
 	ChevronRight,
 	CircleDot,
-	Code2,
 	Cpu,
 	GitBranch,
 	Loader2,
 	MessageSquare,
 	MessageSquareText,
-	TriangleAlert,
 	Wrench,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatDuration, formatNumber } from "@/lib/utils";
+import { formatCost, formatDuration, formatNumber } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 import {
 	createAgentRunNavigationState,
@@ -48,8 +47,11 @@ import {
 type AgentRunStepResponse = components["schemas"]["AgentRunStepResponse"];
 type AgentRunDetailResponse = components["schemas"]["AgentRunDetailResponse"];
 type AgentRunChildResponse = components["schemas"]["AgentRunChildResponse"];
+type BulkExpansionRequest = { expanded: boolean; token: number } | null;
 
 const ACTIVE_RUN_STATUSES = new Set(["queued", "running", "cancelling"]);
+const EMPTY_CHILD_RUN_IDS: string[] = [];
+const EMPTY_CHILD_RUNS: AgentRunChildResponse[] = [];
 
 export interface TimelineProps {
 	steps: AgentRunStepResponse[] | null | undefined;
@@ -72,10 +74,9 @@ export interface TimelineProps {
 
 export function Timeline({
 	steps,
-	childRunIds = [],
-	childRuns = [],
+	childRunIds = EMPTY_CHILD_RUN_IDS,
+	childRuns = EMPTY_CHILD_RUNS,
 	runStatus,
-	showTechnicalDetails = false,
 	highlightedActivityId = null,
 	expandedDelegationIds,
 	onDelegationExpandedChange,
@@ -84,7 +85,57 @@ export function Timeline({
 	childRunOrigin,
 	depth = 0,
 }: TimelineProps) {
-	const activity = buildRunActivity(steps, childRunIds, childRuns);
+	const activity = useMemo(
+		() => buildRunActivity(steps, childRunIds, childRuns),
+		[steps, childRunIds, childRuns],
+	);
+	const [selectedActivityId, setSelectedActivityId] = useState<string | null>(
+		null,
+	);
+	const [selectedSnapshot, setSelectedSnapshot] = useState<{
+		item: RunActivityItem;
+		sourceRunId?: string;
+	} | null>(null);
+	const [bulkExpansionRequest, setBulkExpansionRequest] =
+		useState<BulkExpansionRequest>(null);
+	const { data: rawSelectedSource } = useAgentRun(
+		selectedSnapshot?.sourceRunId,
+		{
+			refetchInterval: (query) =>
+				ACTIVE_RUN_STATUSES.has(query.state.data?.status ?? "")
+					? 2_000
+					: false,
+		},
+	);
+	const selectedSource = rawSelectedSource as unknown as
+		AgentRunDetailResponse | undefined;
+	const selectedSourceActivity = useMemo(
+		() =>
+			selectedSource
+				? buildRunActivity(
+						selectedSource.steps,
+						selectedSource.child_run_ids,
+						selectedSource.child_runs,
+					)
+				: [],
+		[selectedSource],
+	);
+	const selectedActivity =
+		(selectedSnapshot?.sourceRunId
+			? selectedSourceActivity
+			: activity
+		).find((item) => item.id === selectedActivityId) ??
+		(selectedSnapshot?.item.id === selectedActivityId
+			? selectedSnapshot.item
+			: null);
+	const handleSelectActivity = (
+		item: RunActivityItem,
+		sourceRunId?: string,
+	) => {
+		setSelectedActivityId(item.id);
+		setSelectedSnapshot({ item, sourceRunId });
+	};
+
 	if (!activity.length) {
 		return (
 			<div className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center">
@@ -98,283 +149,98 @@ export function Timeline({
 		);
 	}
 
-	return (
-		<ol
-			className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 before:absolute before:bottom-5 before:left-[11px] sm:before:left-[21px] before:top-5 before:w-px before:bg-border"
-			aria-label="Run activity"
-		>
-			{activity.map((item) => (
-				<ActivityRow
-					key={item.id}
-					item={item}
-					depth={depth}
-					runStatus={runStatus}
-					showTechnicalDetails={showTechnicalDetails}
-					highlighted={item.id === highlightedActivityId}
-					expandedDelegationIds={expandedDelegationIds}
-					onDelegationExpandedChange={onDelegationExpandedChange}
-					restoreActivityId={restoreActivityId}
-					onOpenChildRun={onOpenChildRun}
-					childRunOrigin={childRunOrigin}
-				/>
-			))}
-		</ol>
-	);
-}
-
-function ActivityRow({
-	item,
-	depth,
-	runStatus,
-	showTechnicalDetails,
-	highlighted,
-	expandedDelegationIds,
-	onDelegationExpandedChange,
-	restoreActivityId,
-	onOpenChildRun,
-	childRunOrigin,
-}: {
-	item: RunActivityItem;
-	depth: number;
-	runStatus?: string | null;
-	showTechnicalDetails: boolean;
-	highlighted: boolean;
-	expandedDelegationIds?: ReadonlySet<string>;
-	onDelegationExpandedChange?: (
-		activityId: string,
-		expanded: boolean,
-	) => void;
-	restoreActivityId?: string | null;
-	onOpenChildRun?: (activityId: string) => void;
-	childRunOrigin?: AgentRunNavigationOrigin;
-}) {
-	if (item.kind === "delegation") {
-		return (
-			<DelegationRow
-				item={item}
-				depth={depth}
-				showTechnicalDetails={showTechnicalDetails}
-				highlighted={highlighted}
-				expandedDelegationIds={expandedDelegationIds}
-				onDelegationExpandedChange={onDelegationExpandedChange}
-				restoreActivityId={restoreActivityId}
-				onOpenChildRun={onOpenChildRun}
-				childRunOrigin={childRunOrigin}
-			/>
-		);
-	}
-
-	const isError = item.isError || item.kind === "error";
-	const isWarning = item.kind === "warning";
-	const isCancelled = item.kind === "cancelled";
-	const isResponse = item.kind === "response";
-	const pending = item.kind === "action" && !item.resultStep;
-	const runInProgress = ["queued", "running", "cancelling"].includes(
-		runStatus ?? "",
-	);
-	const Icon = isError
-		? AlertCircle
-		: isWarning || isCancelled
-			? TriangleAlert
-			: isResponse
-				? MessageSquareText
-				: pending
-					? CircleDot
-					: Check;
-	const tone = isError
-		? "border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60"
-		: isWarning || isCancelled
-			? "border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60"
-			: "border-border/70 bg-card";
-	const iconTone = isError
-		? "border-[var(--bf-danger)]/25 bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
-		: isWarning || isCancelled
-			? "border-[var(--bf-warning)]/25 bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]"
-			: isResponse
-				? "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]"
-				: pending
-					? runInProgress
-						? "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]"
-						: "border-border bg-muted text-muted-foreground"
-					: "border-[var(--bf-success)]/25 bg-[var(--bf-success-soft)] text-[var(--bf-success)]";
+	const expandableActivityIds = activity
+		.filter((item) => item.kind === "delegation" && !!item.childRunId)
+		.map((item) => item.id);
 
 	return (
-		<li
-			id={activityDomId(item.id)}
-			tabIndex={-1}
-			className="relative scroll-mt-24 rounded-[var(--bf-radius-feature)] pl-8 outline-none [overflow-wrap:anywhere] sm:pl-12"
-			data-activity-id={item.id}
-			data-activity-kind={item.kind}
-			data-highlighted={highlighted ? "true" : "false"}
-		>
-			<div
-				className={cn(
-					"absolute left-0 top-3 z-10 grid size-6 place-items-center sm:size-11 rounded-full border shadow-sm",
-					iconTone,
-				)}
-			>
-				<Icon className="h-4 w-4" />
-			</div>
-			<div
-				className={cn(
-					"rounded-[var(--bf-radius-feature)] border px-4 py-4 shadow-sm transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
-					tone,
-					highlighted &&
-						"border-[var(--bf-info)]/50 ring-2 ring-[var(--bf-info)]/45 ring-offset-2 ring-offset-background",
-				)}
-			>
-				<div className="flex items-start gap-3">
-					<div className="min-w-0 flex-1">
-						<div className="text-sm font-medium leading-5">
-							{item.title}
-						</div>
-						{item.description ? (
-							<p className="mt-1 text-sm leading-6 text-muted-foreground">
-								{item.description}
-							</p>
-						) : pending ? (
-							<p className="mt-1 text-sm leading-6 text-muted-foreground">
-								{runInProgress
-									? "In progress"
-									: "No outcome recorded"}
-							</p>
-						) : null}
-					</div>
-					<div className="flex shrink-0 items-center gap-2 pt-0.5">
-						{item.durationMs != null ? (
-							<span className="text-[11px] tabular-nums text-muted-foreground">
-								{formatDuration(item.durationMs)}
-							</span>
-						) : null}
-						{item.executionId ? (
-							<Link
-								to={`/history/${item.executionId}`}
-								className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-2 text-sm font-medium text-primary transition-colors hover:bg-[var(--bf-info-soft)]/80 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-							>
-								Execution
-								<ArrowUpRight className="h-4 w-4" />
-							</Link>
-						) : null}
-					</div>
+		<div className="grid min-w-0 gap-5">
+			{expandableActivityIds.length ? (
+				<div className="flex flex-wrap items-center gap-2">
+					<Button
+						type="button"
+						variant="ghost"
+						className="min-h-11 px-2 text-primary"
+						onClick={() => {
+							setBulkExpansionRequest((current) => ({
+								expanded: true,
+								token: (current?.token ?? 0) + 1,
+							}));
+						}}
+					>
+						Expand all
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						className="min-h-11 px-2 text-primary"
+						onClick={() => {
+							setBulkExpansionRequest((current) => ({
+								expanded: false,
+								token: (current?.token ?? 0) + 1,
+							}));
+						}}
+					>
+						Collapse all
+					</Button>
 				</div>
-				{showTechnicalDetails ? (
-					<ActivityTechnicalDetails item={item} />
-				) : null}
+			) : null}
+			<div className="min-w-0 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70">
+				<div className="hidden grid-cols-[minmax(0,1fr)_5rem_6rem_4rem] gap-3 border-b bg-muted/35 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+					<div>Name</div>
+					<div>Type</div>
+					<div>Status</div>
+					<div>Duration</div>
+				</div>
+				<ol
+					aria-label="Run activity"
+					className="divide-y divide-border/70"
+				>
+					{activity.map((item) => (
+						<ActivityTreeRow
+							key={`${item.id}:${bulkExpansionRequest?.token ?? 0}`}
+							item={item}
+							depth={depth}
+							rowDepth={0}
+							runStatus={runStatus}
+							highlighted={item.id === highlightedActivityId}
+							selected={item.id === selectedActivityId}
+							selectedActivityId={selectedActivityId}
+							onSelect={handleSelectActivity}
+							bulkExpansionRequest={bulkExpansionRequest}
+							expandedDelegationIds={expandedDelegationIds}
+							onDelegationExpandedChange={
+								onDelegationExpandedChange
+							}
+							restoreActivityId={restoreActivityId}
+							onOpenChildRun={onOpenChildRun}
+							childRunOrigin={childRunOrigin}
+						/>
+					))}
+				</ol>
 			</div>
-		</li>
+			{selectedActivity ? (
+				<ActivityDetailPanel
+					item={selectedActivity}
+					childRunOrigin={childRunOrigin}
+					onOpenChildRun={onOpenChildRun}
+				/>
+			) : null}
+		</div>
 	);
 }
 
-function ActivityTechnicalDetails({ item }: { item: RunActivityItem }) {
-	const callContent = (item.callStep?.content ?? {}) as Record<
-		string,
-		unknown
-	>;
-	const resultContent = (item.resultStep?.content ?? {}) as Record<
-		string,
-		unknown
-	>;
-	const inputDetail = renderDetail(callContent.arguments);
-	const resultValue =
-		item.resultStep?.type === "llm_response"
-			? resultContent.content
-			: item.isError
-				? (resultContent.error ?? resultContent.result ?? resultContent)
-				: (resultContent.result ??
-					(item.resultStep && !item.toolName ? resultContent : null));
-	const resultDetail = renderDetail(resultValue);
-	const stepNumbers = [
-		item.callStep?.step_number,
-		item.resultStep?.step_number,
-	].filter((value): value is number => value != null);
-	const tokens = [item.callStep, item.resultStep].reduce(
-		(total, step) => total + (step?.tokens_used ?? 0),
-		0,
-	);
-	const hasMetadata = !!item.toolName || stepNumbers.length > 0 || tokens > 0;
-
-	if (!hasMetadata && !inputDetail && !resultDetail) return null;
-
-	return (
-		<details className="group mt-3 border-t border-border/70 pt-2.5">
-			<summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-[var(--bf-radius-control)] px-2 text-sm font-medium text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&::-webkit-details-marker]:hidden">
-				<ChevronRight className="h-4 w-4 transition-transform motion-reduce:transition-none group-open:rotate-90" />
-				<Code2 className="h-4 w-4" />
-				Details
-			</summary>
-			<div className="mt-2.5 grid gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-background/65 p-3">
-				{hasMetadata ? (
-					<dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-						{item.toolName ? (
-							<>
-								<dt className="text-muted-foreground">
-									Internal action
-								</dt>
-								<dd className="min-w-0 break-all font-mono text-[13px] leading-6">
-									{item.toolName}
-								</dd>
-							</>
-						) : null}
-						{stepNumbers.length ? (
-							<>
-								<dt className="text-muted-foreground">Trace</dt>
-								<dd>
-									{stepNumbers.length === 1 ||
-									stepNumbers[0] === stepNumbers.at(-1)
-										? `Step ${stepNumbers[0]}`
-										: `Steps ${stepNumbers[0]}–${stepNumbers.at(-1)}`}
-								</dd>
-							</>
-						) : null}
-						{tokens > 0 ? (
-							<>
-								<dt className="text-muted-foreground">
-									Tokens
-								</dt>
-								<dd>{formatNumber(tokens)}</dd>
-							</>
-						) : null}
-					</dl>
-				) : null}
-				{inputDetail ? (
-					<TechnicalDetailSection
-						label="Input"
-						detail={inputDetail}
-					/>
-				) : null}
-				{resultDetail ? (
-					<TechnicalDetailSection
-						label={item.isError ? "Error" : "Result"}
-						detail={resultDetail}
-					/>
-				) : null}
-			</div>
-		</details>
-	);
-}
-
-function TechnicalDetailSection({
-	label,
-	detail,
-}: {
-	label: string;
-	detail: DetailRender;
-}) {
-	return (
-		<section>
-			<div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-				{label}
-			</div>
-			<DetailBlock detail={detail} />
-		</section>
-	);
-}
-
-function DelegationRow({
+function ActivityTreeRow({
 	item,
+	sourceRunId,
 	depth,
-	showTechnicalDetails,
+	rowDepth,
+	runStatus,
 	highlighted,
+	selected,
+	selectedActivityId,
+	onSelect,
+	bulkExpansionRequest,
 	expandedDelegationIds,
 	onDelegationExpandedChange,
 	restoreActivityId,
@@ -382,9 +248,15 @@ function DelegationRow({
 	childRunOrigin,
 }: {
 	item: RunActivityItem;
+	sourceRunId?: string;
 	depth: number;
-	showTechnicalDetails: boolean;
+	rowDepth: number;
+	runStatus?: string | null;
 	highlighted: boolean;
+	selected: boolean;
+	selectedActivityId: string | null;
+	onSelect: (item: RunActivityItem, sourceRunId?: string) => void;
+	bulkExpansionRequest: BulkExpansionRequest;
 	expandedDelegationIds?: ReadonlySet<string>;
 	onDelegationExpandedChange?: (
 		activityId: string,
@@ -394,22 +266,46 @@ function DelegationRow({
 	onOpenChildRun?: (activityId: string) => void;
 	childRunOrigin?: AgentRunNavigationOrigin;
 }) {
-	const [localOpen, setLocalOpen] = useState(false);
+	const [localOpen, setLocalOpen] = useState(
+		() => bulkExpansionRequest?.expanded ?? false,
+	);
 	const rowRef = useRef<HTMLLIElement>(null);
+	const lastRestoreActivityId = useRef<string | null>(null);
+	const lastBulkToken = useRef<number | null>(null);
+	const expandable =
+		item.kind === "delegation" && !!item.childRunId && depth < 4;
 	const open =
 		expandedDelegationIds !== undefined
 			? expandedDelegationIds.has(item.id)
 			: localOpen;
 
 	useEffect(() => {
+		if (!expandable || !bulkExpansionRequest || !onDelegationExpandedChange)
+			return;
+		if (lastBulkToken.current === bulkExpansionRequest.token) return;
+		lastBulkToken.current = bulkExpansionRequest.token;
+		onDelegationExpandedChange(item.id, bulkExpansionRequest.expanded);
+	}, [bulkExpansionRequest, expandable, item.id, onDelegationExpandedChange]);
+
+	useEffect(() => {
 		if (restoreActivityId !== item.id) return;
-		rowRef.current?.scrollIntoView({
-			behavior: "auto",
-			block: "center",
-		});
-	}, [item.id, restoreActivityId]);
+		if (lastRestoreActivityId.current === restoreActivityId) return;
+		lastRestoreActivityId.current = restoreActivityId;
+		if (selectedActivityId !== item.id) {
+			onSelect(item, sourceRunId);
+		}
+		rowRef.current?.scrollIntoView({ behavior: "auto", block: "center" });
+	}, [
+		item,
+		item.id,
+		onSelect,
+		restoreActivityId,
+		selectedActivityId,
+		sourceRunId,
+	]);
 
 	function toggleOpen() {
+		if (!expandable) return;
 		const nextOpen = !open;
 		if (onDelegationExpandedChange) {
 			onDelegationExpandedChange(item.id, nextOpen);
@@ -432,244 +328,507 @@ function DelegationRow({
 	});
 	const child = rawChild as unknown as AgentRunDetailResponse | undefined;
 	const agentName = child?.agent_name ?? item.agentName;
-	const childAgentId = child?.agent_id ?? item.childAgentId;
-	const title = agentName ?? "Delegated agent";
-	const expandable = !!item.childRunId;
+	const title =
+		item.kind === "delegation"
+			? (agentName ?? "Delegated agent")
+			: item.title;
 	const childStatus = child?.status ?? item.childStatus;
-	const childFailed = childStatus ? isFailedRunStatus(childStatus) : false;
-	const delegationFailed = item.isError || childFailed;
-	const delegationStatus = childStatus ?? (item.isError ? "failed" : null);
-	const delegationStatusId = delegationStatus
-		? `${activityDomId(item.id)}-status`
-		: undefined;
-	const detailsId = `${activityDomId(item.id)}-details`;
-	const childActivity = child
-		? buildRunActivity(child.steps, child.child_run_ids, child.child_runs)
-		: [];
-	const childActivityReferences = buildActivityReferenceIndex(childActivity);
-	const rowContent = (
-		<>
-			<div className="min-w-0 flex-1">
-				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-					<span className="min-w-0 break-words text-sm font-medium leading-5">
-						{title}
-					</span>
-					<span
-						className={cn(
-							"shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium uppercase tracking-wide",
-							delegationFailed
-								? "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
-								: "bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
-						)}
-					>
-						Agent
-					</span>
-					{delegationStatus ? (
-						<DelegationStatusBadge
-							id={delegationStatusId}
-							status={delegationStatus}
-						/>
-					) : null}
-				</div>
-				{item.task ? (
-					<p className="mt-1 text-sm leading-6 text-muted-foreground">
-						{item.task}
-					</p>
-				) : item.description ? (
-					<p className="mt-1 text-sm leading-6 text-muted-foreground">
-						{item.description}
-					</p>
-				) : null}
-			</div>
-			{!delegationStatus && item.durationMs != null ? (
-				<div className="shrink-0 pt-0.5 text-sm text-muted-foreground">
-					<span>{formatDuration(item.durationMs)}</span>
-				</div>
-			) : null}
-		</>
+	const failed =
+		item.isError ||
+		item.kind === "error" ||
+		(childStatus ? isFailedRunStatus(childStatus) : false);
+	const status =
+		childStatus ??
+		(failed ? "failed" : item.resultStep ? "completed" : null);
+	const statusId = status ? `${activityDomId(item.id)}-status` : undefined;
+	const childActivity = useMemo(
+		() =>
+			child
+				? buildRunActivity(
+						child.steps,
+						child.child_run_ids,
+						child.child_runs,
+					)
+				: [],
+		[child],
 	);
+
+	const Icon =
+		item.kind === "delegation"
+			? GitBranch
+			: item.kind === "response"
+				? MessageSquareText
+				: failed
+					? AlertCircle
+					: Check;
+	const rowType =
+		item.kind === "delegation"
+			? "Agent"
+			: item.executionId
+				? "Workflow"
+				: item.kind === "response"
+					? "Response"
+					: "Action";
+	const caption =
+		item.kind === "response" ? null : (item.task ?? item.description);
 
 	return (
 		<li
 			ref={rowRef}
 			id={activityDomId(item.id)}
 			tabIndex={-1}
-			className="relative scroll-mt-24 rounded-[var(--bf-radius-feature)] pl-8 outline-none [overflow-wrap:anywhere] sm:pl-12"
+			className="scroll-mt-24 outline-none [overflow-wrap:anywhere]"
 			data-activity-id={item.id}
-			data-activity-kind="delegation"
+			data-activity-kind={item.kind}
 			data-highlighted={highlighted ? "true" : "false"}
 		>
 			<div
 				className={cn(
-					"absolute left-0 top-3 z-10 grid size-6 place-items-center sm:size-11 rounded-full border shadow-sm",
-					delegationFailed
-						? "border-[var(--bf-danger)]/25 bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
-						: "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
+					"grid min-w-0 grid-cols-[auto_auto_1fr] gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_5rem_6rem_4rem] md:gap-3",
+					selected && "bg-[var(--bf-info-soft)]/55",
+					highlighted && "ring-2 ring-inset ring-[var(--bf-info)]/45",
 				)}
 			>
-				<GitBranch className="h-4 w-4" />
-			</div>
-			<div
-				className={cn(
-					"overflow-hidden rounded-[var(--bf-radius-feature)] border shadow-sm transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
-					delegationFailed
-						? "border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60"
-						: "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)]/60",
-					highlighted &&
-						"border-[var(--bf-info)]/55 ring-2 ring-[var(--bf-info)]/45 ring-offset-2 ring-offset-background",
-				)}
-			>
-				<div className="flex flex-col md:flex-row md:items-stretch">
-					{expandable ? (
-						<button
-							type="button"
-							onClick={toggleOpen}
-							aria-expanded={open}
-							aria-controls={detailsId}
-							aria-label={`${open ? "Hide" : "Show"} details for ${title}`}
-							aria-describedby={delegationStatusId}
+				<div
+					className="col-span-3 flex min-w-0 items-start gap-2 md:col-span-1"
+					style={{ paddingLeft: `${rowDepth * 1.5}rem` }}
+				>
+					<button
+						type="button"
+						onClick={toggleOpen}
+						disabled={!expandable}
+						aria-expanded={expandable ? open : undefined}
+						aria-label={
+							expandable
+								? `${open ? "Hide" : "Show"} details for ${title}`
+								: undefined
+						}
+						aria-describedby={statusId}
+						className={cn(
+							"mt-1 grid size-7 shrink-0 place-items-center rounded-[var(--bf-radius-control)] text-muted-foreground",
+							expandable &&
+								"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+						)}
+					>
+						{isLoading && open ? (
+							<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+						) : (
+							<ChevronRight
+								className={cn(
+									"size-4 transition-transform motion-reduce:transition-none",
+									open && "rotate-90",
+									!expandable && "opacity-0",
+								)}
+							/>
+						)}
+					</button>
+					<button
+						type="button"
+						onClick={() => onSelect(item, sourceRunId)}
+						className="flex min-w-0 flex-1 items-start gap-3 rounded-[var(--bf-radius-control)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					>
+						<span
 							className={cn(
-								"group flex min-h-11 min-w-0 flex-1 cursor-pointer items-start gap-3 px-4 py-4 text-left transition-colors motion-reduce:transition-none hover:bg-[var(--bf-info-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-								open && "bg-[var(--bf-info-soft)]/60",
+								"grid size-9 shrink-0 place-items-center rounded-full border",
+								failed
+									? "border-[var(--bf-danger)]/25 bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
+									: item.kind === "delegation"
+										? "border-[var(--bf-info)]/25 bg-[var(--bf-info-soft)] text-[var(--bf-info)]"
+										: "border-[var(--bf-success)]/25 bg-[var(--bf-success-soft)] text-[var(--bf-success)]",
 							)}
 						>
-							{rowContent}
-							{isLoading && open ? (
-								<Loader2 className="h-4 w-4 shrink-0 self-center animate-spin text-[var(--bf-info)] motion-reduce:animate-none" />
-							) : (
-								<ChevronRight
-									className={cn(
-										"h-4 w-4 shrink-0 self-center text-muted-foreground transition-transform group-hover:text-foreground motion-reduce:transition-none",
-										open && "rotate-90",
-									)}
-								/>
-							)}
-						</button>
+							<Icon className="size-4" />
+						</span>
+						<span className="min-w-0">
+							<span className="block break-words text-sm font-medium leading-5">
+								{title}
+							</span>
+							{caption ? (
+								<span className="mt-0.5 line-clamp-2 break-words text-xs leading-5 text-muted-foreground">
+									{caption}
+								</span>
+							) : null}
+						</span>
+					</button>
+				</div>
+				<div className="flex items-start pt-1 pl-11 text-xs text-muted-foreground md:pl-0">
+					{rowType}
+				</div>
+				<div className="flex items-start pt-1">
+					{status ? (
+						<DelegationStatusBadge id={statusId} status={status} />
 					) : (
-						<div className="flex min-w-0 flex-1 items-start gap-3 px-4 py-4 text-left">
-							{rowContent}
-						</div>
+						<span className="text-xs text-muted-foreground">
+							{runStatus === "running"
+								? "In progress"
+								: "No status"}
+						</span>
 					)}
-					{childAgentId && item.childRunId ? (
-						<div className="flex shrink-0 items-center justify-end border-t border-[var(--bf-info)]/15 p-2 md:border-l md:border-t-0">
-							<Link
-								to={`/agents/${childAgentId}/runs/${item.childRunId}`}
-								state={
-									childRunOrigin
-										? createAgentRunNavigationState(
-												childRunOrigin,
-											)
-										: undefined
-								}
-								onClick={() => onOpenChildRun?.(item.id)}
-								aria-label={`Open ${title} run`}
-								className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-3 text-sm font-medium text-primary transition-colors hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-							>
-								<span>Open run</span>
-								<ArrowUpRight className="h-4 w-4" />
-							</Link>
-						</div>
+				</div>
+				<div className="flex items-start pt-1 text-xs tabular-nums text-muted-foreground">
+					{item.durationMs != null
+						? formatDuration(item.durationMs)
+						: "—"}
+				</div>
+			</div>
+			{isError ? (
+				<div
+					role="alert"
+					className="mx-3 mb-2 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
+				>
+					<p>
+						Could not {child ? "refresh" : "load"} delegated run
+						details.
+						{child
+							? " Previously loaded details are still shown."
+							: ""}
+					</p>
+					<Button
+						variant="outline"
+						className="mt-2 min-h-11"
+						disabled={isFetching}
+						onClick={() => void refetch()}
+					>
+						Retry delegated run
+					</Button>
+				</div>
+			) : null}
+			{open && childActivity.length ? (
+				<ol className="divide-y divide-border/70 border-t border-border/70">
+					{childActivity.map((childItem) => (
+						<ActivityTreeRow
+							key={`${childItem.id}:${bulkExpansionRequest?.token ?? 0}`}
+							item={childItem}
+							sourceRunId={item.childRunId ?? undefined}
+							depth={depth + 1}
+							rowDepth={rowDepth + 1}
+							runStatus={child?.status}
+							highlighted={false}
+							selected={childItem.id === selectedActivityId}
+							selectedActivityId={selectedActivityId}
+							onSelect={onSelect}
+							bulkExpansionRequest={bulkExpansionRequest}
+							expandedDelegationIds={expandedDelegationIds}
+							onDelegationExpandedChange={
+								onDelegationExpandedChange
+							}
+							restoreActivityId={restoreActivityId}
+							onOpenChildRun={onOpenChildRun}
+							childRunOrigin={childRunOrigin}
+						/>
+					))}
+				</ol>
+			) : open && isLoading ? (
+				<div className="flex items-center gap-2 border-t px-14 py-3 text-sm leading-6 text-muted-foreground">
+					<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+					Loading delegated work…
+				</div>
+			) : null}
+		</li>
+	);
+}
+
+function ActivityDetailPanel({
+	item,
+	childRunOrigin,
+	onOpenChildRun,
+}: {
+	item: RunActivityItem;
+	childRunOrigin?: AgentRunNavigationOrigin;
+	onOpenChildRun?: (activityId: string) => void;
+}) {
+	const {
+		data: rawChild,
+		isLoading,
+		isError,
+		isFetching,
+		refetch,
+	} = useAgentRun(
+		item.kind === "delegation" ? (item.childRunId ?? undefined) : undefined,
+		{
+			refetchInterval: (query) =>
+				ACTIVE_RUN_STATUSES.has(query.state.data?.status ?? "")
+					? 2_000
+					: false,
+		},
+	);
+	const child = rawChild as unknown as AgentRunDetailResponse | undefined;
+	const title = child?.agent_name ?? item.agentName ?? item.title;
+	const childAgentId = child?.agent_id ?? item.childAgentId;
+	const childActivity = useMemo(
+		() =>
+			child
+				? buildRunActivity(
+						child.steps,
+						child.child_run_ids,
+						child.child_runs,
+					)
+				: [],
+		[child],
+	);
+	const childActivityReferences = useMemo(
+		() => buildActivityReferenceIndex(childActivity),
+		[childActivity],
+	);
+	const inputDetail = activityInputDetail(item, child);
+	const outputDetail = activityOutputDetail(item, child);
+	const usage = child?.ai_usage ?? [];
+	const hasUsage = usage.length > 0 || !!child?.ai_totals;
+	const overviewOutcome = child?.did ?? child?.answered ?? item.description;
+	const tabs = [
+		["overview", "Overview", true],
+		["input", "Input", !!inputDetail],
+		["output", "Output", !!outputDetail || !!child],
+		["usage", "Usage", hasUsage],
+	] as const;
+
+	return (
+		<section
+			className="min-w-0 rounded-[var(--bf-radius-feature)] border border-border/70 bg-background/65 p-4"
+			aria-label="Selected call details"
+		>
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+				<div className="min-w-0">
+					<p className="text-xs text-muted-foreground">
+						Selected call
+					</p>
+					<h3 className="mt-1 break-words text-lg font-semibold leading-7">
+						{title}
+					</h3>
+					{item.task || item.description ? (
+						<p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
+							{item.task ?? item.description}
+						</p>
 					) : null}
 				</div>
-
-				{open ? (
-					<div
-						id={detailsId}
-						className="border-t border-[var(--bf-info)]/15 bg-background/45 px-4 py-4"
-					>
-						{isError ? (
-							<div
-								role="alert"
-								className="mb-3 space-y-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
-							>
-								<p>
-									Could not {child ? "refresh" : "load"}{" "}
-									delegated run details.
-									{child
-										? " Previously loaded details are still shown."
-										: ""}
-								</p>
-								<Button
-									variant="outline"
-									className="min-h-11"
-									disabled={isFetching}
-									onClick={() => void refetch()}
-								>
-									Retry delegated run
-								</Button>
-							</div>
-						) : null}
-						{isLoading ? (
-							<div className="flex items-center gap-2 py-3 text-sm leading-6 text-muted-foreground">
-								<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-								Loading delegated work…
-							</div>
-						) : !child ? (
-							<p className="py-2 text-sm leading-6 text-muted-foreground">
-								{isError
-									? ""
-									: "Delegated run details are not available."}
-							</p>
-						) : (
-							<div className="grid gap-4">
-								<div className="grid gap-2 sm:grid-cols-2">
-									<DelegationSummary label="Task">
-										{child.asked ??
-											item.task ??
-											"No task summary recorded."}
-									</DelegationSummary>
-									<DelegationSummary label="Outcome">
-										<DidNarrative
-											text={child.did ?? child.answered}
-											activityReferences={
-												childActivityReferences
-											}
-											compact
-											fallback={
-												<>
-													No outcome summary recorded.
-												</>
-											}
-										/>
-									</DelegationSummary>
-								</div>
-
-								{depth < 3 &&
-								((child.steps?.length ?? 0) > 0 ||
-									(child.child_run_ids?.length ?? 0) > 0) ? (
-									<div className="rounded-[var(--bf-radius-feature)] border border-border/70 bg-background/65 p-3">
-										<div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-											Activity
-										</div>
-										<Timeline
-											steps={child.steps}
-											childRunIds={child.child_run_ids}
-											childRuns={child.child_runs}
-											runStatus={child.status}
-											showTechnicalDetails={
-												showTechnicalDetails
-											}
-											expandedDelegationIds={
-												expandedDelegationIds
-											}
-											onDelegationExpandedChange={
-												onDelegationExpandedChange
-											}
-											restoreActivityId={
-												restoreActivityId
-											}
-											onOpenChildRun={onOpenChildRun}
-											childRunOrigin={childRunOrigin}
-											depth={depth + 1}
-										/>
-									</div>
-								) : null}
-							</div>
-						)}
-					</div>
-				) : null}
+				<div className="flex shrink-0 flex-wrap items-center gap-2">
+					{item.executionId ? (
+						<Link
+							to={`/history/${item.executionId}`}
+							onClick={() => onOpenChildRun?.(item.id)}
+							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-3 text-sm font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							View execution
+							<ArrowUpRight className="size-4" />
+						</Link>
+					) : null}
+					{childAgentId && item.childRunId ? (
+						<Link
+							to={`/agents/${childAgentId}/runs/${item.childRunId}`}
+							state={
+								childRunOrigin
+									? createAgentRunNavigationState(
+											childRunOrigin,
+										)
+									: undefined
+							}
+							onClick={() => onOpenChildRun?.(item.id)}
+							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-3 text-sm font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							Open run
+							<ArrowUpRight className="size-4" />
+						</Link>
+					) : null}
+				</div>
 			</div>
-		</li>
+			{isError ? (
+				<div
+					role="alert"
+					className="mt-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
+				>
+					<p>
+						Could not {child ? "refresh" : "load"} selected
+						delegated run details.
+						{child
+							? " Previously loaded details are still shown."
+							: ""}
+					</p>
+					<Button
+						className="mt-2 min-h-11"
+						variant="outline"
+						disabled={isFetching}
+						onClick={() => void refetch()}
+					>
+						Retry delegated run
+					</Button>
+				</div>
+			) : null}
+			{isLoading ? (
+				<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+					<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+					Loading selected delegated run…
+				</div>
+			) : null}
+			<Tabs
+				key={item.id}
+				defaultValue="overview"
+				className="mt-4 min-w-0 gap-4"
+			>
+				<TabsList
+					variant="line"
+					className="flex min-h-11 max-w-full justify-start overflow-x-auto"
+					aria-label="Selected call detail sections"
+				>
+					{tabs.map(([value, label, enabled]) => (
+						<TabsTrigger
+							key={value}
+							value={value}
+							disabled={!enabled}
+							className="min-h-11 shrink-0 px-2 sm:px-3"
+						>
+							{label}
+						</TabsTrigger>
+					))}
+				</TabsList>
+				<TabsContent value="overview" className="mt-0 min-w-0">
+					<div className="grid gap-5">
+						<OverviewBlock label="Task">
+							{child?.asked ??
+								item.task ??
+								"No task summary recorded."}
+						</OverviewBlock>
+						<OverviewBlock label="Outcome">
+							<DidNarrative
+								text={overviewOutcome}
+								activityReferences={childActivityReferences}
+								fallback={<>No outcome summary recorded.</>}
+							/>
+						</OverviewBlock>
+					</div>
+				</TabsContent>
+				<TabsContent value="input" className="mt-0 min-w-0">
+					{inputDetail ? <DetailBlock detail={inputDetail} /> : null}
+				</TabsContent>
+				<TabsContent value="output" className="mt-0 min-w-0">
+					{outputDetail ? (
+						<DetailBlock detail={outputDetail} />
+					) : (
+						<p className="text-sm text-muted-foreground">
+							No output recorded.
+						</p>
+					)}
+				</TabsContent>
+				<TabsContent value="usage" className="mt-0 min-w-0">
+					{hasUsage ? (
+						<SelectedUsage
+							usage={usage}
+							totals={child?.ai_totals ?? null}
+						/>
+					) : (
+						<p className="text-sm text-muted-foreground">
+							No usage recorded for this selected call.
+						</p>
+					)}
+				</TabsContent>
+			</Tabs>
+		</section>
+	);
+}
+
+function activityInputDetail(
+	item: RunActivityItem,
+	child: AgentRunDetailResponse | undefined,
+): DetailRender | null {
+	if (child && !isEmptyJson(child.input)) return renderDetail(child.input);
+	const callContent = (item.callStep?.content ?? {}) as Record<
+		string,
+		unknown
+	>;
+	return renderDetail(callContent.arguments);
+}
+
+function activityOutputDetail(
+	item: RunActivityItem,
+	child: AgentRunDetailResponse | undefined,
+): DetailRender | null {
+	if (child && !isEmptyJson(child.output)) return renderDetail(child.output);
+	const resultContent = (item.resultStep?.content ?? {}) as Record<
+		string,
+		unknown
+	>;
+	const resultValue =
+		item.resultStep?.type === "llm_response"
+			? resultContent.content
+			: item.isError
+				? (resultContent.error ?? resultContent.result ?? resultContent)
+				: (resultContent.result ??
+					(item.resultStep && !item.toolName ? resultContent : null));
+	return renderDetail(resultValue);
+}
+
+function OverviewBlock({
+	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<section className="grid gap-1.5">
+			<div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+				{label}
+			</div>
+			<div className="text-sm leading-6">{children}</div>
+		</section>
+	);
+}
+
+function SelectedUsage({
+	usage,
+	totals,
+}: {
+	usage: NonNullable<AgentRunDetailResponse["ai_usage"]>;
+	totals: AgentRunDetailResponse["ai_totals"] | null;
+}) {
+	return (
+		<div className="grid gap-3">
+			{usage.map((entry, index) => (
+				<dl
+					key={`${entry.model}-${index}`}
+					className="grid gap-x-4 gap-y-2 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/35 p-3 text-xs sm:grid-cols-4"
+				>
+					<UsageMetric label="Model" value={entry.model} />
+					<UsageMetric
+						label="Input"
+						value={formatNumber(entry.input_tokens)}
+					/>
+					<UsageMetric
+						label="Output"
+						value={formatNumber(entry.output_tokens)}
+					/>
+					<UsageMetric label="Cost" value={formatCost(entry.cost)} />
+				</dl>
+			))}
+			{totals ? (
+				<dl className="grid gap-x-4 gap-y-2 border-t pt-3 text-xs sm:grid-cols-4">
+					<UsageMetric
+						label="Calls"
+						value={formatNumber(totals.call_count)}
+					/>
+					<UsageMetric
+						label="Input"
+						value={formatNumber(totals.total_input_tokens)}
+					/>
+					<UsageMetric
+						label="Output"
+						value={formatNumber(totals.total_output_tokens)}
+					/>
+					<UsageMetric
+						label="Cost"
+						value={formatCost(totals.total_cost)}
+					/>
+				</dl>
+			) : null}
+		</div>
+	);
+}
+
+function UsageMetric({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="min-w-0">
+			<dt className="text-muted-foreground">{label}</dt>
+			<dd className="mt-1 break-words font-mono tabular-nums">{value}</dd>
+		</div>
 	);
 }
 
@@ -752,23 +911,6 @@ function runStatusLabel(status: string): string {
 		default:
 			return status.replace(/_/g, " ");
 	}
-}
-
-function DelegationSummary({
-	label,
-	children,
-}: {
-	label: string;
-	children: ReactNode;
-}) {
-	return (
-		<div className="rounded-xl border border-border/70 bg-background/70 px-3 py-3">
-			<div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-				{label}
-			</div>
-			<div className="text-sm leading-6">{children}</div>
-		</div>
-	);
 }
 
 type DetailRender =

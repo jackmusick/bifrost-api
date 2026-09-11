@@ -206,6 +206,7 @@ class AgentSummary(BaseModel):
     channels: list[str]
     is_active: bool
     access_level: AgentAccessLevel
+    role_ids: list[str] = Field(default_factory=list, description="List of role IDs assigned to this agent")
     organization_id: UUID | None = None
     owner_user_id: UUID | None = None
     created_at: datetime

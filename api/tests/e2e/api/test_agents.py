@@ -60,6 +60,46 @@ class TestAgentsCRUD:
         assert data["is_active"] is True
         assert "id" in data
 
+    def test_list_agent_summaries_include_assigned_role_ids(
+        self,
+        e2e_client,
+        platform_admin,
+    ):
+        role_resp = e2e_client.post(
+            "/api/roles",
+            json={"name": f"Agent List Role {uuid4().hex[:8]}", "permissions": {}},
+            headers=platform_admin.headers,
+        )
+        assert role_resp.status_code == 201, role_resp.text
+        role_id = role_resp.json()["id"]
+
+        create_resp = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"List Role Agent {uuid4().hex[:8]}",
+                "description": "Agent list role regression test",
+                "system_prompt": "You are a test assistant.",
+                "channels": ["chat"],
+                "access_level": "role_based",
+                "role_ids": [role_id],
+            },
+            headers=platform_admin.headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        agent_id = create_resp.json()["id"]
+
+        try:
+            list_resp = e2e_client.get(
+                "/api/agents",
+                headers=platform_admin.headers,
+            )
+            assert list_resp.status_code == 200, list_resp.text
+            listed = next(item for item in list_resp.json() if item["id"] == agent_id)
+            assert listed["role_ids"] == [role_id]
+        finally:
+            e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
+            e2e_client.delete(f"/api/roles/{role_id}", headers=platform_admin.headers)
+
     def test_get_agent(
         self,
         e2e_client,

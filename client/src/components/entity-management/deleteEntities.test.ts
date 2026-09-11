@@ -29,6 +29,7 @@ it("keeps successful deletes, retryable failures and workflow conflicts separate
 	];
 	const result = await deleteEntities(entities);
 	expect(result.deletedIds).toEqual(["app"]);
+	expect(result.deletedKeys).toEqual(["app:app"]);
 	expect(result.failures).toEqual([
 		{ entity: entities[1], message: "Service unavailable" },
 	]);

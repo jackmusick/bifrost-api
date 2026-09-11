@@ -403,7 +403,7 @@
 			"tests": [
 				{
 					"spec": "entity-management-acceptance.admin.spec.ts",
-					"title": "assigns, reassigns, and unassigns one entity while preserving an unselected resource",
+					"title": "bulk assigns two selected entities while preserving an unselected resource",
 					"project": "platform-admin",
 					"variant": "desktop",
 					"proof": "real-platform"

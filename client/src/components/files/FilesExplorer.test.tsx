@@ -66,6 +66,17 @@ vi.mock("./FolderListing", () => ({
 		);
 	},
 }));
+vi.mock("./SharesOverview", () => ({
+	SharesOverview: ({
+		onSelect,
+	}: {
+		onSelect: (location: string, prefix: string) => void;
+	}) => (
+		<button onClick={() => onSelect("gallery", "")}>
+			Open gallery share
+		</button>
+	),
+}));
 vi.mock("./FilePreview", () => ({ FilePreview: () => <div /> }));
 const effectiveAccessReadOnly: boolean[] = [];
 vi.mock("./EffectiveAccessPanel", () => ({
@@ -113,14 +124,44 @@ describe("FilesExplorer", () => {
 			screen.getByRole("button", { name: /new share/i }),
 		).toBeInTheDocument();
 		expect(screen.getByTestId("share-tree")).toBeInTheDocument();
-		expect(screen.getByTestId("folder-listing")).toBeInTheDocument();
-		expect(screen.getByTestId("detail-pane")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Open gallery share" }),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+
+	it("opens desktop details on demand and returns the space when closed", async () => {
+		vi.mocked(useMediaQuery).mockReturnValue(true);
+		const user = userEvent.setup();
+		render(<FilesExplorer />);
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Open gallery share" }),
+		);
+		await user.click(screen.getByRole("button", { name: "Folder access" }));
+		expect(screen.getByRole("tab", { name: "Access" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		await user.keyboard("{Escape}");
+		expect(
+			screen.getByRole("button", { name: "Folder access" }),
+		).toHaveFocus();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Open notes" }));
+		expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
 	});
 
 	it("gives mobile preview and access their own keyboard-switchable panels", async () => {
 		vi.mocked(useMediaQuery).mockReturnValue(false);
 		const user = userEvent.setup();
 		render(<FilesExplorer />);
+		await user.click(
+			screen.getByRole("button", { name: "Open gallery share" }),
+		);
 		await user.click(screen.getByRole("button", { name: "Open notes" }));
 		const preview = screen.getByRole("tab", { name: "Preview" });
 		expect(preview).toHaveAttribute("aria-selected", "true");
@@ -188,7 +229,9 @@ describe("FilesExplorer", () => {
 		const user = userEvent.setup();
 		vi.mocked(useMediaQuery).mockReturnValue(true);
 		render(<FilesExplorer />);
-		expect(screen.getByTestId("folder-listing")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Open gallery share" }),
+		).toBeInTheDocument();
 		await user.click(screen.getByRole("tab", { name: /policies/i }));
 		expect(await screen.findByTestId("policies-view")).toBeInTheDocument();
 		expect(screen.queryByTestId("folder-listing")).not.toBeInTheDocument();
@@ -223,7 +266,13 @@ describe("FilesExplorer", () => {
 			);
 
 			expect(shareTreeReadOnly).toContain(true);
+			fireEvent.click(
+				screen.getByRole("button", { name: "Open gallery share" }),
+			);
 			expect(folderListingReadOnly).toContain(true);
+			fireEvent.click(
+				screen.getByRole("button", { name: "Folder access" }),
+			);
 			expect(effectiveAccessReadOnly).toContain(true);
 			expect(
 				screen.queryByRole("button", { name: "New Share" }),
@@ -247,7 +296,9 @@ describe("FilesExplorer", () => {
 					/>
 				</MemoryRouter>,
 			);
-			expect(folderListingLocations).toContain(null);
+			expect(
+				screen.getByRole("button", { name: "Open gallery share" }),
+			).toBeInTheDocument();
 			expect(screen.queryByText("solutions")).not.toBeInTheDocument();
 		});
 

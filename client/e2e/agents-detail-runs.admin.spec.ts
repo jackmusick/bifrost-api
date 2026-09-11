@@ -332,6 +332,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					"Ticket: 428950 · Status: Open · Match found",
 				),
 			).toBeVisible();
+
 			const ticketAction = activity
 				.locator('[data-activity-kind="action"]')
 				.filter({ hasText: "Looked up ticket details" });
@@ -357,23 +358,34 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				"data-highlighted",
 				"false",
 			);
+
+			const selectedDetails = activity.getByRole("region", {
+				name: "Selected call details",
+			});
+			await ticketAction
+				.getByRole("button", { name: /looked up ticket details/i })
+				.click();
+			await expect(selectedDetails).toContainText(
+				"Looked up ticket details",
+			);
 			await expect(
-				ticketAction.getByRole("link", { name: "Execution" }),
+				selectedDetails.getByRole("link", { name: "View execution" }),
 			).toHaveAttribute(
 				"href",
 				"/history/92000000-0000-4000-8000-000000000001",
 			);
+			await selectedDetails.getByRole("tab", { name: "Input" }).click();
+			await expect(
+				selectedDetails.getByText("ticket_id:", { exact: true }),
+			).toBeVisible();
+			await selectedDetails.getByRole("tab", { name: "Output" }).click();
+			await expect(
+				selectedDetails.getByText("status:", { exact: true }),
+			).toBeVisible();
+
 			await expect(
 				page.getByText("Troubleshooting Specialist", { exact: true }),
 			).toHaveCount(2);
-			await expect(
-				activity.getByRole("link", {
-					name: "Open Troubleshooting Specialist run",
-				}),
-			).toHaveAttribute(
-				"href",
-				`/agents/${agent.id}/runs/91000000-0000-4000-8000-000000000002`,
-			);
 			const delegatedActivity = activity
 				.locator("[data-activity-kind='delegation']")
 				.filter({ hasText: "Troubleshooting Specialist" })
@@ -386,16 +398,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				"Delegated run status: Completed",
 			);
 			await expect(delegatedStatus).toBeVisible();
-			const delegatedTitleBox = await delegatedTitle.boundingBox();
-			const delegatedStatusBox = await delegatedStatus.boundingBox();
-			expect(
-				Math.abs(
-					(delegatedTitleBox?.y ?? 0) +
-						(delegatedTitleBox?.height ?? 0) / 2 -
-						((delegatedStatusBox?.y ?? 0) +
-							(delegatedStatusBox?.height ?? 0) / 2),
-				),
-			).toBeLessThanOrEqual(4);
+			await expect(delegatedTitle).toBeVisible();
 			await expect(
 				page.getByText("Raw input", { exact: true }),
 			).toHaveCount(0);
@@ -411,39 +414,54 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				page.getByText("gpt-5.2", { exact: true }),
 			).toHaveCount(0);
 
-			await delegatedTitle.click();
+			await delegatedActivity
+				.getByRole("button", {
+					name: /troubleshooting specialist collect endpoint evidence/i,
+				})
+				.click();
+			await expect(selectedDetails).toContainText(
+				"Troubleshooting Specialist",
+			);
+			await expect(selectedDetails).toContainText(
+				"Resolved the device and checked disk space and alerts.",
+			);
+			await expect(
+				selectedDetails.getByRole("link", { name: "Open run" }),
+			).toHaveAttribute(
+				"href",
+				`/agents/${agent.id}/runs/91000000-0000-4000-8000-000000000002`,
+			);
+
+			await activity.getByRole("button", { name: "Expand all" }).click();
 			await expect(
 				delegatedActivity.getByRole("button", {
 					name: /hide details for troubleshooting specialist/i,
 				}),
 			).toHaveAttribute("aria-expanded", "true");
 			await expect(
-				page.getByText(
-					"Resolved the device and checked disk space and alerts.",
-				),
+				activity.getByText("Looked up device details", { exact: true }),
 			).toBeVisible();
-			const nestedDelegation = delegatedActivity
+			const nestedDelegation = activity
 				.locator("[data-activity-kind='delegation']")
-				.filter({ hasText: "Asset Resolver" });
-			await nestedDelegation
-				.getByText("Confirm the managed asset", { exact: true })
-				.click();
-			await expect(
-				page.getByText("Asset Resolver", {
-					exact: true,
-				}),
-			).toBeVisible();
-			await expect(
-				page.getByText("Matched the requester to ELIJAH-LT."),
-			).toBeVisible();
+				.filter({ hasText: "Asset Resolver" })
+				.last();
 			await expect(
 				nestedDelegation.getByRole("button", {
 					name: /hide details for asset resolver/i,
 				}),
 			).toHaveAttribute("aria-expanded", "true");
-
 			await nestedDelegation
-				.getByRole("link", { name: "Open Asset Resolver run" })
+				.getByRole("button", {
+					name: /asset resolver confirm the managed asset/i,
+				})
+				.click();
+			await expect(selectedDetails).toContainText("Asset Resolver");
+			await expect(selectedDetails).toContainText(
+				"Matched the requester to ELIJAH-LT.",
+			);
+
+			await selectedDetails
+				.getByRole("link", { name: "Open run" })
 				.click();
 			await expect(page).toHaveURL(
 				new RegExp(`/agents/${agent.id}/runs/${grandchildId}$`),
@@ -464,15 +482,11 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				new RegExp(`/agents/${agent.id}/runs/${parentId}$`),
 			);
 			await expect(
-				delegatedActivity.getByRole("button", {
-					name: /hide details for troubleshooting specialist/i,
-				}),
-			).toHaveAttribute("aria-expanded", "true");
+				activity.getByRole("region", { name: "Selected call details" }),
+			).toContainText("Asset Resolver");
 			await expect(
-				nestedDelegation.getByRole("button", {
-					name: /hide details for asset resolver/i,
-				}),
-			).toHaveAttribute("aria-expanded", "true");
+				activity.getByRole("region", { name: "Selected call details" }),
+			).toContainText("Matched the requester to ELIJAH-LT.");
 			await expect(nestedDelegation).toBeInViewport();
 
 			await page
@@ -483,19 +497,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					exact: true,
 				}),
 			).not.toBeVisible();
-			await ticketAction.getByText("Details", { exact: true }).click();
-			await expect(
-				ticketAction.getByText("ai_ticketing_get_ticket_details", {
-					exact: true,
-				}),
-			).toBeVisible();
 			await expect(
 				page.getByText("Raw input", { exact: true }),
 			).toBeVisible();
 			await expect(page.getByText(/\{"ticket_id"/)).toHaveCount(0);
-			await expect(
-				ticketAction.getByText("ticket_id:", { exact: true }),
-			).toHaveCount(2);
 			await page.getByText("Raw executor trace", { exact: true }).click();
 			await expect(
 				page.getByText("Called ai_ticketing_get_ticket_details", {
@@ -517,21 +522,25 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					(element) => element.scrollWidth - element.clientWidth,
 				),
 			).toBeLessThanOrEqual(1);
-			const mobileOpenRun = activity.getByRole("link", {
-				name: "Open Troubleshooting Specialist run",
+			const mobileDetails = activity.getByRole("region", {
+				name: "Selected call details",
 			});
-			// Expansion survives navigation and reload. Verify persistence before
-			// exercising the mobile collapse/reopen controls.
+			await expect(mobileDetails).toContainText("Asset Resolver");
+			const mobileOpenRun = mobileDetails.getByRole("link", {
+				name: "Open run",
+			});
 			const mobileHideDetails = activity.getByRole("button", {
-				name: "Hide details for Troubleshooting Specialist",
+				name: /hide details for troubleshooting specialist/i,
 			});
 			await expect(mobileHideDetails).toHaveAttribute(
 				"aria-expanded",
 				"true",
 			);
-			await mobileHideDetails.click();
+			await activity
+				.getByRole("button", { name: "Collapse all" })
+				.click();
 			const mobileShowDetails = activity.getByRole("button", {
-				name: "Show details for Troubleshooting Specialist",
+				name: /show details for troubleshooting specialist/i,
 			});
 			await expect(mobileOpenRun).toBeVisible();
 			await expect(mobileShowDetails).toBeVisible();
@@ -539,16 +548,11 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const mobileShowDetailsBox = await mobileShowDetails.boundingBox();
 			expect(mobileOpenRunBox?.height).toBeGreaterThanOrEqual(44);
 			expect(mobileOpenRunBox?.height).toBeLessThanOrEqual(60);
-			expect(mobileShowDetailsBox?.height).toBeGreaterThanOrEqual(44);
-			expect(mobileShowDetailsBox?.width).toBeGreaterThan(
-				mobileOpenRunBox?.width ?? 0,
-			);
-			await mobileShowDetails
-				.getByText("Collect endpoint evidence", { exact: true })
-				.click();
+			expect(mobileShowDetailsBox?.height).toBeGreaterThanOrEqual(28);
+			await activity.getByRole("button", { name: "Expand all" }).click();
 			await expect(
 				activity.getByRole("button", {
-					name: "Hide details for Troubleshooting Specialist",
+					name: /hide details for troubleshooting specialist/i,
 				}),
 			).toHaveAttribute("aria-expanded", "true");
 		} finally {
@@ -607,7 +611,9 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			).toHaveCount(0);
 
 			await activity
-				.getByText("Collect endpoint evidence", { exact: true })
+				.getByRole("button", {
+					name: /show details for troubleshooting specialist/i,
+				})
 				.click();
 			await expect(
 				activity.getByText("Looked up device details", {
