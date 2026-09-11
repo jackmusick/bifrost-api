@@ -20,32 +20,49 @@ out.
 After an execution has a PostgreSQL row, loss or expiry of transient Redis
 state must never prevent Bifrost from recording its terminal result.
 
+The process-pool parent owns the durable execution lifecycle. It records the
+transition to `Running`, retains the minimum completion metadata needed while
+the child is active, and records the terminal outcome returned by the child.
+The child owns only execution of user code. Redis transports and caches state;
+it is never the source of truth for whether admitted work is still running or
+has finished.
+
 ## Design
 
-### Refresh active execution state
+### Recreate a compact active-execution lease
 
 The process-pool parent already owns the authoritative in-memory set of active
-children and emits a heartbeat every ten seconds. During that heartbeat it will
-refresh the TTL of each active execution's existing Redis keys:
+children. Each active handle will retain a compact completion snapshot:
+workflow identity, organization identity, initiating user identity and email,
+display name, event-delivery presence, and the synchronous transport bit. It
+will not retain parameters, startup data, form inputs, embed data, or other
+potentially large workflow payloads.
 
-- pending execution metadata;
-- retained execution context; and
-- buffered SDK changes, when that key exists.
+On a sparse interval independent of the ten-second worker-health heartbeat,
+the parent will batch `SET ... EX` commands for active executions into one
+Redis pipeline per worker replica. `SET`, rather than `EXPIRE`, deliberately
+recreates a missing lease after expiry, eviction, or Redis restart while the
+child is still active. A ten-minute refresh interval leaves ample margin inside
+the one-hour lease TTL without producing constant Redis traffic.
 
-Refreshing uses `EXPIRE`, not recreation. A missing key remains missing so the
-heartbeat cannot fabricate incomplete context. Once a child completes,
-crashes, times out, or is cancelled, its handle leaves the active set and the
-parent stops refreshing its keys. Normal terminal cleanup remains responsible
-for deleting the keys promptly.
+Once a child completes, crashes, times out, or is cancelled, its handle leaves
+the active set and the parent stops recreating its lease. Normal terminal
+cleanup deletes the lease promptly. PostgreSQL receives no heartbeat writes.
+
+The existing pending-dispatch and retained-context keys keep their current
+lifecycle. They may contain large inputs and are not duplicated into parent
+memory merely to make them recreatable. The compact active lease is the
+parent-owned record used for completion after dispatch.
 
 ### Recover completion from PostgreSQL
 
-Success and failure processing will treat Redis metadata as a fast-path, not an
-authority. When the pending record is missing or cannot be read, the consumer
-will load the durable execution row and reconstruct the metadata needed for the
-terminal commit and notifications: workflow identity, organization, initiating
-user, and display name. The initiating user's email will be loaded for failure
-event emission.
+Success and failure processing will read the compact active lease first and
+treat it as a fast-path, not an authority. The existing pending record returns
+to its intended role as dispatch-only state. When the active lease is not
+available or readable, the consumer will load the durable execution row and
+reconstruct the metadata needed for the terminal commit and notifications:
+workflow identity, organization, initiating user, and display name. The
+initiating user's email will be loaded for failure event emission.
 
 The callback will always persist the terminal status and result when the
 durable execution row exists. Event-delivery reconciliation can use
@@ -59,15 +76,15 @@ invent a replacement row from a partial result.
 ### Preserve synchronous completion semantics
 
 Whether a caller is waiting synchronously is transport state and is not stored
-on the execution row. The process pool will retain that boolean with the active
-child and attach it to real and synthetic results before invoking the result
-callback. Consequently, Redis metadata loss cannot prevent a synchronous
-caller from receiving its terminal result.
+on the execution row. The process pool retains that boolean in the compact
+active lease and with the active handle, then attaches it to real and synthetic
+results before invoking the result callback. Consequently, Redis metadata loss
+cannot prevent a synchronous caller from receiving its terminal result.
 
 ## Error Handling
 
-Redis read or heartbeat failures are logged with the execution identifier. A
-heartbeat failure does not affect the child process, and completion falls back
+Redis read or lease-refresh failures are logged with the execution identifier.
+A refresh failure does not affect the child process, and completion falls back
 to PostgreSQL. PostgreSQL failure remains an authoritative completion failure
 and continues through the existing result-callback error path.
 
@@ -79,15 +96,17 @@ is unchanged.
 
 Tests use explicit key loss rather than wall-clock waits:
 
-1. Construct active and inactive process handles, execute one heartbeat refresh,
-   and assert that only active execution keys receive renewed TTLs.
-2. Return no pending Redis record to success processing, provide a durable
-   execution row, and assert that the terminal result is committed and
-   published.
-3. Repeat the missing-record test for failure processing.
-4. Verify that real and synthetic process-pool results retain the synchronous
+1. Construct active and inactive process handles, execute one lease refresh,
+   and assert that only active executions are written through one Redis
+   pipeline with a fresh TTL.
+2. Begin with no lease key, run a refresh for an active handle, and assert that
+   the compact lease is recreated without large workflow inputs.
+3. Return no Redis lease to success processing, provide a durable execution
+   row, and assert that the terminal result is committed and published.
+4. Repeat the missing-record test for failure processing.
+5. Verify that real and synthetic process-pool results retain the synchronous
    transport bit.
-5. Run the focused consumer and process-pool unit tests, the affected execution
+6. Run the focused consumer and process-pool unit tests, the affected execution
    tests, and API quality checks. Before a PR is opened, commit the exact
    candidate on current `origin/main` and run `./test.sh pre-pr`.
 
