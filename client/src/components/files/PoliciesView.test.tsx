@@ -20,6 +20,63 @@ function deferred<T>() {
 }
 
 describe("PoliciesView", () => {
+	it("filters policy attachments by share and folder boundary", async () => {
+		vi.mocked(listFilePolicies).mockResolvedValue({
+			policies: [
+				{
+					location: "gallery",
+					path: "team/",
+					policies: { policies: [] },
+				},
+				{
+					location: "gallery",
+					path: "team/deep/",
+					policies: { policies: [] },
+				},
+				{
+					location: "gallery",
+					path: "team-other/",
+					policies: { policies: [] },
+				},
+				{
+					location: "reports",
+					path: "team/",
+					policies: { policies: [] },
+				},
+			],
+		});
+		renderWithProviders(
+			<PoliciesView
+				scope="global"
+				location="gallery"
+				prefix="team/"
+				refreshKey={0}
+				onEdit={vi.fn()}
+				onDelete={vi.fn()}
+			/>,
+		);
+		expect(
+			await screen.findByRole("button", {
+				name: "Manage policy for gallery/team/",
+			}),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: "Manage policy for gallery/team/deep/",
+			}),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", {
+				name: "Manage policy for gallery/team-other/",
+			}),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", {
+				name: "Manage policy for reports/team/",
+			}),
+		).not.toBeInTheDocument();
+	});
+
 	beforeEach(() => {
 		vi.mocked(listFilePolicies).mockReset();
 	});
@@ -69,13 +126,13 @@ describe("PoliciesView", () => {
 		expect(
 			screen.getByRole("heading", { name: "Access Policies" }),
 		).toBeInTheDocument();
-		expect(screen.getByText("/")).toBeInTheDocument();
-		expect(screen.getByText("reports")).toBeInTheDocument();
-		expect(screen.getByText("/q1/")).toBeInTheDocument();
+		expect(screen.getByText("Share-wide policy")).toBeInTheDocument();
+		expect(screen.getByText("q1")).toBeInTheDocument();
+		expect(screen.getByText("reports/q1/")).toBeInTheDocument();
 		expect(screen.getByText("admin_bypass - read")).toBeInTheDocument();
 		expect(
 			screen.getByText(
-				/rules\.super_long_rule_name_that_should_wrap_cleanly_in_the_badge/i,
+				/rules\.super long rule name that should wrap cleanly in the badge/i,
 			),
 		).toBeInTheDocument();
 		expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -91,7 +148,7 @@ describe("PoliciesView", () => {
 
 		await user.type(screen.getByLabelText("Search policies"), "q1");
 		expect(screen.queryByText("gallery")).not.toBeInTheDocument();
-		expect(screen.getByText("reports")).toBeInTheDocument();
+		expect(screen.getByText("q1")).toBeInTheDocument();
 		await user.clear(screen.getByLabelText("Search policies"));
 
 		await user.click(
@@ -136,8 +193,8 @@ describe("PoliciesView", () => {
 				name: /manage policy for reports\/q1\//i,
 			}),
 		).toBeInTheDocument();
-		expect(screen.getByText("reports")).toBeInTheDocument();
-		expect(screen.getByText("/q1/")).toBeInTheDocument();
+		expect(screen.getByText("q1")).toBeInTheDocument();
+		expect(screen.getByText("reports/q1/")).toBeInTheDocument();
 		expect(
 			screen.getByText("team_access - read, list"),
 		).toBeInTheDocument();
@@ -233,9 +290,7 @@ describe("PoliciesView", () => {
 			],
 		});
 
-		await waitFor(() =>
-			expect(screen.getByText("reports")).toBeInTheDocument(),
-		);
-		expect(screen.getByText("/q1/")).toBeInTheDocument();
+		await waitFor(() => expect(screen.getByText("q1")).toBeInTheDocument());
+		expect(screen.getByText("reports/q1/")).toBeInTheDocument();
 	});
 });

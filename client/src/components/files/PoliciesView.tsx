@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Search, ShieldCheck, Trash2 } from "lucide-react";
+import { Search, ShieldCheck, Trash2, FolderKey, Link2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -22,13 +22,19 @@ const formatIdentity = (policy: FilePolicy) =>
 	`${policy.location}${formatPath(policy.path)}`;
 const isPolicyRuleRef = (rule: PolicyRule): rule is PolicyRuleRef =>
 	"$ref" in rule;
+const readableRuleName = (name: string) =>
+	name === "admin_bypass"
+		? "Administrator Access"
+		: name.replace(/[_-]+/g, " ");
 const describeRule = (rule: PolicyRule) =>
 	isPolicyRuleRef(rule)
-		? `ref:${rule.$ref}`
+		? `Shared rule: ${readableRuleName(rule.$ref)}`
 		: `${rule.name}${rule.actions.length ? ` - ${rule.actions.join(", ")}` : ""}`;
 
 interface PoliciesViewProps {
 	scope: string | null;
+	location?: string | null;
+	prefix?: string;
 	/** Bump to force a refetch after a policy mutation elsewhere. */
 	refreshKey: number;
 	onEdit: (policy: FilePolicy) => void;
@@ -43,6 +49,8 @@ interface PoliciesViewProps {
  */
 export function PoliciesView({
 	scope,
+	location = null,
+	prefix = "",
 	refreshKey,
 	onEdit,
 	onDelete,
@@ -53,7 +61,10 @@ export function PoliciesView({
 		queryFn: () => listFilePolicies({ scope: scope ?? undefined }),
 		retry: false,
 	});
-	const policies = useMemo(() => policiesQuery.data?.policies ?? [], [policiesQuery.data]);
+	const policies = useMemo(
+		() => policiesQuery.data?.policies ?? [],
+		[policiesQuery.data],
+	);
 	const hasData = policiesQuery.data !== undefined;
 	const showInitialLoading = policiesQuery.isPending && !hasData;
 	const showEmptyState =
@@ -61,10 +72,23 @@ export function PoliciesView({
 	const showError = policiesQuery.isError && !hasData;
 	const showTransientError = policiesQuery.isError && hasData;
 
+	const directoryPolicies = useMemo(
+		() =>
+			policies.filter((policy) => {
+				if (location && policy.location !== location) return false;
+				const directory = prefix.replace(/\/$/, "");
+				return (
+					!directory ||
+					policy.path.replace(/\/$/, "") === directory ||
+					policy.path.startsWith(`${directory}/`)
+				);
+			}),
+		[policies, location, prefix],
+	);
 	const filteredPolicies = useMemo(() => {
 		const normalizedQuery = query.trim().toLowerCase();
-		if (!normalizedQuery) return policies;
-		return policies.filter((policy) => {
+		if (!normalizedQuery) return directoryPolicies;
+		return directoryPolicies.filter((policy) => {
 			const haystack = [
 				policy.location,
 				formatPath(policy.path),
@@ -75,7 +99,7 @@ export function PoliciesView({
 				.toLowerCase();
 			return haystack.includes(normalizedQuery);
 		});
-	}, [policies, query]);
+	}, [directoryPolicies, query]);
 	const renderRule = (rule: PolicyRule, index: number) => {
 		const key = isPolicyRuleRef(rule) ? rule.$ref : `${rule.name}:${index}`;
 		return (
@@ -84,6 +108,12 @@ export function PoliciesView({
 				variant="outline"
 				className="h-auto max-w-full items-start whitespace-normal [overflow-wrap:anywhere] rounded-[var(--bf-radius-control)] px-2 py-1 text-left leading-5"
 			>
+				{"$ref" in rule && (
+					<Link2
+						aria-hidden="true"
+						className="mt-0.5 size-3 shrink-0 text-primary"
+					/>
+				)}
 				{describeRule(rule)}
 			</Badge>
 		);
@@ -111,21 +141,29 @@ export function PoliciesView({
 
 	const renderPolicy = (policy: FilePolicy) => (
 		<li key={policy.id ?? `${policy.location}:${policy.path}`}>
-			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b px-4 py-3 last:border-b-0 lg:grid-cols-[minmax(12rem,18rem)_minmax(0,1fr)_auto]">
+			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 border-b px-4 py-3 hover:bg-muted/20">
 				<button
 					type="button"
 					className="min-h-11 min-w-0 rounded-[var(--bf-radius-control)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					onClick={() => onEdit(policy)}
 					aria-label={`Manage policy for ${formatIdentity(policy)}`}
 				>
-					<span className="block text-sm font-semibold leading-6 [overflow-wrap:anywhere]">
-						{policy.location}
+					<span className="flex items-center gap-2 text-sm font-semibold leading-6 [overflow-wrap:anywhere]">
+						<FolderKey
+							aria-hidden="true"
+							className="size-4 shrink-0 text-primary"
+						/>
+						{policy.path
+							? policy.path.replace(/\/$/, "").split("/").at(-1)
+							: policy.location}
 					</span>
-					<span className="block font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
-						{formatPath(policy.path)}
+					<span className="block text-xs text-muted-foreground [overflow-wrap:anywhere]">
+						{policy.path
+							? `${policy.location}${formatPath(policy.path)}`
+							: "Share-wide policy"}
 					</span>
 				</button>
-				<div className="col-span-2 flex min-w-0 flex-wrap gap-1.5 lg:col-span-1 lg:pt-1">
+				<div className="col-start-1 flex min-w-0 flex-wrap gap-1.5">
 					{policy.policies.policies.length === 0 ? (
 						<span className="text-xs text-muted-foreground">
 							No rules
@@ -134,7 +172,7 @@ export function PoliciesView({
 						policy.policies.policies.map(renderRule)
 					)}
 				</div>
-				<div className="row-start-1 shrink-0 justify-self-end lg:col-start-3">
+				<div className="col-start-2 row-start-1 shrink-0 justify-self-end">
 					{renderActions(policy)}
 				</div>
 			</div>
@@ -144,14 +182,22 @@ export function PoliciesView({
 	const renderDirectory = () => (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="shrink-0 border-b px-4 py-3">
+				<p className="mb-3 text-xs leading-5 text-muted-foreground">
+					{location
+						? "Policies attached to this folder and its descendants. Inherited access is shown in Folder Details."
+						: "Policies define access to a share, folder, or file. Select a folder to narrow this list."}
+				</p>
 				<div className="flex flex-wrap items-center justify-between gap-3">
 					<div className="min-w-0">
 						<h2 className="text-sm font-semibold leading-5">
 							Access Policies
 						</h2>
 						<p className="text-xs text-muted-foreground">
-							{filteredPolicies.length} of {policies.length}{" "}
-							{policies.length === 1 ? "policy" : "policies"}
+							{filteredPolicies.length} of{" "}
+							{directoryPolicies.length}{" "}
+							{directoryPolicies.length === 1
+								? "policy"
+								: "policies"}
 						</p>
 					</div>
 					<label className="relative min-w-0 flex-1 sm:max-w-xs">
@@ -171,7 +217,9 @@ export function PoliciesView({
 			</div>
 			{filteredPolicies.length === 0 ? (
 				<p className="p-4 text-sm text-muted-foreground">
-					No policies match this search.
+					{query
+						? "No policies match this search."
+						: "No policies are set here. Open Folder Details to see inherited access."}
 				</p>
 			) : (
 				<ul className="min-h-0 flex-1 overflow-auto">

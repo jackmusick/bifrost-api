@@ -128,6 +128,22 @@ const BASE: FilePolicy = {
 	policies: { policies: [] },
 };
 
+const WITH_RULES: FilePolicy = {
+	...BASE,
+	policies: {
+		policies: [
+			{
+				name: "own_files",
+				description: "Owners manage their own uploads.",
+				actions: ["read", "write", "delete"],
+				when: { eq: [{ file: "created_by" }, { user: "user_id" }] },
+				custom_future_field: { preserve: true },
+			} as never,
+			{ $ref: "admin_bypass" },
+		],
+	},
+};
+
 const RULE = {
 	id: "00000000-0000-0000-0000-000000000001",
 	organization_id: null,
@@ -173,7 +189,9 @@ describe("FilePolicyEditor", () => {
 			target: { value: "policies: [oops" },
 		});
 		expect(screen.getByText(/parse error/i)).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: /save policy/i })).toBeDisabled();
+		expect(
+			screen.getByRole("button", { name: /save policy/i }),
+		).toBeDisabled();
 		expect(onSave).not.toHaveBeenCalled();
 	});
 
@@ -189,8 +207,7 @@ describe("FilePolicyEditor", () => {
 		);
 		fireEvent.change(screen.getByLabelText("file-policies.yaml"), {
 			target: {
-				value:
-					"policies:\n  - name: everyone_read\n    actions: [read, list]\n    when: null\n",
+				value: "policies:\n  - name: everyone_read\n    actions: [read, list]\n    when: null\n",
 			},
 		});
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
@@ -200,6 +217,84 @@ describe("FilePolicyEditor", () => {
 		expect(saved.path).toBe("reports/");
 		expect(saved.id).toBe("pol-1");
 		expect(saved.policies.policies[0].name).toBe("everyone_read");
+	});
+
+	it("shows compact rule summaries by default and keeps code editing behind Advanced", async () => {
+		mockListRules.mockResolvedValue([
+			{
+				...RULE,
+				description: "Platform admins can do anything.",
+				body: {
+					actions: ["read", "write", "delete", "list"],
+					when: { user: "is_platform_admin" },
+				},
+			},
+		]);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/june.txt"
+				value={WITH_RULES}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+				compact
+			/>,
+		);
+		expect(
+			screen.getByRole("list", { name: "Policy rules" }),
+		).toBeInTheDocument();
+		expect(screen.getByText("Own Files")).toBeInTheDocument();
+		expect(screen.getByText("Administrator Access")).toBeInTheDocument();
+		expect(
+			screen.queryByLabelText("file-policies.yaml"),
+		).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /^advanced$/i }));
+		expect(
+			(
+				(await screen.findByLabelText(
+					"file-policies.yaml",
+				)) as HTMLTextAreaElement
+			).value,
+		).toContain("custom_future_field");
+	});
+
+	it("removes compact rules by index without rewriting the remaining document", async () => {
+		mockListRules.mockResolvedValue([RULE]);
+		const onSave = vi.fn();
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/june.txt"
+				value={WITH_RULES}
+				onSave={onSave}
+				onDelete={vi.fn()}
+				compact
+			/>,
+		);
+		fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
+		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
+		const saved = onSave.mock.calls[0][0];
+		expect(saved.policies.policies).toEqual([{ $ref: "admin_bypass" }]);
+	});
+
+	it("does not summarize unresolved shared references as a predicate decision", () => {
+		mockListRules.mockResolvedValue([]);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/june.txt"
+				value={{
+					...BASE,
+					policies: { policies: [{ $ref: "missing_rule" }] },
+				}}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+				compact
+			/>,
+		);
+		expect(
+			screen.getByText("Shared rule details are unavailable."),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText("Applies to everyone."),
+		).not.toBeInTheDocument();
 	});
 });
 
@@ -220,7 +315,9 @@ describe("FilePolicyEditor", () => {
 		);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
-			expect(screen.getByRole("alert")).toHaveTextContent(/backend exploded/i),
+			expect(screen.getByRole("alert")).toHaveTextContent(
+				/backend exploded/i,
+			),
 		);
 		fireEvent.click(screen.getByRole("button", { name: /retry save/i }));
 		await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
@@ -242,7 +339,9 @@ describe("FilePolicyEditor", () => {
 		);
 		fireEvent.click(screen.getByRole("button", { name: /delete/i }));
 		await waitFor(() =>
-			expect(screen.getByRole("alert")).toHaveTextContent(/delete failed/i),
+			expect(screen.getByRole("alert")).toHaveTextContent(
+				/delete failed/i,
+			),
 		);
 		fireEvent.click(screen.getByRole("button", { name: /retry delete/i }));
 		await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(2));
@@ -270,12 +369,14 @@ describe("FilePolicyEditor", () => {
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		expect(onBusyChange).toHaveBeenCalledWith(true);
 		resolveSave();
-		await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+		await waitFor(() =>
+			expect(onBusyChange).toHaveBeenLastCalledWith(false),
+		);
 	});
 });
 
 describe("FilePolicyEditor — reference mode", () => {
-	it("does not render Insert reference when no rules are available", () => {
+	it("does not render Add Shared Rule when no rules are available", () => {
 		mockListRules.mockResolvedValue([]);
 		renderWithProviders(
 			<FilePolicyEditor
@@ -286,11 +387,11 @@ describe("FilePolicyEditor — reference mode", () => {
 			/>,
 		);
 		expect(
-			screen.queryByLabelText(/insert reference/i),
+			screen.queryByLabelText(/add shared rule/i),
 		).not.toBeInTheDocument();
 	});
 
-	it("renders Insert reference dropdown when rules are returned", async () => {
+	it("renders Add Shared Rule dropdown when rules are returned", async () => {
 		mockListRules.mockResolvedValue([RULE]);
 		renderWithProviders(
 			<FilePolicyEditor
@@ -301,7 +402,9 @@ describe("FilePolicyEditor — reference mode", () => {
 			/>,
 		);
 		await waitFor(() =>
-			expect(screen.getByLabelText(/insert reference/i)).toBeInTheDocument(),
+			expect(
+				screen.getByLabelText(/add shared rule/i),
+			).toBeInTheDocument(),
 		);
 	});
 
@@ -326,7 +429,9 @@ describe("FilePolicyEditor — reference mode", () => {
 			screen.getByRole("button", { name: /retry loading rules/i }),
 		);
 		await waitFor(() =>
-			expect(screen.getByLabelText(/insert reference/i)).toBeInTheDocument(),
+			expect(
+				screen.getByLabelText(/add shared rule/i),
+			).toBeInTheDocument(),
 		);
 	});
 
@@ -342,7 +447,7 @@ describe("FilePolicyEditor — reference mode", () => {
 			/>,
 		);
 		// Wait for the dropdown to appear (rules loaded).
-		const refSelect = await screen.findByLabelText(/insert reference/i);
+		const refSelect = await screen.findByLabelText(/add shared rule/i);
 		// Simulate picking "admin_bypass" from the select.
 		fireEvent.change(refSelect, { target: { value: "admin_bypass" } });
 		// Save and check the inserted entry.
@@ -357,10 +462,17 @@ describe("FilePolicyEditor — reference mode", () => {
 	it("surfaces structured 422 save errors inline", async () => {
 		mockListRules.mockResolvedValue([]);
 		const saveErrors = {
-			errors: [{ path: "$.policies[0].$ref", message: "unresolvable ref: missing_rule" }],
+			errors: [
+				{
+					path: "$.policies[0].$ref",
+					message: "unresolvable ref: missing_rule",
+				},
+			],
 		};
 		// onSave throws an error whose message is the serialized detail JSON.
-		const onSave = vi.fn().mockRejectedValue(new Error(JSON.stringify(saveErrors)));
+		const onSave = vi
+			.fn()
+			.mockRejectedValue(new Error(JSON.stringify(saveErrors)));
 		renderWithProviders(
 			<FilePolicyEditor
 				path="reports/"
@@ -371,17 +483,25 @@ describe("FilePolicyEditor — reference mode", () => {
 		);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
-			expect(screen.getByTestId("file-policy-save-errors")).toBeInTheDocument(),
+			expect(
+				screen.getByTestId("file-policy-save-errors"),
+			).toBeInTheDocument(),
 		);
-		expect(screen.getByText(/unresolvable ref: missing_rule/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/unresolvable ref: missing_rule/i),
+		).toBeInTheDocument();
 	});
 
 	it("clears save errors when the editor content changes", async () => {
 		mockListRules.mockResolvedValue([]);
 		const saveErrors = {
-			errors: [{ path: "$.policies[0].$ref", message: "unresolvable ref" }],
+			errors: [
+				{ path: "$.policies[0].$ref", message: "unresolvable ref" },
+			],
 		};
-		const onSave = vi.fn().mockRejectedValue(new Error(JSON.stringify(saveErrors)));
+		const onSave = vi
+			.fn()
+			.mockRejectedValue(new Error(JSON.stringify(saveErrors)));
 		renderWithProviders(
 			<FilePolicyEditor
 				path="reports/"
@@ -393,14 +513,15 @@ describe("FilePolicyEditor — reference mode", () => {
 		// Trigger save errors.
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
-			expect(screen.getByTestId("file-policy-save-errors")).toBeInTheDocument(),
+			expect(
+				screen.getByTestId("file-policy-save-errors"),
+			).toBeInTheDocument(),
 		);
 		// Edit the doc with a new policy — this changes the parsed value so
 		// onChange fires and save errors are cleared.
 		fireEvent.change(screen.getByLabelText("file-policies.yaml"), {
 			target: {
-				value:
-					"policies:\n  - name: everyone_read\n    actions: [read]\n    when: null\n",
+				value: "policies:\n  - name: everyone_read\n    actions: [read]\n    when: null\n",
 			},
 		});
 		await waitFor(() =>

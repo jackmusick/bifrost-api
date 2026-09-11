@@ -8,6 +8,8 @@ interface FilesInspectorProps {
 	path: string;
 	isFile: boolean;
 	inline: boolean;
+	width?: number;
+	busy?: boolean;
 	onClose: () => void;
 	children: ReactNode;
 }
@@ -18,6 +20,8 @@ export function FilesInspector({
 	path,
 	isFile,
 	inline,
+	width = 384,
+	busy = false,
 	onClose,
 	children,
 }: FilesInspectorProps) {
@@ -43,14 +47,18 @@ export function FilesInspector({
 						? { width: 0, opacity: 0 }
 						: { x: "100%", opacity: 0 }
 			}
-			animate={inline ? { width: 384, opacity: 1 } : { x: 0, opacity: 1 }}
+			animate={inline ? { width, opacity: 1 } : { x: 0, opacity: 1 }}
 			exit={inline ? { width: 0, opacity: 0 } : { x: "100%", opacity: 0 }}
 			transition={{
 				duration: reduceMotion ? 0 : 0.2,
 				ease: [0.22, 1, 0.36, 1],
 			}}
 			onKeyDown={(event) => {
-				if (event.key === "Escape" && !event.defaultPrevented) {
+				if (
+					event.key === "Escape" &&
+					!event.defaultPrevented &&
+					!busy
+				) {
 					event.stopPropagation();
 					onClose();
 				}
@@ -71,6 +79,7 @@ export function FilesInspector({
 				</div>
 				<Button
 					ref={closeRef}
+					disabled={busy}
 					variant="ghost"
 					size="icon"
 					aria-label="Close file details"

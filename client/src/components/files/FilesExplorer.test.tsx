@@ -27,10 +27,16 @@ vi.mock("./ShareTree", () => ({
 		scope,
 		readOnly,
 		onSelect,
+		onContextAction,
 	}: {
 		scope: string | null;
 		readOnly?: boolean;
 		onSelect: (location: string, prefix: string) => void;
+		onContextAction: (
+			action: string,
+			location: string,
+			prefix: string,
+		) => void;
 	}) => {
 		shareTreeScopes.push(scope);
 		shareTreeReadOnly.push(Boolean(readOnly));
@@ -38,6 +44,13 @@ vi.mock("./ShareTree", () => ({
 			<div data-testid="share-tree">
 				<button type="button" onClick={() => onSelect("gallery", "")}>
 					select-gallery
+				</button>
+				<button
+					onClick={() =>
+						onContextAction("newPolicy", "gallery", "photos")
+					}
+				>
+					New folder policy
 				</button>
 			</div>
 		);
@@ -85,8 +98,12 @@ vi.mock("./EffectiveAccessPanel", () => ({
 		return <div />;
 	},
 }));
-vi.mock("./TestAccessModal", () => ({ TestAccessModal: () => <div /> }));
-vi.mock("./PolicyEditorModal", () => ({ PolicyEditorModal: () => <div /> }));
+vi.mock("./TestAccessModal", () => ({ TestAccessPanel: () => <div /> }));
+vi.mock("./PolicyEditorModal", () => ({
+	PolicyEditorPanel: ({ exactPath }: { exactPath?: string }) => (
+		<section aria-label="Policy editor">{exactPath}</section>
+	),
+}));
 vi.mock("./NewShareDialog", () => ({
 	NewShareDialog: ({ open }: { open: boolean }) =>
 		open ? <div data-testid="new-share-dialog" /> : null,
@@ -138,7 +155,9 @@ describe("FilesExplorer", () => {
 		await user.click(
 			screen.getByRole("button", { name: "Open gallery share" }),
 		);
-		await user.click(screen.getByRole("button", { name: "Folder Details" }));
+		await user.click(
+			screen.getByRole("button", { name: "Folder Details" }),
+		);
 		expect(screen.getByRole("tab", { name: "Access" })).toHaveAttribute(
 			"aria-selected",
 			"true",
@@ -178,7 +197,7 @@ describe("FilesExplorer", () => {
 		render(<FilesExplorer />);
 
 		const scopeSelector = screen.getByText("scope-select").parentElement;
-		expect(scopeSelector).toHaveClass("min-w-0", "sm:w-56");
+		expect(scopeSelector).toHaveClass("min-w-0", "sm:w-[17rem]");
 		expect(
 			screen.getByRole("navigation", { name: /breadcrumb/i })
 				.parentElement,
@@ -194,6 +213,18 @@ describe("FilesExplorer", () => {
 		// caller's own org on the write path).
 		expect(shareTreeScopes).toContain("global");
 		expect(shareTreeScopes).not.toContain(null);
+	});
+
+	it("attaches a new folder policy to its folder boundary rather than its parent", async () => {
+		const user = userEvent.setup();
+		vi.mocked(useMediaQuery).mockReturnValue(true);
+		render(<FilesExplorer />);
+		await user.click(
+			screen.getByRole("button", { name: "New folder policy" }),
+		);
+		expect(
+			screen.getByRole("region", { name: "Policy editor" }),
+		).toHaveTextContent("photos/");
 	});
 
 	it("opens the New share dialog", () => {
@@ -235,6 +266,12 @@ describe("FilesExplorer", () => {
 		await user.click(screen.getByRole("tab", { name: /policies/i }));
 		expect(await screen.findByTestId("policies-view")).toBeInTheDocument();
 		expect(screen.queryByTestId("folder-listing")).not.toBeInTheDocument();
+		await user.click(screen.getByText("select-gallery"));
+		expect(screen.getByRole("tab", { name: /policies/i })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		expect(screen.getByTestId("policies-view")).toBeInTheDocument();
 	});
 
 	it("exposes a hamburger to reach the tree on narrow screens", () => {

@@ -17,8 +17,12 @@ import { testAllActions } from "@/services/filePolicies";
 import type { FilePolicyAction } from "@/services/filePolicies";
 import { TestAccessModal } from "./TestAccessModal";
 
-function result(action: FilePolicyAction, allowed: boolean) {
-	return { allowed, path: "p", location: "gallery", action };
+function result(
+	action: FilePolicyAction,
+	allowed: boolean,
+	matchedRule?: string,
+) {
+	return { allowed, path: "p", location: "gallery", action, matchedRule };
 }
 
 describe("TestAccessModal", () => {
@@ -28,7 +32,7 @@ describe("TestAccessModal", () => {
 			data: [{ id: "u1", email: "alice@x.com", name: "Alice" }],
 		} as ReturnType<typeof useUsersFiltered>);
 		vi.mocked(testAllActions).mockResolvedValue({
-			read: result("read", true),
+			read: result("read", true, "admin_bypass"),
 			write: result("write", false),
 			delete: result("delete", false),
 			list: result("list", true),
@@ -62,6 +66,9 @@ describe("TestAccessModal", () => {
 		expect(screen.getByText("write")).toBeInTheDocument();
 		expect(screen.getAllByText("Allowed").length).toBe(2);
 		expect(screen.getAllByText("Denied").length).toBe(2);
+		expect(
+			screen.getByText("Allowed by Administrator Access."),
+		).toBeInTheDocument();
 	});
 	it("does not show an older user's results after selection changes or clears", async () => {
 		vi.mocked(useUsersFiltered).mockReturnValue({
@@ -135,7 +142,7 @@ describe("TestAccessModal", () => {
 			"No access decision was returned",
 		);
 		expect(screen.queryByText("Denied")).not.toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: "Retry test" }));
+		fireEvent.click(screen.getByRole("button", { name: "Retry Test" }));
 		expect(await screen.findAllByText("Allowed")).toHaveLength(2);
 		expect(testAllActions).toHaveBeenLastCalledWith({
 			location: "gallery",
@@ -161,7 +168,7 @@ describe("TestAccessModal", () => {
 		};
 		const view = render(<TestAccessModal {...props} />);
 		expect(screen.getByLabelText("User")).toBeDisabled();
-		fireEvent.click(screen.getByRole("button", { name: "Retry users" }));
+		fireEvent.click(screen.getByRole("button", { name: "Retry Users" }));
 		expect(refetch).toHaveBeenCalledOnce();
 		vi.mocked(useUsersFiltered).mockReturnValue({
 			data: [{ id: "u1", email: "alice@x.com", name: "Alice" }],

@@ -38,7 +38,7 @@ vi.mock("@/contexts/ThemeContext", () => ({
 	useTheme: () => ({ theme: "light" }),
 }));
 import { listFilePolicies, saveFilePolicy } from "@/services/filePolicies";
-import { PolicyEditorModal } from "./PolicyEditorModal";
+import { PolicyEditorModal, PolicyEditorPanel } from "./PolicyEditorModal";
 
 describe("PolicyEditorModal", () => {
 	beforeEach(() => {
@@ -76,10 +76,10 @@ describe("PolicyEditorModal", () => {
 				onSaved={onSaved}
 			/>,
 		);
-		// Editor renders once the best policy resolves (YAML view by default).
+		// Editor renders once the best policy resolves.
 		await waitFor(() =>
 			expect(
-				screen.getByLabelText("file-policies.yaml"),
+				screen.getByRole("button", { name: /save policy/i }),
 			).toBeInTheDocument(),
 		);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
@@ -110,10 +110,10 @@ describe("PolicyEditorModal", () => {
 			screen.queryByRole("button", { name: /save policy/i }),
 		).not.toBeInTheDocument();
 		fireEvent.click(
-			screen.getByRole("button", { name: "Retry file policy" }),
+			screen.getByRole("button", { name: "Retry File Policy" }),
 		);
 		expect(
-			await screen.findByLabelText("file-policies.yaml"),
+			await screen.findByRole("button", { name: /save policy/i }),
 		).toBeInTheDocument();
 	});
 	it("keeps a late response for another path out of the current draft", async () => {
@@ -145,7 +145,7 @@ describe("PolicyEditorModal", () => {
 				path="current/"
 			/>,
 		);
-		await screen.findByLabelText("file-policies.yaml");
+		await screen.findByRole("button", { name: /save policy/i });
 		await act(async () => resolveOld({ policies: [] }));
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() => expect(saveFilePolicy).toHaveBeenCalled());
@@ -175,9 +175,11 @@ describe("PolicyEditorModal", () => {
 				path="reports/"
 			/>,
 		);
+		await screen.findByRole("button", { name: /^advanced$/i });
+		fireEvent.click(screen.getByRole("button", { name: /^advanced$/i }));
 		const editor = await screen.findByLabelText("file-policies.yaml");
 		const initialDraft = (editor as HTMLTextAreaElement).value;
-		fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
+		fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
 		await screen.findByRole("button", { name: /Saving/ });
 		fireEvent.keyDown(document, { key: "Escape" });
 		expect(onOpenChange).not.toHaveBeenCalled();
@@ -185,10 +187,88 @@ describe("PolicyEditorModal", () => {
 		await screen.findByText("Temporary save failure");
 		expect(editor).toHaveValue(initialDraft);
 		expect(onOpenChange).not.toHaveBeenCalled();
-		fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
+		fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
 		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 		expect(vi.mocked(saveFilePolicy).mock.calls[1][0]).toEqual(
 			vi.mocked(saveFilePolicy).mock.calls[0][0],
+		);
+	});
+
+	it("edits an exact policy path when embedded", async () => {
+		vi.mocked(listFilePolicies).mockResolvedValue({
+			policies: [
+				{
+					id: "ancestor",
+					location: "gallery",
+					path: "",
+					organizationId: null,
+					policies: { policies: [] },
+				},
+				{
+					id: "folder",
+					location: "gallery",
+					path: "reports/",
+					organizationId: null,
+					policies: { policies: [] },
+				},
+			],
+		});
+		vi.mocked(saveFilePolicy).mockImplementation(async (policy) => policy);
+		render(
+			<PolicyEditorPanel
+				location="gallery"
+				scope={null}
+				path="reports/june.txt"
+				exactPath="reports/"
+			/>,
+		);
+		await screen.findByText(
+			"This policy is attached to reports/. The selected path is reports/june.txt.",
+		);
+		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
+		await waitFor(() => expect(saveFilePolicy).toHaveBeenCalled());
+		expect(vi.mocked(saveFilePolicy).mock.calls[0][0].id).toBe("folder");
+		expect(vi.mocked(saveFilePolicy).mock.calls[0][0].path).toBe(
+			"reports/",
+		);
+	});
+
+	it("creates a blank exact policy and clears busy before embedded close", async () => {
+		vi.mocked(listFilePolicies).mockResolvedValue({
+			policies: [
+				{
+					id: "ancestor",
+					location: "gallery",
+					path: "",
+					organizationId: null,
+					policies: { policies: [] },
+				},
+			],
+		});
+		vi.mocked(saveFilePolicy).mockImplementation(async (policy) => policy);
+		const events: string[] = [];
+		render(
+			<PolicyEditorPanel
+				location="gallery"
+				scope={null}
+				path="reports/june.txt"
+				exactPath="reports/"
+				onBusyChange={(busy) => events.push(`busy:${busy}`)}
+				onOpenChange={(open) => events.push(`open:${open}`)}
+			/>,
+		);
+		await screen.findByRole("button", { name: /save policy/i });
+		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
+		await waitFor(() =>
+			expect(events).toEqual(
+				expect.arrayContaining(["busy:false", "open:false"]),
+			),
+		);
+		const saved = vi.mocked(saveFilePolicy).mock.calls[0][0];
+		expect(saved.id).toBeUndefined();
+		expect(saved.path).toBe("reports/");
+		expect(events.indexOf("busy:false")).toBeLessThan(
+			events.indexOf("open:false"),
 		);
 	});
 });

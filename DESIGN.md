@@ -83,3 +83,12 @@ At intermediate widths, hide share navigation while inspecting; on phones the
 inspector replaces the directory inside the workspace, never the whole screen.
 Keep directory search and item counts outside the scrolling rows. Preserve explicit
 Global/organization/solution scope, read-only locations, and mutation recovery.
+
+The Files scope field and navigation share one column width; Shares and the
+breadcrumb toolbar share a desktop row height. Directory navigation preserves
+Files/Access Policies mode. Policies lists explicit attachments under the selected
+folder; inherited access belongs in the inspector. Policy summaries explain their
+source and resolve named rules, while user/action decisions require Test Access.
+Edit policy attachments and test access inside the inspector, with readable rules
+first and a lossless Advanced editor for custom conditions. Keep mutation guards,
+source/blast-radius context, and a return path to the same Access tab.

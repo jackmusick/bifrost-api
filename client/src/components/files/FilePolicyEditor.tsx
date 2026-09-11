@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Save, Trash2 } from "lucide-react";
+import { Code2, ListChecks, Save, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -24,9 +25,11 @@ interface FilePolicyEditorProps {
 	onSave: (policy: FilePolicy) => void | Promise<void>;
 	onDelete: (policy: FilePolicy) => void | Promise<void>;
 	onBusyChange?: (busy: boolean) => void;
+	compact?: boolean;
 }
 
 const POLICY_SEED: FilePolicies = { policies: [] };
+const ACTION_ORDER = ["read", "write", "delete", "list"] as const;
 
 /** Only `{policies: [...]}` is accepted as the document root. */
 function asFilePolicies(parsed: unknown): FilePolicies {
@@ -70,6 +73,7 @@ export function FilePolicyEditor({
 	onSave,
 	onDelete,
 	onBusyChange,
+	compact = false,
 }: FilePolicyEditorProps) {
 	// The editor mutates only the inner policy document; the location/path/org
 	// wrapper is fixed by the selection and reattached on save.
@@ -88,6 +92,7 @@ export function FilePolicyEditor({
 	);
 	const [rules, setRules] = useState<PolicyRule[]>([]);
 	const [rulesError, setRulesError] = useState<string | null>(null);
+	const [compactMode, setCompactMode] = useState<"rules" | "code">("rules");
 
 	useEffect(() => {
 		if (saveErrors || mutationError) {
@@ -135,6 +140,17 @@ export function FilePolicyEditor({
 		const current = doc?.policies ?? [];
 		setDoc({ policies: [...current, { $ref: name }] });
 		setRefKey("");
+	}
+
+	function handleRemoveRule(index: number) {
+		const current = doc?.policies ?? [];
+		setDoc({
+			...(doc ?? POLICY_SEED),
+			policies: current.filter((_, i) => i !== index),
+		});
+		setSaveErrors(null);
+		setMutationError(null);
+		setRetryAction(null);
 	}
 
 	async function handleSave() {
@@ -193,22 +209,68 @@ export function FilePolicyEditor({
 	const mutationsDisabled = parseError !== null || saving || deleting;
 	const busy = saving || deleting;
 	const effectivePath = path || value.path;
+	const editorClassName = compact
+		? "flex min-h-0 flex-1 flex-col gap-3"
+		: "flex min-h-0 flex-1 flex-col gap-3";
+	const scrollClassName = compact
+		? "space-y-3"
+		: "min-h-0 flex-1 space-y-3 overflow-y-auto pr-1";
 
 	return (
-		<section className="flex min-h-0 flex-1 flex-col gap-3">
-			<div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-				<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-					<div className="space-y-1">
-						<p className="break-words text-xs font-medium text-foreground">
-							{value.location}
-						</p>
-						<p className="break-words text-xs text-muted-foreground">
-							{effectivePath ? `/${effectivePath}` : "/(root)"}
-						</p>
+		<section className={editorClassName}>
+			<div className={scrollClassName}>
+				{!compact && (
+					<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+						<div className="space-y-1">
+							<p className="break-words text-xs font-medium text-foreground">
+								{value.location}
+							</p>
+							<p className="break-words text-xs text-muted-foreground">
+								{effectivePath
+									? `/${effectivePath}`
+									: "/(root)"}
+							</p>
+						</div>
 					</div>
-				</div>
+				)}
 
 				<div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+					{compact && (
+						<div className="grid grid-cols-2 rounded-[var(--bf-radius-surface)] border border-border/70 p-1 sm:w-auto">
+							<Button
+								type="button"
+								variant={
+									compactMode === "rules"
+										? "secondary"
+										: "ghost"
+								}
+								size="sm"
+								className="h-9 justify-center"
+								disabled={mutationsDisabled}
+								aria-pressed={compactMode === "rules"}
+								onClick={() => setCompactMode("rules")}
+							>
+								<ListChecks className="h-4 w-4" />
+								Rules
+							</Button>
+							<Button
+								type="button"
+								variant={
+									compactMode === "code"
+										? "secondary"
+										: "ghost"
+								}
+								size="sm"
+								className="h-9 justify-center"
+								disabled={mutationsDisabled}
+								aria-pressed={compactMode === "code"}
+								onClick={() => setCompactMode("code")}
+							>
+								<Code2 className="h-4 w-4" />
+								Advanced
+							</Button>
+						</div>
+					)}
 					<Select
 						value={templateKey}
 						onValueChange={handleTemplate}
@@ -216,9 +278,9 @@ export function FilePolicyEditor({
 					>
 						<SelectTrigger
 							className="h-11 w-full min-w-0 sm:w-[200px]"
-							aria-label="Insert template"
+							aria-label="Add Template"
 						>
-							<SelectValue placeholder="Insert template…" />
+							<SelectValue placeholder="Add Template…" />
 						</SelectTrigger>
 						<SelectContent>
 							{Object.keys(FILE_POLICY_TEMPLATES).map((k) => (
@@ -236,9 +298,9 @@ export function FilePolicyEditor({
 						>
 							<SelectTrigger
 								className="h-11 w-full min-w-0 sm:w-[200px]"
-								aria-label="Insert reference"
+								aria-label="Add Shared Rule"
 							>
-								<SelectValue placeholder="Insert reference…" />
+								<SelectValue placeholder="Add Shared Rule…" />
 							</SelectTrigger>
 							<SelectContent>
 								{rules.map((r) => (
@@ -254,22 +316,39 @@ export function FilePolicyEditor({
 					</div>
 				</div>
 
-				<JsonYamlEditor<FilePolicies>
-					value={doc}
-					onChange={(next) => {
-						setDoc(next);
-						setSaveErrors(null);
-						setMutationError(null);
-						setRetryAction(null);
-					}}
-					schema={{}}
-					seed={POLICY_SEED}
-					defaultFormat="yaml"
-					paths={paths}
-					validateParsed={asFilePolicies}
-					onParseErrorChange={setParseError}
-					hideParseError
-				/>
+				{!compact || compactMode === "code" ? (
+					<div className={compact ? "space-y-2" : undefined}>
+						{compact && (
+							<p className="text-xs text-muted-foreground">
+								Advanced mode preserves custom predicates and
+								unknown conditions exactly as written.
+							</p>
+						)}
+						<JsonYamlEditor<FilePolicies>
+							value={doc}
+							onChange={(next) => {
+								setDoc(next);
+								setSaveErrors(null);
+								setMutationError(null);
+								setRetryAction(null);
+							}}
+							schema={{}}
+							seed={POLICY_SEED}
+							defaultFormat="yaml"
+							paths={paths}
+							validateParsed={asFilePolicies}
+							onParseErrorChange={setParseError}
+							hideParseError
+						/>
+					</div>
+				) : (
+					<ReadablePolicyRules
+						doc={doc}
+						sharedRules={rules}
+						onRemove={handleRemoveRule}
+						disabled={mutationsDisabled}
+					/>
+				)}
 
 				{rulesError && (
 					<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -285,7 +364,7 @@ export function FilePolicyEditor({
 								void loadRules();
 							}}
 						>
-							Retry loading rules
+							Retry Loading Rules
 						</Button>
 					</div>
 				)}
@@ -335,7 +414,7 @@ export function FilePolicyEditor({
 						className="h-11 px-3"
 						onClick={handleRetry}
 					>
-						Retry {retryAction === "delete" ? "delete" : "save"}
+						Retry {retryAction === "delete" ? "Delete" : "Save"}
 					</Button>
 				</div>
 			)}
@@ -360,9 +439,187 @@ export function FilePolicyEditor({
 					disabled={mutationsDisabled}
 				>
 					<Save className="h-4 w-4" />
-					{saving ? "Saving..." : "Save policy"}
+					{saving ? "Saving..." : "Save Policy"}
 				</Button>
 			</div>
 		</section>
 	);
+}
+
+function isPolicyRef(rule: unknown): rule is { $ref: string } {
+	return (
+		rule !== null &&
+		typeof rule === "object" &&
+		typeof (rule as { $ref?: unknown }).$ref === "string"
+	);
+}
+
+function isDirectRule(rule: unknown): rule is {
+	name?: string;
+	description?: string | null;
+	actions?: unknown;
+	when?: unknown;
+} {
+	return rule !== null && typeof rule === "object" && !isPolicyRef(rule);
+}
+
+function actionsFromUnknown(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const actions = value.filter((action): action is string => {
+		return (
+			typeof action === "string" &&
+			(ACTION_ORDER as readonly string[]).includes(action)
+		);
+	});
+	return ACTION_ORDER.filter((action) => actions.includes(action));
+}
+
+function summarizePredicate(when: unknown) {
+	if (when === null || when === undefined) return "Applies to everyone.";
+	if (
+		typeof when === "object" &&
+		when !== null &&
+		"user" in when &&
+		(when as { user?: unknown }).user === "is_platform_admin"
+	) {
+		return "Applies to platform admins.";
+	}
+	if (
+		typeof when === "object" &&
+		when !== null &&
+		"call" in when &&
+		(when as { call?: unknown }).call === "has_role"
+	) {
+		const args = (when as { args?: unknown }).args;
+		const role =
+			Array.isArray(args) && typeof args[0] === "string" ? args[0] : "";
+		return role ? `Requires role ${role}.` : "Requires a role.";
+	}
+	if (
+		typeof when === "object" &&
+		when !== null &&
+		"eq" in when &&
+		JSON.stringify((when as { eq?: unknown }).eq) ===
+			JSON.stringify([{ file: "created_by" }, { user: "user_id" }])
+	) {
+		return "Applies to files uploaded by the user.";
+	}
+	return "Uses a custom predicate.";
+}
+
+function ReadablePolicyRules({
+	doc,
+	sharedRules,
+	onRemove,
+	disabled,
+}: {
+	doc: FilePolicies | null;
+	sharedRules: PolicyRule[];
+	onRemove: (index: number) => void;
+	disabled: boolean;
+}) {
+	const policies = doc?.policies ?? [];
+	const sharedByName = new Map(sharedRules.map((rule) => [rule.name, rule]));
+	if (policies.length === 0) {
+		return (
+			<div className="rounded-[var(--bf-radius-surface)] border border-dashed border-border/80 p-4 text-sm text-muted-foreground">
+				No policy rules yet. Add a template or shared rule, then save
+				the policy.
+			</div>
+		);
+	}
+	return (
+		<ul aria-label="Policy rules" className="space-y-2">
+			{policies.map((rule, index) => {
+				const ref = isPolicyRef(rule)
+					? sharedByName.get(rule.$ref)
+					: null;
+				const body = ref?.body;
+				const actions = isDirectRule(rule)
+					? actionsFromUnknown(rule.actions)
+					: actionsFromUnknown(
+							body && typeof body === "object"
+								? (body as { actions?: unknown }).actions
+								: undefined,
+						);
+				const name = isPolicyRef(rule)
+					? rule.$ref
+					: typeof rule.name === "string" && rule.name
+						? rule.name
+						: `Rule ${index + 1}`;
+				const displayName = readableRuleName(name);
+				const description = isPolicyRef(rule)
+					? (ref?.description ?? "Shared rule")
+					: isDirectRule(rule)
+						? rule.description
+						: null;
+				const when = isPolicyRef(rule)
+					? body && typeof body === "object"
+						? (body as { when?: unknown }).when
+						: undefined
+					: isDirectRule(rule)
+						? rule.when
+						: undefined;
+				const unresolvedRef = isPolicyRef(rule) && !ref;
+				return (
+					<li
+						key={`${name}:${index}`}
+						className="space-y-2 rounded-[var(--bf-radius-surface)] border border-border/70 p-3"
+					>
+						<div className="flex flex-wrap items-center gap-2">
+							<p className="min-w-0 flex-1 break-words text-sm font-medium">
+								{displayName}
+							</p>
+							{isPolicyRef(rule) && (
+								<Badge variant="outline">Shared</Badge>
+							)}
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-8 px-2 text-xs"
+								disabled={disabled}
+								onClick={() => onRemove(index)}
+							>
+								<Trash2 className="h-4 w-4" />
+								Remove
+							</Button>
+						</div>
+						{description && (
+							<p className="break-words text-xs text-muted-foreground">
+								{description}
+							</p>
+						)}
+						<div className="flex flex-wrap gap-1.5">
+							{unresolvedRef ? (
+								<Badge variant="outline">shared rule</Badge>
+							) : actions.length > 0 ? (
+								actions.map((action) => (
+									<Badge key={action} variant="secondary">
+										{action}
+									</Badge>
+								))
+							) : (
+								<Badge variant="outline">custom actions</Badge>
+							)}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							{unresolvedRef
+								? "Shared rule details are unavailable."
+								: summarizePredicate(when)}
+						</p>
+					</li>
+				);
+			})}
+		</ul>
+	);
+}
+
+function readableRuleName(name: string) {
+	if (name === "admin_bypass") return "Administrator Access";
+	return name
+		.split(/[_-]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
 }

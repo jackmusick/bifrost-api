@@ -6,16 +6,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/services/filePolicies", () => ({
 	effectiveAccess: vi.fn(),
 }));
+vi.mock("@/services/policyRules", () => ({
+	listPolicyRules: vi.fn(),
+}));
 vi.mock("@/components/solutions/SolutionManagedBadge", () => ({
 	SolutionManagedBadge: () => (
 		<span data-testid="solution-managed-badge">Managed</span>
 	),
 }));
 import { effectiveAccess } from "@/services/filePolicies";
+import { listPolicyRules } from "@/services/policyRules";
 import { EffectiveAccessPanel } from "./EffectiveAccessPanel";
 
 describe("EffectiveAccessPanel", () => {
-	beforeEach(() => vi.mocked(effectiveAccess).mockReset());
+	beforeEach(() => {
+		vi.mocked(effectiveAccess).mockReset();
+		vi.mocked(listPolicyRules).mockReset();
+		vi.mocked(listPolicyRules).mockResolvedValue([]);
+	});
 
 	function renderPanel(props: ComponentProps<typeof EffectiveAccessPanel>) {
 		const queryClient = new QueryClient({
@@ -35,14 +43,31 @@ describe("EffectiveAccessPanel", () => {
 		};
 	}
 
-	it("renders the resolved cascade with the longest-prefix one winning", async () => {
+	it("renders the governing policy and inherited fallbacks in readable terms", async () => {
+		vi.mocked(listPolicyRules).mockResolvedValue([
+			{
+				id: "rule-1",
+				name: "admin_bypass",
+				domain: "file",
+				description:
+					"Platform admins bypass all file checks. Built-in, read-only.",
+				body: {
+					actions: ["read", "write", "delete", "list"],
+					when: { user: "is_platform_admin" },
+				},
+				is_builtin: true,
+				organization_id: null,
+				created_at: "2026-01-01T00:00:00Z",
+				updated_at: "2026-01-01T00:00:00Z",
+			},
+		]);
 		vi.mocked(effectiveAccess).mockResolvedValue([
 			{
 				id: "2",
 				location: "gallery",
 				path: "team/",
 				policies: {
-					policies: [{ name: "team-rule", actions: ["read"] }],
+					policies: [{ $ref: "admin_bypass" }],
 				},
 			},
 			{
@@ -64,13 +89,17 @@ describe("EffectiveAccessPanel", () => {
 			onManagePolicy: vi.fn(),
 		});
 		await waitFor(() =>
-			expect(screen.getByText("team-rule")).toBeInTheDocument(),
+			expect(screen.getByText("Administrator Access")).toBeInTheDocument(),
 		);
-		expect(screen.getByText("root-rule")).toBeInTheDocument();
-		expect(screen.getByText("Winning Policy")).toBeInTheDocument();
+		expect(screen.getByText("Root Rule")).toBeInTheDocument();
+		expect(screen.getByText("Governing Policy")).toBeInTheDocument();
+		expect(screen.getByText("From share root")).toBeInTheDocument();
+		expect(screen.getByText("Named rule")).toBeInTheDocument();
+		expect(await screen.findByText("Write")).toBeInTheDocument();
 		expect(
-			screen.getByText("Inherited From Share Root"),
+			screen.getByText(/Only this nearest matching policy is used/),
 		).toBeInTheDocument();
+		expect(vi.mocked(listPolicyRules)).toHaveBeenCalledWith("file");
 	});
 
 	it("refreshes when the target identity changes", async () => {
@@ -103,7 +132,7 @@ describe("EffectiveAccessPanel", () => {
 			onManagePolicy: vi.fn(),
 		});
 		await waitFor(() =>
-			expect(screen.getByText("alpha-rule")).toBeInTheDocument(),
+			expect(screen.getByText("Alpha Rule")).toBeInTheDocument(),
 		);
 		rerender(
 			<QueryClientProvider client={queryClient}>
@@ -117,9 +146,9 @@ describe("EffectiveAccessPanel", () => {
 			</QueryClientProvider>,
 		);
 		await waitFor(() =>
-			expect(screen.getByText("beta-rule")).toBeInTheDocument(),
+			expect(screen.getByText("Beta Rule")).toBeInTheDocument(),
 		);
-		expect(screen.queryByText("alpha-rule")).not.toBeInTheDocument();
+		expect(screen.queryByText("Alpha Rule")).not.toBeInTheDocument();
 	});
 
 	it("retries a failed access lookup", async () => {
@@ -149,8 +178,35 @@ describe("EffectiveAccessPanel", () => {
 		);
 		fireEvent.click(screen.getByRole("button", { name: /retry access/i }));
 		await waitFor(() =>
-			expect(screen.getByText("recovered-rule")).toBeInTheDocument(),
+			expect(screen.getByText("Recovered Rule")).toBeInTheDocument(),
 		);
+	});
+
+	it("opens the governing policy source when a callback is provided", async () => {
+		const policy = {
+			id: "4",
+			location: "gallery",
+			path: "team/",
+			policies: {
+				policies: [{ name: "team-rule", actions: ["read" as const] }],
+			},
+		};
+		vi.mocked(effectiveAccess).mockResolvedValue([policy]);
+		const onOpenPolicy = vi.fn();
+		renderPanel({
+			location: "gallery",
+			scope: null,
+			path: "team/pic.png",
+			onOpenTest: vi.fn(),
+			onManagePolicy: vi.fn(),
+			onOpenPolicy,
+		});
+
+		fireEvent.click(
+			await screen.findByRole("button", { name: /open source/i }),
+		);
+
+		expect(onOpenPolicy).toHaveBeenCalledWith(policy);
 	});
 
 	it("fires onOpenTest when Test access is clicked", async () => {

@@ -40,10 +40,10 @@ import {
 } from "./DeleteConfirmation";
 import { NewShareDialog } from "./NewShareDialog";
 import { PoliciesView } from "./PoliciesView";
-import { PolicyEditorModal } from "./PolicyEditorModal";
+import { PolicyEditorPanel } from "./PolicyEditorModal";
 import { SharesOverview } from "./SharesOverview";
 import { ShareTree, type ShareTreeAction } from "./ShareTree";
-import { TestAccessModal } from "./TestAccessModal";
+import { TestAccessPanel } from "./TestAccessModal";
 import { useFileUpload } from "./useFileUpload";
 
 const READ_ONLY_LOCATIONS = new Set(["uploads"]);
@@ -83,6 +83,7 @@ export function FilesExplorer({
 	});
 	const isWide = useMediaQuery("(min-width: 1024px)");
 	const isThreePane = useMediaQuery("(min-width: 1280px)");
+	const isWideToolWorkspace = useMediaQuery("(min-width: 1440px)");
 
 	// When `install` is set, scope and location are pinned — not user-controlled.
 	// Otherwise selectorScope is what OrganizationSelect speaks: null = Global.
@@ -99,13 +100,17 @@ export function FilesExplorer({
 
 	const [treeOpen, setTreeOpen] = useState(false);
 	const [detailOpen, setDetailOpen] = useState(false);
+	const [detailTab, setDetailTab] = useState("preview");
 	const [newShareOpen, setNewShareOpen] = useState(false);
 	const [testOpen, setTestOpen] = useState(false);
 	const [policyOpen, setPolicyOpen] = useState(false);
-	// The (location, path) a modal targets — may be a folder prefix or a file.
+	const [inspectorBusy, setInspectorBusy] = useState(false);
+	const returnToDetails = useRef(false);
+	// Target of the embedded policy editor or access check.
 	const [modalTarget, setModalTarget] = useState<{
 		location: string;
 		path: string;
+		exactPath?: string;
 	}>({ location: "", path: "" });
 	// Bump to force ShareTree/FolderListing to refetch after a mutation.
 	const [refreshKey, setRefreshKey] = useState(0);
@@ -142,6 +147,9 @@ export function FilesExplorer({
 	}
 
 	function closeDetails() {
+		if (inspectorBusy) return;
+		setTestOpen(false);
+		setPolicyOpen(false);
 		// Remove inert before restoring focus to the directory on small screens.
 		flushSync(() => setDetailOpen(false));
 		const opener = detailTriggerRef.current;
@@ -151,9 +159,13 @@ export function FilesExplorer({
 	}
 
 	function resetTo(nextLocation: string | null, nextPrefix: string) {
+		if (inspectorBusy) return;
+		setTestOpen(false);
+		setPolicyOpen(false);
 		setLocation(nextLocation);
 		setPrefix(nextPrefix);
 		setSelectedFile(null);
+		setDetailTab("access");
 		setDetailOpen(false);
 	}
 
@@ -165,7 +177,6 @@ export function FilesExplorer({
 	function handleSelect(nextLocation: string, nextPrefix: string) {
 		resetTo(nextLocation, nextPrefix);
 		setTreeOpen(false);
-		setView("browse");
 	}
 
 	function handleBreadcrumb(depth: number) {
@@ -187,13 +198,23 @@ export function FilesExplorer({
 	}
 
 	function openTest(loc: string, path: string) {
+		returnToDetails.current = detailOpen && !testOpen && !policyOpen;
+		setPolicyOpen(false);
+		openDetails();
 		setModalTarget({ location: loc, path });
 		setTestOpen(true);
 	}
 
-	function openPolicy(loc: string, path: string) {
+	function openPolicy(loc: string, path: string, exact = false) {
 		if (solutionReadOnly) return;
-		setModalTarget({ location: loc, path });
+		returnToDetails.current = detailOpen && !testOpen && !policyOpen;
+		setTestOpen(false);
+		openDetails();
+		setModalTarget({
+			location: loc,
+			path,
+			exactPath: exact ? path : undefined,
+		});
 		setPolicyOpen(true);
 	}
 
@@ -214,11 +235,18 @@ export function FilesExplorer({
 			openTest(loc, treePrefix);
 		} else if (action === "newPolicy") {
 			if (solutionReadOnly) return;
-			openPolicy(loc, treePrefix);
+			openPolicy(
+				loc,
+				treePrefix ? `${treePrefix.replace(/\/+$/, "")}/` : "",
+				true,
+			);
 		} else if (action === "upload") {
 			if (solutionReadOnly || READ_ONLY_LOCATIONS.has(loc)) return;
 			// Commit the destination before invoking the browser file chooser.
-			flushSync(() => handleSelect(loc, treePrefix));
+			flushSync(() => {
+				setView("browse");
+				handleSelect(loc, treePrefix);
+			});
 			uploadInputRef.current?.click();
 		}
 	}
@@ -228,6 +256,7 @@ export function FilesExplorer({
 		if (readOnly && (action === "policy" || action === "delete")) return;
 		if (action === "preview") {
 			setSelectedFile(path);
+			setDetailTab("preview");
 			openDetails();
 		} else if (action === "test") {
 			openTest(location, path);
@@ -240,6 +269,7 @@ export function FilesExplorer({
 
 	function selectFile(path: string) {
 		setSelectedFile(path);
+		setDetailTab("preview");
 		openDetails();
 	}
 
@@ -272,6 +302,11 @@ export function FilesExplorer({
 			managedBySolution={solutionReadOnly}
 			solutionId={install}
 			onOpenTest={() => openTest(location ?? "", selectedFile ?? prefix)}
+			onOpenPolicy={
+				readOnly
+					? undefined
+					: (policy) => openPolicy(policy.location, policy.path, true)
+			}
 			onManagePolicy={() =>
 				openPolicy(location ?? "", selectedFile ?? prefix)
 			}
@@ -280,7 +315,8 @@ export function FilesExplorer({
 	const detail = (
 		<Tabs
 			key={selectedFile ?? "access"}
-			defaultValue={selectedFile ? "preview" : "access"}
+			value={detailTab}
+			onValueChange={setDetailTab}
 			className="flex min-h-0 flex-1 flex-col gap-0"
 			data-testid="detail-pane"
 		>
@@ -313,7 +349,54 @@ export function FilesExplorer({
 		</Tabs>
 	);
 	const solutionTitle = installName ?? "Solution";
-	const showTree = isWide && (!detailOpen || isThreePane);
+	const showTree =
+		isWide &&
+		(!detailOpen ||
+			(isThreePane &&
+				((!policyOpen && !testOpen) || isWideToolWorkspace)));
+	const toolOpen = testOpen || policyOpen;
+	function closeTool() {
+		setInspectorBusy(false);
+		setTestOpen(false);
+		setPolicyOpen(false);
+		if (!returnToDetails.current) {
+			setDetailOpen(false);
+			requestAnimationFrame(() =>
+				detailTriggerRef.current?.focus({ preventScroll: true }),
+			);
+		}
+	}
+	const inspectorTitle = toolOpen
+		? (modalTarget.path.split("/").filter(Boolean).at(-1) ??
+			modalTarget.location)
+		: (selectedFile?.split("/").pop() ??
+			segments.at(-1) ??
+			location ??
+			"Details");
+	const inspectorPath = toolOpen
+		? `${modalTarget.location}/${modalTarget.path}`
+		: `${location ?? ""}/${selectedFile ?? prefix}`;
+	const inspectorContent = policyOpen ? (
+		<PolicyEditorPanel
+			location={modalTarget.location}
+			scope={scope}
+			path={modalTarget.path}
+			exactPath={modalTarget.exactPath}
+			onOpenChange={closeTool}
+			onSaved={refreshFiles}
+			onBusyChange={setInspectorBusy}
+		/>
+	) : testOpen ? (
+		<TestAccessPanel
+			scopeLabel={scopeLabel}
+			location={modalTarget.location}
+			scope={scope}
+			path={modalTarget.path}
+			onOpenChange={closeTool}
+		/>
+	) : (
+		detail
+	);
 
 	return (
 		<div
@@ -323,9 +406,12 @@ export function FilesExplorer({
 			aria-label="Files explorer"
 			className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card outline-none"
 		>
-			<header className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-muted/20 px-3 py-2 sm:px-4">
+			<header
+				inert={inspectorBusy || undefined}
+				className="flex shrink-0 flex-wrap items-center border-b bg-muted/20"
+			>
 				{install && !embedded && (
-					<div className="flex min-w-0 flex-1 items-center gap-2">
+					<div className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2">
 						<Button
 							asChild
 							variant="ghost"
@@ -348,7 +434,7 @@ export function FilesExplorer({
 					</div>
 				)}
 				{isPlatformAdmin && !install && (
-					<div className="min-w-0 w-full sm:w-56 sm:shrink-0">
+					<div className="min-w-0 w-full px-4 py-2 sm:w-[17rem] sm:shrink-0 sm:self-stretch sm:border-r">
 						<OrganizationSelect
 							aria-label="File scope"
 							value={selectorScope}
@@ -359,47 +445,65 @@ export function FilesExplorer({
 					</div>
 				)}
 				{!install && (
-					<Tabs
-						value={view}
-						onValueChange={(value) => {
-							setView(value as "browse" | "policies");
-							setDetailOpen(false);
-						}}
-						className="min-w-0"
-					>
-						<TabsList variant="line" aria-label="Files workspace">
-							<TabsTrigger value="browse" className="min-h-11">
-								<FolderOpen className="size-4" />
-								Files
-							</TabsTrigger>
-							<TabsTrigger value="policies" className="min-h-11">
-								<ShieldCheck className="size-4" />
-								Access Policies
-							</TabsTrigger>
-						</TabsList>
-					</Tabs>
-				)}
-				{!install && (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						aria-label="New Share"
-						className="ml-auto min-h-11 w-11 shrink-0 px-0 sm:min-h-9 sm:w-auto sm:px-3"
-						onClick={() => setNewShareOpen(true)}
-					>
-						<Plus className="size-4" />
-						<span className="hidden sm:inline">New Share</span>
-					</Button>
+					<div className="flex min-w-0 flex-1 basis-64 items-center gap-3 px-4 py-2">
+						{!install && (
+							<Tabs
+								value={view}
+								onValueChange={(value) => {
+									setView(value as "browse" | "policies");
+									setDetailOpen(false);
+									setTestOpen(false);
+									setPolicyOpen(false);
+								}}
+								className="min-w-0"
+							>
+								<TabsList
+									variant="line"
+									aria-label="Files workspace"
+								>
+									<TabsTrigger
+										value="browse"
+										className="min-h-11"
+									>
+										<FolderOpen className="size-4" />
+										Files
+									</TabsTrigger>
+									<TabsTrigger
+										value="policies"
+										className="min-h-11"
+									>
+										<ShieldCheck className="size-4" />
+										Access Policies
+									</TabsTrigger>
+								</TabsList>
+							</Tabs>
+						)}
+						{!install && (
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								aria-label="New Share"
+								className="ml-auto min-h-11 w-11 shrink-0 px-0 sm:min-h-9 sm:w-auto sm:px-3"
+								onClick={() => setNewShareOpen(true)}
+							>
+								<Plus className="size-4" />
+								<span className="hidden sm:inline">
+									New Share
+								</span>
+							</Button>
+						)}
+					</div>
 				)}
 			</header>
 			<div className="relative flex min-h-0 flex-1 overflow-hidden">
 				{showTree && (
 					<aside
 						aria-label="Share navigation"
-						className="flex w-56 shrink-0 flex-col border-r bg-muted/10"
+						inert={inspectorBusy || undefined}
+						className="flex w-[17rem] shrink-0 flex-col border-r bg-muted/10"
 					>
-						<div className="flex min-h-14 items-center gap-2 border-b px-4 text-sm font-semibold">
+						<div className="flex h-14 shrink-0 items-center gap-2 border-b px-4 text-sm font-semibold">
 							<HardDrive className="size-4 text-primary" />
 							Shares
 						</div>
@@ -408,11 +512,15 @@ export function FilesExplorer({
 				)}
 				<div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 					<div
-						inert={!isWide && detailOpen ? true : undefined}
+						inert={
+							inspectorBusy || (!isWide && detailOpen)
+								? true
+								: undefined
+						}
 						className="flex min-h-0 flex-1 flex-col"
 					>
-						{view === "browse" && (
-							<div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-4">
+						{
+							<div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-4 lg:h-14 lg:flex-nowrap">
 								{!showTree && (
 									<Sheet
 										open={treeOpen}
@@ -451,18 +559,22 @@ export function FilesExplorer({
 										onNavigate={handleBreadcrumb}
 									/>
 								</div>
-								{view === "browse" && location !== null && (
+								{location !== null && (
 									<Button
+										aria-label="Folder Details"
 										variant="ghost"
 										size="sm"
 										className="min-h-11 sm:min-h-9"
 										onClick={() => {
 											setSelectedFile(null);
+											setDetailTab("access");
 											openDetails();
 										}}
 									>
 										<Info className="size-4" />
-										Folder Details
+										<span className="hidden xl:inline">
+											Folder Details
+										</span>
 									</Button>
 								)}
 								{canUpload && (
@@ -496,7 +608,7 @@ export function FilesExplorer({
 									</>
 								)}
 							</div>
-						)}
+						}
 						{uploadProgress && (
 							<p
 								role="status"
@@ -525,8 +637,14 @@ export function FilesExplorer({
 							<PoliciesView
 								scope={scope}
 								refreshKey={refreshKey}
+								location={location}
+								prefix={prefix}
 								onEdit={(policy) =>
-									openPolicy(policy.location, policy.path)
+									openPolicy(
+										policy.location,
+										policy.path,
+										true,
+									)
 								}
 								onDelete={handleDeletePolicy}
 							/>
@@ -566,17 +684,14 @@ export function FilesExplorer({
 								<FilesInspector
 									key="file-inspector"
 									inline={false}
-									title={
-										selectedFile?.split("/").pop() ??
-										segments.at(-1) ??
-										location ??
-										"Details"
-									}
-									path={`${location ?? ""}/${selectedFile ?? prefix}`}
+									title={inspectorTitle}
+									path={inspectorPath}
 									isFile={Boolean(selectedFile)}
 									onClose={closeDetails}
+									busy={inspectorBusy}
+									width={toolOpen && isThreePane ? 480 : 384}
 								>
-									{detail}
+									{inspectorContent}
 								</FilesInspector>
 							)}
 						</AnimatePresence>
@@ -588,17 +703,14 @@ export function FilesExplorer({
 							<FilesInspector
 								key="file-inspector"
 								inline
-								title={
-									selectedFile?.split("/").pop() ??
-									segments.at(-1) ??
-									location ??
-									"Details"
-								}
-								path={`${location ?? ""}/${selectedFile ?? prefix}`}
+								title={inspectorTitle}
+								path={inspectorPath}
 								isFile={Boolean(selectedFile)}
 								onClose={closeDetails}
+								busy={inspectorBusy}
+								width={toolOpen && isThreePane ? 480 : 384}
 							>
-								{detail}
+								{inspectorContent}
 							</FilesInspector>
 						)}
 					</AnimatePresence>
@@ -638,23 +750,9 @@ export function FilesExplorer({
 				scope={scope}
 				onCreated={(loc) => {
 					refreshFiles();
+					setView("browse");
 					handleSelect(loc, "");
 				}}
-			/>
-			<TestAccessModal
-				open={testOpen}
-				onOpenChange={setTestOpen}
-				location={modalTarget.location}
-				scope={scope}
-				path={modalTarget.path}
-			/>
-			<PolicyEditorModal
-				open={policyOpen}
-				onOpenChange={setPolicyOpen}
-				location={modalTarget.location}
-				scope={scope}
-				path={modalTarget.path}
-				onSaved={refreshFiles}
 			/>
 		</div>
 	);

@@ -107,3 +107,50 @@ uploads to the selected share; the inspector remains inside the workspace at
 1440/1100/390, and closing it on mobile returns focus to the file. Final client
 `npm run tsc` passed; `npm run lint` passed with only the existing seed-review-pack
 console warning noted above.
+
+## Access workflow and alignment follow-up (2026-09-11)
+
+The scope control and share tree now share a 17rem column; Shares and breadcrumbs
+share a 56px desktop toolbar height. At wide desktop widths the tree remains
+visible with the expanded access tools. Smaller workspaces prioritize inspection.
+
+Access Policies is a directory of policy attachments, not a second shares list.
+Selecting a folder preserves the active tab and filters attachments to that folder
+and descendants, with path-boundary matching. Explanatory empty states point to
+Folder Details for inherited access. Explicit Upload still switches to Files and
+opens the chooser in the selected destination.
+
+Effective Access explains the nearest governing policy, resolves referenced rule
+names/descriptions/actions, and opens the source policy. User-specific decisions
+remain in Test Access; a policy summary does not imply that every user is allowed.
+The embedded test panel reports read/write/delete/list outcomes and uses the
+organization display name rather than a scope UUID.
+
+Manage Policy and Test Access now run inside the attached inspector, with Back to
+Access preserving the previous tab. Policy editing starts with a readable rule list:
+add shared rules/templates, remove rules, or switch to Advanced for full YAML/JSON.
+Unknown/custom conditions remain in the document. Unresolved shared rules are not
+presented as allowing everyone. Source context explains when changes affect an
+inherited policy and other paths. Exact source/list selections edit that exact
+attachment. Pending policy mutations block inspector dismissal and navigation.
+
+Compatibility wrappers remain for existing dialog consumers. Advanced Shared Rules
+still uses the shared rule-definition manager and its existing internal dialogs;
+that is distinct from editing this file/folder's policy attachment.
+
+Verification:
+- All Files component tests: `./test.sh client unit -- src/components/files` — 109 tests across 16 files passed.
+- Final affected components after mobile/copy/mode-guard corrections: `./test.sh client unit -- TestAccessModal.test.tsx FilePolicyEditor.test.tsx FilesExplorer.test.tsx` — 36 passed.
+- Browser review on debug data checked aligned headers, persistent policy navigation, resolved shared rules, four access decisions, embedded editing, and mobile containment. A narrow header discovered in review was corrected by separating descriptive copy from fixed-width actions.
+- `npm run tsc` and `npm run lint` passed; lint retains the pre-existing console warning in `e2e/support/seed-review-pack.ts`.
+- Static design detector reported no findings in the changed Files components.
+- Live-service E2E results recorded below. Full platform/backend suites and the pre-PR gate were not run for this scoped UI iteration.
+
+Final E2E: `./test.sh client e2e e2e/files-explorer.admin.spec.ts e2e/files-management-acceptance.admin.spec.ts e2e/solution-files-link.admin.spec.ts`
+passed all 5 tests including setup. The Files journey now checks in-workspace
+Test Access decisions, returning to the Access tab, persistent policy mode while
+navigating, and opening the embedded policy editor. Follow-up copy/mobile layout
+checks ran against the live debug build, with targeted component tests above.
+Folder New Policy explicitly targets the selected folder with a trailing path
+boundary, not its parent; `./test.sh client unit -- FilesExplorer.test.tsx` covers
+that target selection.

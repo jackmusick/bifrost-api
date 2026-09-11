@@ -49,3 +49,26 @@ it("uses the same contained controls in the narrow workspace", async () => {
 		screen.getByRole("region", { name: "File details" }),
 	).toHaveTextContent("Access information");
 });
+
+it("keeps pending policy changes from being dismissed", async () => {
+	const user = userEvent.setup();
+	const onClose = vi.fn();
+	render(
+		<FilesInspector
+			title="Policy"
+			path="gallery/"
+			isFile={false}
+			inline
+			busy
+			onClose={onClose}
+		>
+			<button>Save in progress</button>
+		</FilesInspector>,
+	);
+	expect(
+		screen.getByRole("button", { name: "Close file details" }),
+	).toBeDisabled();
+	await user.click(screen.getByRole("button", { name: "Save in progress" }));
+	await user.keyboard("{Escape}");
+	expect(onClose).not.toHaveBeenCalled();
+});

@@ -129,10 +129,48 @@ test.describe("Files Explorer (desktop)", () => {
 			.first()
 			.click();
 		await expect(
-			page
-				.getByRole("dialog")
-				.getByText(/test access/i)
-				.first(),
+			inspector.getByRole("heading", {
+				name: "Test Access",
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+		await inspector
+			.getByRole("combobox", { name: "User", exact: true })
+			.click();
+		await page.getByRole("option").first().click();
+		await expect(inspector.getByText(/^(Allowed|Denied)$/)).toHaveCount(4);
+		await inspector
+			.getByRole("button", { name: "Back to Access", exact: true })
+			.click();
+		await expect(
+			inspector.getByRole("tab", { name: "Access", exact: true }),
+		).toHaveAttribute("aria-selected", "true");
+		await inspector
+			.getByRole("button", { name: "Close file details" })
+			.click();
+		await page
+			.getByRole("tab", { name: "Access Policies", exact: true })
+			.click();
+		await page.getByText(SHARE, { exact: true }).first().click();
+		await expect(
+			page.getByRole("tab", { name: "Access Policies", exact: true }),
+		).toHaveAttribute("aria-selected", "true");
+		await page
+			.getByRole("button", {
+				name: `Manage policy for ${SHARE}/`,
+				exact: true,
+			})
+			.click();
+		await expect(
+			inspector.getByRole("heading", {
+				name: "Manage Policy",
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+		await expect(
+			inspector.getByRole("button", { name: /save policy/i }),
 		).toBeVisible();
 	});
 });
