@@ -57,6 +57,10 @@ export function EntityManagement() {
 	const [connectedEntityKeys, setConnectedEntityKeys] = useState<string[]>(
 		[],
 	);
+	const [connectedGraph, setConnectedGraph] = useState<{
+		keys: string[];
+		edges: { source: string; target: string }[];
+	}>({ keys: [], edges: [] });
 	const [isUpdating, setIsUpdating] = useState(false);
 	const [updatingMessage, setUpdatingMessage] = useState("Updating...");
 
@@ -302,6 +306,21 @@ export function EntityManagement() {
 				result = result.filter(
 					(e) => e.usedByCount !== null && e.usedByCount > 0,
 				);
+			} else if (usageFilter === "related_mismatch") {
+				const byKey = new Map(
+					allEntities.map((entity) => [entity.key, entity]),
+				);
+				const mismatchedKeys = new Set<string>();
+				for (const edge of connectedGraph.edges) {
+					const source = byKey.get(edge.source);
+					const target = byKey.get(edge.target);
+					if (!source || !target) continue;
+					if (hasScopeOrAccessMismatch(source, target)) {
+						mismatchedKeys.add(source.key);
+						mismatchedKeys.add(target.key);
+					}
+				}
+				result = result.filter((e) => mismatchedKeys.has(e.key));
 			}
 		}
 
@@ -333,6 +352,7 @@ export function EntityManagement() {
 		orgFilter,
 		accessFilter,
 		usageFilter,
+		connectedGraph.edges,
 		searchTerm,
 		sortBy,
 		sortAsc,
@@ -423,6 +443,24 @@ export function EntityManagement() {
 				: entityKeys,
 		);
 	}, []);
+	const handleConnectedGraphChange = useCallback(
+		(graph: { keys: string[]; edges: { source: string; target: string }[] }) => {
+			setConnectedGraph((previous) => {
+				const sameKeys =
+					previous.keys.length === graph.keys.length &&
+					previous.keys.every((key, index) => key === graph.keys[index]);
+				const sameEdges =
+					previous.edges.length === graph.edges.length &&
+					previous.edges.every(
+						(edge, index) =>
+							edge.source === graph.edges[index]?.source &&
+							edge.target === graph.edges[index]?.target,
+					);
+				return sameKeys && sameEdges ? previous : graph;
+			});
+		},
+		[],
+	);
 
 	const handleClearFilters = () => {
 		setTypeFilter("all");
@@ -757,12 +795,28 @@ export function EntityManagement() {
 	);
 
 	const handleRoleDrop = useCallback(
-		async (entityIds: string[], roleIdOrAccessLevel: string) => {
+		async (
+			entityIds: string[],
+			change: {
+				accessLevel?: string;
+				addRoleId?: string;
+				clearRoles?: boolean;
+			},
+		) => {
 			const failedNames: string[] = [];
+			const accessLevel = change.accessLevel;
+			if (
+				accessLevel !== undefined &&
+				accessLevel !== "authenticated" &&
+				accessLevel !== "everyone" &&
+				accessLevel !== "role_based"
+			) {
+				throw new Error("Unsupported access level");
+			}
+			const addRoleId = change.addRoleId;
+			const clearRoles = change.clearRoles === true;
 			setUpdatingMessage("Applying changes...");
 			setIsUpdating(true);
-			const isAccessLevel = roleIdOrAccessLevel === "authenticated";
-			const isClearRoles = roleIdOrAccessLevel === "clear-roles";
 
 			try {
 				for (const entityId of entityIds) {
@@ -773,85 +827,91 @@ export function EntityManagement() {
 					}
 
 					try {
-						if (!isAccessLevel && !isClearRoles)
+						if (addRoleId && !entity.roleIds.includes(addRoleId)) {
 							await assignEntityRole(
 								entity.entityType,
 								entity.id,
-								roleIdOrAccessLevel,
+								addRoleId,
 							);
+						}
 						if (entity.entityType === "workflow") {
-							if (isClearRoles) {
+							if (clearRoles) {
 								await updateWorkflow.mutateAsync(entity.id, {
-									access_level: "role_based",
-									clear_roles: true,
+									access_level: accessLevel ?? "role_based",
+									role_ids: [],
 								});
-							} else {
+							} else if (accessLevel || addRoleId) {
 								await updateWorkflow.mutateAsync(entity.id, {
-									access_level: isAccessLevel
-										? "authenticated"
-										: "role_based",
+									access_level:
+										accessLevel ??
+										(addRoleId ? "role_based" : undefined),
 								});
 							}
 						} else if (entity.entityType === "form") {
-							if (isClearRoles) {
+							if (clearRoles) {
 								await updateForm.mutateAsync({
 									params: { path: { form_id: entity.id } },
 									body: {
-										access_level: "role_based",
-										clear_roles: true,
+										access_level: accessLevel ?? "role_based",
+										role_ids: [],
+										clear_roles: false,
 									},
 								});
-							} else {
+							} else if (accessLevel || addRoleId) {
 								await updateForm.mutateAsync({
 									params: { path: { form_id: entity.id } },
 									body: {
-										access_level: isAccessLevel
-											? "authenticated"
-											: "role_based",
+										access_level:
+											accessLevel ??
+											(addRoleId
+												? "role_based"
+												: undefined),
 										clear_roles: false,
 									},
 								});
 							}
 						} else if (entity.entityType === "agent") {
-							if (isClearRoles) {
+							if (clearRoles) {
 								await updateAgent.mutateAsync({
 									params: { path: { agent_id: entity.id } },
 									body: {
-										access_level: "role_based",
-										clear_roles: true,
+										access_level: accessLevel ?? "role_based",
+										role_ids: [],
+										clear_roles: false,
 									},
 								});
-							} else {
+							} else if (accessLevel || addRoleId) {
 								await updateAgent.mutateAsync({
 									params: { path: { agent_id: entity.id } },
 									body: {
-										access_level: isAccessLevel
-											? "authenticated"
-											: "role_based",
+										access_level:
+											accessLevel ??
+											(addRoleId
+												? "role_based"
+												: undefined),
 										clear_roles: false,
 									},
 								});
 							}
 						} else if (entity.entityType === "app") {
 							const app = entity.original as ApplicationPublic;
-							if (isClearRoles) {
+							if (clearRoles) {
 								await updateApplication.mutateAsync({
 									params: { path: { app_id: app.id } },
 									body: {
-										access_level: "role_based",
+										access_level: accessLevel ?? "role_based",
 										role_ids: [],
 									},
 								});
-							} else {
+							} else if (accessLevel || addRoleId) {
 								await updateApplication.mutateAsync({
 									params: { path: { app_id: app.id } },
 									body: {
-										access_level: isAccessLevel
-											? "authenticated"
-											: "role_based",
-										role_ids: isAccessLevel
-											? []
-											: undefined,
+										access_level:
+											accessLevel ??
+											(addRoleId
+												? "role_based"
+												: undefined),
 									},
 								});
 							}
@@ -973,6 +1033,9 @@ export function EntityManagement() {
 								onVisibleKeysChange={handleVisibleKeysChange}
 								onConnectedKeysChange={
 									handleConnectedKeysChange
+								}
+								onConnectedGraphChange={
+									handleConnectedGraphChange
 								}
 								onDelete={handleDeleteEntity}
 							/>
@@ -1195,7 +1258,14 @@ function BulkEditInspector({
 		ids: string[],
 		organizationId: string | null,
 	) => Promise<void>;
-	onAccess: (ids: string[], roleOrAccessLevel: string) => Promise<void>;
+	onAccess: (
+		ids: string[],
+		change: {
+			accessLevel?: string;
+			addRoleId?: string;
+			clearRoles?: boolean;
+		},
+	) => Promise<void>;
 	onClose: () => void;
 }) {
 	return (
@@ -1235,4 +1305,20 @@ function BulkEditInspector({
 			</div>
 		</>
 	);
+}
+
+function hasScopeOrAccessMismatch(
+	entity: EntityWithScope,
+	related: EntityWithScope,
+) {
+	return (
+		entity.organizationId !== related.organizationId ||
+		entity.accessLevel !== related.accessLevel ||
+		normalizedRoleSignature(entity.roleIds) !==
+			normalizedRoleSignature(related.roleIds)
+	);
+}
+
+function normalizedRoleSignature(roleIds: string[]) {
+	return [...roleIds].sort().join("\u0000");
 }

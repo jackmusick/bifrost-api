@@ -61,7 +61,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Combobox } from "@/components/ui/combobox";
+import { AccessLevelSelect } from "@/components/access/AccessLevelSelect";
 import { term, useTerminology } from "@/lib/terminology";
 import { useRoles } from "@/hooks/useRoles";
 import { useAuth } from "@/contexts/AuthContext";
@@ -87,24 +87,6 @@ import { useNavigate } from "react-router-dom";
 import type { components } from "@/lib/v1";
 
 type RolePublic = components["schemas"]["RolePublic"];
-
-const ACCESS_LEVELS = [
-	{
-		value: "role_based",
-		label: "Role-Based",
-		description: "Only users with assigned roles can access",
-	},
-	{
-		value: "authenticated",
-		label: "Everyone except external users",
-		description: "Any signed-in user except external users",
-	},
-	{
-		value: "everyone",
-		label: "Everyone",
-		description: "Any signed-in user, including external users",
-	},
-];
 
 const formSchema = z.object({
 	name: z
@@ -485,11 +467,9 @@ export function AppInfoDialog({
 									<FormItem>
 										<FormLabel>Access Level</FormLabel>
 										<FormControl>
-											<Combobox
+											<AccessLevelSelect
 												value={field.value}
 												onValueChange={field.onChange}
-												options={ACCESS_LEVELS}
-												placeholder="Select access level"
 											/>
 										</FormControl>
 										<FormDescription>

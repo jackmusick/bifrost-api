@@ -32,6 +32,7 @@ import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { useRoles } from "@/hooks/useRoles";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { AccessLevelSelect } from "@/components/access/AccessLevelSelect";
 import type { components } from "@/lib/v1";
 
 type WorkflowParameter = components["schemas"]["WorkflowParameter"];
@@ -352,31 +353,10 @@ export function FormInfoDialog({
 									<FormItem>
 										<FormLabel>Access Level</FormLabel>
 										<FormControl>
-											<Combobox
+											<AccessLevelSelect
 												className="min-h-11 sm:min-h-11"
 												value={field.value}
 												onValueChange={field.onChange}
-												options={[
-													{
-														value: "role_based",
-														label: "Role-Based",
-														description:
-															"Only users with assigned roles can access",
-													},
-													{
-														value: "authenticated",
-														label: "Everyone except external users",
-														description:
-															"Any signed-in user except external users",
-													},
-													{
-														value: "everyone",
-														label: "Everyone",
-														description:
-															"Any signed-in user, including external users",
-													},
-												]}
-												placeholder="Select access level"
 											/>
 										</FormControl>
 										<FormDescription>

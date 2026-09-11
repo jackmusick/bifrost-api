@@ -138,3 +138,47 @@ This follow-up is queued after Activity; it is not part of the Activity delivery
 - Complete repository suites and the pre-PR gate were not run for this unmerged debug iteration.
 - Final reduced-motion regression: `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts --grep 'groups run activity'` passed (journey plus setup). The selected journey checks normal and reduced-motion inspection, closing, Advanced, nested calls, and mobile inspection.
 - After the final timing fix, `npm run tsc` and `npx eslint src/pages/agents/AgentRunDetailPage.tsx e2e/agents-detail-runs.admin.spec.ts` passed.
+
+## Nested Activity and Entity Management refinement
+
+Activity child rows now draw individual tree branches instead of an uninterrupted
+list border. The last sibling terminates its branch at the row, while an expanded
+parent preserves the stem to later siblings. The selected background reaches the
+nearest guide and remains selected on hover. The inspector trigger exposes its
+pressed state for assistive technology. Desktop and mobile nesting were reviewed
+against the seeded delegated-agent run.
+
+
+The queued Entity Management refinement is now implemented. Selection is per
+resource, with duplicate appearances synchronized; selecting a parent does not
+select its dependencies. Select connected remains the explicit group action.
+Selected child backgrounds reach the branch guide, retain their color on hover,
+and use reduced indentation on mobile. The directory and editor remain one
+contained workspace.
+
+Review changes appears only for effective edits, with current/proposed values
+and a primary-colored proposed value. Unchanged resources and fields are omitted,
+and each operation submits only affected resources. Access level is now a shared
+icon-bearing picker used by apps, forms, workflows, agents, and bulk editing.
+Role operations have their own control: Add role preserves existing assignments;
+Clear roles removes them. Role edits default to Role-based unless an explicit
+access level was selected. Clearing uses explicit empty role assignments rather
+than the legacy clear_roles flag, which would force Role-based on the server.
+
+The Related scope/access mismatch filter compares connected scope, access-level,
+and role assignments in the loaded expanded graph. It is a diagnostic of
+configuration differences, not proof of inaccessible dependencies or a
+platform-wide permissions audit; intentional differences may appear.
+
+Verification for this iteration:
+
+- `./test.sh client unit -- Timeline.test.tsx AgentRunDetailPage.test.tsx RunReviewSheet.test.tsx ChatRunActivity.test.tsx`: 4 files / 68 tests passed.
+- `./test.sh client unit -- AccessLevelSelect.test.tsx combobox.test.tsx AppInfoDialog.test.tsx FormInfoDialog.test.tsx WorkflowEditDialog.test.tsx AgentSettingsTab.test.tsx`: 7 files / 53 tests passed.
+- `./test.sh client unit -- EntityAssignmentPanel.test.tsx ResourceTreeTable.test.tsx EntityManagement.test.tsx`: 3 files / 22 tests passed. Final targeted reruns `./test.sh client unit -- ResourceTreeTable.test.tsx` (9 tests) and `./test.sh client unit -- EntityManagement.test.tsx` (8 tests) passed after mobile indentation and explicit-access clearing changes.
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts e2e/entity-management-acceptance.admin.spec.ts`: 9 checks including setup passed, zero retries, production client build. This preceded the final mobile row spacing and explicit role-clearing payload correction, subsequently checked live and in component tests respectively.
+- Live debug browser review at 1440px and 390px verified Activity selected hover persistence and guide alignment; Entity parent selection independence, nested layout, shared Access picker, changes-only preview, editor closing/focus restoration, and no horizontal overflow or page errors. Final mobile spacing was rechecked live.
+- `npm run tsc`, `npm run lint`, and final `npx eslint src/components/entity-management/ResourceTreeTable.tsx src/components/entity-management/EntityAssignmentPanel.tsx src/pages/EntityManagement.tsx` passed.
+- The scoped Impeccable detector returned no findings; `git diff --check` passed.
+
+Complete repository suites and `./test.sh pre-pr` were not run for this unmerged
+debug iteration. The debug stack remains running.

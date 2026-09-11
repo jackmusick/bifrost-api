@@ -604,6 +604,37 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				})
 				.click();
 			await expect(selectedDetails).toContainText("Asset Resolver");
+			const nestedHighlight = nestedDelegation
+				.locator(":scope > div")
+				.first();
+			await page.mouse.move(1, 1);
+			await nestedHighlight.evaluate(async (element) => {
+				await Promise.all(
+					element
+						.getAnimations()
+						.map((animation) => animation.finished),
+				);
+			});
+			const selectedColor = await nestedHighlight.evaluate(
+				(element) => getComputedStyle(element).backgroundColor,
+			);
+			await nestedHighlight.hover();
+			await expect
+				.poll(() =>
+					nestedHighlight.evaluate(
+						(element) => getComputedStyle(element).backgroundColor,
+					),
+				)
+				.toBe(selectedColor);
+			const treeGeometry = await nestedDelegation.evaluate((element) => ({
+				row: element.firstElementChild?.getBoundingClientRect().left,
+				guide: element.parentElement?.getBoundingClientRect().left,
+				branchWidth: parseFloat(
+					getComputedStyle(element, "::after").width,
+				),
+			}));
+			expect(treeGeometry.row).toBe(treeGeometry.guide);
+			expect(treeGeometry.branchWidth).toBeGreaterThan(0);
 			await expect(selectedDetails).toContainText(
 				"Matched the requester to ELIJAH-LT.",
 			);

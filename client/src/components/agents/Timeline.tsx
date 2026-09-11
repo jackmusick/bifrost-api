@@ -558,16 +558,23 @@ function ActivityTreeRow({
 			ref={rowRef}
 			id={activityDomId(item.id)}
 			tabIndex={-1}
-			className="scroll-mt-24 outline-none [overflow-wrap:anywhere]"
+			className={cn(
+				"relative scroll-mt-24 outline-none [overflow-wrap:anywhere]",
+				rowDepth > 0 &&
+					"before:pointer-events-none before:absolute before:inset-y-0 before:start-0 before:z-10 before:w-px before:bg-border/70 last:before:bottom-auto last:before:h-[30px] after:pointer-events-none after:absolute after:start-0 after:top-[30px] after:z-10 after:h-px after:w-3 after:bg-border/70",
+			)}
 			data-activity-id={item.id}
 			data-activity-kind={item.kind}
 			data-highlighted={highlighted ? "true" : "false"}
 		>
 			<div
 				className={cn(
-					"relative min-w-0 rounded-[var(--bf-radius-control)] px-2 py-3 transition-colors hover:bg-muted/35 motion-reduce:transition-none",
-					joinedRows && selected && "rounded-none",
-					selected && "bg-[var(--bf-info-soft)]/55",
+					"relative min-w-0 rounded-[var(--bf-radius-control)] px-2 py-3 transition-colors motion-reduce:transition-none",
+					rowDepth > 0 && "ps-4",
+					(joinedRows || rowDepth > 0) && "rounded-none",
+					selected
+						? "bg-[var(--bf-info-soft)]/55 hover:bg-[var(--bf-info-soft)]/55"
+						: "hover:bg-muted/35",
 					highlighted && "ring-2 ring-inset ring-[var(--bf-info)]/45",
 				)}
 			>
@@ -604,6 +611,7 @@ function ActivityTreeRow({
 					<button
 						type="button"
 						aria-description={rowType}
+						aria-pressed={selected}
 						aria-labelledby={`${labelId}-title${caption ? ` ${labelId}-caption` : ""}`}
 						aria-describedby={statusId}
 						onClick={() => onSelect(item, sourceRunId)}
@@ -690,8 +698,8 @@ function ActivityTreeRow({
 			{open && childActivity.length ? (
 				<ol
 					className={cn(
-						"space-y-1 border-l border-border/70",
-						rowDepth < 2 ? "ml-5 pl-2 sm:ml-6" : "ml-1 pl-1",
+						"space-y-0",
+						rowDepth === 0 ? "ms-6" : "ms-8",
 					)}
 				>
 					{childActivity.map((childItem) => (

@@ -156,13 +156,17 @@ async function applySelectedScope(
 	await page.getByRole("button", { name: "Edit selected" }).click();
 	const inspector = page.getByRole("dialog", { name: /Edit 2 resources/ });
 	await expect(inspector).toBeVisible();
+	await expect(inspector.getByRole("heading", { name: "Review changes" })).toHaveCount(0);
 	await chooseScope(page, organizationName);
 	await expect(inspector.getByText(SELECTED_APP_ONE_NAME)).toBeVisible();
 	await expect(inspector.getByText(SELECTED_APP_TWO_NAME)).toBeVisible();
 	await expect(inspector.getByText(UNSELECTED_APP_NAME)).toHaveCount(0);
-	await expect(inspector).toContainText(
-		`Scope: ${previousScope} -> ${organizationName}`,
-	);
+	const reviewRows = inspector.getByRole("list", { name: "Entities to update" }).getByRole("listitem");
+	await expect(reviewRows).toHaveCount(2);
+	await expect(reviewRows.first()).toContainText(previousScope);
+	await expect(reviewRows.first()).toContainText(organizationName);
+	await expect(reviewRows.first()).not.toContainText("Access:");
+	await expect(reviewRows.first()).not.toContainText("Roles:");
 	await inspector.getByRole("button", { name: "Apply changes" }).click();
 	await expect(
 		inspector.getByRole("button", { name: "Apply changes" }),

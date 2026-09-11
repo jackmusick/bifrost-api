@@ -54,13 +54,6 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TiptapEditor } from "@/components/ui/tiptap-editor";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,6 +61,7 @@ import {
 	OrganizationSelect,
 	PERSONAL_SCOPE,
 } from "@/components/forms/OrganizationSelect";
+import { AccessLevelSelect } from "@/components/access/AccessLevelSelect";
 
 import {
 	CARD_SURFACE,
@@ -93,29 +87,6 @@ type RolePublic = components["schemas"]["RolePublic"];
 
 const CHANNELS: { value: AgentChannel; label: string }[] = [
 	{ value: "chat", label: "Web Chat" },
-];
-
-const ACCESS_LEVELS: {
-	value: AgentAccessLevel;
-	label: string;
-	description: string;
-}[] = [
-	{
-		value: "authenticated",
-		label: "Everyone except external users",
-		description: "Available to all signed-in users except external users",
-	},
-	{
-		value: "everyone",
-		label: "Everyone",
-		description:
-			"Available to all signed-in users, including external users",
-	},
-	{
-		value: "role_based",
-		label: "Role-based",
-		description: "Only assigned roles (none = platform admin only)",
-	},
 ];
 
 const formSchema = z.object({
@@ -633,47 +604,13 @@ export function AgentSettingsTab({
 								render={({ field }) => (
 									<FormItem>
 										<FormLabel>Access level</FormLabel>
-										<Select
-											value={field.value}
-											onValueChange={field.onChange}
-										>
-											<FormControl>
-												<SelectTrigger
-													aria-label="Access level"
-													className="w-full"
-												>
-													<SelectValue>
-														{
-															ACCESS_LEVELS.find(
-																(level) =>
-																	level.value ===
-																	field.value,
-															)?.label
-														}
-													</SelectValue>
-												</SelectTrigger>
-											</FormControl>
-											<SelectContent>
-												{ACCESS_LEVELS.map((lvl) => (
-													<SelectItem
-														key={lvl.value}
-														value={lvl.value}
-														className="whitespace-normal"
-													>
-														<div className="flex min-w-0 flex-col text-left">
-															<span>
-																{lvl.label}
-															</span>
-															<span className="text-xs text-muted-foreground">
-																{
-																	lvl.description
-																}
-															</span>
-														</div>
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
+										<FormControl>
+											<AccessLevelSelect
+												value={field.value}
+												onValueChange={field.onChange}
+												aria-label="Access level"
+											/>
+										</FormControl>
 										<FormMessage />
 									</FormItem>
 								)}

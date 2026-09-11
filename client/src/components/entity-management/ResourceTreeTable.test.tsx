@@ -151,6 +151,80 @@ it("reports only the expanded graph for connected selection", async () => {
 	);
 });
 
+it("selects only the clicked parent row and leaves related rows untouched", async () => {
+	const user = userEvent.setup();
+	const onSelect = vi.fn();
+	dependencyGraph.mockReturnValue({
+		data: {
+			root_id: "app:app-1",
+			nodes: [],
+			edges: [
+				{
+					source: "app:app-1",
+					target: "workflow:workflow-1",
+					relationship: "uses",
+				},
+			],
+		},
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+
+	renderTable({
+		entities: [entities[0], entities[1]],
+		allEntities: entities,
+		onSelect,
+	});
+	await user.click(
+		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
+	);
+
+	const items = resourceItems();
+	await user.click(within(items[0]).getByRole("checkbox"));
+
+	expect(onSelect).toHaveBeenCalledWith("app:app-1", true);
+	expect(within(items[1]).getByRole("checkbox")).not.toBeChecked();
+});
+
+it("shares selected state when the same resource appears as root and related", async () => {
+	const user = userEvent.setup();
+	dependencyGraph.mockReturnValue({
+		data: {
+			root_id: "app:app-1",
+			nodes: [],
+			edges: [
+				{
+					source: "app:app-1",
+					target: "workflow:workflow-1",
+					relationship: "uses",
+				},
+			],
+		},
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+
+	renderTable({
+		entities: [entities[0], entities[1]],
+		allEntities: entities,
+		selectedIds: new Set(["workflow:workflow-1"]),
+	});
+	await user.click(
+		screen.getAllByRole("button", { name: "Expand Covi Portal" })[0],
+	);
+
+	const workflowRows = resourceItems().filter((item) =>
+		item.textContent?.includes("Create service request"),
+	);
+	expect(workflowRows).toHaveLength(2);
+	expect(within(workflowRows[0]).getByRole("checkbox")).toBeChecked();
+	expect(within(workflowRows[1]).getByRole("checkbox")).toBeChecked();
+});
+
 it("keeps composite selection distinct and routes delete actions with actual ids", async () => {
 	const user = userEvent.setup();
 	const onSelect = vi.fn();

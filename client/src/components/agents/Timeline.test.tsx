@@ -188,6 +188,12 @@ describe("Timeline activity view", () => {
 			'[data-activity-id="step-1"] > div',
 		);
 		expect(selectedRow).toHaveClass("rounded-none");
+		expect(
+			screen.getByRole("button", {
+				name: /Ticket details/,
+				pressed: true,
+			}),
+		).toBeInTheDocument();
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 		expect(
 			screen.getByRole("heading", { name: "Ticket details" }),

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronsUpDown, Loader2 } from "lucide-react";
+import { ChevronsUpDown, Loader2, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,12 @@ export interface ComboboxOption {
 	value: string;
 	label: string;
 	description?: string;
+	icon?: LucideIcon;
 }
 
 interface ComboboxProps {
 	"aria-describedby"?: string;
+	"aria-label"?: string;
 	"aria-invalid"?: React.AriaAttributes["aria-invalid"];
 	options: ComboboxOption[];
 	value?: string;
@@ -50,6 +52,7 @@ export function Combobox({
 	className,
 	id,
 	"aria-describedby": describedBy,
+	"aria-label": ariaLabel,
 	"aria-invalid": invalid,
 }: ComboboxProps) {
 	const [open, setOpen] = React.useState(false);
@@ -65,6 +68,7 @@ export function Combobox({
 	);
 
 	const selectedOption = options.find((option) => option.value === value);
+	const SelectedIcon = selectedOption?.icon;
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -73,6 +77,7 @@ export function Combobox({
 					id={id}
 					variant="outline"
 					role="combobox"
+					aria-label={ariaLabel}
 					aria-expanded={open}
 					aria-describedby={describedBy}
 					aria-invalid={invalid}
@@ -94,13 +99,22 @@ export function Combobox({
 						</>
 					) : (
 						<>
-							<span
-								className={cn(
-									"min-w-0 whitespace-normal text-left [overflow-wrap:anywhere]",
-									!value && "text-muted-foreground",
-								)}
-							>
-								{selectedOption?.label ?? (value || placeholder)}
+							<span className="flex min-w-0 items-center gap-2">
+								{SelectedIcon ? (
+									<SelectedIcon
+										aria-hidden="true"
+										className="size-4 shrink-0 text-muted-foreground"
+									/>
+								) : null}
+								<span
+									className={cn(
+										"min-w-0 whitespace-normal text-left [overflow-wrap:anywhere]",
+										!value && "text-muted-foreground",
+									)}
+								>
+									{selectedOption?.label ??
+										(value || placeholder)}
+								</span>
 							</span>
 							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</>
@@ -123,34 +137,43 @@ export function Combobox({
 					<CommandList className="min-h-0 max-h-60 overflow-y-auto">
 						<CommandEmpty>{emptyText}</CommandEmpty>
 						<CommandGroup>
-							{options.map((option) => (
-								<CommandItem
-									key={option.value}
-									value={option.value}
-									className="min-h-11"
-									keywords={[option.label]}
-									data-checked={value === option.value}
-									onSelect={() => {
-										onValueChange?.(
-											option.value === value
-												? ""
-												: option.value,
-										);
-										setOpen(false);
-									}}
-								>
-									<div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
-										<span className="font-medium">
-											{option.label}
-										</span>
-										{option.description && (
-											<span className="text-xs text-muted-foreground">
-												{option.description}
+							{options.map((option) => {
+								const Icon = option.icon;
+								return (
+									<CommandItem
+										key={option.value}
+										value={option.value}
+										className="min-h-11"
+										keywords={[option.label]}
+										data-checked={value === option.value}
+										onSelect={() => {
+											onValueChange?.(
+												option.value === value
+													? ""
+													: option.value,
+											);
+											setOpen(false);
+										}}
+									>
+										{Icon ? (
+											<Icon
+												aria-hidden="true"
+												className="size-4 shrink-0 text-muted-foreground"
+											/>
+										) : null}
+										<div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
+											<span className="font-medium">
+												{option.label}
 											</span>
-										)}
-									</div>
-								</CommandItem>
-							))}
+											{option.description && (
+												<span className="text-xs text-muted-foreground">
+													{option.description}
+												</span>
+											)}
+										</div>
+									</CommandItem>
+								);
+							})}
 						</CommandGroup>
 					</CommandList>
 				</Command>

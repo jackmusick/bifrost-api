@@ -75,6 +75,10 @@ export function FilterPopover({
 		{ value: "all", label: "All Usage" },
 		{ value: "unused", label: "Unused (0 refs)" },
 		{ value: "in_use", label: "In Use" },
+		{
+			value: "related_mismatch",
+			label: "Related scope/access mismatch",
+		},
 	];
 
 	return (
@@ -146,6 +150,10 @@ export function FilterPopover({
 						</CommandGroup>
 						<CommandSeparator />
 						<CommandGroup heading="Usage">
+							<p className="px-2 pb-1 text-xs leading-5 text-muted-foreground">
+								Related mismatch uses only relationships loaded
+								in the expanded directory view.
+							</p>
 							{usageOptions.map((option) => (
 								<CommandItem
 									key={option.value}

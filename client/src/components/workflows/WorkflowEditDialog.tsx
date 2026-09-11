@@ -14,7 +14,6 @@ import {
 	ChevronsUpDown,
 	X,
 	Shield,
-	Users,
 	Settings,
 	Timer,
 	DollarSign,
@@ -73,38 +72,13 @@ import {
 } from "@/hooks/useWorkflowRoles";
 import { useWorkflowKeys, useCreateWorkflowKey, useRevokeWorkflowKey } from "@/hooks/useWorkflowKeys";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { AccessLevelSelect } from "@/components/access/AccessLevelSelect";
 import type { components } from "@/lib/v1";
 
 type Workflow = components["schemas"]["WorkflowMetadata"];
 type RolePublic = components["schemas"]["RolePublic"];
 
 type WorkflowAccessLevel = "authenticated" | "everyone" | "role_based";
-
-const ACCESS_LEVELS: {
-	value: WorkflowAccessLevel;
-	label: string;
-	description: string;
-	icon: React.ReactNode;
-}[] = [
-	{
-		value: "authenticated",
-		label: "Everyone except external users",
-		description: "Any signed-in user except external users can execute",
-		icon: <Users className="h-4 w-4" />,
-	},
-	{
-		value: "everyone",
-		label: "Everyone",
-		description: "Any signed-in user, including external users, can execute",
-		icon: <Users className="h-4 w-4" />,
-	},
-	{
-		value: "role_based",
-		label: "Role-Based",
-		description: "Only users with assigned roles can execute",
-		icon: <Shield className="h-4 w-4" />,
-	},
-];
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
 
@@ -708,31 +682,13 @@ export function WorkflowEditDialog({
 
 							<div className="space-y-2">
 								<Label>Access Level</Label>
-								<Select
+								<AccessLevelSelect
 									value={accessLevel}
 									onValueChange={(v) =>
 										setAccessLevel(v as WorkflowAccessLevel)
 									}
-								>
-									<SelectTrigger className="min-h-11">
-										<SelectValue placeholder="Select access level" />
-									</SelectTrigger>
-									<SelectContent>
-										{ACCESS_LEVELS.map((level) => (
-											<SelectItem key={level.value} value={level.value}>
-												<div className="flex items-center gap-2">
-													{level.icon}
-													<div className="flex flex-col">
-														<span>{level.label}</span>
-														<span className="text-xs text-muted-foreground">
-															{level.description}
-														</span>
-													</div>
-												</div>
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+									className="min-h-11"
+								/>
 							</div>
 
 							{accessLevel === "role_based" && (

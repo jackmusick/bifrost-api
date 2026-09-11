@@ -28,6 +28,10 @@ interface ResourceTreeTableProps {
 	onSelect: (entityKey: string, selected: boolean) => void;
 	onVisibleKeysChange?: (entityKeys: string[]) => void;
 	onConnectedKeysChange?: (entityKeys: string[]) => void;
+	onConnectedGraphChange?: (graph: {
+		keys: string[];
+		edges: { source: string; target: string }[];
+	}) => void;
 	onDelete: (
 		entityId: string,
 		entityName: string,
@@ -44,6 +48,8 @@ interface ResourceRow {
 	onRetry?: () => void;
 	expandable: boolean;
 	expanded: boolean;
+	branchLast: boolean;
+	ancestorGuides?: number[];
 }
 
 export function ResourceTreeTable({
@@ -55,6 +61,7 @@ export function ResourceTreeTable({
 	onSelect,
 	onVisibleKeysChange,
 	onConnectedKeysChange,
+	onConnectedGraphChange,
 	onDelete,
 }: ResourceTreeTableProps) {
 	const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -85,59 +92,68 @@ export function ResourceTreeTable({
 		() => Array.from(new Set(rows.map((row) => row.entity.key))),
 		[rows],
 	);
-	const connectedKeys = useMemo(
-		() =>
-			expandedKey
-				? Array.from(
-						new Set(
-							rows
-								.filter(
-									(row) =>
-										row.entity.key === expandedKey ||
-										row.depth > 0,
-								)
-								.map((row) => row.entity.key),
-						),
-					)
-				: [],
-		[expandedKey, rows],
+	const connectedGraph = useMemo(
+		() => loadedConnectedGraph(expandedKey, graphData ?? null, allEntities),
+		[expandedKey, graphData, allEntities],
 	);
+	const connectedKeys = connectedGraph.keys;
 	const visibleKeySignature = visibleKeys.join("\u0000");
 	const connectedKeySignature = connectedKeys.join("\u0000");
+	const connectedEdgeSignature = connectedGraph.edges
+		.map((edge) => `${edge.source}->${edge.target}`)
+		.join("\u0000");
 
 	useEffect(() => {
 		onVisibleKeysChange?.(visibleKeys);
-		// connectedKeySignature intentionally gates updates so callers receive
+		// visibleKeySignature intentionally gates updates so callers receive
 		// row visibility changes without a parent/child render loop.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [onVisibleKeysChange, visibleKeySignature]);
 	useEffect(() => {
 		onConnectedKeysChange?.(connectedKeys);
-		// visibleKeySignature intentionally gates updates so callers receive
+		// connectedKeySignature intentionally gates updates so callers receive
 		// expanded graph selection changes without a parent/child render loop.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [connectedKeySignature, onConnectedKeysChange]);
+	useEffect(() => {
+		onConnectedGraphChange?.(connectedGraph);
+		// connectedEdgeSignature intentionally gates updates to loaded graph
+		// edges without a parent/child render loop.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [connectedKeySignature, connectedEdgeSignature, onConnectedGraphChange]);
 
 	const toggleExpanded = (entityKey: string) => {
 		setExpandedKey((current) => (current === entityKey ? null : entityKey));
 	};
 
 	return (
-		<div className="min-w-0">
+		<div className="min-w-0 [--tree-indent:1rem] sm:[--tree-indent:2rem]">
 			<ul aria-label="Resources" className="min-w-0">
 				{rows.map((row) => (
 					<li
 						key={`${row.entity.key}:${row.depth}:${row.caption ?? "root"}`}
 						className={cn(
-							"border-b border-border/70 last:border-b-0",
-							row.depth > 0 && "border-l border-border",
+							"relative border-b border-border/70 last:border-b-0",
+							row.depth > 0 &&
+								"before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border after:absolute after:left-0 after:top-7 after:h-px after:w-4 after:bg-border",
+							row.depth > 0 && row.branchLast && "before:h-7",
+							row.depth > 0 && "hover:bg-muted/20",
+							row.depth > 0 &&
+								selectedIds.has(row.entity.key) &&
+								!isEntityManaged(row.entity) &&
+								"bg-accent hover:bg-accent",
 						)}
-						style={{
-							marginLeft: row.depth
-								? `${Math.min(row.depth, 2) * 1}rem`
-								: undefined,
-						}}
+						style={
+							row.depth > 0
+								? {
+										marginLeft: `calc(var(--tree-indent) * ${Math.min(row.depth, 3)})`,
+									}
+								: undefined
+						}
 					>
+						{row.ancestorGuides?.map((depth) => (
+							<span key={depth} aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-border" style={{ left: `calc(var(--tree-indent) * ${Math.min(depth, 3) - Math.min(row.depth, 3)})` }} />
+						))}
 						<ResourceDirectoryRow
 							row={row}
 							organizationName={organizationName(
@@ -182,11 +198,15 @@ function ResourceDirectoryRow({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 items-start gap-2 px-3 py-3 text-sm transition-colors hover:bg-muted/20 sm:gap-3",
-				selected && !managed && "bg-accent",
+				"flex min-w-0 items-start gap-2 px-3 py-3 text-sm transition-colors sm:gap-3",
+				row.depth === 0 && "hover:bg-muted/20",
+				row.depth === 0 &&
+					selected &&
+					!managed &&
+					"bg-accent hover:bg-accent",
 			)}
 		>
-			<div className="pt-2">
+			<div className="flex size-7 shrink-0 items-center justify-center">
 				<Checkbox
 					aria-label={`Select ${entity.name}`}
 					checked={selected && !managed}
@@ -196,13 +216,13 @@ function ResourceDirectoryRow({
 					}
 				/>
 			</div>
-			<ExpandButton
+			{row.depth === 0 ? <ExpandButton
 				entityName={entity.name}
 				expandable={expandable}
 				expanded={expanded}
 				loading={isLoading}
 				onClick={() => onToggleExpanded(entity.key)}
-			/>
+			/> : null}
 			<div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border border-border bg-background text-muted-foreground">
 				<Icon className="size-4" />
 			</div>
@@ -453,6 +473,7 @@ function useResourceRows({
 					: undefined,
 				expandable: hasExpandableRelationships(entity),
 				expanded: expanded && hasExpandableRelationships(entity),
+				branchLast: false,
 				isLoading: expanded && isLoading,
 				isError: expanded && isError,
 				onRetry: expanded && isError ? onRetry : undefined,
@@ -519,10 +540,11 @@ function relatedRows(
 		rows.push({
 			entity,
 			depth,
-			caption,
-			expandable: false,
-			expanded: false,
-		});
+				caption,
+				expandable: false,
+				expanded: false,
+				branchLast: false,
+			});
 		for (const child of neighbors.get(key) ?? []) {
 			visit(child.key, depth + 1, child.caption);
 		}
@@ -530,7 +552,36 @@ function relatedRows(
 	for (const child of neighbors.get(root.key) ?? []) {
 		visit(child.key, 1, child.caption);
 	}
+	for (let index = 0; index < rows.length; index += 1) {
+		const nextSiblingOrAncestor = rows.slice(index + 1).find((next) => next.depth <= rows[index].depth);
+		rows[index].branchLast = !nextSiblingOrAncestor || nextSiblingOrAncestor.depth < rows[index].depth;
+	}
+	const ancestors: ResourceRow[] = [];
+	for (const row of rows) {
+		while (ancestors.length && ancestors[ancestors.length - 1].depth >= row.depth) ancestors.pop();
+		row.ancestorGuides = ancestors.filter((ancestor) => !ancestor.branchLast).map((ancestor) => ancestor.depth);
+		ancestors.push(row);
+	}
 	return rows;
+}
+
+function loadedConnectedGraph(
+	expandedKey: string | null,
+	graphData: DependencyGraph | null,
+	allEntities: EntityWithScope[],
+) {
+	if (!expandedKey || !graphData) return { keys: [], edges: [] };
+	const byKey = new Set(allEntities.map((entity) => entity.key));
+	const keys = new Set<string>();
+	const edges: { source: string; target: string }[] = [];
+	if (byKey.has(expandedKey)) keys.add(expandedKey);
+	for (const edge of graphData.edges ?? []) {
+		if (!byKey.has(edge.source) || !byKey.has(edge.target)) continue;
+		keys.add(edge.source);
+		keys.add(edge.target);
+		edges.push({ source: edge.source, target: edge.target });
+	}
+	return { keys: Array.from(keys), edges };
 }
 
 function relationshipCaption(

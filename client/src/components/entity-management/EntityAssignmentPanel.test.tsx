@@ -55,30 +55,44 @@ it("reviews scope and additive access changes, then applies both to the frozen s
 	};
 	const { rerender } = render(<EntityAssignmentPanel {...props} />);
 
+	expect(
+		screen.queryByRole("button", { name: "Northwind" }),
+	).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("combobox", { name: "Role to add" }),
+	).not.toBeInTheDocument();
+
 	await user.click(
 		screen.getByRole("combobox", { name: "Organization change mode" }),
 	);
 	await user.click(screen.getByRole("option", { name: "Set scope" }));
 	await user.click(screen.getByRole("button", { name: "Northwind" }));
-	await user.click(screen.getByRole("combobox", { name: "Access change" }));
-	await user.click(
-		screen.getByRole("option", { name: "Add role: Service Desk" }),
-	);
+	await user.click(screen.getByRole("combobox", { name: "Roles change" }));
+	await user.click(screen.getByRole("option", { name: "Add role" }));
+	expect(
+		screen.getByRole("combobox", { name: "Role to add" }),
+	).toHaveTextContent("Select role...");
+	await user.click(screen.getByRole("combobox", { name: "Role to add" }));
+	await user.click(screen.getByRole("option", { name: "Service Desk" }));
 
 	expect(
 		screen.getByText("Create service request").closest("li"),
-	).toHaveTextContent("Scope: Global -> Northwind");
+	).toHaveTextContent(/Scope:GlobalNorthwind/);
 	expect(
 		screen.getByText("Create service request").closest("li"),
-	).toHaveTextContent("Access: Private -> Add role Service Desk");
+	).toHaveTextContent(/Access:PrivateRestricted to roles/);
+	expect(
+		screen.getByText("Create service request").closest("li"),
+	).toHaveTextContent(/Roles:No rolesService Desk/);
 	expect(
 		screen.getByText("Support assistant").closest("li"),
-	).toHaveTextContent("Scope: No change (Northwind)");
+	).not.toHaveTextContent("Scope:");
 	expect(
 		screen.getByText("Support assistant").closest("li"),
-	).toHaveTextContent(
-		"Access: Existing Role -> Existing Role, add Service Desk",
-	);
+	).not.toHaveTextContent("Access:");
+	expect(
+		screen.getByText("Support assistant").closest("li"),
+	).toHaveTextContent(/Roles:Existing RoleExisting Role, Service Desk/);
 
 	const apply = screen.getByRole("button", { name: "Apply changes" });
 	await user.click(apply);
@@ -90,12 +104,12 @@ it("reviews scope and additive access changes, then applies both to the frozen s
 	);
 
 	await waitFor(() =>
-		expect(onOrganization).toHaveBeenCalledWith(
-			["workflow:a", "agent:b"],
-			"org-1",
-		),
+		expect(onOrganization).toHaveBeenCalledWith(["workflow:a"], "org-1"),
 	);
-	expect(onAccess).toHaveBeenCalledWith(["workflow:a", "agent:b"], "role-1");
+	expect(onAccess).toHaveBeenCalledWith(["workflow:a", "agent:b"], {
+		accessLevel: "role_based",
+		addRoleId: "role-1",
+	});
 });
 
 it("does not apply access or reset review state when the scope phase fails", async () => {
@@ -128,9 +142,13 @@ it("does not apply access or reset review state when the scope phase fails", asy
 	);
 	await user.click(screen.getByRole("option", { name: "Set scope" }));
 	await user.click(screen.getByRole("button", { name: "Northwind" }));
-	await user.click(screen.getByRole("combobox", { name: "Access change" }));
 	await user.click(
-		screen.getByRole("option", { name: "Everyone except external users" }),
+		screen.getByRole("combobox", { name: "Access level change" }),
+	);
+	await user.click(
+		screen.getByRole("option", {
+			name: /Everyone except external users/,
+		}),
 	);
 	await user.click(screen.getByRole("button", { name: "Apply changes" }));
 
@@ -141,7 +159,7 @@ it("does not apply access or reset review state when the scope phase fails", asy
 	expect(onAccess).not.toHaveBeenCalled();
 	expect(
 		screen.getByText("Create service request").closest("li"),
-	).toHaveTextContent("Scope: Global -> Northwind");
+	).toHaveTextContent(/Scope:GlobalNorthwind/);
 	expect(screen.getByRole("button", { name: "Apply changes" })).toBeEnabled();
 });
 
@@ -151,14 +169,7 @@ it("requires a selection and a proposed change", async () => {
 	const { rerender } = render(
 		<EntityAssignmentPanel
 			entities={[
-				entity(
-					"workflow:a",
-					"Alpha",
-					"workflow",
-					null,
-					"authenticated",
-					[],
-				),
+				entity("workflow:a", "Alpha", "workflow", null, "private", []),
 			]}
 			organizations={organizations}
 			roles={roles}
@@ -173,6 +184,41 @@ it("requires a selection and a proposed change", async () => {
 		screen.getByRole("button", { name: "Apply changes" }),
 	).toBeDisabled();
 	rerender(
+		<EntityAssignmentPanel
+			entities={[
+				entity("workflow:a", "Alpha", "workflow", null, "private", []),
+			]}
+			organizations={organizations}
+			roles={roles}
+			disabled={false}
+			onOrganization={vi.fn()}
+			onAccess={onAccess}
+			selectedIds={new Set(["workflow:a"])}
+		/>,
+	);
+	expect(
+		screen.getByRole("button", { name: "Apply changes" }),
+	).toBeDisabled();
+	await user.click(
+		screen.getByRole("combobox", { name: "Access level change" }),
+	);
+	await user.click(
+		screen.getByRole("option", {
+			name: /Everyone except external users/,
+		}),
+	);
+	await user.click(screen.getByRole("button", { name: "Apply changes" }));
+	await waitFor(() =>
+		expect(onAccess).toHaveBeenCalledWith(["workflow:a"], {
+			accessLevel: "authenticated",
+		}),
+	);
+});
+
+it("does not apply when the proposed access change is already effective", async () => {
+	const user = userEvent.setup();
+	const onAccess = vi.fn().mockResolvedValue(undefined);
+	render(
 		<EntityAssignmentPanel
 			entities={[
 				entity(
@@ -192,16 +238,99 @@ it("requires a selection and a proposed change", async () => {
 			selectedIds={new Set(["workflow:a"])}
 		/>,
 	);
+
+	await user.click(
+		screen.getByRole("combobox", { name: "Access level change" }),
+	);
+	await user.click(
+		screen.getByRole("option", {
+			name: /Everyone except external users/,
+		}),
+	);
+
+	expect(
+		screen.getByText("No selected resources would change."),
+	).toBeVisible();
+	expect(screen.queryByText("Review changes")).not.toBeInTheDocument();
 	expect(
 		screen.getByRole("button", { name: "Apply changes" }),
 	).toBeDisabled();
-	await user.click(screen.getByRole("combobox", { name: "Access change" }));
-	await user.click(
-		screen.getByRole("option", { name: "Everyone except external users" }),
+});
+
+it("does not treat an incomplete role add as an access change", async () => {
+	const user = userEvent.setup();
+	const onAccess = vi.fn().mockResolvedValue(undefined);
+	render(
+		<EntityAssignmentPanel
+			entities={[
+				entity("workflow:a", "Alpha", "workflow", null, "private", []),
+			]}
+			organizations={organizations}
+			roles={roles}
+			disabled={false}
+			onOrganization={vi.fn()}
+			onAccess={onAccess}
+			selectedIds={new Set(["workflow:a"])}
+		/>,
 	);
+
+	await user.click(screen.getByRole("combobox", { name: "Roles change" }));
+	await user.click(screen.getByRole("option", { name: "Add role" }));
+
+	expect(screen.queryByText("Review changes")).not.toBeInTheDocument();
+	expect(
+		screen.getByText("No selected resources would change."),
+	).toBeVisible();
+	expect(
+		screen.getByRole("button", { name: "Apply changes" }),
+	).toBeDisabled();
+	expect(onAccess).not.toHaveBeenCalled();
+});
+
+it("lets explicit access level win over implicit role-based role changes", async () => {
+	const user = userEvent.setup();
+	const onAccess = vi.fn().mockResolvedValue(undefined);
+	render(
+		<EntityAssignmentPanel
+			entities={[
+				entity("workflow:a", "Alpha", "workflow", null, "private", [
+					"role-2",
+				]),
+			]}
+			organizations={organizations}
+			roles={roles}
+			disabled={false}
+			onOrganization={vi.fn()}
+			onAccess={onAccess}
+			selectedIds={new Set(["workflow:a"])}
+		/>,
+	);
+
+	await user.click(
+		screen.getByRole("combobox", { name: "Access level change" }),
+	);
+	await user.click(
+		screen.getByRole("option", {
+			name: /Everyone except external users/,
+		}),
+	);
+	await user.click(screen.getByRole("combobox", { name: "Roles change" }));
+	await user.click(screen.getByRole("option", { name: "Clear roles" }));
+
+	expect(screen.getByText("Alpha").closest("li")).toHaveTextContent(
+		/Access:PrivateEveryone except external users/,
+	);
+	expect(screen.getByText("Alpha").closest("li")).toHaveTextContent(
+		/Roles:Existing RoleNo roles/,
+	);
+
 	await user.click(screen.getByRole("button", { name: "Apply changes" }));
+
 	await waitFor(() =>
-		expect(onAccess).toHaveBeenCalledWith(["workflow:a"], "authenticated"),
+		expect(onAccess).toHaveBeenCalledWith(["workflow:a"], {
+			accessLevel: "authenticated",
+			clearRoles: true,
+		}),
 	);
 });
 

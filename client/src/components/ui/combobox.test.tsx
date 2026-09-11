@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Shield } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders, screen } from "@/test-utils";
@@ -14,6 +15,25 @@ describe("Combobox", () => {
 		renderWithProviders(<><Combobox options={[]} aria-invalid="true" aria-describedby="lookup-error" /><p id="lookup-error">Could not load values.</p></>);
 		expect(screen.getByRole("combobox")).toHaveAttribute("aria-invalid", "true");
 		expect(screen.getByRole("combobox")).toHaveAccessibleDescription("Could not load values.");
+	});
+	it("renders optional icons for selected and listed options", async () => {
+		const { user } = renderWithProviders(
+			<Combobox
+				options={[
+					{ value: "role_based", label: "Role-based", icon: Shield },
+				]}
+				value="role_based"
+				onValueChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole("combobox").querySelector("svg")).toBeTruthy();
+		await user.click(screen.getByRole("combobox"));
+		expect(
+			screen.getByRole("option", { name: "Role-based" }).querySelector(
+				"svg",
+			),
+		).toBeTruthy();
 	});
 	it("filters options by literal label and value text", async () => {
 		const { user } = renderWithProviders(

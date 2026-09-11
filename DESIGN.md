@@ -54,6 +54,9 @@ the workspace within the available page pane and reveals its header, preserving
 Overview above. Closing shrinks the list and restores focus. Highlight backgrounds
 meet the header and inspector divider without an inset gutter. Reduced motion
 must still reveal the header after the new height is applied.
+Nested activity uses branch connectors with an elbow for each child and a stem
+that stops at the last sibling. Selected backgrounds reach the nearest branch
+guide and persist on hover; pointer feedback must not replace selection feedback.
 
 Entity Management uses a contained resource directory with expandable relationships,
 not table columns. Resource identity leads; scope, type, and access remain visible
