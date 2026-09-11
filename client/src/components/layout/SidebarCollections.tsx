@@ -1,3 +1,4 @@
+import { useCollectionOrder } from "@/hooks/useCollectionOrder";
 import { Folder, Plus } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { $api } from "@/lib/api-client";
@@ -14,8 +15,8 @@ export function SidebarCollections({
 }) {
 	const location = useLocation();
 	const home = $api.useQuery("get", "/api/home");
-	const collections = (home.data?.collections ?? []).filter(
-		isVisibleCollection,
+	const { collections } = useCollectionOrder(
+		(home.data?.collections ?? []).filter(isVisibleCollection),
 	);
 	const selectedCollection = new URLSearchParams(location.search).get(
 		"collection",

@@ -1,3 +1,4 @@
+import { useCollectionOrder } from "@/hooks/useCollectionOrder";
 import { isVisibleCollection } from "@/services/home";
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -39,6 +40,7 @@ export function Home() {
 	const home = $api.useQuery("get", "/api/home");
 	const createConversation = useCreateConversation();
 	const [editor, setEditor] = useState<HomeCollection | "new" | null>(null);
+	const [deleteRequested, setDeleteRequested] = useState(false);
 	const [editorError, setEditorError] = useState("");
 	const [opening, setOpening] = useState(false);
 	const refresh = () =>
@@ -59,8 +61,8 @@ export function Home() {
 	);
 	const busy = create.isPending || update.isPending || remove.isPending;
 	const resources = home.data?.resources ?? NO_RESOURCES;
-	const collections = (home.data?.collections ?? []).filter(
-		isVisibleCollection,
+	const { collections, reorder } = useCollectionOrder(
+		(home.data?.collections ?? []).filter(isVisibleCollection),
 	);
 	const selected = collections.find(
 		(collection) => collection.id === params.get("collection"),
@@ -193,6 +195,7 @@ export function Home() {
 	};
 	const openEditor = (collection: HomeCollection | "new") => {
 		setEditorError("");
+		setDeleteRequested(false);
 		setEditor(collection);
 	};
 	const saveCollection = async (data: HomeCollectionWrite) => {
@@ -306,6 +309,12 @@ export function Home() {
 					selected={selected?.id ?? null}
 					onSelect={(id) => updateParam("collection", id)}
 					onCreate={() => openEditor("new")}
+					onEdit={openEditor}
+					onDelete={(collection) => {
+						openEditor(collection);
+						setDeleteRequested(true);
+					}}
+					onReorder={reorder}
 				/>
 			</div>
 			<PageScrollArea
@@ -380,6 +389,7 @@ export function Home() {
 						activeEditor === "new" ? undefined : activeEditor
 					}
 					resources={resources}
+					initialConfirmDelete={deleteRequested}
 					isAdmin={isPlatformAdmin}
 					onClose={closeEditor}
 					onSave={saveCollection}

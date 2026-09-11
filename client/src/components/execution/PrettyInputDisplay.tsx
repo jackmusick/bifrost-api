@@ -144,7 +144,7 @@ function MiniTable({
 			)}
 			<ol
 				aria-label="Input records"
-				className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border @2xl:hidden"
+				className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-background/60 @2xl:hidden"
 			>
 				{previewItems.map((item, index) => (
 					<InputArrayRecord
@@ -157,7 +157,7 @@ function MiniTable({
 			</ol>
 			<div
 				className={cn(
-					"hidden overflow-x-auto rounded-[var(--bf-radius-surface)] border border-border @2xl:block",
+					"hidden overflow-x-auto rounded-[var(--bf-radius-surface)] border border-border bg-background/60 @2xl:block",
 					className,
 				)}
 			>
@@ -337,13 +337,7 @@ export function PrettyInputDisplay({
 					}
 					onViewChange={setView}
 				/>
-				<div
-					className={
-						context === "result"
-							? "min-w-0 py-2"
-							: "rounded-lg ring-1 ring-foreground/5 p-3 bg-muted/50"
-					}
-				>
+				<div className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-muted/40 p-2 sm:p-3">
 					<VariablesTreeView
 						data={inputData as Record<string, unknown>}
 					/>
@@ -411,52 +405,38 @@ export function PrettyInputDisplay({
 		<div className="min-w-0 space-y-2">
 			{toggleBar}
 
-			<div
-				className={cn(
-					"divide-y divide-border/60 min-w-0",
-					context !== "result" &&
-						"overflow-hidden rounded-lg ring-1 ring-foreground/5 bg-muted/50",
-				)}
-			>
+			<div className="@container min-w-0 divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-muted/40">
 				{entries.map(([key, value]) => {
 					const friendlyLabel = snakeCaseToTitleCase(key);
-					const badge =
-						context === "result" && Array.isArray(value)
-							? `${value.length} items`
-							: context === "result"
-								? undefined
-								: badgeFor(value);
+					const badge = badgeFor(value);
+					const scalar = classify(value) === "scalar";
 
 					return (
 						<div
 							key={key}
-							className={cn(
-								"flex items-start gap-4 py-3",
-								context !== "result" &&
-									"px-3 hover:bg-muted/50 transition-colors",
-							)}
+							className="min-w-0 px-3 py-3 sm:px-4 sm:py-3.5"
 						>
-							<div className="flex-1 min-w-0">
-								<div className="flex flex-wrap items-center gap-2 mb-0.5">
-									<label className="text-sm font-medium [overflow-wrap:anywhere]">
+							<div
+								className={cn(
+									"min-w-0",
+									scalar &&
+										"@lg:grid @lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] @lg:gap-6",
+								)}
+							>
+								<div className="flex flex-wrap items-center gap-2 mb-2">
+									<span className="text-sm font-semibold text-primary [overflow-wrap:anywhere]">
 										{friendlyLabel}
-									</label>
+									</span>
 									{badge && (
 										<Badge
 											variant="secondary"
-											className="text-xs"
+											className="bg-background/70 text-xs font-normal text-muted-foreground"
 										>
 											{badge}
 										</Badge>
 									)}
 								</div>
-								<div
-									className={cn(
-										"text-sm break-words",
-										context !== "result" &&
-											"text-muted-foreground",
-									)}
-								>
+								<div className="min-w-0 text-sm leading-relaxed text-foreground break-words">
 									<ValueContent value={value} depth={0} />
 								</div>
 							</div>

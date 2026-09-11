@@ -11,7 +11,7 @@ interface VariablesTreeViewProps {
 /** Expandable variable inspector with wrapping values and keyboard-accessible actions. */
 export function VariablesTreeView({ data }: VariablesTreeViewProps) {
 	return (
-		<div className="min-w-0 space-y-1 font-mono text-xs">
+		<div className="min-w-0 divide-y divide-border/60 font-mono text-xs leading-relaxed">
 			{Object.entries(data).map(([name, value]) => (
 				<VariableItem key={name} name={name} value={value} depth={0} />
 			))}
@@ -65,14 +65,27 @@ function VariableItem({ name, value, depth }: VariableItemProps) {
 	const label = (
 		<span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
 			<span className="font-medium text-primary">{name}: </span>
-			<span className="text-foreground">{displayValue(value)}</span>
+			<span
+				className={
+					isExpandable
+						? "rounded bg-background/70 px-1.5 py-0.5 text-muted-foreground"
+						: value == null
+							? "italic text-muted-foreground"
+							: typeof value === "number" ||
+								  typeof value === "boolean"
+								? "font-semibold text-foreground"
+								: "text-foreground"
+				}
+			>
+				{displayValue(value)}
+			</span>
 		</span>
 	);
 
 	return (
 		<div className="min-w-0">
 			<div
-				className="flex min-w-0 items-start gap-1 rounded-[var(--bf-radius-control)] hover:bg-muted/50"
+				className="group flex min-w-0 items-start gap-1 rounded-[var(--bf-radius-control)] transition-colors hover:bg-primary/5 focus-within:bg-primary/5 motion-reduce:transition-none"
 				style={{ paddingLeft: `${Math.min(depth, 3) * 8}px` }}
 			>
 				{isExpandable ? (
@@ -111,7 +124,11 @@ function VariableItem({ name, value, depth }: VariableItemProps) {
 				</Button>
 			</div>
 			{isExpandable && (
-				<div id={childrenId} hidden={!isExpanded}>
+				<div
+					id={childrenId}
+					hidden={!isExpanded}
+					className="ml-3 border-l border-border bg-background/40"
+				>
 					{isExpanded &&
 						(entries.length ? (
 							entries.map(([key, item]) => (

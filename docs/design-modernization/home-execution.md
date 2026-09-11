@@ -224,3 +224,11 @@ Scoped checks for this refinement: 222 component tests passed across the Home/si
 Desktop/mobile review evidence is under `/tmp/bifrost-home-execution-v2-final`; real running screenshots are retained in the scoped Playwright execution artifacts. Debug form submission and webhook delivery use the existing owned review pack. These checks do not claim a new full pre-PR/nightly run.
 
 Final confirmation: application TypeScript check (`tsc --noEmit -p tsconfig.app.json`) passed; the corrected collection-navigation test passed; ordinary-user denied-route recovery back to Home passed (2 browser tests including setup). The debug review pack completed both actual form and webhook executions. No merge was performed.
+
+### Shared variable viewers and collection tab actions
+
+PrettyInputDisplay applies the same framed surface, branded field labels, quiet type metadata, and responsive label/value layout to both inputs and results. VariablesTreeView groups expanded children and separates root fields while retaining per-value copy and keyboard expansion. Execution streaming is unchanged by this refinement.
+
+Collection tabs expose Edit and Delete only for editable collections through a context menu (right-click, Shift+F10, or touch long-press). Delete opens the existing confirmation flow. Desktop native dragging and Move earlier/later reorder the personal view; All remains fixed first. Selecting an overflow collection appends it to the visible tabs so its actions remain reachable.
+
+Order is stored per account in this browser, shared between Home tabs and sidebar shortcuts. Reordering a filtered scope preserves other collections' positions. It does not change shared collection ownership, content, grants, or other users' layouts, and does not yet sync between browsers/devices.

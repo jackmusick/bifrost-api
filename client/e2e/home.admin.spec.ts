@@ -163,3 +163,85 @@ test.describe("Home collections (admin)", () => {
 		}
 	});
 });
+
+test("collection tabs support context actions and persist drag order", async ({
+	page,
+	api,
+}) => {
+	const ids: string[] = [];
+	const names = [`000 Tabs first ${RUN_ID}`, `001 Tabs second ${RUN_ID}`];
+	try {
+		for (const name of names) {
+			const response = await api.post("/api/home/collections", {
+				data: {
+					name,
+					shared: false,
+					icon: "folder",
+					resource_keys: [],
+				},
+			});
+			expect(response.ok(), await response.text()).toBe(true);
+			ids.push((await response.json()).id);
+		}
+		await page.goto(`/?collection=${ids[1]}`);
+		const nav = page.getByRole("navigation", { name: "Collections" });
+		const first = nav.getByRole("button", { name: names[0], exact: true });
+		const second = nav.getByRole("button", { name: names[1], exact: true });
+		await expect(first).toBeVisible();
+		await expect(second).toBeVisible();
+		await second.dragTo(first);
+		await expect
+			.poll(async () => nav.getByRole("button").allTextContents())
+			.toEqual(expect.arrayContaining(names));
+		const orderedNames = () => nav.getByRole("button").allTextContents();
+		await expect
+			.poll(async () => {
+				const labels = await orderedNames();
+				return labels.indexOf(names[1]) < labels.indexOf(names[0]);
+			})
+			.toBe(true);
+		await page.reload();
+		await expect(second).toBeVisible();
+		await expect
+			.poll(async () => {
+				const labels = await orderedNames();
+				return labels.indexOf(names[1]) < labels.indexOf(names[0]);
+			})
+			.toBe(true);
+		await second.click({ button: "right" });
+		await page
+			.getByRole("menuitem", { name: "Move later", exact: true })
+			.click();
+		await expect
+			.poll(async () => {
+				const labels = await orderedNames();
+				return labels.indexOf(names[0]) < labels.indexOf(names[1]);
+			})
+			.toBe(true);
+		await second.click({ button: "right" });
+		await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+		await expect(
+			page.getByRole("dialog", { name: "Edit collection" }),
+		).toBeVisible();
+		await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
+			names[1],
+		);
+		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		await second.click({ button: "right" });
+		await page
+			.getByRole("menuitem", { name: "Delete", exact: true })
+			.click();
+		await expect(page.getByRole("alert")).toContainText(
+			"Delete this collection?",
+		);
+		await page
+			.getByRole("button", { name: "Confirm delete", exact: true })
+			.click();
+		await expect(second).toHaveCount(0);
+	} finally {
+		for (const id of ids) {
+			const response = await api.delete(`/api/home/collections/${id}`);
+			expect([204, 404]).toContain(response.status());
+		}
+	}
+});

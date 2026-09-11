@@ -34,6 +34,7 @@ export function CollectionEditor({
 	onDelete,
 	busy,
 	error,
+	initialConfirmDelete = false,
 }: {
 	collection?: HomeCollection;
 	resources: HomeResource[];
@@ -43,6 +44,7 @@ export function CollectionEditor({
 	onDelete: () => void;
 	busy: boolean;
 	error: string;
+	initialConfirmDelete?: boolean;
 }) {
 	const [name, setName] = useState(collection?.name ?? "");
 	const [description, setDescription] = useState(
@@ -56,7 +58,7 @@ export function CollectionEditor({
 	);
 	const [selected, setSelected] = useState(collection?.resource_keys ?? []);
 	const [search, setSearch] = useState("");
-	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [confirmDelete, setConfirmDelete] = useState(initialConfirmDelete);
 	const available = resources.filter(
 		(resource) =>
 			audience === "personal" ||
